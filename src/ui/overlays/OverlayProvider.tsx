@@ -1,7 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Dialog, DialogActions } from "./Dialog";
-import { type ConfirmOptions, type OverlayEntry, OverlayContext } from "./overlayContext";
+import {
+  type ConfirmOptions,
+  type OverlayEntry,
+  OverlayActionsContext,
+  OverlayContext,
+} from "./overlayContext";
 import { Button } from "../primitives/Button";
 
 interface PendingConfirmation extends ConfirmOptions { id: number; resolve: (accepted: boolean) => void; }
@@ -58,9 +63,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
       }
     };
   }, [modalDepth]);
-  const value = useMemo(() => ({ topId, isTop, register, confirm }), [confirm, isTop, register, topId]);
+  const actions = useMemo(() => ({ isTop, register, confirm }), [confirm, isTop, register]);
+  const value = useMemo(() => ({ topId, ...actions }), [actions, topId]);
   const pending = confirmations[0];
-  return <OverlayContext.Provider value={value}>
+  return <OverlayActionsContext.Provider value={actions}>
+    <OverlayContext.Provider value={value}>
     {children}
     {pending ? <Dialog title={pending.title} description={pending.description} role="alertdialog" width="small" onClose={() => settleConfirmation(pending.id, false)}>
       <div className="tw:p-6"><DialogActions>
@@ -68,7 +75,8 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
         <Button variant={pending.destructive ? "danger" : "primary"} onClick={() => settleConfirmation(pending.id, true)}>{pending.confirmLabel ?? "Continue"}</Button>
       </DialogActions></div>
     </Dialog> : null}
-  </OverlayContext.Provider>;
+    </OverlayContext.Provider>
+  </OverlayActionsContext.Provider>;
 }
 function resolveTopOverlay(entries: OverlayEntry[]): OverlayEntry | undefined {
   let top: OverlayEntry | undefined;

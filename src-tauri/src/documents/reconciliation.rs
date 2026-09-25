@@ -32,7 +32,9 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
             );
         }
         Ok(())
-    })
+    })?;
+    super::image_sets::files::reconcile_pending(database, paths)?;
+    super::image_sets::files::reconcile_missing_originals(database, paths, now)
 }
 
 fn normalize_legacy_archived_documents(

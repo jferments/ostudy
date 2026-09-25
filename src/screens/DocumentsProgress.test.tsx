@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 const documentIpcMocks = vi.hoisted(() => ({
@@ -22,9 +23,17 @@ vi.mock("../platform/files", () => ({
   selectExternalImport: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("../ui/overlays/overlayContext", () => ({
-  useConfirm: () => vi.fn().mockResolvedValue(false),
+vi.mock("../ipc/documentArtifactProgress", () => ({
+  listLatestDocumentStudyGuideJobs: vi.fn().mockResolvedValue([]),
 }));
+
+vi.mock("../ipc/studyGuides", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/studyGuides")>("../ipc/studyGuides");
+  return {
+    ...actual,
+    getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
+  };
+});
 
 const document: DocumentSummary = {
   id: "0123456789abcdef0123456789abcdef",
@@ -92,9 +101,11 @@ const progress: DocumentGenerationProgress = {
 describe("DocumentsScreen live generation progress", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(Date, "now").mockReturnValue(progress.startedAt + 90_000);
     documentIpcMocks.listDocuments.mockResolvedValue([document]);
     documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue(progress);
   });
+  afterEach(() => { vi.restoreAllMocks(); });
 
   it("describes concurrent generation as an active window range without duplicating completed counts", async () => {
     documentIpcMocks.listDocuments.mockResolvedValue([
@@ -118,10 +129,12 @@ describe("DocumentsScreen live generation progress", () => {
     });
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect((await screen.findAllByText("Generating cards")).length).toBeGreaterThan(0);
@@ -144,10 +157,12 @@ describe("DocumentsScreen live generation progress", () => {
     ]);
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("Window 4 of 10 · sections 13–18.")).toBeTruthy();
@@ -162,10 +177,12 @@ describe("DocumentsScreen live generation progress", () => {
     });
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("Responsive · output 2m ago")).toBeTruthy();
@@ -173,10 +190,12 @@ describe("DocumentsScreen live generation progress", () => {
 
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("low · 2.0k")).toBeTruthy();

@@ -1,16 +1,20 @@
 pub(crate) mod commands;
 mod contracts;
 mod generation;
+pub(crate) mod image_sets;
 mod lifecycle;
 mod reconciliation;
 mod repository;
 mod source;
 
 pub(crate) use contracts::{DocumentGenerationResultDto, RetryPdfGenerationInput};
-pub(crate) use generation::retry_pdf_flashcard_generation;
+pub(crate) use generation::{
+    retry_pdf_flashcard_generation, retry_reserved_pdf_flashcard_generation,
+    validate_retry_pdf_flashcard_generation,
+};
 pub(crate) use lifecycle::{
     flashcard_generation_canceled_error, record_document_cancellation_with_message,
     record_document_failure,
 };
 pub(crate) use reconciliation::reconcile_startup;
-pub(crate) use source::resolve_document_source;
+pub(crate) use source::{expected_document_source_relative_path, resolve_document_source};

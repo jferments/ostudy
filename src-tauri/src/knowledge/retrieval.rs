@@ -2,15 +2,15 @@
 //! scope filter runs before vector ranking; no keyword match is required for a
 //! passage to become a candidate. Source revisions are checked again afterward.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
 
 use crate::{
     ai::{
-        embeddings::{self, Purpose},
-        AiRuntimeState,
+        embeddings::{self, EmbeddingDiagnostics, Purpose},
+        generation, AiRuntimeState,
     },
     database::Database,
     error::CommandError,
@@ -20,6 +20,7 @@ use crate::{
 
 use super::{
     adapters::scope_documents,
+    collection_scope,
     contracts::{bounded, invalid, ScopeKind, SourceCitation, SourceRecord, StudyScope},
     index::{IndexKey, VectorHit},
     preparation::open_index,
@@ -47,15 +48,27 @@ pub struct RetrievalPreview {
     pub embedding_space: String,
 }
 
+pub(crate) struct RetrievalRequest<'a> {
+    pub scope: &'a StudyScope,
+    pub include_conversations: bool,
+    pub query: &'a str,
+    pub cancellation: &'a CancellationSignal,
+    pub diagnostics: Option<&'a generation::Context>,
+}
+
 pub(crate) async fn retrieve(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
-    scope: &StudyScope,
-    include_conversations: bool,
-    query: &str,
-    cancellation: &CancellationSignal,
+    request: RetrievalRequest<'_>,
 ) -> Result<RetrievalResult, CommandError> {
+    let RetrievalRequest {
+        scope,
+        include_conversations,
+        query,
+        cancellation,
+        diagnostics,
+    } = request;
     scope.validate()?;
     bounded(query, 8_000, "semantic search query", false)?;
     check_canceled(cancellation)?;
@@ -69,6 +82,7 @@ pub(crate) async fn retrieve(
             signal: cancellation,
             expected_revision: None,
             expected_embedding: None,
+            diagnostics: diagnostics.cloned(),
         },
     )
     .await?;
@@ -87,6 +101,10 @@ pub(crate) async fn retrieve(
         Purpose::Query,
         &[query.to_string()],
         cancellation,
+        diagnostics.map(|context| EmbeddingDiagnostics {
+            context,
+            stage: "embedding_query",
+        }),
     )
     .await?;
     let eligible = eligible_entries(database, scope, include_conversations)?;
@@ -193,6 +211,30 @@ pub(crate) fn eligible_entries_in(
     if scope.kind == ScopeKind::General {
         return Ok(Vec::new());
     }
+    if collection_scope::has_collection(scope) {
+        let mut entries = BTreeMap::new();
+        for entry in collection_scope::eligible_entries(connection, scope)? {
+            entries.insert(entry.id.clone(), entry);
+        }
+        for member in scope
+            .material_scopes()
+            .into_iter()
+            .filter(|member| member.kind != ScopeKind::Collection)
+        {
+            for entry in eligible_entries_in(connection, &member, false)? {
+                entries.insert(entry.id.clone(), entry);
+            }
+        }
+        if entries.len() > MAX_ELIGIBLE_ENTRIES {
+            return Err(invalid(
+                "This semantic search scope is too large. Select fewer sources.",
+            ));
+        }
+        // Historical conversation text is never reused implicitly for a dynamic
+        // collection scope. Current collection evidence remains available.
+        let _ = include_conversations;
+        return Ok(entries.into_values().collect());
+    }
     let documents = scope_documents(connection, scope)?;
     let members = scope.material_scopes();
     let decks = members
@@ -229,7 +271,8 @@ pub(crate) fn eligible_entries_in(
                  OR (?5 = 1 AND s.kind = 'conversation' AND EXISTS(
                      SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
                      WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
-                       AND tc.scope_json = ?6 AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
+                       AND COALESCE(t.captured_scope_json, json_extract(t.request_json, '$.capturedScope'), tc.scope_json) = ?6
+                       AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
              )
          )
          SELECT 'source:' || s.id, s.id, s.content_hash FROM allowed_sources s

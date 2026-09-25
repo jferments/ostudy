@@ -18,7 +18,9 @@ pub(crate) fn publish(
 ) -> Result<(), CommandError> {
     validate_entity_id(note_id, "generated question")?;
     validate_entity_id(document_id, "source document")?;
-    validate_current_support(connection, document_id, &record.support()?)?;
+    let support = record.support()?;
+    validate_current_support(connection, document_id, &support)?;
+    super::annotations::validate_stored(connection, &support)?;
     let (revision, definition): (i64, String) = connection
         .query_row(
             "SELECT revision, question_definition FROM notes

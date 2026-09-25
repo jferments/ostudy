@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getQuestionNote, saveQuestionNote, type SaveQuestionNoteInput } from "./questions";
+import {
+  getQuestionNote,
+  previewQuestionDraft,
+  saveQuestionNote,
+  type SaveQuestionNoteInput,
+} from "./questions";
 
 const invoke = vi.hoisted(() => vi.fn());
 
@@ -11,6 +16,20 @@ beforeEach(() => {
 });
 
 describe("interactive question authoring gateway", () => {
+  it("keeps author preview on the pure native preview command", async () => {
+    const input = {
+      definitionJson: "{\"schemaVersion\":1}",
+      response: { kind: "true_false" as const, selected: true },
+    };
+    const result = {
+      question: { kind: "true_false" as const, statement: { type: "doc", content: [] } },
+      evaluation: null,
+    };
+    invoke.mockResolvedValue(result);
+    await expect(previewQuestionDraft(input)).resolves.toBe(result);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("preview_question_draft", { input });
+  });
+
   it("preserves save identity and does not hydrate after a committed receipt", async () => {
     const input: SaveQuestionNoteInput = {
       operationId: "a".repeat(32),

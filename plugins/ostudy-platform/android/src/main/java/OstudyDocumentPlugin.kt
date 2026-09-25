@@ -307,6 +307,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 val result = recognizeWithTesseract(source, args.language, args.timeoutSeconds)
                 val response = JSObject().apply {
                     put("text", result.text)
+                    put("hocr", result.hocr)
                     put("confidence", result.confidence)
                     put("engine", result.engine)
                     put("language", result.language)
@@ -349,11 +350,11 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             // `stop()` only interrupts recognition started by getHOCRText(). Run
             // that interruptible recognition step first; getUTF8Text() then reads
             // the already-computed plain-text result instead of owning the timeout.
-            val future = executor.submit<String> {
-                tess.getHOCRText(0)
-                tess.getUTF8Text() ?: ""
+            val future = executor.submit<Pair<String, String>> {
+                val hocr = tess.getHOCRText(0) ?: ""
+                (tess.getUTF8Text() ?: "") to hocr
             }
-            val text = try {
+            val (text, hocr) = try {
                 future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
             } catch (_: TimeoutException) {
                 tess.stop()
@@ -364,9 +365,13 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             } finally {
                 executor.shutdownNow()
             }
+            require(text.length <= 1_000_000 && hocr.length <= 16 * 1024 * 1024) {
+                "The OCR result exceeds the bounded text and layout budget."
+            }
             val confidence = (tess.meanConfidence().coerceIn(0, 100) / 100.0)
             return NativeOcrResult(
                 text = text,
+                hocr = hocr,
                 confidence = confidence,
                 engine = OCR_ENGINE,
                 language = "en",
@@ -469,6 +474,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
 
     private data class NativeOcrResult(
         val text: String,
+        val hocr: String,
         val confidence: Double,
         val engine: String,
         val language: String,

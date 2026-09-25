@@ -8,10 +8,50 @@ use crate::{ai::AiRuntimeState, database::Database, error::CommandError, paths::
 use super::{
     contracts::{
         ConversationDetail, ConversationPageInput, ConversationSummary, CreateConversationInput,
-        DeleteConversationInput, TutorTurn, TutorTurnInput,
+        CreateProjectConversationInput, DeleteConversationInput, MoveConversationInput,
+        RenameConversationInput, SetConversationArchivedInput, TutorTurn, TutorTurnInput,
     },
-    conversations, memory, service,
+    conversations, memory, projects, service,
 };
+
+#[tauri::command]
+pub fn list_tutor_projects(
+    database: State<'_, Database>,
+) -> Result<Vec<projects::TutorProject>, CommandError> {
+    projects::list(database.inner())
+}
+
+#[tauri::command]
+pub fn create_tutor_project(
+    database: State<'_, Database>,
+    input: projects::CreateTutorProjectInput,
+) -> Result<projects::TutorProject, CommandError> {
+    projects::create(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn update_tutor_project(
+    database: State<'_, Database>,
+    input: projects::UpdateTutorProjectInput,
+) -> Result<projects::TutorProject, CommandError> {
+    projects::update(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn set_tutor_project_archived(
+    database: State<'_, Database>,
+    input: projects::SetTutorProjectArchivedInput,
+) -> Result<projects::TutorProject, CommandError> {
+    projects::set_archived(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn delete_tutor_project(
+    database: State<'_, Database>,
+    input: projects::DeleteTutorProjectInput,
+) -> Result<(), CommandError> {
+    projects::delete(database.inner(), input)
+}
 
 #[tauri::command]
 pub fn list_tutor_conversations(
@@ -26,6 +66,38 @@ pub fn create_tutor_conversation(
     input: CreateConversationInput,
 ) -> Result<ConversationSummary, CommandError> {
     conversations::create(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn create_tutor_project_conversation(
+    database: State<'_, Database>,
+    input: CreateProjectConversationInput,
+) -> Result<ConversationSummary, CommandError> {
+    conversations::create_in_project(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn rename_tutor_conversation(
+    database: State<'_, Database>,
+    input: RenameConversationInput,
+) -> Result<ConversationSummary, CommandError> {
+    conversations::rename(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn move_tutor_conversation(
+    database: State<'_, Database>,
+    input: MoveConversationInput,
+) -> Result<ConversationSummary, CommandError> {
+    conversations::move_to_project(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn set_tutor_conversation_archived(
+    database: State<'_, Database>,
+    input: SetConversationArchivedInput,
+) -> Result<ConversationSummary, CommandError> {
+    conversations::set_archived(database.inner(), input)
 }
 
 #[tauri::command]

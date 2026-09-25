@@ -20,6 +20,10 @@ export interface DocumentGenerationProgress {
   reasoningEffort: string;
   providerRequestCount: number;
   retryCount: number;
+  transientRetryCount?: number;
+  compatibilityRetryCount?: number;
+  contractRepairRetryCount?: number;
+  outputCompactionRetryCount?: number;
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;
@@ -170,6 +174,12 @@ export async function importDocumentAndGenerateFlashcards(
   return retryDocumentFlashcardGeneration(imported.documentId);
 }
 
+export async function startDocumentFlashcardGeneration(documentId: string): Promise<void> {
+  await invoke("start_document_flashcard_generation", {
+    input: { documentId },
+  });
+}
+
 export async function retryDocumentFlashcardGeneration(
   documentId: string,
 ): Promise<DocumentGenerationResult> {
@@ -202,12 +212,3 @@ export async function deleteDocument(
     input: { documentId, revision },
   });
 }
-
-// Temporary source-compatible aliases while remaining call sites move from
-// PDF-specific names to the format-neutral API above.
-export const importPdfAndGenerateFlashcards = importDocumentAndGenerateFlashcards;
-export const retryPdfFlashcardGeneration = retryDocumentFlashcardGeneration;
-export const generateMorePdfFlashcards = generateMoreDocumentFlashcards;
-export const cancelPdfFlashcardGeneration = cancelDocumentFlashcardGeneration;
-export const deletePdfDocument = deleteDocument;
-export type DeletePdfDocumentResult = DeleteDocumentResult;

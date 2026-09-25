@@ -23,14 +23,13 @@ use super::{
     config::extraction_config,
     detection::{detect_document, read_bounded_source},
     metadata::map_metadata,
-    normalization::normalize_document,
+    normalization::{literal_text, normalize_document, StructureCatalog},
     package_security::reject_encrypted_package,
     runtime::extract_one,
     support::{capitalize, media_type_for_format},
     XBERG_ADAPTER_BACKEND, XBERG_EXTRACTION_BACKEND,
 };
 
-const MAX_BLOCK_TEXT_CHARS: usize = 250_000;
 const MAX_FILE_NAME_CHARS: usize = 255;
 const MAX_TITLE_CHARS: usize = 1_000;
 
@@ -112,6 +111,7 @@ pub(crate) fn extract(
     let mut canonical_units = Vec::with_capacity(normalized.units.len());
     let mut canonical_blocks = Vec::new();
     let mut first_asset_unit = HashMap::<String, i64>::new();
+    let structure_catalog = StructureCatalog::new(&extracted)?;
     for (unit_index, unit) in normalized.units.iter().enumerate() {
         let unit_number = i64::try_from(unit_index + 1).unwrap_or(i64::MAX);
         let label = unit.label.clone().unwrap_or_else(|| {
@@ -131,19 +131,21 @@ pub(crate) fn extract(
                     .entry(asset_id.clone())
                     .or_insert(unit_number);
             }
-            canonical_blocks.push(CanonicalBlock::new(
+            let mut canonical = CanonicalBlock::new(
                 i64::try_from(canonical_blocks.len()).unwrap_or(i64::MAX),
                 i64::try_from(ordinal).unwrap_or(i64::MAX),
                 unit_number,
                 block.role,
-                normalize_semantic_text(&block.text, MAX_BLOCK_TEXT_CHARS),
+                literal_text(&block.text)?,
                 block.parent_heading.clone(),
                 block.heading_path.clone(),
                 None,
                 None,
                 block.asset_ids.clone(),
                 block.attributes.clone(),
-            ));
+            );
+            canonical.structure = structure_catalog.resolve(&block.attributes)?;
+            canonical_blocks.push(canonical);
         }
         progress.report(IngestionProgress::Extracting {
             completed_units: unit_index + 1,

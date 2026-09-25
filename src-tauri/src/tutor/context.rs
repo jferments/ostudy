@@ -2,8 +2,6 @@
 //! is resolved natively; semantic ranking and exact artifact links are both
 //! inputs. Conversation history is labeled separately from source evidence.
 
-use std::collections::HashSet;
-
 use serde_json::json;
 
 use crate::{
@@ -15,6 +13,9 @@ use crate::{
     error::CommandError,
     knowledge::{
         contracts::{KnowledgeUnit, ScopeKind, SourceRecord, StudyScope, MAX_CONTEXT_BYTES},
+        learning_context::{
+            self, ContextBudget, ContextPolicy, ContextStamp, LearningContextRequest,
+        },
         relationships, repository, retrieval,
     },
     paths::AppPaths,
@@ -31,6 +32,7 @@ mod public_question_hint;
 pub(crate) use public_question_hint::guard_typed_hint;
 
 pub(crate) struct StudyContext {
+    pub learning_stamp: Option<ContextStamp>,
     pub question_hint: Option<crate::practice::question_attempts::tutoring::HintTarget>,
     pub sources: Vec<SourceRecord>,
     pub units: Vec<KnowledgeUnit>,
@@ -48,6 +50,7 @@ pub(crate) struct StudyContextInput<'a> {
     pub focus: &'a FocusedContent,
     pub quiz: Option<&'a PrivateQuiz>,
     pub history: HistorySnapshot,
+    pub project_instructions: Option<&'a str>,
 }
 
 pub(crate) async fn build(
@@ -64,13 +67,20 @@ pub(crate) async fn build(
         focus,
         quiz,
         mut history,
+        project_instructions,
     } = request;
     if focus.question_hint.is_some() {
         crate::knowledge::runtime::check_canceled(cancellation)?;
         if quiz.is_some() {
             return Err(super::focus::changed());
         }
-        return public_question_hint::build(task, input.mode, &input.text, focus);
+        return public_question_hint::build(
+            task,
+            input.mode,
+            &input.text,
+            focus,
+            project_instructions,
+        );
     }
     let mut sources = focus.sources.iter().take(4).cloned().collect::<Vec<_>>();
     let mut notice = String::new();
@@ -109,10 +119,13 @@ pub(crate) async fn build(
             database,
             paths,
             runtime,
-            scope,
-            input.include_conversations && input.mode != TutorMode::Hint,
-            &query,
-            cancellation,
+            retrieval::RetrievalRequest {
+                scope,
+                include_conversations: input.include_conversations && input.mode != TutorMode::Hint,
+                query: &query,
+                cancellation,
+                diagnostics: None,
+            },
         )
         .await;
         merge_optional_retrieval(&mut sources, &mut notice, result)?;
@@ -124,15 +137,26 @@ pub(crate) async fn build(
     for source in related.into_iter().rev() {
         sources.insert(sources.len().min(2), source);
     }
-    let mut seen = HashSet::new();
-    sources.retain(|source| seen.insert(source.id.clone()));
-    sources = filter_scope(
-        database,
-        scope,
-        sources,
-        input.include_conversations && input.mode != TutorMode::Hint,
-    )?;
-    sources.truncate(12);
+    let material = database.with_connection(|connection| {
+        learning_context::build(
+            connection,
+            LearningContextRequest {
+                scope,
+                include_conversations: input.include_conversations && input.mode != TutorMode::Hint,
+                candidates: &sources,
+                policy: ContextPolicy::Retrieval,
+                target_units: None,
+                budget: ContextBudget {
+                    sources: 12,
+                    units: 768,
+                    bytes: 1024 * 1024,
+                },
+            },
+        )
+    })?;
+    let mut sources = material.sources;
+    let mut units = material.units;
+    let mut preparation = material.preparation;
     // Optional grounding does not relax the revision/permission dependencies of
     // an already saved question. A question created without references has none.
     if quiz.is_some_and(|quiz| {
@@ -145,18 +169,20 @@ pub(crate) async fn build(
     if sources.is_empty() {
         notice = format!("{notice} No source evidence is attached. General-knowledge questions may be answered from model knowledge without citations. For an explicit source-only request, explain that the requested evidence is unavailable rather than claiming source support.").trim().to_string();
     }
-    let images = if task.include_page_images {
-        match focus
-            .sources
-            .first()
-            .filter(|source| !source.images.is_empty())
-        {
+    let image_source = focus.sources.first().and_then(|focused| {
+        sources
+            .iter()
+            .find(|source| source.id == focused.id && !source.images.is_empty())
+    });
+    let image_source_id = image_source.map(|source| source.id.clone());
+    let mut images = if task.include_page_images {
+        match image_source {
             Some(source) => crate::knowledge::load_images(database, paths, source)?,
             None => Vec::new(),
         }
     } else {
-        if focus.sources.iter().any(|source| !source.images.is_empty()) {
-            notice = "Image bytes are not attached for this model. The tutor can use saved text and prepared visual interpretations only.".to_string();
+        if image_source.is_some() {
+            notice = format!("{notice} Image bytes are not attached for this model. Only saved text and prepared visual interpretations are available.").trim().to_string();
         }
         Vec::new()
     };
@@ -172,22 +198,6 @@ pub(crate) async fn build(
         return Err(CommandError::new("tutor_context_budget",
             "The selected model has insufficient verified context for this request and reasoning setting. Test its profile or choose a lower reasoning effort."));
     }
-    let mut units = database.with_connection(|connection| {
-        let mut result = Vec::new();
-        for source in &sources {
-            result.extend(repository::load_units(connection, &source.id)?);
-        }
-        let mut seen_units = HashSet::new();
-        result.retain(|unit| {
-            seen_units.insert(unit.id.clone())
-                && unit
-                    .content
-                    .grounding
-                    .as_ref()
-                    .is_none_or(|grounding| grounding.is_visible_in(&sources))
-        });
-        Ok(result)
-    })?;
     let pending_sources = sources
         .iter()
         .map(|source| source.id.clone())
@@ -197,26 +207,22 @@ pub(crate) async fn build(
     let partial_notice = if unresolved > 0 {
         format!("Selected material has {unresolved} unresolved knowledge proposals or source dispositions. Valid source material remains available; this is not complete analysis.")
     } else {
-        String::new()
+        preparation.notice()
     };
     notice = format!("{notice} {partial_notice}").trim().to_string();
-    let mut inherited_turns = sources
-        .iter()
-        .filter_map(|source| source.turn_id.clone())
-        .collect::<Vec<_>>();
-    if let Some(id) = &input.question_id {
-        inherited_turns.push(id.clone());
-    }
     let request_text = loop {
-        let material = sources.iter().map(|source| json!({
-            "sourceId": source.id, "contentHash": source.content_hash, "kind": source.kind,
-            "origin": source.origin, "title": source.title, "text": source.text,
-            "locator": source.locator,
-            "knowledgeUnits": units.iter().filter(|unit| unit.source_id == source.id).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>();
+        let shared = learning_context::material_prompt(&sources, &units)?;
+        preparation.evidence_structures.retain(|value| {
+            value
+                .get("sourceId")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|id| sources.iter().any(|source| source.id == id))
+        });
         let payload = json!({
             "mode": input.mode, "request": input.text, "scope": scope,
-            "focus": focus.description(), "material": material,
+            "projectInstructions": project_instructions,
+            "focus": focus.description(), "material": shared["sources"],
+            "knowledgeUnits":shared["units"],"evidence":shared["evidence"],"preparation":preparation,
             "history": history.prompt(), "contextNotice": notice,
             "privateHintTarget": if input.mode == TutorMode::Hint { focus.private_answer.as_deref() } else { None },
             "fixedQuiz": quiz,
@@ -231,14 +237,10 @@ pub(crate) async fn build(
             history.turns.remove(0);
         } else if sources.len() > 1 && quiz.is_none() {
             if let Some(source) = sources.pop() {
-                units.retain(|unit| {
-                    unit.source_id != source.id
-                        && unit
-                            .content
-                            .grounding
-                            .as_ref()
-                            .is_none_or(|grounding| grounding.is_visible_in(&sources))
-                });
+                units.retain(|unit| learning_context::unit_visible(unit, &sources));
+                if image_source_id.as_deref() == Some(source.id.as_str()) {
+                    images.clear();
+                }
             }
         } else if !units.is_empty() {
             units.pop();
@@ -251,7 +253,17 @@ pub(crate) async fn build(
                 "The current question and required evidence exceed this model's context budget. Select a smaller section or shorten the message."));
         }
     };
+    let mut inherited_turns = sources
+        .iter()
+        .filter_map(|source| source.turn_id.clone())
+        .collect::<Vec<_>>();
+    if let Some(id) = &input.question_id {
+        inherited_turns.push(id.clone());
+    }
+    let learning_stamp =
+        database.with_connection(|connection| material.stamp.restrict_to(connection, &sources))?;
     Ok(StudyContext {
+        learning_stamp: Some(learning_stamp),
         question_hint: None,
         sources,
         units,
@@ -307,28 +319,6 @@ fn optional_retrieval_failure(code: &str) -> bool {
             | "ai_server_unavailable"
             | "ai_stream_inactive"
     )
-}
-
-fn filter_scope(
-    database: &Database,
-    scope: &StudyScope,
-    sources: Vec<SourceRecord>,
-    include_conversations: bool,
-) -> Result<Vec<SourceRecord>, CommandError> {
-    database.with_connection(|connection| {
-        let permitted = retrieval::eligible_entries_in(connection, scope, include_conversations)?
-            .into_iter()
-            .filter_map(|entry| entry.id.strip_prefix("source:").map(str::to_string))
-            .collect::<HashSet<_>>();
-        let mut result = Vec::new();
-        for source in sources {
-            if permitted.contains(&source.id) && repository::source_is_current(connection, &source)?
-            {
-                result.push(source);
-            }
-        }
-        Ok(result)
-    })
 }
 
 #[cfg(test)]

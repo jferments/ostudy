@@ -60,6 +60,34 @@ export interface StudyGuideComparison {
   relationship: string;
 }
 
+export type StudyGuideCalloutKind = "key_idea" | "warning" | "tip" | "note";
+
+export interface StudyGuideCallout {
+  kind: StudyGuideCalloutKind;
+  title: string;
+  body: string;
+}
+
+export interface StudyGuideTable {
+  title: string;
+  columns: string[];
+  rows: string[][];
+  caption: string;
+}
+
+export interface StudyGuideWorkedExample {
+  title: string;
+  prompt: string;
+  steps: string[];
+  answer: string;
+  takeaway: string;
+}
+
+export interface StudyGuideRetrievalCheck {
+  prompt: string;
+  answer: string;
+}
+
 export interface StudyGuideVisualExplanation {
   title: string;
   explanation: string;
@@ -73,6 +101,10 @@ export interface StudyGuideSectionContent {
   processSteps: string[];
   comparisons: StudyGuideComparison[];
   commonMisconceptions: string[];
+  callouts: StudyGuideCallout[];
+  tables: StudyGuideTable[];
+  workedExamples: StudyGuideWorkedExample[];
+  retrievalChecks: StudyGuideRetrievalCheck[];
   visualExplanations: StudyGuideVisualExplanation[];
 }
 
@@ -130,18 +162,6 @@ export interface DocumentStudyGuide {
   publishedAt: number;
 }
 
-/** Compatibility projection retained until the old inline library is removed. */
-export interface StudyGuideLibraryItem {
-  documentId: string;
-  documentTitle: string;
-  originalFilename: string;
-  sourceFormat: string;
-  sourceUnitKind: string;
-  sourceUnitCount: number;
-  guideRevision: number;
-  publishedAt: number;
-}
-
 export type StudyGuideLibrarySort =
   | "recent"
   | "oldest"
@@ -155,10 +175,22 @@ export interface ListStudyGuidesInput {
   limit: number;
 }
 
-export interface StudyGuidePageItem extends StudyGuideLibraryItem {
+export type StudyGuideTargetKind = "document" | "collection";
+
+export interface StudyGuidePageItem {
   guideId: string;
+  targetKind: StudyGuideTargetKind;
+  targetId: string;
+  title: string;
+  originalFilename: string | null;
+  sourceFormat: string | null;
+  sourceUnitKind: string | null;
+  sourceUnitCount: number | null;
+  sourceCount: number;
+  guideRevision: number;
   sectionCount: number;
   noteCount: number;
+  publishedAt: number;
 }
 
 export interface StudyGuideLibraryPage {
@@ -248,6 +280,15 @@ export async function cancelDocumentStudyGuideGeneration(documentId: string): Pr
   await invoke("cancel_document_study_guide_generation", { documentId });
 }
 
+export async function readDocumentSourceAsset(
+  documentId: string,
+  assetId: string,
+): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_document_source_asset", {
+    input: { documentId, assetId },
+  });
+}
+
 export async function getDocumentStudyGuide(
   documentId: string,
 ): Promise<DocumentStudyGuide | null> {
@@ -256,16 +297,10 @@ export async function getDocumentStudyGuide(
   });
 }
 
-export async function listDocumentStudyGuides(): Promise<StudyGuideLibraryItem[]> {
-  return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", {
-    includeArchived: false,
-  });
-}
-
-export async function listDocumentStudyGuidePage(
+export async function listStudyGuidePage(
   input: Partial<ListStudyGuidesInput> = {},
 ): Promise<StudyGuideLibraryPage> {
-  return invoke<StudyGuideLibraryPage>("list_document_study_guide_page", {
+  return invoke<StudyGuideLibraryPage>("list_study_guide_page", {
     input: {
       query: input.query ?? "",
       sort: input.sort ?? "recent",

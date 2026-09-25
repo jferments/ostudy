@@ -10,6 +10,7 @@ ostudy's document system has four distinct responsibilities: retain and normaliz
 | --- | --- |
 | `documents/` plus current lifecycle/repository service modules | Source metadata, managed source ownership, admission and lifecycle coordination |
 | `document_ingestion/` | Application adapter contract, explicit registry/detection, canonicalization and persistence boundary |
+| `documents/image_sets/` + `document_ingestion/image_set.rs` | Ordered-image admission/ownership, retained originals/manifests, local OCR cache, conservative overlap/filter projection, revision-safe amendments and source inspection |
 | `pdf_backend/` | Semantic/native PDF text extraction and quality/recovery |
 | `pdf_document_ingestion/` | PDF pipeline, bounded rendering/OCR preparation, progress and recovery |
 | `xberg_document_adapter/` | Isolated non-PDF backend invocation and immediate conversion to application-owned structures |
@@ -19,6 +20,7 @@ ostudy's document system has four distinct responsibilities: retain and normaliz
 | `ai/document_intelligence/` | Provider-neutral bounded task requests and domain interpretation |
 | `document_generation`, `document_initial_generation`, `document_more`, `document_checkpoints` | Task execution, reuse, validation, and ordinary flashcard publication |
 | `document_study_guide*` | Generated revisions, learner overlays, library queries, lifecycle, and local PDF export |
+| `study_materials/` | Durable document/collection StudyTarget snapshots, coherent bundle receipts, nondestructive collection deck composition, collection-guide revisions, suppression and restart semantics |
 
 Several root `document_*` modules remain active owners behind focused facades. The facade is not evidence that those modules are dead. Cross-module services exchange application-owned contracts; third-party types must not spread into authoring, profiles, or UI.
 
@@ -39,6 +41,18 @@ AnyDoc is retired runtime history. Its old persisted backend identities, numbere
 Xberg is pinned with only the reviewed runtime/office/excel features. Its PDF/OCR/layout/network-acquisition/transcription/embedding/server paths are not part of this integration. Third-party parsing results are normalized immediately into ostudy-owned canonical objects.
 
 Detection primarily uses source signatures and container structure. OLE needs a valid DOC/PPT/XLS filename hint to disambiguate supported families; CSV requires its filename hint because it lacks a unique signature. Renaming unknown bytes is not authorization to treat them as a supported source. HTML acquisition and arbitrary external links are not a side effect of document import.
+
+### Ordered image-set sources
+
+Ordered image sets are a first-class source family rather than another Xberg container type. Native admission validates staged PNG/JPEG/WebP bytes, decoded dimensions/pixels, stable member identities, sequence order and aggregate limits before one manifest becomes authoritative. Each original is retained independently; the source is never defined by a stitched composite.
+
+Local region OCR is cached by compatible normalized-pixel/extractor identity separately from source ownership. The canonical adapter preserves literal text, member/region identities and geometry, and proves screenshot overlap only through exact text/pixel/reading-order evidence. Protected numbers, units, signs, operators, negation, ambiguous repeated headers, missing geometry or conflicting pixels prevent an equivalence merge.
+
+Content filtering is a reversible source projection, not deletion. Specific confident edge controls/notices may be excluded, short attribution can remain metadata, and uncertain educational text remains retained. Manual Include/Exclude/Metadata decisions are revision checked. When a transform changes OCR region IDs, a decision transfers only to one exact-literal match on the same stable member and is rebound atomically when the successor projection commits.
+
+Append, reorder, quarter-turn rotation and source-inclusion amendments use an expected source/filter revision and a bounded managed-file staging journal. An acknowledged edit invalidates the current projection while keeping the prior processing receipt inspectable until local preparation commits a successor. Stale extraction cannot publish into a newer manifest; compatible unchanged OCR/knowledge can be reused.
+
+Image import, source inspection, local OCR preparation, overlap proof, filtering and amendment do not select an AI provider or fetch guessed source URLs. The controlled original preview reads retained owned pixels through a native command. Whole-library backup packages and validates the current manifest plus independently retained originals and persistent filter/pending-source state.
 
 ## Canonical document evidence
 
@@ -75,6 +89,10 @@ Cancellation is cooperative across parsing, rendering, OCR, and provider work. A
 One bounded semantic analysis traverses the canonical source neighborhoods and publishes shared knowledge. Rust creates addressable exact text spans and attached-image references; the model selects their IDs instead of copying quotations. A unit may reference several spans or pages. Per-unit admission preserves successful siblings before a targeted repair; receipts distinguish complete source dispositions, partial analysis, and explicit no-learning decisions.
 
 The document outline is now a derived view of this knowledge, not a second raw-document outline traversal. Native grouping retains source ranges and whole topic labels. An optional balanced knowledge-only reduction supplies broader context and an advisory core-ID set; it must represent every nonempty input window or fall back locally. Neither local importance nor absence from the bounded core-ID set proves what is pedagogically essential.
+
+Document collections reuse those same source-owned interpretations through an exact range-aware source snapshot and a complete coverage `LearningContext`. Their compact derived synthesis stores topic/unit dependencies and explicit gaps rather than duplicating source facts or embeddings. Native grouping keeps minority topics and separates instructional emphasis from factual support; an explicit generation path may make one bounded provider request only when every topic fits the balanced digest, and provider-authored topic summaries/relationships may reference only admitted unit IDs. If the digest, provider response, or freshness checks fail, the complete native catalog remains authoritative. Tutor relevance retrieval remains a separate bounded policy and is never relabeled as complete generation coverage.
+
+StudyTarget bundling is a publication/orchestration layer above those owners, not another document author. A document target adopts the ordinary deck/guide already produced by the established document pipelines. A collection target creates one ordinary deck exactly once and appends only exact copies of active, unedited, range-authorized document-generated notes; it does not ask CollectionSynthesis to invent replacement flashcards. Existing target notes, card identities, schedules and reviews are never rewritten merely because collection membership changes. Removed sources stop contributing new candidates but do not delete surviving learner material. Collection guide revisions may consume the current validated synthesis and reconcile learner overlays independently of the flashcard deck.
 
 A whole-document snapshot binds canonical chunks, image revisions, all prepared source projections, unit revisions and analysis receipts, including sources yielding no units. The snapshot is checked before and after provider work, then inside the transaction publishing the outline and generated metadata. Source changes, deletions, additions and competing reinterpretations invalidate stale results. Display renames and progress updates do not change v2 document evidence identity.
 
@@ -118,9 +136,9 @@ Routine logs contain safe counts, phase/timing/cancellation outcomes, backend/mo
 
 Guide generation consumes the shared plan/topic evidence. Documents task state is owned above navigation routes, so leaving the page does not cancel a guide. Refreshes retain failures, and the generating guide button becomes its stop control. A complete validated generated revision is published atomically; failed/canceled regeneration leaves the old active guide readable. Guide notes attach to a source; topic notes attach to stable topics; section overrides attach to an exact generated base hash. Incompatible old overrides become preserved visible conflicts, not silent data loss.
 
-The current inline reader has contextual generation/stop, note/override entry, linked-card practice, source opening, and PDF export. It is not the old modal or a second duplicated reader implementation. Current note entry is plain text backed by rich storage; reusable schema capabilities do not advertise a toolbar that is not exposed there.
+The current inline reader has contextual generation/stop, note/override entry, linked-card practice, source opening, and PDF export. Document and collection guides share the semantic content renderer rather than maintaining separate presentation vocabularies. Per-section actions live in one overflow menu. Reader-facing title/overview compaction can turn legacy machine-like topic inventories into concise prose without mutating the durable learning topic or generated base. Current note entry is plain text backed by validated rich storage; source/topic notes remain independent of generated revisions, while title/body overrides stay bound to an exact generated base hash and become conflicts rather than silently rebasing.
 
-Topic practice resolves native card IDs and availability. PDF export freezes the effective generated-plus-annotation snapshot and renders a selectable-text PDF locally without another model call. Prepared export/file publication stays behind the native platform boundary.
+Topic practice resolves native card IDs and availability. PDF export freezes the same effective generated-plus-annotation meaning and renders locally without another model call. The print renderer owns cover/hierarchy, linked contents/bookmarks, source labels, headers/footers, tables and pagination, verified canonical source figures/captions, Unicode text, and bounded non-executing native math. Unsupported math is disclosed and preserved as source notation. The renderer never receives arbitrary model-chosen filesystem paths: figures resolve through canonical locator asset IDs and integrity-checked managed bytes. Prepared export/file publication stays behind the native platform boundary.
 
 Deleting only a guide removes generated revisions, section edits/conflicts, generation checkpoints/jobs, and prepared exports while preserving source, learning plan, linked flashcards, and stable guide/topic notes. Source deletion is a broader operation and must not be confused with that narrower guide action.
 

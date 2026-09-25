@@ -11,8 +11,8 @@ use super::{
 };
 use crate::{
     ai::{
-        embeddings::{self, Purpose},
-        AiRuntimeState,
+        embeddings::{self, EmbeddingDiagnostics, Purpose},
+        generation, AiRuntimeState,
     },
     database::Database,
     error::CommandError,
@@ -35,6 +35,7 @@ pub(crate) struct IndexSelection<'a> {
     pub signal: &'a CancellationSignal,
     pub expected_revision: Option<&'a str>,
     pub expected_embedding: Option<&'a str>,
+    pub diagnostics: Option<generation::Context>,
 }
 
 pub(crate) fn scope_revision(entries: &[IndexKey]) -> Result<String, CommandError> {
@@ -60,6 +61,7 @@ pub(crate) async fn ensure_scope(
         signal,
         expected_revision,
         expected_embedding,
+        diagnostics,
     } = selection;
     scope.validate()?;
     if scope.kind == ScopeKind::General {
@@ -142,6 +144,10 @@ pub(crate) async fn ensure_scope(
             Purpose::Document,
             &texts,
             signal,
+            diagnostics.as_ref().map(|context| EmbeddingDiagnostics {
+                context,
+                stage: "embedding_indexing",
+            }),
         )
         .await?;
         check_canceled(signal)?;
@@ -174,19 +180,20 @@ pub(crate) async fn ensure_scope(
     Ok(())
 }
 
-pub(crate) async fn document_best_effort(
+pub(crate) async fn index_document(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     document_id: &str,
     signal: &CancellationSignal,
+    diagnostics: Option<generation::Context>,
 ) -> Result<(), CommandError> {
     let scope = StudyScope {
         members: Vec::new(),
         kind: ScopeKind::Document,
         id: Some(document_id.to_string()),
     };
-    match ensure_scope(
+    ensure_scope(
         database,
         paths,
         runtime,
@@ -196,19 +203,10 @@ pub(crate) async fn document_best_effort(
             signal,
             expected_revision: None,
             expected_embedding: None,
+            diagnostics,
         },
     )
     .await
-    {
-        Ok(()) => Ok(()),
-        Err(error) if error.code == "ai_request_canceled" => Err(error),
-        Err(error) => {
-            crate::logging::warn_target("ai.knowledge.index","knowledge_index_deferred",
-                "Knowledge is saved. Search indexing will catch up on use without repeating interpretation.",
-                json!({"document":document_id,"code":error.code}));
-            Ok(())
-        }
-    }
 }
 fn ensure_default_current(
     database: &Database,

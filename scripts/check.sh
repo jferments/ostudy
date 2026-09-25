@@ -14,6 +14,8 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/qualification-timing.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -24,6 +26,7 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0)); then
   exit 2
 fi
 cd "$ROOT_DIR"
+ostudy_timing_init full
 
 if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
   && [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
@@ -33,6 +36,7 @@ if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
   reuse_sha="$(ostudy_check_stamp_source_sha full || true)"
   printf '\n\033[1;32mREUSE Full Linux qualification from %s: the current exact source passed static qualification and the product qualification fingerprint is unchanged.\033[0m\n' \
     "${reuse_sha:-an earlier qualified source}"
+  ostudy_timing_finish_total reused
   exit 0
 fi
 
@@ -49,12 +53,14 @@ CURRENT_STEP="initialization"
 step() {
   if [[ "$CURRENT_STEP" != initialization ]]; then
     ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+    ostudy_timing_finish_step passed
   fi
   CURRENT_STEP="$*"
   ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+  ostudy_timing_start_step "$CURRENT_STEP"
   printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 }
-trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
+trap 'status=$?; ostudy_timing_finish_step failed; ostudy_timing_finish_total failed; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 step "Fast qualification"
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
@@ -115,7 +121,9 @@ else
 fi
 
 ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+ostudy_timing_finish_step passed
 ostudy_write_check_stamp full
+ostudy_timing_finish_total passed
 trap - ERR
 printf '\n\033[1;32mAll ostudy checks passed.\033[0m\n'
 printf 'The exact standalone artifact exercised by native smoke is ready for ./run-app.sh.\n'

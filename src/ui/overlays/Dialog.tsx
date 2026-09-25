@@ -3,7 +3,12 @@ import { IconButton } from "../icons/IconButton";
 import { cn } from "../internal/cn";
 import { ModalView } from "../vendor/shadcn/modal";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
-import { type OverlayCloseReason, OverlayParentContext, useOverlayContext, useOverlayParentId } from "./overlayContext";
+import {
+  type OverlayCloseReason,
+  OverlayParentContext,
+  useOverlayActions,
+  useOverlayParentId,
+} from "./overlayContext";
 
 export interface DialogProps {
   title: string; description?: string; children: ReactNode;
@@ -24,7 +29,7 @@ export function Dialog({ title, description, children, onClose, width = "medium"
   const id = `overlay-${useId().replaceAll(":", "")}`;
   const parentId = useOverlayParentId();
   const depth = useContext(DepthContext);
-  const { register, isTop } = useOverlayContext();
+  const { register, isTop } = useOverlayActions();
   const { layoutMode } = useLayoutMode();
   const current = useRef({ onClose, dismissible, busy });
   current.current = { onClose, dismissible, busy };

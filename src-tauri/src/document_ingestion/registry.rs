@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    document_domain::DocumentFormat, error::CommandError, paths::AppPaths,
+    database::Database, document_domain::DocumentFormat, error::CommandError, paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime, task_cancellation,
 };
 
@@ -10,6 +10,7 @@ use super::{
         AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity,
         DocumentCancellation, IngestionProgress,
     },
+    image_set::ImageSetAdapter,
     pdf::adapter::NativePdfAdapter,
     xberg::adapter::XbergAdapter,
 };
@@ -17,6 +18,7 @@ use super::{
 pub(crate) struct DocumentAdapterRegistry<'a> {
     native_pdf: NativePdfAdapter<'a>,
     xberg: XbergAdapter,
+    image_set: ImageSetAdapter,
 }
 
 impl DocumentAdapterRegistry<'static> {
@@ -24,6 +26,7 @@ impl DocumentAdapterRegistry<'static> {
         Self {
             native_pdf: NativePdfAdapter::catalog(),
             xberg: XbergAdapter::new(),
+            image_set: ImageSetAdapter,
         }
     }
 }
@@ -33,12 +36,14 @@ impl<'a> DocumentAdapterRegistry<'a> {
         Self {
             native_pdf: NativePdfAdapter::with_runtime(render_runtime),
             xberg: XbergAdapter::new(),
+            image_set: ImageSetAdapter,
         }
     }
 
     fn adapter_for_format(&self, format: DocumentFormat) -> Option<&dyn DocumentAdapter> {
         match format {
             DocumentFormat::Pdf => Some(&self.native_pdf),
+            DocumentFormat::ImageBundle => Some(&self.image_set),
             DocumentFormat::Doc
             | DocumentFormat::Docx
             | DocumentFormat::Ppt
@@ -148,6 +153,29 @@ where
     adapter.extract(request, &mut report_progress)
 }
 
+pub(crate) fn ingest_image_set<F>(
+    database: &Database,
+    paths: &AppPaths,
+    document_id: &str,
+    source_path: &Path,
+    maximum_source_units: usize,
+    mut report_progress: F,
+) -> Result<AdapterExtraction, CommandError>
+where
+    F: FnMut(IngestionProgress) -> Result<(), CommandError>,
+{
+    let cancellation = TaskCancellation { document_id };
+    let request = AdapterRequest {
+        paths,
+        document_id,
+        source_path,
+        format: DocumentFormat::ImageBundle,
+        maximum_source_units,
+        cancellation: &cancellation,
+    };
+    ImageSetAdapter.extract_cached(database, request, &mut report_progress)
+}
+
 pub(crate) fn ingest_pdf<F>(
     paths: &AppPaths,
     render_runtime: &PdfRenderRuntime,
@@ -188,6 +216,13 @@ mod tests {
         let registry = DocumentAdapterRegistry::catalog();
         accepts_object_safe_adapter(&registry.native_pdf);
         accepts_object_safe_adapter(&registry.xberg);
+        accepts_object_safe_adapter(&registry.image_set);
+        assert_eq!(
+            registry
+                .identity_for_format(DocumentFormat::ImageBundle)
+                .unwrap(),
+            super::super::image_set::IDENTITY
+        );
         assert_eq!(
             registry
                 .identity_for_format(DocumentFormat::Pdf)

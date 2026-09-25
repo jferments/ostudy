@@ -14,11 +14,13 @@ fn family_envelopes(unit_id: &str) -> Vec<Value> {
 }
 
 #[test]
-fn all_six_families_retain_valid_siblings_and_reject_missing_graded_evidence() {
+fn document_all_six_families_retain_valid_siblings_and_reject_missing_graded_evidence() {
     let catalog = catalog_fixture();
     let policy = GenerationPolicy::default();
     for good in family_envelopes(&catalog.units[0].id) {
-        let expected = admit_knowledge_card(good.clone(), &catalog, &policy).unwrap();
+        let mut rule = "unobserved";
+        let expected = admit_knowledge_card(good.clone(), &catalog, &policy, &mut rule).unwrap();
+        assert_eq!(rule, "assessment_admission");
         let mut missing = good.clone();
         missing["assessment"]["components"]
             .as_array_mut()
@@ -44,7 +46,7 @@ fn all_six_families_retain_valid_siblings_and_reject_missing_graded_evidence() {
 }
 
 #[test]
-fn all_six_families_publish_after_rejected_envelopes_without_shifted_evidence() {
+fn document_all_six_families_publish_after_rejected_envelopes_without_shifted_evidence() {
     let (database, source, catalog, plan) = authoring::tests::fixture();
     let mut values = Vec::new();
     for value in family_envelopes(&catalog.units[0].id) {

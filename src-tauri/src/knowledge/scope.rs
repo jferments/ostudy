@@ -12,6 +12,7 @@ pub enum ScopeKind {
     Deck,
     Document,
     Guide,
+    Collection,
     Library,
     Selection,
 }
@@ -22,6 +23,7 @@ pub enum MaterialKind {
     Deck,
     Document,
     Guide,
+    Collection,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -97,12 +99,14 @@ impl StudyScope {
         }
         match self.kind {
             ScopeKind::General | ScopeKind::Library if self.id.is_none() => Ok(()),
-            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide => validate_entity_id(
-                self.id
-                    .as_deref()
-                    .ok_or_else(|| invalid("Select study material."))?,
-                "study scope",
-            ),
+            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide | ScopeKind::Collection => {
+                validate_entity_id(
+                    self.id
+                        .as_deref()
+                        .ok_or_else(|| invalid("Select study material."))?,
+                    "study scope",
+                )
+            }
             _ => Err(invalid("This study scope must not contain an entity ID.")),
         }
     }
@@ -119,6 +123,7 @@ impl StudyScope {
                         MaterialKind::Deck => ScopeKind::Deck,
                         MaterialKind::Document => ScopeKind::Document,
                         MaterialKind::Guide => ScopeKind::Guide,
+                        MaterialKind::Collection => ScopeKind::Collection,
                     },
                     Some(member.id.clone()),
                 )

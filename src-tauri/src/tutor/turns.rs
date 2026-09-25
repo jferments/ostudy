@@ -18,7 +18,7 @@ use crate::{
 use super::{
     context::StudyContext,
     contracts::{PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorTurn, TutorTurnInput},
-    conversations, history,
+    conversations, history, projects,
 };
 
 #[derive(Clone, Debug)]
@@ -27,6 +27,8 @@ pub(crate) struct TurnIdentity {
     pub conversation_id: String,
     pub request_hash: String,
     pub accepted_revision: i64,
+    pub captured_scope: crate::knowledge::contracts::StudyScope,
+    pub project_instructions: Option<String>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -68,12 +70,34 @@ pub(crate) fn begin(
     task: &DocumentTaskContext,
 ) -> Result<TurnIdentity, CommandError> {
     input.validate()?;
-    let request_json = serde_json::to_string(input).map_err(CommandError::serialization)?;
-    let request_hash = hash(&request_json);
+    let request_hash = hash(&serde_json::to_string(input).map_err(CommandError::serialization)?);
     database.with_connection(|connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         let conversation = conversations::load_summary(&transaction, &input.conversation_id)?;
+        let project_instructions =
+            projects::instructions(&transaction, conversation.project_id.as_deref())?;
+        let mut request_value =
+            serde_json::to_value(input).map_err(CommandError::serialization)?;
+        let request_object = request_value
+            .as_object_mut()
+            .ok_or_else(|| invalid("The tutor request could not be captured."))?;
+        request_object.insert(
+            "capturedScope".to_string(),
+            serde_json::to_value(&conversation.scope).map_err(CommandError::serialization)?,
+        );
+        request_object.insert(
+            "capturedProjectId".to_string(),
+            serde_json::to_value(&conversation.project_id).map_err(CommandError::serialization)?,
+        );
+        request_object.insert(
+            "capturedProjectInstructions".to_string(),
+            serde_json::to_value(&project_instructions).map_err(CommandError::serialization)?,
+        );
+        let request_json =
+            serde_json::to_string(&request_value).map_err(CommandError::serialization)?;
+        let captured_scope_json =
+            serde_json::to_string(&conversation.scope).map_err(CommandError::serialization)?;
         if conversation.revision != input.expected_revision {
             return Err(conversations::changed());
         }
@@ -96,11 +120,11 @@ pub(crate) fn begin(
         transaction.execute(
             "INSERT INTO tutor_turns (
                  id, conversation_id, operation_id, sequence, request_hash, request_json,
-                 mode, user_text, state, answered_question_id, profile_id, profile_revision,
-                 provider_kind, model_id, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'running', ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                 captured_scope_json, mode, user_text, state, answered_question_id, profile_id,
+                 profile_revision, provider_kind, model_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'running', ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
             params![id, input.conversation_id, input.operation_id, sequence, request_hash,
-                request_json, input.mode.as_str(), input.text, input.question_id,
+                request_json, captured_scope_json, input.mode.as_str(), input.text, input.question_id,
                 task.profile_id, task.profile_revision, task.provider_kind, task.model_id, now],
         ).map_err(CommandError::database)?;
         transaction.execute(
@@ -110,7 +134,14 @@ pub(crate) fn begin(
         let accepted_revision = conversation.revision.checked_add(1)
             .ok_or_else(|| invalid("The conversation revision exceeded its supported range."))?;
         transaction.commit().map_err(CommandError::database)?;
-        Ok(TurnIdentity { id, conversation_id: input.conversation_id.clone(), request_hash, accepted_revision })
+        Ok(TurnIdentity {
+            id,
+            conversation_id: input.conversation_id.clone(),
+            request_hash,
+            accepted_revision,
+            captured_scope: conversation.scope,
+            project_instructions,
+        })
     })
 }
 
@@ -149,6 +180,9 @@ pub(crate) fn complete(
         let conversation = conversations::load_summary(&transaction, &identity.conversation_id)?;
         if conversation.revision != identity.accepted_revision {
             return Err(conversations::changed());
+        }
+        if let Some(stamp) = &context.learning_stamp {
+            stamp.ensure_current(&transaction)?;
         }
         for source in &context.sources {
             if !repository::source_is_current(&transaction, source)? {

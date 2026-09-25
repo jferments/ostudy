@@ -1,6 +1,6 @@
 use std::{
     path::Path,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -18,6 +18,9 @@ use crate::{
 
 const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
 pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
+
+#[path = "database/entry.rs"]
+mod entry;
 
 #[path = "database/table_rebuild.rs"]
 mod table_rebuild;
@@ -150,12 +153,104 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0017_generation_reports.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 18,
+        name: "canonical_evidence",
+        checksum: "8793ee5d592dca80ce52a5c5396a780d103dff9b81ecc7080b2cc42a29f3b1ca",
+        sql: include_str!("../migrations/0018_canonical_evidence.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 19,
+        name: "image_sets",
+        checksum: "b1a4d4b0463faf8affdbaa205e29e0ae506b31dd3bf8ea4edf9fd5b5e7d0ca92",
+        sql: include_str!("../migrations/0019_image_sets.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 20,
+        name: "image_extraction",
+        checksum: "0121782267e44e1a78aea403e051d4c2697bed53069af60369c9f833b14d078e",
+        sql: include_str!("../migrations/0020_image_extraction.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 21,
+        name: "image_source_edits",
+        checksum: "0570850c02fb9e2fd5b987625bcfe96440c8cde828804eb5724974e33fb6f6aa",
+        sql: include_str!("../migrations/0021_image_source_edits.sql"),
+        rebuilds_tables: true,
+    },
+    Migration {
+        version: 22,
+        name: "document_collections",
+        checksum: "a9fc9753540832187bd11bc074b417f23b9317c167981d52f70f53602b74c0a9",
+        sql: include_str!("../migrations/0022_document_collections.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 23,
+        name: "collection_synthesis",
+        checksum: "e36fbcd4187eb56464fec704cf96dba235c57b3d91907199bd525219fa07de9b",
+        sql: include_str!("../migrations/0023_collection_synthesis.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 24,
+        name: "study_targets",
+        checksum: "fe101eae8a4dc0f1455991c229b6362d2c6a4514ec24e8f239c8576fc7b770bb",
+        sql: include_str!("../migrations/0024_study_targets.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 25,
+        name: "tutor_projects",
+        checksum: "a0c2ca312db766069477190fba79b80d2917f2461e996b2809986e9805c30f6b",
+        sql: include_str!("../migrations/0025_tutor_projects.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 26,
+        name: "single_level_document_collections",
+        checksum: "56358a42e0ca153bffd43e1296675762c91718cfe46bb9d7d22af3723942eddf",
+        sql: include_str!("../migrations/0026_single_level_document_collections.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 27,
+        name: "generation_reuse_and_usage",
+        checksum: "4cc918934276c8628358f9e51f8caf3b32eda8ea9b3909f0ff38f33360bd7ddb",
+        sql: include_str!("../migrations/0027_generation_reuse_and_usage.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 28,
+        name: "collection_reduction_request_identity",
+        checksum: "149d3697a2ab6d2a7daa6724f5a6a0cc6e91bf9a6f40007c411b07445842f25c",
+        sql: include_str!("../migrations/0028_collection_reduction_request_identity.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 29,
+        name: "remove_document_collection_archiving",
+        checksum: "6b8c1d36c82d505a0e754c781fb63bbfb5e402d9bd4ea08dfb5aa2d7a8df57f8",
+        sql: include_str!("../migrations/0029_remove_document_collection_archiving.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 30,
+        name: "generation_operation_outcomes",
+        checksum: "c455d1673841bf499375f80f8ce8daeb234cd3ba74eddcc105981a8ec4bdf472",
+        sql: include_str!("../migrations/0030_generation_operation_outcomes.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 17;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
 
+#[derive(Clone)]
 pub struct Database {
-    connection: Mutex<Connection>,
+    connection: Arc<Mutex<Connection>>,
 }
 
 impl Database {
@@ -170,7 +265,7 @@ impl Database {
             .map_err(|error| format!("Could not open the local SQLite database: {error}"))?;
         initialize_connection(&mut connection)?;
         Ok(Self {
-            connection: Mutex::new(connection),
+            connection: Arc::new(Mutex::new(connection)),
         })
     }
 
@@ -193,7 +288,7 @@ impl Database {
             .map_err(|error| format!("Could not open an in-memory database: {error}"))?;
         initialize_connection(&mut connection)?;
         Ok(Self {
-            connection: Mutex::new(connection),
+            connection: Arc::new(Mutex::new(connection)),
         })
     }
 }
@@ -209,7 +304,15 @@ enum DatabaseLineage {
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     let lineage = inspect_lineage(connection)?;
     match lineage {
-        DatabaseLineage::Empty | DatabaseLineage::Public => {}
+        DatabaseLineage::Empty => {
+            if entry::user_version(connection)? != 0 {
+                return Err("An empty database has an unknown schema version. The database was not modified.".to_string());
+            }
+        }
+        DatabaseLineage::Public => {
+            entry::validate_public_input(connection)?;
+            verify_integrity(connection)?;
+        }
         DatabaseLineage::PrePublic => {
             return Err(format!(
                 "{PRE_PUBLIC_RESET_PREFIX}: This database predates oStudy's public schema baseline. Stop oStudy, preserve a backup if needed, and run scripts/reset-pre-public-data.sh with the exact application data directory. The database was not modified."
@@ -230,6 +333,9 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
         RepairPhase::AfterMigration(LATEST_SCHEMA_VERSION),
     )?;
     verify_repair_ledger(connection)?;
+    if entry::validate_public_input(connection)? != LATEST_SCHEMA_VERSION {
+        return Err("Database conversion did not reach the current schema.".to_string());
+    }
     if migrated || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
         verify_integrity(connection)?;
     }
@@ -401,6 +507,14 @@ fn apply_migration_transaction(
     transaction
         .execute_batch(migration.sql)
         .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+    if migration.version == 18 {
+        // Known-source native backfill belongs to the SAME schema transaction.
+        // It retains exact text; unavailable old structure is never invented.
+        crate::document_canonical_store::evidence::backfill(&transaction)
+            .map_err(|error| error.message)?;
+        crate::document_canonical_store::evidence::validate(&transaction)
+            .map_err(|error| error.message)?;
+    }
     let applied_at = unix_time_millis().map_err(|error| error.message)?;
     transaction
         .execute(
@@ -472,35 +586,9 @@ pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), Com
             "The backup does not have the supported public schema lineage.",
         ));
     }
-    let mut statement = connection
-        .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    if rows.is_empty() || rows.len() > MIGRATIONS.len() {
-        return Err(CommandError::new(
-            "invalid_backup",
-            "The backup migration ledger is incomplete or newer than this build.",
-        ));
-    }
-    for (row, migration) in rows.iter().zip(MIGRATIONS) {
-        if row.0 != migration.version || row.1 != migration.name || row.2 != migration.checksum {
-            return Err(CommandError::new(
-                "invalid_backup",
-                "The backup migration ledger does not match this application build.",
-            ));
-        }
-    }
-    Ok(())
+    entry::validate_public_input(connection)
+        .map(|_| ())
+        .map_err(|message| CommandError::new("invalid_backup", message))
 }
 
 #[cfg(test)]
@@ -888,3 +976,15 @@ mod tests {
 #[cfg(test)]
 #[path = "database/interactive_migration_tests.rs"]
 mod interactive_migration_tests;
+
+#[cfg(test)]
+#[path = "database/entry_tests.rs"]
+mod entry_tests;
+
+#[cfg(test)]
+#[path = "database/image_source_migration_tests.rs"]
+mod image_source_migration_tests;
+
+#[cfg(test)]
+#[path = "database/generation_operation_migration_tests.rs"]
+mod generation_operation_migration_tests;

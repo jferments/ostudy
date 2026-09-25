@@ -44,6 +44,7 @@ export const ICON_NAMES = [
   "template",
   "timer",
   "upload",
+  "view",
   "warning",
 ] as const;
 
@@ -318,6 +319,13 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M12 21V9m0 0 4 4m-4-4-4 4" />
           <path d="M4 5h16" />
+        </>
+      );
+    case "view":
+      return (
+        <>
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+          <circle cx="12" cy="12" r="2.75" />
         </>
       );
     case "warning":

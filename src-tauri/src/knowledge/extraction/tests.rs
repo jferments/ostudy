@@ -56,6 +56,51 @@ async fn mixed_window_preserves_good_sibling_then_resumes_only_rejected_slot() {
     .unwrap();
 }
 
+#[test]
+fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
+    let (_, mut source, _, _) = fixture();
+    source.text = (0..24)
+        .map(|index| {
+            format!(
+                "Distinct repair region {index}: physiology marker {index} {}. ",
+                "context ".repeat(20)
+            )
+        })
+        .collect::<String>();
+    source.refresh_identity().unwrap();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    assert!(catalog.entries.len() > 8);
+
+    let target = catalog.entries.len() / 2;
+    let alias = EvidenceCatalog::alias(target);
+    let report = decode::AnalysisReport {
+        rejected: vec![decode::RejectedUnit {
+            slot: 7,
+            proposal: proposal(&alias),
+            code: "invalid_unit_content".to_string(),
+        }],
+        ..decode::AnalysisReport::default()
+    };
+    let scope = repair_scope(&report, &catalog, &sources);
+    assert!(scope.positions.contains(&target));
+    assert!(scope.positions.len() <= 3);
+    assert!(!scope.positions.contains(&0));
+
+    let (user, schema) = build_repair_request(&report, &catalog, &sources);
+    assert!(user.contains(&format!("\"id\":\"{alias}\"")));
+    assert!(!user.contains("\"id\":\"E0\""));
+    let allowed = schema
+        .pointer(
+            "/properties/repairs/items/properties/unit/anyOf/0/properties/evidenceIds/items/enum",
+        )
+        .and_then(Value::as_array)
+        .unwrap();
+    assert!(allowed.iter().any(|value| value == &json!(alias)));
+    assert!(!allowed.iter().any(|value| value == &json!("E0")));
+    assert!(scope.positions.len() < catalog.entries.len());
+}
+
 #[tokio::test]
 async fn transport_failure_during_repair_does_not_erase_admitted_knowledge() {
     let (db, source, _, _) = fixture();
@@ -258,4 +303,32 @@ async fn explicit_empty_disposition_reuses_without_inventing_knowledge() {
         .unwrap()
         .unwrap()
         .is_complete());
+}
+
+#[path = "reuse_tests.rs"]
+mod reuse_tests;
+
+#[test]
+fn complexity_aware_batching_splits_fragmented_text_without_losing_sources() {
+    let (_, source, _, _) = fixture();
+    let mut sources = Vec::new();
+    for index in 0..4 {
+        let mut source = source.clone();
+        source.segment_key = format!("complexity-{index}");
+        source.text = "concept ".repeat(375);
+        sources.push(source);
+    }
+    assert_eq!(
+        sources
+            .iter()
+            .map(|source| source.text.chars().count())
+            .sum::<usize>(),
+        EXTRACTION_BATCH_CHARS
+    );
+    let ranges = batch_ranges(&sources);
+    assert_eq!(ranges, vec![0..3, 3..4]);
+    assert_eq!(
+        ranges.iter().map(|range| range.len()).sum::<usize>(),
+        sources.len()
+    );
 }

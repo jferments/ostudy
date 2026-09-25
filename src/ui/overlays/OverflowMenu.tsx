@@ -7,7 +7,7 @@ import { Button } from "../primitives/Button";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "../vendor/shadcn/dropdown-menu";
 import { Sheet } from "./Dialog";
-import { useOverlayContext, useOverlayParentId } from "./overlayContext";
+import { useOverlayActions, useOverlayParentId } from "./overlayContext";
 
 export interface OverflowMenuItem { id: string; label: string; onSelect: () => void; disabled?: boolean; destructive?: boolean; }
 export interface OverflowMenuProps { label: string; items: ReadonlyArray<OverflowMenuItem>; disabled?: boolean; className?: string; triggerPresentation?: "icon" | "text"; triggerIcon?: IconName; }
@@ -19,7 +19,7 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
   const id = `overflow-${useId()}`;
   const parentId = useOverlayParentId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { register } = useOverlayContext();
+  const { register } = useOverlayActions();
   const groups = [items.filter((item) => !item.destructive), items.filter((item) => item.destructive)];
   const iconTriggerClassName = cn(
     className,

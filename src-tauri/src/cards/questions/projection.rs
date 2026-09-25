@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+
 use super::{invalid, model::*, validation::permutation, QuestionError, ValidatedQuestion};
 use crate::cards::collect_asset_ids;
 
@@ -11,6 +13,56 @@ pub struct OcclusionMaskPlan {
 }
 
 impl ValidatedQuestion {
+    /// Deterministic native display order shared by captured Practice attempts and
+    /// transient author previews. A preview never invents a TypeScript shuffle.
+    pub(crate) fn display_order(&self, shuffle_seed: &str) -> DisplayOrder {
+        let mut order = DisplayOrder::default();
+        match &self.definition.question {
+            QuestionBody::SingleChoice { options, .. }
+            | QuestionBody::SelectAll { options, .. } => {
+                order.item_ids = options.iter().map(|item| item.id.clone()).collect();
+            }
+            QuestionBody::Matching { pairs, .. } => {
+                order.item_ids = pairs.iter().map(|pair| pair.left.id.clone()).collect();
+                order.target_ids = pairs.iter().map(|pair| pair.right.id.clone()).collect();
+            }
+            QuestionBody::Grouping {
+                categories, items, ..
+            } => {
+                order.item_ids = items.iter().map(|item| item.item.id.clone()).collect();
+                order.target_ids = categories.iter().map(|item| item.id.clone()).collect();
+            }
+            QuestionBody::Ordering { items, .. } => {
+                order.item_ids = items.iter().map(|item| item.id.clone()).collect();
+            }
+            QuestionBody::TrueFalse { .. } | QuestionBody::ImageOcclusion { .. } => {}
+        }
+        shuffle(&mut order.item_ids, shuffle_seed, b"items");
+        shuffle(&mut order.target_ids, shuffle_seed, b"targets");
+        match &self.definition.question {
+            QuestionBody::Ordering { items, .. }
+                if order.item_ids.iter().eq(items.iter().map(|item| &item.id)) =>
+            {
+                order.item_ids.rotate_left(1);
+            }
+            QuestionBody::Matching { pairs, .. }
+                if order
+                    .item_ids
+                    .iter()
+                    .zip(&order.target_ids)
+                    .all(|(left, right)| {
+                        pairs
+                            .iter()
+                            .any(|pair| &pair.left.id == left && &pair.right.id == right)
+                    }) =>
+            {
+                order.target_ids.rotate_left(1);
+            }
+            _ => {}
+        }
+        order
+    }
+
     pub(super) fn validate_order(&self, order: &DisplayOrder) -> Result<(), QuestionError> {
         match &self.definition.question {
             QuestionBody::SingleChoice { options, .. }
@@ -54,7 +106,7 @@ impl ValidatedQuestion {
         }
     }
 
-    pub(super) fn project(&self, order: &DisplayOrder) -> Result<PublicQuestion, QuestionError> {
+    pub(crate) fn project(&self, order: &DisplayOrder) -> Result<PublicQuestion, QuestionError> {
         self.validate_order(order)?;
         let public = match &self.definition.question {
             QuestionBody::SingleChoice {
@@ -206,4 +258,16 @@ fn ordered_items<'a>(
                 .ok_or_else(|| invalid("A displayed item does not exist."))
         })
         .collect()
+}
+
+fn shuffle(ids: &mut [String], seed: &str, lane: &[u8]) {
+    ids.sort_by_cached_key(|id| {
+        let mut hash = Sha256::new();
+        hash.update(seed.as_bytes());
+        hash.update([0]);
+        hash.update(lane);
+        hash.update([0]);
+        hash.update(id.as_bytes());
+        (format!("{:x}", hash.finalize()), id.clone())
+    });
 }

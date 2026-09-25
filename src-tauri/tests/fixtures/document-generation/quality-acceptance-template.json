@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "applicable": [
+    "sourceFidelity",
+    "importantTopicCoverage",
+    "qualificationsAndUnits",
+    "answerKeyCorrectness",
+    "questionTypeDiversity",
+    "visualTableInterpretation"
+  ],
+  "baseline": {
+    "sourceFidelity": 1.0,
+    "importantTopicCoverage": 1.0,
+    "qualificationsAndUnits": 1.0,
+    "answerKeyCorrectness": 1.0,
+    "questionTypeDiversity": 1.0,
+    "visualTableInterpretation": 1.0
+  },
+  "current": {
+    "sourceFidelity": 1.0,
+    "importantTopicCoverage": 1.0,
+    "qualificationsAndUnits": 1.0,
+    "answerKeyCorrectness": 1.0,
+    "questionTypeDiversity": 1.0,
+    "visualTableInterpretation": 1.0
+  },
+  "notes": "Replace these placeholder scores with benchmark or human-review evidence for the same source/model/provider configuration. Remove visualTableInterpretation from applicable only for genuinely text-only scenarios."
+}

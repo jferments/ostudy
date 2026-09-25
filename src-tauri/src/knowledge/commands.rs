@@ -6,12 +6,16 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    ai::AiRuntimeState, database::Database, error::CommandError, paths::AppPaths,
+    ai::{document_intelligence, generation, AiRuntimeState},
+    database::Database,
+    error::CommandError,
+    paths::AppPaths,
     util::validate_entity_id,
 };
 
 use super::{
     adapters,
+    collection_view::{self, CollectionViewState},
     contracts::{ScopeChoice, SourceCitation},
     preparation::{self, PreparationPreview, PreparationScope, PrepareMaterialInput},
     preparation_store::{self, PreparationStatus},
@@ -32,6 +36,13 @@ pub struct SemanticSearchInput {
 pub struct CitationInput {
     pub source_id: String,
     pub content_hash: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrepareCollectionSynthesisInput {
+    pub operation_id: String,
+    pub collection_id: String,
 }
 
 #[tauri::command]
@@ -103,16 +114,29 @@ pub async fn search_semantic_material(
         &format!("search:{}", input.operation_id),
         false,
     )?;
+    let mut diagnostics = generation::Operation::begin(
+        database.inner(),
+        Some(&input.operation_id),
+        None,
+        None,
+        "semantic_search",
+    )?;
+    let context = diagnostics.context();
     let result = retrieval::retrieve(
         database.inner(),
         paths.inner(),
         runtime.inner(),
-        &input.selection.scope,
-        input.selection.include_conversations,
-        &input.query,
-        &guard.signal,
+        retrieval::RetrievalRequest {
+            scope: &input.selection.scope,
+            include_conversations: input.selection.include_conversations,
+            query: &input.query,
+            cancellation: &guard.signal,
+            diagnostics: Some(&context),
+        },
     )
-    .await?;
+    .await;
+    diagnostics.finish_result(&result);
+    let result = result?;
     Ok(RetrievalPreview {
         sources: result
             .hits
@@ -139,4 +163,69 @@ pub fn clear_semantic_index(
     paths: State<'_, AppPaths>,
 ) -> Result<(), CommandError> {
     preparation::clear_index(database.inner(), paths.inner())
+}
+
+#[tauri::command]
+pub fn get_collection_synthesis(
+    database: State<'_, Database>,
+    collection_id: String,
+) -> Result<Option<CollectionViewState>, CommandError> {
+    collection_view::load(database.inner(), &collection_id)
+}
+
+#[tauri::command]
+pub async fn refresh_collection_synthesis(
+    app: AppHandle,
+    collection_id: String,
+) -> Result<CollectionViewState, CommandError> {
+    validate_entity_id(&collection_id, "document collection")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        collection_view::refresh_native(app.state::<Database>().inner(), &collection_id)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "collection_synthesis_interrupted",
+            "The local collection synthesis was interrupted before publication.",
+        )
+    })?
+}
+
+/// Explicit provider-authorized preparation. Browsing/get/refresh remain local.
+#[tauri::command]
+pub async fn prepare_collection_synthesis(
+    database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
+    input: PrepareCollectionSynthesisInput,
+) -> Result<CollectionViewState, CommandError> {
+    validate_entity_id(&input.operation_id, "collection synthesis operation")?;
+    validate_entity_id(&input.collection_id, "document collection")?;
+    let guard = TaskGuard::begin(
+        &input.operation_id,
+        &format!("collection-synthesis:{}", input.collection_id),
+        false,
+    )?;
+    guard.progress("organizing collection", 0, 1);
+    let mut diagnostics = generation::Operation::begin(
+        database.inner(),
+        Some(&input.operation_id),
+        None,
+        Some(&input.collection_id),
+        "collection_synthesis",
+    )?;
+    let context = diagnostics.context();
+    let mut task = document_intelligence::load_document_task_context(database.inner())?;
+    task.diagnostics = Some(context);
+    let state = collection_view::ensure_reduced(
+        database.inner(),
+        runtime.inner(),
+        &task,
+        &input.collection_id,
+        &guard.signal,
+    )
+    .await;
+    diagnostics.finish_result(&state);
+    let state = state?;
+    guard.progress("ready", 1, 1);
+    Ok(state)
 }

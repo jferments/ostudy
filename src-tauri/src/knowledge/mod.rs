@@ -7,17 +7,23 @@
 
 pub(crate) mod adapters;
 pub(crate) mod analysis_store;
+pub(crate) mod annotation_demand;
 pub(crate) mod assessment;
 pub(crate) mod authoring;
+pub(crate) mod authoring_plan;
+pub(crate) mod collection_scope;
+pub(crate) mod collection_view;
 pub(crate) mod commands;
 pub(crate) mod contracts;
+pub(crate) mod coverage;
 pub(crate) mod document_view;
 pub(crate) mod evidence;
 pub(crate) mod extraction;
+pub(crate) mod image_sources;
 mod images;
 mod index;
 pub(crate) mod indexing;
-mod parallel;
+pub(crate) mod learning_context;
 pub(crate) mod planning;
 pub(crate) mod preparation;
 mod preparation_store;
@@ -26,7 +32,9 @@ pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
 mod scope;
+pub(crate) mod shared_preparation;
 pub(crate) mod snapshot;
+pub(crate) mod typed_payload;
 
 pub(crate) use images::load_images;
 pub(crate) use runtime::has_active_tasks;
@@ -47,6 +55,8 @@ pub(crate) fn sanitize_for_device_transfer(
         .execute_batch(
             "DELETE FROM question_generation_evidence;
          DELETE FROM question_generation_settings;
+         DELETE FROM knowledge_collection_view_dependencies;
+         DELETE FROM knowledge_collection_views;
          DELETE FROM knowledge_document_views;
          DELETE FROM knowledge_analysis_windows;
          DELETE FROM knowledge_unit_evidence;

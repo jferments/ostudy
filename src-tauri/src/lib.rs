@@ -13,6 +13,7 @@ mod asset_protocol;
 mod assets;
 mod authoring;
 mod cards;
+mod collections;
 mod data_repairs;
 mod database;
 mod deck_cards;
@@ -64,6 +65,7 @@ mod documents;
 mod editor_drafts;
 mod error;
 mod external_file_commands;
+mod external_file_images;
 mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
@@ -89,6 +91,7 @@ mod scheduler;
 mod settings;
 mod startup;
 mod study_calendar;
+mod study_materials;
 mod studyability;
 mod studydeck;
 mod system_resources;
@@ -205,6 +208,15 @@ pub fn run() {
             deck_folders::delete_deck_folder,
             deck_folders::move_deck_in_library,
             deck_folders::move_deck_folder,
+            collections::get_document_collection_organization,
+            collections::create_document_collection,
+            collections::update_document_collection,
+            collections::delete_document_collection,
+            collections::add_document_collection_membership,
+            collections::move_document_collection_membership,
+            collections::remove_document_collection_membership,
+            collections::set_document_collection_ranges,
+            collections::resolve_document_source_selection,
             deletion_commands::delete_deck_with_undo,
             deck_cards::list_deck_card_summaries,
             deletion_commands::delete_card_with_undo,
@@ -214,6 +226,7 @@ pub fn run() {
             authoring::card_commands::get_card_note,
             authoring::card_commands::interactive::save_question_note,
             authoring::card_commands::interactive::get_question_note,
+            authoring::card_commands::interactive::preview_question_draft,
             authoring::card_commands::find_duplicate_cards,
             authoring::card_commands::analyze_bulk_cards,
             authoring::card_commands::bulk_create_cards,
@@ -222,6 +235,7 @@ pub fn run() {
             deletion_commands::delete_cards_with_undo,
             authoring::card_types_and_templates::create_card_note,
             authoring::card_types_and_templates::update_card_note,
+            authoring::card_types_and_templates::preview_card_draft,
             authoring::card_types_and_templates::templates::list_card_template_summaries,
             authoring::card_types_and_templates::get_card_template,
             authoring::card_types_and_templates::create_card_template,
@@ -263,6 +277,8 @@ pub fn run() {
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
             external_file_streaming::stream_select_and_stage_external_import,
+            external_file_images::stage_image_collection_file,
+            external_file_images::stage_image_collection_file_chunk,
             external_files::release_staged_external_import,
             external_file_streaming::stream_publish_prepared_export,
             external_file_commands::share_prepared_export,
@@ -303,15 +319,42 @@ pub fn run() {
             knowledge::commands::search_semantic_material,
             knowledge::commands::get_semantic_source_citation,
             knowledge::commands::clear_semantic_index,
+            knowledge::commands::get_collection_synthesis,
+            knowledge::commands::refresh_collection_synthesis,
+            knowledge::commands::prepare_collection_synthesis,
+            study_materials::get_study_target_bundle,
+            study_materials::get_collection_study_guide,
+            study_materials::save_collection_study_guide_overlay,
+            study_materials::discard_collection_study_guide_overlay,
+            study_materials::begin_study_target_bundle,
+            study_materials::composition::compose_study_target_bundle,
+            study_materials::composition::cancel_study_target_bundle,
+            tutor::commands::list_tutor_projects,
+            tutor::commands::create_tutor_project,
+            tutor::commands::update_tutor_project,
+            tutor::commands::set_tutor_project_archived,
+            tutor::commands::delete_tutor_project,
             tutor::commands::list_tutor_conversations,
             tutor::commands::create_tutor_conversation,
+            tutor::commands::create_tutor_project_conversation,
+            tutor::commands::rename_tutor_conversation,
+            tutor::commands::move_tutor_conversation,
+            tutor::commands::set_tutor_conversation_archived,
             tutor::commands::get_tutor_conversation,
             tutor::commands::delete_tutor_conversation,
             tutor::commands::send_tutor_turn,
             tutor::commands::get_tutor_memory,
             tutor::commands::change_tutor_memory,
             documents::commands::list_documents,
+            documents::commands::inspect_image_set,
+            documents::commands::import_image_set,
+            documents::commands::get_image_set,
+            documents::commands::get_image_set_preview,
+            documents::commands::prepare_image_set,
+            documents::commands::set_image_set_filters,
+            documents::commands::amend_image_set,
             document_import::import_document,
+            document_operations::start_document_flashcard_generation,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
             document_operations::cancel_document_flashcard_generation,
@@ -323,16 +366,18 @@ pub fn run() {
             document_study_guide_commands::generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
-            document_study_guide_commands::list_document_study_guides,
-            document_study_guide_library::list_document_study_guide_page,
+            document_study_guide_commands::read_document_source_asset,
+            document_study_guide_library::list_study_guide_page,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
+            document_study_guide_commands::list_latest_document_study_guide_jobs,
             document_study_guide_commands::save_document_study_guide_overlay,
             document_study_guide_commands::discard_document_study_guide_overlay,
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
+            document_study_guide_export::prepare_collection_study_guide_pdf,
             library_backup_commands::prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,

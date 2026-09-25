@@ -8,12 +8,13 @@ import { DocumentsScreen } from "./DocumentsScreen";
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
-  importPdfAndGenerateFlashcards: vi.fn(),
-  retryPdfFlashcardGeneration: vi.fn(),
-  generateMorePdfFlashcards: vi.fn(),
-  cancelPdfFlashcardGeneration: vi.fn(),
+  importDocument: vi.fn(),
+  startDocumentFlashcardGeneration: vi.fn(),
+  retryDocumentFlashcardGeneration: vi.fn(),
+  generateMoreDocumentFlashcards: vi.fn(),
+  cancelDocumentFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
-  deletePdfDocument: vi.fn(),
+  deleteDocument: vi.fn(),
 }));
 
 const documentId = "c".repeat(32);
@@ -64,7 +65,7 @@ describe("DocumentsScreen OCR failure messaging", () => {
     vi.clearAllMocks();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([failedOcrDocument()]);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
-    vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
+    vi.mocked(documentIpc.cancelDocumentFlashcardGeneration).mockResolvedValue(undefined);
   });
 
   it("never claims that failed OCR candidates were recovered", async () => {

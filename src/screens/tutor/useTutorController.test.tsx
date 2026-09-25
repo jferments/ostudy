@@ -3,19 +3,52 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAiTaskDefaults, listAiProviderProfiles } from "../../ipc/aiProfiles";
 import { getSemanticPreparation, listSemanticScopeChoices, prepareSemanticMaterial, previewSemanticPreparation } from "../../ipc/knowledge";
-import { createTutorConversation, getTutorConversation, listTutorConversations, sendTutorTurn,
-  type ConversationDetail, type ConversationSummary, type TutorTurn } from "../../ipc/tutor";
+import {
+  createTutorConversation,
+  createTutorProject,
+  createTutorProjectConversation,
+  deleteTutorConversation,
+  deleteTutorProject,
+  getTutorConversation,
+  listTutorConversations,
+  listTutorProjects,
+  moveTutorConversation,
+  renameTutorConversation,
+  sendTutorTurn,
+  setTutorConversationArchived,
+  setTutorProjectArchived,
+  updateTutorProject,
+  type ConversationDetail,
+  type ConversationSummary,
+  type TutorProject,
+  type TutorTurn,
+} from "../../ipc/tutor";
 import { useTutorController } from "./useTutorController";
 
 vi.mock("../../ipc/aiProfiles", () => ({ getAiTaskDefaults: vi.fn(), listAiProviderProfiles: vi.fn() }));
 vi.mock("../../ipc/knowledge", () => ({ cancelLearningTask: vi.fn(), listSemanticScopeChoices: vi.fn(),
   getSemanticPreparation: vi.fn(), prepareSemanticMaterial: vi.fn(), previewSemanticPreparation: vi.fn(),
 }));
-vi.mock("../../ipc/tutor", () => ({ createTutorConversation: vi.fn(), deleteTutorConversation: vi.fn(),
-  getTutorConversation: vi.fn(), listTutorConversations: vi.fn(), sendTutorTurn: vi.fn() }));
+vi.mock("../../ipc/tutor", () => ({
+  createTutorConversation: vi.fn(),
+  createTutorProject: vi.fn(),
+  createTutorProjectConversation: vi.fn(),
+  deleteTutorConversation: vi.fn(),
+  deleteTutorProject: vi.fn(),
+  getTutorConversation: vi.fn(),
+  listTutorConversations: vi.fn(),
+  listTutorProjects: vi.fn(),
+  moveTutorConversation: vi.fn(),
+  renameTutorConversation: vi.fn(),
+  sendTutorTurn: vi.fn(),
+  setTutorConversationArchived: vi.fn(),
+  setTutorProjectArchived: vi.fn(),
+  updateTutorProject: vi.fn(),
+}));
 
 const conversation: ConversationSummary = {
-  id: "a".repeat(32), title: "Geometry", scope: { kind: "general", id: null }, revision: 1, createdAt: 1, updatedAt: 1,
+  id: "a".repeat(32), title: "Geometry", scope: { kind: "general", id: null },
+  projectId: null, revision: 1, organizationRevision: 1, archivedAt: null, createdAt: 1, updatedAt: 1,
 };
 const turn: TutorTurn = {
   id: "b".repeat(32), operationId: "c".repeat(32), sequence: 1, mode: "explain", userText: "Explain triangles",
@@ -23,6 +56,17 @@ const turn: TutorTurn = {
   pendingQuestion: false, feedback: null, provider: "llama_cpp", model: "fixture", errorCode: "", errorMessage: "", totalTokens: 20, createdAt: 1,
 };
 const detail: ConversationDetail = { conversation: { ...conversation, revision: 3 }, turns: [turn], hasEarlierTurns: false };
+const project: TutorProject = {
+  id: "d".repeat(32),
+  title: "Cardiology",
+  description: "Hemodynamics",
+  instructions: "Explain mechanisms first.",
+  defaultScope: { kind: "deck", id: "e".repeat(32) },
+  revision: 1,
+  archivedAt: null,
+  createdAt: 1,
+  updatedAt: 1,
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -31,8 +75,31 @@ beforeEach(() => {
   vi.mocked(listSemanticScopeChoices).mockResolvedValue([]);
   vi.mocked(getSemanticPreparation).mockResolvedValue(null);
   vi.mocked(listTutorConversations).mockResolvedValue([]);
+  vi.mocked(listTutorProjects).mockResolvedValue([]);
   vi.mocked(createTutorConversation).mockResolvedValue(conversation);
+  vi.mocked(createTutorProject).mockResolvedValue(project);
+  vi.mocked(createTutorProjectConversation).mockResolvedValue({ ...conversation, projectId: project.id, scope: project.defaultScope });
+  vi.mocked(updateTutorProject).mockResolvedValue(project);
+  vi.mocked(setTutorProjectArchived).mockResolvedValue({ ...project, revision: 2, archivedAt: 2 });
   vi.mocked(getTutorConversation).mockResolvedValue(detail);
+  vi.mocked(moveTutorConversation).mockImplementation(async (input) => ({
+    ...conversation,
+    projectId: input.projectId,
+    scope: input.applyProjectDefault ? project.defaultScope : conversation.scope,
+    organizationRevision: conversation.organizationRevision + 1,
+  }));
+  vi.mocked(renameTutorConversation).mockImplementation(async (input) => ({
+    ...conversation,
+    title: input.title,
+    organizationRevision: conversation.organizationRevision + 1,
+  }));
+  vi.mocked(setTutorConversationArchived).mockImplementation(async (input) => ({
+    ...conversation,
+    organizationRevision: conversation.organizationRevision + 1,
+    archivedAt: input.archived ? 2 : null,
+  }));
+  vi.mocked(deleteTutorConversation).mockResolvedValue(undefined);
+  vi.mocked(deleteTutorProject).mockResolvedValue(undefined);
   vi.mocked(sendTutorTurn).mockResolvedValue(turn);
 });
 
@@ -138,6 +205,21 @@ describe("explicit conversation retrieval", () => {
     expect(result.current.includeConversations).toBe(false); // General discussion cannot search the library.
   });
 
+  it("keeps collection-scoped Tutor retrieval source-only even when conversation search is requested", async () => {
+    const collectionScope = { kind: "collection" as const, id: "9".repeat(32) };
+    vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: collectionScope });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(collectionScope); });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    expect(result.current.conversationRetrievalAllowed).toBe(false);
+    expect(result.current.includeConversations).toBe(false);
+    expect(result.current.preparation.selection).toEqual({ scope: collectionScope, includeConversations: false });
+    await act(async () => { await result.current.send("explain", "Compare the selected reading range."); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({
+      includeConversations: false,
+    }));
+  });
+
   it("cannot enable conversation retrieval in a hidden-answer context", async () => {
     vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: deckScope });
     const { result } = renderHook(useTutorController);
@@ -227,5 +309,171 @@ describe("safe retry and source selection", () => {
     expect(createTutorConversation).not.toHaveBeenCalled();
     expect(sendTutorTurn).not.toHaveBeenCalled();
     expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Tutor project organization", () => {
+  it("loads projects locally without contacting a provider", async () => {
+    vi.mocked(listTutorProjects).mockResolvedValue([project]);
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.initialize(); });
+    expect(result.current.projects).toEqual([project]);
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+    expect(createTutorConversation).not.toHaveBeenCalled();
+  });
+
+  it("creates a project chat from current defaults and preserves explicit source overrides", async () => {
+    vi.mocked(listTutorProjects).mockResolvedValue([project]);
+    const projectConversation = { ...conversation, projectId: project.id, scope: project.defaultScope };
+    vi.mocked(createTutorProjectConversation).mockResolvedValue(projectConversation);
+    vi.mocked(getTutorConversation).mockResolvedValue({
+      ...detail,
+      conversation: { ...projectConversation, revision: 3 },
+    });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.initialize(); });
+    act(() => { result.current.newConversationInProject(project.id); });
+    await act(async () => { await result.current.send("explain", "Explain preload"); });
+    expect(createTutorProjectConversation).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: project.id,
+      title: "Explain preload",
+      scope: null,
+    }));
+
+    act(() => { result.current.newConversationInProject(project.id); });
+    const override = { kind: "document" as const, id: "f".repeat(32) };
+    act(() => { result.current.changeSources(override); });
+    vi.mocked(createTutorProjectConversation).mockResolvedValueOnce({ ...projectConversation, scope: override });
+    await act(async () => { await result.current.send("explain", "Use this reading instead"); });
+    expect(createTutorProjectConversation).toHaveBeenLastCalledWith(expect.objectContaining({
+      projectId: project.id,
+      scope: override,
+    }));
+  });
+
+  it("moves a conversation without changing sources unless destination defaults are explicitly applied", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    const selected = result.current.detail!.conversation;
+    await act(async () => { await result.current.moveConversation(selected, project.id, false); });
+    expect(moveTutorConversation).toHaveBeenLastCalledWith(expect.objectContaining({
+      conversationId: selected.id,
+      projectId: project.id,
+      applyProjectDefault: false,
+    }));
+    expect(result.current.detail?.conversation.scope).toEqual(selected.scope);
+
+    const moved = result.current.detail!.conversation;
+    await act(async () => { await result.current.moveConversation(moved, project.id, true); });
+    expect(moveTutorConversation).toHaveBeenLastCalledWith(expect.objectContaining({ applyProjectDefault: true }));
+    expect(result.current.detail?.conversation.scope).toEqual(project.defaultScope);
+  });
+
+  it("changes project defaults without rewriting an existing conversation scope", async () => {
+    vi.mocked(listTutorProjects).mockResolvedValue([project]);
+    vi.mocked(updateTutorProject).mockResolvedValue({
+      ...project,
+      revision: 2,
+      defaultScope: { kind: "document", id: "f".repeat(32) },
+    });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.initialize(); });
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    const originalScope = result.current.detail!.conversation.scope;
+    await act(async () => {
+      await result.current.updateProject(project, {
+        title: project.title,
+        description: project.description,
+        instructions: project.instructions,
+        defaultScope: { kind: "document", id: "f".repeat(32) },
+      });
+    });
+    expect(result.current.detail?.conversation.scope).toEqual(originalScope);
+  });
+
+  it("reuses organization identity after an ambiguous acknowledgement", async () => {
+    vi.mocked(renameTutorConversation)
+      .mockRejectedValueOnce(new Error("Transport disconnected"))
+      .mockResolvedValueOnce({ ...conversation, title: "Renamed", organizationRevision: 2 });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    const selected = result.current.detail!.conversation;
+    await act(async () => { await result.current.renameConversation(selected, "Renamed"); });
+    await act(async () => { await result.current.renameConversation(selected, "Renamed"); });
+    const calls = vi.mocked(renameTutorConversation).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0].operationId).toBe(calls[0][0].operationId);
+    expect(result.current.detail?.conversation.title).toBe("Renamed");
+  });
+
+  it("does not let a stale refresh overwrite a committed organization change", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+
+    let finishRefresh!: (value: ConversationDetail) => void;
+    vi.mocked(getTutorConversation).mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+    let refreshing!: Promise<void>;
+    await act(async () => {
+      refreshing = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    vi.mocked(renameTutorConversation).mockResolvedValueOnce({
+      ...detail.conversation,
+      title: "Renamed after refresh started",
+      organizationRevision: detail.conversation.organizationRevision + 1,
+    });
+    await act(async () => {
+      await result.current.renameConversation(result.current.detail!.conversation, "Renamed after refresh started");
+    });
+    await act(async () => {
+      finishRefresh(detail);
+      await refreshing;
+    });
+
+    expect(result.current.detail?.conversation.title).toBe("Renamed after refresh started");
+  });
+
+  it("keeps a committed delete authoritative when an older refresh resolves later", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+
+    let finishRefresh!: (value: ConversationDetail) => void;
+    vi.mocked(getTutorConversation).mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+    let refreshing!: Promise<void>;
+    await act(async () => {
+      refreshing = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    const deleting = result.current.detail!.conversation;
+    await act(async () => { await result.current.removeConversation(deleting); });
+    expect(result.current.detail).toBeNull();
+    await act(async () => {
+      finishRefresh(detail);
+      await refreshing;
+    });
+    expect(result.current.detail).toBeNull();
+    expect(deleteTutorConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: deleting.id,
+      expectedOrganizationRevision: deleting.organizationRevision,
+    }));
+  });
+
+  it("allows organization changes while a tutor turn is still in flight", async () => {
+    let release!: (value: TutorTurn) => void;
+    vi.mocked(sendTutorTurn).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+    const { result } = renderHook(useTutorController);
+    let sending!: Promise<void>;
+    await act(async () => {
+      sending = result.current.send("explain", "Explain triangles");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await result.current.renameConversation(conversation, "Renamed while answering");
+    });
+    expect(renameTutorConversation).toHaveBeenCalledTimes(1);
+    await act(async () => { release(turn); await sending; });
   });
 });

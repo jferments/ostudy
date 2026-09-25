@@ -8,11 +8,14 @@ import {
   createCardNote,
   findDuplicateCards,
   listTags,
+  previewCardDraft,
   updateCardNote,
   type CardNote,
   type CreateCardNoteInput,
   type DuplicateCard,
   type DuplicateCheckInput,
+  type CardDraftPreview,
+  type PreviewCardDraftInput,
   type TagSummary,
   type UpdateCardNoteInput,
 } from "../ipc/cards";
@@ -64,6 +67,10 @@ export class CardEditorController {
 
   preview(input: PreviewTemplateCardsInput): Promise<TemplateCardPreview[] | undefined> {
     return latestResult(this.#preview, () => previewTemplateCards(input));
+  }
+
+  previewRecall(input: PreviewCardDraftInput): Promise<CardDraftPreview[] | undefined> {
+    return latestResult(this.#preview, () => previewCardDraft(input));
   }
 
   question(noteId: string): Promise<QuestionNote | undefined> {

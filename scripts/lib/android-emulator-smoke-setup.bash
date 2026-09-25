@@ -79,13 +79,17 @@ fi
 export ANDROID_SERIAL="$SERIAL"
 
 "$adb" -s "$SERIAL" logcat -c
-printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
-export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
-# Tauri owns Rust/JNI compilation and its temporary CLI socket. The Gradle
-# postbuild wrapper reuses that x86_64 output while excluding generated
-# rustBuild tasks that cannot outlive the parent Tauri process.
-bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-android_instrumentation_postbuild
+if [[ "${OSTUDY_ANDROID_COMPILE_PASSED:-0}" == "1" ]]; then
+  printf 'REUSE x86_64 Android smoke APK and instrumentation package from the successful compile/package gate in this exact workflow.\n'
+else
+  printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
+  export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
+  # Tauri owns Rust/JNI compilation and its temporary CLI socket. The Gradle
+  # postbuild wrapper reuses that x86_64 output while excluding generated
+  # rustBuild tasks that cannot outlive the parent Tauri process.
+  bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
+  android_instrumentation_postbuild
+fi
 
 app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 test_apk="$({

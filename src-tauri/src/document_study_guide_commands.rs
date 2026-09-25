@@ -1,16 +1,20 @@
-use rusqlite::{params, OptionalExtension};
-use serde::{Deserialize, Serialize};
-use tauri::State;
+use rusqlite::OptionalExtension;
+use serde::Deserialize;
+use tauri::{AppHandle, State};
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
     database::Database,
     document_artifacts::{
-        create_document_artifact_job, load_document_artifact_job, DocumentArtifactJob,
-        DocumentArtifactKind, DocumentArtifactProviderSnapshot,
+        create_document_artifact_job, fail_document_artifact_job,
+        list_latest_document_artifact_jobs, load_document_artifact_job,
+        recover_published_study_guide_job, DocumentArtifactJob, DocumentArtifactKind,
+        DocumentArtifactProviderSnapshot,
     },
     document_cost,
-    document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
+    document_domain::{
+        validate_asset_id, DocumentFormat, DocumentSourceDescriptor, SourceUnitKind,
+    },
     document_learning::{load_active_document_learning_plan, DocumentLearningPlan},
     document_learning_service::ensure_learning_plan_for_outline,
     document_outline_service::{ensure_document_outline, EnsureDocumentOutlineInput},
@@ -21,8 +25,9 @@ use crate::{
         execute_study_guide_generation, StudyGuideGenerationExecution, StudyGuideTopicEvidence,
     },
     document_study_guides::{
-        discard_study_guide_overlay, load_active_document_study_guide, save_study_guide_overlay,
-        DocumentStudyGuide, SaveStudyGuideOverlayInput, StudyGuideOverlay,
+        discard_study_guide_overlay, load_active_document_study_guide, load_document_study_guide,
+        save_study_guide_overlay, DocumentStudyGuide, SaveStudyGuideOverlayInput,
+        StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
     document_visual_evidence::load_locator_images,
@@ -34,7 +39,6 @@ use crate::{
 
 const CANCELED_MESSAGE: &str =
     "Study-guide generation was stopped. Any previously published guide remains available.";
-const MAX_STUDY_GUIDES_RETURNED: i64 = 250;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -46,6 +50,13 @@ pub(crate) struct GenerateDocumentStudyGuideInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GetDocumentStudyGuideInput {
     pub document_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ReadDocumentSourceAssetInput {
+    pub document_id: String,
+    pub asset_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,20 +80,6 @@ pub(crate) struct GetTopicCardProjectionInput {
     pub topic_id: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StudyGuideLibraryItem {
-    pub document_id: String,
-    pub document_title: String,
-    pub original_filename: String,
-    pub source_format: String,
-    pub source_unit_kind: String,
-    pub source_unit_count: i64,
-    pub guide_revision: i64,
-    pub published_at: i64,
-    pub archived: bool,
-}
-
 #[derive(Clone, Debug)]
 struct StoredGuideDocument {
     title: String,
@@ -93,6 +90,7 @@ struct StoredGuideDocument {
 
 #[tauri::command]
 pub(crate) async fn generate_document_study_guide(
+    app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -105,12 +103,14 @@ pub(crate) async fn generate_document_study_guide(
         generate_document_study_guide_impl(database, paths, runtime, input),
     )
     .await;
+    crate::document_outline_service::schedule_document_postprocessing(app, document_id.clone());
     match result {
         Err(error) if error.code == "ai_request_canceled" => Err(CommandError::new(
             "document_study_guide_canceled",
             CANCELED_MESSAGE,
         )),
-        other => other,
+        Ok(value) => Ok(value),
+        Err(error) => Err(error),
     }
 }
 
@@ -175,15 +175,69 @@ async fn generate_document_study_guide_impl(
         &outline,
         &chunks,
     )?;
-    let topic_evidence = build_topic_evidence(
-        database.inner(),
-        paths.inner(),
-        &input.document_id,
-        &task,
-        &learning_plan,
-        &chunks,
-        scale_plan.max_images_per_window,
-    )?;
+    generate_document_study_guide_from_plan(PreparedStudyGuideInput {
+        database: database.inner(),
+        paths: paths.inner(),
+        runtime: runtime.inner(),
+        task: &task,
+        document_id: &input.document_id,
+        document_title: &stored.title,
+        plan: &learning_plan,
+        chunks: &chunks,
+        maximum_images: scale_plan.max_images_per_window,
+    })
+    .await
+}
+
+/// Immutable source/plan snapshot shared with the sibling flashcard author.
+/// This internal entry point deliberately does not reserve the document twice.
+pub(crate) struct PreparedStudyGuideInput<'a> {
+    pub database: &'a Database,
+    pub paths: &'a AppPaths,
+    pub runtime: &'a AiRuntimeState,
+    pub task: &'a document_intelligence::DocumentTaskContext,
+    pub document_id: &'a str,
+    pub document_title: &'a str,
+    pub plan: &'a DocumentLearningPlan,
+    pub chunks: &'a [SemanticChunk],
+    pub maximum_images: usize,
+}
+
+pub(crate) async fn generate_document_study_guide_from_plan(
+    input: PreparedStudyGuideInput<'_>,
+) -> Result<DocumentStudyGuide, CommandError> {
+    let PreparedStudyGuideInput {
+        database,
+        paths,
+        runtime,
+        task,
+        document_id,
+        document_title,
+        plan,
+        chunks,
+        maximum_images,
+    } = input;
+    if let Some(guide_id) = recover_published_study_guide_job(database, document_id, &plan.id)? {
+        let reuse_key = crate::ai::generation::hash(
+            format!(
+                "committed-study-guide-publication-v1|{document_id}|{}|{guide_id}",
+                plan.id
+            )
+            .as_bytes(),
+        );
+        crate::task_cancellation::record_current_generation_reuse(
+            database,
+            "guide_publication",
+            &reuse_key,
+        );
+        crate::logging::info_target(
+            "ai.document.study_guide",
+            "study_guide_published_job_reconciled",
+            "Recovered a previously published guide without another provider request.",
+            serde_json::json!({"document": document_id, "guide": guide_id}),
+        );
+        return load_document_study_guide(database, &guide_id);
+    }
 
     let provider = DocumentArtifactProviderSnapshot {
         profile_id: Some(task.profile_id.clone()),
@@ -194,26 +248,46 @@ async fn generate_document_study_guide_impl(
         network_scope: task.network_scope.clone(),
     };
     let job = create_document_artifact_job(
-        database.inner(),
-        &input.document_id,
-        Some(&learning_plan.id),
+        database,
+        document_id,
+        Some(&plan.id),
         DocumentArtifactKind::StudyGuide,
         &provider,
-        learning_plan.topics.len(),
+        plan.topics.len(),
     )?;
-
-    execute_study_guide_generation(StudyGuideGenerationExecution {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
-        task: &task,
-        document_id: &input.document_id,
-        document_title: &stored.title,
-        plan: &learning_plan,
-        job_id: &job.id,
-        evidence: topic_evidence,
-    })
-    .await
+    // Publish the job before evidence preparation: a local preparation error is
+    // an observable failed artifact, not a tile stuck on an invented Pending.
+    let result = async {
+        let topic_evidence = build_topic_evidence(
+            database,
+            paths,
+            document_id,
+            task,
+            plan,
+            chunks,
+            maximum_images,
+        )?;
+        execute_study_guide_generation(StudyGuideGenerationExecution {
+            database,
+            paths,
+            runtime,
+            task,
+            document_id,
+            document_title,
+            plan,
+            job_id: &job.id,
+            evidence: topic_evidence,
+        })
+        .await
+    }
+    .await;
+    if let Err(error) = &result {
+        let (usage, complete) = task.usage_summary();
+        // The executor may already have saved Failed/Canceled. This only closes
+        // an earlier preparation failure; never overwrite a terminal success.
+        let _ = fail_document_artifact_job(database, &job.id, error, usage, complete);
+    }
+    result
 }
 
 #[tauri::command]
@@ -225,57 +299,42 @@ pub(crate) fn cancel_document_study_guide_generation(
 }
 
 #[tauri::command]
+pub(crate) async fn read_document_source_asset(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: ReadDocumentSourceAssetInput,
+) -> Result<tauri::ipc::Response, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    validate_asset_id(&input.asset_id)?;
+    let asset = document_store::load_source_assets(database.inner(), &input.document_id)?
+        .into_iter()
+        .find(|asset| asset.asset_id == input.asset_id)
+        .ok_or_else(|| {
+            CommandError::new(
+                "document_source_asset_missing",
+                "That canonical source image is no longer available for this document.",
+            )
+        })?;
+    let paths = paths.inner().clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        crate::document_visual_evidence::read_source_image_bytes(&paths, &asset)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "document_source_asset_read_failed",
+            "The canonical source image read task could not be completed.",
+        )
+    })??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
 pub(crate) fn get_document_study_guide(
     database: State<'_, Database>,
     input: GetDocumentStudyGuideInput,
 ) -> Result<Option<DocumentStudyGuide>, CommandError> {
     load_active_document_study_guide(database.inner(), &input.document_id)
-}
-
-#[tauri::command]
-pub(crate) fn list_document_study_guides(
-    database: State<'_, Database>,
-    include_archived: bool,
-) -> Result<Vec<StudyGuideLibraryItem>, CommandError> {
-    database.with_connection(|connection| {
-        let mut statement = connection
-            .prepare(
-                "SELECT document.id, document.title, document.original_filename,
-                        document.source_format, document.source_unit_kind,
-                        document.source_unit_count, guide.revision, guide.published_at,
-                        CASE WHEN document.archived_at IS NULL THEN 0 ELSE 1 END
-                 FROM document_study_guides guide
-                 JOIN documents document ON document.id = guide.document_id
-                 WHERE guide.state = 'active'
-                   AND (?1 = 1 OR document.archived_at IS NULL)
-                 ORDER BY guide.published_at DESC, document.title COLLATE NOCASE, document.id
-                 LIMIT ?2",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map(
-                params![
-                    if include_archived { 1_i64 } else { 0_i64 },
-                    MAX_STUDY_GUIDES_RETURNED
-                ],
-                |row| {
-                    Ok(StudyGuideLibraryItem {
-                        document_id: row.get(0)?,
-                        document_title: row.get(1)?,
-                        original_filename: row.get(2)?,
-                        source_format: row.get(3)?,
-                        source_unit_kind: row.get(4)?,
-                        source_unit_count: row.get(5)?,
-                        guide_revision: row.get(6)?,
-                        published_at: row.get(7)?,
-                        archived: row.get::<_, i64>(8)? != 0,
-                    })
-                },
-            )
-            .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
-    })
 }
 
 #[tauri::command]
@@ -292,6 +351,13 @@ pub(crate) fn get_document_artifact_job(
     job_id: String,
 ) -> Result<DocumentArtifactJob, CommandError> {
     load_document_artifact_job(database.inner(), &job_id)
+}
+
+#[tauri::command]
+pub(crate) fn list_latest_document_study_guide_jobs(
+    database: State<'_, Database>,
+) -> Result<Vec<DocumentArtifactJob>, CommandError> {
+    list_latest_document_artifact_jobs(database.inner(), DocumentArtifactKind::StudyGuide)
 }
 
 #[tauri::command]

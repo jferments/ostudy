@@ -1,26 +1,39 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as collectionIpc from "../ipc/collections";
+import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import { DOCUMENT_FOLDER_DRAG_TYPE } from "./documents/documentFolderDrag";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../ipc/collections", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../ipc/collections")>(),
+  getDocumentCollectionOrganization: vi.fn(),
+}));
+vi.mock("../ipc/documentArtifactProgress", () => ({
+  listLatestDocumentStudyGuideJobs: vi.fn(),
+}));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   getDocumentGenerationProgress: vi.fn(),
-  importPdfAndGenerateFlashcards: vi.fn(),
-  retryPdfFlashcardGeneration: vi.fn(),
-  generateMorePdfFlashcards: vi.fn(),
-  cancelPdfFlashcardGeneration: vi.fn(),
+  importDocument: vi.fn(),
+  startDocumentFlashcardGeneration: vi.fn(),
+  retryDocumentFlashcardGeneration: vi.fn(),
+  generateMoreDocumentFlashcards: vi.fn(),
+  cancelDocumentFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
-  deletePdfDocument: vi.fn(),
+  deleteDocument: vi.fn(),
 }));
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: vi.fn(),
+  getDocumentStudyGuide: vi.fn(),
   cancelDocumentStudyGuideGeneration: vi.fn(),
+  getDocumentLearningPlan: vi.fn(),
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
@@ -117,13 +130,21 @@ function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolve
 
 describe("DocumentsScreen", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // All independent mount reads have explicit native fixtures. An absent
+    // Tauri bridge is not the error scenario exercised by document retry tests.
+    vi.mocked(collectionIpc.getDocumentCollectionOrganization).mockResolvedValue({
+      revision: 1, collections: [], memberships: [], ranges: [],
+    });
+    vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
     vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
-    vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
+    vi.mocked(documentIpc.cancelDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
+    vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue(null);
+    vi.mocked(studyGuideIpc.getDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
   });
 
   it("shows a simple upload-first empty state without archive controls", async () => {
@@ -148,13 +169,10 @@ describe("DocumentsScreen", () => {
       sha256: "0".repeat(64),
       expiresAt: Date.now() + 60_000,
     });
-    vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
-      document: completed,
-      deckId: completed.generatedDeckId ?? "",
-      createdNoteCount: 6,
-      createdCardCount: 7,
-      skippedDuplicateCount: 1,
+    vi.mocked(documentIpc.importDocument).mockResolvedValue({
+      documentId,
     });
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([])
       .mockResolvedValue([completed]);
@@ -167,9 +185,10 @@ describe("DocumentsScreen", () => {
       expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
       expect(showToast).toHaveBeenCalledWith(
         "info",
-        "Document processing started. Live stage, source-unit, request, and token progress will appear here.",
+        "Document processing started. You can add more documents while this job runs.",
       );
-      expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -178,8 +197,10 @@ describe("DocumentsScreen", () => {
     expect(screen.getByText("7 cards")).toBeTruthy();
     expect(screen.queryByText("PDF · 2.0 KB")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "View metadata for Cardiac physiology" }));
-    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology metadata" });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Generation info"));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("12 sec")).toBeTruthy();
     expect(within(dialog).getByText("45,678")).toBeTruthy();
@@ -200,8 +221,10 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "View metadata for Cardiac physiology" }));
-    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology metadata" });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Generation info"));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("Word · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("Sections")).toBeTruthy();
     expect(within(dialog).getByText("8")).toBeTruthy();
@@ -244,6 +267,23 @@ describe("DocumentsScreen", () => {
     expect((await screen.findAllByText("Recovering OCR 5/12")).length).toBeGreaterThan(0);
   });
 
+  it("keeps upload controls available while another document is processing", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        generatedDeckId: null,
+        completedAt: null,
+      }),
+    ]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect((screen.getByRole("button", { name: "Upload document" }) as HTMLButtonElement).disabled)
+      .toBe(false);
+    expect((screen.getByRole("button", { name: "Upload images" }) as HTMLButtonElement).disabled)
+      .toBe(false);
+  });
+
   it("keeps a failed document in the library and offers a direct retry", async () => {
     const failed = makeDocument({
       lifecycleState: "failed",
@@ -255,22 +295,75 @@ describe("DocumentsScreen", () => {
     });
     const completed = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([failed]);
-    vi.mocked(documentIpc.retryPdfFlashcardGeneration).mockResolvedValue({
-      document: completed,
-      deckId: completed.generatedDeckId ?? "",
-      createdNoteCount: 6,
-      createdCardCount: 7,
-      skippedDuplicateCount: 0,
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([completed]);
     });
     const { showToast } = renderDocuments();
 
     expect(await screen.findByText(failed.safeErrorMessage)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Retry generation" }));
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
+        .toBe(false);
+      expect(artifactIpc.listLatestDocumentStudyGuideJobs).toHaveBeenCalled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
-      expect(documentIpc.retryPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
+  });
+
+  it("shows a checked learning plan while final flashcard work remains", async () => {
+    const processing = makeDocument({
+      lifecycleState: "processing",
+      generatedDeckId: null,
+      generatedCardCount: 0,
+      generationWindowCount: 8,
+      generationCompletedWindowCount: 3,
+      completedAt: null,
+    });
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([processing]);
+    vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue({
+      id: "e".repeat(32),
+      documentId,
+      revision: 1,
+      compilerVersion: 1,
+      outlineFingerprint: "f".repeat(64),
+      planFingerprint: "1".repeat(64),
+      summary: "Cardiac output depends on heart rate and stroke volume.",
+      learningObjectives: ["Explain the determinants of cardiac output."],
+      keyConcepts: ["cardiac output", "stroke volume"],
+      topics: [{
+        id: "2".repeat(32),
+        parentTopicId: null,
+        sortIndex: 0,
+        title: "Cardiac output",
+        summary: "Relates flow to rate and stroke volume.",
+        learningObjectives: ["Relate heart rate and stroke volume to output."],
+        keyConcepts: ["CO = HR × SV"],
+        sourceLocator: {
+          unitKind: "page",
+          unitNumbers: [2, 3],
+          sectionLabel: "Hemodynamics",
+          assetIds: [],
+        },
+        evidenceChunkIndices: [1],
+        evidenceHashes: ["3".repeat(64)],
+        evidenceHash: "4".repeat(64),
+        anchorHash: "5".repeat(64),
+      }],
+    });
+    renderDocuments();
+
+    const summary = await screen.findByText("Checked learning plan ready · 1 topic");
+    fireEvent.click(summary);
+    expect(await screen.findByText(
+      "Cardiac output depends on heart rate and stroke volume.",
+    )).toBeTruthy();
+    expect(screen.getByText("Card authoring: 3 of 8 windows finished · 5 remaining.")).toBeTruthy();
+    expect(screen.getByText(/nothing shown here is a provisional learner card/i)).toBeTruthy();
   });
 
   it("shows a lightweight local-processing phase before source-unit metadata is committed", async () => {
@@ -345,21 +438,24 @@ describe("DocumentsScreen", () => {
     ]);
     const { showToast } = renderDocuments();
 
-    expect(await screen.findByRole("button", { name: "Stop generation" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Stop generation"));
 
     await waitFor(() => {
-      expect(documentIpc.cancelPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
-    expect(screen.getByRole("button", { name: "Stopping…" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    expect(await screen.findByText("Stopping…")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
 
   it("generates an additional coverage pass into the existing deck", async () => {
     const existing = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([existing]);
-    vi.mocked(documentIpc.generateMorePdfFlashcards).mockResolvedValue({
+    vi.mocked(documentIpc.generateMoreDocumentFlashcards).mockResolvedValue({
       documentId,
       deckId: existing.generatedDeckId ?? "",
       createdNoteCount: 4,
@@ -368,11 +464,14 @@ describe("DocumentsScreen", () => {
     });
     const { showToast, refreshDecks } = renderDocuments();
 
-    expect(await screen.findByRole("button", { name: "Generate more cards" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Generate more cards" }));
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Generate more cards"));
 
     await waitFor(() => {
-      expect(documentIpc.generateMorePdfFlashcards).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -387,29 +486,55 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByRole("button", { name: "Generate study guide" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    expect(await screen.findByText("Retry generation")).toBeTruthy();
+    expect(screen.queryByText("Generate study guide")).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
     expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
 
-  it("directs generated guides to the Study Guides destination", async () => {
+  it("keeps the ready tile limited to view, delete, and an overflow menu", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
-    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockResolvedValue({
-      revision: 4,
-    } as studyGuideIpc.DocumentStudyGuide);
-    const { showToast } = renderDocuments();
+    renderDocuments();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete document" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More actions for Cardiac physiology" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    await waitFor(() => {
-      expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId);
-      expect(showToast).toHaveBeenCalledWith(
-        "success",
-        "Study guide revision 4 created. Open it from Study Guides.",
-      );
-    });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    expect(await screen.findByText("Generation info")).toBeTruthy();
+    expect(screen.getByText("Generate more cards")).toBeTruthy();
+    expect(screen.queryByText("Generate study guide")).toBeNull();
+  });
+
+  it("exposes ready document content as a folder drag source without making row actions the drag handle", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    const source = document.querySelector(`[data-document-drag-source="${documentId}"]`) as HTMLElement;
+    expect(source).toBeTruthy();
+    expect(source.getAttribute("draggable")).toBe("true");
+
+    const values = new Map<string, string>();
+    const transfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      get types() { return Array.from(values.keys()); },
+      setData(type: string, value: string) { values.set(type, value); },
+      getData(type: string) { return values.get(type) ?? ""; },
+    } as unknown as DataTransfer;
+    fireEvent.dragStart(source, { dataTransfer: transfer });
+    expect(transfer.getData(DOCUMENT_FOLDER_DRAG_TYPE)).toBe(documentId);
+    expect(transfer.effectAllowed).toBe("copy");
   });
 
   it("opens the managed source through the compact View action", async () => {
@@ -428,7 +553,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([makeDocument()])
       .mockResolvedValue([]);
-    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+    vi.mocked(documentIpc.deleteDocument).mockResolvedValue({
       documentId,
       preservedDeckCitationCount: 1,
     });
@@ -444,7 +569,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {
-      expect(documentIpc.deletePdfDocument).toHaveBeenCalledWith(documentId, 2);
+      expect(documentIpc.deleteDocument).toHaveBeenCalledWith(documentId, 2);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -462,7 +587,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([withoutDeck])
       .mockResolvedValue([]);
-    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+    vi.mocked(documentIpc.deleteDocument).mockResolvedValue({
       documentId,
       preservedDeckCitationCount: 0,
     });

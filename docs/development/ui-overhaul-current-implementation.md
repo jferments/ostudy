@@ -75,7 +75,7 @@ CardEditorScreenBase, EditorToolbar, formatting selectors, link/image/source con
 
 Documents uses shared library/search/actions, metadata panels, progress, cancel/retry and empty/error presentation. The unavailable-platform fallback remains a real supported path. Native/controller jobs survive navigation and their results remain durable.
 
-The guide library and reader use the shared scaffold, toolbar/actions, disclosures, source cards and editable learner-note controls. The reader remains a nonmodal InlineWorkspace; compact contents/article geometry and close-target size are tested. Generated content, learner overrides, revisions, source provenance and PDF-export behavior stay separate from the renderer.
+The guide library and reader use the shared scaffold, toolbar/actions, disclosures, source cards and editable learner-note controls. The reader remains a nonmodal InlineWorkspace; compact contents/article geometry and close-target size are tested. Section-specific source/note/edit/practice controls collapse into one accessible overflow menu, and legacy slash-separated topic inventories are compacted at the display boundary without changing durable learning-topic identity. Document and collection guides reuse the same semantic section presentation. Generated content, learner overrides, revisions and source provenance remain separate from the renderer; local PDF export uses its own print layout with linked navigation, semantic blocks, verified source figures, bounded math, repeated table headers, and wrapped-heading orphan protection.
 
 ## Phase 11: Analytics
 

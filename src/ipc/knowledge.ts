@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { SourceLocator } from "./studyGuides";
 
-export type MaterialScope = { kind: "deck" | "document" | "guide"; id: string };
+export type MaterialScope = { kind: "deck" | "document" | "guide" | "collection"; id: string };
 export type StudyScope =
   | { kind: "general" | "library"; id: null }
   | MaterialScope
@@ -24,8 +24,58 @@ export function selectedScope(members: MaterialScope[]): StudyScope {
 
 export function scopeMembers(scope: StudyScope): MaterialScope[] {
   if (scope.kind === "selection") return scope.members;
-  if (scope.kind === "deck" || scope.kind === "document" || scope.kind === "guide") return [scope];
+  if (scope.kind === "deck" || scope.kind === "document" || scope.kind === "guide" || scope.kind === "collection") return [scope];
   return [];
+}
+
+
+export type CollectionRelationshipKind = "complementary" | "contrast" | "contradictory" | "prerequisite";
+
+export interface CollectionRelationship {
+  id: string;
+  kind: CollectionRelationshipKind;
+  topicIds: string[];
+  supportUnitIds: string[];
+  note: string;
+}
+
+export interface CollectionTopic {
+  id: string;
+  title: string;
+  summary: string;
+  summarySupportUnitIds: string[];
+  unitIds: string[];
+  supportSourceIds: string[];
+  supportDocumentIds: string[];
+  emphasisSourceIds: string[];
+}
+
+export interface CollectionGap {
+  kind: string;
+  count: number;
+  documentId: string | null;
+  sourceId: string | null;
+  unitIds: string[];
+  detail: string;
+}
+
+export interface CollectionSynthesis {
+  version: number;
+  collectionId: string;
+  snapshotId: string;
+  summary: string;
+  learningObjectives: string[];
+  topics: CollectionTopic[];
+  relationships: CollectionRelationship[];
+  gaps: CollectionGap[];
+  reductionStatus: string;
+}
+
+export interface CollectionViewState {
+  synthesis: CollectionSynthesis;
+  stale: boolean;
+  reduced: boolean;
+  analysisHash: string;
 }
 
 export interface ScopeChoice {
@@ -90,6 +140,28 @@ export interface SemanticSearchResult {
   sources: SourceCitation[];
   eligibleEntries: number;
   embeddingSpace: string;
+}
+
+
+/** Reads the retained compact view only; this never calls a provider. */
+export async function getCollectionSynthesis(collectionId: string): Promise<CollectionViewState | null> {
+  return invoke<CollectionViewState | null>("get_collection_synthesis", { collectionId });
+}
+
+/** Rebuilds the compact view locally from retained knowledge and coverage receipts. */
+export async function refreshCollectionSynthesis(collectionId: string): Promise<CollectionViewState> {
+  return invoke<CollectionViewState>("refresh_collection_synthesis", { collectionId });
+}
+
+/**
+ * Explicit generation/preparation path. It may make at most one bounded provider
+ * request after the complete local collection coverage plan is frozen.
+ */
+export async function prepareCollectionSynthesis(input: {
+  operationId: string;
+  collectionId: string;
+}): Promise<CollectionViewState> {
+  return invoke<CollectionViewState>("prepare_collection_synthesis", { input });
 }
 
 export async function listSemanticScopeChoices(): Promise<ScopeChoice[]> {

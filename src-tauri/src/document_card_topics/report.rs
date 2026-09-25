@@ -17,7 +17,7 @@ use crate::{
 };
 
 mod storage;
-pub(crate) use storage::{begin, load_latest, load_latest_many, record_candidates};
+pub(crate) use storage::{begin, load_for_job, load_latest, load_latest_many, record_candidates};
 
 const MAX_COUNT: usize = 10_000_000;
 

@@ -319,12 +319,7 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
                 key_points: vec![
                     "Right ventricular output enters the pulmonary arteries.".to_string()
                 ],
-                explanations: Vec::new(),
-                important_terms: Vec::new(),
-                process_steps: Vec::new(),
-                comparisons: Vec::new(),
-                common_misconceptions: Vec::new(),
-                visual_explanations: Vec::new(),
+                ..StudyGuideSectionContent::default()
             },
         }],
     )

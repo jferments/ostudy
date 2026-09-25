@@ -12,12 +12,12 @@ export function TutorChatSettings({ tutor, onClose, onDelete }: { tutor: TutorCo
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   return <Dialog title="Chat settings" onClose={onClose} busy={memoryBusy} width="medium">
     <p className={styles.muted}>Chat uses your Tutor model from Settings → AI/LLM. Search uses the selected embedding model. Switching the chat model does not reinterpret saved documents.</p>
-    {tutor.scope.kind !== "general" ? <label className={styles.checkbox}>
+    {tutor.conversationRetrievalAllowed ? <label className={styles.checkbox}>
       <Checkbox checked={tutor.includeConversations} disabled={locked || memoryBusy} onCheckedChange={tutor.setIncludeConversations} />
       Search permitted conversations in this material selection
     </label> : null}
     {tutor.detail ? <TutorMemoryControls conversationId={tutor.detail.conversation.id} revision={tutor.detail.conversation.revision}
-      retrievalAvailable={tutor.scope.kind !== "general"} disabled={locked} onBusyChange={setMemoryBusy} onChanged={tutor.refresh} /> : null}
+      retrievalAvailable={tutor.conversationRetrievalAllowed} disabled={locked} onBusyChange={setMemoryBusy} onChanged={tutor.refresh} /> : null}
     {tutor.scope.kind !== "general" ? <MaterialPreparation controller={tutor.preparation} disabled={memoryBusy || tutor.busy || tutor.loading || tutor.pending !== null} /> : null}
     <div className={styles.toolbar}>
       <Button disabled={locked || memoryBusy} onClick={() => { void tutor.initialize(); void tutor.refresh(); }}>Refresh saved state</Button>

@@ -8,8 +8,6 @@ use crate::{
     error::CommandError,
 };
 
-use crate::document_ingestion::support::normalize_semantic_text;
-
 const MAX_CHUNK_TARGET_CHARS: usize = 24_000;
 const MAX_CHUNK_TEXT_CHARS: usize = 1_000_000;
 
@@ -67,8 +65,8 @@ fn push_chunk(
         .collect::<Vec<_>>();
     let mut full_text = blocks
         .iter()
-        .map(|block| block.text.trim())
-        .filter(|text| !text.is_empty())
+        .map(|block| block.text.as_str())
+        .filter(|text| !text.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
     if full_text.is_empty() && !asset_ids.is_empty() {
@@ -80,7 +78,16 @@ fn push_chunk(
     if full_text.is_empty() {
         return Ok(());
     }
-    full_text = normalize_semantic_text(&full_text, MAX_CHUNK_TEXT_CHARS);
+    if full_text.chars().count() > MAX_CHUNK_TEXT_CHARS
+        || full_text
+            .chars()
+            .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\t'))
+    {
+        return Err(CommandError::new(
+            "document_content_invalid",
+            "Canonical evidence exceeds its bound or contains unsupported controls; it was not truncated.",
+        ));
+    }
     let heading_context = blocks
         .iter()
         .rev()
@@ -105,4 +112,39 @@ fn push_chunk(
         false,
     ));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    #[test]
+    fn source_chunks_preserve_code_bytes_and_refuse_oversized_evidence() {
+        let text = "    if x <= 2:\n        return x\n";
+        let unit = CanonicalSourceUnit::new(1, SourceUnitKind::Section, "Code", None, text, 1);
+        let mut block = CanonicalBlock::new(
+            0,
+            0,
+            1,
+            CanonicalBlockRole::CodeBlock,
+            text,
+            None,
+            vec![],
+            None,
+            None,
+            vec![],
+            BTreeMap::new(),
+        );
+        let chunks = build_semantic_chunks(
+            SourceUnitKind::Section,
+            std::slice::from_ref(&unit),
+            std::slice::from_ref(&block),
+        )
+        .unwrap();
+        assert_eq!(chunks[0].full_text, text);
+        block.text = format!("{} except when x = 0", "a".repeat(MAX_CHUNK_TEXT_CHARS));
+        assert!(build_semantic_chunks(SourceUnitKind::Section, &[unit], &[block]).is_err());
+    }
 }

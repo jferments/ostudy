@@ -9,7 +9,7 @@ source "$ROOT_DIR/versions.env"
 EXPECTED_RAM_GIB="${OSTUDY_VM_RAM_GIB:-64}"
 EXPECTED_DISK_GIB="${OSTUDY_VM_DISK_GIB:-150}"
 EXPECTED_SWAP_GIB="${OSTUDY_VM_SWAP_GIB:-16}"
-EXPECTED_VCPUS="${OSTUDY_VM_VCPUS:-16}"
+EXPECTED_VCPUS="${OSTUDY_VM_VCPUS:-32}"
 RUNNER_USER="${OSTUDY_VM_RUNNER_USER:-ostudy-runner}"
 ANDROID_HOME_VALUE="${ANDROID_HOME:-/home/$RUNNER_USER/Android/Sdk}"
 
@@ -60,6 +60,11 @@ elif (( root_free_gib >= 25 )); then
   warn "root filesystem has only ${root_free_gib} GiB free; prune caches before expensive qualification"
 else
   fail "root filesystem has only ${root_free_gib} GiB free; minimum safe threshold is 25 GiB"
+fi
+if [[ "${OSTUDY_REPORT_STORAGE:-0}" == 1 || "$root_free_gib" -lt 60 ]]; then
+  if ! bash "$SCRIPT_DIR/report-storage.sh"; then
+    warn "runner storage inventory failed; qualification continues because the inventory is diagnostic only"
+  fi
 fi
 
 swap_kib="$(awk 'NR > 1 {sum += $3} END {print sum + 0}' /proc/swaps)"

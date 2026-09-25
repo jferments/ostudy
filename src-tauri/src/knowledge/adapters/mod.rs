@@ -38,13 +38,14 @@ pub(crate) fn enumerate_sources(
     scope.validate()?;
     database.with_connection(|connection| {
         let mut seeds = scopes::enumerate_material(connection, scope)?;
-        if include_conversations {
+        if include_conversations && !super::collection_scope::has_collection(scope) {
             let scope_json = serde_json::to_string(scope).map_err(CommandError::serialization)?;
             let mut statement = connection
                 .prepare(
                     "SELECT t.conversation_id, t.id FROM tutor_turns t
                      JOIN tutor_conversations c ON c.id = t.conversation_id
-                     WHERE c.scope_json = ?1 AND t.state = 'complete' AND t.evidence_current = 1
+                     WHERE COALESCE(t.captured_scope_json, json_extract(t.request_json, '$.capturedScope'), c.scope_json) = ?1
+                       AND t.state = 'complete' AND t.evidence_current = 1
                        AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence
                      ORDER BY c.id, t.sequence LIMIT 100001",
                 )
@@ -82,6 +83,20 @@ pub(crate) fn materialize_sources(
     database: &Database,
     seeds: &[SourceSeed],
 ) -> Result<Vec<SourceRecord>, CommandError> {
+    Ok(materialize_source_groups(database, seeds)?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+/// Preserve the authoritative seed-to-source association separately from a
+/// source's stable semantic segment key. Image sources deliberately replace
+/// numeric chunk prefixes with content-stable keys, so callers must not infer
+/// ownership from `SourceRecord::segment_key`.
+pub(crate) fn materialize_source_groups(
+    database: &Database,
+    seeds: &[SourceSeed],
+) -> Result<Vec<Vec<SourceRecord>>, CommandError> {
     if seeds.len() > 32 {
         return Err(invalid(
             "The semantic source publication batch is too large.",
@@ -92,7 +107,7 @@ pub(crate) fn materialize_sources(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         let now = unix_time_millis()?;
-        let mut published = Vec::new();
+        let mut published = Vec::with_capacity(seeds.len());
         for seed in seeds {
             let mut sources = read_seed(&transaction, seed)?;
             for source in &mut sources {
@@ -109,7 +124,7 @@ pub(crate) fn materialize_sources(
                     .map(|source| source.id.clone())
                     .collect::<Vec<_>>(),
             )?;
-            published.extend(sources);
+            published.push(sources);
         }
         transaction.commit().map_err(CommandError::database)?;
         Ok(published)

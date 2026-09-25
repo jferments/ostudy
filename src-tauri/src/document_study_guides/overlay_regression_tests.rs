@@ -21,10 +21,7 @@ fn section_content(overview: &str) -> StudyGuideSectionContent {
             term: "Preload".to_string(),
             explanation: "Ventricular filling/stretch before systole.".to_string(),
         }],
-        process_steps: Vec::new(),
-        comparisons: Vec::new(),
-        common_misconceptions: Vec::new(),
-        visual_explanations: Vec::new(),
+        ..StudyGuideSectionContent::default()
     }
 }
 

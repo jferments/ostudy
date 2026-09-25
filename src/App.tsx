@@ -207,6 +207,7 @@ function App() {
                               <DocumentsSection
                                 refreshDecks={controller.refreshDecks}
                                 onPracticeCards={controller.practiceCards}
+                                onOpenDeck={controller.openFlashcardsDeck}
                                 showToast={controller.showToast}
                               />
                             </PerformanceProfiler>

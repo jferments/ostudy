@@ -51,7 +51,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current public migration registry is defined by `src-tauri/src/database.rs` (public schema version 8 at the time of this guide). Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
+The current public migration registry is defined by `src-tauri/src/database.rs` (schema version 17 at the LK-02 checkpoint). Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
 
 ### Exact-tree reuse
 
@@ -152,7 +152,7 @@ all-full
 
 Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
 
-For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke.
+For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within one successful exact-SHA `all-full` job, Android compile reuses the shared TypeScript/Vitest/host-Rust coverage already established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge APK/instrumentation package produced by Android compile. Standalone Android gates remain self-contained.
 
 Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. That evidence is persisted on the self-hosted runner rather than uploaded to GitHub Actions storage. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
 

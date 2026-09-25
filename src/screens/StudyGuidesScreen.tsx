@@ -14,6 +14,7 @@ import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { deleteTargetFromItem, useStudyGuidesController, type StudyGuideDeleteTarget, type StudyGuideOpenRequest } from "../controllers/useStudyGuidesController";
 import { StudyGuideDialog } from "./StudyGuideDialog";
+import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { guideLibraryStyles as styles } from "./documents/presentation";
 
 interface StudyGuidesScreenProps {
@@ -41,8 +42,22 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
   if (controller.selected) return (
     <PageScaffold width="full" aria-label="Study Guides">
       <PerformanceProfiler id="guide-dialog">
-        <StudyGuideDialog documentId={controller.selected.documentId} documentTitle={controller.selected.documentTitle}
-          showToast={showToast} onPracticeCards={onPracticeCards} onClose={controller.closeGuide} />
+        {controller.selected.targetKind === "collection" ? (
+          <CollectionStudyGuideDialog
+            collectionId={controller.selected.targetId}
+            collectionTitle={controller.selected.title}
+            showToast={showToast}
+            onClose={controller.closeGuide}
+          />
+        ) : (
+          <StudyGuideDialog
+            documentId={controller.selected.targetId}
+            documentTitle={controller.selected.title}
+            showToast={showToast}
+            onPracticeCards={onPracticeCards}
+            onClose={controller.closeGuide}
+          />
+        )}
       </PerformanceProfiler>
     </PageScaffold>
   );
@@ -80,8 +95,20 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
               description={controller.query ? "Change the search text or clear the filter." : "Generate a guide from Documents. It will appear here without loading every guide body."} />
           ) : (
             <div className={styles.list}>
-              {controller.page.items.map((item) => <GuideRow key={item.guideId} item={item} deleting={controller.deletingGuideId === item.guideId}
-                onOpen={() => controller.openGuide(item)} onDelete={() => void confirmDelete(deleteTargetFromItem(item))} />)}
+              {controller.page.items.map((item) => {
+                const deleteTarget = deleteTargetFromItem(item);
+                return <GuideRow
+                  key={item.guideId}
+                  item={item}
+                  deleting={controller.deletingGuideId === item.guideId}
+                  onOpen={() => controller.openGuide({
+                    targetKind: item.targetKind,
+                    targetId: item.targetId,
+                    title: item.title,
+                  })}
+                  onDelete={deleteTarget ? () => void confirmDelete(deleteTarget) : null}
+                />;
+              })}
             </div>
           )}
           {controller.page.totalCount > controller.page.limit ? (
@@ -97,31 +124,60 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
   );
 }
 
-function GuideRow({ item, deleting, onOpen, onDelete }: { item: StudyGuidePageItem; deleting: boolean; onOpen: () => void; onDelete: () => void }) {
+function GuideRow({
+  item,
+  deleting,
+  onOpen,
+  onDelete,
+}: {
+  item: StudyGuidePageItem;
+  deleting: boolean;
+  onOpen: () => void;
+  onDelete: (() => void) | null;
+}) {
+  const actions = [
+    { id: "open", label: "Open", placement: "always-visible" as const, variant: "primary" as const, disabled: deleting, onSelect: onOpen },
+    ...(onDelete ? [{
+      id: "delete",
+      label: `Delete ${item.title} study guide`,
+      description: "Delete generated guide revisions while preserving the source, flashcards, and stable notes.",
+      placement: "wide-and-medium" as const,
+      presentation: "icon" as const,
+      icon: "delete" as const,
+      destructive: true,
+      disabled: deleting,
+      loading: deleting,
+      onSelect: onDelete,
+    }] : []),
+  ];
   return <article className={styles.row}>
     <Button variant="ghost" className={styles.rowMain} onClick={onOpen}>
       <span className={styles.rowIcon} aria-hidden="true"><Icon name="study-guide" size={22} /></span>
       <span className={styles.rowCopy}>
-        <strong>{item.documentTitle}</strong><small>{sourceSummary(item)}</small>
+        <strong>{item.title}</strong><small>{sourceSummary(item)}</small>
         <span className={styles.metrics}>
           <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
           <span>{item.noteCount} note{item.noteCount === 1 ? "" : "s"}</span><span>{formatDate(item.publishedAt)}</span>
         </span>
       </span>
     </Button>
-    <ResponsiveActionGroup label={`Actions for ${item.documentTitle}`} overflowLabel={`${item.documentTitle} actions`} className={styles.actions}
-      actions={[
-        { id: "open", label: "Open", placement: "always-visible", variant: "primary", disabled: deleting, onSelect: onOpen },
-        { id: "delete", label: `Delete ${item.documentTitle} study guide`,
-          description: "Delete generated guide revisions while preserving the source, flashcards, and stable notes.",
-          placement: "wide-and-medium", presentation: "icon", icon: "delete", destructive: true, disabled: deleting, loading: deleting, onSelect: onDelete },
-      ]} />
+    <ResponsiveActionGroup
+      label={`Actions for ${item.title}`}
+      overflowLabel={`${item.title} actions`}
+      className={styles.actions}
+      actions={actions}
+    />
   </article>;
 }
 function sourceSummary(item: StudyGuidePageItem): string {
-  const format = item.sourceFormat.replaceAll("_", " ").toUpperCase();
-  const unit = item.sourceUnitCount === 1 ? singularUnit(item.sourceUnitKind) : pluralUnit(item.sourceUnitKind);
-  return `${item.originalFilename} · ${format} · ${item.sourceUnitCount.toLocaleString()} ${unit}`;
+  if (item.targetKind === "collection") {
+    return `Document collection · ${item.sourceCount.toLocaleString()} source document${item.sourceCount === 1 ? "" : "s"}`;
+  }
+  const format = (item.sourceFormat ?? "document").replaceAll("_", " ").toUpperCase();
+  const count = item.sourceUnitCount ?? 0;
+  const kind = item.sourceUnitKind ?? "page";
+  const unit = count === 1 ? singularUnit(kind) : pluralUnit(kind);
+  return `${item.originalFilename ?? "Document"} · ${format} · ${count.toLocaleString()} ${unit}`;
 }
 function singularUnit(kind: string): string {
   switch (kind) {

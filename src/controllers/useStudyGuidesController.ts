@@ -4,7 +4,7 @@ import type { ShowToast } from "../components/Toast";
 import { createOperationId, getErrorMessage } from "../ipc/common";
 import {
   deleteDocumentStudyGuide,
-  listDocumentStudyGuidePage,
+  listStudyGuidePage,
   type StudyGuidePageItem,
   type StudyGuideLibraryPage,
   type StudyGuideLibrarySort,
@@ -20,11 +20,14 @@ export interface StudyGuideOpenRequest {
 }
 
 export interface StudyGuideSelection {
-  documentId: string;
-  documentTitle: string;
+  targetKind: "document" | "collection";
+  targetId: string;
+  title: string;
 }
 
-export interface StudyGuideDeleteTarget extends StudyGuideSelection {
+export interface StudyGuideDeleteTarget {
+  documentId: string;
+  documentTitle: string;
   guideId: string;
   guideRevision: number;
 }
@@ -67,7 +70,7 @@ export function useStudyGuidesController({
       if (refreshOnly) setIsRefreshing(true);
       else setIsLoading(true);
       try {
-        const loaded = await listDocumentStudyGuidePage({
+        const loaded = await listStudyGuidePage({
           query,
           sort,
           offset,
@@ -100,8 +103,9 @@ export function useStudyGuidesController({
     if (!openRequest || consumedRequest.current === openRequest.requestId) return;
     consumedRequest.current = openRequest.requestId;
     setSelected({
-      documentId: openRequest.documentId,
-      documentTitle: openRequest.documentTitle,
+      targetKind: "document",
+      targetId: openRequest.documentId,
+      title: openRequest.documentTitle,
     });
     setDraftQuery("");
     setQuery("");
@@ -163,7 +167,9 @@ export function useStudyGuidesController({
       );
       deleteOperations.current.delete(target.guideId);
       setSelected((current) =>
-        current?.documentId === target.documentId ? null : current,
+        current?.targetKind === "document" && current.targetId === target.documentId
+          ? null
+          : current,
       );
       showToast(
         "success",
@@ -214,10 +220,11 @@ export function useStudyGuidesController({
 
 export function deleteTargetFromItem(
   item: StudyGuidePageItem,
-): StudyGuideDeleteTarget {
+): StudyGuideDeleteTarget | null {
+  if (item.targetKind !== "document") return null;
   return {
-    documentId: item.documentId,
-    documentTitle: item.documentTitle,
+    documentId: item.targetId,
+    documentTitle: item.title,
     guideId: item.guideId,
     guideRevision: item.guideRevision,
   };

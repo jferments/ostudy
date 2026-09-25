@@ -127,7 +127,7 @@ pnpm android:test
 
 This is the authoritative Android compile/package gate. It runs the shared prerequisites required by Android, builds through the Tauri-owned Android path, resolves and verifies the Kotlin/coroutines/ZXing/Tesseract dependency graph, compiles the private Kotlin plugin and instrumentation package, and verifies the debug APK. Package verification requires camera permission for the local scanner, rejects broad storage/install permissions, requires the pinned Tesseract model in the APK, and retains 16 KiB native-library alignment checks.
 
-`OSTUDY_ANDROID_JOBS` may lower parallelism on a constrained machine. The canonical CI runner currently has 16 vCPUs and ample RAM.
+`OSTUDY_ANDROID_JOBS` may lower parallelism on a constrained machine. The canonical CI runner currently targets 32 vCPUs and ample RAM.
 
 ### Official emulator smoke
 

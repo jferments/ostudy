@@ -13,7 +13,7 @@ import type {
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { QuestionBody } from "./QuestionBody";
-import { emptyQuestionResponse } from "./questionPresentation";
+import { emptyQuestionResponse, responseReady } from "./questionPresentation";
 
 interface InteractiveQuestionActivityProps {
   sessionId: string;
@@ -138,11 +138,4 @@ export function InteractiveQuestionActivity({
 function initialResponse(attempt: QuestionAttemptView): QuestionResponse {
   if (attempt.progress.phase === "checked") return attempt.progress.firstAnswer.response;
   return attempt.progress.savedAnswer?.response ?? emptyQuestionResponse(attempt.question);
-}
-function responseReady(response: QuestionResponse): boolean {
-  if (response.kind === "single_choice") return response.selectedOptionId !== null;
-  if (response.kind === "true_false") return response.selected !== null;
-  if (response.kind === "matching" || response.kind === "grouping") return response.assignments.length > 0;
-  if (response.kind === "ordering") return response.orderedItemIds.length > 0;
-  return true;
 }

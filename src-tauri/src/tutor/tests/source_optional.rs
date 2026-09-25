@@ -29,6 +29,7 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
             focus: &focus,
             quiz: None,
             history: history::HistorySnapshot::default(),
+            project_instructions: None,
         },
         &signal,
     )
@@ -84,6 +85,7 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
             focus: &focus,
             quiz: Some(&fixed),
             history: history::HistorySnapshot::default(),
+            project_instructions: None,
         },
         &signal,
     )

@@ -4,8 +4,8 @@ import { TutorWorkspace } from "./TutorWorkspace";
 
 const state = vi.hoisted(() => ({ send: vi.fn(), draft: "Test my knowledge", target: null as unknown, detail: null as unknown }));
 vi.mock("./TutorContext", () => ({ useTutor: () => ({
-  ...state, loading: false, busy: false, pending: null, preparation: { locked: false },
-  scope: { kind: "general", id: null }, choices: [], profiles: [{}], conversations: [],
+  ...state, loading: false, busy: false, organizing: false, pending: null, preparation: { locked: false },
+  scope: { kind: "general", id: null }, choices: [], profiles: [{}], conversations: [], projects: [],
   needsRefresh: false, error: null, initialize: vi.fn(), setDraft: vi.fn(),
 }) }));
 vi.mock("../../platform/externalLinks", () => ({ openExternalUrl: vi.fn() }));

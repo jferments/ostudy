@@ -80,6 +80,10 @@ pub(crate) struct DocumentTaskProgress {
     pub reasoning_effort: String,
     pub provider_request_count: u64,
     pub retry_count: u64,
+    pub transient_retry_count: u64,
+    pub compatibility_retry_count: u64,
+    pub contract_repair_retry_count: u64,
+    pub output_compaction_retry_count: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub reasoning_tokens: u64,
@@ -108,6 +112,10 @@ impl DocumentTaskProgress {
             reasoning_effort: "low".to_string(),
             provider_request_count: 0,
             retry_count: 0,
+            transient_retry_count: 0,
+            compatibility_retry_count: 0,
+            contract_repair_retry_count: 0,
+            output_compaction_retry_count: 0,
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
@@ -135,13 +143,17 @@ pub(crate) struct DocumentTaskUsageDelta {
 
 #[derive(Clone, Debug)]
 struct ActiveDocumentTask {
+    document_id: String,
+    diagnostics: Arc<Mutex<Option<crate::ai::generation::Operation>>>,
     signal: CancellationSignal,
     progress: Arc<Mutex<DocumentTaskProgress>>,
 }
 
 impl ActiveDocumentTask {
-    fn new(started_at: i64) -> Self {
+    fn new(document_id: &str, started_at: i64) -> Self {
         Self {
+            document_id: document_id.to_string(),
+            diagnostics: Arc::new(Mutex::new(None)),
             signal: CancellationSignal::new(),
             progress: Arc::new(Mutex::new(DocumentTaskProgress::new(started_at))),
         }
@@ -162,7 +174,7 @@ impl ActiveDocumentTasks {
                 "Flashcard generation is already running for this PDF.",
             ));
         }
-        let task = ActiveDocumentTask::new(unix_time_millis()?);
+        let task = ActiveDocumentTask::new(document_id, unix_time_millis()?);
         tasks.insert(document_id.to_string(), task.clone());
         Ok(task)
     }
@@ -199,6 +211,10 @@ impl ActiveDocumentTasks {
             .unwrap_or(false)
     }
 
+    fn count(&self) -> usize {
+        self.tasks.lock().map(|tasks| tasks.len()).unwrap_or(1)
+    }
+
     fn is_canceled(&self, document_id: &str) -> bool {
         self.tasks
             .lock()
@@ -227,32 +243,133 @@ tokio::task_local! {
 /// A registered document is retired on success, failure, early foreground-service
 /// rejection, or future cancellation. Progress state must not remain stuck in
 /// the process registry until an application restart.
-struct DocumentRegistration<'a> {
-    registry: &'a ActiveDocumentTasks,
-    document_id: &'a str,
+struct DocumentRegistration {
+    document_id: String,
     signal: CancellationSignal,
 }
 
-impl Drop for DocumentRegistration<'_> {
+impl Drop for DocumentRegistration {
     fn drop(&mut self) {
         self.signal.cancel();
-        self.registry.finish(self.document_id);
+        ACTIVE_DOCUMENT_TASKS.finish(&self.document_id);
     }
 }
 
-pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
-where
-    F: Future<Output = Result<T, CommandError>>,
-{
-    let _activity = crate::task_activity::ActivityGuard::begin()?;
+/// A task reservation is created synchronously before a background command
+/// acknowledges Start. Stop and duplicate-start therefore see the exact native
+/// task identity even when the executor has not polled its future yet.
+pub(crate) struct ReservedDocumentTask {
+    task: ActiveDocumentTask,
+    _registration: DocumentRegistration,
+    _activity: crate::task_activity::ActivityGuard,
+    _foreground_execution: MobileForegroundExecution,
+}
+
+pub(crate) fn reserve_document_task(
+    document_id: &str,
+) -> Result<ReservedDocumentTask, CommandError> {
+    let activity = crate::task_activity::ActivityGuard::begin()?;
     let task = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let _registration = DocumentRegistration {
-        registry: &ACTIVE_DOCUMENT_TASKS,
-        document_id,
+    let registration = DocumentRegistration {
+        document_id: document_id.to_string(),
         signal: task.signal.clone(),
     };
-    let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
-    CURRENT_DOCUMENT_TASK.scope(task, future).await
+    let foreground_execution = MobileForegroundExecution::begin(document_id)?;
+    Ok(ReservedDocumentTask {
+        task,
+        _registration: registration,
+        _activity: activity,
+        _foreground_execution: foreground_execution,
+    })
+}
+
+type BoxedDocumentFuture<'a, T> =
+    std::pin::Pin<Box<dyn Future<Output = Result<T, CommandError>> + Send + 'a>>;
+
+fn run_reserved_document_task_boxed<'a, T>(
+    reservation: ReservedDocumentTask,
+    future: BoxedDocumentFuture<'a, T>,
+) -> BoxedDocumentFuture<'a, T>
+where
+    T: Send + 'a,
+{
+    Box::pin(async move {
+        let task = reservation.task.clone();
+        let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
+        if let Ok(mut diagnostic) = task.diagnostics.lock() {
+            if let Some(operation) = diagnostic.as_mut() {
+                operation.finish_result(&result);
+            }
+        }
+        drop(reservation);
+        result
+    })
+}
+
+/// Heap-box the caller's document future before it enters the task-local wrapper.
+///
+/// Document generation composes several large async state machines. Keeping those
+/// state machines inline through the cancellation/Tauri wrapper chain can make
+/// debug poll frames consume most of Tokio's worker-thread stack before the
+/// document pipeline itself is polled. This boundary keeps the child state on
+/// the heap while preserving the same cancellation identity and lifetime.
+pub(crate) fn run_reserved_document_task<'a, T, F>(
+    reservation: ReservedDocumentTask,
+    future: F,
+) -> BoxedDocumentFuture<'a, T>
+where
+    T: Send + 'a,
+    F: Future<Output = Result<T, CommandError>> + Send + 'a,
+{
+    run_reserved_document_task_boxed(reservation, Box::pin(future))
+}
+
+pub(crate) fn run_document_task<'a, T, F>(
+    document_id: &str,
+    future: F,
+) -> BoxedDocumentFuture<'a, T>
+where
+    T: Send + 'a,
+    F: Future<Output = Result<T, CommandError>> + Send + 'a,
+{
+    let document_id = document_id.to_string();
+    let future: BoxedDocumentFuture<'a, T> = Box::pin(future);
+    Box::pin(async move {
+        let reservation = reserve_document_task(&document_id)?;
+        run_reserved_document_task_boxed(reservation, future).await
+    })
+}
+
+/// Bind once to the real document task so all phases and cloned model contexts
+/// share one durable operation, including failures and cancellation.
+pub(crate) fn generation_context(
+    database: &crate::database::Database,
+) -> Result<Option<crate::ai::generation::Context>, CommandError> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            let mut diagnostic = task.diagnostics.lock().map_err(|_| registry_error())?;
+            if diagnostic.is_none() {
+                *diagnostic = Some(crate::ai::generation::Operation::begin(
+                    database,
+                    None,
+                    Some(&task.document_id),
+                    None,
+                    "document_generation",
+                )?);
+            }
+            Ok(diagnostic.as_ref().map(|operation| operation.context()))
+        })
+        .unwrap_or(Ok(None))
+}
+
+pub(crate) fn record_current_generation_reuse(
+    database: &crate::database::Database,
+    stage: &str,
+    cache_key: &str,
+) {
+    if let Ok(Some(context)) = generation_context(database) {
+        context.reused(stage, cache_key);
+    }
 }
 
 pub(crate) fn current_signal() -> Option<CancellationSignal> {
@@ -357,10 +474,29 @@ pub(crate) fn record_current_provider_request() {
     });
 }
 
-pub(crate) fn record_current_provider_retry() {
+pub(crate) fn record_current_provider_retry(reason: &str) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.retry_count = progress.retry_count.saturating_add(1);
+            match reason {
+                "transient_transport" => {
+                    progress.transient_retry_count =
+                        progress.transient_retry_count.saturating_add(1);
+                }
+                "provider_compatibility" => {
+                    progress.compatibility_retry_count =
+                        progress.compatibility_retry_count.saturating_add(1);
+                }
+                "contract_repair" => {
+                    progress.contract_repair_retry_count =
+                        progress.contract_repair_retry_count.saturating_add(1);
+                }
+                "output_compaction" => {
+                    progress.output_compaction_retry_count =
+                        progress.output_compaction_retry_count.saturating_add(1);
+                }
+                _ => {}
+            }
         }
     });
 }
@@ -435,6 +571,10 @@ pub(crate) fn has_active_document_tasks() -> bool {
     ACTIVE_DOCUMENT_TASKS.has_any()
 }
 
+pub(crate) fn active_document_task_count() -> usize {
+    ACTIVE_DOCUMENT_TASKS.count()
+}
+
 pub(crate) fn is_document_task_canceled(document_id: &str) -> bool {
     ACTIVE_DOCUMENT_TASKS.is_canceled(document_id)
 }
@@ -506,6 +646,97 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn document_generation_local_reuse_receipt_completes_without_provider_requests() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let document_id = "a".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                             id,title,original_filename,mime_type,byte_size,sha256,
+                             source_relative_path,lifecycle_state,created_at,updated_at
+                         ) VALUES (?1,'Fixture','fixture.pdf','application/pdf',1,?2,
+                                   'documents/fixture/fixture.pdf','ready',1,1)",
+                        rusqlite::params![document_id, "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        let cache_key = crate::ai::generation::hash(b"published artifact receipt");
+        let scoped = database.clone();
+        run_document_task(&document_id, async move {
+            record_current_generation_reuse(&scoped, "guide_publication", &cache_key);
+            Ok::<(), CommandError>(())
+        })
+        .await
+        .unwrap();
+
+        database
+            .with_connection(|connection| {
+                let operation: (String, i64) = connection
+                    .query_row(
+                        "SELECT state,
+                                (SELECT COUNT(*) FROM generation_requests
+                                 WHERE operation_id = generation_operations.id)
+                         FROM generation_operations",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(operation, ("complete".to_string(), 0));
+                let reuse: (String, String, i64) = connection
+                    .query_row(
+                        "SELECT stage,cache_key,COUNT(*) FROM generation_reuse_events
+                         GROUP BY stage,cache_key",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(reuse.0, "guide_publication");
+                assert_eq!(reuse.1.len(), 64);
+                assert_eq!(reuse.2, 1);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn document_task_wrapper_boxes_large_child_future_before_polling() {
+        const LARGE_CHILD_BYTES: usize = 256 * 1024;
+        let payload = [0x5a_u8; LARGE_CHILD_BYTES];
+        let child = async move {
+            std::hint::black_box(payload);
+            Ok::<(), CommandError>(())
+        };
+        assert!(
+            std::mem::size_of_val(&child) >= LARGE_CHILD_BYTES,
+            "fixture must remain a genuinely large inline async state"
+        );
+
+        let wrapped = run_document_task("boxed-large-child", child);
+        assert!(
+            std::mem::size_of_val(&wrapped) <= 2 * std::mem::size_of::<usize>(),
+            "document task boundary must retain only the boxed-future pointer"
+        );
+        drop(wrapped);
+        assert!(!is_document_task_active("boxed-large-child"));
+    }
+
+    #[test]
+    fn reservation_is_visible_to_stop_and_duplicate_start_before_polling() {
+        let document_id = "reserved-before-poll";
+        let reservation = reserve_document_task(document_id).unwrap();
+        assert!(is_document_task_active(document_id));
+        assert!(reserve_document_task(document_id).is_err());
+        cancel_document_task(document_id).unwrap();
+        assert!(is_document_task_canceled(document_id));
+        drop(reservation);
+        assert!(!is_document_task_active(document_id));
+    }
+
+    #[tokio::test]
     async fn cancellation_is_scoped_to_one_document_task() {
         let first_id = "task-cancel-a";
         let second_id = "task-cancel-b";
@@ -551,7 +782,7 @@ mod tests {
                 set_current_reasoning_effort("minimal");
                 set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
-                record_current_provider_retry();
+                record_current_provider_retry("contract_repair");
                 record_current_usage(DocumentTaskUsageDelta {
                     prompt_tokens: Some(1_000),
                     completion_tokens: Some(200),
@@ -570,6 +801,8 @@ mod tests {
         assert_eq!(progress.reasoning_effort, "minimal");
         assert_eq!(progress.provider_request_count, 1);
         assert_eq!(progress.retry_count, 1);
+        assert_eq!(progress.contract_repair_retry_count, 1);
+        assert_eq!(progress.transient_retry_count, 0);
         assert_eq!(progress.total_tokens, 1_200);
         assert_eq!(progress.reasoning_tokens, 80);
         assert_eq!(progress.cached_prompt_tokens, 600);
@@ -577,20 +810,22 @@ mod tests {
     }
     #[test]
     fn registration_is_released_after_an_early_error_or_abandoned_future() {
-        let registry = ActiveDocumentTasks::default();
+        let document_id = "interrupted-document-registration";
         let signal;
         {
-            let task = registry.begin("interrupted-document").unwrap();
+            let task = ACTIVE_DOCUMENT_TASKS.begin(document_id).unwrap();
             signal = task.signal.clone();
             let _registration = DocumentRegistration {
-                registry: &registry,
-                document_id: "interrupted-document",
+                document_id: document_id.to_string(),
                 signal: task.signal,
             };
-            assert!(registry.has_any());
+            assert!(is_document_task_active(document_id));
         }
-        assert!(!registry.has_any());
+        assert!(!is_document_task_active(document_id));
         assert!(signal.is_canceled());
-        assert!(registry.begin("interrupted-document").is_ok());
+        ACTIVE_DOCUMENT_TASKS
+            .begin(document_id)
+            .expect("released document should register again");
+        ACTIVE_DOCUMENT_TASKS.finish(document_id);
     }
 }

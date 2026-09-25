@@ -21,9 +21,9 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
-pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 1;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 4;
-pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 1;
+pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 6;
+pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 3;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
 const MAX_OVERVIEW_CHARS: usize = 200_000;
@@ -34,6 +34,7 @@ const MAX_ITEM_CHARS: usize = 20_000;
 const MAX_TERM_CHARS: usize = 1_000;
 const MAX_RICH_DOC_BYTES: usize = 2 * 1024 * 1024;
 const MAX_OVERLAY_TEXT_CHARS: usize = 500_000;
+const MAX_DISPLAY_TITLE_CHARS: usize = 120;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -45,7 +46,7 @@ pub(crate) struct StudyGuideOverview {
     pub key_concepts: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StudyGuideSectionContent {
     pub overview: String,
@@ -61,6 +62,14 @@ pub(crate) struct StudyGuideSectionContent {
     pub comparisons: Vec<StudyGuideComparison>,
     #[serde(default)]
     pub common_misconceptions: Vec<String>,
+    #[serde(default)]
+    pub callouts: Vec<StudyGuideCallout>,
+    #[serde(default)]
+    pub tables: Vec<StudyGuideTable>,
+    #[serde(default)]
+    pub worked_examples: Vec<StudyGuideWorkedExample>,
+    #[serde(default)]
+    pub retrieval_checks: Vec<StudyGuideRetrievalCheck>,
     #[serde(default)]
     pub visual_explanations: Vec<StudyGuideVisualExplanation>,
 }
@@ -85,6 +94,51 @@ pub(crate) struct StudyGuideComparison {
     pub subject_a: String,
     pub subject_b: String,
     pub relationship: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum StudyGuideCalloutKind {
+    KeyIdea,
+    Warning,
+    Tip,
+    Note,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideCallout {
+    pub kind: StudyGuideCalloutKind,
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideTable {
+    pub title: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    #[serde(default)]
+    pub caption: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideWorkedExample {
+    pub title: String,
+    pub prompt: String,
+    pub steps: Vec<String>,
+    pub answer: String,
+    #[serde(default)]
+    pub takeaway: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideRetrievalCheck {
+    pub prompt: String,
+    pub answer: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -268,12 +322,13 @@ pub(crate) fn publish_document_study_guide(
             "The selected learning plan does not belong to this document.",
         ));
     }
-    let normalized_overview = normalize_overview(overview);
+    let mut normalized_overview = normalize_overview(overview);
     let knowledge_by_topic = section_drafts
         .iter()
         .map(|draft| (draft.topic_id.clone(), draft.knowledge_support.clone()))
         .collect::<HashMap<_, _>>();
     let sections = normalize_complete_sections(&plan, section_drafts)?;
+    normalized_overview.summary = guide_display_summary(&normalized_overview.summary, &sections);
     let overview_json = serialize_json(&normalized_overview)?;
     let overview_text = overview_plain_text(&normalized_overview);
     let now = unix_time_millis()?;
@@ -410,14 +465,28 @@ pub(crate) fn publish_document_study_guide(
                 .map_err(CommandError::database)?;
         }
 
+        // A published guide is independently available, but it cannot settle a
+        // sibling flashcard operation. That owner still needs `processing` for
+        // its guarded card commit and the frontend's terminal observation.
         let document_changed = transaction
             .execute(
                 "UPDATE documents
-                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'ready' ELSE 'archived' END,
-                     safe_error_code = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_code END,
-                     safe_error_message = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_message END,
+                 SET lifecycle_state = CASE
+                         WHEN lifecycle_state = 'processing' THEN lifecycle_state
+                         WHEN archived_at IS NULL THEN 'ready'
+                         ELSE 'archived'
+                     END,
+                     safe_error_code = CASE
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing' THEN ''
+                         ELSE safe_error_code
+                     END,
+                     safe_error_message = CASE
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing' THEN ''
+                         ELSE safe_error_message
+                     END,
                      completed_at = CASE
-                         WHEN archived_at IS NULL THEN COALESCE(completed_at, ?1)
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing'
+                             THEN COALESCE(completed_at, ?1)
                          ELSE completed_at
                      END,
                      updated_at = ?1, revision = revision + 1
@@ -552,7 +621,7 @@ pub(crate) fn load_document_study_guide(
                     topic_id,
                     parent_topic_id: topic.parent_topic_id.clone(),
                     sort_index: to_usize(sort_index)?,
-                    title: topic.title.clone(),
+                    title: guide_display_title(&topic.title),
                     topic_summary: topic.summary.clone(),
                     content: deserialize_json(&content_json)?,
                     content_text,
@@ -564,6 +633,8 @@ pub(crate) fn load_document_study_guide(
         Ok(sections)
     })?;
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
+    let mut overview: StudyGuideOverview = deserialize_json(&header.7)?;
+    overview.summary = guide_display_summary(&overview.summary, &sections);
 
     Ok(DocumentStudyGuide {
         id: guide_id.to_string(),
@@ -574,7 +645,7 @@ pub(crate) fn load_document_study_guide(
         schema_version: header.4,
         prompt_version: header.5,
         assembly_version: header.6,
-        overview: deserialize_json(&header.7)?,
+        overview,
         overview_text: header.8,
         sections,
         overlays,
@@ -978,6 +1049,69 @@ fn normalize_section_content(
             MAX_SECTION_ITEMS,
             MAX_ITEM_CHARS,
         ),
+        callouts: content
+            .callouts
+            .into_iter()
+            .take(16)
+            .map(|value| StudyGuideCallout {
+                kind: value.kind,
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                body: normalize_text(&value.body, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| !value.title.is_empty() && !value.body.is_empty())
+            .collect(),
+        tables: content
+            .tables
+            .into_iter()
+            .take(8)
+            .map(|value| StudyGuideTable {
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                columns: normalize_table_cells(value.columns, 8, MAX_TERM_CHARS),
+                rows: value
+                    .rows
+                    .into_iter()
+                    .take(32)
+                    .map(|row| normalize_table_cells(row, 8, MAX_ITEM_CHARS))
+                    .collect(),
+                caption: normalize_text(&value.caption, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| {
+                value.columns.len() >= 2
+                    && value.columns.iter().all(|cell| !cell.is_empty())
+                    && !value.rows.is_empty()
+                    && value.rows.iter().all(|row| {
+                        row.len() == value.columns.len() && row.iter().all(|cell| !cell.is_empty())
+                    })
+            })
+            .collect(),
+        worked_examples: content
+            .worked_examples
+            .into_iter()
+            .take(8)
+            .map(|value| StudyGuideWorkedExample {
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                prompt: normalize_text(&value.prompt, MAX_ITEM_CHARS, ""),
+                steps: normalize_items(value.steps, 16, MAX_ITEM_CHARS),
+                answer: normalize_text(&value.answer, MAX_ITEM_CHARS, ""),
+                takeaway: normalize_text(&value.takeaway, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| {
+                !value.title.is_empty()
+                    && !value.prompt.is_empty()
+                    && !value.steps.is_empty()
+                    && !value.answer.is_empty()
+            })
+            .collect(),
+        retrieval_checks: content
+            .retrieval_checks
+            .into_iter()
+            .take(16)
+            .map(|value| StudyGuideRetrievalCheck {
+                prompt: normalize_text(&value.prompt, MAX_ITEM_CHARS, ""),
+                answer: normalize_text(&value.answer, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| !value.prompt.is_empty() && !value.answer.is_empty())
+            .collect(),
         visual_explanations: content
             .visual_explanations
             .into_iter()
@@ -1136,6 +1270,125 @@ fn validate_overlay_scope(
     Ok(())
 }
 
+fn guide_display_title(value: &str) -> String {
+    let clean = collapse_display_whitespace(value);
+    let mut segments = Vec::new();
+    let mut seen = HashSet::new();
+    for segment in clean
+        .split(" / ")
+        .flat_map(|part| part.split("; "))
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+    {
+        let identity = segment.to_ascii_lowercase();
+        if seen.insert(identity) {
+            segments.push(segment.to_string());
+        }
+    }
+    if segments.len() <= 1 {
+        return compact_display_label(&clean, MAX_DISPLAY_TITLE_CHARS);
+    }
+    let mut candidate = if segments.len() == 2 {
+        format!("{} and {}", segments[0], segments[1])
+    } else {
+        format!("{}, {}, and related topics", segments[0], segments[1])
+    };
+    if candidate.chars().count() > MAX_DISPLAY_TITLE_CHARS && segments.len() > 2 {
+        candidate = format!("{} and related topics", segments[0]);
+    }
+    compact_display_label(&candidate, MAX_DISPLAY_TITLE_CHARS)
+}
+
+fn guide_display_summary(summary: &str, sections: &[DocumentStudyGuideSection]) -> String {
+    let clean = collapse_display_whitespace(summary);
+    if !overview_looks_like_inventory(&clean)
+        && clean.split_whitespace().count() >= 5
+        && clean.chars().count() <= 520
+    {
+        return ensure_sentence_ending(clean);
+    }
+
+    let narrative = sections
+        .iter()
+        .map(|section| collapse_display_whitespace(&section.topic_summary))
+        .filter(|value| {
+            value.split_whitespace().count() >= 5
+                && !overview_looks_like_inventory(value)
+                && value.chars().count() <= 300
+        })
+        .take(2)
+        .map(ensure_sentence_ending)
+        .collect::<Vec<_>>();
+    if !narrative.is_empty() {
+        return narrative.join(" ");
+    }
+
+    match sections {
+        [] => "This guide provides a source-grounded introduction to the selected material."
+            .to_string(),
+        [section] => format!(
+            "This guide explains {}.",
+            guide_display_title(&section.title)
+        ),
+        [first, second, ..] => format!(
+            "This guide explains {} and connects it with {} across the source material.",
+            guide_display_title(&first.title),
+            guide_display_title(&second.title),
+        ),
+    }
+}
+
+fn overview_looks_like_inventory(value: &str) -> bool {
+    value.contains(" / ")
+        || value.contains(" | ")
+        || value.matches("; ").count() >= 2
+        || value.lines().count() > 2
+        || (value.matches(',').count() >= 4
+            && !value.contains('.')
+            && !value.contains('!')
+            && !value.contains('?'))
+}
+
+fn ensure_sentence_ending(mut value: String) -> String {
+    if !value.ends_with(['.', '!', '?']) {
+        value.push('.');
+    }
+    value
+}
+
+fn collapse_display_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn compact_display_label(value: &str, maximum: usize) -> String {
+    if value.chars().count() <= maximum {
+        return value.to_string();
+    }
+    let mut result = String::new();
+    for word in value.split_whitespace() {
+        let extra = word.chars().count() + usize::from(!result.is_empty());
+        if result
+            .chars()
+            .count()
+            .saturating_add(extra)
+            .saturating_add(3)
+            > maximum
+        {
+            break;
+        }
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(word);
+    }
+    if result.is_empty() {
+        value.chars().take(maximum).collect()
+    } else {
+        result.push_str("...");
+        result
+    }
+}
+
 fn overview_plain_text(overview: &StudyGuideOverview) -> String {
     let mut lines = vec![overview.summary.clone()];
     lines.extend(overview.learning_objectives.iter().cloned());
@@ -1161,11 +1414,44 @@ fn section_plain_text(content: &StudyGuideSectionContent) -> String {
         ));
     }
     lines.extend(content.common_misconceptions.iter().cloned());
+    for callout in &content.callouts {
+        lines.push(callout.title.clone());
+        lines.push(callout.body.clone());
+    }
+    for table in &content.tables {
+        lines.push(table.title.clone());
+        lines.push(table.columns.join(" | "));
+        lines.extend(table.rows.iter().map(|row| row.join(" | ")));
+        if !table.caption.is_empty() {
+            lines.push(table.caption.clone());
+        }
+    }
+    for example in &content.worked_examples {
+        lines.push(example.title.clone());
+        lines.push(example.prompt.clone());
+        lines.extend(example.steps.iter().cloned());
+        lines.push(example.answer.clone());
+        if !example.takeaway.is_empty() {
+            lines.push(example.takeaway.clone());
+        }
+    }
+    for check in &content.retrieval_checks {
+        lines.push(check.prompt.clone());
+        lines.push(check.answer.clone());
+    }
     for visual in &content.visual_explanations {
         lines.push(visual.title.clone());
         lines.push(visual.explanation.clone());
     }
     normalize_text(&lines.join("\n"), MAX_SECTION_TEXT_CHARS, "")
+}
+
+fn normalize_table_cells(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
+    values
+        .into_iter()
+        .take(maximum)
+        .map(|value| normalize_text(&value, maximum_chars, ""))
+        .collect()
 }
 
 fn normalize_items(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
@@ -1244,10 +1530,7 @@ mod tests {
                 term: "Preload".to_string(),
                 explanation: "Ventricular filling/stretch before systole.".to_string(),
             }],
-            process_steps: Vec::new(),
-            comparisons: Vec::new(),
-            common_misconceptions: Vec::new(),
-            visual_explanations: Vec::new(),
+            ..StudyGuideSectionContent::default()
         }
     }
 
@@ -1270,6 +1553,98 @@ mod tests {
         assert_eq!(first_json, second_json);
         assert_eq!(hash_text(&first_json), hash_text(&second_json));
         assert!(section_plain_text(&first).contains("Sarcomere stretch"));
+    }
+
+    #[test]
+    fn display_titles_compact_topic_inventories_without_mutating_learning_topics() {
+        let source =
+            "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol";
+        assert_eq!(
+            guide_display_title(source),
+            "ASCVD risk reduction, Angina pectoris treatment, and related topics"
+        );
+        assert_eq!(
+            source,
+            "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol"
+        );
+    }
+
+    #[test]
+    fn display_overview_uses_topic_narrative_before_generic_fallback() {
+        let section = DocumentStudyGuideSection {
+            topic_id: "a".repeat(32),
+            parent_topic_id: None,
+            sort_index: 0,
+            title: "GI hormones / neural control".to_string(),
+            topic_summary: "Gastrointestinal function is coordinated by endocrine signals and enteric neural circuits".to_string(),
+            content: content(),
+            content_text: String::new(),
+            content_hash: "b".repeat(64),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
+        };
+        assert_eq!(
+            guide_display_summary("A / B / C / D", &[section]),
+            "Gastrointestinal function is coordinated by endocrine signals and enteric neural circuits."
+        );
+    }
+
+    #[test]
+    fn display_overview_replaces_inventory_wall_with_reader_prose() {
+        let mut section = DocumentStudyGuideSection {
+            topic_id: "a".repeat(32),
+            parent_topic_id: None,
+            sort_index: 0,
+            title: "ASCVD risk reduction and related topics".to_string(),
+            topic_summary: String::new(),
+            content: content(),
+            content_text: String::new(),
+            content_hash: "b".repeat(64),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
+        };
+        section.title = guide_display_title(&section.title);
+        let summary = "A / B / C / D / E / F / G";
+        assert_eq!(
+            guide_display_summary(summary, &[section]),
+            "This guide explains ASCVD risk reduction and related topics."
+        );
+    }
+
+    #[test]
+    fn rich_semantic_blocks_normalize_without_losing_table_shape() {
+        let mut value = content();
+        value.callouts.push(StudyGuideCallout {
+            kind: StudyGuideCalloutKind::KeyIdea,
+            title: "Remember".to_string(),
+            body: "Preload describes filling before systole.".to_string(),
+        });
+        value.tables.push(StudyGuideTable {
+            title: "Comparison".to_string(),
+            columns: vec!["Concept".to_string(), "Meaning".to_string()],
+            rows: vec![vec!["Preload".to_string(), "Filling".to_string()]],
+            caption: "High-yield comparison.".to_string(),
+        });
+        value.worked_examples.push(StudyGuideWorkedExample {
+            title: "Reason through filling".to_string(),
+            prompt: "Venous return rises.".to_string(),
+            steps: vec!["More blood reaches the ventricle.".to_string()],
+            answer: "Preload rises.".to_string(),
+            takeaway: "Track cause before effect.".to_string(),
+        });
+        value.retrieval_checks.push(StudyGuideRetrievalCheck {
+            prompt: "What happens to preload?".to_string(),
+            answer: "It rises.".to_string(),
+        });
+        let normalized = normalize_section_content(value).unwrap();
+        assert_eq!(normalized.tables[0].rows[0].len(), 2);
+        let text = section_plain_text(&normalized);
+        for expected in [
+            "Remember",
+            "Comparison",
+            "Venous return rises.",
+            "What happens to preload?",
+        ] {
+            assert!(text.contains(expected));
+        }
     }
 
     #[test]
@@ -1406,3 +1781,7 @@ mod tests {
 #[cfg(test)]
 #[path = "document_study_guides/overlay_regression_tests.rs"]
 mod overlay_regression_tests;
+
+#[cfg(test)]
+#[path = "document_study_guides/parallel_publication_tests.rs"]
+mod parallel_publication_tests;
