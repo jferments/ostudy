@@ -49,7 +49,9 @@ impl SecureSecretStore for KeyringSecretStore {
     }
 
     fn write(&self, locator: &SecretLocator, value: &[u8]) -> Result<(), SecretStoreError> {
-        self.entry(locator)?.set_secret(value).map_err(classify_error)
+        self.entry(locator)?
+            .set_secret(value)
+            .map_err(classify_error)
     }
 
     fn delete(&self, locator: &SecretLocator) -> Result<(), SecretStoreError> {
@@ -62,11 +64,8 @@ impl SecureSecretStore for KeyringSecretStore {
 
 impl KeyringSecretStore {
     fn entry(&self, locator: &SecretLocator) -> Result<Entry, SecretStoreError> {
-        Entry::new(
-            &self.service_for_namespace(locator.namespace),
-            &locator.key,
-        )
-        .map_err(classify_error)
+        Entry::new(&self.service_for_namespace(locator.namespace), &locator.key)
+            .map_err(classify_error)
     }
 }
 
