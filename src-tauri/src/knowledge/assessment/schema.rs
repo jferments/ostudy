@@ -182,8 +182,10 @@ mod tests {
     fn document_generation_policy_capability_is_decided_before_provider_dispatch() {
         let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
 
-        let mut interactive_only = GenerationPolicy::default();
-        interactive_only.allowed_types = vec![QuestionFamily::SingleChoice];
+        let interactive_only = GenerationPolicy {
+            allowed_types: vec![QuestionFamily::SingleChoice],
+            ..GenerationPolicy::default()
+        };
         interactive_only.validate().unwrap();
         assert!(has_supported_generation_family(&interactive_only, &catalog));
 
@@ -199,8 +201,10 @@ mod tests {
             &catalog
         ));
 
-        let mut recall_only = GenerationPolicy::default();
-        recall_only.allowed_types = vec![QuestionFamily::Recall];
+        let recall_only = GenerationPolicy {
+            allowed_types: vec![QuestionFamily::Recall],
+            ..GenerationPolicy::default()
+        };
         recall_only.validate().unwrap();
         assert!(has_supported_generation_family(&recall_only, &catalog));
     }
