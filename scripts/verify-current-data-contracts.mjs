@@ -82,7 +82,7 @@ for (const needle of [
   "repair versions **1–3**",
   "schema **10–30**",
   "writer v3",
-  "v26 recovery path",
+  "explicit source-checkout recovery",
 ]) requireText("audit document", audit, needle);
 
 if (failures.length > 0) {
