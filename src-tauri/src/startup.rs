@@ -73,6 +73,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     #[cfg(desktop)]
     apply_main_window_profile(app, desktop_profile);
 
+    crate::library_lock::acquire_for_process(&app_data_directory).map_err(io::Error::other)?;
     let resource_directory = app.path().resource_dir().ok();
     let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
     logging::initialize(paths.app_data_dir());
@@ -277,6 +278,15 @@ fn startup_failure_presentation(
     error: &str,
     app_data_directory: Option<&Path>,
 ) -> StartupFailurePresentation {
+    if error.starts_with(crate::library_lock::IN_USE) {
+        return StartupFailurePresentation {
+            kind: StartupFailureKind::Internal,
+            event: "application_startup_blocked",
+            reason_code: "library_already_open",
+            title: "This library is already open",
+            message: "Another oStudy process owns this library. Close that instance before reopening it. The library and any pending restore were left unchanged. Do not delete the ownership lock file.".to_string(),
+        };
+    }
     if error.starts_with(database::PRE_PUBLIC_RESET_PREFIX) {
         let location = app_data_directory
             .map(|path| path.display().to_string())
@@ -332,6 +342,14 @@ mod tests {
         assert!(presentation
             .message
             .contains("/tmp/ostudy-public-baseline-test"));
+    }
+
+    #[test]
+    fn an_existing_library_owner_has_actionable_non_destructive_guidance() {
+        let presentation = startup_failure_presentation(crate::library_lock::IN_USE, None);
+        assert_eq!(presentation.reason_code, "library_already_open");
+        assert!(presentation.message.contains("Do not delete"));
+        assert!(!presentation.message.contains("reset-pre-public"));
     }
 
     #[test]

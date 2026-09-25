@@ -73,6 +73,7 @@ mod external_files;
 mod knowledge;
 mod library_backup;
 mod library_backup_commands;
+mod library_lock;
 mod logging;
 mod media;
 mod media_assets;
