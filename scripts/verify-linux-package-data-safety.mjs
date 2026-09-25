@@ -48,15 +48,18 @@ if (!Object.keys(linux.bundle?.linux?.deb?.files ?? {}).includes("/usr/lib/udev/
   fail("Debian package must retain the reviewed Android USB udev rule");
 }
 
-requireText("release production build", release, "pnpm tauri build --bundles deb,appimage");
+requireText("release production build", release, "pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,appimage");
 requireText("release actual Cargo bundle root", release, 'BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"');
-requireText("package check production build", packageCheck, "pnpm tauri build --bundles deb --ci -- --locked");
+requireText("package check production build", packageCheck, "pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb --ci -- --locked");
 requireText("package check actual Cargo bundle root", packageCheck, 'BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"');
 requireText("package check Debian inspection", packageCheck, '"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"');
 requireText("terminal workflow package step", workflow, "Qualify production Debian package");
 requireText("terminal workflow package command", workflow, "bash ./scripts/check-linux-package.sh");
 requireText("terminal workflow package evidence", workflow, 'linux-package=${LINUX_PACKAGE_STATUS:-skipped}');
 requireText("release Debian artifact inspection", release, '"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"');
+requireText("Debian verifier dependency check", await read("scripts/verify-deb-package.sh"), "libusb-1\\.0-0");
+requireText("Debian verifier udev extraction check", await read("scripts/verify-deb-package.sh"), "PACKAGED_UDEV=");
+requireText("Debian verifier PDFium extraction check", await read("scripts/verify-deb-package.sh"), "PACKAGED_PDFIUM=");
 if (release.includes("tauri.dev.conf.json")) fail("release path must not use the development Tauri overlay");
 if (packageCheck.includes("tauri.dev.conf.json")) fail("package qualification must not use the development Tauri overlay");
 for (const forbidden of ["XDG_DATA_HOME", ".local/share/io.github.jferments.ostudy", "rm -rf -- $HOME", "rm -rf $HOME"]) {

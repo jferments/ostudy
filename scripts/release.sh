@@ -35,7 +35,7 @@ pnpm install --frozen-lockfile
 "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 
 printf '\n==> Building Linux Debian and AppImage bundles\n'
-pnpm tauri build --bundles deb,appimage --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,appimage --ci -- --locked
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;

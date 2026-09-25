@@ -38,7 +38,7 @@ pnpm install --frozen-lockfile
 BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
 rm -rf -- "$BUNDLE_ROOT/deb"
 printf '\n==> Building production Debian package\n'
-pnpm tauri build --bundles deb --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb --ci -- --locked
 
 shopt -s nullglob
 DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
