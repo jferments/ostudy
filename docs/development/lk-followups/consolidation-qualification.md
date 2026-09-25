@@ -1,12 +1,12 @@
 # PR #106 roadmap — post-#104 stabilization, production baseline, release readiness, and tooling
 
-Status: planning-only successor to PR #104 until that PR is squash-merged. After #104 merges, this PR becomes the active stabilization/release-readiness tranche. PR #105 is explicitly deferred and is **not** an activation dependency.
+Status: **active implementation** on merged PR #104. PR #105 is explicitly deferred and is **not** an activation dependency.
 
 This roadmap owns the current post-#104 production-baseline and migration cleanup that was previously assigned to PR #105/LK-13, together with development/production data isolation, contributor tooling, bounded cleanup, packaging safety, and final qualification.
 
 It does **not** implement responsive lessons, TTS/narration, PowerPoint, STT, voice cloning, speech grading, or any other LK-10–LK-12 feature. Those remain preserved in deferred PR #105. Future #105 schema changes extend the production baseline established here through normal reviewed forward migrations.
 
-Activation rule: do not publish implementation against unmerged PR #104. Once #104 is squash-merged, retarget this PR to the then-current `main`, verify the exact #104 merge SHA and current schema/tooling state once, replace planning-only acceptance placeholders with an exact implementation checkpoint, and begin 106-A.
+Activated baseline: PR #104 squash-merged as `6529004ad4e31946df4116f7a0591d6c80d8e586` from accepted source head `bc1e1c2179b80f73496ddd41312fbc8fdc512896`. The merged public schema is version **30**. PR #106 integrates that exact `main` commit as ancestry and must preserve #104's native-owned study-material pipeline rather than reopening document/AI architecture.
 
 ## Product result
 
@@ -73,7 +73,7 @@ The full public installer/distribution work follows this PR and consumes the sta
 
 ## Acceptance boundaries
 
-### AC-14 — production baseline and migration/recovery contract
+### AC-01 — production baseline and migration/recovery contract
 
 The post-#104 schema and durable payload set has one documented current production baseline. Fresh current libraries and correctly migrated retained libraries are behaviorally equivalent at supported boundaries. Unknown/future/tampered/corrupt inputs fail closed.
 
@@ -87,7 +87,7 @@ Obsolete pre-release development migration/converter/read machinery may leave th
 
 Future released schema changes resume as immutable forward migrations from this baseline.
 
-### AC-15 — production/development/test isolation and safe uninstall
+### AC-02 — production/development/test isolation and safe uninstall
 
 Production, development, and automated-test profiles cannot resolve to the same ordinary storage or credential namespace.
 
@@ -95,7 +95,7 @@ Normal package removal deletes package-owned executable/integration files but pr
 
 Reinstalling the same/newer compatible production package reopens the retained production library. Development uninstall/build cleanup cannot delete production data.
 
-### AC-16 — contributor-local development and CI portability
+### AC-03 — contributor-local development and CI portability
 
 A contributor on a supported development system can obtain the required source toolchain, run environment diagnostics, build/run oStudy Dev, and execute maintained static/fast/full checks without recreating the repository owner's GitHub runner.
 
@@ -103,7 +103,7 @@ Private runner registration, Actions tokens, release signing material, runner-lo
 
 CI remains authoritative exact-SHA qualification, but calls repository-owned commands rather than depending on undocumented machine-only behavior.
 
-### AC-17 — release-readiness qualification and installed-copy acceptance
+### AC-04 — release-readiness qualification and installed-copy acceptance
 
 One frozen exact SHA passes the required repository/platform gates. A real production package installs beside the development checkout, and human acceptance verifies:
 
@@ -329,13 +329,9 @@ Do not use the only copy of valuable school data for destructive/uninstall/migra
 
 ## Human actions by stage
 
-### Before PR #104 merges
+### PR #104 merge handoff — completed
 
-No #106 implementation action is required. Finish #104 qualification/manual acceptance and squash-merge it. Do not merge or retarget #106 onto an unfinished predecessor.
-
-### Immediately after #104 merges
-
-The human only needs to report that #104 was merged (or otherwise make the merge observable through GitHub). The implementation agent will verify current `main`, retarget #106, reconcile exact owner paths/schema once, and begin 106-A.
+PR #104 is merged at `6529004ad4e31946df4116f7a0591d6c80d8e586`. PR #106 has reconstructed the exact merged boundary and begun 106-A. No further #104 action is required.
 
 ### Before personal-library adoption testing
 
