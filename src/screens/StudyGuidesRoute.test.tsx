@@ -12,7 +12,7 @@ vi.mock("../ipc/studyGuides", async () => {
   );
   return {
     ...actual,
-    listDocumentStudyGuidePage: vi.fn().mockResolvedValue({
+    listStudyGuidePage: vi.fn().mockResolvedValue({
       items: [],
       totalCount: 0,
       offset: 0,
@@ -38,7 +38,7 @@ describe("StudyGuidesRoute", () => {
 
     expect(await screen.findByRole("heading", { name: "Study Guides" })).toBeTruthy();
     expect(screen.getByRole("search")).toBeTruthy();
-    expect(studyGuides.listDocumentStudyGuidePage).toHaveBeenCalledWith({
+    expect(studyGuides.listStudyGuidePage).toHaveBeenCalledWith({
       query: "",
       sort: "recent",
       offset: 0,

@@ -21,11 +21,26 @@ export interface TutorTarget {
   mode: "explain" | "hint";
 }
 
+export interface TutorProject {
+  id: string;
+  title: string;
+  description: string;
+  instructions: string;
+  defaultScope: StudyScope;
+  revision: number;
+  archivedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
   scope: StudyScope;
+  projectId: string | null;
   revision: number;
+  organizationRevision: number;
+  archivedAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -74,6 +89,49 @@ export interface TutorTurnInput {
   questionId: string | null;
 }
 
+export async function listTutorProjects(): Promise<TutorProject[]> {
+  return invoke<TutorProject[]>("list_tutor_projects");
+}
+
+export async function createTutorProject(input: {
+  operationId: string;
+  title: string;
+  description: string;
+  instructions: string;
+  defaultScope: StudyScope;
+}): Promise<TutorProject> {
+  return invoke<TutorProject>("create_tutor_project", { input });
+}
+
+export async function updateTutorProject(input: {
+  operationId: string;
+  projectId: string;
+  expectedRevision: number;
+  title: string;
+  description: string;
+  instructions: string;
+  defaultScope: StudyScope;
+}): Promise<TutorProject> {
+  return invoke<TutorProject>("update_tutor_project", { input });
+}
+
+export async function setTutorProjectArchived(input: {
+  operationId: string;
+  projectId: string;
+  expectedRevision: number;
+  archived: boolean;
+}): Promise<TutorProject> {
+  return invoke<TutorProject>("set_tutor_project_archived", { input });
+}
+
+export async function deleteTutorProject(input: {
+  operationId: string;
+  projectId: string;
+  expectedRevision: number;
+}): Promise<void> {
+  return invoke<void>("delete_tutor_project", { input });
+}
+
 export async function listTutorConversations(): Promise<ConversationSummary[]> {
   return invoke<ConversationSummary[]>("list_tutor_conversations");
 }
@@ -86,6 +144,43 @@ export async function createTutorConversation(input: {
   return invoke<ConversationSummary>("create_tutor_conversation", { input });
 }
 
+export async function createTutorProjectConversation(input: {
+  operationId: string;
+  projectId: string;
+  title: string;
+  scope: StudyScope | null;
+}): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("create_tutor_project_conversation", { input });
+}
+
+export async function renameTutorConversation(input: {
+  operationId: string;
+  conversationId: string;
+  expectedOrganizationRevision: number;
+  title: string;
+}): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("rename_tutor_conversation", { input });
+}
+
+export async function moveTutorConversation(input: {
+  operationId: string;
+  conversationId: string;
+  expectedOrganizationRevision: number;
+  projectId: string | null;
+  applyProjectDefault: boolean;
+}): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("move_tutor_conversation", { input });
+}
+
+export async function setTutorConversationArchived(input: {
+  operationId: string;
+  conversationId: string;
+  expectedOrganizationRevision: number;
+  archived: boolean;
+}): Promise<ConversationSummary> {
+  return invoke<ConversationSummary>("set_tutor_conversation_archived", { input });
+}
+
 export async function getTutorConversation(input: {
   conversationId: string;
   beforeSequence: number | null;
@@ -94,8 +189,10 @@ export async function getTutorConversation(input: {
 }
 
 export async function deleteTutorConversation(input: {
+  operationId: string;
   conversationId: string;
   expectedRevision: number;
+  expectedOrganizationRevision: number;
 }): Promise<void> {
   return invoke<void>("delete_tutor_conversation", { input });
 }

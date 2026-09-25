@@ -21,7 +21,7 @@ On resumption, do one bounded state reconstruction:
 3. compare any PR-body ledger or remembered SHA with the remote head;
 4. identify the next unfinished acceptance boundary or first concrete failure.
 
-Then continue from that boundary. Do not repeat repository inventory, connector discovery, architecture surveys, or old failure analysis unless new evidence makes one of them necessary.
+Then continue from that boundary. When the PR/branch identity is already known, use direct PR and branch-ref reads rather than search/list calls to rediscover them, and group independent bounded reads in one Connector orchestration when practical. Do not repeat repository inventory, connector discovery, architecture surveys, or old failure analysis unless new evidence makes one of them necessary.
 
 Conversation and memory preserve intent. GitHub and exact-SHA qualification preserve implementation facts.
 
@@ -41,7 +41,7 @@ This checkpoint is progress metadata, not a source writer or branch lock. Create
 
 ## Tool and access discipline
 
-Discover each required GitHub action once in the available tool context and invoke the intended operation. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
+Discover each required GitHub action once in the available tool context and invoke the intended operation. For a known PR, branch, or SHA, prefer direct reads over search/discovery; do not spend multiple calls asking GitHub to rediscover an identifier already in the active checkpoint. Keep Connector orchestration intentionally bounded: prefer at most four concrete GitHub operations per orchestration, split high-fan-out blob creation into small batches, and preserve each acknowledged path/mode/blob SHA in the active publication checkpoint. Build tree/commit/ref publication in a separate bounded step. If a platform or Code Mode tool-call ceiling stops an orchestration, treat it like an interrupted mutation batch rather than a reason to restart: direct-read the affected ref once, keep every acknowledged Git object, and resume at the first unconfirmed operation. Do not replay the whole fan-out script. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
 
 Distinguish:
 
@@ -51,7 +51,7 @@ Distinguish:
 4. verified branch publication;
 5. qualification on the exact published SHA.
 
-When a real operation fails, report the operation, target, exact error, and which neighboring capabilities still work. Do not generalize a narrow failure into “GitHub is unavailable,” make a no-op access-test commit, or switch execution systems unless the human requested that change.
+When a real operation fails, report the operation, target, exact error, and which neighboring capabilities still work. A transport/protocol disconnect after mutation is an **ambiguous acknowledgement**: direct-read the affected ref/object once before retrying, adopt a verified coherent publication if it landed, or reuse acknowledged Git-object SHAs and resume from the first unconfirmed step if the ref stayed unchanged. Never replay the whole mutation batch blindly. Do not generalize a narrow failure into “GitHub is unavailable,” make a no-op access-test commit, or switch execution systems unless the human requested that change.
 
 ## Progress and response discipline
 

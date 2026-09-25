@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::{ai::AiRuntimeState, error::CommandError};
+use crate::{ai::AiRuntimeState, error::CommandError, task_cancellation::CancellationSignal};
 
 use super::{
     context::DocumentTaskContext,
     contracts::DocumentOutline,
     support::{bounded_diagnostic, output_error},
-    transport::{request_json, JsonTaskRequest},
+    transport::{request_json_cancellable, JsonTaskRequest},
 };
 
-pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 1;
-pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 1;
+pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 3;
+pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 3;
 pub(crate) const ARTIFACT_METADATA_SCHEMA_VERSION: i64 = 1;
 pub(crate) const ARTIFACT_TITLE_MAX_CHARS: usize = 120;
 pub(crate) const ARTIFACT_DESCRIPTION_MAX_CHARS: usize = 800;
@@ -37,6 +37,7 @@ pub(super) async fn request_document_artifact_metadata(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     outline: &DocumentOutline,
+    cancellation: &CancellationSignal,
 ) -> Result<DocumentArtifactMetadataCandidate, CommandError> {
     let schema = artifact_metadata_schema();
     let system = artifact_metadata_system_prompt();
@@ -44,7 +45,7 @@ pub(super) async fn request_document_artifact_metadata(
         "<ostudy-validated-learning-plan>\n{}\n</ostudy-validated-learning-plan>\n\nReturn concise subject-centered display metadata for this learning material.",
         bounded_learning_plan_context(outline)?,
     );
-    request_json(
+    request_json_cancellable(
         runtime,
         task,
         JsonTaskRequest {
@@ -54,6 +55,7 @@ pub(super) async fn request_document_artifact_metadata(
             max_tokens: task.completion_token_ceiling(ARTIFACT_METADATA_VISIBLE_COMPLETION_TOKENS),
             images: &[],
         },
+        cancellation,
     )
     .await
     .and_then(decode_artifact_metadata)
@@ -61,7 +63,7 @@ pub(super) async fn request_document_artifact_metadata(
 
 fn artifact_metadata_system_prompt() -> String {
     format!(
-        "You are ostudy's learning-artifact metadata planner. Use only the supplied validated whole-document learning plan. Return one concise subject-centered document title, one concise subject-centered flashcard-deck title, and one educational deck description. Do not mention AI, generation, prompts, source files, filenames, file formats, uploads, or phrases such as 'generated from' or 'AI-generated'. Do not invent facts or copy a long summary into a title. Titles must contain 1–{ARTIFACT_TITLE_MAX_CHARS} characters and the description 1–{ARTIFACT_DESCRIPTION_MAX_CHARS} characters. Return only the required structured result. Metadata schema version: {ARTIFACT_METADATA_SCHEMA_VERSION}. Metadata prompt version: {ARTIFACT_METADATA_PROMPT_VERSION}."
+        "You are ostudy's learning-artifact metadata planner. Use only the supplied validated whole-document learning plan. Return one concise human-readable umbrella title for the document, one concise human-readable umbrella title for its flashcard deck, and one educational deck description. Titles describe the BROADEST DOCUMENT-LEVEL SUBJECT, not one interesting subsection, example, disease, nutrient, mechanism, or late/early source window. When the plan spans several major areas, choose the common course/chapter subject that contains all of them. A title should normally be a 2–10 word noun phrase in sentence case, such as 'Gastrointestinal physiology' or 'Cardiovascular pressure and flow'. NEVER return a slash-separated, semicolon-separated, comma-list, keyword inventory, section inventory, or filename-like title. Do not mention AI, generation, prompts, source files, filenames, file formats, uploads, or phrases such as 'generated from' or 'AI-generated'. Do not invent facts or copy a long summary into a title. Titles must contain 1–{ARTIFACT_TITLE_MAX_CHARS} characters and the description 1–{ARTIFACT_DESCRIPTION_MAX_CHARS} characters. Return only the required structured result. Metadata schema version: {ARTIFACT_METADATA_SCHEMA_VERSION}. Metadata prompt version: {ARTIFACT_METADATA_PROMPT_VERSION}."
     )
 }
 
@@ -151,9 +153,18 @@ mod tests {
     }
 
     #[test]
+    fn prompt_requires_an_umbrella_title_instead_of_a_keyword_inventory() {
+        let prompt = artifact_metadata_system_prompt();
+        assert!(prompt.contains("Gastrointestinal physiology"));
+        assert!(prompt.contains("BROADEST DOCUMENT-LEVEL SUBJECT"));
+        assert!(prompt.contains("NEVER return a slash-separated"));
+        assert!(prompt.contains("2–10 word noun phrase"));
+    }
+
+    #[test]
     fn prompt_forbids_generator_and_source_boilerplate() {
         let prompt = artifact_metadata_system_prompt().to_ascii_lowercase();
-        assert!(prompt.contains("subject-centered"));
+        assert!(prompt.contains("human-readable umbrella title"));
         assert!(prompt.contains("ai-generated"));
         assert!(prompt.contains("generated from"));
         assert!(prompt.contains("filenames"));

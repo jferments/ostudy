@@ -10,7 +10,10 @@ use std::time::Instant;
 use serde_json::Value;
 
 use crate::{
-    ai::{document_intelligence, AiRuntimeState},
+    ai::{
+        concurrency::{run_bounded_provider_queue, QueueControl},
+        document_intelligence, AiRuntimeState,
+    },
     database::Database,
     document_card_topics::report,
     document_checkpoints,
@@ -18,11 +21,13 @@ use crate::{
     document_semantics::SemanticWindow,
     document_store,
     error::CommandError,
-    knowledge::authoring::{self, KnowledgeCatalog},
-    paths::AppPaths,
-    task_cancellation::{
-        record_current_provider_retry, set_current_task_phase, set_current_task_phase_range,
+    knowledge::{
+        authoring::{self, KnowledgeCatalog},
+        authoring_plan,
+        contracts::hash,
     },
+    paths::AppPaths,
+    task_cancellation::{set_current_task_phase, set_current_task_phase_range},
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
@@ -179,105 +184,101 @@ pub(crate) async fn execute_generation_windows(
     }
     document_store::update_generation_progress(input.database, input.document_id, completed)?;
 
-    let mut cursor = 0_usize;
-    while cursor < missing.len() {
-        let batch_size = parallelism;
-        let end = (cursor + batch_size).min(missing.len());
-        let batch = &missing[cursor..end];
-        let first = &input.windows[batch[0]];
-        let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
+    if let (Some(first_position), Some(last_position)) =
+        (missing.first().copied(), missing.last().copied())
+    {
+        let first = &input.windows[first_position];
+        let last = &input.windows[last_position];
         let first_locator = first.source_locator();
         let last_locator = last.source_locator();
         set_current_task_phase_range(
             "generating",
-            (
-                Some(batch[0] + 1),
-                batch.last().map(|position| *position + 1),
-            ),
+            (Some(first_position + 1), Some(last_position + 1)),
             completed,
             input.windows.len(),
             Some(first_locator.first()),
             Some(last_locator.last()),
             Some(first.partition_index + 1),
         );
+    }
 
-        let mut images = Vec::with_capacity(batch.len());
-        for position in batch.iter().copied() {
-            let window = &input.windows[position];
-            document_store::mark_window_running(
-                input.database,
-                input.document_id,
-                input.job_id,
-                window.window_index,
-            )?;
-            images.push(if input.task.include_page_images {
-                document_store::load_window_images(
-                    input.paths,
-                    &source_assets,
-                    window,
-                    input.plan.max_images_per_window,
-                )?
-            } else {
-                Vec::new()
-            });
-        }
-
-        let p0 = batch.first().copied();
-        let p1 = batch.get(1).copied();
-        let p2 = batch.get(2).copied();
-        let p3 = batch.get(3).copied();
-        let empty: &[document_intelligence::SourcePageImage] = &[];
-        let i0 = images.first().map(Vec::as_slice).unwrap_or(empty);
-        let i1 = images.get(1).map(Vec::as_slice).unwrap_or(empty);
-        let i2 = images.get(2).map(Vec::as_slice).unwrap_or(empty);
-        let i3 = images.get(3).map(Vec::as_slice).unwrap_or(empty);
-        let (r0, r1, r2, r3) = tokio::join!(
-            generation_slot(&input, &catalogs, p0, i0),
-            generation_slot(&input, &catalogs, p1, i1),
-            generation_slot(&input, &catalogs, p2, i2),
-            generation_slot(&input, &catalogs, p3, i3),
-        );
-
-        let mut first_error = None;
-        for (position, result) in [r0, r1, r2, r3].into_iter().flatten() {
-            match result {
-                Ok(cards) => {
+    let mut first_error: Option<(usize, CommandError)> = None;
+    run_bounded_provider_queue(
+        missing.len(),
+        parallelism,
+        |queue_index| {
+            let position = missing[queue_index];
+            let input = &input;
+            let catalogs = &catalogs;
+            let source_assets = &source_assets;
+            async move {
+                let result = async {
                     let window = &input.windows[position];
-                    if let Some(contract) = input.checkpoint_contract {
-                        document_checkpoints::persist_generation_cards_best_effort(
-                            input.database,
-                            input.document_id,
-                            contract,
-                            window,
-                            &cards,
-                        );
-                    }
-                    document_store::mark_window_complete(
+                    document_store::mark_window_running(
                         input.database,
                         input.document_id,
                         input.job_id,
-                        window,
-                        cards.len(),
+                        window.window_index,
                     )?;
-                    by_window[position] = Some(cards);
-                    completed = completed.saturating_add(1);
-                    document_store::update_generation_progress(
+                    let images = if input.task.include_page_images {
+                        document_store::load_window_images(
+                            input.paths,
+                            source_assets,
+                            window,
+                            input.plan.max_images_per_window,
+                        )?
+                    } else {
+                        Vec::new()
+                    };
+                    generation_slot(input, catalogs, position, &images).await
+                }
+                .await;
+                (position, result)
+            }
+        },
+        |(position, result)| match result {
+            Ok(cards) => {
+                let window = &input.windows[position];
+                if let Some(contract) = input.checkpoint_contract {
+                    document_checkpoints::persist_generation_cards_best_effort(
                         input.database,
                         input.document_id,
-                        completed,
-                    )?;
+                        contract,
+                        window,
+                        &cards,
+                    );
                 }
-                Err(error) => {
-                    if first_error.is_none() {
-                        first_error = Some(error);
-                    }
-                }
+                document_store::mark_window_complete(
+                    input.database,
+                    input.document_id,
+                    input.job_id,
+                    window,
+                    cards.len(),
+                )?;
+                by_window[position] = Some(cards);
+                completed = completed.saturating_add(1);
+                document_store::update_generation_progress(
+                    input.database,
+                    input.document_id,
+                    completed,
+                )?;
+                Ok(QueueControl::Continue)
             }
-        }
-        if let Some(error) = first_error {
-            return Err(error);
-        }
-        cursor = end;
+            Err(error) => {
+                let replace = match first_error.as_ref() {
+                    None => true,
+                    Some((failed_position, _)) => position < *failed_position,
+                };
+                if replace {
+                    first_error = Some((position, error));
+                }
+                Ok(QueueControl::Stop)
+            }
+        },
+    )
+    .await?;
+    if let Some((_, error)) = first_error {
+        return Err(error);
     }
 
     let mut generated = Vec::new();
@@ -308,38 +309,94 @@ pub(crate) async fn execute_generation_windows(
 async fn generation_slot(
     input: &GenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
-    position: Option<usize>,
+    position: usize,
     images: &[document_intelligence::SourcePageImage],
-) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
-    let position = position?;
+) -> Result<Vec<Value>, CommandError> {
     let window = &input.windows[position];
     let locator = window.source_locator();
     let started = Instant::now();
-    crate::logging::debug_target(
-        "ai.document.generation",
-        "document_generation_window_started",
-        "A bounded card-generation window started without logging document content.",
-        serde_json::json!({
-            "provider": input.task.provider_kind.as_str(),
-            "model": input.task.model_id.as_str(),
-            "window": position + 1,
-            "sourceUnitStart": locator.first(),
-            "sourceUnitEnd": locator.last(),
-            "sourceTokens": window.token_estimate,
-            "cardBudget": input.plan.max_cards_per_window,
-        }),
-    );
-    let result = generate_window_with_recovery(WindowGenerationRequest {
-        runtime: input.runtime,
-        task: input.task,
-        document_title: input.document_title,
-        outline: input.outline,
-        window,
-        images,
-        maximum_cards: input.plan.max_cards_per_window,
-        diagnostic_prefix: input.diagnostic_prefix,
-        knowledge: &catalogs[position],
-    })
+    let root_key = hash(&format!(
+        "flashcard-window-v2|{}|{}|{}|{}",
+        input.document_id,
+        input.diagnostic_prefix,
+        window.window_index,
+        locator.stable_identity(),
+    ));
+    let mut root_task = input.task.clone();
+    root_task.diagnostic_window_key = Some(root_key.clone());
+
+    let result: Result<Vec<Value>, CommandError> = async {
+        let partitions = authoring_plan::partition_catalog(&catalogs[position], |knowledge| {
+            document_intelligence::preflight_window_flashcards(
+                &root_task,
+                input.document_title,
+                input.outline,
+                window,
+                document_intelligence::AuthoringEvidence { images, knowledge },
+                document_intelligence::FlashcardGenerationLimits {
+                    maximum_cards: input.plan.max_cards_per_window,
+                    completion_token_floor: 0,
+                },
+            )
+        })?;
+        let budgets =
+            authoring_plan::allocate_nonzero_budgets(input.plan.max_cards_per_window, &partitions)?;
+        let child_keys = partitions
+            .iter()
+            .enumerate()
+            .map(|(index, knowledge)| {
+                Ok(hash(&format!(
+                    "flashcard-window-child-v1|{root_key}|{index}|{}",
+                    knowledge.request_fingerprint()?
+                )))
+            })
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        if child_keys.len() > 1 {
+            if let Some(diagnostics) = root_task.diagnostics.as_ref() {
+                diagnostics.bind_recovery_family("flashcard_authoring", &root_key, &child_keys)?;
+            }
+        }
+
+        crate::logging::debug_target(
+            "ai.document.generation",
+            "document_generation_window_started",
+            "A bounded card-generation window started after finite request preflight.",
+            serde_json::json!({
+                "provider": input.task.provider_kind.as_str(),
+                "model": input.task.model_id.as_str(),
+                "window": position + 1,
+                "sourceUnitStart": locator.first(),
+                "sourceUnitEnd": locator.last(),
+                "sourceTokens": window.token_estimate,
+                "cardBudget": input.plan.max_cards_per_window,
+                "plannedSubrequests": partitions.len(),
+            }),
+        );
+
+        let mut cards = Vec::new();
+        for (index, (knowledge, maximum_cards)) in partitions.iter().zip(budgets).enumerate() {
+            let mut child_task = root_task.clone();
+            child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
+                root_key.clone()
+            } else {
+                child_keys[index].clone()
+            });
+            let mut generated = generate_window_with_recovery(WindowGenerationRequest {
+                runtime: input.runtime,
+                task: &child_task,
+                document_title: input.document_title,
+                outline: input.outline,
+                window,
+                images,
+                maximum_cards,
+                diagnostic_prefix: input.diagnostic_prefix,
+                knowledge,
+            })
+            .await?;
+            cards.append(&mut generated);
+        }
+        Ok(cards)
+    }
     .await;
 
     match &result {
@@ -373,22 +430,19 @@ async fn generation_slot(
         ),
     }
 
-    Some((
-        position,
-        result.map_err(|error| {
-            CommandError::new(
-                error.code,
-                format!(
-                    "Card generation failed for source window {}/{} (source units {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
-                    position + 1,
-                    input.windows.len(),
-                    locator.first(),
-                    locator.last(),
-                    error.message,
-                ),
-            )
-        }),
-    ))
+    result.map_err(|error| {
+        CommandError::new(
+            error.code,
+            format!(
+                "Card generation failed for source window {}/{} (source units {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
+                position + 1,
+                input.windows.len(),
+                locator.first(),
+                locator.last(),
+                error.message,
+            ),
+        )
+    })
 }
 
 async fn generate_window_with_recovery(
@@ -416,7 +470,15 @@ async fn generate_window_with_recovery(
             let reduced_budget = (input.maximum_cards / 2).max(2);
             let completion_token_floor =
                 document_intelligence::flashcard_completion_token_ceiling(input.task, first_budget);
-            record_current_provider_retry();
+            if !crate::ai::generation::reserve_recovery(
+                input.task.diagnostics.as_ref(),
+                "flashcard_authoring",
+                input.task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::OutputCompaction,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             crate::logging::info_target(
                 "ai.document.generation",
                 "document_generation_window_compact_retry",

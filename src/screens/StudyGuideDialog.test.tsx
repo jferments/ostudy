@@ -65,7 +65,7 @@ function guide(): DocumentStudyGuide {
     overview: {
       summary: "How cardiac output is regulated.",
       learningObjectives: ["Explain preload"],
-      keyConcepts: ["Frank-Starling mechanism"],
+      keyConcepts: ["Frank-Starling mechanism — Increased ventricular filling can raise stroke volume by increasing myocardial fiber stretch."],
     },
     overviewText: "How cardiac output is regulated.",
     sections: [
@@ -90,6 +90,10 @@ function guide(): DocumentStudyGuide {
           processSteps: [],
           comparisons: [],
           commonMisconceptions: [],
+          callouts: [],
+          tables: [],
+          workedExamples: [],
+          retrievalChecks: [],
           visualExplanations: [],
         },
         contentText: "Preload reflects ventricular filling and stretch before systole.",
@@ -184,6 +188,19 @@ beforeEach(() => {
   mockedRelease.mockResolvedValue(undefined);
 });
 
+async function selectSectionAction(label: string): Promise<void> {
+  const trigger = await screen.findByLabelText(/Section actions for/u);
+  fireEvent.click(trigger);
+  const menu = await waitFor(() => {
+    const value = document.querySelector<HTMLElement>(
+      '[role="menu"][aria-label^="Section actions for"]',
+    );
+    if (!value) throw new Error("Section actions menu did not open.");
+    return value;
+  });
+  fireEvent.click(within(menu).getByText(label));
+}
+
 describe("StudyGuideDialog", () => {
   it("creates a guide when no active revision exists", async () => {
     mockedGetGuide.mockResolvedValue(null);
@@ -236,6 +253,8 @@ describe("StudyGuideDialog", () => {
     renderGuide({ onClose });
 
     expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
+    expect(screen.getByText("Frank-Starling mechanism")).toBeTruthy();
+    expect(screen.getByText(/Increased ventricular filling can raise stroke volume/u)).toBeTruthy();
     const workspace = screen.getByRole("region", { name: "Study guide · Physiology" });
     expect(workspace.getAttribute("data-inline-workspace")).toBe("true");
     expect(screen.queryByRole("dialog", { name: "Study guide · Physiology" })).toBeNull();
@@ -309,7 +328,7 @@ describe("StudyGuideDialog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
     expect(mockedPublish).not.toHaveBeenCalled();
-    expect(within(dialog).getByText(/readable LaTeX source rather than typeset formulas/u)).toBeTruthy();
+    expect(within(dialog).getByText(/outside the native PDF math subset.*readable LaTeX source/iu)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: accepted ? "Export PDF" : "Cancel" }));
     await waitFor(() => expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32)));
     expect(mockedPublish).toHaveBeenCalledTimes(accepted ? 1 : 0);
@@ -318,11 +337,24 @@ describe("StudyGuideDialog", () => {
     if (!accepted) expect(showToast).not.toHaveBeenCalled();
   });
 
+  it("collapses per-section controls into one accessible overflow menu", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+    const trigger = await screen.findByRole("button", { name: /Section actions for/u });
+    expect(screen.queryByRole("button", { name: "Study linked cards (2)" })).toBeNull();
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole("menu", { name: /Section actions for/u });
+    expect(within(menu).getByRole("menuitem", { name: "Study linked cards (2)" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Open source" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Add note" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Edit section" })).toBeTruthy();
+  });
+
   it("routes exact topic-linked cards through the app practice capability", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Study linked cards (2)" }));
+    await selectSectionAction("Study linked cards (2)");
 
     await waitFor(() => {
       expect(mockedCardIds).toHaveBeenCalledWith(documentId, [topicId]);
@@ -348,7 +380,7 @@ describe("StudyGuideDialog", () => {
     });
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    await selectSectionAction("Add note");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "Remember the relationship to end-diastolic volume." },
     });
@@ -376,7 +408,7 @@ describe("StudyGuideDialog", () => {
     renderGuide({ showToast });
 
     expect(await screen.findByText("Remember end-diastolic volume.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
+    await selectSectionAction("Remove note");
 
     await waitFor(() => {
       expect(mockedDiscardOverlay).toHaveBeenCalledWith("9".repeat(32), 3);
@@ -389,7 +421,7 @@ describe("StudyGuideDialog", () => {
     mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -431,12 +463,16 @@ describe("Study-guide mathematical presentation", () => {
       processSteps: [String.raw`Apply \(x_{11}\)`],
       comparisons: [{ subjectA: String.raw`\(x_{12}\)`, subjectB: String.raw`\(x_{13}\)`, relationship: String.raw`Related \(x_{14}\)` }],
       commonMisconceptions: [String.raw`Not \(x_{15}\)`],
+      callouts: [{ kind: "key_idea", title: String.raw`Remember \(x_{18}\)`, body: String.raw`Callout \(x_{19}\)` }],
+      tables: [{ title: String.raw`Table \(x_{20}\)`, columns: [String.raw`A \(x_{21}\)`, String.raw`B \(x_{22}\)`], rows: [[String.raw`C \(x_{23}\)`, String.raw`D \(x_{24}\)`]], caption: String.raw`Caption \(x_{25}\)` }],
+      workedExamples: [{ title: String.raw`Example \(x_{26}\)`, prompt: String.raw`Prompt \(x_{27}\)`, steps: [String.raw`Step \(x_{28}\)`], answer: String.raw`Answer \(x_{29}\)`, takeaway: String.raw`Takeaway \(x_{30}\)` }],
+      retrievalChecks: [{ prompt: String.raw`Recall \(x_{31}\)`, answer: String.raw`Response \(x_{32}\)` }],
       visualExplanations: [{ title: String.raw`See \(x_{16}\)`, explanation: String.raw`Diagram \(x_{17}\)` }],
     };
     const before = JSON.stringify(loaded);
     mockedGetGuide.mockResolvedValue(loaded);
     const { container } = renderGuide();
-    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(17));
+    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(32));
     expect(screen.getByText("Page 2–3")).toBeTruthy();
     expect(JSON.stringify(loaded)).toBe(before);
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
@@ -454,11 +490,11 @@ describe("Study-guide mathematical presentation", () => {
     const { container } = renderGuide();
     await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(2));
     expect(screen.getByText("Older section edit needs review.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(source);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     const edited = source + String.raw` and \(c\)`;
     fireEvent.change(screen.getByRole("textbox"), { target: { value: edited } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

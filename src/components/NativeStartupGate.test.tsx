@@ -35,6 +35,11 @@ describe("NativeStartupGate", () => {
     await waitFor(() => expect(getSettings).toHaveBeenCalledOnce());
   });
 
+  it("keeps an explicit bounded probe available for diagnostics without making the product splash time out", async () => {
+    vi.mocked(getSettings).mockRejectedValue(new Error("database not managed yet"));
+    await expect(waitForNativeStartup(30, 5)).rejects.toThrow(/did not become ready/iu);
+  });
+
   it("retries when one bridge invocation itself hangs instead of freezing the splash forever", async () => {
     vi.mocked(getSettings)
       .mockImplementationOnce(() => new Promise<never>(() => undefined))

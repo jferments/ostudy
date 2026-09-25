@@ -17,23 +17,35 @@ pub(super) struct DesiredMetadata {
 pub(super) fn derive_desired_metadata(
     outline: &DocumentOutline,
     provider_candidate: Option<&DocumentArtifactMetadataCandidate>,
+    source_title_hint: Option<&str>,
     original_filename: &str,
     source_format: &str,
 ) -> DesiredMetadata {
+    let source_title =
+        source_title_hint.and_then(|value| accepted_title(value, original_filename, source_format));
     let fallback_title = deterministic_title(outline, original_filename, source_format);
-    let provider_document_title = provider_candidate.and_then(|candidate| {
-        accepted_title(&candidate.document_title, original_filename, source_format)
-    });
-    let provider_deck_title = provider_candidate.and_then(|candidate| {
-        accepted_title(&candidate.deck_title, original_filename, source_format)
-    });
+    let provider_document_title = provider_candidate
+        .and_then(|candidate| {
+            accepted_title(&candidate.document_title, original_filename, source_format)
+        })
+        .filter(|title| title_has_document_scope(title, outline));
+    let provider_deck_title = provider_candidate
+        .and_then(|candidate| {
+            accepted_title(&candidate.deck_title, original_filename, source_format)
+        })
+        .filter(|title| title_has_document_scope(title, outline));
     let provider_description = provider_candidate
         .and_then(|candidate| accepted_description(&candidate.deck_description, original_filename));
     let used_provider = provider_document_title.is_some()
         || provider_deck_title.is_some()
         || provider_description.is_some();
-    let document_title = provider_document_title.unwrap_or_else(|| fallback_title.clone());
-    let deck_title = provider_deck_title.unwrap_or_else(|| fallback_title.clone());
+    let document_title = source_title
+        .clone()
+        .or(provider_document_title)
+        .unwrap_or_else(|| fallback_title.clone());
+    let deck_title = source_title
+        .or(provider_deck_title)
+        .unwrap_or_else(|| fallback_title.clone());
     let deck_description = provider_description
         .unwrap_or_else(|| deterministic_description(outline, &document_title, original_filename));
     DesiredMetadata {
@@ -103,14 +115,79 @@ fn deterministic_title(
     original_filename: &str,
     source_format: &str,
 ) -> String {
-    outline
+    repeated_parent_subject(outline)
+        .and_then(|value| accepted_title(&value, original_filename, source_format))
+        .or_else(|| {
+            outline
+                .sections
+                .iter()
+                .map(|section| section.title.as_str())
+                .chain(outline.key_concepts.iter().map(String::as_str))
+                .chain(std::iter::once(first_sentence(&outline.summary)))
+                .find_map(|value| accepted_title(value, original_filename, source_format))
+        })
+        .unwrap_or_else(|| "Study material".to_string())
+}
+
+fn repeated_parent_subject(outline: &DocumentOutline) -> Option<String> {
+    let mut counts = std::collections::BTreeMap::<String, (String, usize)>::new();
+    for title in outline
         .sections
         .iter()
         .map(|section| section.title.as_str())
-        .chain(outline.key_concepts.iter().map(String::as_str))
-        .chain(std::iter::once(first_sentence(&outline.summary)))
-        .find_map(|value| accepted_title(value, original_filename, source_format))
-        .unwrap_or_else(|| "Study material".to_string())
+    {
+        let Some((parent, _)) = title.split_once(" — ") else {
+            continue;
+        };
+        let parent = normalize_metadata(parent, ARTIFACT_TITLE_MAX_CHARS);
+        if parent.split_whitespace().count() < 2 {
+            continue;
+        }
+        let key = parent.to_ascii_lowercase();
+        let entry = counts.entry(key).or_insert((parent, 0));
+        entry.1 = entry.1.saturating_add(1);
+    }
+    counts
+        .into_values()
+        .filter(|(_, count)| *count >= 2)
+        .max_by_key(|(_, count)| *count)
+        .map(|(title, _)| title)
+}
+
+fn title_has_document_scope(title: &str, outline: &DocumentOutline) -> bool {
+    if outline.sections.len() < 3 {
+        return true;
+    }
+    let candidate = normalized_key(title);
+    let section_coverage = outline
+        .sections
+        .iter()
+        .filter(|section| {
+            let section_text = format!(
+                "{} {} {}",
+                section.title,
+                section.summary,
+                section.key_concepts.join(" ")
+            );
+            normalized_key(&section_text).contains(&candidate)
+        })
+        .count();
+    if section_coverage >= 2 {
+        return true;
+    }
+    let is_leaf_label = outline.sections.iter().any(|section| {
+        section
+            .title
+            .split(" / ")
+            .map(normalized_key)
+            .any(|label| label == candidate)
+            || section
+                .key_concepts
+                .iter()
+                .map(|value| normalized_key(value))
+                .any(|label| label == candidate)
+    });
+    !is_leaf_label
 }
 
 fn deterministic_description(
@@ -138,6 +215,7 @@ fn deterministic_description(
 fn accepted_title(value: &str, original_filename: &str, source_format: &str) -> Option<String> {
     let normalized = normalize_metadata(value, ARTIFACT_TITLE_MAX_CHARS);
     if normalized.is_empty()
+        || looks_like_inventory_title(&normalized)
         || contains_generator_boilerplate(&normalized)
         || exact_source_document_title(
             &normalized,
@@ -152,6 +230,18 @@ fn accepted_title(value: &str, original_filename: &str, source_format: &str) -> 
         return None;
     }
     Some(normalized)
+}
+
+fn looks_like_inventory_title(value: &str) -> bool {
+    let trimmed = value.trim();
+    let comma_count = trimmed.matches(',').count();
+    let word_count = trimmed.split_whitespace().count();
+    trimmed.contains(" / ")
+        || trimmed.contains(" | ")
+        || trimmed.contains("; ")
+        || comma_count >= 2
+        || trimmed.lines().count() > 1
+        || word_count > 16
 }
 
 fn accepted_description(value: &str, original_filename: &str) -> Option<String> {
@@ -255,6 +345,27 @@ mod tests {
     }
 
     #[test]
+    fn slash_and_keyword_inventory_titles_are_rejected_field_by_field() {
+        let candidate = DocumentArtifactMetadataCandidate {
+            document_title: "Enteric neurotransmitters / GI extrinsic nervous system / GI hormones / intrinsic nervous system".to_string(),
+            deck_title: "Gastrointestinal hormones and nervous system".to_string(),
+            deck_description: "Review gastrointestinal signaling and neural control.".to_string(),
+        };
+        let desired =
+            derive_desired_metadata(&outline(), Some(&candidate), None, "shock_notes.pdf", "pdf");
+        assert_ne!(desired.document_title, candidate.document_title);
+        assert_eq!(
+            desired.deck_title,
+            "Gastrointestinal hormones and nervous system"
+        );
+        assert!(looks_like_inventory_title("A / B / C"));
+        assert!(looks_like_inventory_title("A, B, C, and D"));
+        assert!(!looks_like_inventory_title(
+            "Gastrointestinal hormones and nervous system"
+        ));
+    }
+
+    #[test]
     fn provider_boilerplate_falls_back_field_by_field() {
         let candidate = DocumentArtifactMetadataCandidate {
             document_title: "AI-generated shock_notes.pdf".to_string(),
@@ -262,11 +373,89 @@ mod tests {
             deck_description: "Generated from shock_notes.pdf".to_string(),
         };
         let desired =
-            derive_desired_metadata(&outline(), Some(&candidate), "shock_notes.pdf", "pdf");
+            derive_desired_metadata(&outline(), Some(&candidate), None, "shock_notes.pdf", "pdf");
         assert_eq!(desired.document_title, "Distributive shock physiology");
         assert_eq!(desired.deck_title, "Shock response");
         assert!(desired.deck_description.starts_with("Review "));
         assert_eq!(desired.metadata_origin, "provider");
+    }
+
+    #[test]
+    fn strong_source_title_beats_a_narrow_provider_subtopic() {
+        let mut outline = outline();
+        outline.sections = vec![
+            crate::ai::document_intelligence::OutlineSection {
+                title: "GI regulatory substances".into(),
+                page_start: 1,
+                page_end: 9,
+                summary: "Hormones and neural regulators coordinate gastrointestinal function."
+                    .into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Gastrin".into()],
+            },
+            crate::ai::document_intelligence::OutlineSection {
+                title: "Motility".into(),
+                page_start: 10,
+                page_end: 17,
+                summary: "Smooth muscle and reflexes move luminal contents.".into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Slow waves".into()],
+            },
+            crate::ai::document_intelligence::OutlineSection {
+                title: "Amino acid digestion".into(),
+                page_start: 37,
+                page_end: 42,
+                summary: "Proteins are digested and absorbed.".into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Amino acid digestion".into()],
+            },
+        ];
+        let candidate = DocumentArtifactMetadataCandidate {
+            document_title: "Amino acid digestion".into(),
+            deck_title: "Amino acid digestion".into(),
+            deck_description: "Review digestion and absorption.".into(),
+        };
+        let desired = derive_desired_metadata(
+            &outline,
+            Some(&candidate),
+            Some("Gastrointestinal Physiology"),
+            "chapter8.pdf",
+            "pdf",
+        );
+        assert_eq!(desired.document_title, "Gastrointestinal Physiology");
+        assert_eq!(desired.deck_title, "Gastrointestinal Physiology");
+    }
+
+    #[test]
+    fn narrow_leaf_title_is_rejected_when_the_document_has_several_major_sections() {
+        let mut outline = outline();
+        outline.sections = vec![
+            crate::ai::document_intelligence::OutlineSection {
+                title: "Motility".into(),
+                page_start: 1,
+                page_end: 10,
+                summary: "GI motility and smooth muscle.".into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Motility".into()],
+            },
+            crate::ai::document_intelligence::OutlineSection {
+                title: "Secretion".into(),
+                page_start: 11,
+                page_end: 20,
+                summary: "Salivary, gastric, and pancreatic secretion.".into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Secretion".into()],
+            },
+            crate::ai::document_intelligence::OutlineSection {
+                title: "Amino acid digestion".into(),
+                page_start: 21,
+                page_end: 30,
+                summary: "Protein digestion and absorption.".into(),
+                learning_objectives: vec![],
+                key_concepts: vec!["Amino acid digestion".into()],
+            },
+        ];
+        assert!(!title_has_document_scope("Amino acid digestion", &outline));
     }
 
     #[test]

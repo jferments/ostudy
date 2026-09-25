@@ -3,7 +3,10 @@ use rusqlite::{params_from_iter, Connection, OptionalExtension};
 use crate::{database::Database, error::CommandError};
 
 use super::{
-    super::contracts::{invalid, ScopeChoice, ScopeKind, SourceKind, StudyScope},
+    super::{
+        collection_scope,
+        contracts::{invalid, ScopeChoice, ScopeKind, SourceKind, StudyScope},
+    },
     SourceSeed,
 };
 
@@ -47,6 +50,7 @@ pub(crate) fn scope_documents(
                 Some(id),
             )
         }
+        ScopeKind::Collection => collection_scope::documents(connection, scope),
         ScopeKind::Document | ScopeKind::Guide => {
             let id = scope
                 .id
@@ -101,6 +105,9 @@ pub(super) fn enumerate_material(
         }
         return Ok(seeds);
     }
+    if scope.kind == ScopeKind::Collection {
+        return collection_scope::document_seeds(connection, scope);
+    }
     let documents = scope_documents(connection, scope)?;
     let documents_json = serde_json::to_string(&documents).map_err(CommandError::serialization)?;
     let (card_sql, argument) = match scope.kind {
@@ -118,6 +125,9 @@ pub(super) fn enumerate_material(
              ORDER BY c.id LIMIT 100001",
             scope.id.as_deref(),
         ),
+        ScopeKind::Collection => {
+            return collection_scope::document_seeds(connection, scope);
+        }
         ScopeKind::Document | ScopeKind::Guide => (
             "SELECT DISTINCT c.id FROM cards c JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = n.deck_id
@@ -189,6 +199,7 @@ pub(crate) fn list_scope_choices(database: &Database) -> Result<Vec<ScopeChoice>
         let mut statement = connection
             .prepare(
                 "SELECT 'deck', id, name FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL
+                 UNION ALL SELECT 'collection', id, name FROM document_collections
                  UNION ALL SELECT 'document', id, title FROM documents WHERE lifecycle_state <> 'archived'
                  UNION ALL SELECT 'guide', d.id, d.title FROM documents d
                  JOIN document_study_guides g ON g.document_id = d.id
@@ -204,6 +215,7 @@ pub(crate) fn list_scope_choices(database: &Database) -> Result<Vec<ScopeChoice>
             members: Vec::new(),
                         kind: match kind.as_str() {
                             "deck" => ScopeKind::Deck,
+                            "collection" => ScopeKind::Collection,
                             "document" => ScopeKind::Document,
                             _ => ScopeKind::Guide,
                         },

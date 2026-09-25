@@ -63,6 +63,7 @@ pub(super) fn ensure_document_artifact_metadata(
     // 0007 makes later citation-title refreshes immutable.
     document_citations::upsert_document_snapshot(transaction, document_id, now)?;
     let source_title = load_source_title(transaction, document_id)?;
+    let source_title_hint = load_source_title_hint(transaction, document_id)?;
     let existing = load_existing_metadata(transaction, document_id)?;
 
     let desired = existing
@@ -79,6 +80,7 @@ pub(super) fn ensure_document_artifact_metadata(
             derive_desired_metadata(
                 outline,
                 provider_candidate,
+                source_title_hint.as_deref(),
                 &source.original_filename,
                 &source.source_format,
             )
@@ -168,6 +170,119 @@ fn load_source_title(
             |row| row.get(0),
         )
         .map_err(CommandError::database)
+}
+
+fn load_source_title_hint(
+    transaction: &Transaction<'_>,
+    document_id: &str,
+) -> Result<Option<String>, CommandError> {
+    let mut statement = transaction
+        .prepare(
+            "SELECT role, text, source_unit_number
+             FROM document_source_blocks
+             WHERE document_id = ?1
+               AND source_unit_number <= 3
+               AND role IN ('title', 'heading')
+             ORDER BY source_unit_number, block_ordinal, block_index
+             LIMIT 24",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([document_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    if let Some(title) = source_title_hint_from_blocks(&rows) {
+        return Ok(Some(title));
+    }
+    let first_unit_text = transaction
+        .query_row(
+            "SELECT plain_text
+             FROM document_source_units
+             WHERE document_id = ?1
+             ORDER BY unit_number
+             LIMIT 1",
+            [document_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    Ok(first_unit_text
+        .as_deref()
+        .and_then(source_title_hint_from_text))
+}
+
+fn source_title_hint_from_blocks(blocks: &[(String, String, i64)]) -> Option<String> {
+    for (role, text, _) in blocks {
+        let text = text.trim();
+        if role == "title" && !text.is_empty() && !looks_like_chapter_marker(text) {
+            return Some(text.to_string());
+        }
+    }
+    for (index, (_, text, unit)) in blocks.iter().enumerate() {
+        if !looks_like_chapter_marker(text) {
+            continue;
+        }
+        if let Some((_, title, _)) =
+            blocks
+                .iter()
+                .skip(index + 1)
+                .take(5)
+                .find(|(role, candidate, candidate_unit)| {
+                    *candidate_unit == *unit
+                        && matches!(role.as_str(), "title" | "heading")
+                        && !candidate.trim().is_empty()
+                        && !looks_like_chapter_marker(candidate)
+                })
+        {
+            return Some(title.trim().to_string());
+        }
+    }
+    None
+}
+
+fn source_title_hint_from_text(value: &str) -> Option<String> {
+    let lines = value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    for (index, line) in lines.iter().enumerate() {
+        if !looks_like_chapter_marker(line) {
+            continue;
+        }
+        return lines
+            .iter()
+            .skip(index + 1)
+            .take(4)
+            .find(|candidate| {
+                candidate.chars().any(char::is_alphabetic)
+                    && candidate.split_whitespace().count() <= 12
+                    && !looks_like_chapter_marker(candidate)
+            })
+            .map(|title| (*title).to_string());
+    }
+    None
+}
+
+fn looks_like_chapter_marker(value: &str) -> bool {
+    let normalized = value
+        .trim()
+        .trim_matches(|character: char| matches!(character, ':' | '-' | '–' | '—'))
+        .to_ascii_lowercase();
+    let mut parts = normalized.split_whitespace();
+    matches!(parts.next(), Some("chapter"))
+        && parts.next().is_some_and(|part| {
+            part.chars()
+                .all(|character| character.is_ascii_digit() || "ivxlcdm".contains(character))
+        })
+        && parts.next().is_none()
 }
 
 fn load_existing_metadata(
@@ -421,4 +536,51 @@ fn record_applied_values(
         )
         .map_err(CommandError::database)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod source_title_tests {
+    use super::*;
+
+    #[test]
+    fn chapter_marker_promotes_the_following_heading_to_document_scope() {
+        let blocks = vec![
+            ("heading".to_string(), "CHAPTER 8".to_string(), 1),
+            (
+                "heading".to_string(),
+                "Gastrointestinal Physiology".to_string(),
+                1,
+            ),
+            (
+                "heading".to_string(),
+                "Structure of the Gastrointestinal Tract".to_string(),
+                1,
+            ),
+        ];
+        assert_eq!(
+            source_title_hint_from_blocks(&blocks).as_deref(),
+            Some("Gastrointestinal Physiology")
+        );
+    }
+
+    #[test]
+    fn chapter_text_fallback_recovers_a_title_when_structural_roles_are_missing() {
+        let page = "339\nCHAPTER 8\nGastrointestinal Physiology\nStructure of the Gastrointestinal Tract, 339";
+        assert_eq!(
+            source_title_hint_from_text(page).as_deref(),
+            Some("Gastrointestinal Physiology")
+        );
+    }
+
+    #[test]
+    fn explicit_title_beats_section_headings() {
+        let blocks = vec![
+            ("title".to_string(), "Pulmonary Physiology".to_string(), 1),
+            ("heading".to_string(), "Ventilation".to_string(), 1),
+        ];
+        assert_eq!(
+            source_title_hint_from_blocks(&blocks).as_deref(),
+            Some("Pulmonary Physiology")
+        );
+    }
 }

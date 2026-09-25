@@ -29,6 +29,25 @@ class StudyGuideLayoutContractTests(unittest.TestCase):
         self.assertIn("ResponsiveActionGroup", source)
         self.assertIn("className={styles.actions}", source)
 
+    def test_structured_guide_cards_stay_bounded_and_use_theme_semantics(self) -> None:
+        style = recipes("guideReaderStyles")
+        comparisons = style["comparisons"].split()
+        self.assertIn("tw:grid-cols-1", comparisons)
+        self.assertIn("tw:2xl:grid-cols-2", comparisons)
+        self.assertNotIn("tw:md:grid-cols-2", comparisons)
+        self.assertIn("tw:[&>article]:min-w-0", comparisons)
+        self.assertIn("tw:[&>article]:overflow-hidden", comparisons)
+        self.assertIn("tw:[&>article]:break-words", comparisons)
+
+        self.assertIn("tw:[&_h3]:mt-9", style["structuredSection"].split())
+        self.assertIn("tw:[&_h3]:text-primary", style["structuredSection"].split())
+        self.assertIn("tw:bg-accent/20", style["overview"].split())
+        self.assertIn("tw:ring-primary/10", style["overview"].split())
+        self.assertIn("tw:bg-accent/40", style["retrievalCheck"].split())
+        self.assertIn("tw:ring-primary/20", style["retrievalCheck"].split())
+        self.assertIn("tw:bg-card", style["retrievalAnswer"].split())
+        self.assertNotIn("#", json.dumps(style))
+
     def test_guide_toolbar_and_contents_use_opaque_semantic_surfaces(self) -> None:
         style = recipes("guideReaderStyles")
         for name in ("header", "contents"):

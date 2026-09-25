@@ -9,6 +9,7 @@ import {
   listDocuments,
   openDocumentSource,
   retryDocumentFlashcardGeneration,
+  startDocumentFlashcardGeneration,
 } from "./documents";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -42,6 +43,12 @@ describe("document IPC", () => {
   });
 
   it("uses narrow generation, additional-pass, cancel, native-open, and deletion commands", async () => {
+    await startDocumentFlashcardGeneration(documentId);
+    expect(invoke).toHaveBeenCalledWith("start_document_flashcard_generation", {
+      input: { documentId },
+    });
+
+    vi.mocked(invoke).mockClear();
     await retryDocumentFlashcardGeneration(documentId);
     expect(invoke).toHaveBeenCalledWith("run_document_flashcard_generation", {
       input: { documentId },

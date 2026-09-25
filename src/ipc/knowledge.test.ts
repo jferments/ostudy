@@ -3,18 +3,20 @@ import { sameStudyScope, scopeMembers, selectedScope, studyScopeKey, type Materi
 
 const document: MaterialScope = { kind: "document", id: "a".repeat(32) };
 const deck: MaterialScope = { kind: "deck", id: "b".repeat(32) };
+const collection: MaterialScope = { kind: "collection", id: "c".repeat(32) };
 describe("canonical selected study scope", () => {
   it("uses legacy general and single-source identities without broadening selection", () => {
     expect(selectedScope([])).toEqual({ kind: "general", id: null });
     expect(selectedScope([document, document])).toEqual(document);
     expect(scopeMembers({ kind: "general", id: null })).toEqual([]);
     expect(scopeMembers(document)).toEqual([document]);
+    expect(scopeMembers(collection)).toEqual([collection]);
   });
   it("matches the native canonical order regardless of checkbox order", () => {
-    const a = selectedScope([document, deck]);
-    const b = selectedScope([deck, document, deck]);
+    const a = selectedScope([document, deck, collection]);
+    const b = selectedScope([collection, deck, document, deck]);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-    expect(scopeMembers(a)).toEqual([deck, document]);
+    expect(scopeMembers(a)).toEqual([collection, deck, document]);
     expect(sameStudyScope(a, b)).toBe(true);
     expect(studyScopeKey(a)).not.toBe(studyScopeKey(document));
     expect(sameStudyScope(a, { kind: "library", id: null })).toBe(false);

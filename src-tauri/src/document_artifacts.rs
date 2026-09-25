@@ -323,6 +323,66 @@ pub(crate) fn complete_document_artifact_job(
     load_document_artifact_job(database, job_id)
 }
 
+/// Recover only a projection failure that occurred after an immutable guide
+/// revision was already published. The guide/job foreign-key identity is durable
+/// proof of publication; an ordinary failed generation has no such row and is
+/// never upgraded to success.
+pub(crate) fn recover_published_study_guide_job(
+    database: &Database,
+    document_id: &str,
+    plan_id: &str,
+) -> Result<Option<String>, CommandError> {
+    validate_entity_id(document_id, "document")?;
+    validate_entity_id(plan_id, "learning plan")?;
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let published: Option<(String, String)> = transaction
+            .query_row(
+                "SELECT guide.id, job.id
+                 FROM document_study_guides guide
+                 JOIN document_artifact_jobs job ON job.id = guide.job_id
+                 WHERE guide.document_id = ?1
+                   AND guide.plan_id = ?2
+                   AND guide.state = 'active'
+                   AND job.document_id = guide.document_id
+                   AND job.plan_id = guide.plan_id
+                   AND job.artifact_kind = 'study_guide'
+                   AND job.state IN ('committing', 'interrupted')
+                 ORDER BY guide.revision DESC, guide.id DESC
+                 LIMIT 1",
+                params![document_id, plan_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let Some((guide_id, job_id)) = published else {
+            transaction.commit().map_err(CommandError::database)?;
+            return Ok(None);
+        };
+        let changed = transaction
+            .execute(
+                "UPDATE document_artifact_jobs
+                 SET state = 'succeeded', completed_units = total_units,
+                     safe_error_code = '', safe_error_message = '',
+                     updated_at = ?1, completed_at = ?1
+                 WHERE id = ?2 AND state IN ('committing', 'interrupted')",
+                params![now, job_id],
+            )
+            .map_err(CommandError::database)?;
+        if changed != 1 {
+            return Err(CommandError::new(
+                "document_artifact_job_changed",
+                "The published study-guide job changed before its completion projection could be reconciled.",
+            ));
+        }
+        transaction.commit().map_err(CommandError::database)?;
+        Ok(Some(guide_id))
+    })
+}
+
 pub(crate) fn fail_document_artifact_job(
     database: &Database,
     job_id: &str,
@@ -450,6 +510,69 @@ pub(crate) fn load_document_artifact_job(
     })
 }
 
+pub(crate) fn list_latest_document_artifact_jobs(
+    database: &Database,
+    artifact_kind: DocumentArtifactKind,
+) -> Result<Vec<DocumentArtifactJob>, CommandError> {
+    database.with_connection(|connection| {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, document_id, plan_id, state, total_units, completed_units,
+                        safe_error_code, safe_error_message, api_token_count,
+                        api_token_usage_complete, created_at, started_at, updated_at, completed_at
+                 FROM document_artifact_jobs
+                 WHERE artifact_kind = ?1
+                 ORDER BY document_id, created_at DESC, id DESC",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([artifact_kind.as_db()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
+                    row.get::<_, Option<i64>>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, Option<i64>>(13)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        let mut seen = std::collections::HashSet::new();
+        rows.into_iter()
+            .filter(|row| seen.insert(row.1.clone()))
+            .map(|row| {
+                Ok(DocumentArtifactJob {
+                    id: row.0,
+                    document_id: row.1,
+                    plan_id: row.2,
+                    artifact_kind,
+                    state: DocumentArtifactJobState::from_db(&row.3)?,
+                    total_units: to_usize(row.4)?,
+                    completed_units: to_usize(row.5)?,
+                    safe_error_code: row.6,
+                    safe_error_message: row.7,
+                    api_token_count: row.8,
+                    api_token_usage_complete: row.9 != 0,
+                    created_at: row.10,
+                    started_at: row.11,
+                    updated_at: row.12,
+                    completed_at: row.13,
+                })
+            })
+            .collect()
+    })
+}
+
 fn valid_transition(expected: DocumentArtifactJobState, next: DocumentArtifactJobState) -> bool {
     matches!(
         (expected, next),
@@ -512,6 +635,100 @@ mod tests {
             DocumentArtifactJobState::Generating,
             DocumentArtifactJobState::Committing
         ));
+    }
+
+    #[test]
+    fn published_guide_recovery_requires_durable_publication_evidence() {
+        let database = Database::open_in_memory().unwrap();
+        let document_id = "d".repeat(32);
+        let plan_id = "b".repeat(32);
+        let job_id = "c".repeat(32);
+        let guide_id = "e".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch("PRAGMA foreign_keys = OFF;")
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_artifact_jobs (
+                             id, document_id, plan_id, artifact_kind, provider_kind,
+                             model_id, profile_revision, credential_epoch, network_scope,
+                             state, total_units, completed_units, safe_error_code,
+                             safe_error_message, created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, 'study_guide', 'openai', 'fixture',
+                                   1, 0, 'cloud', 'committing', 3, 3, '', '', 1, 1)",
+                        params![job_id, document_id, plan_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_study_guides (
+                             id, document_id, plan_id, job_id, revision, schema_version,
+                             prompt_version, assembly_version, overview_json, overview_text,
+                             state, created_at, updated_at, published_at
+                         ) VALUES (?1, ?2, ?3, ?4, 1, 1, 1, 1, '{}', '',
+                                   'active', 1, 1, 1)",
+                        params![guide_id, document_id, plan_id, job_id],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(
+            recover_published_study_guide_job(&database, &document_id, &plan_id).unwrap(),
+            Some(guide_id.clone())
+        );
+        let state = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT state FROM document_artifact_jobs WHERE id = ?1",
+                        [&job_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(state, "succeeded");
+        assert_eq!(
+            recover_published_study_guide_job(&database, &document_id, &plan_id).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn interrupted_published_guide_is_recoverable_but_unpublished_job_is_not() {
+        let database = Database::open_in_memory().unwrap();
+        let document_id = "d".repeat(32);
+        let plan_id = "b".repeat(32);
+        let job_id = "c".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch("PRAGMA foreign_keys = OFF;")
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_artifact_jobs (
+                             id, document_id, plan_id, artifact_kind, provider_kind,
+                             model_id, profile_revision, credential_epoch, network_scope,
+                             state, total_units, completed_units, safe_error_code,
+                             safe_error_message, created_at, updated_at
+                         ) VALUES (?1, ?2, ?3, 'study_guide', 'openai', 'fixture',
+                                   1, 0, 'cloud', 'interrupted', 2, 2,
+                                   'document_artifact_interrupted', 'stopped', 1, 1)",
+                        params![job_id, document_id, plan_id],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            recover_published_study_guide_job(&database, &document_id, &plan_id).unwrap(),
+            None
+        );
     }
 
     #[test]

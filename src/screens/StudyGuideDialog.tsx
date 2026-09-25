@@ -8,15 +8,19 @@ import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuideSectionContent, type TopicCardProjection,
 } from "../ipc/studyGuides";
+import type { TutorTarget } from "../ipc/tutor";
+import { StudyGuideSourceFigures } from "./StudyGuideSourceFigures";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
+import { useOptionalTutor } from "./tutor/TutorContext";
 import { Icon } from "../ui/icons/Icon";
+import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { Checkbox, Textarea } from "../ui/primitives/FormControls";
+import { Checkbox, Disclosure, Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { guideReaderStyles as styles } from "./documents/presentation";
 
@@ -93,7 +97,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
-        description: "Equations in this PDF will use readable LaTeX source rather than typeset formulas. The study guide in oStudy keeps its typeset math.",
+        description: "Some equations use notation outside the native PDF math subset and will remain readable LaTeX source. The study guide in oStudy keeps its full typeset math.",
         confirmLabel: "Export PDF",
         cancelLabel: "Cancel",
       })) return;
@@ -195,7 +199,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
           <section id="guide-overview" className={styles.overview}>
             <h2>Overview</h2><StudyMarkdown text={guide.overview.summary} />
             <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
-            <GuideList title="Key concepts" values={guide.overview.keyConcepts} />
+            <GuideConceptList values={guide.overview.keyConcepts} />
             {guideNote?.plainText ? <aside className={styles.personalNote}><strong>My guide note</strong><StudyMarkdown text={guideNote.plainText} /></aside> : null}
             <div className={styles.editorActions}>
               <Button variant="secondary" onClick={beginGuideNote}>{guideNote ? "Edit guide note" : "Add guide note"}</Button>
@@ -230,24 +234,33 @@ interface StudyGuideSectionViewProps {
   onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void; onStudy: () => void; onOpenSource: () => void;
 }
 function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
+  const tutor = useOptionalTutor();
   const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
   const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
   const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
+  const tutorTarget: TutorTarget = { title: section.title, scope: { kind: "guide", id: documentId },
+    focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" };
+  const menuItems: OverflowMenuItem[] = [
+    { id: "study", label: `Study linked cards${projection ? ` (${projection.cardCount})` : ""}`, disabled: !projection || projection.cardCount === 0, onSelect: onStudy },
+    ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
+      onSelect: () => tutor.openContext(tutorTarget) }] : []),
+    { id: "source", label: "Open source", onSelect: onOpenSource },
+    { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
+    { id: "edit", label: override ? "Edit section override" : "Edit section", disabled: actionsDisabled, onSelect: onEditSection },
+    ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled,
+      onSelect: () => onDiscardOverlay(note, "Topic note removed.") }] : []),
+    ...(override ? [{ id: "reset-section", label: "Reset section edit", destructive: true, disabled: actionsDisabled,
+      onSelect: () => onDiscardOverlay(override, "Section edit reset.") }] : []),
+  ];
   return <section id={`topic-${section.topicId}`} className={styles.section}>
     <header className={styles.sectionHeader}>
-      <div><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
-      <div className={styles.sectionActions}>
-        <TutorEntryButton disabled={actionsDisabled} target={{ title: section.title, scope: { kind: "guide", id: documentId },
-          focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" }} />
-        <Button variant="secondary" onClick={onOpenSource}>Open source</Button>
-        <Button variant="secondary" onClick={onEditNote}>{note ? "Edit note" : "Add note"}</Button>
-        {note ? <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(note, "Topic note removed.")}>Remove note</Button> : null}
-        <Button variant="secondary" onClick={onEditSection}>{override ? "Edit override" : "Edit section"}</Button>
-        {override ? <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(override, "Section edit reset.")}>Reset section edit</Button> : null}
-        <Button variant="primary" disabled={!projection || projection.cardCount === 0} onClick={onStudy}>Study linked cards{projection ? ` (${projection.cardCount})` : ""}</Button>
-      </div>
+      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
+      <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
     </header>
-    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StructuredSection section={section} />}
+    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent
+          content={section.content}
+          figureSource={{ documentId, locator: section.sourceLocator }}
+        />}
     {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
     {conflict ? <InlineNotice kind="warning">
       <strong>Older section edit needs review.</strong>
@@ -257,21 +270,76 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
     </InlineNotice> : null}
   </section>;
 }
-function StructuredSection({ section }: { section: DocumentStudyGuideSection }) {
-  const { content } = section;
+export function StudyGuideStructuredContent({
+  content,
+  figureSource = null,
+}: {
+  content: StudyGuideSectionContent;
+  figureSource?: { documentId: string; locator: import("../ipc/studyGuides").SourceLocator } | null;
+}) {
   return <div className={styles.structuredSection}>
     <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
+    {content.callouts.length > 0 ? <div className={styles.callouts}>
+      {content.callouts.map((callout) => <aside key={`${callout.kind}-${callout.title}`} className={styles.callout} data-kind={callout.kind}>
+        <strong><StudyMarkdown text={callout.title} inline /></strong><StudyMarkdown text={callout.body} />
+      </aside>)}
+    </div> : null}
     {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><h3><StudyMarkdown text={explanation.heading} inline /></h3><StudyMarkdown text={explanation.body} /></section>)}
     {content.importantTerms.length > 0 ? <section><h3>Important terms</h3><dl className={styles.terms}>
       {content.importantTerms.map((term) => <div key={term.term}><dt><StudyMarkdown text={term.term} inline /></dt><dd><StudyMarkdown text={term.explanation} /></dd></div>)}
     </dl></section> : null}
     <GuideList title="Process" values={content.processSteps} ordered />
+    {content.tables.map((table) => <section key={`${table.title}-${table.columns.join("|")}`} className={styles.tableSection}>
+      <h3><StudyMarkdown text={table.title} inline /></h3>
+      <div className={styles.tableWrap}><table className={styles.table}>
+        <thead><tr>{table.columns.map((column) => <th key={column} scope="col"><StudyMarkdown text={column} inline /></th>)}</tr></thead>
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join("|")}`}>
+          {row.map((cell, cellIndex) => <td key={`${cellIndex}-${cell}`}><StudyMarkdown text={cell} /></td>)}
+        </tr>)}</tbody>
+      </table></div>
+      {table.caption ? <p className={styles.tableCaption}><StudyMarkdown text={table.caption} inline /></p> : null}
+    </section>)}
     {content.comparisons.length > 0 ? <section><h3>Comparisons and relationships</h3><div className={styles.comparisons}>
       {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong><StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline /></strong><StudyMarkdown text={comparison.relationship} /></article>)}
     </div></section> : null}
+    {content.workedExamples.length > 0 ? <section><h3>Worked examples</h3><div className={styles.workedExamples}>
+      {content.workedExamples.map((example) => <article key={example.title} className={styles.workedExample}>
+        <h4><StudyMarkdown text={example.title} inline /></h4><StudyMarkdown text={example.prompt} />
+        <GuideList title="Reasoning" values={example.steps} ordered />
+        <div className={styles.exampleAnswer}><strong>Answer</strong><StudyMarkdown text={example.answer} /></div>
+        {example.takeaway ? <div className={styles.exampleTakeaway}><strong>Takeaway</strong><StudyMarkdown text={example.takeaway} /></div> : null}
+      </article>)}
+    </div></section> : null}
     <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
-    {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong><StudyMarkdown text={visual.title} inline /></strong><StudyMarkdown text={visual.explanation} /></aside>)}
+    <StudyGuideSourceFigures
+      documentId={figureSource?.documentId ?? null}
+      locator={figureSource?.locator ?? null}
+      explanations={content.visualExplanations}
+    />
+    {content.retrievalChecks.length > 0 ? <section><h3>Check yourself</h3><div className={styles.retrievalChecks}>
+      {content.retrievalChecks.map((check) => <Disclosure key={check.prompt} className={styles.retrievalCheck}
+        title={<StudyMarkdown text={check.prompt} inline />}>
+        <div className={styles.retrievalAnswer}><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
+      </Disclosure>)}
+    </div></section> : null}
   </div>;
+}
+function GuideConceptList({ values }: { values: string[] }) {
+  if (values.length === 0) return null;
+  return <section><h3>Key concepts</h3><dl className={styles.keyConcepts}>
+    {values.slice(0, 6).map((value) => {
+      const [title, caption] = splitOverviewConcept(value);
+      return <div key={value}>
+        <dt><StudyMarkdown text={title} inline /></dt>
+        {caption ? <dd><StudyMarkdown text={caption} /></dd> : null}
+      </div>;
+    })}
+  </dl></section>;
+}
+function splitOverviewConcept(value: string): [string, string] {
+  const separator = value.indexOf(" — ");
+  if (separator < 0) return [value, ""];
+  return [value.slice(0, separator).trim(), value.slice(separator + 3).trim()];
 }
 function GuideList({ title, values, ordered = false }: { title: string; values: string[]; ordered?: boolean }) {
   if (values.length === 0) return null;

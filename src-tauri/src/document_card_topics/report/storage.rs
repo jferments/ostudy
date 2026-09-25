@@ -123,6 +123,34 @@ pub(super) fn complete(
     Ok(())
 }
 
+pub(crate) fn load_for_job(
+    connection: &Connection,
+    document_id: &str,
+    job_id: &str,
+) -> Result<Option<GenerationReport>, CommandError> {
+    let json: Option<String> = connection
+        .query_row(
+            "SELECT report.report_json
+             FROM question_generation_reports report
+             JOIN document_generation_jobs job ON job.id = report.job_id
+             WHERE report.document_id = ?1 AND report.job_id = ?2
+               AND report.report_json IS NOT NULL AND job.state = 'succeeded'",
+            params![document_id, job_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    json.map(|json| {
+        if json.len() > 65_536 {
+            return Err(invalid());
+        }
+        let report: GenerationReport = serde_json::from_str(&json).map_err(|_| invalid())?;
+        report.validate()?;
+        Ok(report)
+    })
+    .transpose()
+}
+
 pub(crate) fn load_latest(
     connection: &Connection,
     document_id: &str,

@@ -8,7 +8,10 @@ mod repository;
 mod source;
 
 pub(crate) use contracts::{DocumentGenerationResultDto, RetryPdfGenerationInput};
-pub(crate) use generation::retry_pdf_flashcard_generation;
+pub(crate) use generation::{
+    retry_pdf_flashcard_generation, retry_reserved_pdf_flashcard_generation,
+    validate_retry_pdf_flashcard_generation,
+};
 pub(crate) use lifecycle::{
     flashcard_generation_canceled_error, record_document_cancellation_with_message,
     record_document_failure,

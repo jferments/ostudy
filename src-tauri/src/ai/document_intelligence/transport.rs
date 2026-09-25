@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use crate::{
     ai::{
         gateway::{normalized_usage, AiGatewayError, SafeAiError},
+        generation::{self, RecoveryReason},
         providers,
     },
     error::CommandError,
@@ -27,21 +28,39 @@ pub(crate) struct JsonTaskRequest<'a> {
     pub images: &'a [SourcePageImage],
 }
 
-pub(super) async fn request_json(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    request: JsonTaskRequest<'_>,
-) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, None).await
+// Capture the compiled call site synchronously. #[track_caller] on an async
+// function would lose this attribution when its future is polled.
+#[track_caller]
+pub(super) fn request_json<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, None, true, stage)
 }
 
-pub(crate) async fn request_json_cancellable(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    request: JsonTaskRequest<'_>,
-    cancellation: &CancellationSignal,
-) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, Some(cancellation)).await
+#[track_caller]
+pub(crate) fn request_json_cancellable<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, Some(cancellation), true, stage)
+}
+
+/// Opt out of dialect retries while retaining accounting for the single attempt.
+#[track_caller]
+pub(crate) fn request_json_cancellable_single_attempt<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, Some(cancellation), false, stage)
 }
 
 async fn request_json_inner(
@@ -49,6 +68,8 @@ async fn request_json_inner(
     task: &DocumentTaskContext,
     request: JsonTaskRequest<'_>,
     cancellation: Option<&CancellationSignal>,
+    allow_compatibility_retry: bool,
+    stage: &str,
 ) -> Result<Value, CommandError> {
     ensure_context_budget(task, &request)?;
     crate::logging::debug_target("ai.contract", "structured_request_prepared",
@@ -72,7 +93,7 @@ async fn request_json_inner(
     } else {
         Value::Array(multimodal_user_parts(request.user_text, request.images)?)
     };
-    let prepared = providers::prepare_document_request(
+    let mut prepared = providers::prepare_document_request(
         profile,
         request.system_prompt,
         user_content,
@@ -81,70 +102,62 @@ async fn request_json_inner(
         &task.reasoning_effort,
     )
     .map_err(gateway_to_command)?;
+    if task.provider_kind == "openrouter" && !task.profile().require_zero_data_retention {
+        if let Some(diagnostics) = task.diagnostics.as_ref() {
+            let session_id = diagnostics.provider_session_id();
+            prepared.body["session_id"] = Value::String(session_id.clone());
+            if let Some(compatibility) = prepared.compatibility_body.as_mut() {
+                compatibility["session_id"] = Value::String(session_id);
+            }
+        }
+    }
 
     ensure_request_size(&prepared.body)?;
     if let Some(compatibility) = prepared.compatibility_body.as_ref() {
         ensure_request_size(compatibility)?;
     }
 
-    let first = if let Some(cancellation) = cancellation {
-        runtime
-            .gateway
-            .post_task_json(
-                prepared.url.clone(),
-                bearer,
-                &prepared.body,
-                profile.request_timeout_ms,
-                MAX_COMPLETION_BYTES,
-                cancellation,
-            )
-            .await
-    } else {
-        runtime
-            .gateway
-            .post_document_json(
-                prepared.url.clone(),
-                bearer,
-                &prepared.body,
-                profile.request_timeout_ms,
-                MAX_COMPLETION_BYTES,
-            )
-            .await
-    };
+    let first = execute_request(
+        runtime,
+        task,
+        &prepared.body,
+        prepared.url.clone(),
+        bearer,
+        cancellation,
+        stage,
+    )
+    .await;
     let response = match first {
-        Err(first_error) if first_error.safe.code == "ai_http_bad_request" => {
+        Err(first_error)
+            if allow_compatibility_retry && first_error.code == "ai_http_bad_request" =>
+        {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
-                if let Some(cancellation) = cancellation {
-                    runtime
-                        .gateway
-                        .post_task_json(
-                            prepared.url.clone(),
-                            bearer,
-                            compatibility,
-                            profile.request_timeout_ms,
-                            MAX_COMPLETION_BYTES,
-                            cancellation,
-                        )
-                        .await
+                if generation::reserve_recovery(
+                    task.diagnostics.as_ref(),
+                    stage,
+                    task.diagnostic_window_key.as_deref(),
+                    RecoveryReason::ProviderCompatibility,
+                    &first_error.code,
+                ) {
+                    execute_request(
+                        runtime,
+                        task,
+                        compatibility,
+                        prepared.url.clone(),
+                        bearer,
+                        cancellation,
+                        stage,
+                    )
+                    .await
                 } else {
-                    runtime
-                        .gateway
-                        .post_document_json(
-                            prepared.url.clone(),
-                            bearer,
-                            compatibility,
-                            profile.request_timeout_ms,
-                            MAX_COMPLETION_BYTES,
-                        )
-                        .await
+                    Err(first_error)
                 }
             } else {
                 Err(first_error)
             }
         }
         other => other,
-    }
-    .map_err(gateway_to_command)?;
+    }?;
 
     record_document_usage(task, &response);
     ensure_document_response_complete(&response)?;
@@ -154,26 +167,106 @@ async fn request_json_inner(
     }
 }
 
-fn ensure_context_budget(
+/// Bind logical stage/window attribution around the gateway. The gateway owns
+/// physical-attempt accounting because its bounded retry can send more than once.
+async fn execute_request(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    body: &Value,
+    url: url::Url,
+    bearer: Option<&str>,
+    cancellation: Option<&CancellationSignal>,
+    stage: &str,
+) -> Result<Value, CommandError> {
+    let _provider_slot =
+        crate::ai::concurrency::acquire_provider_slot(&task.network_scope, cancellation).await?;
+    let future = async {
+        if let Some(cancellation) = cancellation {
+            runtime
+                .gateway
+                .post_task_json(
+                    url,
+                    bearer,
+                    body,
+                    task.profile().request_timeout_ms,
+                    MAX_COMPLETION_BYTES,
+                    cancellation,
+                )
+                .await
+        } else {
+            runtime
+                .gateway
+                .post_document_json(
+                    url,
+                    bearer,
+                    body,
+                    task.profile().request_timeout_ms,
+                    MAX_COMPLETION_BYTES,
+                )
+                .await
+        }
+    };
+    let result = crate::ai::generation::scoped_request(
+        task.diagnostics.clone(),
+        stage,
+        task.diagnostic_window_key.as_deref(),
+        &task.provider_kind,
+        future,
+    )
+    .await;
+    crate::ai::concurrency::record_provider_outcome(
+        &task.network_scope,
+        result.is_ok(),
+        result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.safe.retryable),
+    );
+    if result.is_err() {
+        task.record_request_usage(None);
+    }
+    result.map_err(gateway_to_command)
+}
+
+const CONSERVATIVE_TEXT_BYTES_PER_TOKEN: usize = 2;
+const IMAGE_CONTEXT_RESERVE_TOKENS: usize = 8_192;
+const REQUEST_CONTEXT_RESERVE_TOKENS: usize = 1_024;
+
+pub(super) fn ensure_context_budget(
     task: &DocumentTaskContext,
     request: &JsonTaskRequest<'_>,
 ) -> Result<(), CommandError> {
     let system =
         crate::ai::structured_output::system_with_schema(request.system_prompt, request.schema);
-    let upper_bound = system
-        .len()
-        .saturating_add(request.user_text.len())
-        .saturating_add(request.images.len().saturating_mul(8192))
+    let upper_bound = conservative_text_tokens(&system)
+        .saturating_add(conservative_text_tokens(request.user_text))
+        .saturating_add(
+            request
+                .images
+                .len()
+                .saturating_mul(IMAGE_CONTEXT_RESERVE_TOKENS),
+        )
         .saturating_add(request.max_tokens)
-        .saturating_add(1024);
+        .saturating_add(REQUEST_CONTEXT_RESERVE_TOKENS);
     if task
         .context_window_tokens()
         .is_some_and(|limit| upper_bound > limit)
     {
-        return Err(CommandError::new("ai_document_context_budget",
-            "This learning request exceeds the model's conservative context budget after reserving its output contract and completion. No provider request was sent."));
+        return Err(CommandError::new(
+            "ai_document_context_budget",
+            "This bounded learning request still does not fit the selected model context after reserving its output contract and completion. No provider request was sent.",
+        ));
     }
     Ok(())
+}
+
+fn conservative_text_tokens(text: &str) -> usize {
+    // The context limit is expressed in TOKENS, while Rust string lengths are
+    // UTF-8 BYTES. Comparing them directly made ordinary English/JSON requests
+    // appear roughly 2–4x larger than they are. Two UTF-8 bytes per token is
+    // deliberately conservative for mixed prose/JSON while remaining in the
+    // same unit as the provider context window.
+    text.len().div_ceil(CONSERVATIVE_TEXT_BYTES_PER_TOKEN)
 }
 
 fn ensure_request_size(body: &Value) -> Result<(), CommandError> {
@@ -339,5 +432,16 @@ mod tests {
             bytes: b"not an image".to_vec(),
         }];
         assert!(multimodal_user_parts("source", &images).is_err());
+    }
+}
+
+#[cfg(test)]
+mod context_budget_tests {
+    use super::*;
+
+    #[test]
+    fn text_budget_estimate_converts_bytes_to_tokens_instead_of_comparing_units_directly() {
+        assert_eq!(conservative_text_tokens(&"a".repeat(20_000)), 10_000);
+        assert_eq!(conservative_text_tokens("αβγδ"), 4);
     }
 }

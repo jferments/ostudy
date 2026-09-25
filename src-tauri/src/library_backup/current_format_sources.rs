@@ -190,12 +190,7 @@ pub(super) fn seed(database: &Database, paths: &AppPaths, deck: &str) -> String 
             content: StudyGuideSectionContent {
                 overview: "One precedes two.".to_string(),
                 key_points: vec!["Keep the direction of the relationship.".to_string()],
-                explanations: vec![],
-                important_terms: vec![],
-                process_steps: vec![],
-                comparisons: vec![],
-                common_misconceptions: vec![],
-                visual_explanations: vec![],
+                ..StudyGuideSectionContent::default()
             },
         }],
     )

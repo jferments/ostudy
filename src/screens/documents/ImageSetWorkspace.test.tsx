@@ -9,7 +9,7 @@ import { ImageSetWorkspace } from "./ImageSetWorkspace";
 
 const mocks = vi.hoisted(() => ({
   stage: vi.fn(), import: vi.fn(), amend: vi.fn(), details: vi.fn(), preview: vi.fn(),
-  prepare: vi.fn(), cards: vi.fn(), more: vi.fn(), guide: vi.fn(), list: vi.fn(),
+  prepare: vi.fn(), cards: vi.fn(), more: vi.fn(), guide: vi.fn(), list: vi.fn(), guideJobs: vi.fn(),
   cancel: vi.fn(), cancelGuide: vi.fn(), toast: vi.fn(), refresh: vi.fn(),
 }));
 vi.mock("../../platform/imageInput", async (original) => ({
@@ -21,14 +21,18 @@ vi.mock("../../ipc/imageSets", () => ({
 }));
 vi.mock("../../ipc/documents", () => ({
   listDocuments: mocks.list, getDocumentGenerationProgress: vi.fn().mockResolvedValue(null),
-  retryDocumentFlashcardGeneration: mocks.cards, retryPdfFlashcardGeneration: mocks.cards,
-  generateMoreDocumentFlashcards: mocks.more, generateMorePdfFlashcards: mocks.more,
-  cancelPdfFlashcardGeneration: mocks.cancel, deletePdfDocument: vi.fn(),
-  importPdfAndGenerateFlashcards: vi.fn(), openDocumentSource: vi.fn(),
+  startDocumentFlashcardGeneration: vi.fn(),
+  retryDocumentFlashcardGeneration: mocks.cards,
+  generateMoreDocumentFlashcards: mocks.more,
+  cancelDocumentFlashcardGeneration: mocks.cancel, deleteDocument: vi.fn(),
+  importDocument: vi.fn(), openDocumentSource: vi.fn(),
 }));
 vi.mock("../../ipc/studyGuides", () => ({
-  generateDocumentStudyGuide: mocks.guide, cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  generateDocumentStudyGuide: mocks.guide,
+  cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
 }));
+vi.mock("../../ipc/documentArtifactProgress", () => ({ listLatestDocumentStudyGuideJobs: mocks.guideJobs }));
 
 const id = "a".repeat(32);
 let saved: ImageSetDetails | null;
@@ -71,6 +75,7 @@ beforeEach(() => {
   mocks.refresh.mockResolvedValue(undefined);
   mocks.cancel.mockResolvedValue(undefined);
   mocks.cancelGuide.mockResolvedValue(undefined);
+  mocks.guideJobs.mockResolvedValue([{ documentId: id, state: "succeeded", safeErrorMessage: "", safeErrorCode: "" }]);
   mocks.stage.mockImplementation(async (file: File, operationId: string) => ({
     id: operationId, displayName: file.name, purpose: "image", detectedKind: "png",
     mediaType: "image/png", byteSize: file.size, sha256: "d".repeat(64), expiresAt: 9999999999999,
@@ -104,7 +109,17 @@ beforeEach(() => {
 });
 
 describe("automatic image collections", () => {
-  it("accepts multiple files and automatically creates cards and a guide without preparation controls", async () => {
+  it("does not leak an unrelated document-provider error into image upload", async () => {
+    mocks.list.mockRejectedValueOnce(new Error(
+      "The provider ended the streamed document request with finish_reason=content_filter.",
+    ));
+    open();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled());
+    expect(screen.queryByText(/finish_reason=content_filter/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Select images" })).toBeTruthy();
+  });
+
+  it("accepts multiple files and uses native paired artifact generation without preparation controls", async () => {
     open();
     const input = screen.getByLabelText("Choose images") as HTMLInputElement;
     expect(input.multiple).toBe(true);
@@ -115,9 +130,9 @@ describe("automatic image collections", () => {
     expect(mocks.import.mock.calls[0][0].members).toHaveLength(2);
     expect(mocks.prepare).toHaveBeenCalledWith(id);
     expect(mocks.cards).toHaveBeenCalledWith(id);
-    expect(mocks.guide).toHaveBeenCalledWith(id);
+    expect(mocks.guide).not.toHaveBeenCalled();
+    expect(mocks.guideJobs).toHaveBeenCalledTimes(1);
     expect(mocks.prepare.mock.invocationCallOrder[0]).toBeLessThan(mocks.cards.mock.invocationCallOrder[0]);
-    expect(mocks.cards.mock.invocationCallOrder[0]).toBeLessThan(mocks.guide.mock.invocationCallOrder[0]);
     expect(screen.queryByRole("spinbutton")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByText("Content filter")).toBeNull();
@@ -142,9 +157,38 @@ describe("automatic image collections", () => {
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
     expect(mocks.more).toHaveBeenCalledWith(id);
-    expect(mocks.guide).toHaveBeenCalledTimes(2);
+    expect(mocks.guide).toHaveBeenCalledTimes(1);
     fireEvent.paste(document, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
     expect(mocks.stage).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps staging alive after leaving the image workspace", async () => {
+    const staging = deferred<{
+      id: string; displayName: string; purpose: "image"; detectedKind: "png";
+      mediaType: string; byteSize: number; sha256: string; expiresAt: number;
+    }>();
+    mocks.stage.mockReturnValueOnce(staging.promise);
+    open();
+    select([image("slow.png")]);
+    await waitFor(() => expect(mocks.stage).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Back to Documents" }));
+    expect(screen.getByText("Another page")).toBeTruthy();
+    await act(async () => {
+      staging.resolve({
+        id: mocks.stage.mock.calls[0][1], displayName: "slow.png", purpose: "image", detectedKind: "png",
+        mediaType: "image/png", byteSize: 6, sha256: "d".repeat(64), expiresAt: 9999999999999,
+      });
+      await staging.promise;
+    });
+    await waitFor(() => expect(mocks.import).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.cards).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.guideJobs).toHaveBeenCalledTimes(1));
+    expect(mocks.guide).not.toHaveBeenCalled();
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.cancelGuide).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open collection" }));
+    await ready();
+    expect(screen.getByRole("button", { name: "View source-0.png" })).toBeTruthy();
   });
 
   it("retains additions during generation and completes after leaving the upload page", async () => {
@@ -167,16 +211,32 @@ describe("automatic image collections", () => {
     expect(screen.getAllByRole("button", { name: /^View / })).toHaveLength(2);
   });
 
-  it("retries a failed guide without importing or generating cards again", async () => {
-    mocks.guide.mockRejectedValueOnce(new Error("Provider unavailable"));
+  it("retries a failed native guide without importing or generating cards again", async () => {
+    mocks.guideJobs.mockResolvedValueOnce([{
+      documentId: id, state: "failed", safeErrorCode: "ai_provider_unavailable", safeErrorMessage: "Provider unavailable",
+    }]);
+    open();
+    select([image()]);
+    await screen.findByRole("button", { name: "Retry processing" });
+    expect(mocks.guide).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry processing" }));
+    await ready();
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    expect(mocks.cards).toHaveBeenCalledTimes(1);
+    expect(mocks.guide).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only the status read after native artifacts committed but their acknowledgement read failed", async () => {
+    mocks.guideJobs.mockRejectedValueOnce(new Error("Status read unavailable"));
     open();
     select([image()]);
     await screen.findByRole("button", { name: "Retry processing" });
     fireEvent.click(screen.getByRole("button", { name: "Retry processing" }));
     await ready();
+    expect(mocks.guideJobs).toHaveBeenCalledTimes(2);
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
-    expect(mocks.guide).toHaveBeenCalledTimes(2);
+    expect(mocks.guide).not.toHaveBeenCalled();
   });
 
   it("preserves upload and source-operation identities across an ambiguous acknowledgement", async () => {
@@ -219,7 +279,7 @@ describe("automatic image collections", () => {
     await ready();
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
-    expect(mocks.guide).toHaveBeenCalledTimes(1);
+    expect(mocks.guide).not.toHaveBeenCalled();
     expect(mocks.preview).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "View source-0.png" }));
     const preview = await screen.findByAltText("Retained original image");

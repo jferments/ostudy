@@ -14,7 +14,7 @@ use super::{
     transport::{request_json, JsonTaskRequest},
 };
 
-const CURATION_PROMPT_VERSION: i64 = 4;
+const CURATION_PROMPT_VERSION: i64 = 5;
 const CURATION_SCHEMA_VERSION: i64 = 1;
 
 pub(crate) async fn curate_document_cards(
@@ -27,6 +27,9 @@ pub(crate) async fn curate_document_cards(
         return Ok(cards);
     }
 
+    let original_candidates = cards.len();
+    let cards = deduplicate_candidates(cards);
+    let unique_candidates = cards.len();
     let outline_json = outline_context_for_curation(outline)?;
     let batches = into_curation_batches(cards);
     let parallelism = crate::ai::concurrency::document_request_parallelism(&task.network_scope)
@@ -40,7 +43,8 @@ pub(crate) async fn curate_document_cards(
             "model": task.model_id.as_str(),
             "batches": batches.len(),
             "parallelism": parallelism,
-            "candidates": batches.iter().map(Vec::len).sum::<usize>(),
+            "candidates": unique_candidates,
+            "duplicatesRemovedBeforeProvider": original_candidates.saturating_sub(unique_candidates),
         }),
     );
 
@@ -91,6 +95,14 @@ pub(crate) async fn curate_document_cards(
     Ok(retained)
 }
 
+fn deduplicate_candidates(cards: Vec<Value>) -> Vec<Value> {
+    let mut seen = HashSet::new();
+    cards
+        .into_iter()
+        .filter(|card| seen.insert(card_identity(card)))
+        .collect()
+}
+
 fn into_curation_batches(cards: Vec<Value>) -> Vec<Vec<Value>> {
     let mut cards = cards.into_iter();
     let mut batches = Vec::new();
@@ -122,12 +134,23 @@ async fn curation_slot(
         .map(|(index, card)| compact_card_summary(index, card))
         .collect::<Vec<_>>();
     let user = format!(
-        "Global document outline:\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\n\nCandidate flashcards:\n<ostudy-candidates>\n{}\n</ostudy-candidates>\n\nReturn the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application. QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings or topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require access to the original source to make sense. For definitions, keep only genuine term/definition pairs. Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
+        "Global document outline:\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\n\nCandidate flashcards:\n<ostudy-candidates>\n{}\n</ostudy-candidates>\n\nReturn the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application. QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings or topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require access to the original source to make sense. Reject Basic/recall cards that reproduce a source quiz or challenge question, flatten answer choices into prose, or pad a correct answer with a checklist of rejected distractors instead of teaching the positive mechanism. For definitions, keep only genuine term/definition pairs. Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
         summaries.join("\n")
     );
+    let mut batch_task = task.clone();
+    batch_task.diagnostic_window_key = Some(crate::knowledge::contracts::hash(&format!(
+        "curation-batch-v1|{batch_index}|{user}"
+    )));
     Some((
         batch_index,
-        request_curation_with_retry(runtime, task, &user, batch.len()).await,
+        crate::ai::generation::outcomes::authoring::observe(
+            batch_task.diagnostics.as_ref(),
+            batch_task.diagnostic_window_key.as_deref(),
+            crate::ai::generation::outcomes::authoring::Kind::CurationSelection,
+            request_curation_with_retry(runtime, &batch_task, &user, batch.len()),
+            Vec::len,
+        )
+        .await,
     ))
 }
 
@@ -138,7 +161,7 @@ async fn request_curation_with_retry(
     candidate_count: usize,
 ) -> Result<Vec<usize>, CommandError> {
     let system = format!(
-        "You are the final educational quality editor for ostudy. Select, but never rewrite, generated flashcards. A card is eligible only when its question and answer are mutually coherent, directly matched, complete for what was asked, and supported by the supplied document context. Reject answer headings or topic labels masquerading as answers, unsupported claims, incomplete multi-part answers, ambiguous prompts, reversed direction, and other semantic mismatches. Then optimize global learning-objective coverage and remove low-value or redundant material. Prefer dropping a questionable card over preserving a misleading one. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."
+        "You are the final educational quality editor for ostudy. Select, but never rewrite, generated flashcards. A card is eligible only when its question and answer are mutually coherent, directly matched, complete for what was asked, and supported by the supplied document context. Reject answer headings or topic labels masquerading as answers, unsupported claims, incomplete multi-part answers, ambiguous prompts, reversed direction, copied source-quiz prompts masquerading as recall cards, flattened answer-choice inventories, and other semantic mismatches. Then optimize global learning-objective coverage and remove low-value or redundant material. Prefer dropping a questionable card over preserving a misleading one. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."
     );
     let schema = curation_schema(candidate_count);
     let first = request_json(
@@ -158,6 +181,15 @@ async fn request_curation_with_retry(
     match first {
         Ok(indices) => Ok(indices),
         Err(error) if retryable_contract_error(&error) => {
+            if !crate::ai::generation::reserve_recovery(
+                task.diagnostics.as_ref(),
+                "flashcard_curation",
+                task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::ContractRepair,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             let repaired = format!(
                 "{user}\n\nThe prior response was invalid. Return a fresh JSON object containing only valid candidate indices."
             );
@@ -256,6 +288,37 @@ fn normalize_identity_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn curation_prompt_version_advances_with_source_quiz_quality_gate() {
+        assert_eq!(CURATION_PROMPT_VERSION, 5);
+    }
+
+    #[test]
+    fn duplicate_candidates_are_removed_before_provider_curation() {
+        let first = json!({
+            "type":"basic",
+            "front":"What is preload?",
+            "back":"Ventricular filling before contraction.",
+            "tags":[]
+        });
+        let duplicate = json!({
+            "type":"basic",
+            "front":"  what   is PRELOAD? ",
+            "back":" ventricular filling before contraction. ",
+            "tags":["ignored-for-identity"]
+        });
+        let distinct = json!({
+            "type":"basic",
+            "front":"What is afterload?",
+            "back":"Resistance the ventricle must overcome.",
+            "tags":[]
+        });
+        let cards = deduplicate_candidates(vec![first, duplicate, distinct]);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["front"], "What is preload?");
+        assert_eq!(cards[1]["front"], "What is afterload?");
+    }
 
     #[test]
     fn curation_batches_are_bounded_without_losing_candidates() {

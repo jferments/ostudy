@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, Any
@@ -132,6 +133,115 @@ class BoundedJsonlWriter:
         self.close()
 
 
+
+def termination_details(return_code: int) -> dict[str, Any]:
+    if return_code >= 0:
+        return {
+            "signal_number": None,
+            "signal_name": None,
+            "core_dump_candidate": False,
+        }
+    signal_number = -return_code
+    try:
+        signal_name = signal.Signals(signal_number).name
+    except ValueError:
+        signal_name = f"SIG{signal_number}"
+    core_signals = {
+        getattr(signal, name)
+        for name in ("SIGABRT", "SIGBUS", "SIGFPE", "SIGILL", "SIGSEGV", "SIGTRAP")
+        if hasattr(signal, name)
+    }
+    return {
+        "signal_number": signal_number,
+        "signal_name": signal_name,
+        "core_dump_candidate": signal_number in core_signals,
+    }
+
+
+def _read_status_value(path: Path, key: str) -> int | None:
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.startswith(key + ":"):
+                continue
+            value = line.split(":", 1)[1].strip().split()[0]
+            return int(value)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _process_group_sample(process_group: int) -> tuple[int, int, int]:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return (0, 0, 0)
+    rss_kib = 0
+    process_count = 0
+    thread_count = 0
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
+            end = stat.rfind(")")
+            if end < 0:
+                continue
+            fields = stat[end + 2 :].split()
+            if len(fields) < 3 or int(fields[2]) != process_group:
+                continue
+        except (OSError, ValueError):
+            continue
+        process_count += 1
+        rss_kib += _read_status_value(entry / "status", "VmRSS") or 0
+        thread_count += _read_status_value(entry / "status", "Threads") or 0
+    return (rss_kib * 1024, process_count, thread_count)
+
+
+def _available_memory_bytes() -> int | None:
+    value = _read_status_value(Path("/proc/meminfo"), "MemAvailable")
+    return None if value is None else value * 1024
+
+
+class ProcessResourceMonitor:
+    def __init__(self, process_group: int) -> None:
+        self.process_group = process_group
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="ostudy-resource-monitor", daemon=True)
+        self.peak_group_rss_bytes = 0
+        self.peak_process_count = 0
+        self.peak_thread_count = 0
+        self.min_available_memory_bytes: int | None = None
+        self.samples = 0
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> dict[str, Any]:
+        self.stop_event.set()
+        self.thread.join(timeout=2)
+        return {
+            "resource_samples": self.samples,
+            "peak_group_rss_bytes": self.peak_group_rss_bytes,
+            "peak_process_count": self.peak_process_count,
+            "peak_thread_count": self.peak_thread_count,
+            "min_available_memory_bytes": self.min_available_memory_bytes,
+        }
+
+    def _run(self) -> None:
+        while not self.stop_event.is_set():
+            rss, processes, threads = _process_group_sample(self.process_group)
+            available = _available_memory_bytes()
+            self.samples += 1
+            self.peak_group_rss_bytes = max(self.peak_group_rss_bytes, rss)
+            self.peak_process_count = max(self.peak_process_count, processes)
+            self.peak_thread_count = max(self.peak_thread_count, threads)
+            if available is not None:
+                self.min_available_memory_bytes = (
+                    available
+                    if self.min_available_memory_bytes is None
+                    else min(self.min_available_memory_bytes, available)
+                )
+            self.stop_event.wait(1.0)
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", required=True, type=Path)
@@ -152,7 +262,6 @@ def main() -> int:
             base.update(record)
             writer.write(base)
 
-        write_record({"level": "info", "event": "process_start", "command": command[0]})
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
@@ -161,6 +270,15 @@ def main() -> int:
             bufsize=1,
             start_new_session=True,
         )
+        started_monotonic = time.monotonic()
+        monitor = ProcessResourceMonitor(process.pid)
+        monitor.start()
+        write_record({
+            "level": "info",
+            "event": "process_start",
+            "command": command[0],
+            "pid": process.pid,
+        })
 
         def forward(signum: int, _frame: object) -> None:
             if process.poll() is None:
@@ -200,6 +318,7 @@ def main() -> int:
             thread.start()
 
         return_code = process.wait()
+        resources = monitor.stop()
         for thread in threads:
             thread.join()
         write_record(
@@ -207,6 +326,10 @@ def main() -> int:
                 "level": "info" if return_code == 0 else "error",
                 "event": "process_exit",
                 "exit_code": return_code,
+                "pid": process.pid,
+                "runtime_ms": int((time.monotonic() - started_monotonic) * 1000),
+                **termination_details(return_code),
+                **resources,
             }
         )
         return return_code

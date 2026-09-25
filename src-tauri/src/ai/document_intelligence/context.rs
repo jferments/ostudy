@@ -36,6 +36,8 @@ pub(crate) struct DocumentTaskContext {
     credential_storage: CredentialStorage,
     capabilities: DocumentProviderCapabilities,
     usage: Arc<Mutex<DocumentUsageAccumulator>>,
+    pub(crate) diagnostics: Option<crate::ai::generation::Context>,
+    pub(crate) diagnostic_window_key: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -46,12 +48,16 @@ struct DocumentUsageAccumulator {
 }
 
 impl DocumentTaskContext {
+    pub(crate) fn for_profile(database: &Database, profile_id: &str) -> Result<Self, CommandError> {
+        context_from_request(database, load_profile_request(database, profile_id)?)?
+            .with_saved_capabilities(database)
+    }
+
     pub(crate) fn for_tutor_profile(
         database: &Database,
         profile_id: &str,
     ) -> Result<Self, CommandError> {
-        context_from_request(database, load_profile_request(database, profile_id)?)?
-            .with_saved_capabilities(database)
+        Self::for_profile(database, profile_id)
     }
 
     fn with_saved_capabilities(mut self, database: &Database) -> Result<Self, CommandError> {
@@ -130,6 +136,14 @@ impl DocumentTaskContext {
         let tokens = (usage.reported_requests > 0).then_some(usage.total_tokens);
         let complete = usage.reported_requests > 0 && usage.unreported_requests == 0;
         (tokens, complete)
+    }
+
+    /// Keep provider/profile/cancellation/diagnostic identity while accounting
+    /// one derived artifact independently from sibling artifact work.
+    pub(crate) fn fork_usage(&self) -> Self {
+        let mut fork = self.clone();
+        fork.usage = Arc::new(Mutex::new(DocumentUsageAccumulator::default()));
+        fork
     }
 
     pub(super) fn profile(&self) -> &ProfileSnapshot {
@@ -216,6 +230,8 @@ fn context_from_request(
         credential_storage: request.credential_storage,
         capabilities,
         usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
+        diagnostics: crate::task_cancellation::generation_context(database)?,
+        diagnostic_window_key: None,
     })
 }
 

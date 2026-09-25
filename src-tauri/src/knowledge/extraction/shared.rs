@@ -2,6 +2,9 @@
 //! rehydrate from current durable state rather than trusting another caller's DTO.
 use super::*;
 
+mod annotations;
+mod local;
+
 #[derive(Clone, Copy)]
 pub(super) struct Window<'a> {
     pub database: &'a Database,
@@ -10,12 +13,14 @@ pub(super) struct Window<'a> {
     pub catalog: &'a EvidenceCatalog,
     pub authorization: &'a str,
     pub retry_partial: bool,
+    pub diagnostics: Option<&'a crate::ai::generation::Context>,
+    pub logical_key: Option<&'a str>,
 }
 
 pub(super) async fn run<F, Fut>(
     input: Window<'_>,
     subscriber: &CancellationSignal,
-    call: F,
+    mut call: F,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError>
 where
     F: FnMut(WindowCall) -> Fut,
@@ -30,25 +35,53 @@ where
         ))
         .map_err(CommandError::serialization)?,
     );
+    let demand = crate::knowledge::annotation_demand::current();
+    let core_call = &mut call;
     super::super::shared_preparation::join_or_run(
         input.database,
         &identity,
         subscriber,
         |signal| async move {
-            run_window(
-                input.database,
-                input.sources,
-                input.contract,
-                input.catalog,
-                &signal,
-                input.retry_partial,
-                call,
-            )
-            .await
-            .map(|_| ())
+            let mut observed = crate::ai::generation::outcomes::Task::new(
+                input.diagnostics,
+                "knowledge_extraction",
+                input.logical_key,
+            );
+            // Isolate local checkpoint observations from an enclosing authoring
+            // task. A failed save returns before any provider request, while a
+            // resumed attempt reads the newest receipt rather than a stale copy.
+            let restored = observed
+                .scope(async { local::restore(input, &signal) })
+                .await;
+            let result = match restored {
+                Ok(()) => {
+                    observed
+                        .scope(run_window_scoped(
+                            WindowRunContext {
+                                database: input.database,
+                                sources: input.sources,
+                                contract: input.contract,
+                                catalog: input.catalog,
+                                cancellation: &signal,
+                                retry_partial: input.retry_partial,
+                                diagnostics: input.diagnostics,
+                                logical_key: input.logical_key,
+                            },
+                            core_call,
+                        ))
+                        .await
+                }
+                Err(error) => Err(error),
+            };
+            observed.finish(&result);
+            result.map(|_| ())
         },
     )
     .await?;
+    check_canceled(subscriber)?;
+    if let Some(policy) = demand {
+        annotations::run(input, &policy, subscriber, &mut call).await?;
+    }
     check_canceled(subscriber)?;
     analysis_store::Checkpoint::open(input.database, input.sources, input.contract)?.units()
 }
@@ -73,6 +106,8 @@ mod tests {
             catalog: &catalog,
             authorization: &authorization,
             retry_partial: false,
+            diagnostics: None,
+            logical_key: None,
         };
         let signal = CancellationSignal::new();
         let release = tokio::sync::Notify::new();
@@ -115,3 +150,6 @@ mod tests {
         assert_eq!(calls.get(), 1);
     }
 }
+
+#[cfg(test)]
+mod outcome_tests;

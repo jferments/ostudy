@@ -10,7 +10,7 @@ vi.mock("../ipc/studyGuides", async () => {
   const actual = await vi.importActual<typeof import("../ipc/studyGuides")>(
     "../ipc/studyGuides",
   );
-  return { ...actual, listDocumentStudyGuidePage: vi.fn() };
+  return { ...actual, listStudyGuidePage: vi.fn() };
 });
 
 // Exercise the production paginated library, not its retired predecessor.
@@ -20,7 +20,7 @@ vi.mock("./StudyGuideDialog", () => ({ StudyGuideDialog: () => null }));
 describe("Study Guides empty library", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(studyGuides.listDocumentStudyGuidePage).mockResolvedValue({
+    vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue({
       items: [],
       totalCount: 0,
       offset: 0,
@@ -41,7 +41,7 @@ describe("Study Guides empty library", () => {
     expect(screen.getByText(/Generate a guide from Documents/u)).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Study Guides pages" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
-    expect(studyGuides.listDocumentStudyGuidePage).toHaveBeenCalledWith({
+    expect(studyGuides.listStudyGuidePage).toHaveBeenCalledWith({
       query: "",
       sort: "recent",
       offset: 0,

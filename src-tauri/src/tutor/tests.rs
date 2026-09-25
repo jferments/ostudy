@@ -268,8 +268,10 @@ fn startup_recovers_interrupted_turn_without_replaying_provider_work() {
     assert!(conversations::delete(
         &fixture.database,
         DeleteConversationInput {
+            operation_id: "1".repeat(32),
             conversation_id: fixture.conversation.id.clone(),
             expected_revision: identity.accepted_revision,
+            expected_organization_revision: fixture.conversation.organization_revision,
         }
     )
     .is_err());
@@ -291,8 +293,10 @@ fn startup_recovers_interrupted_turn_without_replaying_provider_work() {
     conversations::delete(
         &fixture.database,
         DeleteConversationInput {
+            operation_id: "2".repeat(32),
             conversation_id: fixture.conversation.id.clone(),
             expected_revision: latest,
+            expected_organization_revision: fixture.conversation.organization_revision,
         },
     )
     .unwrap();

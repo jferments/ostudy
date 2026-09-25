@@ -9,6 +9,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use super::{
+    collection_scope,
     contracts::{hash, invalid, KnowledgeUnit, SourceKind, SourceRecord, StudyScope},
     repository, retrieval,
 };
@@ -99,9 +100,14 @@ pub(crate) struct ContextStamp {
     include_conversations: bool,
     sources: Vec<SourceRecord>,
     fingerprint: String,
+    collection_snapshot: Option<crate::collections::SourceSetSnapshotDto>,
 }
 
 impl ContextStamp {
+    pub(crate) fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
     pub(crate) fn restrict_to(
         mut self,
         connection: &Connection,
@@ -123,6 +129,9 @@ impl ContextStamp {
     /// Recheck permission, every interpretation and empty/partial receipt in the
     /// caller's publication transaction, not just the citations a model chose.
     pub(crate) fn ensure_current(&self, connection: &Connection) -> Result<(), CommandError> {
+        if let Some(snapshot) = &self.collection_snapshot {
+            crate::collections::ensure_snapshot_current(connection, snapshot)?;
+        }
         let allowed = permitted(connection, &self.scope, self.include_conversations)?;
         if self
             .sources
@@ -176,6 +185,7 @@ pub(crate) fn build(
     {
         return Err(invalid("The learning-context budget is invalid."));
     }
+    let collection_snapshot = collection_scope::snapshot(connection, request.scope)?;
     let allowed = permitted(connection, request.scope, request.include_conversations)?;
     let mut sources = Vec::new();
     let mut seen = HashSet::new();
@@ -253,6 +263,7 @@ pub(crate) fn build(
         include_conversations: request.include_conversations,
         fingerprint: receipt::fingerprint(connection, &sources)?,
         sources: sources.clone(),
+        collection_snapshot,
     };
     Ok(LearningContext {
         sources,

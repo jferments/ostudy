@@ -1,17 +1,38 @@
-import { stageImageCollectionFile } from "../ipc/imageCollectionFiles";
+import { stageImageCollectionFileChunk } from "../ipc/imageCollectionFiles";
 import type { StagedExternalFile } from "../ipc/externalFiles";
 
 export const IMAGE_FILE_ACCEPT = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
 export const MAX_IMAGE_FILE_BYTES = 25 * 1024 * 1024;
+export const IMAGE_UPLOAD_CHUNK_BYTES = 512 * 1024;
 
-/** File input, a local file drop, and an explicit paste share one admission path. */
+/** File input, a local file drop, and an explicit paste share one bounded admission path.
+ * The browser never materializes the complete image as one base64 IPC payload. */
 export async function stageBrowserImage(file: File, operationId: string): Promise<StagedExternalFile> {
   if (file.size === 0 || file.size > MAX_IMAGE_FILE_BYTES) {
     throw new Error("Choose a nonempty PNG, JPEG, or WebP image no larger than 25 MB.");
   }
-  const dataBase64 = await new Promise<string>((resolve, reject) => {
+  const displayName = file.name || "Clipboard image.png";
+  let staged: StagedExternalFile | null = null;
+  for (let offset = 0; offset < file.size; offset += IMAGE_UPLOAD_CHUNK_BYTES) {
+    const end = Math.min(offset + IMAGE_UPLOAD_CHUNK_BYTES, file.size);
+    const dataBase64 = await readBlobBase64(file.slice(offset, end), displayName);
+    staged = await stageImageCollectionFileChunk({
+      operationId,
+      displayName,
+      totalBytes: file.size,
+      offset,
+      dataBase64,
+      finalChunk: end === file.size,
+    });
+  }
+  if (!staged) throw new Error("The image upload ended before native staging completed.");
+  return staged;
+}
+
+async function readBlobBase64(blob: Blob, displayName: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error(`Could not read ${file.name || "the pasted image"}.`));
+    reader.onerror = () => reject(new Error(`Could not read ${displayName}.`));
     reader.onabort = () => reject(new Error("Image reading was interrupted."));
     reader.onload = () => {
       const value = reader.result;
@@ -22,12 +43,7 @@ export async function stageBrowserImage(file: File, operationId: string): Promis
         resolve(value.slice(separator + 1));
       }
     };
-    reader.readAsDataURL(file);
-  });
-  return stageImageCollectionFile({
-    operationId,
-    displayName: file.name || "Clipboard image.png",
-    dataBase64,
+    reader.readAsDataURL(blob);
   });
 }
 

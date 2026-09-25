@@ -1,6 +1,9 @@
 use super::*;
 use crate::knowledge::contracts::{ScopeKind, StudyScope};
-use crate::tutor::{contracts::CreateConversationInput, output};
+use crate::tutor::{
+    contracts::{CreateConversationInput, RenameConversationInput},
+    output,
+};
 use serde_json::json;
 
 fn context() -> StudyContext {
@@ -79,6 +82,8 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         conversation_id: conversation.id.clone(),
         request_hash: request_hash(&request).unwrap(),
         accepted_revision: conversation.revision,
+        captured_scope: conversation.scope.clone(),
+        project_instructions: None,
     };
     // Arrange an already-admitted request. Publication must change its output
     // kind without changing the request hash used for acknowledgement retries.
@@ -112,6 +117,102 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         assert_eq!(
             load_question(c, &conversation.id, &public.id)?.expected_answer,
             "Three"
+        );
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn organization_changes_do_not_invalidate_an_admitted_response() {
+    let db = Database::open_in_memory().unwrap();
+    let conversation = conversations::create(
+        &db,
+        CreateConversationInput {
+            operation_id: "d".repeat(32),
+            scope: scope(),
+            title: "Original title".into(),
+        },
+    )
+    .unwrap();
+    let request = TutorTurnInput {
+        operation_id: "e".repeat(32),
+        conversation_id: conversation.id.clone(),
+        expected_revision: conversation.revision,
+        mode: TutorMode::Explain,
+        text: "Explain triangles".into(),
+        focus: None,
+        profile_id: None,
+        include_conversations: false,
+        question_id: None,
+    };
+    let identity = TurnIdentity {
+        id: "f".repeat(32),
+        conversation_id: conversation.id.clone(),
+        request_hash: request_hash(&request).unwrap(),
+        accepted_revision: conversation.revision,
+        captured_scope: conversation.scope.clone(),
+        project_instructions: None,
+    };
+    db.with_connection(|connection| {
+        connection.execute(
+            "INSERT INTO tutor_turns(
+                 id,conversation_id,operation_id,sequence,request_hash,request_json,
+                 mode,user_text,state,profile_revision,provider_kind,model_id,created_at,updated_at
+             ) VALUES(?1,?2,?3,1,?4,?5,'explain','Explain triangles','running',1,'llama_cpp','fixture',1,1)",
+            params![
+                identity.id,
+                conversation.id,
+                request.operation_id,
+                identity.request_hash,
+                serde_json::to_string(&json!({
+                    "operationId":request.operation_id,
+                    "conversationId":conversation.id,
+                    "expectedRevision":conversation.revision,
+                    "mode":"explain",
+                    "text":"Explain triangles",
+                    "focus":null,
+                    "profileId":null,
+                    "includeConversations":false,
+                    "questionId":null,
+                    "capturedScope":scope()
+                })).unwrap()
+            ],
+        ).map_err(CommandError::database)?;
+        Ok(())
+    }).unwrap();
+
+    let renamed = conversations::rename(
+        &db,
+        RenameConversationInput {
+            operation_id: "9".repeat(32),
+            conversation_id: conversation.id.clone(),
+            expected_organization_revision: conversation.organization_revision,
+            title: "Renamed while answering".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(renamed.revision, conversation.revision);
+    assert_eq!(
+        renamed.organization_revision,
+        conversation.organization_revision + 1
+    );
+
+    let answer = ProviderAnswer {
+        text: "Triangles have three sides.".into(),
+        source_ids: vec![],
+        quiz: None,
+        feedback: None,
+    };
+    let published = complete(&db, &identity, &answer, &context(), None).unwrap();
+    assert_eq!(published.state, "complete");
+    db.with_connection(|connection| {
+        let saved = conversations::load_summary(connection, &conversation.id)?;
+        assert_eq!(saved.title, "Renamed while answering");
+        assert_eq!(saved.revision, conversation.revision + 1);
+        assert_eq!(
+            saved.organization_revision,
+            conversation.organization_revision + 1
         );
         Ok(())
     })

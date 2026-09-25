@@ -8,7 +8,9 @@ mod conversations;
 mod focus;
 mod history;
 mod memory;
+mod organization;
 mod output;
+mod projects;
 mod service;
 mod turns;
 
@@ -29,10 +31,12 @@ pub(crate) fn sanitize_for_device_transfer(
     connection
         .execute_batch(
             "DELETE FROM tutor_memory_operations;
+         DELETE FROM tutor_organization_operations;
          DELETE FROM tutor_turn_sources;
          DELETE FROM knowledge_sources WHERE kind = 'conversation';
          DELETE FROM tutor_turns;
-         DELETE FROM tutor_conversations;",
+         DELETE FROM tutor_conversations;
+         DELETE FROM tutor_projects;",
         )
         .map_err(crate::error::CommandError::database)
 }

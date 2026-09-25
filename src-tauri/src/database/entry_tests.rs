@@ -59,6 +59,33 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
 }
 
 #[test]
+fn future_schema_error_identifies_running_build_and_preserves_input() {
+    let connection = fixture_at(MIGRATIONS.len());
+    let future = LATEST_SCHEMA_VERSION + 1;
+    connection
+        .execute_batch(&format!(
+            "INSERT INTO schema_migrations VALUES ({future}, 'future', 'future', 1);
+             PRAGMA user_version = {future};"
+        ))
+        .unwrap();
+
+    let before = connection.total_changes();
+    let error = entry::validate_public_input(&connection).unwrap_err();
+    assert!(error.contains(&format!("public schema {future}")));
+    assert!(error.contains(&format!(
+        "this oStudy build supports through public schema {LATEST_SCHEMA_VERSION}"
+    )));
+    assert!(error.contains("Update or check out a build that supports schema"));
+    assert!(error.contains("The database was not modified."));
+    assert_eq!(connection.total_changes(), before);
+
+    let backup_error = validate_backup_lineage(&connection).unwrap_err();
+    assert_eq!(backup_error.code, "invalid_backup");
+    assert_eq!(backup_error.message, error);
+    assert_eq!(connection.total_changes(), before);
+}
+
+#[test]
 fn invalid_later_migration_is_rejected_before_an_earlier_missing_migration_runs() {
     let mut connection = fixture_at(1);
     connection

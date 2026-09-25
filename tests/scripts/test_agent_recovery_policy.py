@@ -10,11 +10,13 @@ FILES = {
     "AGENTS.md": "ANCHORLINE RESET\nnever means\nDo not ask the human to repeat\ndocs/agents/RECOVERY-PROTOCOL.md\n",
     "docs/agents/RECOVERY-PROTOCOL.md": (
         "One bounded resumption read\nKeep an active checkpoint\nTool and access discipline\n"
+        "direct PR and branch-ref reads\nambiguous acknowledgement\n"
         "Progress and response discipline\nWorkflow success and gate coverage are separate facts\n"
     ),
     "docs/agents/GITHUB-DIRECT-DEVELOPMENT.md": (
-        "Interruption-resilient execution\nANCHORLINE RESET\n"
-        "Do not ask the human to repeat\nsubstantive response\n"
+        "Interruption-resilient execution\nEfficient GitHub reads and publication\nKnown branch\n"
+        "No mid-composition polling\nBlob proportionality\nAmbiguous mutation recovery\n"
+        "Publication checkpointing\nANCHORLINE RESET\nDo not ask the human to repeat\nsubstantive response\n"
     ),
     "docs/agents/GITHUB-CONNECTOR.md": (
         "session-local action exposure\ndoes not revoke repository permission\n"
@@ -65,6 +67,29 @@ class AgentRecoveryPolicyTests(unittest.TestCase):
             completed = self.run_verifier(root)
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("Do not ask the human to repeat", completed.stderr)
+
+    def test_missing_ambiguous_mutation_recovery_contract_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_fixture(root)
+            direct = root / "docs" / "agents" / "GITHUB-DIRECT-DEVELOPMENT.md"
+            direct.write_text(
+                direct.read_text(encoding="utf-8").replace("Ambiguous mutation recovery\n", ""),
+                encoding="utf-8",
+            )
+            completed = self.run_verifier(root)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Ambiguous mutation recovery", completed.stderr)
+
+    def test_missing_direct_read_efficiency_contract_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_fixture(root)
+            direct = root / "docs" / "agents" / "GITHUB-DIRECT-DEVELOPMENT.md"
+            direct.write_text("Interruption-resilient execution\nANCHORLINE RESET\nDo not ask the human to repeat\nsubstantive response\n", encoding="utf-8")
+            completed = self.run_verifier(root)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Efficient GitHub reads and publication", completed.stderr)
 
 
 if __name__ == "__main__":

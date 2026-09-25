@@ -181,9 +181,72 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0021_image_source_edits.sql"),
         rebuilds_tables: true,
     },
+    Migration {
+        version: 22,
+        name: "document_collections",
+        checksum: "a9fc9753540832187bd11bc074b417f23b9317c167981d52f70f53602b74c0a9",
+        sql: include_str!("../migrations/0022_document_collections.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 23,
+        name: "collection_synthesis",
+        checksum: "e36fbcd4187eb56464fec704cf96dba235c57b3d91907199bd525219fa07de9b",
+        sql: include_str!("../migrations/0023_collection_synthesis.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 24,
+        name: "study_targets",
+        checksum: "fe101eae8a4dc0f1455991c229b6362d2c6a4514ec24e8f239c8576fc7b770bb",
+        sql: include_str!("../migrations/0024_study_targets.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 25,
+        name: "tutor_projects",
+        checksum: "a0c2ca312db766069477190fba79b80d2917f2461e996b2809986e9805c30f6b",
+        sql: include_str!("../migrations/0025_tutor_projects.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 26,
+        name: "single_level_document_collections",
+        checksum: "56358a42e0ca153bffd43e1296675762c91718cfe46bb9d7d22af3723942eddf",
+        sql: include_str!("../migrations/0026_single_level_document_collections.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 27,
+        name: "generation_reuse_and_usage",
+        checksum: "4cc918934276c8628358f9e51f8caf3b32eda8ea9b3909f0ff38f33360bd7ddb",
+        sql: include_str!("../migrations/0027_generation_reuse_and_usage.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 28,
+        name: "collection_reduction_request_identity",
+        checksum: "149d3697a2ab6d2a7daa6724f5a6a0cc6e91bf9a6f40007c411b07445842f25c",
+        sql: include_str!("../migrations/0028_collection_reduction_request_identity.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 29,
+        name: "remove_document_collection_archiving",
+        checksum: "6b8c1d36c82d505a0e754c781fb63bbfb5e402d9bd4ea08dfb5aa2d7a8df57f8",
+        sql: include_str!("../migrations/0029_remove_document_collection_archiving.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 30,
+        name: "generation_operation_outcomes",
+        checksum: "c455d1673841bf499375f80f8ce8daeb234cd3ba74eddcc105981a8ec4bdf472",
+        sql: include_str!("../migrations/0030_generation_operation_outcomes.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 21;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
 
 #[derive(Clone)]
 pub struct Database {
@@ -921,3 +984,7 @@ mod entry_tests;
 #[cfg(test)]
 #[path = "database/image_source_migration_tests.rs"]
 mod image_source_migration_tests;
+
+#[cfg(test)]
+#[path = "database/generation_operation_migration_tests.rs"]
+mod generation_operation_migration_tests;

@@ -18,12 +18,13 @@ use super::{
     contracts::hash,
 };
 
+mod annotations;
 mod components;
 pub(crate) mod policy;
 mod schema;
 pub(crate) mod settings;
 pub(crate) mod store;
-pub(crate) use schema::generation_schema;
+pub(crate) use schema::{generation_schema, has_supported_generation_family};
 
 pub(crate) const ASSESSMENT_KEY: &str = "_ostudyAssessment";
 pub(crate) const CARD_POLICY_KEY: &str = "_ostudyGenerationPolicy";
@@ -118,6 +119,9 @@ pub(crate) fn admit_card(
             ));
         }
         let mut units = catalog.select(&component.knowledge_unit_ids, MAX_COMPONENT_UNITS)?;
+        if !annotations::allows(catalog, &units) {
+            return Err(annotations::unavailable());
+        }
         units.sort_by(|a, b| a.unit_id.cmp(&b.unit_id));
         let key = component.key;
         let binding = ComponentSupport {
@@ -304,6 +308,7 @@ pub(crate) fn validates_checkpoint(
                     .iter()
                     .all(|component| catalog.validates(&component.units, MAX_COMPONENT_UNITS))
                 && catalog.validates(&support, MAX_ASSESSMENT_UNITS)
+                && annotations::allows(catalog, &support)
         }
         None => catalog.validates(&support, 2),
     }

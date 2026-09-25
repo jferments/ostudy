@@ -23,22 +23,30 @@ export interface ConfirmOptions {
   destructive?: boolean;
 }
 
-export interface OverlayContextValue {
-  topId: string | null;
+export interface OverlayActionsContextValue {
   isTop(id: string): boolean;
   register(entry: OverlayEntry): () => void;
   confirm(options: ConfirmOptions): Promise<boolean>;
 }
 
-const fallback: OverlayContextValue = {
-  topId: null,
+export interface OverlayContextValue extends OverlayActionsContextValue {
+  topId: string | null;
+}
+
+const fallbackActions: OverlayActionsContextValue = {
   isTop: () => true,
   register: () => () => undefined,
   confirm: async () => false,
 };
+const fallback: OverlayContextValue = { topId: null, ...fallbackActions };
 
+export const OverlayActionsContext = createContext<OverlayActionsContextValue>(fallbackActions);
 export const OverlayContext = createContext<OverlayContextValue>(fallback);
 export const OverlayParentContext = createContext<string | null>(null);
+
+export function useOverlayActions(): OverlayActionsContextValue {
+  return useContext(OverlayActionsContext);
+}
 
 export function useOverlayContext(): OverlayContextValue {
   return useContext(OverlayContext);
@@ -48,6 +56,6 @@ export function useOverlayParentId(): string | null {
   return useContext(OverlayParentContext);
 }
 
-export function useConfirm(): OverlayContextValue["confirm"] {
-  return useOverlayContext().confirm;
+export function useConfirm(): OverlayActionsContextValue["confirm"] {
+  return useOverlayActions().confirm;
 }

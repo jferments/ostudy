@@ -3,6 +3,10 @@ use super::decode::{AnalysisReport, MAX_WINDOW_UNITS};
 use serde_json::{json, Value};
 
 fn proposal(catalog: &EvidenceCatalog) -> Value {
+    proposal_for_aliases(&catalog.aliases())
+}
+
+fn proposal_for_aliases(aliases: &[String]) -> Value {
     json!({"type":"object","additionalProperties":false,
     "required":["title","kind","statement","qualifications","topic","importance","evidenceIds"],
     "properties":{
@@ -13,7 +17,7 @@ fn proposal(catalog: &EvidenceCatalog) -> Value {
         "topic":{"type":"string","maxLength":500},
         "details":super::super::typed_payload::TypedPayload::schema(),
         "importance":{"type":"string","enum":["core","supporting","detail"]},
-        "evidenceIds":{"type":"array","minItems":1,"maxItems":8,"uniqueItems":true,"items":{"type":"string","enum":catalog.aliases()}}
+        "evidenceIds":{"type":"array","minItems":1,"maxItems":8,"uniqueItems":true,"items":{"type":"string","enum":aliases}}
     }})
 }
 
@@ -35,20 +39,25 @@ pub(super) fn repair(
     sources: &[SourceRecord],
     report: &AnalysisReport,
 ) -> Value {
+    let aliases = catalog.aliases();
+    repair_scoped(&aliases, sources, report)
+}
+
+pub(super) fn repair_scoped(
+    aliases: &[String],
+    sources: &[SourceRecord],
+    report: &AnalysisReport,
+) -> Value {
     // A missing slot is still pending, never silently dropped. The native
     // decoder verifies uniqueness even when a provider ignores schema keywords.
-    let unresolved = report
-        .coverage
-        .as_ref()
-        .map(|coverage| coverage.unresolved_aliases(catalog));
     json!({"type":"object","additionalProperties":false,"required":["repairs","additionalUnits","noLearningSourceIds"],
-        "description":format!("Repair rejected proposals and these unresolved evidence aliases only: {unresolved:?}. Retain successful siblings. Supporting aliases may still be needed for a qualified claim."),
+        "description":format!("Repair rejected proposals and unresolved evidence using only the supplied stable evidence aliases: {aliases:?}. Retain successful siblings."),
         "properties":{
             "repairs":{"type":"array","maxItems":report.rejected.len(),"items":{
                 "type":"object","additionalProperties":false,"required":["slot","unit"],
                 "properties":{"slot":{"type":"integer","minimum":0},
-                    "unit":{"anyOf":[proposal(catalog),{"type":"null"}]}}}},
-            "additionalUnits":{"type":"array","maxItems":if report.missing_sources.is_empty(){0}else{MAX_WINDOW_UNITS},"items":proposal(catalog)},
+                    "unit":{"anyOf":[proposal_for_aliases(aliases),{"type":"null"}]}}}},
+            "additionalUnits":{"type":"array","maxItems":if report.missing_sources.is_empty(){0}else{MAX_WINDOW_UNITS},"items":proposal_for_aliases(aliases)},
             "noLearningSourceIds":dispositions(sources),
-            "regionDispositions":super::super::coverage::declaration_schema(catalog)}})
+            "regionDispositions":super::super::coverage::declaration_schema_for_aliases(aliases)}})
 }

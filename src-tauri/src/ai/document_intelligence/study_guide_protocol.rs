@@ -9,16 +9,7 @@ pub(super) fn alias(index: usize) -> String {
 }
 
 pub(super) fn catalog_prompt(knowledge: &KnowledgeCatalog) -> Result<String, CommandError> {
-    let mut value: Value =
-        serde_json::from_str(&knowledge.prompt()?).map_err(CommandError::serialization)?;
-    let units = value
-        .get_mut("units")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| output_error("The native guide catalog is missing its units."))?;
-    for (index, unit) in units.iter_mut().enumerate() {
-        unit["id"] = json!(alias(index));
-    }
-    serde_json::to_string(&value).map_err(CommandError::serialization)
+    knowledge.prompt()
 }
 
 pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Value {
@@ -28,10 +19,14 @@ pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Val
         content["properties"]["visualExplanations"]["description"] =
             json!("No images are attached. Always return [].");
     }
+    let mut knowledge_ids = knowledge.support_schema(64);
+    knowledge_ids["uniqueItems"] = json!(true);
+    knowledge_ids["items"] = json!({
+        "type": "string",
+        "enum": (0..knowledge.units.len()).map(alias).collect::<Vec<_>>()
+    });
     json!({"type":"object","additionalProperties":false,"required":["content","knowledgeUnitIds"],
-        "properties":{"content":content,"knowledgeUnitIds":{
-            "type":"array","minItems":1,"maxItems":knowledge.units.len().min(64),"uniqueItems":true,
-            "items":{"type":"string","enum":(0..knowledge.units.len()).map(alias).collect::<Vec<_>>()}}}})
+        "properties":{"content":content,"knowledgeUnitIds":knowledge_ids}})
 }
 
 pub(super) fn resolve(
@@ -61,6 +56,10 @@ pub(super) fn normalize_content(mut value: Value) -> Value {
             "processSteps",
             "comparisons",
             "commonMisconceptions",
+            "callouts",
+            "tables",
+            "workedExamples",
+            "retrievalChecks",
             "visualExplanations",
         ],
     );
@@ -130,11 +129,22 @@ mod tests {
         assert!(knowledge.select(&ids, 64).is_err());
         let value: Value = serde_json::from_str(&catalog_prompt(&knowledge).unwrap()).unwrap();
         assert_eq!(value["units"][0]["id"], "K0");
-        assert_eq!(
-            schema(&knowledge, false)["properties"]["knowledgeUnitIds"]["items"]["enum"],
-            json!(["K0"])
-        );
+        let ids = &schema(&knowledge, false)["properties"]["knowledgeUnitIds"];
+        assert_eq!(ids["maxItems"], 64);
+        assert!(ids["items"].get("pattern").is_none());
+        assert_eq!(ids["items"]["enum"], json!(["K0"]));
     }
+    #[test]
+    fn guide_schema_enumerates_only_aliases_that_exist_in_the_supplied_catalog() {
+        let mut knowledge = crate::knowledge::authoring::tests::catalog_fixture();
+        let mut second = knowledge.units[0].clone();
+        second.id = "b".repeat(32);
+        knowledge.units.push(second);
+        let items = &schema(&knowledge, false)["properties"]["knowledgeUnitIds"]["items"];
+        assert_eq!(items["enum"], json!(["K0", "K1"]));
+        assert!(!items.to_string().contains("K2"));
+    }
+
     #[test]
     fn compact_context_stays_valid_json_preserves_active_topic_and_reports_omissions() {
         let topics=(0..60).map(|i|json!({"title":format!("{i}: αβ \\\""),"summary":"Do not remove this qualification. ".repeat(30)})).collect::<Vec<_>>();

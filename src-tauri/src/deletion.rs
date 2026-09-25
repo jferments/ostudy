@@ -182,6 +182,12 @@ pub(crate) fn delete_deck(
         &card_ids,
         now,
     )?;
+    crate::study_materials::record_deck_deletion_suppression(
+        &transaction,
+        deck_id,
+        &result.undo_token,
+        now,
+    )?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(result)
 }
@@ -217,7 +223,20 @@ fn undo_in_connection(
 
     match operation.entity_kind.as_str() {
         "cards" => restore_cards(&transaction, &operation, now)?,
-        "deck" => restore_deck(&transaction, &operation, now)?,
+        "deck" => {
+            restore_deck(&transaction, &operation, now)?;
+            let deck_id = operation.deck_id.as_deref().ok_or_else(|| {
+                CommandError::new(
+                    "invalid_deletion_operation",
+                    "The deck deletion has no deck identifier.",
+                )
+            })?;
+            crate::study_materials::clear_deck_deletion_suppression(
+                &transaction,
+                deck_id,
+                undo_token,
+            )?;
+        }
         _ => {
             return Err(CommandError::new(
                 "invalid_deletion_operation",

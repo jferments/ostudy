@@ -1,11 +1,31 @@
 use serde_json::{json, Value};
 
+use crate::knowledge::authoring::KnowledgeCatalog;
+
 use super::{
     policy::{GenerationPolicy, QuestionFamily},
     MAX_ASSESSMENT_UNITS, MAX_COMPONENTS,
 };
 
-pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) -> Value {
+pub(crate) fn has_supported_generation_family(
+    policy: &GenerationPolicy,
+    knowledge: &KnowledgeCatalog,
+) -> bool {
+    if policy.allowed_types.contains(&QuestionFamily::Recall) {
+        return true;
+    }
+    policy
+        .allowed_types
+        .iter()
+        .any(|family| *family != QuestionFamily::Recall)
+        && knowledge.units.iter().any(super::annotations::available)
+}
+
+pub(crate) fn generation_schema(
+    mut legacy: Value,
+    policy: &GenerationPolicy,
+    knowledge: &KnowledgeCatalog,
+) -> Value {
     let mut alternatives = Vec::new();
     if policy.allowed_types.contains(&QuestionFamily::Recall) {
         let mut recall = legacy["properties"]["cards"]["items"].take();
@@ -14,7 +34,7 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
         }
         alternatives.push(json!({"type":"object", "additionalProperties":false,
             "required":["card","knowledgeUnitIds"], "properties":{
-                "card":recall, "knowledgeUnitIds":unit_ids(2)}}));
+                "card":recall, "knowledgeUnitIds":unit_ids(knowledge, 2)}}));
     }
     let mut questions = Vec::new();
     for kind in &policy.allowed_types {
@@ -22,7 +42,18 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
             questions.push(schema);
         }
     }
-    if !questions.is_empty() {
+    let graded_aliases = knowledge
+        .units
+        .iter()
+        .enumerate()
+        .filter(|(_, unit)| super::annotations::available(unit))
+        .map(|(index, _)| KnowledgeCatalog::unit_alias(index))
+        .collect::<Vec<_>>();
+    let mut graded_ids = unit_ids(knowledge, 2);
+    if graded_aliases.len() != knowledge.units.len() {
+        graded_ids["items"]["enum"] = json!(graded_aliases);
+    }
+    if !questions.is_empty() && !graded_aliases.is_empty() {
         alternatives.push(json!({"type":"object", "additionalProperties":false,
             "required":["card","assessment"], "properties":{
                 "card":{"type":"object","additionalProperties":false,
@@ -36,9 +67,16 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
                             "items":{"type":"object","additionalProperties":false,
                                 "required":["key","stance","knowledgeUnitIds"],"properties":{
                                     "key":text(160),"stance":{"enum":["supports","contradicts"]},
-                                    "knowledgeUnitIds":unit_ids(2)}}}}}}}));
+                                    "knowledgeUnitIds":graded_ids}}}}}}}));
     }
-    legacy["properties"]["cards"]["items"] = json!({"oneOf":alternatives});
+    if alternatives.is_empty() {
+        // No permitted, supported card family: represent the already-supported
+        // empty result rather than an invalid empty oneOf or invented grading.
+        legacy["properties"]["cards"] = json!({"type":"array","maxItems":0,
+            "items":{"type":"object"}});
+    } else {
+        legacy["properties"]["cards"]["items"] = json!({"oneOf":alternatives});
+    }
     legacy
 }
 
@@ -128,8 +166,46 @@ fn item() -> Value {
 fn array(items: Value, maximum: usize) -> Value {
     json!({"type":"array","minItems":2,"maxItems":maximum,"items":items})
 }
-fn unit_ids(maximum: usize) -> Value {
-    let mut schema = crate::knowledge::authoring::support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
+fn unit_ids(knowledge: &KnowledgeCatalog, maximum: usize) -> Value {
+    let mut schema = knowledge.support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
     schema["uniqueItems"] = json!(true);
     schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::knowledge::typed_payload::TypedPayload;
+    use serde_json::json;
+
+    #[test]
+    fn document_generation_policy_capability_is_decided_before_provider_dispatch() {
+        let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+
+        let interactive_only = GenerationPolicy {
+            allowed_types: vec![QuestionFamily::SingleChoice],
+            ..GenerationPolicy::default()
+        };
+        interactive_only.validate().unwrap();
+        assert!(has_supported_generation_family(&interactive_only, &catalog));
+
+        let statement = catalog.units[0].content.statement.clone();
+        let kind = catalog.units[0].content.kind;
+        let deferred =
+            TypedPayload::admit_or_defer(json!({"unsupported": true}), &statement, kind).unwrap();
+        assert!(deferred.deferred_rule().is_some());
+        catalog.units[0].content.details = Some(deferred);
+
+        assert!(!has_supported_generation_family(
+            &interactive_only,
+            &catalog
+        ));
+
+        let recall_only = GenerationPolicy {
+            allowed_types: vec![QuestionFamily::Recall],
+            ..GenerationPolicy::default()
+        };
+        recall_only.validate().unwrap();
+        assert!(has_supported_generation_family(&recall_only, &catalog));
+    }
 }

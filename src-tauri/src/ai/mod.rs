@@ -12,6 +12,7 @@ pub(crate) mod document_provider;
 pub(crate) mod embeddings;
 mod endpoint_policy;
 mod gateway;
+pub(crate) mod generation;
 pub(crate) mod probes;
 pub(crate) mod profiles;
 mod providers;

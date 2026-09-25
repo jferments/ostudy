@@ -15,10 +15,19 @@ import {
 } from "./knowledge";
 import {
   createTutorConversation,
+  createTutorProject,
+  createTutorProjectConversation,
   deleteTutorConversation,
+  deleteTutorProject,
   getTutorConversation,
   listTutorConversations,
+  listTutorProjects,
+  moveTutorConversation,
+  renameTutorConversation,
   sendTutorTurn,
+  setTutorConversationArchived,
+  setTutorProjectArchived,
+  updateTutorProject,
   type TutorTurnInput,
 } from "./tutor";
 
@@ -60,12 +69,47 @@ describe("tutor IPC", () => {
     await listTutorConversations();
     await createTutorConversation({ operationId: id, scope: { kind: "general", id: null }, title: "Geometry" });
     await getTutorConversation({ conversationId: id, beforeSequence: 50 });
-    await deleteTutorConversation({ conversationId: id, expectedRevision: 3 });
+    await deleteTutorConversation({
+      operationId: "d".repeat(32),
+      conversationId: id,
+      expectedRevision: 3,
+      expectedOrganizationRevision: 2,
+    });
     expect(invokeMock.mock.calls.map((call) => call[0])).toEqual([
       "list_tutor_conversations", "create_tutor_conversation", "get_tutor_conversation", "delete_tutor_conversation",
     ]);
     expect(invokeMock).toHaveBeenNthCalledWith(3, "get_tutor_conversation", {
       input: { conversationId: id, beforeSequence: 50 },
+    });
+  });
+
+  it("keeps Tutor projects and organization behind typed native commands", async () => {
+    const projectId = "p".repeat(32);
+    const conversationId = "c".repeat(32);
+    const operationId = "o".repeat(32);
+    const defaultScope = { kind: "general" as const, id: null };
+    await listTutorProjects();
+    await createTutorProject({ operationId, title: "Cardiology", description: "", instructions: "", defaultScope });
+    await updateTutorProject({ operationId, projectId, expectedRevision: 2, title: "Cardiology", description: "", instructions: "Mechanisms first", defaultScope });
+    await setTutorProjectArchived({ operationId, projectId, expectedRevision: 3, archived: true });
+    await createTutorProjectConversation({ operationId, projectId, title: "New project chat", scope: null });
+    await renameTutorConversation({ operationId, conversationId, expectedOrganizationRevision: 1, title: "Renamed" });
+    await moveTutorConversation({ operationId, conversationId, expectedOrganizationRevision: 2, projectId, applyProjectDefault: false });
+    await setTutorConversationArchived({ operationId, conversationId, expectedOrganizationRevision: 3, archived: true });
+    await deleteTutorProject({ operationId, projectId, expectedRevision: 4 });
+    expect(invokeMock.mock.calls.map((call) => call[0])).toEqual([
+      "list_tutor_projects",
+      "create_tutor_project",
+      "update_tutor_project",
+      "set_tutor_project_archived",
+      "create_tutor_project_conversation",
+      "rename_tutor_conversation",
+      "move_tutor_conversation",
+      "set_tutor_conversation_archived",
+      "delete_tutor_project",
+    ]);
+    expect(invokeMock).toHaveBeenNthCalledWith(7, "move_tutor_conversation", {
+      input: { operationId, conversationId, expectedOrganizationRevision: 2, projectId, applyProjectDefault: false },
     });
   });
 

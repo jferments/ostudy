@@ -191,6 +191,13 @@ pub(crate) async fn prepare(
             "The selected material or provider changed after the preview. Review the updated preparation before continuing.",
         ));
     }
+    let mut diagnostics = crate::ai::generation::Operation::begin(
+        database,
+        Some(&input.operation_id),
+        None,
+        None,
+        "semantic_preparation",
+    )?;
     preparation_store::begin(
         database,
         PreparationStart {
@@ -203,6 +210,7 @@ pub(crate) async fn prepare(
             total_sources: manifest.sources.len(),
         },
     )?;
+    let diagnostic_context = diagnostics.context();
     let outcome = run_preparation(
         database,
         paths,
@@ -210,8 +218,10 @@ pub(crate) async fn prepare(
         &manifest,
         &input.operation_id,
         &guard,
+        Some(diagnostic_context),
     )
     .await;
+    diagnostics.finish_result(&outcome);
     preparation_store::finish(database, &input.operation_id, &outcome)?;
     // The returned durable status reports failure without encouraging an
     // ambiguous replay to submit the same provider work again.
@@ -226,6 +236,7 @@ async fn run_preparation(
     manifest: &PreparationManifest,
     operation_id: &str,
     guard: &TaskGuard,
+    diagnostics: Option<crate::ai::generation::Context>,
 ) -> Result<(), CommandError> {
     guard.check()?;
     guard.progress("indexing saved material", 0, manifest.sources.len());
@@ -240,6 +251,7 @@ async fn run_preparation(
             signal: &guard.signal,
             expected_revision: Some(&manifest.index_revision),
             expected_embedding: Some(&embedding_identity),
+            diagnostics,
         },
     )
     .await?;

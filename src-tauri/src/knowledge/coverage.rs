@@ -234,6 +234,31 @@ impl CoverageReceipt {
             .collect()
     }
 
+    /// Sources for which another interpretation of the SAME supplied evidence
+    /// can add a missing disposition. Supporting evidence counts just as primary
+    /// evidence does. Unresolved regions inside an interpreted source remain
+    /// diagnostic gaps, not a demand to buy exhaustive extraction. Unexposed
+    /// attachments need new evidence; unreadable declarations need source repair.
+    pub(crate) fn same_input_repair_sources(&self) -> Vec<String> {
+        let interpreted = self
+            .regions
+            .iter()
+            .filter(|region| region.state == Disposition::Interpreted)
+            .map(|region| region.source_id.as_str())
+            .collect::<HashSet<_>>();
+        let mut seen = HashSet::new();
+        self.regions
+            .iter()
+            .filter(|region| {
+                region.exposed
+                    && region.state == Disposition::Unresolved
+                    && !interpreted.contains(region.source_id.as_str())
+                    && seen.insert(region.source_id.as_str())
+            })
+            .map(|region| region.source_id.clone())
+            .collect()
+    }
+
     pub(crate) fn unresolved_aliases(&self, catalog: &EvidenceCatalog) -> Vec<String> {
         let missing = self
             .regions
@@ -277,16 +302,24 @@ impl CoverageReceipt {
             "retainedMetadata":count(Disposition::RetainedMetadata),
             "noLearning":count(Disposition::NoLearning),"unreadable":count(Disposition::Unreadable),
             "unresolved":count(Disposition::Unresolved),
+            "sameInputRepairSources":self.same_input_repair_sources(),
             "protocolComplete":self.unresolved()==0,"exhaustiveConceptCoverage":false})
     }
 }
 
 pub(crate) fn declaration_schema(catalog: &EvidenceCatalog) -> Value {
-    json!({"type":"array","maxItems":catalog.entries.len(),"items":{
+    declaration_schema_for_aliases(&catalog.aliases())
+}
+
+pub(crate) fn declaration_schema_for_aliases(aliases: &[String]) -> Value {
+    json!({"type":"array","maxItems":aliases.len(),"items":{
         "type":"object","additionalProperties":false,"required":["evidenceId","disposition"],
-        "properties":{"evidenceId":{"type":"string","enum":catalog.aliases()},
+        "properties":{"evidenceId":{"type":"string","enum":aliases},
             "disposition":{"type":"string","enum":["retained_metadata","no_learning","unreadable"]}}}})
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod recovery_tests;

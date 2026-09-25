@@ -12,7 +12,7 @@ use std::{
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::{
@@ -20,11 +20,15 @@ use crate::{
     database::Database,
     document_citations,
     document_domain::DocumentFormat,
+    document_store,
     documents::{self, DocumentGenerationResultDto, RetryPdfGenerationInput},
     error::CommandError,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
-    task_cancellation::{cancel_document_task, is_document_task_active, run_document_task},
+    task_cancellation::{
+        cancel_document_task, is_document_task_active, reserve_document_task, run_document_task,
+        run_reserved_document_task,
+    },
     util::{unix_time_millis, validate_entity_id},
 };
 
@@ -40,6 +44,69 @@ pub struct DeleteDocumentInput {
 pub struct DeleteDocumentResultDto {
     pub document_id: String,
     pub preserved_deck_citation_count: i64,
+}
+
+/// Start the format-neutral document pipeline under native ownership and return
+/// after its durable processing state and cancellation identity both exist.
+/// React observes document/job state; navigation no longer owns this long-lived
+/// provider operation.
+#[tauri::command]
+pub fn start_document_flashcard_generation(
+    app: AppHandle,
+    database: State<'_, Database>,
+    input: RetryPdfGenerationInput,
+) -> Result<(), CommandError> {
+    documents::validate_retry_pdf_flashcard_generation(database.inner(), &input.document_id)?;
+    let document_id = input.document_id.clone();
+    let reservation = reserve_document_task(&document_id)?;
+    if let Err(error) = document_store::mark_document_processing(database.inner(), &document_id) {
+        drop(reservation);
+        return Err(error);
+    }
+
+    let task_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let database = task_app.state::<Database>();
+        let paths = task_app.state::<AppPaths>();
+        let runtime = task_app.state::<AiRuntimeState>();
+        let render_runtime = task_app.state::<PdfRenderRuntime>();
+        let result = run_reserved_document_task(
+            reservation,
+            documents::retry_reserved_pdf_flashcard_generation(
+                database.inner(),
+                paths.inner(),
+                runtime.inner(),
+                render_runtime.inner().clone(),
+                input,
+            ),
+        )
+        .await;
+        match result {
+            Ok(value) => {
+                crate::logging::info_target(
+                    "documents.generation",
+                    "background_document_generation_succeeded",
+                    "Native background document generation completed.",
+                    serde_json::json!({
+                        "document": document_id,
+                        "createdCards": value.created_card_count,
+                    }),
+                );
+            }
+            Err(error) => {
+                crate::logging::warn_target(
+                    "documents.generation",
+                    "background_document_generation_stopped",
+                    "Native background document generation ended without a successful artifact commit.",
+                    serde_json::json!({
+                        "document": document_id,
+                        "code": error.code,
+                    }),
+                );
+            }
+        }
+    });
+    Ok(())
 }
 
 /// Run the format-neutral document pipeline inside a task-local cancellation
@@ -69,7 +136,8 @@ pub async fn run_document_flashcard_generation(
         Err(error) if error.code == "ai_request_canceled" => {
             Err(documents::flashcard_generation_canceled_error())
         }
-        other => other,
+        Ok(value) => Ok(value),
+        Err(error) => Err(error),
     }
 }
 

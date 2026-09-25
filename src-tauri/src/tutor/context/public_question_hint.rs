@@ -9,8 +9,9 @@ pub(super) fn build(
     mode: TutorMode,
     text: &str,
     focus: &FocusedContent,
+    project_instructions: Option<&str>,
 ) -> Result<StudyContext, CommandError> {
-    let request_text = request_text(mode, text, focus)?;
+    let request_text = request_text(mode, text, focus, project_instructions)?;
     let completion_tokens = task.completion_token_ceiling(3_000);
     let input_budget = task
         .context_window_tokens()
@@ -41,6 +42,7 @@ fn request_text(
     mode: TutorMode,
     text: &str,
     focus: &FocusedContent,
+    project_instructions: Option<&str>,
 ) -> Result<String, CommandError> {
     if mode != TutorMode::Hint
         || !focus.hidden
@@ -52,6 +54,7 @@ fn request_text(
     }
     serde_json::to_string(&json!({
         "mode":"hint", "request":text, "focus":focus.description(),
+        "projectInstructions":project_instructions,
         "material":[], "history":{}, "privateHintTarget":null, "fixedQuiz":null,
         "trust":"Only the displayed question is available. Give a strategy or a small conceptual hint without selecting options, reconstructing the answer key, assigning items, or revealing the ordering. Do not claim source support or image access and do not invent citations.",
     }))
@@ -69,7 +72,7 @@ pub(crate) async fn guard_typed_hint(
 ) -> Result<String, CommandError> {
     use crate::ai::document_intelligence::{request_json_cancellable, JsonTaskRequest};
 
-    let user = request_text(TutorMode::Hint, candidate, focus)?;
+    let user = request_text(TutorMode::Hint, candidate, focus, None)?;
     let schema = json!({"type":"object","additionalProperties":false,
         "required":["safe"],"properties":{"safe":{"type":"boolean"}}});
     let checked = request_json_cancellable(
@@ -120,7 +123,7 @@ mod tests {
 
     #[test]
     fn hint_payload_contains_only_the_public_projection_not_private_ids_or_keys() {
-        let text = request_text(TutorMode::Hint, "A small hint please", &focus()).unwrap();
+        let text = request_text(TutorMode::Hint, "A small hint please", &focus(), None).unwrap();
         let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert!(payload["focus"]["question"]
             .as_str()
@@ -133,13 +136,30 @@ mod tests {
     }
 
     #[test]
+    fn project_instructions_are_available_without_exposing_private_hint_state() {
+        let text = request_text(
+            TutorMode::Hint,
+            "Help",
+            &focus(),
+            Some("Ask me to reason one step at a time."),
+        )
+        .unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            payload["projectInstructions"],
+            "Ask me to reason one step at a time."
+        );
+        assert!(payload["privateHintTarget"].is_null());
+    }
+
+    #[test]
     fn an_unredacted_or_revealed_focus_cannot_enter_the_hint_request() {
         let mut value = focus();
         value.private_answer = Some("private-key-secret".to_string());
-        assert!(request_text(TutorMode::Hint, "Help", &value).is_err());
+        assert!(request_text(TutorMode::Hint, "Help", &value, None).is_err());
         value.private_answer = None;
         value.hidden = false;
-        assert!(request_text(TutorMode::Hint, "Help", &value).is_err());
-        assert!(request_text(TutorMode::Explain, "Help", &focus()).is_err());
+        assert!(request_text(TutorMode::Hint, "Help", &value, None).is_err());
+        assert!(request_text(TutorMode::Explain, "Help", &focus(), None).is_err());
     }
 }

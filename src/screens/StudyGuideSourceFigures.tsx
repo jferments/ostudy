@@ -1,0 +1,125 @@
+import { useEffect, useMemo, useState } from "react";
+
+import { StudyMarkdown } from "../components/StudyMarkdown";
+import {
+  readDocumentSourceAsset,
+  type SourceLocator,
+  type StudyGuideVisualExplanation,
+} from "../ipc/studyGuides";
+
+interface LoadedFigure {
+  assetId: string;
+  url: string;
+}
+
+export function StudyGuideSourceFigures({
+  documentId,
+  locator,
+  explanations,
+}: {
+  documentId: string | null;
+  locator: SourceLocator | null;
+  explanations: StudyGuideVisualExplanation[];
+}) {
+  const assetIds = useMemo(
+    () => selectFigureAssetIds(locator?.assetIds ?? [], explanations.length),
+    [locator?.assetIds, explanations.length],
+  );
+  const [figures, setFigures] = useState<LoadedFigure[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const created: string[] = [];
+    if (!documentId || assetIds.length === 0) {
+      setFigures([]);
+      return () => undefined;
+    }
+    void Promise.all(assetIds.map(async (assetId) => {
+      try {
+        const bytes = await readDocumentSourceAsset(documentId, assetId);
+        const mimeType = detectedImageMimeType(bytes);
+        if (!mimeType) return null;
+        const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+        created.push(url);
+        return { assetId, url } satisfies LoadedFigure;
+      } catch {
+        return null;
+      }
+    })).then((loaded) => {
+      if (!active) return;
+      setFigures(loaded.filter((value): value is LoadedFigure => value !== null));
+    });
+    return () => {
+      active = false;
+      for (const url of created) URL.revokeObjectURL(url);
+    };
+  }, [assetIds, documentId]);
+
+  if (explanations.length === 0) return null;
+  return (
+    <div className="tw:grid tw:gap-4">
+      {explanations.map((visual, index) => {
+        const figure = figures[index] ?? null;
+        return figure ? (
+          <figure
+            key={`${figure.assetId}-${visual.title}`}
+            className="tw:m-0 tw:grid tw:gap-2 tw:rounded-lg tw:border tw:border-border tw:bg-muted/20 tw:p-3"
+          >
+            <img
+              src={figure.url}
+              alt={visual.title}
+              className="tw:max-h-[32rem] tw:w-full tw:object-contain"
+            />
+            <figcaption className="tw:grid tw:gap-1 tw:text-sm">
+              <strong><StudyMarkdown text={visual.title} inline /></strong>
+              <StudyMarkdown text={visual.explanation} />
+            </figcaption>
+          </figure>
+        ) : (
+          <aside
+            key={`fallback-${visual.title}-${index}`}
+            className="tw:grid tw:gap-1 tw:rounded-lg tw:border tw:border-border tw:bg-muted/20 tw:p-3"
+          >
+            <strong><StudyMarkdown text={visual.title} inline /></strong>
+            <StudyMarkdown text={visual.explanation} />
+          </aside>
+        );
+      })}
+    </div>
+  );
+}
+
+export function selectFigureAssetIds(assetIds: string[], maximum: number): string[] {
+  if (maximum <= 0) return [];
+  const unique = [...new Set(assetIds)].sort();
+  if (unique.length <= maximum) return unique;
+  if (maximum === 1) return [unique[Math.floor(unique.length / 2)]];
+  const last = unique.length - 1;
+  return Array.from({ length: maximum }, (_, index) =>
+    unique[Math.floor(index * last / (maximum - 1))]);
+}
+
+export function detectedImageMimeType(buffer: ArrayBuffer): string | null {
+  const bytes = new Uint8Array(buffer);
+  if (
+    bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+  ) return "image/png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+  ) return "image/webp";
+  if (
+    bytes.length >= 4
+    && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0x00)
+      || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2a))
+  ) return "image/tiff";
+  return null;
+}

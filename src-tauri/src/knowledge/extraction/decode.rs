@@ -43,11 +43,40 @@ impl AnalysisReport {
     }
     pub(crate) fn is_complete(&self) -> bool {
         self.rejected.is_empty()
+            && self.deferred_annotations().is_empty()
             && self.missing_sources.is_empty()
             && self
                 .coverage
                 .as_ref()
                 .is_none_or(|coverage| coverage.unresolved() == 0)
+    }
+
+    /// Use the validated region receipt for recovery as well as completion.
+    /// A source can support another source's primary claim, or consist entirely
+    /// of explicit region dispositions, without owning a knowledge unit.
+    pub(crate) fn requires_paid_repair(&self, sources: &[SourceRecord]) -> bool {
+        if !self.rejected.is_empty() {
+            return true;
+        }
+        if let Some(coverage) = &self.coverage {
+            return !coverage.same_input_repair_sources().is_empty();
+        }
+        // Legacy receipts have no region states. Preserve their compatibility
+        // path, but include every admitted supporting source, not only primary.
+        let covered = self
+            .accepted
+            .iter()
+            .flat_map(|unit| {
+                unit.content
+                    .grounding
+                    .iter()
+                    .flat_map(|g| g.evidence.iter().map(|e| e.source_id.as_str()))
+            })
+            .chain(self.no_learning.iter().map(String::as_str))
+            .collect::<HashSet<_>>();
+        sources
+            .iter()
+            .any(|source| !covered.contains(source.id.as_str()))
     }
     pub(crate) fn refresh_coverage(&mut self, sources: &[SourceRecord]) {
         let used = self
@@ -70,6 +99,20 @@ impl AnalysisReport {
             coverage.refresh(&self.accepted, &self.no_learning);
             self.missing_sources = coverage.missing_sources(sources);
         }
+    }
+    /// Deferred annotations are not rejected core proposals and cannot justify
+    /// another whole-window request. Their bounded drafts remain in the receipt.
+    pub(crate) fn deferred_annotations(&self) -> Vec<Value> {
+        self.accepted
+            .iter()
+            .filter_map(|unit| {
+                unit.content
+                    .details
+                    .as_ref()?
+                    .diagnostic()
+                    .map(|annotation| json!({"sourceId": unit.source_id, "annotation": annotation}))
+            })
+            .collect()
     }
     pub(crate) fn repair_prompt(&self) -> Value {
         json!({"rejectedProposals":self.rejected,"sourcesWithoutDisposition":self.missing_sources})
@@ -131,19 +174,9 @@ fn admit(
         .iter()
         .find(|e| e.source_id == primary.id && !e.excerpt.is_empty())
         .map_or_else(String::new, |e| e.excerpt.clone());
-    let details = proposal
-        .details
-        .map(|value| {
-            super::super::typed_payload::TypedPayload::admit(
-                value,
-                &proposal.statement,
-                proposal.kind,
-            )
-        })
-        .transpose()
-        .map_err(|_| invalid("invalid_qualified_structure"))?;
-    let content = KnowledgeUnitInput {
-        details,
+    let annotation = proposal.details;
+    let mut content = KnowledgeUnitInput {
+        details: None,
         title: proposal.title,
         kind: proposal.kind,
         statement: proposal.statement,
@@ -156,9 +189,20 @@ fn admit(
             evidence,
         }),
     };
+    // Core admission is independent and precedes optional annotation admission.
+    // Missing evidence, invalid qualifications and malformed core content remain
+    // rejected even when the annotation also fails.
     content
         .validate(primary)
         .map_err(|_| invalid("invalid_unit_content"))?;
+    if let Some(value) = annotation {
+        content.details = Some(super::super::typed_payload::TypedPayload::admit_or_defer(
+            value,
+            &content.statement,
+            content.kind,
+        )?);
+    }
+    content.validate(primary)?;
     Ok(AcceptedUnit {
         source_id: primary.id.clone(),
         content,
@@ -208,23 +252,22 @@ fn append_unit(
         }
     }
 }
-/// Older builds retained otherwise valid proposals after hitting a 16-unit
-/// per-source quota. Re-admit those drafts against the SAME ordered evidence
-/// catalog before making another paid request. Changed sources never reach here.
+/// Recover historical capacity and annotation drafts against the SAME ordered
+/// evidence catalog before buying another request. Core checks still run in full;
+/// an old annotation error is not permission to admit invalid core content.
 pub(crate) fn recover_capacity(
     report: &AnalysisReport,
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
 ) -> AnalysisReport {
+    let recoverable = |item: &RejectedUnit| {
+        item.code == "unit_capacity"
+            || item.code == "invalid_qualified_structure"
+            || item.code.starts_with("knowledge_annotation_")
+    };
     let mut recovered = report.clone();
-    recovered
-        .rejected
-        .retain(|item| item.code != "unit_capacity");
-    for item in report
-        .rejected
-        .iter()
-        .filter(|item| item.code == "unit_capacity")
-    {
+    recovered.rejected.retain(|item| !recoverable(item));
+    for item in report.rejected.iter().filter(|item| recoverable(item)) {
         append_unit(
             &mut recovered,
             item.proposal.clone(),
@@ -395,7 +438,8 @@ pub(crate) fn repair(
 pub(crate) fn report_diagnostic(report: &AnalysisReport) -> Value {
     json!({"acceptedUnits":report.accepted.len(),"rejectedUnits":report.rejected.len(),"uncoveredSources":report.missing_sources,
         "coverage":report.coverage.as_ref().map(|coverage| coverage.diagnostic()),
-        "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":r.code,
+        "deferredAnnotations":report.deferred_annotations(),
+        "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":super::super::typed_payload::rejection_category(&r.code),"rule":r.code,
         "draftFingerprint":hash(&r.proposal.to_string())})).collect::<Vec<_>>()})
 }
 #[cfg(test)]
@@ -448,6 +492,28 @@ mod tests {
         assert!(grounding.is_visible_in(&sources));
         assert!(!grounding.is_visible_in(&sources[..1]));
     }
+    #[test]
+    fn unresolved_regions_inside_an_interpreted_source_do_not_force_paid_repair() {
+        let (_, mut source, _, _) = fixture();
+        source.text = format!(
+            "{} {}",
+            "A triangle has three sides. ".repeat(30),
+            "Extra context."
+        );
+        source.refresh_identity().unwrap();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        assert!(catalog.entries.len() > 1);
+        let report = initial(
+            json!({"units":[unit(json!(["E0"]))],"noLearningSourceIds":[]}),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(!report.is_complete());
+        assert!(!report.requires_paid_repair(&sources));
+    }
+
     #[test]
     fn empty_output_is_not_complete_without_explicit_non_learning_dispositions() {
         let (_, source, _, _) = fixture();
@@ -638,3 +704,9 @@ mod capacity_regression_tests {
 
 #[cfg(test)]
 mod typed_tests;
+
+#[cfg(test)]
+mod recovery_tests;
+
+#[cfg(test)]
+mod annotation_tests;
