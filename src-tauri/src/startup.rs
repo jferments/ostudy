@@ -78,7 +78,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     logging::initialize(paths.app_data_dir());
     #[cfg(desktop)]
     apply_main_window_icon(app);
-    let pending_restore =
+    let mut pending_restore =
         library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
     let database = database::Database::open(paths.database_path()).map_err(io::Error::other)?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
@@ -115,8 +115,8 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     crate::knowledge::reconcile_startup(&database)
         .map_err(|error| io::Error::other(error.message))?;
     crate::tutor::reconcile_startup(&database).map_err(|error| io::Error::other(error.message))?;
-    if let Some(restore) = pending_restore {
-        restore.commit();
+    if let Some(restore) = pending_restore.as_mut() {
+        restore.try_commit().map_err(io::Error::other)?;
     }
 
     if !app.manage(paths.clone()) {
