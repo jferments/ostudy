@@ -47,18 +47,66 @@ async function readBlobBase64(blob: Blob, displayName: string): Promise<string> 
   });
 }
 
-/** Do not import pasted HTML, text, or a remote image URL behind the user's back. */
-export function clipboardImageFiles(data: DataTransfer): File[] {
+/** File-list and item-only clipboard/drop payloads share one local-only path.
+ * Do not import pasted HTML, text, or a remote image URL behind the user's back. */
+export function dataTransferImageFiles(data: Pick<DataTransfer, "files" | "items">): File[] {
   const files = Array.from(data.files).filter(isImageFile);
   if (files.length > 0) return files;
   return Array.from(data.items)
-    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .filter((item) => item.kind === "file" && isImageMime(item.type))
     .flatMap((item) => {
       const file = item.getAsFile();
-      return file ? [file] : [];
+      return file && isImageFile(file) ? [file] : [];
     });
 }
 
+/** Preserve the original exported name for callers/tests written around paste semantics. */
+export const clipboardImageFiles = dataTransferImageFiles;
+
+interface ClipboardImageItem {
+  readonly types: readonly string[];
+  getType(type: string): Promise<Blob>;
+}
+interface ClipboardImageReader {
+  read(): Promise<readonly ClipboardImageItem[]>;
+}
+
+/** Some WebKit/Linux clipboard paths do not expose screenshot bytes on ClipboardEvent.
+ * A Ctrl/Cmd+V user gesture may therefore use the browser clipboard reader as a fallback. */
+export async function readClipboardImageFiles(
+  reader: ClipboardImageReader | null = clipboardReader(),
+): Promise<File[]> {
+  if (!reader) return [];
+  const items = await reader.read();
+  const files: File[] = [];
+  for (const item of items) {
+    const type = item.types.find(isImageMime);
+    if (!type) continue;
+    const blob = await item.getType(type);
+    if (blob.size === 0) continue;
+    const extension = imageExtension(type);
+    files.push(new File([blob], files.length === 0
+      ? `Clipboard image.${extension}`
+      : `Clipboard image ${files.length + 1}.${extension}`, { type }));
+  }
+  return files;
+}
+
+function clipboardReader(): ClipboardImageReader | null {
+  const clipboard = globalThis.navigator?.clipboard;
+  return clipboard && typeof clipboard.read === "function"
+    ? clipboard as ClipboardImageReader
+    : null;
+}
+
+function isImageMime(type: string): boolean {
+  return type === "image/png" || type === "image/jpeg" || type === "image/webp";
+}
+
+function imageExtension(type: string): string {
+  return type === "image/jpeg" ? "jpg" : type.slice("image/".length);
+}
+
 function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/iu.test(file.name);
+  return isImageMime(file.type) || /\.(png|jpe?g|webp)$/iu.test(file.name);
 }

@@ -10,10 +10,11 @@ import { ImageSetWorkspace } from "./ImageSetWorkspace";
 const mocks = vi.hoisted(() => ({
   stage: vi.fn(), import: vi.fn(), amend: vi.fn(), details: vi.fn(), preview: vi.fn(),
   prepare: vi.fn(), cards: vi.fn(), more: vi.fn(), guide: vi.fn(), list: vi.fn(), guideJobs: vi.fn(),
-  cancel: vi.fn(), cancelGuide: vi.fn(), toast: vi.fn(), refresh: vi.fn(),
+  cancel: vi.fn(), cancelGuide: vi.fn(), toast: vi.fn(), refresh: vi.fn(), clipboardRead: vi.fn(),
 }));
 vi.mock("../../platform/imageInput", async (original) => ({
-  ...await original<typeof import("../../platform/imageInput")>(), stageBrowserImage: mocks.stage,
+  ...await original<typeof import("../../platform/imageInput")>(),
+  stageBrowserImage: mocks.stage, readClipboardImageFiles: mocks.clipboardRead,
 }));
 vi.mock("../../ipc/imageSets", () => ({
   importImageSet: mocks.import, amendImageSet: mocks.amend, getImageSet: mocks.details,
@@ -73,6 +74,7 @@ beforeEach(() => {
   saved = null;
   deckId = null;
   mocks.refresh.mockResolvedValue(undefined);
+  mocks.clipboardRead.mockResolvedValue([]);
   mocks.cancel.mockResolvedValue(undefined);
   mocks.cancelGuide.mockResolvedValue(undefined);
   mocks.guideJobs.mockResolvedValue([{ documentId: id, state: "succeeded", safeErrorMessage: "", safeErrorCode: "" }]);
@@ -147,19 +149,32 @@ describe("automatic image collections", () => {
 
   it("accepts dropped and pasted images into the same source while ignoring pasted URLs", async () => {
     open();
+    const dropped = image("dropped.png");
     fireEvent.drop(screen.getByRole("button", { name: "Drop images here or select files" }), {
-      dataTransfer: { files: [image("dropped.png")], dropEffect: "copy" },
+      dataTransfer: { files: [], items: [
+        { kind: "file", type: "image/png", getAsFile: () => dropped },
+      ], dropEffect: "copy" },
     });
     await ready();
-    fireEvent.paste(document, { clipboardData: { files: [image("pasted.png")], items: [] } });
+    fireEvent.paste(window, { clipboardData: { files: [image("pasted.png")], items: [] } });
     await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
     await ready();
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
     expect(mocks.more).toHaveBeenCalledWith(id);
     expect(mocks.guide).toHaveBeenCalledTimes(1);
-    fireEvent.paste(document, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
+    fireEvent.paste(window, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
     expect(mocks.stage).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the browser clipboard reader when Ctrl+V carries no image event payload", async () => {
+    mocks.clipboardRead.mockResolvedValueOnce([image("clipboard-fallback.png")]);
+    open();
+    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
+    await ready();
+    expect(mocks.clipboardRead).toHaveBeenCalledTimes(1);
+    expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ name: "clipboard-fallback.png" }), expect.any(String));
+    expect(mocks.import).toHaveBeenCalledTimes(1);
   });
 
   it("keeps staging alive after leaving the image workspace", async () => {

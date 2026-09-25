@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import { getImageSet, getImageSetPreview, type ImageSetDetails, type ImageSetPreview } from "../../ipc/imageSets";
-import { clipboardImageFiles, IMAGE_FILE_ACCEPT } from "../../platform/imageInput";
+import { dataTransferImageFiles, IMAGE_FILE_ACCEPT, readClipboardImageFiles } from "../../platform/imageInput";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
@@ -56,16 +56,39 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
     return () => { current = false; };
   }, [savedId, savedCount, phase]);
 
+  const pasteGesture = useRef(0);
   useEffect(() => {
     const receivePaste = (event: ClipboardEvent) => {
       if (!event.clipboardData || !addImages) return;
-      const files = clipboardImageFiles(event.clipboardData);
+      const files = dataTransferImageFiles(event.clipboardData);
       if (files.length === 0) return;
+      pasteGesture.current += 1;
       event.preventDefault();
+      event.stopPropagation();
       addImages(key, savedId, files);
     };
-    document.addEventListener("paste", receivePaste);
-    return () => document.removeEventListener("paste", receivePaste);
+    const receivePasteShortcut = (event: KeyboardEvent) => {
+      if (!addImages || event.altKey || (!event.ctrlKey && !event.metaKey)
+        || event.key.toLowerCase() !== "v") return;
+      const gesture = ++pasteGesture.current;
+      window.setTimeout(() => {
+        if (pasteGesture.current !== gesture) return;
+        void readClipboardImageFiles().then((files) => {
+          if (pasteGesture.current !== gesture || files.length === 0) return;
+          pasteGesture.current += 1;
+          addImages(key, savedId, files);
+        }).catch(() => {
+          // The ordinary paste event remains authoritative when clipboard-read
+          // permission/API support is unavailable.
+        });
+      }, 0);
+    };
+    window.addEventListener("paste", receivePaste, true);
+    window.addEventListener("keydown", receivePasteShortcut, true);
+    return () => {
+      window.removeEventListener("paste", receivePaste, true);
+      window.removeEventListener("keydown", receivePasteShortcut, true);
+    };
   }, [addImages, key, savedId]);
 
   useEffect(() => {
@@ -99,10 +122,16 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
       description="Add screenshots or photos. Flashcards and a study guide are created automatically."
       onClose={onClose} closeLabel="Back to Documents">
       <div className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4 tw:sm:p-5"
-        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
-        onDrop={(event) => {
+        onDragOverCapture={(event) => {
           event.preventDefault();
-          addImages?.(key, savedId, Array.from(event.dataTransfer.files));
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDropCapture={(event) => {
+          const files = dataTransferImageFiles(event.dataTransfer);
+          if (files.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          addImages?.(key, savedId, files);
         }}>
         <TextField ref={picker} type="file" multiple accept={IMAGE_FILE_ACCEPT}
           aria-label="Choose images" className="tw:sr-only"
