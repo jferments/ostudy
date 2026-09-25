@@ -10,7 +10,6 @@ use crate::{
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
-
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 
 #[cfg(desktop)]
