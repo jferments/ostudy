@@ -110,7 +110,7 @@ Android-affecting work also uses its compile/package and emulator gates. A succe
 
 ## Release artifacts
 
-The tagged release workflow currently produces Linux artifacts. Android workflows can produce unsigned QA APK/AAB artifacts, but the repository does not yet publish a signed public Android release. Windows, macOS, and iOS release artifacts remain future work.
+The tagged release workflow currently produces Linux artifacts. The Debian release path verifies that the built package does not own or delete the user XDG learner-data directory; normal package removal is defined to preserve that data. Android workflows can produce unsigned QA APK/AAB artifacts, but the repository does not yet publish a signed public Android release. Windows, macOS, and iOS release artifacts remain future work.
 
 ## After installation
 

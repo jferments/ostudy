@@ -122,6 +122,32 @@ Run:
 
 The diagnostic output names the missing or mismatched tool instead of allowing a later build step to fail ambiguously.
 
+
+## Production package and uninstall safety
+
+The source-checkout workflow above is development-only. The production Debian package is built with the stable `io.github.jferments.ostudy` identity and is intentionally separate from the `io.github.jferments.ostudy.dev` development profile.
+
+The production package owns application binaries, desktop/MIME integration, bundled runtime resources, and the reviewed udev rule. It **does not own the learner library under the user's XDG data directory**. A normal package-manager removal must therefore remove package-owned program/integration files while leaving the user's oStudy library in place.
+
+For the future public installer, these are separate operations:
+
+```text
+normal uninstall
+  -> remove installed package/integration files
+  -> preserve ~/.local/share/io.github.jferments.ostudy (or $XDG_DATA_HOME equivalent)
+  -> preserve learner data
+
+explicit purge-user-data
+  -> separate user-level action
+  -> never implied by apt/dnf/pacman remove
+  -> validate the exact production application-data directory
+  -> require explicit destructive confirmation and backup guidance
+```
+
+The repository does not yet expose a public `--purge-user-data` command. Do not substitute `rm -rf`, package maintainer scripts, or a root-owned home-directory cleanup for that future reviewed boundary.
+
+Release generation statically verifies the package ownership policy and inspects the built `.deb` before publication. Actual install/remove/reinstall preservation remains a separate acceptance test using disposable production data before any real school library is trusted to the installed profile.
+
 ## Other Linux distributions
 
 The source is not intentionally tied to `apt`, but the complete bootstrap script currently is. On another distribution, install the equivalent Tauri/WebKitGTK build packages, the pinned language toolchains, PDFium, and Tesseract manually, then run the normal frozen/locked build commands. Such systems are not yet continuously qualified, so record distribution-specific fixes rather than adding silent fallbacks to the Ubuntu script.

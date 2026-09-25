@@ -248,7 +248,7 @@ explicit purge
   -> require strong confirmation
 ```
 
-System/root package operations must not casually recurse through arbitrary user home paths.
+System/root package operations must not casually recurse through arbitrary user home paths. Static package policy and built-Debian inspection must reject package ownership or maintainer-script references to the production XDG learner-data directory.
 
 For significant production upgrades, define the safe sequence around backup, supported forward migration, verification, and failure behavior. Do not promise a binary downgrade can safely open a database already migrated by a newer version.
 
