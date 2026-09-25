@@ -12,15 +12,15 @@ Decks contain notes/cards. Optional folders organize decks; each deck has at mos
 
 ## Two rich-content versions with different purposes
 
-The persisted **`tiptap-json` content transport envelope remains version 1**. The canonical rich document root independently supports **`attrs.schemaVersion = 2`**, while supported version-1 documents remain readable. These numbers must not be conflated or used to justify a destructive schema migration.
+The persisted **`tiptap-json` content transport envelope remains version 1**. The canonical rich document root independently supports **`attrs.schemaVersion` 1 through 3**. These numbers must not be conflated or used to justify a destructive schema migration.
 
-Version 2 adds subscript/superscript marks, tables/cells/rows/headers with validated spans/widths, and ordinary/answer-key task lists with stable item identity. Existing supported paragraphs, headings, lists, code, blockquotes, links, styles, and managed images remain constrained by native validation.
+Version 2 adds subscript/superscript marks, tables/cells/rows/headers with validated spans/widths, and ordinary/answer-key task lists with stable item identity. Version 3 adds typed inline/block math and managed local audio/video while retaining all earlier supported paragraphs, headings, lists, code, blockquotes, links, styles, tables, checklists and managed images.
 
 Rust treats the JSON as untrusted. It validates root/type/version, allowed nodes and marks, parent-child structure, attribute bounds, links, asset identity, document bytes/depth, and derived text size. Authoritative normalized plain text comes from the validated document, including meaningful table/task-list separation, not from an untrusted frontend text snapshot.
 
 Rich content is not arbitrary HTML. It cannot load a remote image, reference an arbitrary local file, execute scripts, or evaluate a template expression. Frontend editor/renderer configuration and native validation need parity, but the native boundary remains authoritative.
 
-Sources: [rich-content validator](../../src-tauri/src/cards/content.rs), [editor contract](../../src/editor/adapter.ts), [rich-editor reference](rich-document-editor.md).
+Sources: [schema-3 rich admission](../../src-tauri/src/cards/rich_content.rs), [structural rich validator](../../src-tauri/src/cards/content.rs), [editor contract](../../src/editor/adapter.ts), [rich-editor reference](rich-document-editor.md).
 
 ## Basic and Reverse
 

@@ -1,12 +1,12 @@
 # Current-format transition, acceptance and validation
 
-Part of the [PR #103 development record](README.md). This document records the implemented LK-02/LK-03 transition boundary and the LK-04 image-source preservation extension. Successor data consolidation belongs to PR #105/LK-13.
+Part of the [PR #103 development record](README.md). This document records the implemented LK-02/LK-03 transition boundary and the LK-04 image-source preservation extension. Successor data consolidation was reassigned to active PR #106 when PR #105 was deferred.
 
 ## 1. The pre-release data policy
 
 The human has explicitly confirmed that oStudy has not been publicly released. The goal is one current canonical runtime representation, not an expanding matrix of legacy application modes. The repository's existing `ostudy-public-v1` name does not contradict that product status; it is a schema identifier.
 
-**Migrate and verify first; archive second.** Do not delete useful data, clear application storage, overwrite historical checksums, relabel an old database as current, or force a library through a guessed conversion. PR #103 does not inspect or convert the user's personal library. The actual-library adoption/retirement gate is owned by PR #105/LK-13 and remains separate from this foundation merge.
+**Migrate and verify first; archive second.** Do not delete useful data, clear application storage, overwrite historical checksums, relabel an old database as current, or force a library through a guessed conversion. PR #103 does not inspect or convert the user's personal library. The actual-library adoption/retirement gate is now owned by PR #106 and remains separate from this historical foundation checkpoint.
 
 Different formats still serve different purposes: SQLite library, validated rich/question payloads, authoring JSON, portable deck, full backup, sync payload, and PowerPoint. Each has one current application representation/writer after conversion; they are not collapsed into one universal format. Incoming formats such as Anki remain useful import boundaries, not obsolete internal schemas to delete. Human-authored and generated origins, Basic/Cloze and objective questions are distinct content kinds, not redundant migration versions.
 
@@ -99,12 +99,12 @@ Report separately:
 - desktop/physical-device visual/accessibility behavior;
 - review and merge.
 
-PR #103 remains data-preserving without performing the eventual final baseline consolidation. Historical recovery stays available until PR #105/LK-13 satisfies its actual-library adoption gate.
+PR #103 remains data-preserving without performing the eventual final baseline consolidation. Historical recovery stays available until PR #106 satisfies its actual-library adoption gate.
 
 ## 5. Successor ownership
 
-- [PR #104](https://github.com/jferments/ostudy/pull/104) — AC-06 through AC-10 / LK-05 through LK-09.
-- [PR #105](https://github.com/jferments/ostudy/pull/105) — AC-11 through AC-14 / LK-10 through LK-13.
-- [PR #106](https://github.com/jferments/ostudy/pull/106) — AC-15 / LK-14 plus residual evidence-backed cleanup.
+- [PR #104](https://github.com/jferments/ostudy/pull/104) — merged LK-05 through LK-09 product expansion.
+- [PR #105](https://github.com/jferments/ostudy/pull/105) — deferred LK-10 through LK-12 lessons/narration/PowerPoint planning reference.
+- [PR #106](https://github.com/jferments/ostudy/pull/106) — active post-#104 production isolation, current-format adoption/baseline, cleanup and release-readiness work.
 
 No successor product implementation is included in PR #103.

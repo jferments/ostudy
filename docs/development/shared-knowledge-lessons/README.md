@@ -17,9 +17,9 @@ The successor split remains the authority for scope, but its lifecycle has advan
 
 | Successor | Current status | Scope | Roadmap |
 | --- | --- | --- | --- |
-| [PR #104](https://github.com/jferments/ostudy/pull/104) | Active; LK-05–LK-09 implemented, terminal qualification/handoff remaining | folders/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | `docs/development/lk-followups/collections-guides-tutor.md` |
-| [PR #105](https://github.com/jferments/ostudy/pull/105) | Planned successor after PR #104 | LK-10–LK-13: responsive lessons, retained narration, PowerPoint, final current-format baseline/adoption | `docs/development/lk-followups/lessons-narration.md` |
-| [PR #106](https://github.com/jferments/ostudy/pull/106) | Planned successor after its predecessors | LK-14 plus residual evidence-backed schema/code/docs/workflow cleanup and integrated qualification | `docs/development/lk-followups/consolidation-qualification.md` |
+| [PR #104](https://github.com/jferments/ostudy/pull/104) | Merged | folders/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | `docs/development/lk-followups/collections-guides-tutor.md` |
+| [PR #105](https://github.com/jferments/ostudy/pull/105) | **Deferred planning reference** | future LK-10–LK-12: responsive lessons, retained narration, PowerPoint | `docs/development/lk-followups/lessons-narration.md` |
+| [PR #106](https://github.com/jferments/ostudy/pull/106) | **Active** | production/dev isolation, contributor tooling, post-#104 data baseline/adoption, cleanup, packaging safety and qualification | `docs/development/lk-followups/consolidation-qualification.md` |
 
 Each successor is activated only after its predecessors are merged. Activation means retargeting that PR to the then-current `main`, integrating the merged predecessor source, reconciling actual owner/test paths once, and then resuming implementation from its first unfinished acceptance boundary.
 
@@ -56,7 +56,7 @@ The bullets below deliberately describe the closed PR #103 boundary, not current
 - Typed knowledge detail and region coverage retain versioned validation and fail-closed startup/restore admission.
 - Original image bytes remain independently owned. Cleaning/projection never replaces source authority.
 - Existing authoring JSON, `.studydeck`, backup, trusted-device sync, Anki/APKG, rich content, Basic/Cloze/objective questions, schedules/reviews, Tutor history, and learner edits remain distinct contracts.
-- Historical migration/recovery machinery remains live until PR #105/LK-13 performs the separately authorized actual-library adoption and retirement gate.
+- Historical migration/recovery machinery remains live until active PR #106 performs the separately authorized actual-library adoption and retirement gate. Deferred PR #105 no longer owns that boundary.
 
 ## Work reuse and invalidation
 

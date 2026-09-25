@@ -31,7 +31,7 @@ Owners: `database.rs`, `database/`, `data_repairs.rs`, `startup.rs`, current bac
 - [x] **02.3 Isolate conversion at entry.** Define a current-only result for startup/import/restore. Normalize supported existing payloads once before ordinary reads; new feature code handles only the current representation. Keep structured external containers distinct. Unknown/future/corrupt data fails unchanged rather than receiving guessed defaults. Do not add a universal migration framework or placeholder version adapters.
 - [x] **02.4 Define the final checkpoint.** Document one final baseline after the last schema-bearing stage, explicit known-source converters, a versioned archive outside normal build/runtime, and the human library-adoption receipt. Coordinate any necessary repository-policy clarification as a scoped pre-release decision; retain historical checksums and data-preservation assertions.
 
-Exit: fixture preservation and conversion-boundary regressions run; current runtime contract is explicit. Real-library migration/retirement is still pending LK-13. There is no statement that the personal library was inspected or upgraded merely because a synthetic test passed.
+Exit: fixture preservation and conversion-boundary regressions run; current runtime contract is explicit. Real-library migration/retirement is still pending the PR #106 adoption/retirement gate. There is no statement that the personal library was inspected or upgraded merely because a synthetic test passed.
 
 ## LK-03 — Reusable evidence, knowledge and context foundation
 
@@ -73,10 +73,10 @@ Implementation note: [Image collections](04-image-sources.md) defines the revise
 
 ## Successor stages
 
-LK-05 and later implementation has moved out of PR #103:
+LK-05 and later implementation moved out of PR #103:
 
-- [PR #104](https://github.com/jferments/ostudy/pull/104) owns LK-05 through LK-09.
-- [PR #105](https://github.com/jferments/ostudy/pull/105) owns LK-10 through LK-13.
-- [PR #106](https://github.com/jferments/ostudy/pull/106) owns LK-14 plus residual evidence-backed cleanup/qualification.
+- [PR #104](https://github.com/jferments/ostudy/pull/104) is merged and delivered LK-05 through LK-09.
+- [PR #105](https://github.com/jferments/ostudy/pull/105) is deferred as the preserved plan for future LK-10 through LK-12 lessons/narration/PowerPoint.
+- [PR #106](https://github.com/jferments/ostudy/pull/106) is active and owns the post-#104 current-format adoption/baseline gate plus residual release-readiness cleanup/qualification.
 
 Those PRs carry their own roadmaps and acceptance ledgers. This file remains the implementation record for LK-01 through LK-04 only.

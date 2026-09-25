@@ -20,4 +20,4 @@ Older, partial, checksum-mismatched, damaged, or otherwise unrecognized developm
 
 `scripts/reset-pre-public-data.sh` is no longer the normal transition. It is an explicit empty-library operation and requires `--confirm-empty-library`, wording that makes the loss of active visibility for decks, cards, reviews, analytics, documents, and settings unmistakable. It still archives rather than deletes the previous directory.
 
-Historical repair results are folded into the baseline. The independent repair framework remains with an empty public registry, ready for future versioned repairs. Future public migrations begin at version 2 and are append-only and checksum-protected.
+Historical pre-public repair results were folded into the baseline. The independent public repair framework remained available and has since accumulated checksum-protected public repairs; those current repair identities are compatibility obligations just like the public migration ledger. Future schema migrations and repairs remain append-only/versioned until an explicitly authorized pre-release consolidation proves a new baseline and preserves recovery.
