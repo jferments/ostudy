@@ -48,7 +48,7 @@ LEGACY_SOURCE="$TEMP_ROOT/pre-public-v26-source"
 DATABASE="$LEGACY_SOURCE/library.sqlite3"
 APPLICATION_LOG="$APP_DATA/diagnostics/ostudy.jsonl"
 COMMAND_LOG="$TEMP_ROOT/startup.log"
-mkdir -p "$LEGACY_SOURCE" "$CONFIG_HOME" "$CACHE_HOME" "$STATE_HOME"
+mkdir -p "$DATA_HOME" "$LEGACY_SOURCE" "$CONFIG_HOME" "$CACHE_HOME" "$STATE_HOME"
 
 python3 - "$ROOT_DIR" "$DATABASE" <<'PY'
 from __future__ import annotations

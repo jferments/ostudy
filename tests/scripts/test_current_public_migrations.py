@@ -49,6 +49,12 @@ class CurrentPublicMigrationContractTests(unittest.TestCase):
         self.assertNotRegex(smoke, r'\[\[ "\$schema_version" == "\d+" \]\]')
         self.assertNotIn("expected_migrations=\"$(cat <<'EOF'\n1|public_baseline", smoke)
 
+    def test_startup_smoke_creates_destination_parent_before_copying_recovered_app_data(self) -> None:
+        smoke = SMOKE.read_text(encoding="utf-8")
+        mkdir_index = smoke.index('mkdir -p "$DATA_HOME" "$LEGACY_SOURCE"')
+        copy_index = smoke.index('cp -a -- "$LEGACY_SOURCE" "$APP_DATA"')
+        self.assertLess(mkdir_index, copy_index)
+
 
 if __name__ == "__main__":
     unittest.main()
