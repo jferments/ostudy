@@ -209,7 +209,7 @@ def classify_database(
 
         if verify:
             integrity = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
-            foreign_key = connection.execute("PRAGMA foreign_key_check LIMIT 1").fetchone()
+            foreign_key = connection.execute("PRAGMA foreign_key_check").fetchone()
             report["integrityCheck"] = integrity
             report["foreignKeyCheck"] = "ok" if foreign_key is None else list(foreign_key)
             if integrity != "ok" or foreign_key is not None:
