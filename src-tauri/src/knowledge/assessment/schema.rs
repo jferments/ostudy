@@ -172,7 +172,6 @@ fn unit_ids(knowledge: &KnowledgeCatalog, maximum: usize) -> Value {
     schema
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,12 +189,8 @@ mod tests {
 
         let statement = catalog.units[0].content.statement.clone();
         let kind = catalog.units[0].content.kind;
-        let deferred = TypedPayload::admit_or_defer(
-            json!({"unsupported": true}),
-            &statement,
-            kind,
-        )
-        .unwrap();
+        let deferred =
+            TypedPayload::admit_or_defer(json!({"unsupported": true}), &statement, kind).unwrap();
         assert!(deferred.deferred_rule().is_some());
         catalog.units[0].content.details = Some(deferred);
 
