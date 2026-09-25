@@ -58,6 +58,7 @@ node "$SCRIPT_DIR/verify-development-profile.mjs"
 node "$SCRIPT_DIR/verify-development-tooling.mjs"
 node "$SCRIPT_DIR/verify-current-data-contracts.mjs"
 node "$SCRIPT_DIR/verify-linux-package-data-safety.mjs"
+node "$SCRIPT_DIR/verify-release-readiness-cleanup.mjs"
 node "$SCRIPT_DIR/verify-xberg-dependency-policy.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"

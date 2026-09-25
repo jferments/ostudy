@@ -21,7 +21,7 @@ The successor split remains the authority for scope, but its lifecycle has advan
 | [PR #105](https://github.com/jferments/ostudy/pull/105) | **Deferred planning reference** | future LK-10–LK-12: responsive lessons, retained narration, PowerPoint | `docs/development/lk-followups/lessons-narration.md` |
 | [PR #106](https://github.com/jferments/ostudy/pull/106) | **Active** | production/dev isolation, contributor tooling, post-#104 data baseline/adoption, cleanup, packaging safety and qualification | `docs/development/lk-followups/consolidation-qualification.md` |
 
-Each successor is activated only after its predecessors are merged. Activation means retargeting that PR to the then-current `main`, integrating the merged predecessor source, reconciling actual owner/test paths once, and then resuming implementation from its first unfinished acceptance boundary.
+Successor activation follows the current roadmap, not a permanent numeric dependency chain: PR #106 was explicitly activated while PR #105 remains deferred. Activation means retargeting to the intended merged baseline, reconciling actual owner/test paths once, and resuming implementation from the first unfinished acceptance boundary.
 
 ## PR #103 architecture boundary
 
