@@ -25,14 +25,16 @@ requireText("successor README", successors, "PR #105 is intentionally deferred")
 requireText("successor README", successors, "PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche");
 
 for (const path of [
-  "src-tauri/src/startup/pre_public_transition.rs",
   "scripts/restore_pre_public_backup.py",
   "scripts/reset-pre-public-data.sh",
 ]) requireText("cleanup audit", audit, path);
-requireText("runtime pre-public caller", startup, "pre_public_transition::adopt_final_pre_public_database");
+requireText("retired v26 runtime decision", audit, "retire from runtime");
+rejectText("runtime startup", startup, "pre_public_transition::adopt_final_pre_public_database");
+rejectText("runtime startup module", startup, "mod pre_public_transition");
 requireText("pre-public fail-closed marker", database, "PRE_PUBLIC_RESET_PREFIX");
 requireText("reset helper manifest", projectManifests, '"scripts/reset-pre-public-data.sh"');
-requireText("retirement gate", audit, "./scripts/ostudy-dev library-status --verify");
+requireText("completed retirement gate", audit, "human lineage gate confirmed");
+requireText("explicit historical recovery", audit, "explicit staged recovery tool");
 requireText("migration retention", audit, "public migrations 1–30");
 requireText("repair retention", audit, "public repairs 1–3");
 
@@ -41,4 +43,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Release-readiness cleanup distinguishes corrected stale docs from live compatibility/recovery paths.");
+console.log("OK   Release-readiness cleanup records v26 runtime retirement while retaining explicit historical recovery and current compatibility readers.");

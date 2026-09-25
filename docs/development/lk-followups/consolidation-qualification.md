@@ -1,6 +1,6 @@
 # PR #106 roadmap — post-#104 stabilization, production baseline, release readiness, and tooling
 
-Status: **active implementation** on merged PR #104. PR #105 is explicitly deferred and is **not** an activation dependency.
+Status: **final validation/manual acceptance** on merged PR #104. PR #105 is explicitly deferred and is **not** an activation dependency.
 
 This roadmap owns the current post-#104 production-baseline and migration cleanup that was previously assigned to PR #105/LK-13, together with development/production data isolation, contributor tooling, bounded cleanup, packaging safety, and final qualification.
 
@@ -333,15 +333,22 @@ Do not use the only copy of valuable school data for destructive/uninstall/migra
 
 PR #104 is merged at `6529004ad4e31946df4116f7a0591d6c80d8e586`. PR #106 has reconstructed the exact merged boundary and begun 106-A. No further #104 action is required.
 
-### Before personal-library adoption testing
+### Personal-library lineage gate — completed
 
-Close oStudy, then run:
+The human ran:
 
 ```bash
 ./scripts/ostudy-dev library-status --verify
 ```
 
-This automatically reports both `io.github.jferments.ostudy.dev` and `io.github.jferments.ostudy` without asking for a database path. If an existing development library contains anything valuable, create a whole-library backup using the currently qualified application before testing any conversion. The conversion/adoption test operates on an isolated copy first. Do not upload the library to GitHub.
+against the current PR branch. Privacy-safe outcome:
+
+- development profile: no library present;
+- production profile: `ostudy-public-v1`, schema 30, full migration/repair ledgers current;
+- SQLite integrity: `ok`;
+- foreign keys: `ok`.
+
+No personal content or database bytes were uploaded or committed. Because no retained valuable library needs final-v26 runtime adoption, 106-D may retire the automatic Rust transition while keeping explicit historical recovery tooling.
 
 ### Before production-install acceptance
 
@@ -360,7 +367,7 @@ The protected production library stays independent of installer-development VMs/
 1. **106-A:** production/development/test profile and credential isolation.
 2. **106-B:** contributor setup/build/doctor/local-test portability.
 3. **106-C:** exact post-#104 schema/durable-data audit and issue register.
-4. **106-D:** production baseline + gated archival/recovery of obsolete pre-release migration machinery.
+4. **106-D:** production baseline + gated archival/recovery of obsolete pre-release migration machinery — implementation complete after the human lineage gate; terminal qualification pending.
 5. **106-E:** backup/upgrade/uninstall/data-safety contracts.
 6. **106-F:** proven-dead code/dependency/docs and evidence-backed workflow cleanup.
 7. **106-G:** qualified production Debian/Ubuntu package boundary for local use.

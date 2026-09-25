@@ -20,28 +20,11 @@ OSTUDY_LOG='warn,ostudy.documents=debug' ./scripts/dev.sh
 
 Targets include `app`, `database`, `ai`, `qr`, `device_sync`, `documents`, `frontend`, `filesystem`, and `diagnostics`. Target rules use longest-prefix matching. Debug/trace fields must contain only counts, durations, safe identifiers, provider/model identifiers, and normalized outcomes—never credentials, prompts, study content, OCR text, SQL parameters, or QR payloads.
 
-## Startup and pre-public adoption
+## Startup and historical pre-public recovery
 
-A compatibility or operational failure during native initialization must not escape through Tauri's setup hook as a Rust panic. ostudy catches startup failures at the composition boundary, hides an unusable main window when necessary, writes a structured event, presents a native dialog, and exits deliberately after the dialog is dismissed.
+Native initialization still fails closed rather than escaping through Tauri setup as a Rust panic. The current runtime accepts the supported public lineage and does **not** auto-convert the historical final-v26 development lineage.
 
-An exact final pre-public v26 database is adopted automatically. The expected diagnostic sequence is:
-
-```text
-target: ostudy.database.migration
-event: pre_public_database_adoption_started
-
-target: ostudy.database.migration
-event: pre_public_database_adoption_completed
-
-target: ostudy.app.startup
-event: application_started
-```
-
-The adoption event fields include only the legacy/public versions, safe backup filename, and deck/card/review counts. They never include deck names, card content, review excerpts, document text, or paths containing user-entered material.
-
-Before the first adoption write, ostudy verifies the complete immutable v26 migration/repair ledger, final schema markers, SQLite integrity, and foreign keys. It then creates a consistent SQLite backup and transactionally changes only the public-lineage metadata and provider-profile shape. All application-table row counts and critical deck, note, card, review, attribution, and AI-profile identities must match before and after the transaction.
-
-An older, partial, checksum-mismatched, damaged, or otherwise unsupported development database uses:
+An old/non-public database uses:
 
 ```text
 target: ostudy.app.startup
@@ -49,11 +32,19 @@ event: application_startup_blocked
 reasonCode: pre_public_database_requires_manual_recovery
 ```
 
-That event means automatic adoption was deliberately refused. The database is not reset or guessed at. The desktop dialog identifies the application-data directory and points to the non-destructive archived-data recovery helper. Starting an empty library remains possible only through the explicitly named `--confirm-empty-library` operation.
+The database is left unchanged. On desktop, the dialog points to the explicit source-checkout recovery entry point:
 
-Unexpected native initialization errors use `application_startup_failed` with a bounded reason code rather than exposing arbitrary internal error details in the user-facing dialog. The original bounded native error remains available through local process/diagnostic evidence.
+```bash
+bash ./scripts/transition-pre-public-data.sh \
+  --data-dir "/absolute/path/to/io.github.jferments.ostudy" \
+  --confirm
+```
 
-The full Linux gate runs `scripts/smoke-startup-compatibility.sh` against the actual standalone binary. Unlike normal WebDriver tests, this smoke deliberately seeds an exact final-v26 SQLite database containing a deck, card, review, and analytics attribution. It requires the built application to create a backup, adopt the public lineage, preserve those rows, finish startup, and avoid `application_startup_blocked`, `panic_captured`, and Tauri setup failure.
+For a separate timestamped v26 archive, add `--source-backup "/absolute/path/to/archive"`. The recovery utility copies the source before SQLite opens it, verifies the exact historical migration/repair contract, converts only a staged copy to the immutable `ostudy-public-v1` baseline, compares learner-table counts and critical identities, runs integrity/foreign-key checks, archives the previous active directory, and leaves the preserved source untouched. Current startup then uses only the ordinary public migration chain.
+
+The full Linux gate exercises both halves: the built application must refuse a seeded exact-v26 database without changing it; the explicit recovery tool must convert an isolated copy; then the same built application must migrate that recovered public-v1 copy through the current schema and finish startup while preserving representative deck/card/review/analytics state.
+
+Unexpected native initialization errors continue to use `application_startup_failed` with a bounded reason code rather than exposing arbitrary internal error details.
 
 ## Automated qualification baseline
 

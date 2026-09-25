@@ -15,7 +15,7 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
             result = self.run_verifier(root)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_accepts_audited_sync_and_startup_compatibility_owners(self) -> None:
+    def test_accepts_audited_sync_compatibility_owner(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
             root_path = Path(root)
             self.write_valid_topology(root_path)
@@ -23,11 +23,6 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
                 root_path,
                 "src-tauri/src/device_sync/package.rs",
                 'const SNAPSHOT: &str = "DELETE FROM ai_task_defaults; DELETE FROM ai_provider_probe_results;";\n',
-            )
-            self.write(
-                root_path,
-                "src-tauri/src/startup/pre_public_transition.rs",
-                'const LEGACY_CHECK: &str = "SELECT COUNT(*) FROM ai_provider_profiles";\n',
             )
             result = self.run_verifier(root)
             self.assertEqual(result.returncode, 0, result.stderr)

@@ -4,9 +4,9 @@
 
 The first supported public schema lineage is `ostudy-public-v1`, represented by the immutable migration `0001_public_baseline.sql`. The final pre-release schema was built from all development migrations, validated, converted into canonical DDL plus seed rows, and checked against a committed semantic schema manifest.
 
-The exact final development lineage—with all 26 immutable migration records and all 3 repair records—is adopted automatically rather than discarded. The historical migration runner did **not** stamp SQLite `PRAGMA user_version`, so real development databases normally report `user_version = 0`; the final migration ledger, terminal schema, and repair ledger are the authoritative version evidence. The adoption contract also accepts an explicitly stamped `user_version = 26` copy when every other final-lineage check matches.
+The exact final development lineage—with all 26 immutable migration records and all 3 repair records—remains recoverable rather than discarded. Automatic runtime adoption was a temporary pre-release bridge and was retired by PR #106 after the retained local production library was verified on the current public lineage. The historical migration runner did **not** stamp SQLite `PRAGMA user_version`, so real development databases normally report `user_version = 0`; the final migration ledger, terminal schema, and repair ledger are the authoritative version evidence. The adoption contract also accepts an explicitly stamped `user_version = 26` copy when every other final-lineage check matches.
 
-Before changing that database, ostudy:
+The archived explicit recovery utility, not normal application startup:
 
 1. verifies the complete embedded pre-public lineage contract;
 2. runs SQLite integrity and foreign-key checks;
@@ -16,7 +16,7 @@ Before changing that database, ostudy:
 6. verifies all application-table row counts and critical deck, note, card, review, attribution, and AI-profile identities are unchanged;
 7. reopens the database through the normal public migration verifier.
 
-Older, partial, checksum-mismatched, damaged, or otherwise unrecognized development databases are not guessed at and are not reset automatically. They remain unchanged and produce a manual-recovery dialog. An archived exact-v26 application-data directory can be copied back non-destructively with `scripts/restore_pre_public_backup.py`; the existing active directory and the original archive are both retained.
+Older, partial, checksum-mismatched, damaged, or otherwise unrecognized development databases are not guessed at and are not reset automatically. They remain unchanged and produce a manual-recovery dialog. Exact-v26 recovery is explicitly invoked through `scripts/transition-pre-public-data.sh`; the source archive and previous active directory are retained while only a staging copy is converted.
 
 `scripts/reset-pre-public-data.sh` is no longer the normal transition. It is an explicit empty-library operation and requires `--confirm-empty-library`, wording that makes the loss of active visibility for decks, cards, reviews, analytics, documents, and settings unmistakable. It still archives rather than deletes the previous directory.
 

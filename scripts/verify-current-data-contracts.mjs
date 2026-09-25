@@ -8,7 +8,7 @@ const [
   database,
   repairs,
   prePublicLedger,
-  prePublicTransition,
+  recovery,
   backup,
   studydeck,
   syncPackage,
@@ -23,8 +23,8 @@ const [
 ] = await Promise.all([
   read("src-tauri/src/database.rs"),
   read("src-tauri/src/data_repairs.rs"),
-  read("src-tauri/src/startup/pre_public_v26_ledger.json"),
-  read("src-tauri/src/startup/pre_public_transition.rs"),
+  read("scripts/history/pre-public-v26/ledger.json"),
+  read("scripts/restore_pre_public_backup.py"),
   read("src-tauri/src/library_backup.rs"),
   read("src-tauri/src/studydeck.rs"),
   read("src-tauri/src/device_sync/package.rs"),
@@ -56,7 +56,8 @@ const legacy = JSON.parse(prePublicLedger);
 if (legacy.schemaVersion !== 26 || JSON.stringify(legacy.acceptedSqliteUserVersions) !== "[0,26]") {
   failures.push("pre-public transition contract must remain exact v26 with SQLite markers 0/26");
 }
-requireText("runtime pre-public contract", prePublicTransition, 'include_str!("pre_public_v26_ledger.json")');
+requireText("archived pre-public recovery", recovery, 'scripts" / "history" / "pre-public-v26" / "ledger.json');
+requireText("explicit public-v1 conversion", recovery, 'PUBLIC_SCHEMA_LINEAGE = "ostudy-public-v1"');
 requireText("backup format", backup, 'const BACKUP_VERSION: i64 = 4;');
 requireText("backup package floor", backup, 'const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;');
 requireText("backup SQLite floor", backup, 'if !(10..=LATEST_SCHEMA_VERSION).contains(&version)');
@@ -81,7 +82,7 @@ for (const needle of [
   "repair versions **1–3**",
   "schema **10–30**",
   "writer v3",
-  "v26 adoption path",
+  "v26 recovery path",
 ]) requireText("audit document", audit, needle);
 
 if (failures.length > 0) {

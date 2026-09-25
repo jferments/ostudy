@@ -54,7 +54,7 @@ def repair_registry() -> list[tuple[int, str, str]]:
 
 def pre_public_contract() -> dict[str, Any]:
     return json.loads(
-        (ROOT / "src-tauri/src/startup/pre_public_v26_ledger.json").read_text(
+        (ROOT / "scripts/history/pre-public-v26/ledger.json").read_text(
             encoding="utf-8"
         )
     )

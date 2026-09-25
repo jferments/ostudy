@@ -10,7 +10,6 @@ use crate::{
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
-mod pre_public_transition;
 
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 
@@ -82,7 +81,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     apply_main_window_icon(app);
     let pending_restore =
         library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
-    let database = open_database_with_pre_public_adoption(&paths)?;
+    let database = database::Database::open(paths.database_path()).map_err(io::Error::other)?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
     platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
     let ai_runtime =
@@ -230,43 +229,6 @@ fn apply_main_window_icon(app: &tauri::AppHandle) {
     );
 }
 
-fn open_database_with_pre_public_adoption(
-    paths: &AppPaths,
-) -> Result<database::Database, io::Error> {
-    match database::Database::open(paths.database_path()) {
-        Ok(database) => Ok(database),
-        Err(error) if error.starts_with(database::PRE_PUBLIC_RESET_PREFIX) => {
-            match pre_public_transition::adopt_final_pre_public_database(paths.database_path()) {
-                Ok(Some(report)) => {
-                    logging::debug_target(
-                        "database.migration",
-                        "pre_public_database_adoption_verified",
-                        "The adopted pre-public database is being reopened through the public migration verifier.",
-                        serde_json::json!({
-                            "backupFile": report.backup_path.file_name().and_then(|value| value.to_str()).unwrap_or("pre-public.backup"),
-                            "deckCount": report.deck_count,
-                            "cardCount": report.card_count,
-                            "reviewCount": report.review_count,
-                        }),
-                    );
-                    database::Database::open(paths.database_path()).map_err(|retry_error| {
-                        io::Error::other(format!(
-                            "{}: The pre-public data was adopted and backed up, but the public database verifier rejected the result: {retry_error}",
-                            database::PRE_PUBLIC_RESET_PREFIX
-                        ))
-                    })
-                }
-                Ok(None) => Err(io::Error::other(error)),
-                Err(adoption_error) => Err(io::Error::other(format!(
-                    "{}: {adoption_error}",
-                    database::PRE_PUBLIC_RESET_PREFIX
-                ))),
-            }
-        }
-        Err(error) => Err(io::Error::other(error)),
-    }
-}
-
 fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
     let app_data_directory = app.path().app_data_dir().ok();
     let presentation = startup_failure_presentation(error, app_data_directory.as_deref());
@@ -279,7 +241,7 @@ fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
         StartupFailureKind::PrePublicDatabase => logging::warn_target(
             "app.startup",
             presentation.event,
-            "ostudy startup is blocked because the pre-public database could not be adopted automatically.",
+            "ostudy startup is blocked because the database is outside the current public lineage.",
             serde_json::json!({ "reasonCode": presentation.reason_code }),
         ),
         StartupFailureKind::Internal => logging::error_target(
@@ -322,11 +284,11 @@ fn startup_failure_presentation(
             .unwrap_or_else(|| "<application data directory>".to_string());
         #[cfg(not(mobile))]
         let recovery_instructions = format!(
-            "The exact final pre-public schema is normally adopted automatically with a consistent SQLite backup. This database did not match that verified transition contract.\n\nIf you previously ran the old reset command, restore its timestamped backup with:\n\npython3 ./scripts/restore_pre_public_backup.py --backup-dir \"<timestamped pre-public backup directory>\" --data-dir \"{location}\" --confirm\n\nTo intentionally archive this library and start empty instead, run:\n\n./scripts/reset-pre-public-data.sh --data-dir \"{location}\" --confirm-empty-library"
+            "Automatic pre-public conversion has been retired from normal startup. The database was left unchanged.\n\nTo explicitly recover an exact final-v26 library in place from a source checkout, run:\n\nbash ./scripts/transition-pre-public-data.sh --data-dir \"{location}\" --confirm\n\nTo recover a separate archived v26 directory, add:\n\n--source-backup \"<timestamped pre-public backup directory>\"\n\nTo intentionally archive this library and start empty instead, run:\n\n./scripts/reset-pre-public-data.sh --data-dir \"{location}\" --confirm-empty-library"
         );
         #[cfg(mobile)]
         let recovery_instructions = format!(
-            "This pre-release database does not match the verified final pre-public transition contract. Preserve the application storage before clearing or reinstalling the development build.\n\nApplication data directory: {location}"
+            "This database is outside the current public schema lineage. Automatic pre-public conversion is no longer part of the application runtime. Preserve the application storage before clearing or reinstalling the development build.\n\nApplication data directory: {location}"
         );
         return StartupFailurePresentation {
             kind: StartupFailureKind::PrePublicDatabase,
@@ -334,7 +296,7 @@ fn startup_failure_presentation(
             reason_code: "pre_public_database_requires_manual_recovery",
             title: "Pre-public data needs manual recovery",
             message: format!(
-                "This build uses ostudy's public database baseline. The existing pre-public database could not be adopted automatically and was left unchanged.\n\n{recovery_instructions}"
+                "This build uses ostudy's current public database lineage. The existing non-public database was left unchanged.\n\n{recovery_instructions}"
             ),
         };
     }
@@ -366,7 +328,7 @@ mod tests {
         );
         assert!(presentation
             .message
-            .contains("restore_pre_public_backup.py"));
+            .contains("transition-pre-public-data.sh"));
         assert!(presentation.message.contains("confirm-empty-library"));
         assert!(presentation
             .message

@@ -71,7 +71,6 @@ const profileCompatibilityOwners = new Set([
   "src-tauri/src/device_sync/merge.rs",
   "src-tauri/src/device_sync/mod.rs",
   "src-tauri/src/device_sync/package.rs",
-  "src-tauri/src/startup/pre_public_transition.rs",
 ]);
 const probeCompatibilityOwners = new Set([
   "src-tauri/src/device_sync/credentials.rs",

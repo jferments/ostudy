@@ -10,7 +10,7 @@ The product has not had a public release. That permits a final pre-release conso
 | --- | --- | --- | --- |
 | SQLite library | lineage `ostudy-public-v1`, schema/user version **30**, immutable migrations `0001`–`0030` | exact known migration-prefix admission plus current repair-ledger validation; one exact final pre-public-v26 adoption path remains live | **retain the v1 migration chain by default**: it is current compatibility, supports historical backups, and is already fail-closed. A replacement baseline needs a concrete simplification/release benefit plus synthetic + isolated real-copy preservation; never edit migration bytes in place |
 | Public data repairs | repair versions **1–3**: canonical semantic hashes, canonical block hashes, document-artifact user edits | checksum-protected and applied/verified by normal startup | **retain as current compatibility**, or fold only as part of the same explicitly verified new baseline; never confuse with the old pre-public repair ledger |
-| Final pre-public lineage | exact v26 migration/repair ledger, accepted SQLite marker 0 or 26 | `startup/pre_public_transition.rs`, embedded ledger, restore helper and built-binary smoke | archive candidate only after the human actual-library gate; preserve source SHA/manifest/offline recovery |
+| Final pre-public lineage | exact v26 migration/repair ledger, accepted SQLite marker 0 or 26 | normal runtime conversion retired; explicit source-checkout recovery uses `scripts/history/pre-public-v26/ledger.json` plus `transition-pre-public-data.sh` | archived outside runtime after the human actual-library gate; preserve explicit offline recovery |
 | Rich note transport | `content_format=tiptap-json`, transport `content_schema_version=1` | canonical rich root schema 1–3; schema 3 owns typed math + managed audio/video and is validated through the schema-3 wrapper | retain all supported rich readers |
 | Interactive questions | `question-json` schema 1 | strict typed definition/evaluator; attempt checkpoint version 1 | retain |
 | Canonical documents | canonical document schema 1 | current adapters normalize PDF/AnyDoc/image-set sources into this representation | retain |
@@ -30,7 +30,7 @@ The product has not had a public release. That permits a final pre-release conso
 3. **The backup schema-10 floor is intentional.** Historical Tutor backup tests construct real schema-10/11 snapshots and require them to remain admissible after later migrations.
 4. **Rich-content docs were stale.** Current native admission supports rich-root schema 3 for math/media while preserving the transport-envelope version 1. Canonical docs are corrected in this increment.
 5. **Generated-import docs were stale.** The importer supports both v1 and v2; interactive questions require v2. Canonical reference docs are corrected in this increment.
-6. **The v26 adoption path is still runtime-active.** It is the primary 106-D archival candidate, but only after actual-library adoption/recovery evidence exists.
+6. **The v26 runtime adoption path was retired in 106-D after the human gate.** Historical recovery remains explicit and staged; current application startup leaves non-public data unchanged.
 7. **Public migrations 1–30 are current compatibility, not automatic cleanup targets.** Keep them unless 106-D demonstrates a concrete release/runtime benefit from a replacement baseline. If a replacement is justified, use an explicit new lineage/baseline transition with preservation receipts rather than rewriting known migration bytes.
 
 ## 106-D entry conditions
@@ -43,7 +43,7 @@ Before any retirement/consolidation commit:
 - first decide whether a new pre-release baseline has a concrete benefit over retaining the already-supported v1 chain; if yes, design it as an explicit lineage transition rather than rewriting known migration checksums;
 - provide an offline recovery path for intentionally restored historical backups;
 - test the user's retained library only as an **isolated local copy**; no personal library leaves the user's machine;
-- do not remove the old runtime transition until the human confirms the isolated-copy adoption receipt and production/dev library split.
+- retire the old runtime transition only after the human lineage gate; preserve a tested explicit historical recovery path outside normal runtime.
 
 ## Archive versus retain rule
 
