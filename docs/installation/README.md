@@ -66,9 +66,9 @@ pnpm android:smoke
 pnpm android:install
 ```
 
-The Android application uses platform document providers, Android Keystore, native `PdfRenderer`, bundled ML Kit Text Recognition v2, a foreground-service boundary for user-started long document work, and the private ostudy platform plugin for QR acquisition and Android-only lifecycle/file behavior. It does not package desktop PDFium or Tesseract.
+The Android application uses platform document providers, Android Keystore, native `PdfRenderer`, bundled open-source Tesseract OCR with pinned English trained data, a local ZXing QR scanner, a foreground-service boundary for user-started long document work, and the private ostudy platform plugin for Android-only lifecycle/file behavior. It does not package desktop PDFium or depend on a system-installed Tesseract runtime.
 
-Public Android distribution still requires permanent release-signing custody, Play App Signing, store metadata, privacy declarations, and signed-release qualification.
+Public Android distribution is not yet published. The planned direct path requires permanent release-signing-key custody, signed-release qualification, release metadata/checksums, and a signed APK; F-Droid is a later open-source distribution option. Google Play is not a prerequisite for direct APK distribution.
 
 ## Desktop build layers
 
@@ -91,7 +91,7 @@ The shared document system accepts PDF, Word, PowerPoint, OpenDocument, EPUB, RT
 PDF visual recovery uses narrow platform adapters:
 
 - desktop: pinned PDFium rendering and optional Tesseract OCR;
-- Android: platform `PdfRenderer` and bundled ML Kit Text Recognition v2.
+- Android: platform `PdfRenderer` plus bundled open-source Tesseract OCR with pinned English trained data.
 
 Shared Rust owns source planning, canonical provenance, checkpoints, provider tasks, generated-card validation, Study Guide publication, and durable state. Platform adapters do not reimplement those rules.
 

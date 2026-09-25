@@ -13,7 +13,7 @@ No LK-05 or later product implementation belongs to this branch.
 
 ## Successor delivery split
 
-The successor split remains the authority for scope, but its lifecycle has advanced beyond the original planning-only state. PR #104 is the active successor and has implemented LK-05–LK-09; its remaining boundary is final cross-stage/terminal qualification and handoff. PR #105 and PR #106 remain successor scopes and must not be treated as implemented merely because their planning records exist.
+The successor split remains the authority for scope, but its lifecycle has advanced beyond the original planning-only state. PR #104 is merged with LK-05–LK-09 delivered. PR #105 is intentionally deferred as the future lessons/narration/PowerPoint plan, while PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche.
 
 | Successor | Current status | Scope | Roadmap |
 | --- | --- | --- | --- |

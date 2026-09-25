@@ -56,7 +56,7 @@ git rev-parse origin/main
 
 If the checkout is an older clean `main`, update it with `git pull --ff-only`, then rebuild with `./scripts/build.sh` before running `./run-app.sh`. If local edits exist, preserve them and use the detached exact-SHA review-worktree procedure above instead of forcing the checkout.
 
-The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at schema 21 paired with a build that supports only schema 17 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 21 should proceed through ordinary read-only admission and startup without this future-schema error.
+The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at the current schema 30 paired with an older build that supports only schema 29 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 30 should proceed through ordinary read-only admission and startup without this future-schema error.
 
 ## Linux: ordinary test-drive
 
