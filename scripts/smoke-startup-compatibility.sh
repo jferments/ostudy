@@ -314,6 +314,8 @@ fi
 lineage="$(sqlite3 "$APP_DATA/library.sqlite3" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
 schema_version="$(sqlite3 "$APP_DATA/library.sqlite3" 'PRAGMA user_version;')"
 expected_schema_version="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --latest)"
+expected_migrations="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --ledger)"
+migrations="$(sqlite3 -separator '|' "$APP_DATA/library.sqlite3" 'SELECT version, name, checksum FROM schema_migrations ORDER BY version;')"
 after_decks="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM decks;')"
 after_cards="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM cards;')"
 after_reviews="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_events;')"
@@ -321,6 +323,10 @@ after_attributions="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM 
 
 [[ "$lineage" == "ostudy-public-v1" && "$schema_version" == "$expected_schema_version" ]] || {
   printf 'ERROR: recovered database did not reach the current public lineage/schema.\n' >&2
+  exit 1
+}
+[[ "$migrations" == "$expected_migrations" ]] || {
+  printf 'ERROR: recovered database has an unexpected current migration ledger.\n' >&2
   exit 1
 }
 [[ "$before_decks" == "$after_decks" && "$before_cards" == "$after_cards" ]] || {
