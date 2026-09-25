@@ -137,6 +137,9 @@ else
   log "tauri-driver ${TAURI_DRIVER_VERSION} is already installed"
 fi
 
+log "Verifying the provisioned contributor and native-smoke environment"
+"$SCRIPT_DIR/doctor.sh" --native-smoke
+
 log "Building ostudy once so ordinary startup is fast"
 "$SCRIPT_DIR/build.sh"
 

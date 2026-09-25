@@ -26,12 +26,17 @@ See [Unified Linux/Android runner](unified-linux-android-runner.md) and [runner 
 
 ## Local validation tiers
 
+Contributor machines use the repository-owned commands below directly. They do not need the repository owner's Actions runner registration, runner username, VM sizing/KVM policy, GitHub workspace variables, or release-signing credentials. GitHub Actions adds runner-specific isolation/resource preflights and then calls these same maintained wrappers.
+
 ```bash
+./scripts/ostudy-dev doctor
 ./scripts/check-changed.sh
 ./scripts/check-static.sh
 ./scripts/check-fast.sh
 ./scripts/check.sh
 ```
+
+Use `./scripts/ostudy-dev doctor --native-smoke` to verify WebDriver/native-smoke prerequisites installed by the full Ubuntu/Debian contributor setup.
 
 ### `check-changed.sh`
 
@@ -51,7 +56,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current public migration registry is defined by `src-tauri/src/database.rs` (schema version 17 at the LK-02 checkpoint). Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
+The current public migration registry is defined by `src-tauri/src/database.rs`; the post-PR-#104 baseline is schema version 30. Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
 
 ### Exact-tree reuse
 

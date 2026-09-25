@@ -14,6 +14,7 @@ const [
   fullCheck,
   ciPreflight,
   guestPreflight,
+  checkWorkflow,
   contributing,
   runbook,
 ] = await Promise.all([
@@ -25,6 +26,7 @@ const [
   read("scripts/check.sh"),
   read("scripts/runner/ci-runtime-preflight.sh"),
   read("scripts/runner/guest-preflight.sh"),
+  read(".github/workflows/check.yml"),
   read("CONTRIBUTING.md"),
   read("docs/agents/COMMAND-RUNBOOK.md"),
 ]);
@@ -78,6 +80,12 @@ for (const [label, source] of [
 requireText("CI-only runner identity", ciPreflight, "RUNNER_NAME");
 requireText("CI-only workspace isolation", ciPreflight, "GITHUB_WORKSPACE");
 requireText("runner-only resource sizing", guestPreflight, "OSTUDY_VM_RAM_GIB");
+requireText("setup self-verifies native smoke", setup, '"$SCRIPT_DIR/doctor.sh" --native-smoke');
+requireText("Actions uses local static wrapper", checkWorkflow, "bash ./scripts/check-static.sh");
+requireText("Actions uses local fast wrapper", checkWorkflow, "bash ./scripts/check-fast.sh");
+requireText("Actions uses local full wrapper", checkWorkflow, "bash ./scripts/check.sh");
+requireText("Actions adds runner preflight separately", checkWorkflow, "bash ./scripts/runner/ci-runtime-preflight.sh");
+requireText("Actions adds guest resource preflight separately", checkWorkflow, "bash ./scripts/runner/guest-preflight.sh");
 requireText("contributor docs doctor", contributing, "./scripts/ostudy-dev doctor");
 requireText("runbook doctor", runbook, "./scripts/ostudy-dev doctor");
 requireText("runbook runner separation", runbook, "scripts/runner/");
