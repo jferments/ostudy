@@ -31,7 +31,9 @@ class StandaloneBuildArtifactTests(unittest.TestCase):
     def test_build_and_full_check_stage_before_writing_the_build_stamp(self) -> None:
         for path in (BUILD, CHECK):
             source = path.read_text(encoding="utf-8")
-            tauri_build = source.index(\n                "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci"\n            )
+            tauri_build = source.index(
+                "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci"
+            )
             stage = source.index("ostudy_stage_standalone_build", tauri_build)
             stamp = source.index("ostudy_write_build_stamp", stage)
             self.assertLess(tauri_build, stage, path.name)
