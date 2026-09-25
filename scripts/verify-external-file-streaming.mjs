@@ -8,6 +8,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const failures = [];
 
 const lib = await read("src-tauri/src/lib.rs");
+const leasedCommands = await read("src-tauri/src/library_session/commands.rs");
 const startup = await read("src-tauri/src/startup.rs");
 const ledger = await read("src-tauri/src/external_files.rs");
 const transfer = await read("src-tauri/src/external_file_streaming.rs");
@@ -27,16 +28,16 @@ const checkFast = await read("scripts/check-fast.sh");
 const androidTest = await read("scripts/android-test.sh");
 const androidBuild = await read("scripts/android-build.sh");
 
-expectContains(
-  lib,
-  "external_file_streaming::stream_select_and_stage_external_import",
-  "canonical streaming import command registration",
-);
-expectContains(
-  lib,
-  "external_file_streaming::stream_publish_prepared_export",
-  "canonical streaming export command registration",
-);
+for (const name of ["stream_select_and_stage_external_import", "stream_publish_prepared_export"]) {
+  expectContains(lib, `library_session::commands::leased_${name}`, `leased streaming registration ${name}`);
+  const adapter = leasedCommands.match(new RegExp(
+    `#\\[tauri::command\\(rename = "${name}"\\)\\]([\\s\\S]*?)(?=\\n#\\[tauri::command|$)`, "u",
+  ))?.[1] ?? "";
+  expectContains(adapter, `fn leased_${name}(`, `stable streaming wire identity ${name}`);
+  expectContains(adapter, "super::enter(library_generation)?", `original-generation streaming lease ${name}`);
+  expectContains(adapter, `crate::external_file_streaming::${name}(`, `canonical streaming forwarding target ${name}`);
+  expectContains(adapter, ".await", `streaming lease through completion ${name}`);
+}
 expectContains(lib, ".setup(startup::setup)", "startup composition boundary registration");
 for (const legacy of [
   "external_files::select_and_stage_external_import",

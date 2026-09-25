@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [commands, compositionRoot, frontend] = await Promise.all([
+const [commands, compositionRoot, frontend, leasedCommands] = await Promise.all([
   read("src-tauri/src/library_backup_commands.rs"),
   read("src-tauri/src/lib.rs"),
   read("src/ipc/backup.ts"),
+  read("src-tauri/src/library_session/commands.rs"),
 ]);
 const failures = [];
 
@@ -17,9 +18,16 @@ expectContains(commands, "pub async fn prepare_library_restore_async", "async re
 expectContains(commands, "tauri::async_runtime::spawn_blocking", "blocking worker pool handoff");
 expectContains(
   compositionRoot,
-  "library_backup_commands::prepare_library_backup_async",
-  "nonblocking backup command registration",
+  "library_session::commands::leased_prepare_library_backup_async",
+  "generation-leased nonblocking backup command registration",
 );
+const leasedBackup = leasedCommands.match(
+  /#\[tauri::command\(rename = "prepare_library_backup_async"\)\]([\s\S]*?)(?=\n#\[tauri::command|$)/u,
+)?.[1] ?? "";
+expectContains(leasedBackup, "fn leased_prepare_library_backup_async(", "stable backup wire name and unique Rust adapter");
+expectContains(leasedBackup, "super::enter(library_generation)?", "original-generation lease through backup future");
+expectContains(leasedBackup, "crate::library_backup_commands::prepare_library_backup_async(", "forwarding into nonblocking backup adapter");
+expectContains(leasedBackup, ".await", "backup lease retained through worker completion");
 expectContains(
   compositionRoot,
   "library_backup_commands::prepare_library_restore_async",
@@ -39,7 +47,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Library backup and restore preparation run outside the Tauri UI/event-loop thread.");
+console.log("OK   Generation-leased backup and exclusive live restore run outside the Tauri UI/event-loop thread.");
 
 async function read(relativePath) {
   return readFile(join(root, relativePath), "utf8");
