@@ -221,7 +221,7 @@ pub(crate) async fn prepare(
         Some(diagnostic_context),
     )
     .await;
-    diagnostics.finish(outcome.is_ok());
+    diagnostics.finish_result(&outcome);
     preparation_store::finish(database, &input.operation_id, &outcome)?;
     // The returned durable status reports failure without encouraging an
     // ambiguous replay to submit the same provider work again.

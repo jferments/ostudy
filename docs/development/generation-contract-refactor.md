@@ -159,9 +159,10 @@ failure, stage attribution and bounded wrapper size. These tests exercise the
 observer and real SQLite ledger with synthetic native results, not a live model
 or end-to-end factual-quality assessment.
 
-Operation-owner capture is described in AC-02f; non-document owners still need
-to adopt its result-aware completion boundary. Candidate admission has the
-separate AC-02e record below.
+Operation-owner capture is described in AC-02f. Every production generation
+operation owner on this branch now uses its result-aware completion boundary;
+boolean-only completion is test-only. Candidate admission has the separate
+AC-02e record below.
 
 ## AC-02d: readable recovery evidence
 
@@ -246,9 +247,15 @@ effort and never replaces the original product result or authorizes another call
 Startup records unfinished running operations as interrupted without claiming an
 observed return. Finished records cannot be overwritten by startup or a stale
 owner. An ordinary dropped legacy owner still reports interruption with unknown
-cause; owners that still call boolean-only `finish` retain unknown detailed
-outcomes. Other operation owners must explicitly adopt `finish_result`; their
-integration is not inferred from this document-task change.
+cause.
+
+The production-owner audit is now complete. The document task wrapper, optional
+document post-processing, collection Study Guide composition, semantic search,
+collection synthesis and semantic preparation all close their own operation with
+`finish_result`. Composite document post-processing preserves the first failing
+native phase instead of reducing two results to one boolean. The old boolean
+`finish` method is compiled only for tests, so a new production owner cannot
+silently discard its terminal error code.
 
 The normal usage report includes separate `operationRecords` and
 `operationOutcomes`, including zero-request operations in `--all`. Reads use the
@@ -262,8 +269,8 @@ Native regressions cover zero-request errors, the actual document task wrapper,
 terminal immutability, interrupted startup, diagnostic-write failure, sanitized
 codes, device-transfer removal, and migration/legacy preservation. Reporter
 regressions include a read-only SQLite/CLI round trip and zero-request export.
-No live provider is needed. Remaining non-document owner integrations are separate
-from the AC-03 behavioral change below.
+No live provider is needed. AC-02's production operation-owner integrations are
+complete; AC-03 changes the independent core/annotation admission behavior below.
 
 ## AC-03: independent core and annotation admission
 

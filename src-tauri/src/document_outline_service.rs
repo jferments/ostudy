@@ -217,7 +217,8 @@ pub(crate) fn schedule_document_postprocessing(app: AppHandle, document_id: Stri
                 serde_json::json!({"document":document_id,"code":error.code}),
             );
         }
-        operation.finish(metadata_result.is_ok() && indexing_result.is_ok());
+        let postprocessing_result = metadata_result.and(indexing_result);
+        operation.finish_result(&postprocessing_result);
     });
 }
 

@@ -271,7 +271,10 @@ impl Operation {
         self.context.clone()
     }
 
-    // Final accounting must never turn a committed artifact into a failed write.
+    // Test-only compatibility for historical ledger regressions. Production
+    // owners must use finish_result so a terminal native cause is never reduced
+    // to a boolean success/failure bit.
+    #[cfg(test)]
     pub(crate) fn finish(&mut self, succeeded: bool) {
         self.close(if succeeded { "complete" } else { "failed" });
     }

@@ -135,7 +135,7 @@ pub async fn search_semantic_material(
         },
     )
     .await;
-    diagnostics.finish(result.is_ok());
+    diagnostics.finish_result(&result);
     let result = result?;
     Ok(RetrievalPreview {
         sources: result
@@ -224,7 +224,7 @@ pub async fn prepare_collection_synthesis(
         &guard.signal,
     )
     .await;
-    diagnostics.finish(state.is_ok());
+    diagnostics.finish_result(&state);
     let state = state?;
     guard.progress("ready", 1, 1);
     Ok(state)

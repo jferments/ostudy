@@ -208,7 +208,7 @@ async fn compose(
                             &signal,
                         )
                         .await;
-                        diagnostics.finish(result.is_ok());
+                        diagnostics.finish_result(&result);
                         result
                     }
                     Err(error) => Err(error),
