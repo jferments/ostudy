@@ -82,6 +82,14 @@ pnpm test
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+step "StudyTarget composition parallel-isolation regression"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  study_materials::composition::tests::
+
 step "Current-format entry and preservation contracts"
 bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests::
 

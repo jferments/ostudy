@@ -2034,6 +2034,10 @@ mod tests {
         SourceLocator::new(SourceUnitKind::Page, units, None).unwrap()
     }
 
+    fn test_operation_id(test_case: u16, sequence: u16) -> String {
+        format!("{:032x}", (u128::from(test_case) << 16) | u128::from(sequence))
+    }
+
     fn member(ranges: Vec<(i64, i64)>) -> SourceSetMemberDto {
         SourceSetMemberDto {
             document_id: "d".repeat(32),
@@ -2326,7 +2330,7 @@ mod tests {
     #[test]
     fn collection_bundle_replay_is_exactly_once_and_updates_preserve_learner_state() {
         let fixture = bundle_fixture();
-        let first_operation = "4".repeat(32);
+        let first_operation = test_operation_id(1, 1);
         begin_flashcard_bundle(&fixture, &first_operation);
         let first = compose_flashcard_bundle(&fixture, &first_operation);
         assert_eq!(first.latest_batch_state.as_deref(), Some("complete"));
@@ -2429,7 +2433,7 @@ mod tests {
             })
             .expect("update fixture should seed");
 
-        let second_operation = "a".repeat(32);
+        let second_operation = test_operation_id(1, 2);
         begin_flashcard_bundle(&fixture, &second_operation);
         let second = compose_flashcard_bundle(&fixture, &second_operation);
         assert_eq!(second.latest_batch_state.as_deref(), Some("complete"));
@@ -2476,7 +2480,7 @@ mod tests {
     #[test]
     fn removing_collection_source_never_deletes_successful_bundle_cards() {
         let fixture = bundle_fixture();
-        let first_operation = "4".repeat(32);
+        let first_operation = test_operation_id(2, 1);
         begin_flashcard_bundle(&fixture, &first_operation);
         let first = compose_flashcard_bundle(&fixture, &first_operation);
         let deck_id = first.deck_id.expect("collection deck");
@@ -2512,7 +2516,7 @@ mod tests {
         .expect("target should remain");
         assert!(status.source_changed);
 
-        let removal_operation = "a".repeat(32);
+        let removal_operation = test_operation_id(2, 2);
         begin_flashcard_bundle(&fixture, &removal_operation);
         let failed = compose_flashcard_bundle(&fixture, &removal_operation);
         assert_eq!(failed.latest_batch_state.as_deref(), Some("failed"));
@@ -2539,7 +2543,7 @@ mod tests {
     #[test]
     fn failed_sibling_keeps_successful_collection_deck_and_batch_is_partial() {
         let fixture = bundle_fixture();
-        let operation_id = "4".repeat(32);
+        let operation_id = test_operation_id(3, 1);
         super::super::begin_bundle(
             &fixture.database,
             super::super::BeginStudyTargetBundleInput {
@@ -2602,7 +2606,7 @@ mod tests {
     #[test]
     fn deleted_bundle_deck_stays_suppressed_until_explicit_recreation() {
         let fixture = bundle_fixture();
-        let first_operation = "4".repeat(32);
+        let first_operation = test_operation_id(4, 1);
         begin_flashcard_bundle(&fixture, &first_operation);
         let first = compose_flashcard_bundle(&fixture, &first_operation);
         let deleted_deck = first.deck_id.expect("initial collection deck");
@@ -2615,14 +2619,14 @@ mod tests {
             })
             .expect("ordinary deck deletion should record target suppression");
 
-        let suppressed_operation = "5".repeat(32);
+        let suppressed_operation = test_operation_id(4, 2);
         begin_flashcard_bundle(&fixture, &suppressed_operation);
         let suppressed = compose_flashcard_bundle(&fixture, &suppressed_operation);
         assert_eq!(suppressed.latest_batch_state.as_deref(), Some("complete"));
         assert_eq!(suppressed.flashcards.state, "suppressed");
         assert!(suppressed.deck_id.is_none());
 
-        let recreate_operation = "6".repeat(32);
+        let recreate_operation = test_operation_id(4, 3);
         super::super::begin_bundle(
             &fixture.database,
             super::super::BeginStudyTargetBundleInput {
