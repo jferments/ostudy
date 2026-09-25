@@ -142,6 +142,21 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             bash ./scripts/check.sh
 
+      - name: Qualify production Debian package
+        id: linux_package
+        if: steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full'
+        run: |
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-linux-package.log" \
+            bash ./scripts/check-linux-package.sh \
+              --output "$RUNNER_TEMP/ostudy-linux-package"
+
+      - name: Persist production Debian package on runner
+        if: always() && steps.linux_package.outcome == 'success'
+        run: |
+          bash ./scripts/persist-runner-output.sh linux-package \
+            "$RUNNER_TEMP/ostudy-linux-package"
+
       - name: Run authoritative Android compile and package qualification
         id: android_compile
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
@@ -174,6 +189,7 @@ jobs:
           DEPENDENCY_STATUS: ${{ steps.dependency_graph.outcome }}
           FAST_STATUS: ${{ steps.fast.outcome }}
           LINUX_STATUS: ${{ steps.linux_full.outcome }}
+          LINUX_PACKAGE_STATUS: ${{ steps.linux_package.outcome }}
           ANDROID_COMPILE_STATUS: ${{ steps.android_compile.outcome }}
           ANDROID_SMOKE_STATUS: ${{ steps.android_smoke.outcome }}
         run: |
@@ -186,6 +202,7 @@ jobs:
             --step "dependency-graph=${DEPENDENCY_STATUS:-skipped}" \
             --step "fast=${FAST_STATUS:-skipped}" \
             --step "linux-full=${LINUX_STATUS:-skipped}" \
+            --step "linux-package=${LINUX_PACKAGE_STATUS:-skipped}" \
             --step "android-compile=${ANDROID_COMPILE_STATUS:-skipped}" \
             --step "android-smoke=${ANDROID_SMOKE_STATUS:-skipped}" \
             --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
@@ -193,6 +210,7 @@ jobs:
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
+            "$RUNNER_TEMP/ostudy-linux-package.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             >> "$GITHUB_STEP_SUMMARY"
@@ -222,6 +240,7 @@ jobs:
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
+            "$RUNNER_TEMP/ostudy-linux-package.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             > "$summary"
@@ -250,8 +269,10 @@ jobs:
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
+            "$RUNNER_TEMP/ostudy-linux-package.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
+            "$RUNNER_TEMP/ostudy-linux-package" \
             "$RUNNER_TEMP/android-smoke" \
             "src-tauri/gen/android/app/build/reports"
 

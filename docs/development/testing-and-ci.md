@@ -222,6 +222,9 @@ GitHub control-plane failure is neither product pass nor product fail. When broa
 
 ## Packaging and releases
 
+Terminal `linux-full` and `all-full` qualification now has two distinct Linux artifacts: `./scripts/check.sh` qualifies the development-profile standalone/native behavior, then `./scripts/check-linux-package.sh` builds and verifies the production `io.github.jferments.ostudy` Debian package from the same exact SHA. The package candidate, build metadata, and checksums remain runner-local. Contributors can exercise the same production-package boundary with `./scripts/ostudy-dev package-deb`.
+
+
 `android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. Packages remain on the self-hosted runner rather than being uploaded as Actions artifacts. `release.yml` produces current tagged Linux artifacts and likewise retains them on the runner. The optional generated-source inspection bundle is persisted runner-locally when requested. If browser-downloadable public release distribution is needed later, design it as an explicit release-distribution boundary rather than reusing Actions artifact storage as a general file store. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
 
 Release candidates additionally run:

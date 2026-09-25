@@ -46,9 +46,10 @@ esac
 OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/linux-$ARCH"
 rm -rf -- "$ROOT_DIR/artifacts/$EXPECTED_TAG"
 mkdir -p "$OUT_DIR"
+BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
 shopt -s nullglob
-DEB_FILES=(src-tauri/target/release/bundle/deb/*.deb)
-APPIMAGE_FILES=(src-tauri/target/release/bundle/appimage/*.AppImage)
+DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
+APPIMAGE_FILES=("$BUNDLE_ROOT"/appimage/*.AppImage)
 (( ${#DEB_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one Debian bundle.\n' >&2; exit 1; }
 (( ${#APPIMAGE_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one AppImage bundle.\n' >&2; exit 1; }
 

@@ -13,6 +13,7 @@ const COMMAND_BY_STEP = new Map([
   ["dependency-graph", "cargo metadata --manifest-path src-tauri/Cargo.toml --locked"],
   ["fast", "./scripts/check-fast.sh"],
   ["linux-full", "./scripts/check.sh"],
+  ["linux-package", "./scripts/check-linux-package.sh"],
   ["android-compile", "./scripts/android-test.sh"],
   ["android-smoke", "./scripts/android-emulator-smoke.sh"],
 ]);

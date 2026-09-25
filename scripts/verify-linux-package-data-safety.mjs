@@ -5,11 +5,13 @@ import { readFile } from "node:fs/promises";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const failures = [];
 
-const [baseText, devText, linuxText, release, linuxDocs] = await Promise.all([
+const [baseText, devText, linuxText, release, packageCheck, workflow, linuxDocs] = await Promise.all([
   read("src-tauri/tauri.conf.json"),
   read("src-tauri/tauri.dev.conf.json"),
   read("src-tauri/tauri.linux.conf.json"),
   read("scripts/release.sh"),
+  read("scripts/check-linux-package.sh"),
+  read(".github/workflows/check.yml"),
   read("docs/installation/linux.md"),
 ]);
 const base = JSON.parse(baseText);
@@ -47,8 +49,16 @@ if (!Object.keys(linux.bundle?.linux?.deb?.files ?? {}).includes("/usr/lib/udev/
 }
 
 requireText("release production build", release, "pnpm tauri build --bundles deb,appimage");
+requireText("release actual Cargo bundle root", release, 'BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"');
+requireText("package check production build", packageCheck, "pnpm tauri build --bundles deb --ci -- --locked");
+requireText("package check actual Cargo bundle root", packageCheck, 'BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"');
+requireText("package check Debian inspection", packageCheck, '"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"');
+requireText("terminal workflow package step", workflow, "Qualify production Debian package");
+requireText("terminal workflow package command", workflow, "bash ./scripts/check-linux-package.sh");
+requireText("terminal workflow package evidence", workflow, 'linux-package=${LINUX_PACKAGE_STATUS:-skipped}');
 requireText("release Debian artifact inspection", release, '"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"');
 if (release.includes("tauri.dev.conf.json")) fail("release path must not use the development Tauri overlay");
+if (packageCheck.includes("tauri.dev.conf.json")) fail("package qualification must not use the development Tauri overlay");
 for (const forbidden of ["XDG_DATA_HOME", ".local/share/io.github.jferments.ostudy", "rm -rf -- $HOME", "rm -rf $HOME"]) {
   if (release.includes(forbidden)) fail(`release.sh must not manipulate learner data: ${forbidden}`);
 }

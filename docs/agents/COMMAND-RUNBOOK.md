@@ -11,6 +11,7 @@ Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is 
 ./scripts/ostudy-dev setup
 ./scripts/ostudy-dev doctor
 ./scripts/ostudy-dev library-status
+./scripts/ostudy-dev package-deb
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
 ./scripts/ostudy-dev check-changed
@@ -33,7 +34,7 @@ The equivalent underlying command is:
 ./scripts/setup-ubuntu.sh
 ```
 
-The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. `./scripts/ostudy-dev package-deb` is a separate production-package boundary: it builds `io.github.jferments.ostudy` from the exact current source, verifies the Debian package does not own learner-data paths, and writes the `.deb`, build metadata and checksums under `.artifacts/linux-package/` unless `--output` is supplied. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
 
 Verify the ordinary contributor environment without rebuilding:
 

@@ -148,6 +148,14 @@ The repository does not yet expose a public `--purge-user-data` command. Do not 
 
 Release generation statically verifies the package ownership policy and inspects the built `.deb` before publication. Actual install/remove/reinstall preservation remains a separate acceptance test using disposable production data before any real school library is trusted to the installed profile.
 
+For a local exact-source production package candidate:
+
+```bash
+./scripts/ostudy-dev package-deb
+```
+
+The command writes the verified `.deb`, `BUILD-INFO.txt`, and `SHA256SUMS.txt` under `.artifacts/linux-package/`. It does not install or remove anything. Terminal CI runs the same package builder after full Linux qualification and retains that exact-SHA package on the self-hosted runner for bounded acceptance evidence.
+
 ## Other Linux distributions
 
 The source is not intentionally tied to `apt`, but the complete bootstrap script currently is. On another distribution, install the equivalent Tauri/WebKitGTK build packages, the pinned language toolchains, PDFium, and Tesseract manually, then run the normal frozen/locked build commands. Such systems are not yet continuously qualified, so record distribution-specific fixes rather than adding silent fallbacks to the Ubuntu script.
