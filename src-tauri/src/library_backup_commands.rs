@@ -43,17 +43,24 @@ pub async fn prepare_library_restore_async(
         let database = app.state::<Database>();
         let paths = app.state::<AppPaths>();
         crate::library_backup::live::restore(
-            &database, &paths, input, library_generation,
-            |ids| app.state::<crate::ai::AiRuntimeState>().clear_session_profiles(ids),
+            &database,
+            &paths,
+            input,
+            library_generation,
+            || app.state::<crate::ai::AiRuntimeState>().clear_session_credentials(),
         )
-    }).await;
+    })
+    .await;
     // A lost IPC response does not hide committed activation from other views.
     // The payload contains counts/operation identity, never learner text/keys.
     if let Ok(restored) = &result {
         let _ = events.emit("ostudy-library-restored", restored);
     } else if let Err(error) = &result {
         if error.code == "library_restore_rolled_back" {
-            let _ = events.emit("ostudy-library-restore-rolled-back", serde_json::json!({ "message": error.message }));
+            let _ = events.emit(
+                "ostudy-library-restore-rolled-back",
+                serde_json::json!({ "message": error.message }),
+            );
         }
     }
     result

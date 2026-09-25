@@ -38,12 +38,16 @@ pub(crate) fn restore(
     paths: &AppPaths,
     input: PrepareLibraryRestoreInput,
     generation: Option<u64>,
-    clear_session_profiles: impl FnOnce(&[String]) -> Result<(), CommandError>,
+    clear_session_credentials: impl FnOnce() -> Result<(), CommandError>,
 ) -> Result<LiveRestoreResult, CommandError> {
     crate::util::validate_entity_id(&input.staged_file_id, "restore operation")?;
     // A response lost after commit may be queried safely even with its old epoch.
     // This is a read of the original receipt, never a second destructive write.
     if let Some(result) = completed_result(paths, &input.staged_file_id)? {
+        // Committed data is not a ready runtime if post-commit secret cleanup
+        // or durability confirmation failed. Receipt replay cannot bypass that
+        // fail-closed state or an activation still in progress.
+        let _lease = library_session::enter_current()?;
         return Ok(result);
     }
     let _maintenance = MaintenanceGuard::begin()?;
@@ -71,7 +75,7 @@ pub(crate) fn restore(
         if outcome.result.is_ok() {
             // Session-only credentials must not leak from the replaced library.
             // The OS secure store is not changed. A poisoned runtime stays fail-closed.
-            clear_session_profiles(&outcome.profiles)?;
+            clear_session_credentials()?;
         }
         replacement.finish(outcome.changed)?;
     }
@@ -82,7 +86,6 @@ struct ActivationOutcome {
     result: Result<LiveRestoreResult, CommandError>,
     connection_ready: bool,
     changed: bool,
-    profiles: Vec<String>,
 }
 
 fn activate(
@@ -95,9 +98,7 @@ fn activate(
 ) -> ActivationOutcome {
     let mut ready = true;
     let mut changed = false;
-    let mut profiles = Vec::new();
     let result = database.with_connection(|active| {
-        profiles = profile_ids(active)?;
         let placeholder = Connection::open_in_memory().map_err(CommandError::database)?;
         let old = std::mem::replace(active, placeholder);
         if let Err((old, error)) = old.close() {
@@ -132,9 +133,10 @@ fn activate(
                         .optional()
                         .map_err(CommandError::database)?;
                     if violation.is_some() {
-                        return Err(recovery_error("The restored library has a foreign-key violation."));
+                        return Err(recovery_error(
+                            "The restored library has a foreign-key violation.",
+                        ));
                     }
-                    profiles.extend(profile_ids(connection)?);
                     let summary = snapshot_summary(connection)?;
                     let counts: (i64, i64) = connection.query_row(
                         "SELECT (SELECT COUNT(*) FROM cards), (SELECT COUNT(*) FROM documents)",
@@ -197,7 +199,11 @@ fn activate(
             }
         }
     });
-    ActivationOutcome { result, connection_ready: ready, changed, profiles }
+    ActivationOutcome {
+        result,
+        connection_ready: ready,
+        changed,
+    }
 }
 
 fn take_connection(database: &Database) -> Result<Connection, CommandError> {
@@ -205,14 +211,6 @@ fn take_connection(database: &Database) -> Result<Connection, CommandError> {
         let placeholder = Connection::open_in_memory().map_err(CommandError::database)?;
         Ok(std::mem::replace(connection, placeholder))
     })
-}
-
-fn profile_ids(connection: &Connection) -> Result<Vec<String>, CommandError> {
-    let mut query = connection.prepare("SELECT id FROM ai_provider_profiles")
-        .map_err(CommandError::database)?;
-    let result = query.query_map([], |row| row.get(0)).map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>().map_err(CommandError::database);
-    result
 }
 
 fn write_receipt(
@@ -232,7 +230,10 @@ fn write_receipt(
     // attempt is superseded. Index replacement does not delete the evidence.
     write_new_file(&guard.transaction().join("result.json"), &bytes)?;
     for (name, relative) in [
-        ("result-index.tmp", Path::new(RESULTS).join(format!("{}.json", result.operation_id))),
+        (
+            "result-index.tmp",
+            Path::new(RESULTS).join(format!("{}.json", result.operation_id)),
+        ),
         ("last-result.tmp", PathBuf::from(LAST_RESULT)),
     ] {
         activation::check_path(paths.app_data_dir(), &relative).map_err(recovery_error)?;
@@ -254,16 +255,25 @@ fn read_receipt(paths: &AppPaths, relative: &Path) -> Result<Option<LiveRestoreR
         return Ok(None);
     }
     if fs::metadata(&path).map_err(CommandError::io)?.len() > 64 * 1024 {
-        return Err(recovery_error("The restore receipt is oversized. It was preserved."));
+        return Err(recovery_error(
+            "The restore receipt is oversized. It was preserved.",
+        ));
     }
     let receipt: Receipt = serde_json::from_slice(&fs::read(path).map_err(CommandError::io)?)
         .map_err(CommandError::serialization)?;
     crate::util::validate_entity_id(&receipt.result.operation_id, "restore receipt")?;
-    if receipt.version != 1 || !receipt.result.completed || receipt.result.restart_required
+    if receipt.version != 1
+        || !receipt.result.completed
+        || receipt.result.restart_required
         || receipt.source_sha256.len() != 64
-        || !receipt.source_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !receipt
+            .source_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
-        return Err(recovery_error("The restore receipt is invalid. It was preserved."));
+        return Err(recovery_error(
+            "The restore receipt is invalid. It was preserved.",
+        ));
     }
     if !activation::transaction_committed(paths.app_data_dir(), &receipt.transaction_id)
         .map_err(recovery_error)?
@@ -273,11 +283,19 @@ fn read_receipt(paths: &AppPaths, relative: &Path) -> Result<Option<LiveRestoreR
     Ok(Some(receipt.result))
 }
 
-pub(crate) fn completed_result(paths: &AppPaths, operation: &str) -> Result<Option<LiveRestoreResult>, CommandError> {
+pub(crate) fn completed_result(
+    paths: &AppPaths,
+    operation: &str,
+) -> Result<Option<LiveRestoreResult>, CommandError> {
     crate::util::validate_entity_id(operation, "restore operation")?;
     let result = read_receipt(paths, &Path::new(RESULTS).join(format!("{operation}.json")))?;
-    if result.as_ref().is_some_and(|result| result.operation_id != operation) {
-        return Err(recovery_error("The restore receipt does not match the requested operation."));
+    if result
+        .as_ref()
+        .is_some_and(|result| result.operation_id != operation)
+    {
+        return Err(recovery_error(
+            "The restore receipt does not match the requested operation.",
+        ));
     }
     Ok(result)
 }

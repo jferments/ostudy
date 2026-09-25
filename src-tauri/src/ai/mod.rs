@@ -40,16 +40,9 @@ pub struct AiRuntimeState {
 }
 
 impl AiRuntimeState {
-    /// Only the old/new library's in-memory credentials are forgotten. Passing
-    /// None to SecretManager::clear never reads, writes or deletes OS secure store data.
-    pub(crate) fn clear_session_profiles(
-        &self,
-        profile_ids: &[String],
-    ) -> Result<(), crate::error::CommandError> {
-        for id in profile_ids {
-            self.secrets.clear(id, secrets::CredentialStorage::None)?;
-        }
-        Ok(())
+    /// Restore owns admission; secret lifetime remains owned by SecretManager.
+    pub(crate) fn clear_session_credentials(&self) -> Result<(), crate::error::CommandError> {
+        self.secrets.clear_session_credentials()
     }
 
     pub fn new(secret_store: Arc<dyn SecureSecretStore>) -> Result<Self, String> {
