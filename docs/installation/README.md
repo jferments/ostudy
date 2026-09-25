@@ -30,7 +30,7 @@ On a supported Ubuntu/Debian development system, run from the repository root:
 ./run-app.sh
 ```
 
-The setup wrapper installs the qualified system packages and pinned toolchains, installs locked project dependencies, provisions native PDF/runtime dependencies, and creates a standalone debug build. `run-app.sh` launches that existing matching build; it does not rebuild source.
+The setup wrapper installs the qualified system packages and pinned toolchains, installs locked project dependencies, provisions native PDF/runtime dependencies, and creates a standalone **oStudy Dev** build using `io.github.jferments.ostudy.dev`. `run-app.sh` launches that existing matching development build; it does not rebuild source and it does not open the production `io.github.jferments.ostudy` library. Production installation is a separate package/release path.
 
 After source changes:
 

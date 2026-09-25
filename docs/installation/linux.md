@@ -1,6 +1,6 @@
 # Install and run ostudy on Linux
 
-Ubuntu and Debian are the primary supported development environment. The repository setup script installs the packages and pinned toolchains expected by the local checks and the self-hosted Linux runner, then creates a standalone debug build.
+Ubuntu and Debian are the primary supported development environment. The repository setup script installs the packages and pinned toolchains expected by local checks and the self-hosted Linux runner, then creates a standalone **oStudy Dev** build using `io.github.jferments.ostudy.dev`. This source-checkout path is intentionally isolated from the production `io.github.jferments.ostudy` library; it is not the production package installer.
 
 ## Prerequisites
 

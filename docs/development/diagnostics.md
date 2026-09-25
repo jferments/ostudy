@@ -129,7 +129,7 @@ Create a shareable local archive with:
 
 The archive now includes `last-crash.txt` and `latest-generation-usage.txt` automatically in addition to environment/build context and bounded tails of the current and previous application logs. An explicit output path remains optional.
 
-The resolver follows Tauri's application-data layout for the `io.github.jferments.ostudy` bundle. Development and test environments can override it with either `OSTUDY_APP_DATA_DIR` or the exact `OSTUDY_DIAGNOSTIC_LOG_PATH`. The archive excludes the learner database, cards, managed images, source documents, prompts, responses, and credentials.
+Repository diagnostics default to the desktop development profile, `io.github.jferments.ostudy.dev`, so developer tooling does not inspect the production learner library by default. Development and test environments can override the application-data location with `OSTUDY_APP_DATA_DIR` or the exact log with `OSTUDY_DIAGNOSTIC_LOG_PATH`. Production support tooling must select production state deliberately rather than inheriting the developer default. The archive excludes the learner database, cards, managed images, source documents, prompts, responses, and credentials.
 
 ## Public schema manifest maintenance
 

@@ -47,9 +47,9 @@ The equivalent underlying commands are:
 ./run-app.sh
 ```
 
-`pnpm build:app` is an alias for `scripts/build.sh`. It makes a **standalone debug application, without bundles**, through Tauri's build path. It is not a release-package command.
+`pnpm build:app` is an alias for `scripts/build.sh`. It makes a **standalone oStudy Dev application, without bundles**, through Tauri's build path and the `io.github.jferments.ostudy.dev` overlay. Its library, managed files, Tauri config/cache/state, launcher state, and desktop keyring namespace are separate from the production `io.github.jferments.ostudy` profile. It is not a release-package command.
 
-`run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
+`run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, development-profile stamp, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
 
 Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri hot-reload development. `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
 

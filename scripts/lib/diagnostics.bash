@@ -283,7 +283,7 @@ ostudy_capture_artifacts() {
     mkdir "$failure_claim" 2>/dev/null || return 0
   fi
   artifact_dir="$(mktemp -d "$artifact_root/${timestamp}-$(ostudy_step_slug "$step").XXXXXX")"
-  state_root="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy"
+  state_root="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy-dev"
   application_log="${application_override:-$(ostudy_resolve_application_diagnostic_log)}"
   application_previous="$(dirname -- "$application_log")/ostudy.previous.jsonl"
   replay_filter="$(ostudy_recommended_filter_for_step "$step")"

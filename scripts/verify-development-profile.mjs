@@ -20,6 +20,8 @@ const [
   smokeNative,
   smokeStartup,
   diagnostics,
+  runApp,
+  crashDiagnostic,
   releaseScript,
 ] = await Promise.all([
   read("src-tauri/tauri.conf.json"),
@@ -34,6 +36,8 @@ const [
   read("scripts/smoke-native.sh"),
   read("scripts/smoke-startup-compatibility.sh"),
   read("scripts/lib/diagnostics.bash"),
+  read("run-app.sh"),
+  read("scripts/diagnose-last-crash.py"),
   read("scripts/release.sh"),
 ]);
 
@@ -71,6 +75,10 @@ if (releaseScript.includes("tauri.dev.conf.json")) {
 for (const source of [smokeNative, smokeStartup, diagnostics]) {
   requireText("development diagnostic/test data", source, developmentId);
 }
+
+requireText("development launcher state", runApp, '/ostudy-dev"');
+requireText("diagnostic launcher state", diagnostics, '/ostudy-dev"');
+requireText("crash diagnostic launcher state", crashDiagnostic, '"ostudy-dev" / "ostudy.jsonl"');
 
 requireText("build fingerprint", buildState, "src-tauri/tauri.dev.conf.json");
 requireText("build stamp", buildState, "applicationProfile=development");

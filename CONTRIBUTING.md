@@ -28,9 +28,9 @@ For an already configured checkout after source changes:
 ./run-app.sh
 ```
 
-The build produces a staged standalone debug app without release bundles. The launcher verifies its source fingerprint and binary checksum; it does not rebuild or start Vite. `pnpm desktop` is native hot reload, while `pnpm dev` and `pnpm build` are frontend operations.
+The build produces a staged standalone **oStudy Dev** app without release bundles. Maintained desktop development uses `io.github.jferments.ostudy.dev`, separate from the production `io.github.jferments.ostudy` library and credential namespace. The launcher verifies its source fingerprint, development-profile stamp, and binary checksum; it does not rebuild or start Vite. `pnpm desktop` is native hot reload, while `pnpm dev` and `pnpm build` are frontend operations.
 
-Linux and Android are the maintained build/test paths. See [installation](docs/installation/README.md), [Android setup](docs/installation/android.md), and [local testing/handoff](docs/development/local-testing-and-handoff.md). A new source worktree does not isolate app data. Use temporary library storage for destructive, migration, and restore tests; never silently clear/uninstall a valuable Android library to make a test pass.
+Linux and Android are the maintained build/test paths. See [installation](docs/installation/README.md), [Android setup](docs/installation/android.md), and [local testing/handoff](docs/development/local-testing-and-handoff.md). The maintained desktop development profile is isolated from production, but a new source worktree does not create another independent development profile: multiple worktrees can still address the same `io.github.jferments.ostudy.dev` library. Use temporary XDG/application storage for destructive, migration, restore, and parallel-worktree tests; never silently clear/uninstall a valuable desktop or Android library to make a test pass.
 
 ## Design a focused change
 
