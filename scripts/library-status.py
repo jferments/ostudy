@@ -279,7 +279,14 @@ def print_text(reports: list[dict[str, Any]], verify: bool) -> None:
 
 
 def status_exit_code(reports: list[dict[str, Any]]) -> int:
-    return status_exit_code(reports)
+    unsafe_states = {
+        "unreadable",
+        "integrity-failed",
+        "public-unsupported-or-damaged",
+        "unsupported-lineage",
+        "unknown-pre-public",
+    }
+    return 1 if any(report["state"] in unsafe_states for report in reports) else 0
 
 
 def main() -> int:
@@ -300,14 +307,7 @@ def main() -> int:
         print(json.dumps({"schemaVersion": 1, "libraries": reports}, indent=2, sort_keys=True))
     else:
         print_text(reports, args.verify)
-    unsafe_states = {
-        "unreadable",
-        "integrity-failed",
-        "public-unsupported-or-damaged",
-        "unsupported-lineage",
-        "unknown-pre-public",
-    }
-    return 1 if any(report["state"] in unsafe_states for report in reports) else 0
+    return status_exit_code(reports)
 
 
 if __name__ == "__main__":
