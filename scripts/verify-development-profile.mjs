@@ -13,6 +13,7 @@ const [
   androidConfigText,
   profileSource,
   secretSource,
+  desktopRuntimeSource,
   devScript,
   buildScript,
   checkScript,
@@ -29,6 +30,7 @@ const [
   read("src-tauri/tauri.android.conf.json"),
   read("src-tauri/src/application_profile.rs"),
   read("src-tauri/src/platform/desktop/secrets.rs"),
+  read("src-tauri/src/platform/desktop/mod.rs"),
   read("scripts/dev.sh"),
   read("scripts/build.sh"),
   read("scripts/check.sh"),
@@ -87,7 +89,8 @@ requireText("native production identity", profileSource, productionId);
 requireText("native development identity", profileSource, developmentId);
 requireText("debug production guard", profileSource, "debug/development build resolved the production oStudy identifier");
 requireText("data-directory identity guard", profileSource, "resolved application data under");
-requireText("dynamic keyring service", secretSource, "KeyringSecretStore::new(application_identifier)");
+requireText("dynamic keyring service composition", desktopRuntimeSource, "KeyringSecretStore::new(application_identifier)");
+requireText("dynamic keyring service owner", secretSource, "pub(super) fn new(application_identifier: &str)");
 if (secretSource.includes('const KEYRING_SERVICE: &str = "io.github.jferments.ostudy"')) {
   failures.push("desktop keyring service must not be hard-coded to the production identifier");
 }
