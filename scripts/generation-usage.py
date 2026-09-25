@@ -19,7 +19,7 @@ from typing import Any
 
 FIELDS = ("inputTokens", "outputTokens", "reasoningTokens", "cachedInputTokens",
           "cacheWriteTokens", "totalTokens", "cost")
-APP_IDENTIFIER = "io.github.jferments.ostudy"
+APP_IDENTIFIER = "io.github.jferments.ostudy.dev"
 
 # Resolve the maintained sibling independently of the caller's current directory
 # and of importlib-based diagnostic/test consumers, without changing sys.path.

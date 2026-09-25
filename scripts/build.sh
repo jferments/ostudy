@@ -43,7 +43,7 @@ bash "$SCRIPT_DIR/check-build-preflight.sh"
 log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo jobs"
 # Tauri forwards arguments after `--` to Cargo. `--locked` makes a stale or
 # inconsistent Cargo.lock fail explicitly instead of silently rewriting it.
-pnpm tauri build --debug --no-bundle --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 
 [[ -x "$OSTUDY_CARGO_BINARY" ]] || \

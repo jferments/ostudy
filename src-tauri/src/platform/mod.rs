@@ -405,7 +405,7 @@ impl PlatformRuntime {
     pub fn current() -> Self {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
-            desktop::runtime()
+            desktop::runtime(crate::application_profile::PRODUCTION_APPLICATION_IDENTIFIER)
         }
         #[cfg(any(target_os = "android", target_os = "ios"))]
         {
@@ -418,10 +418,14 @@ impl PlatformRuntime {
         {
             android::runtime(app)
         }
-        #[cfg(not(target_os = "android"))]
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            desktop::runtime(app.config().identifier.as_str())
+        }
+        #[cfg(target_os = "ios")]
         {
             let _ = app;
-            Self::current()
+            mobile_stub::runtime()
         }
     }
 

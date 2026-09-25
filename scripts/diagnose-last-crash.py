@@ -14,7 +14,7 @@ import subprocess
 import sys
 from typing import Any
 
-APP_IDENTIFIER = "io.github.jferments.ostudy"
+APP_IDENTIFIER = "io.github.jferments.ostudy.dev"
 MAX_RECENT_EVENTS = 80
 MAX_COMMAND_CHARS = 20_000
 KERNEL_HINTS = (

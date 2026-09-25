@@ -8,6 +8,7 @@
 
 mod ai;
 mod analytics;
+mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
 mod assets;

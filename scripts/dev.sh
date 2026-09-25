@@ -18,4 +18,4 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   exit 2
 fi
 cd "$ROOT_DIR"
-exec pnpm tauri dev -- --locked
+exec pnpm tauri dev --config src-tauri/tauri.dev.conf.json -- --locked

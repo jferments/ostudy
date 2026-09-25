@@ -4,7 +4,8 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::{
-    ai::AiRuntimeState, asset_lifecycle, database, deletion, deletion_purge, device_sync,
+    ai::AiRuntimeState, application_profile, asset_lifecycle, database, deletion, deletion_purge,
+    device_sync,
     document_artifacts, document_delete_reconciliation, document_operations, documents,
     editor_drafts, external_file_recovery, external_files, library_backup, logging,
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
@@ -65,6 +66,16 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             "Could not resolve the application data directory: {error}"
         ))
     })?;
+    #[cfg(desktop)]
+    let desktop_profile = application_profile::validate_desktop_runtime(
+        app.config().identifier.as_str(),
+        &app_data_directory,
+        cfg!(debug_assertions),
+    )
+    .map_err(io::Error::other)?;
+    #[cfg(desktop)]
+    apply_main_window_profile(app, desktop_profile);
+
     let resource_directory = app.path().resource_dir().ok();
     let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
     logging::initialize(paths.app_data_dir());
@@ -169,6 +180,27 @@ fn create_linux_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::
         .icon(MAIN_WINDOW_ICON.clone())?
         .build()?;
     Ok(())
+}
+
+#[cfg(desktop)]
+fn apply_main_window_profile(
+    app: &tauri::AppHandle,
+    profile: application_profile::DesktopApplicationProfile,
+) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if let Err(error) = window.set_title(profile.window_title()) {
+        logging::warn_target(
+            "app.startup",
+            "application_profile_title_failed",
+            "The desktop environment rejected the application profile title.",
+            serde_json::json!({
+                "profile": profile.as_str(),
+                "error": error.to_string(),
+            }),
+        );
+    }
 }
 
 #[cfg(desktop)]

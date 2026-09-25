@@ -16,7 +16,7 @@ ostudy_resolve_application_diagnostic_log() {
     app_data_dir="$OSTUDY_APP_DATA_DIR"
   else
     # Tauri app_data_dir resolves to data_dir/<bundle identifier>.
-    app_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/io.github.jferments.ostudy"
+    app_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/io.github.jferments.ostudy.dev"
   fi
   printf '%s\n' "$app_data_dir/diagnostics/ostudy.jsonl"
 }
@@ -236,7 +236,7 @@ ostudy_replay_command_for_step() {
       printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features -- --nocapture'
       ;;
     "Standalone Tauri build")
-      printf 'pnpm tauri build --debug --no-bundle --ci -- --locked'
+      printf 'pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked'
       ;;
     "Native startup compatibility smoke")
       printf 'bash ./scripts/smoke-startup-compatibility.sh'

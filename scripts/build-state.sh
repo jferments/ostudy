@@ -28,7 +28,8 @@ ostudy_source_fingerprint() {
         vite.config.ts \
         tsconfig.json tsconfig.app.json tsconfig.node.json \
         src-tauri/Cargo.toml src-tauri/Cargo.lock \
-        src-tauri/tauri.conf.json src-tauri/build.rs; do
+        src-tauri/tauri.conf.json src-tauri/tauri.dev.conf.json \
+        src-tauri/tauri.linux.conf.json src-tauri/build.rs; do
         [[ -f "$path" ]] && printf '%s\0' "$path"
       done
       find src -type f \
@@ -78,6 +79,7 @@ ostudy_write_build_stamp() {
   binary_sha="$(ostudy_binary_sha256 "$OSTUDY_BINARY")"
   cat > "$OSTUDY_BUILD_STAMP" <<STAMP
 artifactKind=standalone
+applicationProfile=development
 root=$OSTUDY_ROOT_DIR
 binary=$OSTUDY_BINARY
 compiledBinary=$OSTUDY_CARGO_BINARY
@@ -103,6 +105,10 @@ ostudy_require_current_build() {
   fi
   if [[ "$(ostudy_stamp_value artifactKind)" != "standalone" ]]; then
     printf 'ERROR: The build stamp predates the standalone-artifact boundary. Run ./scripts/build.sh again.\n' >&2
+    return 1
+  fi
+  if [[ "$(ostudy_stamp_value applicationProfile)" != "development" ]]; then
+    printf 'ERROR: The staged desktop build is not the isolated development profile. Rebuild with ./scripts/build.sh before launching.\n' >&2
     return 1
   fi
   if [[ "$(ostudy_stamp_value root)" != "$OSTUDY_ROOT_DIR" ]]; then

@@ -265,7 +265,7 @@ function focusedReproduction(boundary, text, contexts) {
     [/document domain/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_ -- --nocapture"],
     [/pdf extraction/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_ -- --nocapture"],
     [/frontend production build/u, "pnpm run build"],
-    [/standalone tauri/u, "pnpm tauri build --debug --no-bundle --ci -- --locked"],
+    [/standalone tauri/u, "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked"],
     [/ui[- ]performance/u, "./scripts/check-ui-performance-candidate.sh /absolute/new/output-directory"],
     [/webdriver/u, "./scripts/smoke-native.sh"],
     [/android.*smoke/u, "./scripts/android-emulator-smoke.sh"],

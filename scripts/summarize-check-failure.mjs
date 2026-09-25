@@ -215,7 +215,7 @@ function focusedReproduction(step, text, diagnosticContexts) {
     [/latest-schema/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_baseline_is_idempotent_and_matches_manifest -- --exact --nocapture"],
     [/migration immutability/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_migration_checksum_and_future_version_are_enforced -- --exact --nocapture"],
     [/frontend production build/u, "pnpm run build"],
-    [/standalone tauri/u, "pnpm tauri build --debug --no-bundle --ci -- --locked"],
+    [/standalone tauri/u, "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked"],
     [/webdriver/u, "./scripts/smoke-native.sh"],
     [/android.*smoke/u, "./scripts/android-emulator-smoke.sh"],
     [/android/u, "./scripts/android-test.sh"],
