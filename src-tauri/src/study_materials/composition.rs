@@ -2035,7 +2035,10 @@ mod tests {
     }
 
     fn test_operation_id(test_case: u16, sequence: u16) -> String {
-        format!("{:032x}", (u128::from(test_case) << 16) | u128::from(sequence))
+        format!(
+            "{:032x}",
+            (u128::from(test_case) << 16) | u128::from(sequence)
+        )
     }
 
     fn member(ranges: Vec<(i64, i64)>) -> SourceSetMemberDto {
