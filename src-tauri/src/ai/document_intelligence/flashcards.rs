@@ -46,6 +46,10 @@ pub(crate) async fn generate_window_flashcards(
     if knowledge.units.is_empty() {
         return Ok(Vec::new());
     }
+    task.question_policy.validate()?;
+    if !assessment::has_supported_generation_family(&task.question_policy, knowledge) {
+        return Ok(Vec::new());
+    }
     let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
     let (system, user) = flashcard_prompt(
         task,
@@ -82,6 +86,10 @@ pub(crate) fn preflight_window_flashcards(
     if knowledge.units.is_empty() {
         return Ok(());
     }
+    task.question_policy.validate()?;
+    if !assessment::has_supported_generation_family(&task.question_policy, knowledge) {
+        return Ok(());
+    }
     let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
     let (system, user) = flashcard_prompt(
         task,
@@ -91,7 +99,6 @@ pub(crate) fn preflight_window_flashcards(
         knowledge,
         maximum_cards,
     )?;
-    task.question_policy.validate()?;
     let schema = assessment::generation_schema(
         flashcard_schema(maximum_cards),
         &task.question_policy,

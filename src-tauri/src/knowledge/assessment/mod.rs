@@ -24,7 +24,7 @@ pub(crate) mod policy;
 mod schema;
 pub(crate) mod settings;
 pub(crate) mod store;
-pub(crate) use schema::generation_schema;
+pub(crate) use schema::{generation_schema, has_supported_generation_family};
 
 pub(crate) const ASSESSMENT_KEY: &str = "_ostudyAssessment";
 pub(crate) const CARD_POLICY_KEY: &str = "_ostudyGenerationPolicy";

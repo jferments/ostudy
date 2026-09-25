@@ -49,8 +49,10 @@ This does not redefine completeness. Unresolved regions within an interpreted
 source, omitted attachments and unreadable regions retain their diagnostic state.
 Protocol completeness is not exhaustive concept coverage or factual entailment.
 In particular, omitted attachments require changed evidence, not another paid
-interpretation of the identical input. Later increments will associate such gaps
-with explicit source-preparation or learning-objective obligations.
+interpretation of the identical input. Later stages keep those gaps explicit:
+artifact feasibility uses the current native capability contract, while AC-06
+binds learning-objective coverage to reviewed acceptance evidence rather than
+pretending protocol completion proves exhaustive teaching.
 
 The new `document_`-named regressions run in the existing native Fast test filter.
 They cover receipt projections, cross-source admission, legacy compatibility,
@@ -302,8 +304,10 @@ remain available. Conservatively, interactive assessment bindings cannot use a
 deferred unit: request schemas exclude those aliases without renumbering other
 units, and native new-response admission, checkpoint reuse and final transactional
 publication enforce the same rule. Unaffected units keep all permitted question
-families. A policy with no supported family has an explicit empty-result schema;
-policy-aware repartitioning beyond the implemented guide planner remains pending.
+families. Policy capability is checked before flashcard dispatch: when no allowed
+family can use the current catalog, the native author returns the supported empty
+result without buying a provider response. AC-04 then preflights the exact
+policy-aware schema for feasible catalogs before lossless context partitioning.
 
 Committed request diagnostics retain deferred annotations separately from rejected
 core proposals. Each newly observed extraction snapshot records a count and static

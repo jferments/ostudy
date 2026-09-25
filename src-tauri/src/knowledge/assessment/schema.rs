@@ -7,6 +7,20 @@ use super::{
     MAX_ASSESSMENT_UNITS, MAX_COMPONENTS,
 };
 
+pub(crate) fn has_supported_generation_family(
+    policy: &GenerationPolicy,
+    knowledge: &KnowledgeCatalog,
+) -> bool {
+    if policy.allowed_types.contains(&QuestionFamily::Recall) {
+        return true;
+    }
+    policy
+        .allowed_types
+        .iter()
+        .any(|family| *family != QuestionFamily::Recall)
+        && knowledge.units.iter().any(super::annotations::available)
+}
+
 pub(crate) fn generation_schema(
     mut legacy: Value,
     policy: &GenerationPolicy,
@@ -156,4 +170,43 @@ fn unit_ids(knowledge: &KnowledgeCatalog, maximum: usize) -> Value {
     let mut schema = knowledge.support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
     schema["uniqueItems"] = json!(true);
     schema
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::knowledge::typed_payload::TypedPayload;
+    use serde_json::json;
+
+    #[test]
+    fn document_generation_policy_capability_is_decided_before_provider_dispatch() {
+        let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+
+        let mut interactive_only = GenerationPolicy::default();
+        interactive_only.allowed_types = vec![QuestionFamily::SingleChoice];
+        interactive_only.validate().unwrap();
+        assert!(has_supported_generation_family(&interactive_only, &catalog));
+
+        let statement = catalog.units[0].content.statement.clone();
+        let kind = catalog.units[0].content.kind;
+        let deferred = TypedPayload::admit_or_defer(
+            json!({"unsupported": true}),
+            &statement,
+            kind,
+        )
+        .unwrap();
+        assert!(deferred.deferred_rule().is_some());
+        catalog.units[0].content.details = Some(deferred);
+
+        assert!(!has_supported_generation_family(
+            &interactive_only,
+            &catalog
+        ));
+
+        let mut recall_only = GenerationPolicy::default();
+        recall_only.allowed_types = vec![QuestionFamily::Recall];
+        recall_only.validate().unwrap();
+        assert!(has_supported_generation_family(&recall_only, &catalog));
+    }
 }
