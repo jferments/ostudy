@@ -70,7 +70,7 @@ pub(crate) fn restore(
     if outcome.connection_ready {
         if outcome.result.is_ok() {
             // Session-only credentials must not leak from the replaced library.
-            // The OS keyring is not changed. A poisoned runtime stays fail-closed.
+            // The OS secure store is not changed. A poisoned runtime stays fail-closed.
             clear_session_profiles(&outcome.profiles)?;
         }
         replacement.finish(outcome.changed)?;

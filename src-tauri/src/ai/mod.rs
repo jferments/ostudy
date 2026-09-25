@@ -41,7 +41,7 @@ pub struct AiRuntimeState {
 
 impl AiRuntimeState {
     /// Only the old/new library's in-memory credentials are forgotten. Passing
-    /// None to SecretManager::clear never reads, writes or deletes OS keyring data.
+    /// None to SecretManager::clear never reads, writes or deletes OS secure store data.
     pub(crate) fn clear_session_profiles(
         &self,
         profile_ids: &[String],
