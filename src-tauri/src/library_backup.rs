@@ -1,12 +1,9 @@
-//! Complete local-library backup and restart-safe restoration.
+//! Complete local-library backup and recoverable in-app restoration.
 //!
-//! A backup contains one coherent SQLite snapshot, every ready managed card
-//! asset, and every immutable managed document source, retained document image,
-//! and PDF rendered page required by the local library. Credentials remain
-//! outside SQLite and are never part of the package. Restore is prepared while
-//! ostudy is running and applied before the database opens on the next launch,
-//! allowing an atomic filesystem rollback if the restored library cannot be
-//! opened, migrated, or reconciled.
+//! Packages hold coherent SQLite snapshots and required managed file bytes.
+//! `live` coordinates request admission, connection replacement and durable
+//! completion; `activation` owns filesystem journaling and startup recovery.
+//! Credentials stay in the native secret store and never enter the package.
 
 use std::{
     fs::{self, File, OpenOptions},
@@ -97,16 +94,6 @@ struct LibraryBackupResultDto {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LibraryRestoreResultDto {
-    pub deck_count: i64,
-    pub template_count: i64,
-    pub review_count: i64,
-    pub asset_count: i64,
-    pub restart_required: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct LibraryBackupSummaryDto {
     deck_count: i64,
     template_count: i64,
@@ -132,6 +119,8 @@ struct BackupSummary {
     asset_count: i64,
 }
 
+#[path = "library_backup/live.rs"]
+pub(crate) mod live;
 #[path = "library_backup/activation.rs"]
 mod activation;
 pub(crate) use activation::apply_pending_restore;
@@ -200,55 +189,6 @@ pub fn prepare_library_backup(
         review_count: summary.review_count,
         asset_count: summary.asset_count,
     })
-}
-
-#[tauri::command]
-pub fn prepare_library_restore(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: PrepareLibraryRestoreInput,
-) -> Result<LibraryRestoreResultDto, CommandError> {
-    let _learning_guard = crate::knowledge::runtime::MaintenanceGuard::begin()?;
-    crate::util::validate_entity_id(&input.staged_file_id, "staged library backup")?;
-    if let Some(result) = database.with_connection(|connection| {
-        crate::external_files::consumed_import_result::<LibraryRestoreResultDto>(
-            connection,
-            &input.staged_file_id,
-        )
-    })? {
-        return Ok(result);
-    }
-    let staged = database.with_connection(|connection| {
-        crate::external_files::resolve_staged_import(
-            connection,
-            paths.inner(),
-            &input.staged_file_id,
-            crate::external_files::ExternalImportPurpose::LibraryBackup,
-            &[crate::external_files::ExternalFileKind::Ostudybackup],
-        )
-    })?;
-    let summary = validate_backup_package(&staged.path, None)?;
-    let pending = pending_restore_path(&paths);
-    let temporary = pending.with_extension("ostudybackup.tmp");
-    remove_file_if_exists(&temporary).map_err(CommandError::io)?;
-    copy_and_sync(&staged.path, &temporary)?;
-    replace_file(&temporary, &pending)?;
-    let result = LibraryRestoreResultDto {
-        deck_count: summary.deck_count,
-        template_count: summary.template_count,
-        review_count: summary.review_count,
-        asset_count: summary.asset_count,
-        restart_required: true,
-    };
-    database.with_connection(|connection| {
-        crate::external_files::mark_import_consumed(
-            connection,
-            &input.staged_file_id,
-            &result,
-            unix_time_millis()?,
-        )
-    })?;
-    Ok(result)
 }
 
 pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandError> {

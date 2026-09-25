@@ -55,7 +55,7 @@ impl ActivityGate {
         if state.maintenance || (maintenance && state.active != 0) {
             return Err(CommandError::new(
                 "learning_maintenance_busy",
-                "Finish or cancel active document, tutor, or preparation work before library maintenance; finish maintenance before starting another task.",
+                "Finish or cancel active document, tutor, preparation, or device synchronization work before library maintenance; finish maintenance before starting another task.",
             ));
         }
         state.active = state.active.checked_add(1).ok_or_else(unavailable)?;
@@ -115,4 +115,11 @@ mod tests {
         drop(maintenance);
         assert!(gate.enter(true).is_ok());
     }
+}
+
+#[cfg(test)]
+pub(crate) fn isolated_activity_for_test() -> (ActivityGuard, impl Fn() -> bool) {
+    let gate = Arc::new(ActivityGate::default());
+    let activity = gate.enter(false).unwrap();
+    (activity, move || gate.enter(true).is_err())
 }

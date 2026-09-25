@@ -33,18 +33,27 @@ pub(crate) struct SyncCancellationSignal {
     inner: Arc<SignalInner>,
 }
 
-#[derive(Debug)]
 struct SignalInner {
     canceled: AtomicBool,
     abort: Mutex<Option<Arc<dyn SyncAbort>>>,
+    _activity: Option<crate::task_activity::ActivityGuard>,
+}
+
+impl Debug for SignalInner {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("SignalInner")
+            .field("canceled", &self.canceled.load(Ordering::SeqCst))
+            .finish_non_exhaustive()
+    }
 }
 
 impl SyncCancellationSignal {
-    fn new() -> Self {
+    fn new(activity: Option<crate::task_activity::ActivityGuard>) -> Self {
         Self {
             inner: Arc::new(SignalInner {
                 canceled: AtomicBool::new(false),
                 abort: Mutex::new(None),
+                _activity: activity,
             }),
         }
     }
@@ -96,7 +105,10 @@ impl ActiveSyncSessions {
                 "That synchronization session is already running.",
             ));
         }
-        let signal = SyncCancellationSignal::new();
+        // The lease belongs to the shared signal, not the registry entry: a
+        // canceled worker may still be unwinding IO or finishing a transaction.
+        let activity = crate::task_activity::ActivityGuard::begin()?;
+        let signal = SyncCancellationSignal::new(Some(activity));
         sessions.insert(session_id.to_string(), signal.clone());
         Ok(signal)
     }
@@ -519,6 +531,20 @@ mod tests {
         AppPaths::new(root).expect("paths should initialize")
     }
 
+    #[test]
+    fn canceled_worker_keeps_maintenance_blocked_until_its_last_handle_drops() {
+        let (activity, blocked) = crate::task_activity::isolated_activity_for_test();
+        let signal = SyncCancellationSignal::new(Some(activity));
+        let registry = ActiveSyncSessions::default();
+        registry.sessions.lock().unwrap().insert("worker".into(), signal.clone());
+        registry.cancel_if_active("worker");
+        registry.finish("worker");
+        assert!(signal.is_canceled());
+        assert!(blocked());
+        drop(signal);
+        assert!(!blocked());
+    }
+
     fn initialize_store(paths: &AppPaths) {
         super::super::store::SyncStore::open(paths).expect("store should initialize");
     }
@@ -529,7 +555,7 @@ mod tests {
         let source = TestAbortSource {
             tripped: Arc::clone(&tripped),
         };
-        let signal = SyncCancellationSignal::new();
+        let signal = SyncCancellationSignal::new(None);
         signal
             .attach_stream(&source)
             .expect("abort handle should attach");

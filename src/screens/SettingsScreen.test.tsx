@@ -5,6 +5,7 @@ import * as aiIpc from "../ipc/aiProfiles";
 import * as backupIpc from "../ipc/backup";
 import * as settingsIpc from "../ipc/settings";
 import * as platformFiles from "../platform/files";
+import { refreshLibraryView } from "../platform/libraryView";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { SettingsScreen } from "./SettingsScreen";
 
@@ -25,6 +26,7 @@ vi.mock("../controllers/useDurableDraft", () => ({
     restart: vi.fn().mockResolvedValue(undefined),
   }),
 }));
+vi.mock("../platform/libraryView", () => ({ refreshLibraryView: vi.fn() }));
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn(), publishExport: vi.fn() }));
 vi.mock("../ipc/backup", () => ({
   prepareLibraryBackup: vi.fn(),
@@ -157,7 +159,11 @@ describe("SettingsScreen", () => {
       templateCount: 2,
       reviewCount: 41,
       assetCount: 4,
-      restartRequired: true,
+      operationId: "1".repeat(32),
+      cardCount: 189,
+      documentCount: 1,
+      completed: true,
+      restartRequired: false,
     });
     vi.mocked(aiIpc.getAiProviderCatalog).mockResolvedValue(providerCatalog());
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([]);
@@ -323,7 +329,7 @@ describe("SettingsScreen", () => {
     expect(screen.getByText(/API keys and session-only credentials are never stored/u)).toBeTruthy();
   });
 
-  it("prepares restore only after shared destructive confirmation", async () => {
+  it("restores immediately only after shared destructive confirmation", async () => {
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
       id: "1".repeat(32),
       purpose: "library_backup",
@@ -342,12 +348,14 @@ describe("SettingsScreen", () => {
       await screen.findByRole("alertdialog", { name: "Restore this complete library?" }),
     ).toBeTruthy();
     expect(backupIpc.prepareLibraryRestore).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Prepare restore" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore library" }));
     await waitFor(() => {
       expect(backupIpc.prepareLibraryRestore).toHaveBeenCalledWith("1".repeat(32));
+      expect(refreshLibraryView).toHaveBeenCalledOnce();
+      expect(screen.queryByText(/Close and reopen ostudy/u)).toBeNull();
       expect(showToast).toHaveBeenCalledWith(
-        "info",
-        "Restore prepared for 3 decks. Close and reopen ostudy to apply it.",
+        "success",
+        "Restored 3 decks, 189 cards, and 1 document. Your library is ready.",
       );
     });
   });

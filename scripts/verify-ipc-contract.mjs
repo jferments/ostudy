@@ -3,6 +3,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { duplicateFunctionNames } from "./lib/ipc-symbol-contract.test.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const rustRoot = await readFile(join(root, "src-tauri", "src", "lib.rs"), "utf8");
@@ -12,10 +13,10 @@ const rustFiles = (await collectFiles(join(root, "src-tauri", "src"))).filter((p
   path.endsWith(".rs"),
 );
 
-// Tauri's command macro emits helper symbols derived from the public command
-// name. Two definitions with the same command name can therefore fail at Rust
-// macro expansion even when the functions live in different modules. Track
-// definitions explicitly rather than inferring them only from generate_handler.
+// Tauri emits global helper symbols from the Rust FUNCTION name, even with
+// an explicit wire-name rename. Unique forwarding adapters may share a wire
+// name with an unregistered domain command; duplicate Rust symbols and duplicate
+// registered wire names are both forbidden and verified independently.
 const commandDefinitions = new Map();
 const definitionsByFunction = new Map();
 const commandPattern =
@@ -42,10 +43,9 @@ for (const path of rustFiles) {
   }
 }
 
-for (const [commandName, definitions] of commandDefinitions) {
-  if (definitions.length <= 1) continue;
+for (const [functionName, definitions] of duplicateFunctionNames(definitionsByFunction)) {
   failures.push(
-    `Tauri command is defined more than once: ${commandName} (${definitions
+    `Tauri command Rust symbol is defined more than once: ${functionName} (${definitions
       .map((definition) => definition.displayPath)
       .join(", ")})`,
   );

@@ -89,33 +89,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
         .map_err(|error| io::Error::other(error.to_string()))?;
 
-    device_sync::reconcile_startup(&paths).map_err(|error| io::Error::other(error.message))?;
-    external_file_recovery::reconcile_interrupted_staging(&database, &paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    external_files::reconcile_startup(&database, &paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    editor_drafts::reconcile_startup(&database).map_err(|error| io::Error::other(error.message))?;
-    deletion::finalize_expired_deletions(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    deletion_purge::purge_finalized_deletions(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    asset_lifecycle::reconcile_startup(&database, &paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    document_delete_reconciliation::restore_interrupted_deletions(&database, &paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    documents::reconcile_startup(&database, &paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    document_artifacts::reconcile_interrupted_document_artifact_jobs(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    crate::ai::generation::reconcile_startup(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    crate::study_materials::reconcile_startup(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    document_operations::reconcile_deleted_document_trash(&paths)
-        .map_err(|error| io::Error::other(error.message))?;
-    crate::knowledge::reconcile_startup(&database)
-        .map_err(|error| io::Error::other(error.message))?;
-    crate::tutor::reconcile_startup(&database).map_err(|error| io::Error::other(error.message))?;
+    reconcile_library(&database, &paths).map_err(|error| io::Error::other(error.message))?;
     if let Some(restore) = pending_restore.as_mut() {
         restore.try_commit().map_err(io::Error::other)?;
     }
@@ -159,6 +133,41 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     if !app.manage(database) {
         return Err(io::Error::other("The database state was already initialized.").into());
     }
+    Ok(())
+}
+
+/// The same durable reconciliation is used by startup and live restoration.
+pub(crate) fn reconcile_library(
+    database: &database::Database,
+    paths: &AppPaths,
+) -> Result<(), crate::error::CommandError> {
+    device_sync::reconcile_startup(paths)?;
+    external_file_recovery::reconcile_interrupted_staging(database, paths)
+        ?;
+    external_files::reconcile_startup(database, paths)
+        ?;
+    editor_drafts::reconcile_startup(database)?;
+    deletion::finalize_expired_deletions(database)
+        ?;
+    deletion_purge::purge_finalized_deletions(database)
+        ?;
+    asset_lifecycle::reconcile_startup(database, paths)
+        ?;
+    document_delete_reconciliation::restore_interrupted_deletions(database, paths)
+        ?;
+    documents::reconcile_startup(database, paths)
+        ?;
+    document_artifacts::reconcile_interrupted_document_artifact_jobs(database)
+        ?;
+    crate::ai::generation::reconcile_startup(database)
+        ?;
+    crate::study_materials::reconcile_startup(database)
+        ?;
+    document_operations::reconcile_deleted_document_trash(paths)
+        ?;
+    crate::knowledge::reconcile_startup(database)
+        ?;
+    crate::tutor::reconcile_startup(database)?;
     Ok(())
 }
 

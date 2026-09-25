@@ -74,6 +74,7 @@ mod knowledge;
 mod library_backup;
 mod library_backup_commands;
 mod library_lock;
+mod library_session;
 mod logging;
 mod media;
 mod media_assets;
@@ -136,7 +137,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 pub fn run() {
     logging::install_panic_hook();
     let builder = tauri::Builder::default()
-        .register_uri_scheme_protocol("ostudy-asset", asset_protocol::respond)
+        .register_uri_scheme_protocol("ostudy-asset", library_session::asset_response)
         .plugin(tauri_plugin_ostudy_platform::init());
     #[cfg(mobile)]
     let builder = builder
@@ -198,7 +199,8 @@ pub fn run() {
                     }
                 });
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(library_session::handler(tauri::generate_handler![
+            library_session::get_library_session,
             decks::list_decks,
             decks::get_deck,
             decks::create_deck,
@@ -250,10 +252,10 @@ pub fn run() {
             asset_lifecycle::cancel_asset_draft,
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
-            asset_lifecycle::occlusion::prepare_occlusion_image,
-            asset_lifecycle::occlusion::preview_occlusion_image,
-            media_assets::import_media,
-            media_assets::read_media_asset,
+            library_session::commands::leased_prepare_occlusion_image,
+            library_session::commands::leased_preview_occlusion_image,
+            library_session::commands::leased_import_media,
+            library_session::commands::leased_read_media_asset,
             deletion::undo_deletion,
             diagnostics::record_webview_diagnostic,
             diagnostics::record_webview_diagnostic_batch,
@@ -269,21 +271,21 @@ pub fn run() {
             device_sync::get_pending_usb_sync_request,
             device_sync::update_device_sync_name,
             device_sync::start_device_pairing,
-            device_sync::join_device_pairing,
-            device_sync::reject_usb_device_pairing,
+            library_session::commands::leased_join_device_pairing,
+            library_session::commands::leased_reject_usb_device_pairing,
             device_sync::cancel_device_sync_session,
-            device_sync_qr_commands::scan_device_pairing_qr_async,
+            library_session::commands::leased_scan_device_pairing_qr_async,
             device_sync::remove_device_sync_peer,
             device_sync::resolve_device_sync_conflict,
             ui_checkpoint::get_ui_checkpoint,
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
-            external_file_streaming::stream_select_and_stage_external_import,
-            external_file_images::stage_image_collection_file,
-            external_file_images::stage_image_collection_file_chunk,
+            library_session::commands::leased_stream_select_and_stage_external_import,
+            library_session::commands::leased_stage_image_collection_file,
+            library_session::commands::leased_stage_image_collection_file_chunk,
             external_files::release_staged_external_import,
-            external_file_streaming::stream_publish_prepared_export,
-            external_file_commands::share_prepared_export,
+            library_session::commands::leased_stream_publish_prepared_export,
+            library_session::commands::leased_share_prepared_export,
             external_files::release_prepared_export,
             external_file_commands::list_incoming_shares,
             external_file_commands::stage_incoming_share,
@@ -305,31 +307,31 @@ pub fn run() {
             ai::profiles::commands::set_ai_task_default,
             ai::profiles::commands::get_embedding_options,
             ai::profiles::commands::save_embedding_options,
-            ai::embeddings::list_embedding_models,
-            ai::embeddings::test_embedding_profile,
-            ai::probes::commands::list_ai_provider_models,
-            ai::probes::commands::test_ai_provider_profile,
+            library_session::commands::leased_list_embedding_models,
+            library_session::commands::leased_test_embedding_profile,
+            library_session::commands::leased_list_ai_provider_models,
+            library_session::commands::leased_test_ai_provider_profile,
             ai::probes::commands::get_ai_provider_probe_result,
             knowledge::assessment::settings::get_question_generation_policy,
             knowledge::assessment::settings::save_question_generation_policy,
             knowledge::commands::list_semantic_scope_choices,
-            knowledge::commands::preview_semantic_preparation,
-            knowledge::commands::prepare_semantic_material,
+            library_session::commands::leased_preview_semantic_preparation,
+            library_session::commands::leased_prepare_semantic_material,
             knowledge::commands::get_semantic_preparation,
             knowledge::commands::get_learning_task_progress,
             knowledge::commands::cancel_learning_task,
-            knowledge::commands::search_semantic_material,
+            library_session::commands::leased_search_semantic_material,
             knowledge::commands::get_semantic_source_citation,
             knowledge::commands::clear_semantic_index,
             knowledge::commands::get_collection_synthesis,
-            knowledge::commands::refresh_collection_synthesis,
-            knowledge::commands::prepare_collection_synthesis,
+            library_session::commands::leased_refresh_collection_synthesis,
+            library_session::commands::leased_prepare_collection_synthesis,
             study_materials::get_study_target_bundle,
             study_materials::get_collection_study_guide,
             study_materials::save_collection_study_guide_overlay,
             study_materials::discard_collection_study_guide_overlay,
             study_materials::begin_study_target_bundle,
-            study_materials::composition::compose_study_target_bundle,
+            library_session::commands::leased_compose_study_target_bundle,
             study_materials::composition::cancel_study_target_bundle,
             tutor::commands::list_tutor_projects,
             tutor::commands::create_tutor_project,
@@ -344,31 +346,31 @@ pub fn run() {
             tutor::commands::set_tutor_conversation_archived,
             tutor::commands::get_tutor_conversation,
             tutor::commands::delete_tutor_conversation,
-            tutor::commands::send_tutor_turn,
+            library_session::commands::leased_send_tutor_turn,
             tutor::commands::get_tutor_memory,
             tutor::commands::change_tutor_memory,
             documents::commands::list_documents,
-            documents::commands::inspect_image_set,
-            documents::commands::import_image_set,
-            documents::commands::get_image_set,
-            documents::commands::get_image_set_preview,
-            documents::commands::prepare_image_set,
-            documents::commands::set_image_set_filters,
-            documents::commands::amend_image_set,
+            library_session::commands::leased_inspect_image_set,
+            library_session::commands::leased_import_image_set,
+            library_session::commands::leased_get_image_set,
+            library_session::commands::leased_get_image_set_preview,
+            library_session::commands::leased_prepare_image_set,
+            library_session::commands::leased_set_image_set_filters,
+            library_session::commands::leased_amend_image_set,
             document_import::import_document,
             document_operations::start_document_flashcard_generation,
-            document_operations::run_document_flashcard_generation,
-            document_more::generate_more_pdf_flashcards,
+            library_session::commands::leased_run_document_flashcard_generation,
+            library_session::commands::leased_generate_more_pdf_flashcards,
             document_operations::cancel_document_flashcard_generation,
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
             document_operations::delete_document,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
-            document_study_guide_commands::generate_document_study_guide,
+            library_session::commands::leased_generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
-            document_study_guide_commands::read_document_source_asset,
+            library_session::commands::leased_read_document_source_asset,
             document_study_guide_library::list_study_guide_page,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
@@ -380,7 +382,7 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
             document_study_guide_export::prepare_collection_study_guide_pdf,
-            library_backup_commands::prepare_library_backup_async,
+            library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
@@ -392,7 +394,7 @@ pub fn run() {
             practice::question_attempts::save_practice_question_answer,
             practice::question_attempts::check_practice_question_answer,
             practice::question_attempts::occlusion::reveal_practice_question_answer,
-            practice::question_attempts::occlusion::read_practice_occlusion_image,
+            library_session::commands::leased_read_practice_occlusion_image,
             practice::question_attempts::review::submit_practice_question_review,
             practice::question_attempts::remediation::remediate_practice_question,
             practice::mark_practice_card_viewed,
@@ -403,8 +405,8 @@ pub fn run() {
             analytics::get_analytics,
             analytics::get_recent_practice_reviews,
             studydeck::prepare_deck_export,
-            studydeck::import_deck
-        ])
+            library_session::commands::leased_import_deck
+        ]))
         .run(tauri::generate_context!());
     logging::shutdown();
     result.expect("error while running ostudy");

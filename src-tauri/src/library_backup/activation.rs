@@ -51,10 +51,18 @@ pub(crate) struct PendingRestoreGuard {
 }
 
 impl PendingRestoreGuard {
-    fn transaction(&self) -> PathBuf {
+    pub(super) fn transaction(&self) -> PathBuf {
         self.root
             .join(TRANSACTIONS)
             .join(&self.journal.operation_id)
+    }
+
+    pub(super) fn operation_id(&self) -> &str {
+        &self.journal.operation_id
+    }
+
+    pub(super) fn commit_decided(&self) -> bool {
+        self.finished
     }
 
     fn install(&mut self) -> Result<(), String> {
@@ -155,12 +163,20 @@ impl PendingRestoreGuard {
         let pending = self.root.join("pending-library-restore.ostudybackup");
         if pending.is_file() && hash_file(&pending)? == self.journal.source_sha256 {
             let retained = self.transaction().join("pending.ostudybackup");
+            check_path(&self.transaction(), Path::new("pending.ostudybackup"))?;
             if retained.exists() {
-                return Err(
-                    "A retained pending restore already exists; no files were overwritten.".into(),
-                );
+                if hash_file(&retained)? != self.journal.source_sha256 {
+                    return Err("A different retained pending backup exists. Both copies were preserved.".into());
+                }
+                // The retained, synced identical copy makes retirement retry-safe.
+                // Never remove a different backup merely to finish bookkeeping.
+                File::open(&retained).and_then(|file| file.sync_all()).map_err(io_error)?;
+                sync(&self.transaction())?;
+                super::remove_file_if_exists(&pending).map_err(io_error)?;
+                sync(&self.root)?;
+            } else {
+                move_synced(&pending, &retained)?;
             }
-            move_synced(&pending, &retained)?;
         }
         super::remove_file_if_exists(&self.root.join(JOURNAL)).map_err(io_error)?;
         sync(&self.root)
@@ -233,12 +249,19 @@ pub(crate) fn recover(paths: &AppPaths) -> Result<bool, String> {
 pub(crate) fn apply_pending_restore(
     paths: &AppPaths,
 ) -> Result<Option<PendingRestoreGuard>, String> {
+    check_path(paths.app_data_dir(), Path::new("pending-library-restore.ostudybackup"))?;
+    apply_source_restore(paths, &pending_restore_path(paths))
+}
+
+/// The selected source is a native-owned staged file, never a caller path.
+pub(super) fn apply_source_restore(
+    paths: &AppPaths,
+    pending: &Path,
+) -> Result<Option<PendingRestoreGuard>, String> {
     if recover(paths)? {
         return Ok(None);
     }
     let root = paths.app_data_dir();
-    let pending = pending_restore_path(paths);
-    check_path(root, Path::new("pending-library-restore.ostudybackup"))?;
     if !pending.is_file() {
         return Ok(None);
     }
@@ -319,6 +342,47 @@ pub(crate) fn apply_pending_restore(
     Ok(Some(guard))
 }
 
+pub(super) fn transaction_committed(root: &Path, operation: &str) -> Result<bool, String> {
+    crate::util::validate_entity_id(operation, "restore transaction").map_err(|error| error.message)?;
+    let relative = Path::new(TRANSACTIONS).join(operation).join("committed");
+    check_path(root, &relative)?;
+    let marker = root.join(relative);
+    if !marker.exists() {
+        return Ok(false);
+    }
+    if fs::read(marker).map_err(io_error)? != COMMITTED {
+        return Err("The restore commit record is invalid. Recovery files were preserved.".into());
+    }
+    Ok(true)
+}
+
+/// An explicitly requested new restore supersedes, but never destroys, an old
+/// prepared package. Moving it out of the startup slot prevents a later launch
+/// from silently applying a superseded restore over newly created learner data.
+pub(super) fn preserve_pending(paths: &AppPaths) -> Result<(), String> {
+    let root = paths.app_data_dir();
+    check_path(root, Path::new("pending-library-restore.ostudybackup"))?;
+    let pending = pending_restore_path(paths);
+    if !pending.is_file() {
+        return Ok(());
+    }
+    let hash = hash_file(&pending)?;
+    let relative = Path::new("restore-inputs").join(format!("{hash}.ostudybackup"));
+    check_path(root, &relative)?;
+    let retained = root.join(relative);
+    if retained.exists() {
+        if hash_file(&retained)? != hash {
+            return Err("The retained pending backup does not match its hash. Both copies were preserved.".into());
+        }
+        File::open(&retained).and_then(|file| file.sync_all()).map_err(io_error)?;
+        sync(retained.parent().unwrap())?;
+        super::remove_file_if_exists(&pending).map_err(io_error)?;
+        sync(root)
+    } else {
+        move_synced(&pending, &retained)
+    }
+}
+
 fn new_transaction(root: &Path) -> Result<PathBuf, String> {
     check_path(root, Path::new(TRANSACTIONS))?;
     let parent = root.join(TRANSACTIONS);
@@ -338,7 +402,7 @@ fn new_transaction(root: &Path) -> Result<PathBuf, String> {
     Ok(transaction)
 }
 
-fn hash_file(path: &Path) -> Result<String, String> {
+pub(super) fn hash_file(path: &Path) -> Result<String, String> {
     let mut file = File::open(path).map_err(io_error)?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
@@ -352,7 +416,7 @@ fn hash_file(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
-fn check_path(root: &Path, relative: &Path) -> Result<(), String> {
+pub(super) fn check_path(root: &Path, relative: &Path) -> Result<(), String> {
     let mut path = root.to_path_buf();
     for component in relative.components() {
         if !matches!(component, std::path::Component::Normal(_)) {
