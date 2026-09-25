@@ -10,7 +10,7 @@ const [
   usbCoordinator, compositionRoot, startup, settingsUi, settingsCss, syncCore,
   syncCancellation, syncNetwork, syncTransport, syncUsb, syncPackage, syncScope,
   syncMerge, aiProfileRepository, aiDefaults, aiProbeRepository, logging,
-  linuxSetup, linuxBundle, udevRules, accessoryFilter, referenceTokens,
+  linuxSetup, linuxBundle, udevRules, accessoryFilter, referenceTokens, leasedCommands,
 ] = await Promise.all([
   read("plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
   read("plugins/ostudy-platform/android/src/main/java/OstudyUsbPlugin.kt"),
@@ -40,6 +40,7 @@ const [
   read("src-tauri/packaging/linux/70-ostudy-android-usb.rules"),
   read("plugins/ostudy-platform/android/src/main/res/xml/ostudy_usb_accessory_filter.xml"),
   read("src/ui/tokens/source/reference.tokens.json"),
+  read("src-tauri/src/library_session/commands.rs"),
 ]);
 const failures = [];
 const referenceTokenData = JSON.parse(referenceTokens);
@@ -64,11 +65,14 @@ expectContains(frontendIpc, 'transport: input.transport ?? "local-network"', "ex
 expectContains(frontendIpc, "joinUsbDevicePairing", "automatic attached-USB receive IPC");
 expectContains(frontendIpc, "ostudy-sync://usb-attached", "internal USB attachment sentinel");
 expectNotContains(frontendIpc, "includeCredentials", "removed receiver credential consent field");
-expectContains(compositionRoot, "device_sync_qr_commands::scan_device_pairing_qr_async", "async QR command registration");
+expectContains(compositionRoot, "library_session::commands::leased_scan_device_pairing_qr_async", "leased async QR command registration");
+expectContains(leasedCommands, '#[tauri::command(rename = "scan_device_pairing_qr_async")]', "stable QR wire command");
+expectContains(leasedCommands, "crate::device_sync_qr_commands::scan_device_pairing_qr_async(", "leased QR forwarding target");
 expectContains(compositionRoot, "tauri_plugin_ostudy_platform::init_usb()", "dedicated native USB plugin registration");
 expectContains(compositionRoot, "device_sync::cancel_device_sync_session", "sync cancellation command registration");
 expectContains(compositionRoot, ".setup(startup::setup)", "startup composition boundary registration");
-expectContains(startup, "device_sync::reconcile_startup(&paths)", "stale-session startup reconciliation");
+expectContains(startup, "reconcile_library(&database, &paths)", "shared startup reconciliation call");
+expectContains(startup, "device_sync::reconcile_startup(paths)", "stale-session shared reconciliation");
 expectContains(startup, "logging::initialize(paths.app_data_dir())", "persistent diagnostic initialization");
 
 expectContains(nativeUsb, "UsbManager.ACTION_USB_ACCESSORY_ATTACHED", "Android Open Accessory attachment handling");

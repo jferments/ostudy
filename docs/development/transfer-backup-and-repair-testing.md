@@ -1,10 +1,22 @@
-# Stage 3.4 and 3.5 local acceptance
+# Transfer, backup, and restore local acceptance
+
+This guide maintains the transfer checks originally introduced in Stages 3.4 and
+3.5 and the current same-process restore checks. Historical schema-13 repair
+fixtures below are not the current schema or instructions for modifying a real
+library. The current schema remains `ostudy-public-v1`, version 30; schema
+consolidation is separate implementation work.
 
 ## Safety first
 
-Schema 13 is forward-only. Before using a regular library, copy the complete application-data directory shown under **Settings → Storage**. Use an isolated profile for initial testing:
+Use disposable content. Close every process using a library before making a cold
+copy of its complete application-data directory, including SQLite sidecars. Find
+operational paths under **Settings → Backup/Sync → Storage details**. Never delete
+a WAL, recovery journal, pending backup or ownership lock to bypass a failure.
+
+Build the maintained development profile, then launch an isolated library:
 
 ```bash
+./scripts/ostudy-dev build
 TEST_ROOT="$(mktemp -d)"
 mkdir -p \
   "$TEST_ROOT/data" \
@@ -16,96 +28,129 @@ XDG_DATA_HOME="$TEST_ROOT/data" \
 XDG_CONFIG_HOME="$TEST_ROOT/config" \
 XDG_CACHE_HOME="$TEST_ROOT/cache" \
 XDG_STATE_HOME="$TEST_ROOT/state" \
-./run-app.sh
+./scripts/ostudy-dev run
 ```
+
+Keep this directory for the whole test. A desktop-menu launch does not inherit
+these per-command XDG settings. Production and development identities are
+separate; two production test roots still share the production keyring namespace.
 
 ## Automated gates
 
 ```bash
-bash ./scripts/check-fast.sh
-./scripts/check.sh
+./scripts/ostudy-dev check-fast
+./scripts/ostudy-dev check
 ```
 
-The complete gate must pass frontend tests, TypeScript, production build, rustfmt, warning-free Clippy, Rust and migration tests, standalone Tauri build, dependency verification, and the native create-review-restart persistence workflow.
+The complete gate covers frontend tests, TypeScript, production build, rustfmt,
+warning-free Clippy, Rust/migration tests, standalone Tauri build, dependency
+verification and native persistence workflows. Use exact-SHA Actions evidence for
+qualification and report skipped package/Android/manual boundaries separately.
+See [restore architecture](../architecture/library-restore.md) and
+[agent repair rules](../agents/LIBRARY-RESTORE.md).
 
 ## Current `.studydeck` package
 
-Create a deck containing:
-
-- an ordinary Basic note;
-- a reverse-enabled Basic note;
-- a one-at-a-time cloze note;
-- several overlapping tags; and
-- at least one managed image.
+Create a deck containing an ordinary Basic note, a reverse-enabled Basic note,
+a one-at-a-time cloze note, overlapping tags, and a managed image. Include typed
+interactive questions when testing current format-3 behavior.
 
 Export the deck, then verify:
 
 1. the destination is one `.studydeck` SQLite file;
 2. an existing destination is replaced only after the new file validates;
 3. the original library can still edit and practice the deck;
-4. importing the file creates one deck with the same name and description;
-5. Basic, reverse, and cloze presentation counts match;
+4. importing creates one deck with matching content;
+5. Basic, reverse, cloze and supported interactive presentation counts match;
 6. tags and images render correctly;
-7. imported schedules are fresh New schedules rather than copies of the source learner's history;
-8. importing the same file again as a new user action creates another independent deck; and
-9. retrying the same native operation ID does not create a second deck.
+7. imported schedules are fresh New schedules rather than donor review history;
+8. importing again as a new user action creates an independent deck; and
+9. retrying the same native operation ID does not create another deck.
 
-Also import a known package-version-1 fixture containing tags and historical multi-row cloze cards. It should import successfully as one active cloze schedule.
+Also import the supported package-version-1 fixture containing tags and historical
+multi-row cloze cards. It should become one active cloze schedule.
 
 ## Failure and atomicity checks
 
-Using disposable packages or the automated failure-injection tests, verify:
-
-- damaged SQLite packages are rejected before mutation;
-- missing metadata and unsupported package versions are rejected;
-- invalid rich documents, tag links, generated-card links, or image signatures leave no deck;
-- an image staging or rename failure leaves no partial deck;
-- a database failure after file staging cleans only that import's unreferenced draft;
-- reusing one operation ID with another file returns `idempotency_conflict`; and
-- an ambiguous retry with the same file returns the originally committed result.
+With disposable packages or automated failure injection, verify damaged SQLite,
+missing metadata, unsupported versions, invalid rich content/links/file signatures
+are rejected before mutation. An image staging/rename failure must leave no
+partial deck; a database failure cleans only that import's unreferenced draft.
+Reusing an operation ID with different input returns `idempotency_conflict`, while
+an ambiguous retry of the same committed operation returns its original result.
 
 ## Complete library backup
 
-Populate the isolated library with multiple decks, reusable templates, images, reviewed cards, practice sessions, manual schedule actions, and non-default settings.
+Populate the isolated library with decks, reusable templates, images, reviewed
+cards, practice sessions, manual schedule actions and non-default settings. Include
+a processed document, its guide/learner edits, a collection and Tutor history for
+current full-library coverage. Existing completed document work can be reused;
+there is no reason to repeat paid generation just to check persistence.
 
-Open **Settings → Storage** and choose **Back up library**. Verify that the success message reports deck, template, and review-event counts.
+Open **Settings → Backup/Sync → Back up library** and save outside application
+data. Inspect the selected package's embedded snapshot and managed-file inventory,
+not only the UI summary. An empty destination that passes SQLite integrity is not
+proof of a completed restore.
 
-The backup must be refused while an unsaved card or template editor owns staged images.
+Transient asset work and active processing must block maintenance; supported
+persisted editor drafts and their staged images must survive a complete backup.
+Canceling the save dialog must not be reported as a saved external backup.
 
-## Complete restore
+## Same-process restore
 
-1. After creating a backup, make obvious changes to the current library: delete a deck, alter settings, and add reviews.
-2. Choose **Restore backup** and select the saved `.ostudybackup` file.
-3. Confirm that ostudy says the restore is prepared rather than claiming it already replaced the open database.
-4. Close every ostudy window and launch the application again.
-5. Confirm the backed-up decks, templates, images, schedules, review histories, sessions, analytics, and settings have returned.
-6. Confirm changes made after the backup are absent.
-7. Open Analytics for several time ranges and compare review counts and session history with the pre-backup values.
-8. Confirm **Settings → Storage** reports schema 13.
+1. Back up the disposable library; record content, row identities, schedules,
+   reviews, learner edits and managed-file hashes.
+2. Make obvious disposable changes, then choose **Restore backup**.
+3. Verify a whole-library destructive confirmation appears. Cancel once and
+   confirm the library stays unchanged and the unneeded staged import is released.
+4. Select the backup again and confirm **Restore library**.
+5. Verify progress appears, library operations are fenced, and the interface
+   refreshes with restored content **without restarting the native process**.
+6. Verify completion counts include decks, cards and documents, and changes made
+   after the backup are absent. Compare reviews/analytics, settings, drafts,
+   documents/guides, question attempts and managed files against the backup.
+7. Create a new card after restoration. Replaying the original completed restore
+   receipt must not erase it or activate the package a second time.
+8. Close and reopen solely as a persistence check; the post-restore card remains.
 
-Test an invalid backup as well. Preparation must fail without creating a pending restore. A validated restore whose database cannot open must roll back to the prior database and asset directory rather than leaving a mixed library.
+A document-only backup with zero decks is not empty. The saved source backup and
+previous library must remain recoverable. Restoring must not delete OS-keyring
+credentials; session-only credentials must not leak into the replacement library.
+Android shared backups require the same explicit replacement confirmation.
 
-## One-time repair behavior
+## Interrupted activation and concurrency
 
-Upgrade copies of historical schema fixtures and a real pre-Stage-3.5 library. Verify:
+Invalid input must leave the active library intact. Inject reconciliation, disk,
+rename and commit failures. Exercise real committed WAL rows and process death
+between the recorded rename/rollback/commit boundaries. Recovery itself must be
+idempotent if interrupted. A lost reply after a durable commit replays a receipt,
+not a destructive operation; indeterminate durability keeps commands closed.
 
-- missing duplicate fingerprints are populated;
-- legacy template patterns become rich documents;
-- explicit template placeholders are canonical;
-- multi-row cloze notes have one active forward card;
-- prior sibling card rows remain soft-deleted so schedules and immutable history are retained;
-- abandoned image-occlusion values become ordinary Basic content;
-- the active template table no longer exposes `front_pattern` or `back_pattern`;
-- new image-occlusion values and nullable template documents are rejected; and
-- all repair ledger rows are present with stable checksums.
+Verify old-generation asynchronous requests cannot mutate the new library, active
+sync workers retain maintenance exclusion until their IO cleanup ends, and a
+second cooperating process cannot own the same library. A stale lock file after
+process death must be reusable without deleting it. Close older binaries that do
+not implement the ownership lock before testing.
 
-Close and reopen the canonical database without editing anything. The second startup must not change application rows, timestamps, revisions, the repair ledger, or the WAL merely because ostudy launched.
+## Historical Stage-3.5 repair fixtures
 
-## Merge conditions
+The following assertions apply only to explicitly constructed historical fixtures:
+missing duplicate fingerprints are populated; legacy template patterns become rich
+documents with canonical placeholders; multi-row cloze has one active forward card;
+sibling rows remain soft-deleted so schedules/history survive; abandoned legacy
+occlusion values become Basic content; the old template schema no longer exposes
+`front_pattern`/`back_pattern`; unsupported legacy occlusion values and nullable
+template documents are rejected; repair-ledger checksums stay stable. These are not
+instructions to reject current native image-occlusion question definitions.
 
-- The self-hosted `Check / check` status is green on the final branch head.
-- `./scripts/check.sh` passes locally.
-- Current and legacy deck round trips pass.
-- Complete backup and restart restore pass in an isolated profile.
-- A copied regular library upgrades without data loss.
-- No superseded transfer wrapper or temporary code-generation workflow remains in the final diff.
+Repeated no-op initialization must not rewrite application identities, timestamps,
+revisions or repair results merely because startup ran. Do not manually stamp a
+schema version or erase migration rows on the workstation.
+
+## Acceptance record
+
+Record the exact source SHA and actual Static/Fast/Linux/package/Android results,
+current/legacy transfer round trips, same-process restore, interrupted recovery,
+post-restore write/reopen, and isolated retained-data preservation. Keep human and
+physical-device acceptance separate from automated workflow success. Never merge
+or trust the protected school library based only on a prepared restore message.
