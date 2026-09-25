@@ -7,7 +7,8 @@ fn paths(label: &str) -> AppPaths {
         std::process::id(),
         crate::util::unix_time_millis().unwrap(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed),
-    ))).unwrap()
+    )))
+    .unwrap()
 }
 
 fn put(root: &Path, relative: &str, value: &[u8]) {
@@ -20,25 +21,49 @@ fn fixture(paths: &AppPaths) -> PendingRestoreGuard {
     let root = paths.app_data_dir();
     for relative in ENTRIES {
         if ["assets", "documents"].contains(relative) {
-            put(root, &format!("{relative}/retained.bin"), relative.as_bytes());
+            put(
+                root,
+                &format!("{relative}/retained.bin"),
+                relative.as_bytes(),
+            );
         } else {
             put(root, relative, relative.as_bytes());
         }
     }
     let transaction = new_transaction(root).unwrap();
-    put(&transaction, "candidate/library.sqlite3", b"replacement database");
-    put(&transaction, "candidate/assets/new.bin", b"replacement asset");
-    put(&transaction, "candidate/documents/new.bin", b"replacement document");
+    put(
+        &transaction,
+        "candidate/library.sqlite3",
+        b"replacement database",
+    );
+    put(
+        &transaction,
+        "candidate/assets/new.bin",
+        b"replacement asset",
+    );
+    put(
+        &transaction,
+        "candidate/documents/new.bin",
+        b"replacement document",
+    );
     fs::create_dir(transaction.join("previous")).unwrap();
     let journal = Journal {
         version: 1,
-        operation_id: transaction.file_name().unwrap().to_str().unwrap().to_string(),
+        operation_id: transaction
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
         original: vec![true; ENTRIES.len()],
         source_sha256: "a".repeat(64),
     };
     write_new_file(&root.join(JOURNAL), &serde_json::to_vec(&journal).unwrap()).unwrap();
     PendingRestoreGuard {
-        root: root.to_path_buf(), journal, installed: false, finished: false,
+        root: root.to_path_buf(),
+        journal,
+        installed: false,
+        finished: false,
     }
 }
 
@@ -50,36 +75,59 @@ fn assert_previous(paths: &AppPaths) {
         } else {
             root.join(relative)
         };
-        assert_eq!(fs::read(&target).unwrap(), relative.as_bytes(), "{relative}");
+        assert_eq!(
+            fs::read(&target).unwrap(),
+            relative.as_bytes(),
+            "{relative}"
+        );
     }
     assert!(!root.join(JOURNAL).exists());
 }
 
 fn child(root: &Path, mode: &str, phase: &str) {
     let result = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "library_backup::activation::current_format_tests::crash_driver", "--nocapture"])
+        .args([
+            "--exact",
+            "library_backup::activation::current_format_tests::crash_driver",
+            "--nocapture",
+        ])
         .env("OSTUDY_RESTORE_CRASH_ROOT", root)
         .env("OSTUDY_RESTORE_CRASH_PHASE", phase)
         .env("OSTUDY_RESTORE_CRASH_MODE", mode)
-        .output().unwrap();
-    assert_eq!(result.status.code(), Some(77), "{}", String::from_utf8_lossy(&result.stderr));
+        .output()
+        .unwrap();
+    assert_eq!(
+        result.status.code(),
+        Some(77),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
 }
 
 #[test]
 fn crash_driver() {
-    let Some(root) = std::env::var_os("OSTUDY_RESTORE_CRASH_ROOT") else { return; };
+    let Some(root) = std::env::var_os("OSTUDY_RESTORE_CRASH_ROOT") else {
+        return;
+    };
     let root = PathBuf::from(root);
     let mode = std::env::var("OSTUDY_RESTORE_CRASH_MODE").unwrap();
     if mode == "wal" {
         let connection = rusqlite::Connection::open(root.join("library.sqlite3")).unwrap();
-        connection.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
-             CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('previous');"
-        ).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
+             CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('previous');",
+            )
+            .unwrap();
         std::process::exit(77);
     }
     let journal: Journal = serde_json::from_slice(&fs::read(root.join(JOURNAL)).unwrap()).unwrap();
-    let mut guard = PendingRestoreGuard { root, journal, installed: false, finished: false };
+    let mut guard = PendingRestoreGuard {
+        root,
+        journal,
+        installed: false,
+        finished: false,
+    };
     if mode == "rollback" {
         guard.rollback().unwrap();
     } else {
@@ -113,7 +161,11 @@ fn interrupted_rollback_is_idempotent_at_every_entry() {
         let mut guard = fixture(&paths);
         guard.install().unwrap();
         std::mem::forget(guard);
-        child(paths.app_data_dir(), "rollback", &format!("rollback-{index}"));
+        child(
+            paths.app_data_dir(),
+            "rollback",
+            &format!("rollback-{index}"),
+        );
         assert!(recover(&paths).unwrap());
         assert_previous(&paths);
         fs::remove_dir_all(paths.app_data_dir()).unwrap();
@@ -128,7 +180,10 @@ fn a_durable_commit_is_not_rolled_back_after_process_death() {
     std::mem::forget(guard);
     child(paths.app_data_dir(), "install", "committed");
     assert!(recover(&paths).unwrap());
-    assert_eq!(fs::read(paths.database_path()).unwrap(), b"replacement database");
+    assert_eq!(
+        fs::read(paths.database_path()).unwrap(),
+        b"replacement database"
+    );
     assert_eq!(fs::read(previous).unwrap(), b"library.sqlite3");
     assert!(!recover(&paths).unwrap());
     fs::remove_dir_all(paths.app_data_dir()).unwrap();
@@ -138,31 +193,63 @@ fn a_durable_commit_is_not_rolled_back_after_process_death() {
 fn wal_committed_rows_survive_install_and_rollback_without_journal_mispairing() {
     let paths = paths("wal");
     child(paths.app_data_dir(), "wal", "");
-    assert!(paths.app_data_dir().join("library.sqlite3-wal").metadata().unwrap().len() > 0);
+    assert!(
+        paths
+            .app_data_dir()
+            .join("library.sqlite3-wal")
+            .metadata()
+            .unwrap()
+            .len()
+            > 0
+    );
     let transaction = new_transaction(paths.app_data_dir()).unwrap();
     fs::create_dir_all(transaction.join("candidate/assets")).unwrap();
     fs::create_dir_all(transaction.join("candidate/documents")).unwrap();
-    let candidate = rusqlite::Connection::open(transaction.join("candidate/library.sqlite3")).unwrap();
-    candidate.execute_batch("CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('replacement');").unwrap();
+    let candidate =
+        rusqlite::Connection::open(transaction.join("candidate/library.sqlite3")).unwrap();
+    candidate
+        .execute_batch(
+            "CREATE TABLE preserved(value TEXT); INSERT INTO preserved VALUES('replacement');",
+        )
+        .unwrap();
     drop(candidate);
     let journal = Journal {
         version: 1,
-        operation_id: transaction.file_name().unwrap().to_str().unwrap().to_string(),
-        original: ENTRIES.iter().map(|relative| paths.app_data_dir().join(relative).exists()).collect(),
+        operation_id: transaction
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
+        original: ENTRIES
+            .iter()
+            .map(|relative| paths.app_data_dir().join(relative).exists())
+            .collect(),
         source_sha256: "b".repeat(64),
     };
-    write_new_file(&paths.app_data_dir().join(JOURNAL), &serde_json::to_vec(&journal).unwrap()).unwrap();
+    write_new_file(
+        &paths.app_data_dir().join(JOURNAL),
+        &serde_json::to_vec(&journal).unwrap(),
+    )
+    .unwrap();
     let mut guard = PendingRestoreGuard {
-        root: paths.app_data_dir().to_path_buf(), journal, installed: false, finished: false,
+        root: paths.app_data_dir().to_path_buf(),
+        journal,
+        installed: false,
+        finished: false,
     };
     guard.install().unwrap();
     let active = rusqlite::Connection::open(paths.database_path()).unwrap();
-    let value: String = active.query_row("SELECT value FROM preserved", [], |row| row.get(0)).unwrap();
+    let value: String = active
+        .query_row("SELECT value FROM preserved", [], |row| row.get(0))
+        .unwrap();
     assert_eq!(value, "replacement");
     drop(active);
     guard.rollback().unwrap();
     let previous = rusqlite::Connection::open(paths.database_path()).unwrap();
-    let value: String = previous.query_row("SELECT value FROM preserved", [], |row| row.get(0)).unwrap();
+    let value: String = previous
+        .query_row("SELECT value FROM preserved", [], |row| row.get(0))
+        .unwrap();
     assert_eq!(value, "previous");
     drop(previous);
     fs::remove_dir_all(paths.app_data_dir()).unwrap();
@@ -171,13 +258,29 @@ fn wal_committed_rows_survive_install_and_rollback_without_journal_mispairing() 
 #[test]
 fn legacy_rollback_and_invalid_journals_are_preserved() {
     let paths = paths("legacy");
-    put(paths.app_data_dir(), "library.sqlite3.pre-restore", b"irreplaceable previous library");
-    put(paths.app_data_dir(), "pending-library-restore.ostudybackup", b"pending backup");
-    assert!(apply_pending_restore(&paths).unwrap_err().contains("older interrupted restore"));
-    assert_eq!(fs::read(paths.app_data_dir().join("library.sqlite3.pre-restore")).unwrap(), b"irreplaceable previous library");
+    put(
+        paths.app_data_dir(),
+        "library.sqlite3.pre-restore",
+        b"irreplaceable previous library",
+    );
+    put(
+        paths.app_data_dir(),
+        "pending-library-restore.ostudybackup",
+        b"pending backup",
+    );
+    assert!(apply_pending_restore(&paths)
+        .unwrap_err()
+        .contains("older interrupted restore"));
+    assert_eq!(
+        fs::read(paths.app_data_dir().join("library.sqlite3.pre-restore")).unwrap(),
+        b"irreplaceable previous library"
+    );
     put(paths.app_data_dir(), JOURNAL, b"incomplete journal");
     assert!(recover(&paths).unwrap_err().contains("unreadable"));
-    assert_eq!(fs::read(paths.app_data_dir().join(JOURNAL)).unwrap(), b"incomplete journal");
+    assert_eq!(
+        fs::read(paths.app_data_dir().join(JOURNAL)).unwrap(),
+        b"incomplete journal"
+    );
     fs::remove_dir_all(paths.app_data_dir()).unwrap();
 }
 

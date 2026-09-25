@@ -3,21 +3,31 @@
 //! Callers must close every database/file user before installing or recovering.
 
 use super::{
-    copy_and_sync, extract_backup_package, pending_restore_path, sync_directory,
-    write_new_file, AppPaths, Database, File, Path, PathBuf,
+    copy_and_sync, extract_backup_package, pending_restore_path, sync_directory, write_new_file,
+    AppPaths, Database, File, Path, PathBuf,
 };
-use std::{fs, io::Read, sync::atomic::{AtomicU64, Ordering}};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    io::Read,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 const JOURNAL: &str = "library-restore-journal.json";
 const TRANSACTIONS: &str = "restore-transactions";
 // Paths come from code, NEVER from a package or a writable journal.
 const ENTRIES: &[&str] = &[
-    "library.sqlite3", "library.sqlite3-wal", "library.sqlite3-shm",
-    "library.sqlite3-journal", "assets", "documents",
-    "cache/semantic-v1.sqlite3", "cache/semantic-v1.sqlite3-wal",
-    "cache/semantic-v1.sqlite3-shm", "cache/semantic-v1.sqlite3-journal",
+    "library.sqlite3",
+    "library.sqlite3-wal",
+    "library.sqlite3-shm",
+    "library.sqlite3-journal",
+    "assets",
+    "documents",
+    "cache/semantic-v1.sqlite3",
+    "cache/semantic-v1.sqlite3-wal",
+    "cache/semantic-v1.sqlite3-shm",
+    "cache/semantic-v1.sqlite3-journal",
 ];
 const INSTALL: &[&str] = &["library.sqlite3", "assets", "documents"];
 const COMMITTED: &[u8] = b"ostudy-restore-committed-v1\n";
@@ -42,7 +52,9 @@ pub(crate) struct PendingRestoreGuard {
 
 impl PendingRestoreGuard {
     fn transaction(&self) -> PathBuf {
-        self.root.join(TRANSACTIONS).join(&self.journal.operation_id)
+        self.root
+            .join(TRANSACTIONS)
+            .join(&self.journal.operation_id)
     }
 
     fn install(&mut self) -> Result<(), String> {
@@ -50,12 +62,18 @@ impl PendingRestoreGuard {
         let transaction = self.transaction();
         for (index, relative) in ENTRIES.iter().enumerate() {
             if self.journal.original[index] {
-                move_synced(&self.root.join(relative), &transaction.join("previous").join(relative))?;
+                move_synced(
+                    &self.root.join(relative),
+                    &transaction.join("previous").join(relative),
+                )?;
             }
             self.cutpoint(&format!("previous-{index}"));
         }
         for (index, relative) in INSTALL.iter().enumerate() {
-            move_synced(&transaction.join("candidate").join(relative), &self.root.join(relative))?;
+            move_synced(
+                &transaction.join("candidate").join(relative),
+                &self.root.join(relative),
+            )?;
             self.cutpoint(&format!("install-{index}"));
         }
         self.installed = true;
@@ -89,7 +107,8 @@ impl PendingRestoreGuard {
         self.cutpoint("committed");
         if let Err(error) = self.finish() {
             crate::logging::warn_target(
-                "library.restore", "restore_cleanup_pending",
+                "library.restore",
+                "restore_cleanup_pending",
                 "The library was restored; its recovery receipt needs cleanup.",
                 serde_json::json!({"operationId": self.journal.operation_id, "error": error}),
             );
@@ -137,7 +156,9 @@ impl PendingRestoreGuard {
         if pending.is_file() && hash_file(&pending)? == self.journal.source_sha256 {
             let retained = self.transaction().join("pending.ostudybackup");
             if retained.exists() {
-                return Err("A retained pending restore already exists; no files were overwritten.".into());
+                return Err(
+                    "A retained pending restore already exists; no files were overwritten.".into(),
+                );
             }
             move_synced(&pending, &retained)?;
         }
@@ -177,21 +198,30 @@ pub(crate) fn recover(paths: &AppPaths) -> Result<bool, String> {
     })?;
     crate::util::validate_entity_id(&journal.operation_id, "restore operation")
         .map_err(|error| error.message)?;
-    if journal.version != 1 || journal.original.len() != ENTRIES.len()
+    if journal.version != 1
+        || journal.original.len() != ENTRIES.len()
         || journal.source_sha256.len() != 64
-        || !journal.source_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !journal
+            .source_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
     {
         return Err("The restore journal is unsupported. Recovery files were preserved.".into());
     }
     check_path(root, &Path::new(TRANSACTIONS).join(&journal.operation_id))?;
     let mut guard = PendingRestoreGuard {
-        root: root.to_path_buf(), journal, installed: true, finished: true,
+        root: root.to_path_buf(),
+        journal,
+        installed: true,
+        finished: true,
     };
     let marker = guard.transaction().join("committed");
     check_path(&guard.transaction(), Path::new("committed"))?;
     if marker.exists() {
         if fs::read(&marker).map_err(io_error)? != COMMITTED {
-            return Err("The restore commit record is invalid. Recovery files were preserved.".into());
+            return Err(
+                "The restore commit record is invalid. Recovery files were preserved.".into(),
+            );
         }
         guard.finish()?;
     } else {
@@ -214,7 +244,11 @@ pub(crate) fn apply_pending_restore(
     }
     // These belong to the pre-journal implementation. Never delete an unknown
     // interrupted operation's only rollback copy to make room for a new one.
-    for legacy in ["library.sqlite3.pre-restore", "assets.pre-restore", "documents.pre-restore"] {
+    for legacy in [
+        "library.sqlite3.pre-restore",
+        "assets.pre-restore",
+        "documents.pre-restore",
+    ] {
         if fs::symlink_metadata(root.join(legacy)).is_ok() {
             return Err(format!(
                 "An older interrupted restore left {legacy}. It was preserved; inspect the recovery files before retrying."
@@ -226,8 +260,12 @@ pub(crate) fn apply_pending_restore(
     copy_and_sync(&pending, &source).map_err(|error| error.message)?;
     let candidate = transaction.join("candidate");
     fs::create_dir(&candidate).map_err(io_error)?;
-    extract_backup_package(&source, &candidate.join("library.sqlite3"), &candidate.join("assets"))
-        .map_err(|error| error.message)?;
+    extract_backup_package(
+        &source,
+        &candidate.join("library.sqlite3"),
+        &candidate.join("assets"),
+    )
+    .map_err(|error| error.message)?;
     // Upgrade and validate the isolated candidate, never the active library.
     let staged = Database::open(&candidate.join("library.sqlite3"))?;
     staged.with_connection(|connection| {
@@ -242,17 +280,23 @@ pub(crate) fn apply_pending_restore(
     }).map_err(|error| error.message)?;
     drop(staged);
     sync_tree(&candidate)?;
-    let original = ENTRIES.iter().map(|relative| {
-        check_path(root, Path::new(relative))?;
-        Ok(root.join(relative).exists())
-    }).collect::<Result<Vec<_>, String>>()?;
+    let original = ENTRIES
+        .iter()
+        .map(|relative| {
+            check_path(root, Path::new(relative))?;
+            Ok(root.join(relative).exists())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     if !original[0] && original[1..4].iter().any(|exists| *exists) {
         return Err("The current database is missing but its journal exists. Both the backup and journal were preserved.".into());
     }
     let journal = Journal {
         version: 1,
-        operation_id: transaction.file_name().and_then(|value| value.to_str())
-            .ok_or_else(|| "Invalid restore transaction directory.".to_string())?.to_string(),
+        operation_id: transaction
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| "Invalid restore transaction directory.".to_string())?
+            .to_string(),
         original,
         source_sha256: hash_file(&source)?,
     };
@@ -266,7 +310,10 @@ pub(crate) fn apply_pending_restore(
     write_new_file(&temporary, &bytes).map_err(|error| error.message)?;
     move_synced(&temporary, &root.join(JOURNAL))?;
     let mut guard = PendingRestoreGuard {
-        root: root.to_path_buf(), journal, installed: false, finished: false,
+        root: root.to_path_buf(),
+        journal,
+        installed: false,
+        finished: false,
     };
     guard.install()?;
     Ok(Some(guard))
@@ -280,7 +327,12 @@ fn new_transaction(root: &Path) -> Result<PathBuf, String> {
     let now = crate::util::unix_time_millis().map_err(|error| error.message)?;
     let sequence = u32::try_from(SEQUENCE.fetch_add(1, Ordering::Relaxed))
         .map_err(|_| "Restore operation sequence exhausted.".to_string())?;
-    let transaction = parent.join(format!("{:016x}{:08x}{:08x}", now, std::process::id(), sequence));
+    let transaction = parent.join(format!(
+        "{:016x}{:08x}{:08x}",
+        now,
+        std::process::id(),
+        sequence
+    ));
     fs::create_dir(&transaction).map_err(io_error)?;
     sync(&parent)?;
     Ok(transaction)
@@ -292,7 +344,9 @@ fn hash_file(path: &Path) -> Result<String, String> {
     let mut buffer = [0_u8; 64 * 1024];
     loop {
         let count = file.read(&mut buffer).map_err(io_error)?;
-        if count == 0 { break; }
+        if count == 0 {
+            break;
+        }
         digest.update(&buffer[..count]);
     }
     Ok(format!("{:x}", digest.finalize()))
@@ -307,7 +361,9 @@ fn check_path(root: &Path, relative: &Path) -> Result<(), String> {
         path.push(component);
         match fs::symlink_metadata(&path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                return Err("Restore refuses symbolic links in managed library/recovery paths.".into());
+                return Err(
+                    "Restore refuses symbolic links in managed library/recovery paths.".into(),
+                );
             }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -318,11 +374,17 @@ fn check_path(root: &Path, relative: &Path) -> Result<(), String> {
 }
 
 fn move_synced(source: &Path, destination: &Path) -> Result<(), String> {
-    let parent = destination.parent().ok_or_else(|| "Invalid restore destination.".to_string())?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "Invalid restore destination.".to_string())?;
     fs::create_dir_all(parent).map_err(io_error)?;
     fs::rename(source, destination).map_err(io_error)?;
     sync(parent)?;
-    sync(source.parent().ok_or_else(|| "Invalid restore source.".to_string())?)
+    sync(
+        source
+            .parent()
+            .ok_or_else(|| "Invalid restore source.".to_string())?,
+    )
 }
 
 fn remove_entry(path: &Path) -> Result<(), String> {
@@ -335,7 +397,10 @@ fn remove_entry(path: &Path) -> Result<(), String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(io_error(error)),
     }
-    sync(path.parent().ok_or_else(|| "Invalid restore path.".to_string())?)
+    sync(
+        path.parent()
+            .ok_or_else(|| "Invalid restore path.".to_string())?,
+    )
 }
 
 fn sync(path: &Path) -> Result<(), String> {
@@ -346,9 +411,16 @@ fn sync_tree(path: &Path) -> Result<(), String> {
     for entry in fs::read_dir(path).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let kind = entry.file_type().map_err(io_error)?;
-        if kind.is_symlink() { return Err("Restore candidate contains a symbolic link.".into()); }
-        if kind.is_dir() { sync_tree(&entry.path())?; }
-        else { File::open(entry.path()).and_then(|file| file.sync_all()).map_err(io_error)?; }
+        if kind.is_symlink() {
+            return Err("Restore candidate contains a symbolic link.".into());
+        }
+        if kind.is_dir() {
+            sync_tree(&entry.path())?;
+        } else {
+            File::open(entry.path())
+                .and_then(|file| file.sync_all())
+                .map_err(io_error)?;
+        }
     }
     sync(path)
 }

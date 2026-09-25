@@ -137,9 +137,9 @@ mod activation;
 pub(crate) use activation::apply_pending_restore;
 #[path = "library_backup/package.rs"]
 mod package;
-use package::{export_backup, extract_backup_package, validate_backup_package};
 #[cfg(test)]
 use package::backup_validation_temp_path;
+use package::{export_backup, extract_backup_package, validate_backup_package};
 
 #[tauri::command]
 pub fn prepare_library_backup(

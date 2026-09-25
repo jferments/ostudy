@@ -513,4 +513,3 @@ fn validate_backup_assets(
     }
     Ok(())
 }
-
