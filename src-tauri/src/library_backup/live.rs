@@ -248,7 +248,10 @@ fn write_receipt(
     Ok(())
 }
 
-fn read_receipt(paths: &AppPaths, relative: &Path) -> Result<Option<LiveRestoreResult>, CommandError> {
+fn read_receipt(
+    paths: &AppPaths,
+    relative: &Path,
+) -> Result<Option<LiveRestoreResult>, CommandError> {
     activation::check_path(paths.app_data_dir(), relative).map_err(recovery_error)?;
     let path = paths.app_data_dir().join(relative);
     if !path.exists() {

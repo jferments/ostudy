@@ -42,13 +42,10 @@ pub async fn prepare_library_restore_async(
     let result = run_blocking(app, "library_restore_worker_interrupted", move |app| {
         let database = app.state::<Database>();
         let paths = app.state::<AppPaths>();
-        crate::library_backup::live::restore(
-            &database,
-            &paths,
-            input,
-            library_generation,
-            || app.state::<crate::ai::AiRuntimeState>().clear_session_credentials(),
-        )
+        crate::library_backup::live::restore(&database, &paths, input, library_generation, || {
+            app.state::<crate::ai::AiRuntimeState>()
+                .clear_session_credentials()
+        })
     })
     .await;
     // A lost IPC response does not hide committed activation from other views.

@@ -119,10 +119,10 @@ struct BackupSummary {
     asset_count: i64,
 }
 
-#[path = "library_backup/live.rs"]
-pub(crate) mod live;
 #[path = "library_backup/activation.rs"]
 mod activation;
+#[path = "library_backup/live.rs"]
+pub(crate) mod live;
 pub(crate) use activation::apply_pending_restore;
 #[path = "library_backup/package.rs"]
 mod package;

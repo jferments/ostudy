@@ -95,11 +95,7 @@ pub(crate) async fn leased_preview_semantic_preparation(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::knowledge::commands::preview_semantic_preparation(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::knowledge::commands::preview_semantic_preparation(app.clone(), input).await
 }
 
 #[tauri::command(rename = "prepare_semantic_material")]
@@ -143,11 +139,7 @@ pub(crate) async fn leased_refresh_collection_synthesis(
     library_generation: Option<u64>,
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
-    crate::knowledge::commands::refresh_collection_synthesis(
-        app.clone(),
-        collection_id,
-    )
-    .await
+    crate::knowledge::commands::refresh_collection_synthesis(app.clone(), collection_id).await
 }
 
 #[tauri::command(rename = "prepare_collection_synthesis")]
@@ -174,11 +166,7 @@ pub(crate) async fn leased_inspect_image_set(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::inspect_image_set(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::inspect_image_set(app.clone(), input).await
 }
 
 #[tauri::command(rename = "import_image_set")]
@@ -189,11 +177,7 @@ pub(crate) async fn leased_import_image_set(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::import_image_set(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::import_image_set(app.clone(), input).await
 }
 
 #[tauri::command(rename = "get_image_set")]
@@ -204,11 +188,7 @@ pub(crate) async fn leased_get_image_set(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::get_image_set(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::get_image_set(app.clone(), input).await
 }
 
 #[tauri::command(rename = "get_image_set_preview")]
@@ -219,11 +199,7 @@ pub(crate) async fn leased_get_image_set_preview(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::get_image_set_preview(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::get_image_set_preview(app.clone(), input).await
 }
 
 #[tauri::command(rename = "prepare_image_set")]
@@ -234,11 +210,7 @@ pub(crate) async fn leased_prepare_image_set(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::prepare_image_set(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::prepare_image_set(app.clone(), input).await
 }
 
 #[tauri::command(rename = "set_image_set_filters")]
@@ -249,11 +221,7 @@ pub(crate) async fn leased_set_image_set_filters(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::set_image_set_filters(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::set_image_set_filters(app.clone(), input).await
 }
 
 #[tauri::command(rename = "amend_image_set")]
@@ -264,11 +232,7 @@ pub(crate) async fn leased_amend_image_set(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::documents::commands::amend_image_set(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::documents::commands::amend_image_set(app.clone(), input).await
 }
 
 #[tauri::command(rename = "run_document_flashcard_generation")]
@@ -468,11 +432,7 @@ pub(crate) async fn leased_prepare_occlusion_image(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::asset_lifecycle::occlusion::prepare_occlusion_image(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::asset_lifecycle::occlusion::prepare_occlusion_image(app.clone(), input).await
 }
 
 #[tauri::command(rename = "preview_occlusion_image")]
@@ -483,11 +443,7 @@ pub(crate) async fn leased_preview_occlusion_image(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::asset_lifecycle::occlusion::preview_occlusion_image(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::asset_lifecycle::occlusion::preview_occlusion_image(app.clone(), input).await
 }
 
 #[tauri::command(rename = "read_practice_occlusion_image")]
@@ -498,11 +454,8 @@ pub(crate) async fn leased_read_practice_occlusion_image(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::practice::question_attempts::occlusion::read_practice_occlusion_image(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::practice::question_attempts::occlusion::read_practice_occlusion_image(app.clone(), input)
+        .await
 }
 
 #[tauri::command(rename = "import_deck")]
@@ -513,11 +466,7 @@ pub(crate) async fn leased_import_deck(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::studydeck::import_deck(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::studydeck::import_deck(app.clone(), input).await
 }
 
 #[tauri::command(rename = "join_device_pairing")]
@@ -543,10 +492,7 @@ pub(crate) async fn leased_reject_usb_device_pairing(
     library_generation: Option<u64>,
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
-    crate::device_sync::reject_usb_device_pairing(
-        app.clone(),
-    )
-    .await
+    crate::device_sync::reject_usb_device_pairing(app.clone()).await
 }
 
 #[tauri::command(rename = "scan_device_pairing_qr_async")]
@@ -555,10 +501,7 @@ pub(crate) async fn leased_scan_device_pairing_qr_async(
     library_generation: Option<u64>,
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
-    crate::device_sync_qr_commands::scan_device_pairing_qr_async(
-        app.clone(),
-    )
-    .await
+    crate::device_sync_qr_commands::scan_device_pairing_qr_async(app.clone()).await
 }
 
 #[tauri::command(rename = "compose_study_target_bundle")]
@@ -585,10 +528,5 @@ pub(crate) async fn leased_prepare_library_backup_async(
 ) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
-    crate::library_backup_commands::prepare_library_backup_async(
-        app.clone(),
-        input,
-    )
-    .await
+    crate::library_backup_commands::prepare_library_backup_async(app.clone(), input).await
 }
-

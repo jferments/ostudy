@@ -55,7 +55,9 @@ fn library_restore_expires_session_override_but_preserves_saved_credential() {
     let secure = Arc::new(PreservedSecureStore::default());
     let manager = SecretManager::new(secure.clone());
     let id = "3".repeat(32);
-    manager.insert_session(&id, b"session-override".to_vec()).unwrap();
+    manager
+        .insert_session(&id, b"session-override".to_vec())
+        .unwrap();
     assert_eq!(
         manager
             .resolve(&id, AuthMode::Bearer, CredentialStorage::Secure)
@@ -81,7 +83,9 @@ fn library_restore_expires_session_override_but_preserves_saved_credential() {
 fn library_restore_reports_poisoned_session_instead_of_claiming_cleanup() {
     let secure = Arc::new(PreservedSecureStore::default());
     let manager = SecretManager::new(secure.clone());
-    manager.insert_session("orphan", b"retained".to_vec()).unwrap();
+    manager
+        .insert_session("orphan", b"retained".to_vec())
+        .unwrap();
     let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _session = manager.session.lock().unwrap();
         panic!("injected credential mutex poison");

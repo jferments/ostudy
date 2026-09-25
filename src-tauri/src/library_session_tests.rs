@@ -9,7 +9,10 @@ fn pending_old_future_cannot_enter_after_replacement() {
     let mut replace = session.replace(Some(0)).unwrap();
     replace.switching();
     assert_eq!(replace.finish(true).unwrap(), 1);
-    assert_eq!(session.enter(Some(0)).err().unwrap().code, "library_generation_changed");
+    assert_eq!(
+        session.enter(Some(0)).err().unwrap().code,
+        "library_generation_changed"
+    );
     assert!(session.enter(None).is_err());
     assert!(session.enter(Some(1)).is_ok());
 }
@@ -36,7 +39,10 @@ fn existing_async_work_drains_before_switch_and_new_work_is_refused() {
         thread::yield_now();
     }
     assert!(drained_rx.try_recv().is_err());
-    assert_eq!(session.enter(Some(0)).err().unwrap().code, "library_restore_in_progress");
+    assert_eq!(
+        session.enter(Some(0)).err().unwrap().code,
+        "library_restore_in_progress"
+    );
     drop(existing);
     drained_rx.recv().unwrap();
     join.join().unwrap();
@@ -58,7 +64,10 @@ fn panic_or_failure_after_connection_close_keeps_data_commands_closed() {
     replacement.switching();
     drop(replacement);
     assert!(session.status().unwrap().recovery_required);
-    assert_eq!(session.enter(Some(0)).err().unwrap().code, "library_recovery_required");
+    assert_eq!(
+        session.enter(Some(0)).err().unwrap().code,
+        "library_recovery_required"
+    );
     assert!(session.replace(Some(0)).is_err());
 }
 

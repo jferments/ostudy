@@ -142,31 +142,19 @@ pub(crate) fn reconcile_library(
     paths: &AppPaths,
 ) -> Result<(), crate::error::CommandError> {
     device_sync::reconcile_startup(paths)?;
-    external_file_recovery::reconcile_interrupted_staging(database, paths)
-        ?;
-    external_files::reconcile_startup(database, paths)
-        ?;
+    external_file_recovery::reconcile_interrupted_staging(database, paths)?;
+    external_files::reconcile_startup(database, paths)?;
     editor_drafts::reconcile_startup(database)?;
-    deletion::finalize_expired_deletions(database)
-        ?;
-    deletion_purge::purge_finalized_deletions(database)
-        ?;
-    asset_lifecycle::reconcile_startup(database, paths)
-        ?;
-    document_delete_reconciliation::restore_interrupted_deletions(database, paths)
-        ?;
-    documents::reconcile_startup(database, paths)
-        ?;
-    document_artifacts::reconcile_interrupted_document_artifact_jobs(database)
-        ?;
-    crate::ai::generation::reconcile_startup(database)
-        ?;
-    crate::study_materials::reconcile_startup(database)
-        ?;
-    document_operations::reconcile_deleted_document_trash(paths)
-        ?;
-    crate::knowledge::reconcile_startup(database)
-        ?;
+    deletion::finalize_expired_deletions(database)?;
+    deletion_purge::purge_finalized_deletions(database)?;
+    asset_lifecycle::reconcile_startup(database, paths)?;
+    document_delete_reconciliation::restore_interrupted_deletions(database, paths)?;
+    documents::reconcile_startup(database, paths)?;
+    document_artifacts::reconcile_interrupted_document_artifact_jobs(database)?;
+    crate::ai::generation::reconcile_startup(database)?;
+    crate::study_materials::reconcile_startup(database)?;
+    document_operations::reconcile_deleted_document_trash(paths)?;
+    crate::knowledge::reconcile_startup(database)?;
     crate::tutor::reconcile_startup(database)?;
     Ok(())
 }

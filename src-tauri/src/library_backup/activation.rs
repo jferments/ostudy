@@ -166,11 +166,16 @@ impl PendingRestoreGuard {
             check_path(&self.transaction(), Path::new("pending.ostudybackup"))?;
             if retained.exists() {
                 if hash_file(&retained)? != self.journal.source_sha256 {
-                    return Err("A different retained pending backup exists. Both copies were preserved.".into());
+                    return Err(
+                        "A different retained pending backup exists. Both copies were preserved."
+                            .into(),
+                    );
                 }
                 // The retained, synced identical copy makes retirement retry-safe.
                 // Never remove a different backup merely to finish bookkeeping.
-                File::open(&retained).and_then(|file| file.sync_all()).map_err(io_error)?;
+                File::open(&retained)
+                    .and_then(|file| file.sync_all())
+                    .map_err(io_error)?;
                 sync(&self.transaction())?;
                 super::remove_file_if_exists(&pending).map_err(io_error)?;
                 sync(&self.root)?;
@@ -249,7 +254,10 @@ pub(crate) fn recover(paths: &AppPaths) -> Result<bool, String> {
 pub(crate) fn apply_pending_restore(
     paths: &AppPaths,
 ) -> Result<Option<PendingRestoreGuard>, String> {
-    check_path(paths.app_data_dir(), Path::new("pending-library-restore.ostudybackup"))?;
+    check_path(
+        paths.app_data_dir(),
+        Path::new("pending-library-restore.ostudybackup"),
+    )?;
     apply_source_restore(paths, &pending_restore_path(paths))
 }
 
@@ -343,7 +351,8 @@ pub(super) fn apply_source_restore(
 }
 
 pub(super) fn transaction_committed(root: &Path, operation: &str) -> Result<bool, String> {
-    crate::util::validate_entity_id(operation, "restore transaction").map_err(|error| error.message)?;
+    crate::util::validate_entity_id(operation, "restore transaction")
+        .map_err(|error| error.message)?;
     let relative = Path::new(TRANSACTIONS).join(operation).join("committed");
     check_path(root, &relative)?;
     let marker = root.join(relative);
@@ -372,9 +381,14 @@ pub(super) fn preserve_pending(paths: &AppPaths) -> Result<(), String> {
     let retained = root.join(relative);
     if retained.exists() {
         if hash_file(&retained)? != hash {
-            return Err("The retained pending backup does not match its hash. Both copies were preserved.".into());
+            return Err(
+                "The retained pending backup does not match its hash. Both copies were preserved."
+                    .into(),
+            );
         }
-        File::open(&retained).and_then(|file| file.sync_all()).map_err(io_error)?;
+        File::open(&retained)
+            .and_then(|file| file.sync_all())
+            .map_err(io_error)?;
         sync(retained.parent().unwrap())?;
         super::remove_file_if_exists(&pending).map_err(io_error)?;
         sync(root)
