@@ -15,6 +15,7 @@ Usage:
 Linux:
   setup           Install/provision the Ubuntu/Debian development environment.
   doctor          Verify core local build requirements; accepts doctor.sh options.
+  library-status  Read-only production/development library lineage report.
   build           Build the standalone desktop application.
   run             Run the existing standalone desktop build.
   desktop         Run Tauri desktop hot reload for deliberate development use.
@@ -55,6 +56,9 @@ case "$command" in
     ;;
   doctor)
     exec "$SCRIPT_DIR/doctor.sh" "$@"
+    ;;
+  library-status)
+    exec python3 "$SCRIPT_DIR/library-status.py" "$@"
     ;;
   build)
     exec "$SCRIPT_DIR/build.sh" "$@"

@@ -335,7 +335,13 @@ PR #104 is merged at `6529004ad4e31946df4116f7a0591d6c80d8e586`. PR #106 has rec
 
 ### Before personal-library adoption testing
 
-If an existing development library contains anything valuable, create a whole-library backup using the currently qualified application before testing any conversion. The conversion/adoption test operates on an isolated copy first. Do not upload the library to GitHub.
+Close oStudy, then run:
+
+```bash
+./scripts/ostudy-dev library-status --verify
+```
+
+This automatically reports both `io.github.jferments.ostudy.dev` and `io.github.jferments.ostudy` without asking for a database path. If an existing development library contains anything valuable, create a whole-library backup using the currently qualified application before testing any conversion. The conversion/adoption test operates on an isolated copy first. Do not upload the library to GitHub.
 
 ### Before production-install acceptance
 

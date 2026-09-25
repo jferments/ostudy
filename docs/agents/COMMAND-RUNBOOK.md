@@ -10,6 +10,7 @@ Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is 
 ./scripts/ostudy-dev help
 ./scripts/ostudy-dev setup
 ./scripts/ostudy-dev doctor
+./scripts/ostudy-dev library-status
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
 ./scripts/ostudy-dev check-changed
@@ -41,6 +42,15 @@ Verify the ordinary contributor environment without rebuilding:
 ```
 
 Use `./scripts/ostudy-dev doctor --native-smoke` when WebDriver/native-smoke tools are also required. These contributor diagnostics intentionally do **not** assert the private Actions runner name, runner account, KVM sizing, runner workspace, or GitHub environment; those belong to `scripts/runner/` and CI only.
+
+For a read-only report of the automatically resolved production and development libraries:
+
+```bash
+./scripts/ostudy-dev library-status
+./scripts/ostudy-dev library-status --verify
+```
+
+The report never requires a hand-entered SQLite path. It reads `$XDG_DATA_HOME` (or `~/.local/share`) and checks the stable production/dev application identifiers. `--verify` additionally runs SQLite integrity and foreign-key checks. Close running oStudy processes first when using the report as migration/adoption evidence so WAL state is settled.
 
 ## Existing Linux checkout: build and test-drive
 
