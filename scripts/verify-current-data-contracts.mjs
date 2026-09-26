@@ -6,6 +6,7 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const failures = [];
 const [
   database,
+  release,
   repairs,
   prePublicLedger,
   recovery,
@@ -22,6 +23,7 @@ const [
   audit,
 ] = await Promise.all([
   read("src-tauri/src/database.rs"),
+  read("src-tauri/src/database/release.rs"),
   read("src-tauri/src/data_repairs.rs"),
   read("scripts/history/pre-public-v26/ledger.json"),
   read("scripts/restore_pre_public_backup.py"),
@@ -42,15 +44,22 @@ function requireText(label, source, needle) {
   if (!source.includes(needle)) failures.push(`${label} missing ${JSON.stringify(needle)}`);
 }
 
-requireText("public lineage", database, 'const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1"');
-requireText("schema 30", database, "pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;");
+requireText("legacy public lineage", database, 'const LEGACY_PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1"');
+requireText("legacy schema 30", database, "pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;");
+requireText("release lineage", release, 'pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";');
+requireText("release schema 1", release, "pub(crate) const SCHEMA_VERSION: i64 = 1;");
+requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
+requireText("staged legacy converter", release, "Backup::new(connection, &mut staged)");
+requireText("typed preservation receipt", release, "fn preservation_receipt(connection: &Connection)");
+requireText("atomic live ledger conversion", release, "transaction_with_behavior(TransactionBehavior::Immediate)");
+
 for (const [version, name] of [
   [1, "canonical_semantic_chunk_hashes"],
   [2, "canonical_block_hashes"],
   [3, "document_artifact_user_edits"],
 ]) {
-  requireText(`public repair ${version}`, repairs, `version: ${version},`);
-  requireText(`public repair ${version} name`, repairs, `name: "${name}"`);
+  requireText(`legacy public repair ${version}`, repairs, `version: ${version},`);
+  requireText(`legacy public repair ${version} name`, repairs, `name: "${name}"`);
 }
 const legacy = JSON.parse(prePublicLedger);
 if (legacy.schemaVersion !== 26 || JSON.stringify(legacy.acceptedSqliteUserVersions) !== "[0,26]") {
@@ -60,7 +69,10 @@ requireText("archived pre-public recovery", recovery, 'scripts" / "history" / "p
 requireText("explicit public-v1 conversion", recovery, 'PUBLIC_SCHEMA_LINEAGE = "ostudy-public-v1"');
 requireText("backup format", backup, 'const BACKUP_VERSION: i64 = 4;');
 requireText("backup package floor", backup, 'const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;');
-requireText("backup SQLite floor", backup, 'if !(10..=LATEST_SCHEMA_VERSION).contains(&version)');
+requireText("release backup admission", backup, "lineage == CURRENT_SCHEMA_LINEAGE");
+requireText("release backup schema", backup, "version == CURRENT_SCHEMA_VERSION");
+requireText("legacy backup admission", backup, 'lineage == "ostudy-public-v1"');
+requireText("legacy backup SQLite floor", backup, "(10..=LATEST_SCHEMA_VERSION).contains(&version)");
 requireText("studydeck writer", studydeck, 'const CURRENT_PACKAGE_VERSION: i64 = 3;');
 requireText("studydeck v2 reader", studydeck, 'const CORE_PACKAGE_VERSION: i64 = 2;');
 requireText("studydeck v1 reader", studydeck, 'const LEGACY_PACKAGE_VERSION: i64 = 1;');
@@ -77,10 +89,12 @@ requireText("knowledge schema v1", knowledge, 'pub(crate) const CONTENT_SCHEMA_V
 requireText("source identity v3", knowledge, 'self.identity_version == 3');
 requireText("source identity v2", knowledge, 'self.identity_version == 2');
 requireText("canonical document schema v1", canonicalDocument, 'pub(crate) const CANONICAL_DOCUMENT_SCHEMA_VERSION: i64 = 1;');
+
 for (const needle of [
-  "schema/user version **30**",
+  "ostudy-release-v1",
+  "schema **1**",
+  "legacy `ostudy-public-v1` schemas **10–30**",
   "repair versions **1–3**",
-  "schema **10–30**",
   "writer v3",
   "explicit source-checkout recovery",
 ]) requireText("audit document", audit, needle);
@@ -90,4 +104,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Post-#104 schema, repair, backup, interchange and compatibility audit matches current source.");
+console.log("OK   Release-v1 baseline, public-v1 compatibility, repairs, backups, interchange, and historical recovery match current source.");

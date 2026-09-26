@@ -4,6 +4,14 @@ Status: PR #106 / 106-C executable inventory. Baseline source: merged PR #104 pl
 
 The product has not had a public release. That permits a final pre-release consolidation, but only under the established rule: **migrate and verify first; archive second**. Never rewrite an installed learner library, migration checksum, backup or recovery path merely to make the tree look smaller.
 
+## 106-D current release baseline
+
+The 0.1 runtime baseline is `ostudy-release-v1`, schema **1**. Its canonical SQL is generated from the exact qualified `ostudy-public-v1` schema-30 result and protected by SHA-256. Fresh 0.1 libraries execute that one baseline directly instead of replaying thirty pre-release migrations.
+
+Legacy `ostudy-public-v1` schemas **10–30** remain supported complete-backup inputs. They are admitted by their immutable migration/repair ledgers, normalized through schema 30 and legacy repair versions **1–3**, then converted only after an isolated SQLite backup proves canonical-schema equality and a typed preservation receipt for every non-ledger SQLite value. The live conversion is one atomic metadata transaction: learner tables and managed files are not rewritten.
+
+The explicit source-checkout recovery path for final pre-public v26 remains separate. External interchange readers such as .studydeck writer v3/current legacy readers, generated JSON, trusted-device packages, and UI checkpoints are compatibility contracts rather than migration cruft.
+
 ## Current durable contracts
 
 | Surface | Current writer/current form | Supported reader/compatibility state | Disposition for 106-D |
