@@ -104,7 +104,7 @@ fn append_seed_rows(
     output: &mut String,
 ) -> Result<(), String> {
     let identifier = quote_identifier(table);
-    let mut statement = connection
+    let statement = connection
         .prepare(&format!("SELECT * FROM {identifier}"))
         .map_err(|error| format!("Could not inspect release seed table {table}: {error}"))?;
     let column_count = statement.column_count();
