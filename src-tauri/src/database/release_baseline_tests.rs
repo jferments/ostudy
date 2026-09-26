@@ -27,9 +27,24 @@ fn release_baseline_is_committed_and_matches_schema30() {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             use base64::Engine as _;
             use sha2::{Digest, Sha256};
+            use std::io::{Cursor, Write};
+            use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
-            let encoded =
-                base64::engine::general_purpose::STANDARD.encode(rendered.as_bytes());
+            let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+            writer
+                .start_file(
+                    "0001_release_baseline.sql",
+                    SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+                )
+                .expect("release baseline ZIP member should start");
+            writer
+                .write_all(rendered.as_bytes())
+                .expect("release baseline ZIP payload should write");
+            let compressed = writer
+                .finish()
+                .expect("release baseline ZIP should finish")
+                .into_inner();
+            let encoded = base64::engine::general_purpose::STANDARD.encode(compressed);
             let chunks = encoded.as_bytes().chunks(6000).collect::<Vec<_>>();
             eprintln!(
                 "OSTUDY_RELEASE_BASELINE_SHA256={:x}",
@@ -41,7 +56,7 @@ fn release_baseline_is_committed_and_matches_schema30() {
                 eprintln!("OSTUDY_RELEASE_BASELINE_CHUNK_{index:04}={chunk}");
             }
             panic!(
-                "The release baseline is not committed. Capture the generated base64 chunks."
+                "The release baseline is not committed. Capture the generated deflate ZIP chunks."
             );
         }
         Err(error) => panic!("Could not read the release baseline fixture: {error}"),
