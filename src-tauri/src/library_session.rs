@@ -231,7 +231,6 @@ fn unavailable() -> CommandError {
     )
 }
 
-
 pub(crate) fn asset_response<R: tauri::Runtime>(
     context: tauri::UriSchemeContext<'_, R>,
     request: tauri::http::Request<Vec<u8>>,
@@ -239,12 +238,16 @@ pub(crate) fn asset_response<R: tauri::Runtime>(
     use tauri::http::{header, HeaderValue, Response, StatusCode};
     let lease = enter_current();
     if lease.is_err() || context.app_handle().try_state::<Database>().is_none() {
-        return Response::builder().status(StatusCode::SERVICE_UNAVAILABLE)
+        return Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
             .header(header::CACHE_CONTROL, "no-store")
-            .body(Vec::new()).unwrap_or_else(|_| Response::new(Vec::new()));
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new()));
     }
     let _lease = lease;
     let mut response = crate::asset_protocol::respond(context, request);
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
 }
