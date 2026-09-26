@@ -7,13 +7,13 @@
 //! existing transactional implementation while moving the blocking work to the
 //! Tauri async runtime's blocking pool.
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
     database::Database,
     error::CommandError,
     library_backup::{
-        LibraryRestoreResultDto, PrepareLibraryBackupInput, PrepareLibraryRestoreInput,
+        live::LiveRestoreResult, PrepareLibraryBackupInput, PrepareLibraryRestoreInput,
         PreparedLibraryBackupDto,
     },
     paths::AppPaths,
@@ -36,13 +36,31 @@ pub async fn prepare_library_backup_async(
 pub async fn prepare_library_restore_async(
     app: AppHandle,
     input: PrepareLibraryRestoreInput,
-) -> Result<LibraryRestoreResultDto, CommandError> {
-    run_blocking(app, "library_restore_worker_interrupted", move |app| {
+    library_generation: Option<u64>,
+) -> Result<LiveRestoreResult, CommandError> {
+    let events = app.clone();
+    let result = run_blocking(app, "library_restore_worker_interrupted", move |app| {
         let database = app.state::<Database>();
         let paths = app.state::<AppPaths>();
-        crate::library_backup::prepare_library_restore(database, paths, input)
+        crate::library_backup::live::restore(&database, &paths, input, library_generation, || {
+            app.state::<crate::ai::AiRuntimeState>()
+                .clear_session_credentials()
+        })
     })
-    .await
+    .await;
+    // A lost IPC response does not hide committed activation from other views.
+    // The payload contains counts/operation identity, never learner text/keys.
+    if let Ok(restored) = &result {
+        let _ = events.emit("ostudy-library-restored", restored);
+    } else if let Err(error) = &result {
+        if error.code == "library_restore_rolled_back" {
+            let _ = events.emit(
+                "ostudy-library-restore-rolled-back",
+                serde_json::json!({ "message": error.message }),
+            );
+        }
+    }
+    result
 }
 
 async fn run_blocking<T, F>(

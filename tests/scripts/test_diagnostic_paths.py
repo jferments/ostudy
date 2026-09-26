@@ -79,7 +79,7 @@ class DiagnosticPathResolutionTests(unittest.TestCase):
         resolved = self.resolve({"XDG_DATA_HOME": "/tmp/xdg-data"})
         self.assertEqual(
             resolved,
-            "/tmp/xdg-data/io.github.jferments.ostudy/diagnostics/ostudy.jsonl",
+            "/tmp/xdg-data/io.github.jferments.ostudy.dev/diagnostics/ostudy.jsonl",
         )
 
     def test_explicit_artifact_root_wins_over_repository_default(self) -> None:

@@ -30,7 +30,7 @@ On a supported Ubuntu/Debian development system, run from the repository root:
 ./run-app.sh
 ```
 
-The setup wrapper installs the qualified system packages and pinned toolchains, installs locked project dependencies, provisions native PDF/runtime dependencies, and creates a standalone debug build. `run-app.sh` launches that existing matching build; it does not rebuild source.
+The setup wrapper installs the qualified system packages and pinned toolchains, installs locked project dependencies, provisions native PDF/runtime dependencies, and creates a standalone **oStudy Dev** build using `io.github.jferments.ostudy.dev`. `run-app.sh` launches that existing matching development build; it does not rebuild source and it does not open the production `io.github.jferments.ostudy` library. Production installation is a separate package/release path.
 
 After source changes:
 
@@ -66,9 +66,9 @@ pnpm android:smoke
 pnpm android:install
 ```
 
-The Android application uses platform document providers, Android Keystore, native `PdfRenderer`, bundled ML Kit Text Recognition v2, a foreground-service boundary for user-started long document work, and the private ostudy platform plugin for QR acquisition and Android-only lifecycle/file behavior. It does not package desktop PDFium or Tesseract.
+The Android application uses platform document providers, Android Keystore, native `PdfRenderer`, bundled open-source Tesseract OCR with pinned English trained data, a local ZXing QR scanner, a foreground-service boundary for user-started long document work, and the private ostudy platform plugin for Android-only lifecycle/file behavior. It does not package desktop PDFium or depend on a system-installed Tesseract runtime.
 
-Public Android distribution still requires permanent release-signing custody, Play App Signing, store metadata, privacy declarations, and signed-release qualification.
+Public Android distribution is not yet published. The planned direct path requires permanent release-signing-key custody, signed-release qualification, release metadata/checksums, and a signed APK; F-Droid is a later open-source distribution option. Google Play is not a prerequisite for direct APK distribution.
 
 ## Desktop build layers
 
@@ -91,7 +91,7 @@ The shared document system accepts PDF, Word, PowerPoint, OpenDocument, EPUB, RT
 PDF visual recovery uses narrow platform adapters:
 
 - desktop: pinned PDFium rendering and optional Tesseract OCR;
-- Android: platform `PdfRenderer` and bundled ML Kit Text Recognition v2.
+- Android: platform `PdfRenderer` plus bundled open-source Tesseract OCR with pinned English trained data.
 
 Shared Rust owns source planning, canonical provenance, checkpoints, provider tasks, generated-card validation, Study Guide publication, and durable state. Platform adapters do not reimplement those rules.
 
@@ -110,7 +110,7 @@ Android-affecting work also uses its compile/package and emulator gates. A succe
 
 ## Release artifacts
 
-The tagged release workflow currently produces Linux artifacts. Android workflows can produce unsigned QA APK/AAB artifacts, but the repository does not yet publish a signed public Android release. Windows, macOS, and iOS release artifacts remain future work.
+The tagged release workflow currently produces Linux artifacts. The Debian release path verifies that the built package does not own or delete the user XDG learner-data directory; normal package removal is defined to preserve that data. Android workflows can produce unsigned QA APK/AAB artifacts, but the repository does not yet publish a signed public Android release. Windows, macOS, and iOS release artifacts remain future work.
 
 ## After installation
 

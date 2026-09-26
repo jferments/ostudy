@@ -1,23 +1,113 @@
-# ADR 0038: Public database schema baseline
+# ADR 0038: Public and release database baselines
 
 ## Decision
 
-The first supported public schema lineage is `ostudy-public-v1`, represented by the immutable migration `0001_public_baseline.sql`. The final pre-release schema was built from all development migrations, validated, converted into canonical DDL plus seed rows, and checked against a committed semantic schema manifest.
+oStudy now has two explicit SQLite lineages with different responsibilities.
 
-The exact final development lineage—with all 26 immutable migration records and all 3 repair records—is adopted automatically rather than discarded. The historical migration runner did **not** stamp SQLite `PRAGMA user_version`, so real development databases normally report `user_version = 0`; the final migration ledger, terminal schema, and repair ledger are the authoritative version evidence. The adoption contract also accepts an explicitly stamped `user_version = 26` copy when every other final-lineage check matches.
+The historical public compatibility lineage is `ostudy-public-v1`. Its immutable
+migrations `0001_public_baseline.sql` through `0030_generation_operation_outcomes.sql`
+and repair records 1–3 remain supported input contracts. They are not the normal
+fresh-install path for the 0.1 release.
 
-Before changing that database, ostudy:
+The 0.1 runtime lineage is `ostudy-release-v1`, schema version **1**. Fresh
+libraries execute one canonical release baseline:
 
-1. verifies the complete embedded pre-public lineage contract;
+```text
+src-tauri/schema/0001_release_baseline.sql
+```
+
+That file is generated from the exact qualified result of public-v1 schema 30 plus
+the required legacy repairs. Its canonical SHA-256 is:
+
+```text
+64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8
+```
+
+The release migration ledger therefore contains one row named
+`release_baseline`; the release repair ledger starts empty. Future release
+migrations and repairs append from this baseline rather than replaying the thirty
+pre-release migrations on every new library.
+
+## Existing public-v1 libraries
+
+An existing `ostudy-public-v1` library remains a supported compatibility input.
+Normal startup:
+
+1. validates its exact known migration prefix without writing;
+2. validates every already-recorded legacy repair before applying any missing
+   prerequisite repair;
+3. migrates only through the immutable public-v1 registry until schema 30;
+4. applies and verifies legacy repairs 1–3;
+5. proves that the resulting SQLite schema matches the canonical release
+   baseline;
+6. creates an isolated SQLite Backup API copy;
+7. converts that isolated candidate to release-v1 metadata;
+8. compares a typed preservation receipt for every non-ledger SQLite value; and
+9. only after that proof, atomically replaces the live lineage, migration ledger,
+   repair ledger, and `PRAGMA user_version`.
+
+The lineage collapse does **not** rebuild learner-owned tables merely to make the
+migration history shorter. Decks, notes, cards, schedules, reviews, documents,
+study guides, Tutor history, provider metadata, and other retained application
+rows stay in place. Managed document/image files are not rewritten by the schema
+lineage conversion.
+
+The live metadata transaction changes only:
+
+```text
+schema_metadata.schema_lineage
+schema_migrations
+data_repairs
+PRAGMA user_version
+```
+
+After conversion the library is `ostudy-release-v1`, schema 1. Reopening that
+current release library is a no-op.
+
+## Backup compatibility
+
+Whole-library backup remains distinct from runtime schema initialization.
+
+Current backups may contain `ostudy-release-v1` / schema 1. Supported historical
+whole-library backups may contain `ostudy-public-v1` schemas 10–30. Historical
+public-v1 inputs are validated with their immutable migration and repair evidence,
+then normalized and converted through the same release boundary during restore.
+
+No backup reader is allowed to treat an arbitrary schema number or relabelled
+SQLite file as a supported library.
+
+## Pre-public recovery
+
+The exact final development lineage from before the public baseline remains
+recoverable, but automatic pre-public adoption is not part of ordinary runtime
+startup.
+
+The archived explicit recovery utility:
+
+1. verifies the complete embedded final-v26 contract;
 2. runs SQLite integrity and foreign-key checks;
-3. creates a consistent SQLite backup in the application-data directory;
-4. transactionally changes only the schema elements that differ from the public baseline;
-5. replaces the development ledgers with `ostudy-public-v1` / migration 1;
-6. verifies all application-table row counts and critical deck, note, card, review, attribution, and AI-profile identities are unchanged;
-7. reopens the database through the normal public migration verifier.
+3. creates a consistent staging backup;
+4. converts only a staging copy into the historical public-v1 baseline;
+5. verifies retained identities/counts; and
+6. lets normal public-v1 compatibility handling take over afterward.
 
-Older, partial, checksum-mismatched, damaged, or otherwise unrecognized development databases are not guessed at and are not reset automatically. They remain unchanged and produce a manual-recovery dialog. An archived exact-v26 application-data directory can be copied back non-destructively with `scripts/restore_pre_public_backup.py`; the existing active directory and the original archive are both retained.
+Older, partial, checksum-mismatched, damaged, or otherwise unrecognized
+development databases are not guessed at or silently reset.
 
-`scripts/reset-pre-public-data.sh` is no longer the normal transition. It is an explicit empty-library operation and requires `--confirm-empty-library`, wording that makes the loss of active visibility for decks, cards, reviews, analytics, documents, and settings unmistakable. It still archives rather than deletes the previous directory.
+`scripts/reset-pre-public-data.sh` remains an explicit empty-library recovery
+operation. It requires `--confirm-empty-library` and archives rather than silently
+deleting the previous directory.
 
-Historical repair results are folded into the baseline. The independent repair framework remains with an empty public registry, ready for future versioned repairs. Future public migrations begin at version 2 and are append-only and checksum-protected.
+## Immutability
+
+Released compatibility inputs are evidence.
+
+- Do not rewrite public-v1 migration bytes or checksums.
+- Do not rewrite historical repair contracts merely to match a new implementation.
+- Do not manually stamp `PRAGMA user_version` on a learner library.
+- Do not delete migration/repair ledgers on the workstation as a migration shortcut.
+- Do not remove historical readers while supported backups still depend on them.
+
+Future release schema changes are ordinary new release migrations/repairs from the
+release-v1 baseline unless another explicitly reviewed baseline consolidation is
+later justified and independently proven.

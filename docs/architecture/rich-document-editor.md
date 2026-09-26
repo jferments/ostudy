@@ -1,4 +1,4 @@
-# Rich-document editor boundary and schema version 2
+# Rich-document editor boundary and schema versions
 
 ## Contract and current consumers
 
@@ -8,11 +8,11 @@ Toolbar groups follow advertised capabilities. Cards and templates consume the r
 
 ## Independent schema versions
 
-Canonical roots can carry `attrs.schemaVersion = 2`. Supported older schema-1 documents remain readable. The existing database `content_schema_version` remains the released `tiptap-json` transport-envelope version; the canonical rich-root version is independent.
+Canonical roots support `attrs.schemaVersion` **1 through 3**. The existing database `content_schema_version` remains the released `tiptap-json` transport-envelope version 1; the canonical rich-root version is independent.
 
-Version 2 adds mutually exclusive subscript/superscript marks; table/row/header/cell nodes; task lists/items; ordinary or answer-key task-list mode; checked state and stable item IDs; and validated table span/column-width attributes.
+Version 2 adds mutually exclusive subscript/superscript marks; table/row/header/cell nodes; task lists/items; ordinary or answer-key task-list mode; checked state and stable item IDs; and validated table span/column-width attributes. Version 3 adds typed inline/block mathematics plus managed local audio/video atoms. The native schema-3 admission layer validates those atoms, projects only the validation view onto the schema-2 structural validator, and stores the original schema-3 document unchanged.
 
-Rust validates root/version, nodes/marks/attributes, parent-child structure, table shape, checklist identities/mode, image references, links, style bounds, size, and depth. It derives authoritative searchable text, including table separators and task state. A frontend plain-text snapshot is not trusted as the canonical content. See [card/data model](card-format-and-data-model.md) and [native validator](../../src-tauri/src/cards/content.rs).
+Rust validates root/version, nodes/marks/attributes, parent-child structure, table shape, checklist identities/mode, image/media references, links, style bounds, size, depth, math source and managed-media identity. It derives authoritative searchable text rather than trusting a frontend plain-text snapshot. See [card/data model](card-format-and-data-model.md), [schema-3 admission](../../src-tauri/src/cards/rich_content.rs), and the underlying [structural validator](../../src-tauri/src/cards/content.rs).
 
 ## Tables
 
@@ -42,6 +42,6 @@ Allowed links and structured formatting are validated at save/import boundaries.
 
 ## Deferred capabilities
 
-Mathematics rendering needs a typed source grammar, sanitizer/validation policy, native/PDF parity, accessibility text, and format compatibility; raw provider HTML is not a shortcut. Find/replace across tables/checklists needs dedicated selection semantics. A persistent character counter should follow an actual authoring need rather than clutter every screen; native bounds already apply.
+Mathematics and managed audio/video are current typed schema-3 atoms; raw provider HTML is not a shortcut. Further math/media expansion still requires native/PDF/accessibility/interchange parity. Find/replace across tables/checklists needs dedicated selection semantics. A persistent character counter should follow an actual authoring need rather than clutter every screen; native bounds already apply.
 
 Future backend replacement must preserve schema compatibility and adapter behavior across card, template, read-only, draft, interchange, and native validation tests. It does not require exposing third-party editor types to every consumer or changing SQLite to match toolbar layout.

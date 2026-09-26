@@ -102,7 +102,7 @@ step "Rust unit, integration, and migration-fixture tests"
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 
 step "Standalone Tauri build"
-pnpm tauri build --debug --no-bundle --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 [[ -x "$OSTUDY_CARGO_BINARY" ]]
 ostudy_stage_standalone_build

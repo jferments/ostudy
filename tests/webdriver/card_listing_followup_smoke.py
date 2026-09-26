@@ -8,6 +8,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -97,45 +98,48 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     return deck_name, question, answer
 
 
-def listing_snapshot(session_id: str) -> dict[str, Any]:
-    measurement = ui.execute(
-        session_id,
-        """
-        const row = document.querySelector("main [role='table'][aria-label='Matching cards'] [role='row']");
-        if (!(row instanceof HTMLElement)) return null;
-        const screenReaderLabels = [...row.querySelectorAll("span")]
-          .filter((span) => {
-            const text = (span.textContent || "").trim();
-            return text === "Question:" || text === "Answer:";
-          });
-        if (screenReaderLabels.length !== 2) return null;
-        const lines = screenReaderLabels
-          .map((label) => label.parentElement)
-          .filter((line) => line instanceof HTMLElement);
-        if (lines.length !== 2 || lines[0].parentElement !== lines[1].parentElement) return null;
-        const sides = lines[0].parentElement;
-        if (!(sides instanceof HTMLElement)) return null;
-        const q = lines[0].getBoundingClientRect();
-        const a = lines[1].getBoundingClientRect();
-        const visualLabel = (line) => [...line.children]
-          .find((child) => child.getAttribute?.("aria-hidden") === "true")?.textContent?.trim() || "";
-        return {
-          structureSignature: `${sides.tagName}:${lines.map((line) => line.tagName).join(",")}`,
-          lineCount: lines.length,
-          qLabel: visualLabel(lines[0]),
-          aLabel: visualLabel(lines[1]),
-          question: (lines[0].querySelector('strong')?.textContent || '').trim(),
-          answer: (lines[1].querySelector('strong')?.textContent || '').trim(),
-          qTop: q.top,
-          aTop: a.top,
-          arrowCount: [...sides.querySelectorAll('[aria-hidden=true]')]
-            .filter((element) => (element.textContent || '').includes('→')).length,
-        };
-        """,
-    )
-    if not isinstance(measurement, dict):
-        raise AssertionError(f"Shared card listing was not measurable: {measurement!r}")
-    return measurement
+def listing_snapshot(session_id: str, deadline: float) -> dict[str, Any]:
+    measurement: Any = None
+    while time.monotonic() < deadline:
+        measurement = ui.execute(
+            session_id,
+            """
+            const row = document.querySelector("main [role='table'][aria-label='Matching cards'] [role='row']");
+            if (!(row instanceof HTMLElement)) return null;
+            const screenReaderLabels = [...row.querySelectorAll("span")]
+              .filter((span) => {
+                const text = (span.textContent || "").trim();
+                return text === "Question:" || text === "Answer:";
+              });
+            if (screenReaderLabels.length !== 2) return null;
+            const lines = screenReaderLabels
+              .map((label) => label.parentElement)
+              .filter((line) => line instanceof HTMLElement);
+            if (lines.length !== 2 || lines[0].parentElement !== lines[1].parentElement) return null;
+            const sides = lines[0].parentElement;
+            if (!(sides instanceof HTMLElement)) return null;
+            const q = lines[0].getBoundingClientRect();
+            const a = lines[1].getBoundingClientRect();
+            const visualLabel = (line) => [...line.children]
+              .find((child) => child.getAttribute?.("aria-hidden") === "true")?.textContent?.trim() || "";
+            return {
+              structureSignature: `${sides.tagName}:${lines.map((line) => line.tagName).join(",")}`,
+              lineCount: lines.length,
+              qLabel: visualLabel(lines[0]),
+              aLabel: visualLabel(lines[1]),
+              question: (lines[0].querySelector('strong')?.textContent || '').trim(),
+              answer: (lines[1].querySelector('strong')?.textContent || '').trim(),
+              qTop: q.top,
+              aTop: a.top,
+              arrowCount: [...sides.querySelectorAll('[aria-hidden=true]')]
+                .filter((element) => (element.textContent || '').includes('→')).length,
+            };
+            """,
+        )
+        if isinstance(measurement, dict):
+            return measurement
+        time.sleep(0.1)
+    raise AssertionError(f"Shared card listing was not measurable before deadline: {measurement!r}")
 
 
 def assert_shared_listing(
@@ -158,14 +162,19 @@ def assert_shared_listing(
         raise AssertionError(f"{label} still renders the old Q→A arrow: {measurement!r}")
 
 
-def assert_deck_browser(session_id: str, question: str, answer: str) -> dict[str, Any]:
+def assert_deck_browser(
+    session_id: str,
+    question: str,
+    answer: str,
+    deadline: float,
+) -> dict[str, Any]:
     filter_count = ui.execute(
         session_id,
         "return document.querySelectorAll(\"main section[aria-label='Card filters']\").length;",
     )
     if int(filter_count) != 0:
         raise AssertionError("Deck detail exposed the advanced Search/Filter form")
-    measurement = listing_snapshot(session_id)
+    measurement = listing_snapshot(session_id, deadline)
     assert_shared_listing(measurement, question, answer, "Deck detail")
     return measurement
 
@@ -257,7 +266,7 @@ def assert_search_browser(
         "main [role='table'][aria-label='Matching cards']",
         deadline,
     )
-    measurement = listing_snapshot(session_id)
+    measurement = listing_snapshot(session_id, deadline)
     assert_shared_listing(measurement, question, answer, "Search/Filter")
     if measurement.get("structureSignature") != deck_measurement.get("structureSignature"):
         raise AssertionError(
@@ -294,7 +303,7 @@ def main() -> int:
         deadline = webdriver.deadline_after(60)
         assert_medium_navigation(session_id, deadline)
         deck_name, question, answer = create_card(session_id, deadline)
-        deck_measurement = assert_deck_browser(session_id, question, answer)
+        deck_measurement = assert_deck_browser(session_id, question, answer, deadline)
         assert_search_browser(session_id, question, answer, deck_measurement, deadline)
         tutor_smoke.verify_tutor_and_contextual_return(session_id, deck_name)
         print(

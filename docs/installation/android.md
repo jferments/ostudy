@@ -118,7 +118,7 @@ API 36 emulator smoke:
 pnpm android:smoke
 ```
 
-Linux developers should use the Ratatui console for maintained desktop gates:
+Linux developers should use the maintained plain-text developer wrapper for desktop gates:
 
 ```bash
 ./scripts/ostudy-dev check-fast
@@ -132,9 +132,9 @@ The emulator suite covers representative launch/migration/study/persistence/rest
 
 Android uses the shared managed document pipeline. Supported sources include PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV. Current non-PDF sources use the in-process Xberg adapter and normalize into the same ostudy-owned canonical source model as desktop.
 
-For PDFs, embedded text/structure is inspected first; pages needing visual recovery are rendered with Android `PdfRenderer`; selected rendered pages use bundled ML Kit Text Recognition v2 (Latin) for OCR. Shared Rust owns selection, limits, cancellation, checkpoints, learning plans, provider tasks, validation, and final database publication.
+For PDFs, embedded text/structure is inspected first; pages needing visual recovery are rendered with Android `PdfRenderer`; selected rendered pages use bundled Tesseract4Android with the pinned English `tessdata_fast` asset for OCR. Shared Rust owns selection, limits, cancellation, checkpoints, learning plans, provider tasks, validation, and final database publication.
 
-Android does not require desktop PDFium, Tesseract, Tesseract4Android, or separately installed `tessdata`.
+Android does not require desktop PDFium or a separately installed Tesseract/tessdata runtime. Tesseract4Android and the verified English trained-data asset are packaged with the application.
 
 A user-started long document task can acquire a foreground service with a visible notification and bounded wake lock. Process death/reboot can still terminate execution; durable checkpoints/startup reconciliation make it retryable without silently resending provider requests.
 
@@ -168,7 +168,7 @@ Current direct-USB hosting is Linux desktop → Android. Unsupported desktop bui
 
 ### Local-network synchronization
 
-LAN sync remains available over a trusted private Wi-Fi/Ethernet network. The sender creates **Create network sync offer**; Android can accept with Google Code Scanner through Play services or pasted invitation text.
+LAN sync remains available over a trusted private Wi-Fi/Ethernet network. The sender creates **Create network sync offer**; Android can accept with the local open-source ZXing scanner or pasted invitation text.
 
 A successful scan provides decoded invitation data to native protocol validation. The receiver does not get a second independent scope selector; the authenticated sender selection defines the package.
 
@@ -194,7 +194,7 @@ Multi-ABI Android App Bundle:
 pnpm android:build:aab
 ```
 
-An AAB is store input, not directly installable. Release signing material stays outside the repository. Public distribution still requires permanent signing custody, Play App Signing, store metadata/privacy declarations, and signed-release qualification.
+An AAB is store input, not directly installable. Release signing material stays outside the repository. The planned public direct-distribution path is a long-lived signed universal APK with checksums/certificate fingerprint and signed-release qualification; F-Droid is a later option. Google Play/Play App Signing is not required for direct APK distribution.
 
 ## Android storage and permissions
 
@@ -214,7 +214,7 @@ Device synchronization can transfer supported saved credentials only after expli
 
 ## Manual acceptance for Android-affecting changes
 
-Use the maintained install wrapper and test only relevant real-device paths. Human-only checks may include system insets/keyboard, persistence/restart, Practice/Analytics, Android system import/export/share, saved credentials/provider connectivity, representative document processing, foreground execution/cancel/retry, Google Code Scanner, and direct USB.
+Use the maintained install wrapper and test only relevant real-device paths. Human-only checks may include system insets/keyboard, persistence/restart, Practice/Analytics, Android system import/export/share, saved credentials/provider connectivity, representative document processing, foreground execution/cancel/retry, local ZXing camera scanning, and direct USB.
 
 For direct USB acceptance specifically verify:
 

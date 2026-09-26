@@ -80,7 +80,7 @@ mkdir -p "$CAPTURE_HOME"/{data,config,cache,state,runtime,target} \
   "$CAPTURE_HOME/window-manager/config" \
   "$CAPTURE_HOME/window-manager/cache"
 chmod 0700 "$CAPTURE_HOME/runtime"
-APP_DATA_DIR="$CAPTURE_HOME/data/io.github.jferments.ostudy"
+APP_DATA_DIR="$CAPTURE_HOME/data/io.github.jferments.ostudy.dev"
 
 window_manager_ready() {
   xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null |
@@ -129,7 +129,7 @@ printf '[ui-performance] Building isolated React profiling application\n'
   cd "$ROOT_DIR"
   CARGO_TARGET_DIR="$CAPTURE_HOME/target" \
   OSTUDY_UI_PERFORMANCE_CAPTURE=1 \
-    pnpm tauri build --debug --no-bundle --ci -- --locked
+    pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked
 )
 APPLICATION="$CAPTURE_HOME/target/debug/ostudy"
 [[ -x "$APPLICATION" ]] || {

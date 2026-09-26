@@ -57,9 +57,29 @@ def create_final_pre_public_backup(
                 captured_deck_name TEXT NOT NULL
             ) STRICT;
             CREATE TABLE ai_provider_profiles (
-                id TEXT PRIMARY KEY,
-                display_name TEXT NOT NULL
+                id TEXT PRIMARY KEY CHECK(length(id) = 32),
+                display_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                provider_kind TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                model_id TEXT NOT NULL DEFAULT '',
+                auth_mode TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                allow_insecure_http INTEGER NOT NULL DEFAULT 0,
+                request_timeout_ms INTEGER NOT NULL DEFAULT 60000,
+                credential_storage TEXT NOT NULL DEFAULT 'none',
+                credential_epoch INTEGER NOT NULL DEFAULT 0,
+                revision INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                deleted_at INTEGER
             ) STRICT;
+            INSERT INTO ai_provider_profiles VALUES (
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'Local model', 'local model', 'llama_cpp',
+                'http://127.0.0.1:8080', 'local', 'none', 1, 1, 60000,
+                'none', 0, 1, 1000, 1000, NULL
+            );
             INSERT INTO decks VALUES ('deck-1', 'Preserved deck');
             INSERT INTO notes VALUES ('note-1', 'deck-1');
             INSERT INTO cards VALUES ('card-1', 'note-1', 'deck-1');
@@ -97,9 +117,10 @@ class PrePublicRestoreTests(unittest.TestCase):
             active.mkdir()
             (active / "new-public-attempt.txt").write_text("preserve this too")
 
-            archived_active, restored = restore.restore_backup(backup, active)
+            archived_active, restored, preserved_source = restore.restore_backup(backup, active)
 
             self.assertEqual(restored, active)
+            self.assertEqual(preserved_source, backup)
             self.assertIsNotNone(archived_active)
             assert archived_active is not None
             self.assertTrue((archived_active / "new-public-attempt.txt").is_file())
@@ -107,9 +128,24 @@ class PrePublicRestoreTests(unittest.TestCase):
                 (active / "assets" / "images" / "preserved.png").read_bytes(),
                 b"preserved-image",
             )
-            self.assertEqual(file_sha256(active / "library.sqlite3"), backup_hash)
+            self.assertNotEqual(file_sha256(active / "library.sqlite3"), backup_hash)
             self.assertEqual(file_sha256(database), backup_hash)
             self.assertTrue(backup.is_dir(), "the original backup must remain intact")
+            with sqlite3.connect(active / "library.sqlite3") as connection:
+                self.assertEqual(
+                    connection.execute("SELECT value FROM schema_metadata WHERE key='schema_lineage'").fetchone()[0],
+                    restore.PUBLIC_SCHEMA_LINEAGE,
+                )
+                self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 1)
+                self.assertEqual(
+                    connection.execute("SELECT version, name, checksum FROM schema_migrations").fetchall(),
+                    [(1, restore.PUBLIC_BASELINE_NAME, restore.PUBLIC_BASELINE_CHECKSUM)],
+                )
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM data_repairs").fetchone()[0], 0)
+                self.assertIn(
+                    "require_zero_data_retention",
+                    restore.column_names(connection, "ai_provider_profiles"),
+                )
 
     def test_explicitly_stamped_v26_marker_is_also_accepted(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-stamped-") as root_value:
@@ -121,12 +157,33 @@ class PrePublicRestoreTests(unittest.TestCase):
             backup_hash = file_sha256(database)
             active = root / "active"
 
-            archived_active, restored = restore.restore_backup(backup, active)
+            archived_active, restored, preserved_source = restore.restore_backup(backup, active)
 
             self.assertIsNone(archived_active)
             self.assertEqual(restored, active)
-            self.assertEqual(file_sha256(active / "library.sqlite3"), backup_hash)
+            self.assertEqual(preserved_source, backup)
+            self.assertNotEqual(file_sha256(active / "library.sqlite3"), backup_hash)
             self.assertEqual(file_sha256(database), backup_hash)
+
+    def test_in_place_recovery_creates_immutable_source_archive_first(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-in-place-") as root_value:
+            root = Path(root_value)
+            active = root / "io.github.jferments.ostudy"
+            database = create_final_pre_public_backup(active)
+            source_hash = file_sha256(database)
+
+            archived_active, restored, preserved_source = restore.restore_backup(active, active)
+
+            self.assertEqual(restored, active)
+            self.assertIsNotNone(archived_active)
+            self.assertNotEqual(preserved_source, active)
+            self.assertTrue(preserved_source.is_dir())
+            self.assertEqual(file_sha256(preserved_source / "library.sqlite3"), source_hash)
+            with sqlite3.connect(active / "library.sqlite3") as connection:
+                self.assertEqual(
+                    connection.execute("SELECT value FROM schema_metadata WHERE key='schema_lineage'").fetchone()[0],
+                    restore.PUBLIC_SCHEMA_LINEAGE,
+                )
 
     def test_unknown_sqlite_marker_is_rejected_without_moving_active_data(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-pre-public-marker-") as root_value:

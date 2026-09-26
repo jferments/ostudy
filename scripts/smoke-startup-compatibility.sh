@@ -43,11 +43,12 @@ DATA_HOME="$TEMP_ROOT/data"
 CONFIG_HOME="$TEMP_ROOT/config"
 CACHE_HOME="$TEMP_ROOT/cache"
 STATE_HOME="$TEMP_ROOT/state"
-APP_DATA="$DATA_HOME/io.github.jferments.ostudy"
-DATABASE="$APP_DATA/library.sqlite3"
+APP_DATA="$DATA_HOME/io.github.jferments.ostudy.dev"
+LEGACY_SOURCE="$TEMP_ROOT/pre-public-v26-source"
+DATABASE="$LEGACY_SOURCE/library.sqlite3"
 APPLICATION_LOG="$APP_DATA/diagnostics/ostudy.jsonl"
 COMMAND_LOG="$TEMP_ROOT/startup.log"
-mkdir -p "$APP_DATA" "$CONFIG_HOME" "$CACHE_HOME" "$STATE_HOME"
+mkdir -p "$DATA_HOME" "$LEGACY_SOURCE" "$CONFIG_HOME" "$CACHE_HOME" "$STATE_HOME"
 
 python3 - "$ROOT_DIR" "$DATABASE" <<'PY'
 from __future__ import annotations
@@ -219,12 +220,18 @@ if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
 connection.close()
 PY
 
-before_decks="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM decks;')"
-before_cards="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM cards;')"
-before_reviews="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_events;')"
-before_attributions="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_event_attributions;')"
 
-printf '\n==> Built-binary final pre-public database adoption boundary\n'
+source_database="$LEGACY_SOURCE/library.sqlite3"
+source_hash_before="$(sha256sum "$source_database" | awk '{print $1}')"
+before_decks="$(sqlite3 "$source_database" 'SELECT COUNT(*) FROM decks;')"
+before_cards="$(sqlite3 "$source_database" 'SELECT COUNT(*) FROM cards;')"
+before_reviews="$(sqlite3 "$source_database" 'SELECT COUNT(*) FROM review_events;')"
+before_attributions="$(sqlite3 "$source_database" 'SELECT COUNT(*) FROM review_event_attributions;')"
+
+cp -a -- "$LEGACY_SOURCE" "$APP_DATA"
+refused_hash_before="$(sha256sum "$APP_DATA/library.sqlite3" | awk '{print $1}')"
+
+printf '\n==> Current runtime refuses historical v26 without writing it\n'
 set +e
 XDG_DATA_HOME="$DATA_HOME" \
 XDG_CONFIG_HOME="$CONFIG_HOME" \
@@ -237,86 +244,98 @@ set -e
 
 if [[ "$status" -ne 124 ]]; then
   cat "$COMMAND_LOG" >&2
-  printf 'ERROR: adopted-data startup exited with status %s instead of remaining alive as a usable application.\n' "$status" >&2
-  ostudy_capture_failure_artifacts \
-    "Native startup compatibility smoke" \
-    "$status" \
-    "$COMMAND_LOG" \
-    "$APPLICATION_LOG"
+  printf 'ERROR: historical-v26 refusal exited with status %s instead of waiting on the recovery dialog.\n' "$status" >&2
   exit 1
 fi
-
 [[ -f "$APPLICATION_LOG" ]] || {
+  printf 'ERROR: historical-v26 refusal did not create the structured application log.\n' >&2
+  exit 1
+}
+grep -F '"event":"application_startup_blocked"' "$APPLICATION_LOG" >/dev/null || {
   cat "$COMMAND_LOG" >&2
-  printf 'ERROR: startup compatibility smoke did not create the structured application log.\n' >&2
+  printf 'ERROR: current runtime did not block historical-v26 startup.\n' >&2
+  exit 1
+}
+if grep -Eq 'pre_public_database_adoption_completed|"event":"application_started"' "$APPLICATION_LOG"; then
+  printf 'ERROR: current runtime still appears to auto-adopt historical-v26 data.\n' >&2
+  exit 1
+fi
+refused_hash_after="$(sha256sum "$APP_DATA/library.sqlite3" | awk '{print $1}')"
+[[ "$refused_hash_before" == "$refused_hash_after" ]] || {
+  printf 'ERROR: refused historical-v26 database bytes changed during startup.\n' >&2
   exit 1
 }
 
-grep -F '"event":"pre_public_database_adoption_completed"' "$APPLICATION_LOG" >/dev/null || {
-  cat "$COMMAND_LOG" >&2
-  printf 'ERROR: exact v26 startup did not complete data-preserving adoption.\n' >&2
+rm -f -- "$APPLICATION_LOG" "$COMMAND_LOG"
+printf '\n==> Explicit historical-v26 recovery on an isolated copy\n'
+bash "$SCRIPT_DIR/transition-pre-public-data.sh" \
+  --data-dir "$APP_DATA" \
+  --source-backup "$LEGACY_SOURCE" \
+  --confirm
+
+source_hash_after="$(sha256sum "$source_database" | awk '{print $1}')"
+[[ "$source_hash_before" == "$source_hash_after" ]] || {
+  printf 'ERROR: explicit recovery changed the preserved historical source.\n' >&2
   exit 1
 }
+lineage_after_recovery="$(sqlite3 "$APP_DATA/library.sqlite3" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
+version_after_recovery="$(sqlite3 "$APP_DATA/library.sqlite3" 'PRAGMA user_version;')"
+[[ "$lineage_after_recovery" == "ostudy-public-v1" && "$version_after_recovery" == "1" ]] || {
+  printf 'ERROR: explicit recovery did not install a public-v1 baseline copy.\n' >&2
+  exit 1
+}
+
+printf '\n==> Current runtime migrates the recovered public-v1 copy\n'
+set +e
+XDG_DATA_HOME="$DATA_HOME" \
+XDG_CONFIG_HOME="$CONFIG_HOME" \
+XDG_CACHE_HOME="$CACHE_HOME" \
+XDG_STATE_HOME="$STATE_HOME" \
+OSTUDY_LOG='warn,ostudy.app=debug,ostudy.database=debug' \
+  timeout --signal=TERM 8s "$OSTUDY_BINARY" >"$COMMAND_LOG" 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 124 ]]; then
+  cat "$COMMAND_LOG" >&2
+  printf 'ERROR: recovered public-v1 startup exited with status %s instead of remaining usable.\n' "$status" >&2
+  exit 1
+fi
 grep -F '"event":"application_started"' "$APPLICATION_LOG" >/dev/null || {
   cat "$COMMAND_LOG" >&2
-  printf 'ERROR: the application did not finish startup after pre-public adoption.\n' >&2
+  printf 'ERROR: current runtime did not finish startup after explicit recovery.\n' >&2
   exit 1
 }
-
 if grep -Eq 'application_startup_blocked|panicked at|Failed to setup app|panic_captured' "$COMMAND_LOG" "$APPLICATION_LOG"; then
   cat "$COMMAND_LOG" >&2
-  printf 'ERROR: an adoptable final pre-public database reached a blocked or panic path.\n' >&2
+  printf 'ERROR: recovered public-v1 data reached a blocked or panic path.\n' >&2
   exit 1
 fi
 
-lineage="$(sqlite3 "$DATABASE" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
-schema_version="$(sqlite3 "$DATABASE" 'PRAGMA user_version;')"
-migrations="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum FROM schema_migrations ORDER BY version;')"
-repairs="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum, changed_rows FROM data_repairs ORDER BY version;')"
-expected_schema_version="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --latest)"
-expected_migrations="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --ledger)"
-expected_repairs="$(cat <<'EOF'
-1|canonical_semantic_chunk_hashes|779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f|0
-2|canonical_block_hashes|02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085|0
-3|document_artifact_user_edits|14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031|0
-EOF
+status_json="$(
+  XDG_DATA_HOME="$DATA_HOME" \
+    python3 "$SCRIPT_DIR/library-status.py" --profile development --verify --json
 )"
-after_decks="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM decks;')"
-after_cards="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM cards;')"
-after_reviews="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_events;')"
-after_attributions="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_event_attributions;')"
+release_state="$(
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["libraries"][0]["state"])' \
+    <<<"$status_json"
+)"
+[[ "$release_state" == "release-current" ]] || {
+  printf '%s\n' "$status_json" >&2
+  printf 'ERROR: recovered database did not reach the verified release-v1 baseline.\n' >&2
+  exit 1
+}
 
-[[ "$lineage" == "ostudy-public-v1" ]] || {
-  printf 'ERROR: adopted database has unexpected lineage: %s\n' "$lineage" >&2
-  exit 1
-}
-[[ "$schema_version" == "$expected_schema_version" ]] || {
-  printf 'ERROR: adopted database has unexpected SQLite schema version: %s (expected %s)\n' \
-    "$schema_version" "$expected_schema_version" >&2
-  exit 1
-}
-[[ "$migrations" == "$expected_migrations" ]] || {
-  printf 'ERROR: adopted database has unexpected current migration ledger:\n%s\n' "$migrations" >&2
-  printf 'Expected current migration ledger:\n%s\n' "$expected_migrations" >&2
-  exit 1
-}
-[[ "$repairs" == "$expected_repairs" ]] || {
-  printf 'ERROR: adopted database has unexpected canonical repair ledger:\n%s\n' "$repairs" >&2
-  exit 1
-}
+after_decks="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM decks;')"
+after_cards="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM cards;')"
+after_reviews="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_events;')"
+after_attributions="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_event_attributions;')"
 [[ "$before_decks" == "$after_decks" && "$before_cards" == "$after_cards" ]] || {
-  printf 'ERROR: decks or cards changed during pre-public adoption.\n' >&2
+  printf 'ERROR: decks or cards changed across explicit recovery/current migration.\n' >&2
   exit 1
 }
 [[ "$before_reviews" == "$after_reviews" && "$before_attributions" == "$after_attributions" ]] || {
-  printf 'ERROR: review or analytics attribution rows changed during pre-public adoption.\n' >&2
+  printf 'ERROR: review or analytics attribution rows changed across explicit recovery/current migration.\n' >&2
   exit 1
 }
 
-backup_count="$(find "$APP_DATA" -maxdepth 1 -type f -name 'library.sqlite3.pre-public-v26-*.backup' | wc -l)"
-[[ "$backup_count" -eq 1 ]] || {
-  printf 'ERROR: expected one consistent pre-public SQLite backup, found %s.\n' "$backup_count" >&2
-  exit 1
-}
-
-printf 'Native startup compatibility smoke passed: the built application backed up and adopted the actual historical final-v26 database, migrated it through the complete current public lineage, preserved decks/cards/reviews/analytics, completed startup, and did not enter a reset or panic path.\n'
+printf 'Native startup compatibility smoke passed: the current runtime refused historical-v26 data unchanged, explicit recovery converted only an isolated copy to public-v1, and ordinary startup normalized and preservation-converted it to release-v1 schema 1 with learner data preserved.\n'

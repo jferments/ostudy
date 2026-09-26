@@ -26,12 +26,17 @@ See [Unified Linux/Android runner](unified-linux-android-runner.md) and [runner 
 
 ## Local validation tiers
 
+Contributor machines use the repository-owned commands below directly. They do not need the repository owner's Actions runner registration, runner username, VM sizing/KVM policy, GitHub workspace variables, or release-signing credentials. GitHub Actions adds runner-specific isolation/resource preflights and then calls these same maintained wrappers.
+
 ```bash
+./scripts/ostudy-dev doctor
 ./scripts/check-changed.sh
 ./scripts/check-static.sh
 ./scripts/check-fast.sh
 ./scripts/check.sh
 ```
+
+Use `./scripts/ostudy-dev doctor --native-smoke` to verify WebDriver/native-smoke prerequisites installed by the full Ubuntu/Debian contributor setup.
 
 ### `check-changed.sh`
 
@@ -51,7 +56,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current public migration registry is defined by `src-tauri/src/database.rs` (schema version 17 at the LK-02 checkpoint). Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
+The current 0.1 runtime lineage is `ostudy-release-v1`, schema 1, defined by the canonical release baseline under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
 
 ### Exact-tree reuse
 
@@ -201,7 +206,7 @@ See [Failure triage](../agents/FAILURE-TRIAGE.md).
 
 The full gate uses isolated app data and built binaries. It verifies representative first-run/public migration, supported pre-public adoption, startup reconciliation, persistence, and application workflows rather than relying only on in-memory tests.
 
-The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving adoption into `ostudy-public-v1`; this historical v26 input must not be confused with the current public migration count/version.
+The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving recovery into the historical `ostudy-public-v1` compatibility lineage. Current runtime startup subsequently converges supported public-v1 data to `ostudy-release-v1` / schema 1; neither historical v26 nor public-v1 schema 30 should be described as the fresh-release schema.
 
 Native WebDriver uses fresh isolated XDG/application data and exercises representative built-app behavior: current visible destinations/internal Practice, fresh library/authoring, deck-context Practice return and review completion, Analytics/restart persistence, responsive shell geometry, current Study Guides behavior, dialogs/focus/scroll containment, and native window behavior where applicable. Mutating interactions are not blindly retried after an ambiguous transport disconnect because the operation may already have committed.
 
@@ -216,6 +221,9 @@ When performance is an acceptance criterion, collect new exact-source candidate 
 GitHub control-plane failure is neither product pass nor product fail. When broad API/Actions/archive/webhook operations show repeated service failures or an official incident is active, preserve the exact branch head, determine whether ambiguous writes landed using bounded reads, keep unavailable qualification explicitly pending, and rerun the normal workflow after recovery. Do not change source, permissions, triggers, or PR state merely to force activity.
 
 ## Packaging and releases
+
+Terminal `linux-full` and `all-full` qualification now has two distinct Linux artifacts: `./scripts/check.sh` qualifies the development-profile standalone/native behavior, then `./scripts/check-linux-package.sh` builds and verifies the production `io.github.jferments.ostudy` Debian package from the same exact SHA. The package candidate, build metadata, and checksums remain runner-local. Contributors can exercise the same production-package boundary with `./scripts/ostudy-dev package-deb`.
+
 
 `android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. Packages remain on the self-hosted runner rather than being uploaded as Actions artifacts. `release.yml` produces current tagged Linux artifacts and likewise retains them on the runner. The optional generated-source inspection bundle is persisted runner-locally when requested. If browser-downloadable public release distribution is needed later, design it as an explicit release-distribution boundary rather than reusing Actions artifact storage as a general file store. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
 

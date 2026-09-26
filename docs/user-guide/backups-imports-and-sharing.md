@@ -74,9 +74,17 @@ Create backups after substantial authoring, before migration-heavy testing, befo
 
 ## Restore deliberately
 
-Restoration replaces the personal library; it does not merge like importing one deck. The application validates and stages a replacement, then applies it through startup so a partially copied database or managed directory is not exposed as a normal library.
+Restoration replaces the personal library; it does not merge like importing one deck. Save any work you need and make a separate backup of the current library before replacing it.
 
-Restart when instructed. Confirm decks, images, schedules, recent reviews, interactive questions/attempts, documents/guides, notes, settings, and unfinished drafts that should have been backed up. Reconfigure or verify provider credentials separately. Test a small session and preserve the original backup until recovery is confirmed.
+Choose **Restore backup**, select the `.ostudybackup`, and confirm **Restore library**. Finish or cancel active document, Tutor, preparation, or device-sync work first. oStudy validates the package, stages an isolated replacement, temporarily blocks library operations, activates the replacement, and refreshes the interface. The native application stays running: **normal restoration does not require closing and reopening oStudy**. Android shared backups require the same explicit whole-library replacement confirmation.
+
+Completion reports decks, cards, and documents only after the restored database reopens and reconciliation succeeds. A backup containing documents but no decks is not empty. A valid empty destination, a file-picker completion, or an old “restore prepared” message does not prove activation. Verify documents/guides, managed images, schedules, recent reviews, questions/attempts, settings, and recoverable drafts. Do not regenerate completed document material merely to test restoration.
+
+Saved API keys remain in the operating-system secure store and are not part of the backup. Restoration does not delete that store. Session-only credentials from the replaced library are cleared; enter them again when needed. Two desktop production instances with different XDG roots still use the production keyring namespace; development has a separate namespace.
+
+Keep the original backup after restoration. oStudy also retains the previous library and selected package under its `restore-transactions` recovery area. These copies consume disk space and are not a substitute for an external backup. Do not remove recovery files, SQLite journal files, or `library-owner.lock` to bypass a failure.
+
+An ordinary validation failure leaves the active library intact. If activation fails, oStudy attempts to reopen the previous coherent library. An interrupted process is recovered from its durable journal on the next startup. If recovery cannot be verified, commands remain blocked and the recovery files stay available; preserve them and inspect diagnostics rather than resetting or reinstalling. A second updated process cannot open the same library while its owner is running. Older binaries that predate the ownership lock must also be closed before any restore test.
 
 Do not rename an arbitrary SQLite file to masquerade as a backup. The package version, schema, inventory, paths, and managed bytes are validated together. Installing an older binary is not a guaranteed rollback for a newer data schema; preserve a compatible backup before development testing.
 

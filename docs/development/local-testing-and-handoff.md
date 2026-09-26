@@ -56,7 +56,7 @@ git rev-parse origin/main
 
 If the checkout is an older clean `main`, update it with `git pull --ff-only`, then rebuild with `./scripts/build.sh` before running `./run-app.sh`. If local edits exist, preserve them and use the detached exact-SHA review-worktree procedure above instead of forcing the checkout.
 
-The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at schema 21 paired with a build that supports only schema 17 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 21 should proceed through ordinary read-only admission and startup without this future-schema error.
+The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at the current schema 30 paired with an older build that supports only schema 29 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 30 should proceed through ordinary read-only admission and startup without this future-schema error.
 
 ## Linux: ordinary test-drive
 
@@ -69,7 +69,7 @@ On an already configured machine, from the selected checkout:
 
 On a genuinely unconfigured Ubuntu/Debian machine, use `./scripts/setup-ubuntu.sh` first. Do not repeat machine provisioning for every PR. Platform dependencies and optional OCR setup are in [Linux installation](../installation/linux.md).
 
-The build wrapper performs pinned-environment checks, provisions PDFium, installs locked JavaScript dependencies, runs compile preflight, builds through Tauri, and stages a standalone debug executable. It does not create release bundles. `run-app.sh` verifies a build stamp and binary checksum before launching that staged executable. A source-only documentation change may not alter the runtime fingerprint, but source deletions and code changes can require a rebuild; follow the launcher's check.
+The build wrapper performs pinned-environment checks, provisions PDFium, installs locked JavaScript dependencies, runs compile preflight, builds through Tauri with the desktop development overlay, and stages a standalone `io.github.jferments.ostudy.dev` executable. It does not create production release bundles. `run-app.sh` verifies a development-profile build stamp and binary checksum before launching that staged executable. The maintained development profile cannot open the production `io.github.jferments.ostudy` library; destructive or migration acceptance still uses separate temporary XDG storage because multiple source worktrees share the same ordinary `.dev` profile. A source-only documentation change may not alter the runtime fingerprint, but source deletions and code changes can require a rebuild; follow the launcher's check.
 
 Do not launch the mutable Cargo debug binary as a workaround. Later Tauri dev, native checks, or Android work can reuse that Cargo location. The staged standalone artifact exists specifically to keep the tested/launched executable stable.
 

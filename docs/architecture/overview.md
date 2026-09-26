@@ -70,7 +70,7 @@ Rust application and task services
 
 Linux and Android are the maintained development/qualification paths. They share study semantics rather than implementing separate schedulers or databases. Desktop and mobile still have different operating-system integration and packaging requirements. Windows/macOS need regular target qualification; iOS remains a planned platform, not a completed installable application. A native library compiling on one target does not establish that every platform plugin, file picker, credential service, or packaged runtime works on another.
 
-The stable release application identifier is `io.github.jferments.ostudy`. Android debug uses `io.github.jferments.ostudy.dev`, with separate application data and signing assumptions. A Git checkout or worktree is not a data profile: two desktop builds launched normally can address the same user library. Tests must deliberately isolate storage.
+The stable release application identifier is `io.github.jferments.ostudy`. Maintained desktop development/debug builds and Android debug use `io.github.jferments.ostudy.dev`; production and development therefore have separate application data and credential namespaces. Desktop startup fails closed before opening the library if a debug build resolves the production identity or if the application-data directory does not match the selected profile. A Git checkout or worktree is still not a unique data profile: multiple desktop development worktrees share the `.dev` profile unless storage is explicitly isolated. Tests deliberately use temporary storage.
 
 Source authorities: [package manifest](../../package.json), [native manifest](../../src-tauri/Cargo.toml), [Tauri configuration](../../src-tauri/tauri.conf.json), [platform status](../installation/README.md).
 
@@ -408,7 +408,7 @@ Diagnostics are local and bounded, with safe event metadata and rotation. Export
 
 Toolchain/dependency facts live in [versions.env](../../versions.env), [package.json](../../package.json), [Rust toolchain](../../rust-toolchain.toml), lockfiles, and the native runtime manifest. Do not repeat transient version numbers throughout product prose. New direct dependencies need explicit need, exact pinning, license review, native/platform compatibility, and qualification.
 
-The short Linux test-drive path on a configured machine is `scripts/build.sh` then `run-app.sh`. The build wrapper provisions/checks the expected environment, installs locked dependencies, performs compile preflight, uses the Tauri build path, and stages a standalone **debug** executable. It does not generate release bundles or prove the full test suite passed.
+The short Linux development test-drive path on a configured machine is `scripts/build.sh` then `run-app.sh`. The build wrapper provisions/checks the expected environment, installs locked dependencies, performs compile preflight, applies the desktop development Tauri overlay, and stages a standalone **oStudy Dev** executable using `io.github.jferments.ostudy.dev`. It does not generate a production release bundle or prove the full test suite passed.
 
 The launcher checks a build stamp/source fingerprint and staged binary checksum. It does not rebuild or start a Vite server. The staged standalone artifact protects the launched executable from later Tauri dev/other builds reusing Cargo's mutable debug output. `pnpm dev`/`pnpm build` are frontend operations; `pnpm desktop` is native hot reload; neither should be mislabeled as a standalone installed release.
 

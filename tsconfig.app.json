@@ -24,6 +24,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@ostudy/tauri-core": ["./node_modules/@tauri-apps/api/core.d.ts"],
       "@/*": [
         "./src/*"
       ]

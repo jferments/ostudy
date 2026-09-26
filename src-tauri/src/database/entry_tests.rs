@@ -29,7 +29,11 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
         initialize_connection(&mut connection).expect("normalize before runtime");
         assert_eq!(
             entry::user_version(&connection).unwrap(),
-            LATEST_SCHEMA_VERSION
+            CURRENT_SCHEMA_VERSION
+        );
+        assert_eq!(
+            schema_identity(&connection).unwrap(),
+            (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
         );
         assert_eq!(schema_objects(&connection).unwrap(), expected_schema);
         let retained: (String, i64, i64) = connection
@@ -106,7 +110,11 @@ fn invalid_later_migration_is_rejected_before_an_earlier_missing_migration_runs(
 #[test]
 fn invalid_later_repair_is_rejected_before_an_earlier_missing_repair_runs() {
     let mut connection = fixture_at(MIGRATIONS.len());
-    initialize_connection(&mut connection).unwrap();
+    apply_required_repairs(
+        &mut connection,
+        RepairPhase::AfterMigration(LEGACY_PUBLIC_SCHEMA_VERSION),
+    )
+    .unwrap();
     connection
         .execute_batch(
             "DELETE FROM data_repairs WHERE version = 1;
@@ -114,8 +122,10 @@ fn invalid_later_repair_is_rejected_before_an_earlier_missing_repair_runs() {
         )
         .unwrap();
     let changes = connection.total_changes();
+    let schema = schema_objects(&connection).unwrap();
     assert!(initialize_connection(&mut connection).is_err());
     assert_eq!(connection.total_changes(), changes);
+    assert_eq!(schema_objects(&connection).unwrap(), schema);
     assert!(validate_backup_lineage(&connection).is_err());
 }
 
@@ -129,12 +139,12 @@ fn rejected_disk_inputs_preserve_bytes_and_do_not_switch_journal_mode() {
     std::fs::create_dir_all(&root).unwrap();
     let corruptions = [
         "UPDATE schema_metadata SET value = 'unknown' WHERE key = 'schema_lineage'",
-        "DELETE FROM schema_migrations WHERE version = 2",
-        "UPDATE schema_migrations SET checksum = 'corrupt' WHERE version = 17",
-        "INSERT INTO schema_migrations VALUES (999, 'future', 'future', 1)",
-        "PRAGMA user_version = 999",
-        "INSERT INTO data_repairs VALUES (999, 'future', 'future', 1, 0)",
-        "UPDATE data_repairs SET checksum = 'corrupt' WHERE version = 3",
+        "DELETE FROM schema_migrations WHERE version = 1",
+        "UPDATE schema_migrations SET checksum = 'corrupt' WHERE version = 1",
+        "UPDATE schema_migrations SET name = 'corrupt' WHERE version = 1",
+        "INSERT INTO schema_migrations VALUES (2, 'future', 'future', 1)",
+        "PRAGMA user_version = 2",
+        "INSERT INTO data_repairs VALUES (1, 'unexpected', 'unexpected', 1, 0)",
         "DROP TABLE schema_migrations",
         "DROP TABLE data_repairs",
     ];
@@ -191,6 +201,10 @@ fn interrupted_conversion_rolls_back_its_ddl_data_and_ledger() {
     initialize_connection(&mut connection).expect("retry the unchanged supported input");
     assert_eq!(
         entry::user_version(&connection).unwrap(),
-        LATEST_SCHEMA_VERSION
+        CURRENT_SCHEMA_VERSION
+    );
+    assert_eq!(
+        schema_identity(&connection).unwrap(),
+        (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
     );
 }

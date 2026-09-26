@@ -8,17 +8,18 @@ usage() {
 Usage:
   bash ./scripts/transition-pre-public-data.sh \
     --data-dir <active-ostudy-data-directory> \
-    --source-backup <timestamped-pre-public-backup-directory> \
+    [--source-backup <timestamped-pre-public-backup-directory>] \
     --confirm
 
-Recovers an archived final pre-public ostudy library without deleting either
-copy. The archived source is copied into staging, validated there, and installed
-as the active app-data directory. The previous active directory is archived.
-Normal ostudy startup then performs the verified final-v26 -> ostudy-public-v1
-adoption in place while preserving learner data.
+Explicitly recovers the exact final pre-public-v26 ostudy lineage without
+putting historical conversion code back into normal application startup.
 
-The original timestamped source backup is never opened by SQLite and is retained
-unchanged.
+Without --source-backup, the current --data-dir is first copied to an immutable
+sibling archive, then a separate staging copy is validated and converted to the
+ostudy-public-v1 baseline. With --source-backup, that archive is the immutable
+source instead. The prior active directory is archived rather than deleted.
+
+Current ostudy startup then applies only the ordinary public migration chain.
 EOF
 }
 
@@ -58,14 +59,13 @@ done
   printf 'An absolute --data-dir path is required.\n' >&2
   exit 2
 }
-[[ -n "$SOURCE_BACKUP" && "$SOURCE_BACKUP" = /* ]] || {
-  printf 'An absolute --source-backup path is required.\n' >&2
+if [[ -n "$SOURCE_BACKUP" && "$SOURCE_BACKUP" != /* ]]; then
+  printf 'When provided, --source-backup must be an absolute path.\n' >&2
   exit 2
-}
-[[ "$DATA_DIR" != "$SOURCE_BACKUP" ]] || {
-  printf -- '--data-dir and --source-backup must identify different directories.\n' >&2
-  exit 2
-}
+fi
+if [[ -z "$SOURCE_BACKUP" ]]; then
+  SOURCE_BACKUP="$DATA_DIR"
+fi
 (( CONFIRMED == 1 )) || {
   printf 'Pass --confirm after reviewing the active and backup directories.\n' >&2
   exit 2
@@ -75,7 +75,7 @@ command -v python3 >/dev/null 2>&1 || {
   exit 1
 }
 
-printf 'Recovering archived pre-public library from: %s\n' "$SOURCE_BACKUP"
+printf 'Explicit pre-public recovery source: %s\n' "$SOURCE_BACKUP"
 printf 'Target active ostudy data directory: %s\n' "$DATA_DIR"
 
 exec python3 "$SCRIPT_DIR/restore_pre_public_backup.py" \

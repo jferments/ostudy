@@ -14,7 +14,7 @@ import subprocess
 import sys
 from typing import Any
 
-APP_IDENTIFIER = "io.github.jferments.ostudy"
+APP_IDENTIFIER = "io.github.jferments.ostudy.dev"
 MAX_RECENT_EVENTS = 80
 MAX_COMMAND_CHARS = 20_000
 KERNEL_HINTS = (
@@ -40,7 +40,7 @@ def paths() -> dict[str, Path]:
     )
     state_home = os.environ.get("XDG_STATE_HOME", "").strip()
     state_root = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
-    launcher_log = state_root / "ostudy" / "ostudy.jsonl"
+    launcher_log = state_root / "ostudy-dev" / "ostudy.jsonl"
     return {
         "appData": app_data,
         "database": app_data / "library.sqlite3",

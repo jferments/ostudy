@@ -11,6 +11,18 @@ mod payload_entry;
 
 use super::{verify_public_ledger_exists, LATEST_SCHEMA_VERSION, MIGRATIONS};
 
+pub(super) fn validate_current_payload(connection: &Connection) -> Result<(), String> {
+    payload_entry::validate(connection, super::LEGACY_PUBLIC_SCHEMA_VERSION)?;
+    knowledge_entry::validate(connection)?;
+    crate::document_canonical_store::evidence::validate(connection)
+        .map_err(|error| error.message)?;
+    crate::documents::image_sets::repository::validate(connection)
+        .map_err(|error| error.message)?;
+    crate::documents::image_sets::cache::validate(connection).map_err(|error| error.message)?;
+    crate::documents::image_sets::storage::validate(connection).map_err(|error| error.message)?;
+    Ok(())
+}
+
 pub(super) fn user_version(connection: &Connection) -> Result<i64, String> {
     connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))

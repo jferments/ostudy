@@ -69,7 +69,7 @@ Read [the documentation index](docs/README.md), [agent index](docs/agents/README
 - `.studydeck` transfers content with fresh local schedules and no donor review history. `.ostudy.json` is strict whole-file validated authoring input; do not restore an import-preview step that the product removed. Whole-library backup and trusted-device synchronization are distinct contracts.
 - Released migrations and released schema fixtures are immutable. New migrations and registered checksums are one coherent change. Keep versioned data repairs and supported legacy readers explicit.
 - Provider HTTP stays in the native AI gateway; credentials stay behind the native secret boundary. Parser, renderer, OCR, provider, and authoring implementations exchange application-owned contracts.
-- Keep the stable application identifier `io.github.jferments.ostudy`; changing identifiers or data locations requires a migration plan. Android debug installation uses a separate `.dev` application ID.
+- Keep the stable **release** application identifier `io.github.jferments.ostudy`; changing the release identifier or production data location requires a migration plan. Maintained desktop development/debug builds and Android debug installation use `io.github.jferments.ostudy.dev` with separate application data and credential namespaces. Tests use explicit isolated storage.
 
 ## Current UI contracts to preserve
 

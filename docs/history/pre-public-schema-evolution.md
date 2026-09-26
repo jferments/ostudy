@@ -24,29 +24,27 @@ The original SQL remains permanently recoverable from Git history at cutoff comm
 - historical data repairs whose effects are already present in the final schema;
 - general compatibility with arbitrary developer-only schema versions 1 through 25.
 
-## Final-v26 adoption
+## Final-v26 recovery and runtime retirement
 
-The exact final development lineage remains valuable because it contains the developer's real decks, cards, review history, analytics attribution, documents, settings, and managed files. It is therefore a narrow, one-time adoption input rather than an unsupported database to discard.
+The exact final development lineage remains historically recoverable because it can contain old decks, cards, review history, analytics attribution, documents, settings, and managed files. Its immutable contract now lives under `scripts/history/pre-public-v26/ledger.json`.
 
-The immutable contract is stored in `src-tauri/src/startup/pre_public_v26_ledger.json` and contains all 26 migration identities/checksums, all 3 data-repair identities/checksums, and the accepted historical SQLite markers. Rust startup, the archived-data recovery helper, and the built-binary test fixture consume that same file.
+During pre-release development, normal startup temporarily auto-adopted an exact v26 database. PR #106 retired that runtime path after the local human gate established that the retained production library was already `ostudy-public-v1` schema 30 with valid integrity/foreign keys and that no development-profile library required v26 adoption.
 
-The pre-public runner tracked schema progress only in `schema_migrations`; it never assigned `PRAGMA user_version`. A real final-v26 development database therefore normally reports `user_version = 0`, despite having all 26 migration records. An explicitly stamped `user_version = 26` copy is also accepted when its ledgers and terminal schema match exactly. The migration and repair ledgers—not the SQLite marker alone—are the authoritative lineage evidence.
+Current application startup no longer contains the v26 converter. A non-public database is left unchanged and startup blocks with manual-recovery guidance.
 
-When startup sees a database without `ostudy-public-v1`, it first inspects lineage before enabling write-capable SQLite durability settings. An exact final-v26 database is handled as follows:
+Historical recovery remains explicit and tested:
 
-1. verify the embedded migration and repair ledgers, expected terminal schema, accepted historical SQLite marker, foreign keys, and SQLite integrity;
-2. create a consistent SQLite backup named like `library.sqlite3.pre-public-v26-<timestamp>.backup`;
-3. transactionally rebuild only the AI provider-profile table required for the public OpenRouter shape, add `schema_metadata`, replace the development ledgers with public baseline migration 1, and set `user_version` to 1;
-4. compare all application-table row counts plus the identities of decks, notes, cards, review events, review attributions, and AI profiles;
-5. reopen through the normal public migration verifier before completing startup.
+```bash
+bash ./scripts/transition-pre-public-data.sh \
+  --data-dir "/absolute/path/to/active-data" \
+  --confirm
+```
 
-If any precondition or preservation check fails, the transaction rolls back and the backup remains available. Older, partial, checksum-mismatched, or damaged development databases are left unchanged and produce a **Pre-public data needs manual recovery** dialog instead of a Tauri setup panic.
+The helper creates/uses an immutable v26 source archive, converts only a staging copy to public baseline migration 1, verifies learner-data preservation and SQLite integrity, archives the previous active directory, and installs the converted copy. Current oStudy then advances that public-v1 copy through the ordinary immutable migration chain.
 
-`scripts/restore_pre_public_backup.py` supports users who already ran the earlier directory-reset command. It validates an archived exact-v26 directory, copies it back into the active location, archives the currently active directory, and keeps the original backup untouched. The next normal startup performs the verified adoption above.
+For a separate archived v26 directory, supply `--source-backup "/absolute/path/to/archive"`. The archived source is copied before SQLite opens anything and remains untouched.
 
-`scripts/reset-pre-public-data.sh` is retained only for intentionally starting a blank library. It requires the explicit flag `--confirm-empty-library`; the former ambiguous `--confirm` option is rejected.
-
-The full Linux qualification gate launches the exact built binary against a seeded final-v26 database using the actual historical `user_version = 0` state. The application must create the consistent backup, preserve deck/card/review/analytics rows, adopt the public lineage, emit `pre_public_database_adoption_completed` and `application_started`, remain usable, and avoid both `application_startup_blocked` and panic paths.
+The full Linux gate verifies that the current runtime refuses v26 without modifying it, the explicit recovery path succeeds on an isolated copy, and the recovered copy subsequently reaches the current public schema with representative learner data preserved.
 
 ## Policy after public release
 

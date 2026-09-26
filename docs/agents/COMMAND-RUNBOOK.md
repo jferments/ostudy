@@ -9,6 +9,9 @@ Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is 
 ```bash
 ./scripts/ostudy-dev help
 ./scripts/ostudy-dev setup
+./scripts/ostudy-dev doctor
+./scripts/ostudy-dev library-status
+./scripts/ostudy-dev package-deb
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
 ./scripts/ostudy-dev check-changed
@@ -31,7 +34,24 @@ The equivalent underlying command is:
 ./scripts/setup-ubuntu.sh
 ```
 
-The setup wrapper installs/provisions the pinned development environment and makes an initial standalone debug build. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. `./scripts/ostudy-dev package-deb` is a separate production-package boundary: it builds `io.github.jferments.ostudy` from the exact current source, verifies the Debian package does not own learner-data paths, and writes the `.deb`, build metadata and checksums under `.artifacts/linux-package/` unless `--output` is supplied. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+
+Verify the ordinary contributor environment without rebuilding:
+
+```bash
+./scripts/ostudy-dev doctor
+```
+
+Use `./scripts/ostudy-dev doctor --native-smoke` when WebDriver/native-smoke tools are also required. These contributor diagnostics intentionally do **not** assert the private Actions runner name, runner account, KVM sizing, runner workspace, or GitHub environment; those belong to `scripts/runner/` and CI only.
+
+For a read-only report of the automatically resolved production and development libraries:
+
+```bash
+./scripts/ostudy-dev library-status
+./scripts/ostudy-dev library-status --verify
+```
+
+The report never requires a hand-entered SQLite path. It reads `$XDG_DATA_HOME` (or `~/.local/share`) and checks the stable production/dev application identifiers. `--verify` additionally runs SQLite integrity and foreign-key checks. Close running oStudy processes first when using the report as migration/adoption evidence so WAL state is settled.
 
 ## Existing Linux checkout: build and test-drive
 
@@ -47,9 +67,9 @@ The equivalent underlying commands are:
 ./run-app.sh
 ```
 
-`pnpm build:app` is an alias for `scripts/build.sh`. It makes a **standalone debug application, without bundles**, through Tauri's build path. It is not a release-package command.
+`pnpm build:app` is an alias for `scripts/build.sh`. It makes a **standalone oStudy Dev application, without bundles**, through Tauri's build path and the `io.github.jferments.ostudy.dev` overlay. Its library, managed files, Tauri config/cache/state, launcher state, and desktop keyring namespace are separate from the production `io.github.jferments.ostudy` profile. It is not a release-package command.
 
-`run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
+`run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, development-profile stamp, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
 
 Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri hot-reload development. `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
 

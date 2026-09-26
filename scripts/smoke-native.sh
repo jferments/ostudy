@@ -162,7 +162,7 @@ run_smoke() {
   for attempt in 1 2; do
     attempt_home="$TEMP_HOME/$slug/attempt-$attempt"
     log_file="$TEMP_HOME/$slug/attempt-$attempt.log"
-    application_log="$attempt_home/data/io.github.jferments.ostudy/diagnostics/ostudy.jsonl"
+    application_log="$attempt_home/data/io.github.jferments.ostudy.dev/diagnostics/ostudy.jsonl"
     rm -rf -- "$attempt_home"
     mkdir -p \
       "$attempt_home/data" \

@@ -1,6 +1,6 @@
 # Standalone desktop artifact boundary
 
-The Linux desktop launcher and native WebDriver acceptance tests must execute the same immutable standalone Tauri artifact.
+The Linux development launcher and native WebDriver acceptance tests must execute the same immutable standalone **oStudy Dev** Tauri artifact. That artifact uses `io.github.jferments.ostudy.dev`; production packages use the stable `io.github.jferments.ostudy` identity and are a separate release boundary.
 
 `pnpm tauri build --debug --no-bundle --ci` writes its immediate Cargo output to the ordinary debug target. That path is mutable development/build-tool state: later Cargo, Tauri development, or Android qualification may reuse the same target tree. It is therefore not a durable manual-launch contract.
 

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { restoredLibraryMessage } from "./libraryRestoreResult";
+import { refreshLibraryView } from "../platform/libraryView";
 import type { ShowToast } from "./Toast";
 import { prepareLibraryRestore } from "../ipc/backup";
 import { createOperationId, getErrorMessage } from "../ipc/common";
@@ -115,20 +117,29 @@ export function IncomingShareCoordinator({
           break;
         }
         case "ostudybackup": {
+          const replace = await confirm({
+            title: "Replace this complete library?",
+            description: "A complete backup replaces this library; it is not a deck merge. Back up anything you need to keep first. Documents, decks, schedules, reviews, and settings will be replaced after validation. Saved API keys are not changed.",
+            confirmLabel: "Restore library",
+            destructive: true,
+          });
+          if (!replace) {
+            await releaseStagedExternalImport(staged.id);
+            return;
+          }
           const result = await prepareLibraryRestore(staged.id);
-          showToast(
-            "info",
-            result.restartRequired
-              ? "Backup validated. Close and reopen ostudy to apply the restored library."
-              : "Backup restored.",
-          );
+          showToast("success", restoredLibraryMessage(result));
+          refreshLibraryView();
           break;
         }
         default:
           throw new Error("The shared file is not an ostudy deck, generated JSON file, or backup.");
       }
     } catch (error) {
-      await releaseStagedExternalImport(staged.id).catch(() => undefined);
+      // A failed complete restore may need this only local copy for recovery.
+      if (staged.detectedKind !== "ostudybackup") {
+        await releaseStagedExternalImport(staged.id).catch(() => undefined);
+      }
       throw error;
     }
   }

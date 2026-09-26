@@ -306,6 +306,11 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
     for path in &relative {
         assert!(!target.resolve_relative(path).exists());
     }
+    assert!(
+        !pending_restore_path(&target).exists(),
+        "rollback must not auto-repeat a failed restore"
+    );
+    copy_and_sync(&backup, &pending_restore_path(&target)).unwrap();
     let guard = apply_pending_restore(&target).unwrap().unwrap();
     drop(Database::open(target.database_path()).unwrap());
     guard.commit();

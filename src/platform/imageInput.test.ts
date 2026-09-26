@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stageImageCollectionFileChunk } from "../ipc/imageCollectionFiles";
 import {
+  dataTransferImageFiles,
   IMAGE_UPLOAD_CHUNK_BYTES,
+  readClipboardImageFiles,
   stageBrowserImage,
 } from "./imageInput";
 
@@ -54,5 +56,31 @@ describe("bounded browser image staging", () => {
     const file = { size: 25 * 1024 * 1024 + 1, name: "too-large.png" } as File;
     await expect(stageBrowserImage(file, "c".repeat(32))).rejects.toThrow(/no larger than 25 MB/u);
     expect(stageImageCollectionFileChunk).not.toHaveBeenCalled();
+  });
+
+  it("accepts item-only cross-application image transfers without fetching strings or URLs", () => {
+    const image = new File(["pixels"], "dragged.png", { type: "image/png" });
+    const data = {
+      files: [] as unknown as FileList,
+      items: [
+        { kind: "string", type: "text/uri-list", getAsFile: () => null },
+        { kind: "file", type: "image/png", getAsFile: () => image },
+      ] as unknown as DataTransferItemList,
+    };
+    expect(dataTransferImageFiles(data)).toEqual([image]);
+  });
+
+  it("reads screenshot blobs from the user-initiated clipboard fallback", async () => {
+    const reader = {
+      read: vi.fn().mockResolvedValue([
+        { types: ["text/plain", "image/png"],
+          getType: vi.fn().mockResolvedValue(new Blob(["pixels"], { type: "image/png" })) },
+        { types: ["text/plain"],
+          getType: vi.fn() },
+      ]),
+    };
+    const files = await readClipboardImageFiles(reader);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ name: "Clipboard image.png", type: "image/png", size: 6 });
   });
 });

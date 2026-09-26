@@ -1,7 +1,10 @@
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { Panel } from "../../ui/primitives/Panel";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { restoredLibraryMessage } from "../../components/libraryRestoreResult";
+import { refreshLibraryView } from "../../platform/libraryView";
+import { releaseStagedExternalImport } from "../../ipc/externalFiles";
 import type { ShowToast } from "../../components/Toast";
 import { prepareLibraryBackup, prepareLibraryRestore } from "../../ipc/backup";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
@@ -27,7 +30,8 @@ interface StorageBackupSettingsProps {
 export function StorageBackupSettings({ draft, update, showToast }: StorageBackupSettingsProps) {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [isTransferringLibrary, setIsTransferringLibrary] = useState(false);
-  const [restorePrepared, setRestorePrepared] = useState(false);
+  const transferActive = useRef(false);
+  const [transferLabel, setTransferLabel] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
   const capabilities = usePlatformCapabilities();
@@ -40,9 +44,11 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   }, []);
 
   async function backupLibrary(): Promise<void> {
-    if (isTransferringLibrary) return;
+    if (transferActive.current) return;
+    transferActive.current = true;
     setIsTransferringLibrary(true);
     setErrorMessage(null);
+    setTransferLabel("Creating a complete library backup…");
     try {
       const prepared = await prepareLibraryBackup(createOperationId());
       const receipt = await publishExport(prepared.preparedExport.id);
@@ -54,14 +60,18 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
+      transferActive.current = false;
       setIsTransferringLibrary(false);
+      setTransferLabel(null);
     }
   }
 
   async function shareLibraryBackup(): Promise<void> {
-    if (isTransferringLibrary) return;
+    if (transferActive.current) return;
+    transferActive.current = true;
     setIsTransferringLibrary(true);
     setErrorMessage(null);
+    setTransferLabel("Creating a complete library backup…");
     try {
       const prepared = await prepareLibraryBackup(createOperationId());
       const launched = await shareExport(prepared.preparedExport.id);
@@ -75,35 +85,42 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
+      transferActive.current = false;
       setIsTransferringLibrary(false);
+      setTransferLabel(null);
     }
   }
 
   async function restoreLibrary(): Promise<void> {
-    if (isTransferringLibrary) return;
-    const source = await selectExternalImport("library_backup");
-    if (!source) return;
-    const accepted = await confirm({
-      title: "Restore this complete library?",
-      description:
-        "The current library will be replaced after validation when ostudy next starts. This includes decks, templates, schedules, review history, managed images, analytics sources, AI provider metadata, task defaults, and settings. API credentials are never included.",
-      confirmLabel: "Prepare restore",
-      destructive: true,
-    });
-    if (!accepted) return;
+    if (transferActive.current) return;
+    transferActive.current = true;
     setIsTransferringLibrary(true);
+    setTransferLabel("Choose a backup…");
     setErrorMessage(null);
     try {
+      const source = await selectExternalImport("library_backup");
+      if (!source) return;
+      const accepted = await confirm({
+        title: "Restore this complete library?",
+        description:
+          "This replaces the current library after validation, including documents, study guides, decks, schedules, review history, drafts, and settings. Back up anything you need to keep first. The interface refreshes when restoration finishes; oStudy stays running. Saved API keys are not changed, and session-only credentials must be entered again.",
+        confirmLabel: "Restore library",
+        destructive: true,
+      });
+      if (!accepted) {
+        await releaseStagedExternalImport(source.id);
+        return;
+      }
+      setTransferLabel("Validating and restoring your library…");
       const result = await prepareLibraryRestore(source.id);
-      setRestorePrepared(result.restartRequired);
-      showToast(
-        "info",
-        `Restore prepared for ${result.deckCount} ${result.deckCount === 1 ? "deck" : "decks"}. Close and reopen ostudy to apply it.`,
-      );
+      showToast("success", restoredLibraryMessage(result));
+      refreshLibraryView();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
+      transferActive.current = false;
       setIsTransferringLibrary(false);
+      setTransferLabel(null);
     }
   }
 
@@ -154,18 +171,14 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           </Button>
         </div>
         <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
-          Complete backups include decks, templates, managed images, schedules, review events,
-          sessions, analytics sources, AI provider metadata, task defaults, and ordinary settings.
+          Complete backups include documents, source files, study guides, collections, Tutor history,
+          decks, templates, managed images, drafts, schedules, reviews, provider metadata, and settings.
         </p>
         <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
           API keys and session-only credentials are never stored in SQLite and are never included
           in an ostudy backup.
         </p>
-        {restorePrepared ? (
-          <InlineNotice kind="info">
-            Restore is prepared. Close every ostudy window and reopen the application to apply it.
-          </InlineNotice>
-        ) : null}
+        {transferLabel ? <InlineProgress>{transferLabel}</InlineProgress> : null}
       </Panel>
 
       <DeviceSyncSettings showToast={showToast} />

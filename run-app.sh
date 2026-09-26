@@ -17,7 +17,7 @@ fi
 
 ostudy_require_current_build
 
-LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy"
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ostudy-dev"
 LOG_PATH="$LOG_DIR/ostudy.jsonl"
 VERSION="$(ostudy_stamp_value version)"
 mkdir -p "$LOG_DIR"

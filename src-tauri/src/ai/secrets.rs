@@ -277,6 +277,15 @@ impl SecretManager {
         }
     }
 
+    /// Forget this runtime's whole session after library replacement. This also
+    /// clears orphaned entries, without consulting either library's profile rows
+    /// or reading, writing, deleting, or checking availability of the OS store.
+    pub(crate) fn clear_session_credentials(&self) -> Result<(), CommandError> {
+        let mut session = self.session.lock().map_err(|_| secret_lock_error())?;
+        session.clear();
+        Ok(())
+    }
+
     fn best_effort_delete_secure(&self, locator: &SecretLocator) {
         if let Err(error) = self.secure.delete(locator) {
             let reason = match error {
@@ -487,3 +496,7 @@ mod tests {
         assert!(validate_credential("bad\nkey").is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "library_restore_secret_tests.rs"]
+mod library_restore_tests;

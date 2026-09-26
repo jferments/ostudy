@@ -9,13 +9,7 @@ export interface PreparedLibraryBackup {
   assetCount: number;
 }
 
-export interface LibraryRestoreResult {
-  deckCount: number;
-  templateCount: number;
-  reviewCount: number;
-  assetCount: number;
-  restartRequired: boolean;
-}
+export type LibraryRestoreResult = import("./librarySession").CompletedLibraryRestore;
 
 export async function prepareLibraryBackup(
   operationId: string,

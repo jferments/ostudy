@@ -1,13 +1,14 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { getSettings } from "../ipc/settings";
+import { LibraryRestoreObserver } from "./LibraryRestoreObserver";
 import { BrandMark } from "./Brand";
 
 const STARTUP_POLL_INTERVAL_MS = 40;
 const STARTUP_ATTEMPT_TIMEOUT_MS = 750;
 const STARTUP_SLOW_NOTICE_MS = 30_000;
 
-type StartupGateState = "waiting" | "slow" | "ready";
+type StartupGateState = "waiting" | "slow" | "ready" | "failed";
 
 export async function waitForNativeStartup(
   timeoutMs: number | null = null,
@@ -25,6 +26,7 @@ export async function waitForNativeStartup(
       );
       if (ready) return;
     } catch (error: unknown) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "library_recovery_required") throw error;
       lastError = error;
     }
 
@@ -70,7 +72,10 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
         if (!disposed) setState("ready");
       })
       .catch((error: unknown) => {
-        if (!disposed) console.error("Native startup readiness failed:", error);
+        if (!disposed) {
+          console.error("Native startup readiness failed:", error);
+          setState("failed");
+        }
       });
     return () => {
       disposed = true;
@@ -78,14 +83,16 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (state === "ready") return children;
+  if (state === "ready") return <><LibraryRestoreObserver />{children}</>;
 
   return (
     <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
       <div className="tw:mx-auto"><BrandMark /></div>
-      <h1 className="tw:m-0">{state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
+      <h1 className="tw:m-0">{state === "failed" ? "Library recovery needs attention" : state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
       <p className="tw:m-0 tw:max-w-xl tw:text-muted-foreground">
-        {state === "slow"
+        {state === "failed"
+          ? "The library could not be opened safely. Preserve its backup and recovery files, close oStudy, and reopen it to recover the recorded transaction. Do not reset or delete the library."
+          : state === "slow"
           ? "Preparing this library is taking longer than usual. ostudy will open automatically when native startup finishes."
           : "Preparing your library…"}
       </p>

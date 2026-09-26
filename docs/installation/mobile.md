@@ -14,13 +14,13 @@ The Android application supports:
 - `.studydeck` and generated `.ostudy.json` import, system picker/export, Sharesheet send, and confirmed incoming shares;
 - Android Keystore-backed AI credentials plus local/LAN/cloud provider profiles;
 - PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV document ingestion through the shared canonical document model;
-- native PDF rendering through Android `PdfRenderer` and selective bundled ML Kit Text Recognition v2 OCR;
+- native PDF rendering through Android `PdfRenderer` and selective bundled open-source Tesseract OCR;
 - source-grounded flashcard generation and Study Guides through shared Rust/provider task boundaries;
 - foreground execution for user-started long document work with durable restart/checkpoint semantics;
 - encrypted same-LAN trusted-device synchronization with one-way offers, common-base merge, explicit conflicts, and optional per-offer API credential transfer;
-- Google Code Scanner through Play services for device-sync QR acquisition, with pasted invitation fallback.
+- local JourneyApps ZXing/ZXing-core QR acquisition for device sync, with pasted invitation fallback.
 
-Android does not package desktop PDFium or Tesseract/tessdata. Shared Rust owns document planning, OCR selection, provider task semantics, validation, scheduling, synchronization merge, and durable database transactions. Kotlin is an operating-system adapter rather than a separate study-domain implementation.
+Android does not package desktop PDFium or require a system-installed Tesseract/tessdata runtime. The APK includes Tesseract4Android and the pinned English trained-data asset used by the local OCR adapter. Shared Rust owns document planning, OCR selection, provider task semantics, validation, scheduling, synchronization merge, and durable database transactions. Kotlin is an operating-system adapter rather than a separate study-domain implementation.
 
 See [Android installation](android.md), [Android build/install](../development/android-build-and-install.md), and [Android architecture](../development/android.md).
 
@@ -74,4 +74,4 @@ Representative mobile qualification includes:
 - battery, memory, storage, and representative phone/tablet layouts;
 - package permissions/native-library compatibility and signing where applicable.
 
-The maintained automated Android baseline combines compile/package checks and API 36 emulator smoke on the unified runner. Real camera/Google Code Scanner, OEM file providers, thermal/battery pressure, physical-device screen-reader behavior, and public signing/store distribution remain manual or separately qualified boundaries unless actually exercised.
+The maintained automated Android baseline combines compile/package checks and API 36 emulator smoke on the unified runner. Real-camera/local-ZXing scanning, OEM file providers, thermal/battery pressure, physical-device screen-reader behavior, and public signing/distribution remain manual or separately qualified boundaries unless actually exercised.

@@ -13,9 +13,10 @@ creates an empty public-baseline directory. It never deletes the old data, but
 the archived decks, cards, reviews, analytics, documents, and settings will not
 appear in the new empty library.
 
-The exact final pre-public v26 database is now adopted automatically on normal
-startup. If an earlier reset already created a timestamped backup, restore it
-with scripts/restore_pre_public_backup.py instead of using this command again.
+Automatic final-v26 adoption has been retired from normal startup. If this
+command was used previously or an exact v26 library must be recovered, use
+scripts/transition-pre-public-data.sh so recovery is explicit, staged, and
+verified instead of reintroducing historical migration logic into the app.
 
 Stop ostudy before running this command.
 EOF
@@ -30,7 +31,7 @@ while (( $# > 0 )); do
     --confirm)
       printf '%s\n' \
         'The old --confirm option is no longer accepted because it did not make data replacement explicit.' \
-        'Use normal startup to preserve an exact final pre-public v26 library.' \
+        'Use scripts/transition-pre-public-data.sh to recover an exact final-v26 library.' \
         'Use --confirm-empty-library only when you intentionally want a blank library.' >&2
       exit 2
       ;;
@@ -72,4 +73,4 @@ mv -- "$DATA_DIR" "$backup"
 mkdir -p -- "$DATA_DIR"
 printf 'Archived the complete pre-release ostudy data directory at: %s\n' "$backup"
 printf 'Created an intentionally empty public-baseline data directory: %s\n' "$DATA_DIR"
-printf 'Restore the archive with scripts/restore_pre_public_backup.py if this was not intended.\n'
+printf 'Recover the archive with scripts/transition-pre-public-data.sh if this was not intended.\n'

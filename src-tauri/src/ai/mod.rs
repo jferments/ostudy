@@ -40,6 +40,11 @@ pub struct AiRuntimeState {
 }
 
 impl AiRuntimeState {
+    /// Restore owns admission; secret lifetime remains owned by SecretManager.
+    pub(crate) fn clear_session_credentials(&self) -> Result<(), crate::error::CommandError> {
+        self.secrets.clear_session_credentials()
+    }
+
     pub fn new(secret_store: Arc<dyn SecureSecretStore>) -> Result<Self, String> {
         Ok(Self {
             secrets: SecretManager::new(secret_store),
