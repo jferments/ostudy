@@ -133,7 +133,7 @@ The current direct-USB host implementation is Linux→Android. Other desktop/mob
 
 ## Android QR acquisition
 
-QR acquisition remains a **LAN** feature. Android uses Google Code Scanner through Play services, not the retired ZXing path. The scanner owns its UI/camera permission; ostudy receives a bounded decoded result and validates its protocol natively. Pasted invitation text remains the LAN fallback when scanning is unavailable.
+QR acquisition remains a **LAN** feature. Android uses the bundled local JourneyApps ZXing Embedded/ZXing core scanner rather than Google Code Scanner or Play services. The platform adapter returns a bounded decoded result and ostudy validates its protocol natively. Pasted invitation text remains the LAN fallback when scanning is unavailable.
 
 Direct USB does not use the camera scanner.
 

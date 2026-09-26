@@ -64,7 +64,7 @@ A complete new generated revision is validated before atomic publication. Failed
 
 The library's delete action asks for confirmation. It removes generated guide revisions, guide-specific section overrides/conflicts, saved guide-generation checkpoints/jobs, and prepared PDF exports according to the native lifecycle.
 
-For an individual-document guide, deletion preserves the source document, shared learning plan, linked flashcards, and stable guide/topic notes so a new guide can be generated later. For a collection target, deleting its guide records explicit suppression and does not delete the folder, member documents, ordinary target deck, learner schedules, or reviews; **Recreate study materials** is a new deliberate publication request. Neither action is the same as permanently deleting source material. Read the confirmation rather than assuming a generic trash icon always means the same operation.
+For an individual-document guide, deletion preserves the source document, shared learning plan, linked flashcards, and stable guide/topic notes so a new guide can be generated later. For a collection target, deleting its guide records explicit suppression and does not delete the collection, member documents, ordinary target deck, learner schedules, or reviews; **Recreate study materials** is a new deliberate publication request. Neither action is the same as permanently deleting source material. Read the confirmation rather than assuming a generic trash icon always means the same operation.
 
 ## Protect and report
 

@@ -1,18 +1,10 @@
 # Frontend CSS ownership inventory
 
-This document began as the Stage 0 migration map for ADR 0048. Stage 8 is now implemented, so it records the **final ownership contract** and the retired global owners for auditability rather than describing active legacy files.
+This document began as the Stage 0 migration map for [ADR 0048](../decisions/0048-frontend-state-and-style-ownership.md). Its retired global-owner inventory remains historical evidence. The later [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md) and [current UI architecture](../architecture/ui.md) supersede the CSS-Modules-first ordinary presentation choice; state and ownership boundaries remain explicit.
 
 ## Current ownership contract
 
-Authored presentation ends in one of these explicit owners:
-
-1. generated semantic/reference/component tokens;
-2. global reset/document/platform foundations;
-3. shared primitive;
-4. shared pattern;
-5. feature/component CSS Module;
-6. narrowly scoped third-party markup bridge; or
-7. audited accessibility utility.
+Authored presentation has an explicit owner: generated semantic/reference/component tokens; global reset/document/platform foundations; shared primitives/patterns; complete `tw:` utilities through oStudy-owned presentation; registered remaining CSS Modules; or specialized content/platform/vendor-markup styling. New feature styling must not recreate a global stylesheet or an unowned second presentation system.
 
 `src/main.tsx` has exactly one global CSS import:
 
@@ -32,70 +24,57 @@ src/ui/foundations/
 └── utilities.css
 ```
 
-The final cascade is:
+The cascade remains:
 
 ```css
 @layer reset, tokens, theme, base, components, patterns, features, utilities;
 ```
 
-There is no `src/styles` tree, `legacy` layer, global feature stylesheet, or temporary style-policy allowance.
+The foundation imports Tailwind theme and prefixed utilities without Preflight or a second reset. Utilities currently compile into the `components` layer to retain the established override ordering; the presence of an outer layer named `utilities` is not a reason to move them silently. Locally packaged math vendor styles/fonts are separate explicit imports.
+
+There is no `src/styles` tree, `legacy` layer, global feature stylesheet, or temporary style-policy allowance. That zero-legacy claim concerns the retired global stylesheet system, not the absence of all CSS Modules.
 
 ## Retired global owners
 
-| Retired owner | Historical role | Final owner |
+This table records where responsibilities went during the earlier CSS ownership migration. Its references to feature modules are historical dispositions, not instructions to use CSS Modules for all new presentation after the Tailwind migration.
+
+| Retired owner | Historical role | Ownership established by the earlier migration |
 | --- | --- | --- |
-| `src/styles/base/application.css` | Duplicate themes, generic application controls, shell/navigation, modal/toast/editor/rich-content compatibility, and old responsive rules | Generated themes; global foundations; shell/navigation modules; shared primitives/patterns; editor/rich-content modules; feature modules |
-| `src/styles/features/practice.css` | Practice setup, active review, confidence controls, completion layout | Practice setup/active/complete modules and shared controls/status owners |
-| `src/styles/features/cards.css` | Card browser/search/selection, bulk actions, rows, tags/status presentation | Card-browser/authoring modules, shared controls, overlays, status owners |
-| `src/styles/features/authoring.css` | Card editor, cloze/template-entry chrome and previews | Card-editor/template modules and shared rich editor/content owners |
-| `src/styles/features/templates.css` | Template library/editor presentation | Template feature modules and shared form/surface owners |
-| `src/styles/features/scheduling.css` | Scheduling controls, limits, badges, action panels | Scheduling feature modules plus shared controls/status owners |
-| `src/styles/features/analytics.css` | Analytics filters, metrics, charts, grids, tables | Analytics modules plus shared Metrics patterns |
-| `src/styles/features/assets.css` | Asset/document compatibility styles | Documents/assets feature modules and shared status/surface owners |
-| `src/styles/features/ui-overhaul.css` | Cross-feature containment/navigation/layout compatibility | The component or feature that owns each affected layout |
-| `src/styles/features/page-density.css` | Cross-feature compact spacing/breakpoint overrides | Workspace patterns and local feature/component modules |
-| `src/screens/DecksScreen.stage12.css` | Global deck detail/card-browser compatibility imported by Flashcards | Deck/card-browser modules and shared patterns |
+| `src/styles/base/application.css` | Duplicate themes, application controls, shell/navigation, overlays/editor/rich-content compatibility | Generated themes; foundations; shared primitives/patterns; explicit editor/content/feature owners |
+| `src/styles/features/practice.css` | Practice setup, review, confidence controls and completion | Practice setup/active/complete owners and shared controls/status |
+| `src/styles/features/cards.css` | Browser/search/selection, bulk actions, rows and tags | Card-browser/authoring owners, shared controls and overlays |
+| `src/styles/features/authoring.css` | Editor, cloze/template-entry chrome and previews | Card-editor/template owners and shared rich content |
+| `src/styles/features/templates.css` | Template library/editor presentation | Template owners and shared forms/surfaces |
+| `src/styles/features/scheduling.css` | Scheduling controls, limits, badges and panels | Scheduling owners and shared controls/status |
+| `src/styles/features/analytics.css` | Filters, metrics, charts and grids | Analytics owners and shared metrics patterns |
+| `src/styles/features/assets.css` | Asset/document compatibility styles | Document/asset owners and shared status/surfaces |
+| `src/styles/features/ui-overhaul.css` | Cross-feature containment/navigation/layout | The component or feature owning each layout |
+| `src/styles/features/page-density.css` | Cross-feature compact-spacing overrides | Workspace patterns and explicit local owners |
+| `src/screens/DecksScreen.stage12.css` | Global deck-detail/card-browser compatibility | Deck/card-browser owners and shared patterns |
 | `src/screens/cards/CardListing.css` | Card-listing/rich-content compatibility | Card-browser and `RichContent.module.css` ownership |
 
-All of these retired paths are forbidden by the Stage 8 zero-legacy verifier.
+These retired paths remain forbidden by the zero-legacy verifier.
 
 ## Foundation ownership
 
 - `reset.css`: box sizing, inherited control fonts, disabled/cursor semantics, focus-visible baseline.
-- `document.css`: `html`/`body`/`#root` sizing, canvas/text/font defaults, document-wide native-control defaults.
-- `platform.css`: safe-area variables, Android IME displacement, true platform media behavior, forced-colors and motion/material platform contracts.
-- `utilities.css`: audited accessibility utilities only, such as visually hidden text.
-- `index.css`: final layer ordering, generated-token imports, and narrow semantic aliases required by shared presentation.
-
-Feature layout helpers do not belong in the global foundation.
+- `document.css`: root sizing, canvas/text/font defaults, document-wide native-control defaults.
+- `platform.css`: safe areas, Android IME displacement, platform media behavior, forced colors and motion/material contracts.
+- `utilities.css`: audited accessibility utilities, not a feature-layout dumping ground.
+- `index.css`: layer order, Tailwind integration, generated tokens, vendor math styles and narrow semantic aliases.
 
 ## Shared and feature owners
 
-- `Button`, `InlineNotice`, `EmptyState`, `Panel`, `Surface`, `FormField`, status/badge primitives: reusable controls and feedback.
-- Workspace/screen/control/overlay patterns: reusable layout and interaction presentation.
-- Overlay modules: dialog, sheet, backdrop, menu, and toast ownership.
-- `RichTextEditor.module.css`: editor toolbar/editable chrome.
-- `RichContent.module.css`: rendered educational headings, prose, lists, tables, code, links, images, indentation, and scoped third-party markup bridge.
-- Feature CSS Modules: presentation whose meaning belongs to one feature/screen/component.
+Shared Button, InlineNotice, EmptyState, Panel, Surface, field/status primitives and workspace patterns own reusable control and layout semantics. Base UI is consumed through the oStudy vendor/adaptor boundary, not directly by feature code. OverlayProvider owns the application stack and Back policy; the shared Base UI adapters own browser modality/focus behavior.
 
-Some migrated views preserve semantic class **keys** through `ownedClassNames(...)`. Those strings are not global CSS classes: `scripts/verify-owned-class-usage.mjs` parses production TSX and proves each key resolves through an imported CSS Module/shared owner before rendering.
+Ordinary migrated presentation uses complete `tw:` utility names and semantic tokens. Feature presentation maps can expose that owned vocabulary without becoming global CSS classes. Registered remaining CSS Modules retain their specific rationale and consumers; specialized rich-content, ProseMirror descendants, math/media geometry and platform constraints need not be forced into utilities merely for migration bookkeeping.
+
+Some earlier views use `ownedClassNames(...)` to resolve semantic keys through imported owners. That mechanism and newer utility-based presentation maps must be interpreted from the actual source, not confused with raw global classes. Use the maintained style/owned-class/UI-boundary verifiers together; no one verifier proves all presentation behavior.
 
 ## Zero-legacy enforcement
 
-`scripts/style-ownership-baseline.json` is in `zero` mode with:
+`scripts/style-ownership-baseline.json` remains in `zero` mode with an empty `legacyFiles` object, one allowed global TypeScript CSS import and an empty `policyAllowances` object.
 
-- an empty `legacyFiles` object;
-- exactly one allowed global TypeScript CSS import;
-- an empty `policyAllowances` object.
+`scripts/verify-style-ownership.mjs` guards retired global paths, authored global CSS outside the foundation, legacy imports/layers, cascade order, and token ownership. `scripts/verify-owned-class-usage.mjs` separately checks owned production class semantics. The current presentation-policy checks also cover vendor confinement and retained CSS rationale. Follow their actual registered contracts rather than inventing a new exception for convenience.
 
-`scripts/verify-style-ownership.mjs` additionally rejects:
-
-- any CSS under `src/styles/base` or `src/styles/features`;
-- authored global CSS outside the foundation;
-- any `legacy` layer/import;
-- an incorrect final cascade order;
-- raw authored colors, arbitrary numeric stacking values, or literal motion durations outside generated token sources.
-
-`scripts/verify-owned-class-usage.mjs` separately rejects raw/unowned production class semantics.
-
-The device-sync QR quiet zone is intentionally fixed white for scan reliability, but the authored module uses `var(--ostudy-color-neutral-0)`. `verify-device-sync-qr-ui.mjs` independently requires the reference token source for `color.neutral.0` to remain exactly `#ffffff`.
+The device-sync QR quiet zone uses the fixed white reference token for scan reliability rather than a theme-dependent surface. `verify-device-sync-qr-ui.mjs` protects that token contract. Scan behavior, focus, Back, touch, enlarged text, reduced motion and platform geometry still require their own behavior/visual qualification; static CSS ownership is not runtime acceptance.

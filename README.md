@@ -16,7 +16,7 @@ Your cards, documents, schedules, and review history live on your device. Ordina
 
 **Keep control of your data.** Share individual decks without sharing personal review history, import compatible **Anki `.apkg` decks** and structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, converting an Anki deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
 
-**Choose a comfortable interface.** Flashcards brings together Decks and Search/Filter. Study Guides, Documents, and Analytics have their own destinations; card templates live in Settings. Themes, text sizing, optional guidance, and optional visual feedback let you adapt the interface without changing how your study data works.
+**Choose a comfortable interface.** Flashcards brings together Decks and Search/Filter. Study Guides, Documents, Tutor, and Analytics have their own destinations; card templates live in Settings. Themes, text sizing, optional guidance, and optional visual feedback let you adapt the interface without changing how your study data works.
 
 ## Optional AI, without a study-app subscription
 

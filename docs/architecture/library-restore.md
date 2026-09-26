@@ -71,10 +71,11 @@ A completion observer also reads the last durable receipt after the refresh.
 A failed activation that reopened the old library likewise invalidates stale UI
 requests. A failure that cannot prove a coherent connection leaves IPC blocked.
 
-The OS keyring remains untouched. Session-only credentials associated with the
-old/restored provider IDs are cleared before reopening admission. Backups contain
-no credential bytes. A restored profile may still find its existing OS keyring
-entry; this does not mean a backup carried a key.
+The OS keyring remains untouched. Live replacement clears the native process's
+entire session-only credential map before reopening admission, including orphaned
+entries that are not present in either library. Backups contain no credential bytes.
+A restored profile may still find its existing OS keyring entry; this does not mean
+a backup carried a key.
 
 ## Qualification
 

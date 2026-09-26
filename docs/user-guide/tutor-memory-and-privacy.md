@@ -4,7 +4,7 @@ Tutor is a content-focused chat tool. It does not maintain a curriculum, change 
 
 ## Chat and sources
 
-Use Tutor's chat window and conversation/project list. **Sources** opens an optional checklist of documents, document folders, flashcard decks and study guides; choose up to 16. No selected material means a general conversation using the configured chat model; no embedding profile or source preparation is required. Sources provide additional grounding, not permission to answer. Selecting sources sends nothing. Changing sources for an existing chat starts a new chat while the previous conversation keeps its original material selection.
+Use Tutor's chat window and conversation/project list. **Sources** opens an optional checklist of documents, document collections, flashcard decks and study guides; choose up to 16. No selected material means a general conversation using the configured chat model; no embedding profile or source preparation is required. Sources provide additional grounding, not permission to answer. Selecting sources sends nothing. Changing sources for an existing chat starts a new chat while the previous conversation keeps its original material selection.
 
 Ask for practice questions in your message and press **Send**; no separate quiz button is needed. You can request several questions, ask for one at a time, or discuss your answers. This is conversation, not a separate graded practice-test system, and it does not affect your card schedule. Questions may come from the model's general knowledge without citations. A structured one-at-a-time question keeps its expected answer private until you respond.
 

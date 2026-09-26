@@ -78,11 +78,11 @@ Document/AI/synchronization are implemented optional subsystems; do not describe
 - Implemented provider families are llama.cpp-compatible/Unsloth GGUF, DeepSeek, and OpenRouter. Catalog/planned entries are not implementation evidence.
 - A local/LAN provider never silently falls back to cloud or another model/provider.
 - Study Guide generated revisions and learner notes/overrides/conflicts have separate ownership; regeneration publishes atomically.
-- The current Study Guide/document learning graph is broader than the present peer-sync allowlist; adding it requires an explicit versioned sync extension.
+- Device-sync package v3 has explicit Documents and Study Guides scopes, but the local learning graph is still broader than the transfer allowlist. Private/derived Tutor semantic state and any newly added graph entities do not transfer automatically; widening the graph requires an explicit versioned sync extension.
 
 ## UI and accessibility invariants
 
-Current top-level destinations are Flashcards, Study Guides, Documents, Analytics, and Settings. Practice is an internal contextual workflow. Flashcards has Decks and Search/Filter; Card templates live in Settings; transfer is contextual.
+Current top-level destinations are Flashcards, Study Guides, Documents, Tutor, Analytics, and Settings. Practice is an internal contextual workflow. Flashcards has Decks and Search/Filter; Card templates live in Settings; transfer is contextual.
 
 Responsive presentation can move an action but cannot change its meaning, stable identity, authorization, destructive status, accessible name, or domain operation. Primary next steps stay discoverable. Empty states omit controls with no meaningful target rather than presenting filler tiles/disabled toolbars.
 

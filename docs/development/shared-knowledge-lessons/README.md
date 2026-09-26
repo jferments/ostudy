@@ -1,6 +1,6 @@
 # Shared knowledge and image collections — PR #103 implementation record
 
-Status: **LK-00 through LK-04 implemented on PR #103.** This document is now the closed execution record for the foundation tranche only. Later stages were split into successor pull requests so implementation, review, qualification, and resumption can operate against smaller coherent scopes.
+Status: **LK-00 through LK-04 implemented on PR #103.** This document is the closed execution record for the foundation tranche only. Later stages were split into successor pull requests so implementation, review, qualification, and resumption can operate against smaller coherent scopes.
 
 PR #103 starts from `main` commit `30ae169fbe1b4c70add0ed0f6db2b847060c70a0` and delivers:
 
@@ -9,19 +9,21 @@ PR #103 starts from `main` commit `30ae169fbe1b4c70add0ed0f6db2b847060c70a0` and
 - LK-03 — reusable canonical evidence, qualified knowledge, coverage receipts, shared preparation, and LearningContext;
 - LK-04 — automatic image-collection ingestion, retained originals, local extraction reuse, conservative upload-order-independent overlap, automatic card/guide generation, backup preservation, and optional original inspection.
 
-No LK-05 or later product implementation belongs to this branch.
+No LK-05 or later product implementation belongs to this foundation record.
 
 ## Successor delivery split
 
-The successor split remains the authority for scope, but its lifecycle has advanced beyond the original planning-only state. PR #104 is merged with LK-05–LK-09 delivered. PR #105 is intentionally deferred as the future lessons/narration/PowerPoint plan, while PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche.
+PR #104 is merged with LK-05–LK-09 delivered. PR #105 is intentionally deferred as the future lessons/narration/PowerPoint plan. PR #106 was squash-merged on 2026-09-26 as `9ef91e79346b6d0d0ace983da3c1583303f15a43`; it is no longer active. PR #108 completes documentation alignment, while the [hardening register](../post-106-hardening.md) records the separate, unimplemented runtime follow-ups.
 
-| Successor | Current status | Scope | Roadmap |
+| Successor | Current status | Scope | Record |
 | --- | --- | --- | --- |
-| [PR #104](https://github.com/jferments/ostudy/pull/104) | Merged | folders/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | `docs/development/lk-followups/collections-guides-tutor.md` |
-| [PR #105](https://github.com/jferments/ostudy/pull/105) | **Deferred planning reference** | future LK-10–LK-12: responsive lessons, retained narration, PowerPoint | `docs/development/lk-followups/lessons-narration.md` |
-| [PR #106](https://github.com/jferments/ostudy/pull/106) | **Active** | production/dev isolation, contributor tooling, post-#104 data baseline/adoption, cleanup, packaging safety and qualification | `docs/development/lk-followups/consolidation-qualification.md` |
+| [PR #104](https://github.com/jferments/ostudy/pull/104) | Merged | collections/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | [Implementation record](../lk-followups/collections-guides-tutor.md) |
+| [PR #105](https://github.com/jferments/ostudy/pull/105) | **Deferred planning reference** | future LK-10–LK-12: responsive lessons, retained narration, PowerPoint | [Preserved plan](../lk-followups/lessons-narration.md) |
+| [PR #106](https://github.com/jferments/ostudy/pull/106) | **Merged** | production/dev isolation, contributor tooling, post-#104 release baseline/conversion, packaging safety and acceptance | [Completion record](../lk-followups/consolidation-qualification.md) |
 
-Successor activation follows the current roadmap, not a permanent numeric dependency chain: PR #106 was explicitly activated while PR #105 remains deferred. Activation means retargeting to the intended merged baseline, reconciling actual owner/test paths once, and resuming implementation from the first unfinished acceptance boundary.
+Successor activation follows the accepted scope, not a permanent numeric dependency chain: PR #106 was activated while PR #105 remained deferred. Future work starts from the then-current merged baseline, not the historical #103 or #106 branches.
+
+Historical activation wording retained for the existing cleanup verifier: “PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche”. That sentence records the earlier activation decision, **not current status or an instruction to resume #106**. The merged status above and exact GitHub evidence supersede it; the verifier's literal-status assertion is recorded for later tooling repair.
 
 ## PR #103 architecture boundary
 
@@ -56,7 +58,7 @@ The bullets below deliberately describe the closed PR #103 boundary, not current
 - Typed knowledge detail and region coverage retain versioned validation and fail-closed startup/restore admission.
 - Original image bytes remain independently owned. Cleaning/projection never replaces source authority.
 - Existing authoring JSON, `.studydeck`, backup, trusted-device sync, Anki/APKG, rich content, Basic/Cloze/objective questions, schedules/reviews, Tutor history, and learner edits remain distinct contracts.
-- Historical migration/recovery machinery remains live until active PR #106 performs the separately authorized actual-library adoption and retirement gate. Deferred PR #105 no longer owns that boundary.
+- PR #106 subsequently established `ostudy-release-v1` schema 1, retained public-v1 compatibility inputs, and retired automatic final-v26 runtime adoption while preserving explicit historical recovery. Deferred PR #105 did not own that completed boundary.
 
 ## Work reuse and invalidation
 
@@ -66,6 +68,6 @@ A hash is lookup identity, not authorization or ownership. Compatible callers ma
 
 Stage implementation, source publication, static validation, fast qualification, full Linux, Android compile/package, emulator, live-provider, physical-device, visual/accessibility, review, and merge are separate states.
 
-The final PR body is the acceptance ledger for exact SHA/run evidence. This documentation does not convert an unrun platform or human gate into a pass.
+The final PR body and exact-SHA Actions evidence record qualification; this documentation does not convert an unrun platform or human gate into a pass. See #106's completion record for the distinction between disposable installed-copy acceptance and protected-library cutover.
 
 For publication/recovery follow [GitHub-direct development](../../agents/GITHUB-DIRECT-DEVELOPMENT.md), [the interruption protocol](../../agents/RECOVERY-PROTOCOL.md), and [the command runbook](../../agents/COMMAND-RUNBOOK.md). No automatic merge is authorized.

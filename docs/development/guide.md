@@ -112,7 +112,7 @@ Study Guides are current first-class artifacts. They share stable learning topic
 
 Native/platform adapters own file selection/publication, secure storage, lifecycle, clock/time-zone facts, resource observations, Back, sharing, PDF/OCR, QR acquisition, and other OS behavior. Android Kotlin/plugin code must not implement scheduling, analytics, SQLite migrations, package validation, provider fallback, or sync merge policy.
 
-Current Android QR acquisition uses Google Code Scanner through Play services; document OCR uses ML Kit and is a separate capability. A real unavailable-capability fallback is not dead code simply because the primary development machine does not display it.
+Current Android QR acquisition uses bundled JourneyApps ZXing Embedded/ZXing core; document OCR uses bundled Tesseract4Android/Tesseract and is a separate capability. A real unavailable-capability fallback is not dead code simply because the primary development machine does not display it.
 
 ## Documentation and cleanup
 

@@ -109,7 +109,7 @@ For Tesseract, ostudy prefers the established operating-system channels document
 - macOS: Homebrew or MacPorts;
 - Windows: the Tesseract-documented UB Mannheim distribution, installed through its winget package when available.
 
-Android/iOS do not use the desktop Tesseract subprocess. Their OCR implementations remain platform-native adapters (planned bundled/offline ML Kit on Android and Apple Vision on iOS).
+Android does not use the desktop Tesseract subprocess: its platform adapter bundles Tesseract4Android/Tesseract and pinned language data behind the same application-owned OCR contract. iOS remains future work and needs its own reviewed native OCR adapter; Apple Vision is a candidate rather than a current implementation.
 
 ## PDF processing boundary
 

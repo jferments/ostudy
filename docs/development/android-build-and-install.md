@@ -116,4 +116,4 @@ When multiple devices are connected, follow that wrapper's own supported target/
 
 ## Manual acceptance
 
-Use the maintained install wrapper and test only the behavior relevant to the change. Common manual-only boundaries include physical camera/Google Code Scanner QR acquisition, OEM file providers, real touch/IME/safe-area behavior, battery/thermal pressure, screen readers, and live provider/network conditions. Emulator qualification must not be reported as evidence for those unexercised paths.
+Use the maintained install wrapper and test only the behavior relevant to the change. Common manual-only boundaries include physical camera/ZXing QR acquisition, OEM file providers, real touch/IME/safe-area behavior, battery/thermal pressure, screen readers, and live provider/network conditions. Emulator qualification must not be reported as evidence for those unexercised paths.
