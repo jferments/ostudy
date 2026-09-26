@@ -349,6 +349,10 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             true
         }
         DatabaseLineage::LegacyPublic => {
+            // Validate every already-recorded repair before applying any missing
+            // prerequisite. A corrupt later row must never cause an earlier
+            // repair to commit before the library is rejected.
+            verify_repair_ledger(connection)?;
             apply_migrations(connection, false)?;
             apply_required_repairs(
                 connection,
@@ -615,9 +619,12 @@ pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), Com
     {
         DatabaseLineage::Release => release::validate_input(connection)
             .map_err(|message| CommandError::new("invalid_backup", message)),
-        DatabaseLineage::LegacyPublic => entry::validate_public_input(connection)
-            .map(|_| ())
-            .map_err(|message| CommandError::new("invalid_backup", message)),
+        DatabaseLineage::LegacyPublic => {
+            entry::validate_public_input(connection)
+                .map_err(|message| CommandError::new("invalid_backup", message))?;
+            verify_repair_ledger(connection)
+                .map_err(|message| CommandError::new("invalid_backup", message))
+        },
         _ => Err(CommandError::new(
             "invalid_backup",
             "The backup does not have a supported oStudy schema lineage.",
