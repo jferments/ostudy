@@ -3,7 +3,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { duplicateFunctionNames } from "./lib/ipc-symbol-contract.test.mjs";
+import { duplicateFunctionNames } from "./lib/ipc-symbol-contract.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const rustRoot = await readFile(join(root, "src-tauri", "src", "lib.rs"), "utf8");

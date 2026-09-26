@@ -30,11 +30,20 @@ describe("first-paint startup shell", () => {
     expect(setup).toContain("tauri::async_runtime::spawn_blocking");
     expect(setup.indexOf("spawn_blocking")).toBeLessThan(setup.indexOf("initialize(&worker)"));
     expect(setup).toContain("present_startup_failure(&handle");
-    const initialization = native.slice(native.indexOf("fn initialize("), native.indexOf("fn create_linux_main_window"));
+    const initializeStart = native.indexOf("fn initialize(");
+    const reconcileStart = native.indexOf("pub(crate) fn reconcile_library(");
+    const initialization = native.slice(initializeStart, reconcileStart);
+    const reconciliation = native.slice(
+      reconcileStart,
+      native.indexOf("#[cfg(target_os = \"linux\")]", reconcileStart),
+    );
     const publishDatabase = initialization.indexOf("app.manage(database)");
+    const reconcileCall = initialization.indexOf("reconcile_library(&database, &paths)");
+    expect(reconcileCall).toBeGreaterThan(-1);
+    expect(reconciliation).toContain("crate::tutor::reconcile_startup");
     expect(publishDatabase).toBeGreaterThan(initialization.indexOf("app.manage(ai_runtime)"));
     expect(publishDatabase).toBeGreaterThan(initialization.indexOf("app.manage(pdf_render_runtime)"));
+    expect(publishDatabase).toBeGreaterThan(reconcileCall);
     expect(publishDatabase).toBeGreaterThan(initialization.indexOf("logging::flush"));
-    expect(publishDatabase).toBeGreaterThan(initialization.indexOf("crate::tutor::reconcile_startup"));
   });
 });
