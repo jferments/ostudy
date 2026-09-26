@@ -51,7 +51,7 @@ requireText("release baseline schema 1", release, "pub(crate) const BASELINE_VER
 requireText("release current schema 2", release, "pub(crate) const SCHEMA_VERSION: i64 = 2;");
 requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
 requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
-requireText("selection-deck migration checksum", release, '"94ca4c6af675b669ff36713869285db082ae032b2e607f1a293d7ecfd158e828"');
+requireText("selection-deck migration checksum", release, '"c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"');
 requireText("staged legacy converter", release, "Backup::new(connection, &mut staged)");
 requireText("typed preservation receipt", release, "fn preservation_receipt(connection: &Connection)");
 requireText("atomic live ledger conversion", release, "transaction_with_behavior(TransactionBehavior::Immediate)");

@@ -162,7 +162,7 @@ pub fn run() {
             if window.label() != "main"
                 || (!task_cancellation::has_active_document_tasks()
                     && !knowledge::has_active_tasks()
-                    && !task_activity::maintenance_active())
+                    && !task_activity::has_active_work())
             {
                 let terminating = lifecycle.transition(platform::LifecyclePhase::Terminating);
                 let _ = window.emit("ostudy-lifecycle", terminating);
@@ -179,7 +179,7 @@ pub fn run() {
             window
                 .dialog()
                 .message(
-                    "A document, semantic preparation, tutor request, or library maintenance operation is still running. Closing ostudy will interrupt the request. Previously saved material and conversation messages will remain available. Close anyway?",
+                    "A document, collection, semantic preparation, tutor, device synchronization, or library maintenance operation is still running. Closing ostudy will interrupt the request. Previously saved material and conversation messages will remain available. Close anyway?",
                 )
                 .title("Study processing is still running")
                 .kind(MessageDialogKind::Warning)

@@ -36,7 +36,7 @@ struct ReleaseMigration {
 const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[ReleaseMigration {
     version: 2,
     name: "selection_deck_operations",
-    checksum: "94ca4c6af675b669ff36713869285db082ae032b2e607f1a293d7ecfd158e828",
+    checksum: "c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238",
     sql: include_str!("../../schema/0002_selection_deck_operations.sql"),
 }];
 
@@ -94,7 +94,9 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
         ));
     }
     let rows: i64 = connection
-        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .map_err(|error| format!("Could not inspect the release migration ledger: {error}"))?;
     if rows != user_version {
         return Err(
@@ -164,8 +166,42 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
                 .to_string(),
         );
     }
+    validate_selection_receipt_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
+}
+
+fn validate_selection_receipt_schema(connection: &Connection, version: i64) -> Result<(), String> {
+    let actual: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='selection_deck_operations'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if version == BASELINE_VERSION {
+        if actual.is_some() {
+            return Err("An unregistered selection-deck migration is present.".to_string());
+        }
+        return Ok(());
+    }
+    let actual = actual.ok_or_else(|| "The selection-deck receipt table is missing.".to_string())?;
+    let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    expected
+        .execute_batch(RELEASE_MIGRATIONS[0].sql)
+        .map_err(|error| error.to_string())?;
+    let sql: String = expected
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE name='selection_deck_operations'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if normalize_schema_sql(&actual) != normalize_schema_sql(&sql) {
+        return Err("The selection-deck receipt schema does not match this build.".to_string());
+    }
+    crate::authoring::selection_deck::validate_stored_receipts(connection)
 }
 
 fn validate_baseline_input(connection: &Connection) -> Result<(), String> {
@@ -183,6 +219,9 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
         if migration.version <= current {
             continue;
         }
+        if format!("{:x}", Sha256::digest(migration.sql.as_bytes())) != migration.checksum {
+            return Err(format!("Bundled release migration {} checksum mismatch.", migration.version));
+        }
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| {
@@ -191,11 +230,12 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
                     migration.version
                 )
             })?;
-        transaction
-            .execute_batch(migration.sql)
-            .map_err(|error| {
-                format!("Could not apply release migration {}: {error}", migration.version)
-            })?;
+        transaction.execute_batch(migration.sql).map_err(|error| {
+            format!(
+                "Could not apply release migration {}: {error}",
+                migration.version
+            )
+        })?;
         let applied_at = unix_time_millis().map_err(|error| error.message)?;
         transaction
             .execute(
@@ -209,7 +249,10 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
                 ],
             )
             .map_err(|error| {
-                format!("Could not record release migration {}: {error}", migration.version)
+                format!(
+                    "Could not record release migration {}: {error}",
+                    migration.version
+                )
             })?;
         transaction
             .pragma_update(None, "user_version", migration.version)
@@ -219,11 +262,14 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
                     migration.version
                 )
             })?;
-        transaction
-            .commit()
-            .map_err(|error| {
-                format!("Could not commit release migration {}: {error}", migration.version)
-            })?;
+        validate_supported_input(&transaction)?;
+        verify_integrity(&transaction)?;
+        transaction.commit().map_err(|error| {
+            format!(
+                "Could not commit release migration {}: {error}",
+                migration.version
+            )
+        })?;
         applied = true;
     }
     validate_input(connection)?;
@@ -315,7 +361,12 @@ fn write_release_ledger(transaction: &Transaction<'_>) -> Result<(), String> {
         .execute(
             "INSERT INTO schema_migrations(version, name, checksum, applied_at)
              VALUES (?1, ?2, ?3, ?4)",
-            params![BASELINE_VERSION, BASELINE_NAME, BASELINE_CHECKSUM, applied_at],
+            params![
+                BASELINE_VERSION,
+                BASELINE_NAME,
+                BASELINE_CHECKSUM,
+                applied_at
+            ],
         )
         .map_err(|error| format!("Could not record the release baseline: {error}"))?;
     transaction
@@ -582,7 +633,10 @@ mod tests {
         write_release_ledger(&transaction).unwrap();
         transaction.commit().unwrap();
 
-        assert_eq!(validate_supported_input(&connection).unwrap(), BASELINE_VERSION);
+        assert_eq!(
+            validate_supported_input(&connection).unwrap(),
+            BASELINE_VERSION
+        );
         validate_backup_input(&connection).unwrap();
         assert!(validate_input(&connection).is_err());
         assert!(apply_migrations(&mut connection).unwrap());
@@ -591,6 +645,48 @@ mod tests {
             super::super::entry::user_version(&connection).unwrap(),
             SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn malformed_release_ledgers_and_receipts_are_rejected_without_writes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_fresh(&mut connection).unwrap();
+        for corruption in [
+            "UPDATE schema_migrations SET checksum='bad' WHERE version=2;",
+            "PRAGMA user_version=3;",
+            "DELETE FROM schema_migrations WHERE version=1;",
+            "DROP TABLE selection_deck_operations;",
+            "INSERT INTO selection_deck_operations VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{}', 1);",
+        ] {
+            let transaction = connection.transaction().unwrap();
+            transaction.execute_batch(corruption).unwrap();
+            let changes = transaction.total_changes();
+            assert!(validate_backup_input(&transaction).is_err(), "{corruption}");
+            assert_eq!(transaction.total_changes(), changes);
+            transaction.rollback().unwrap();
+        }
+        validate_input(&connection).unwrap();
+    }
+
+    #[test]
+    fn migration_failure_rolls_back_ddl_ledger_and_version_then_retries_cleanly() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        let transaction = connection.transaction().unwrap();
+        transaction.execute_batch(BASELINE_SQL).unwrap();
+        write_release_ledger(&transaction).unwrap();
+        transaction.commit().unwrap();
+        connection.execute_batch(
+            "CREATE TEMP TRIGGER fail_release_migration BEFORE INSERT ON schema_migrations
+             WHEN NEW.version=2 BEGIN SELECT RAISE(ABORT,'injected migration failure'); END;",
+        ).unwrap();
+        assert!(apply_migrations(&mut connection).is_err());
+        assert_eq!(validate_supported_input(&connection).unwrap(), BASELINE_VERSION);
+        connection.execute_batch("DROP TRIGGER fail_release_migration;").unwrap();
+        assert!(apply_migrations(&mut connection).unwrap());
+        let changes = connection.total_changes();
+        assert!(!apply_migrations(&mut connection).unwrap());
+        assert_eq!(connection.total_changes(), changes);
+        validate_backup_input(&connection).unwrap();
     }
 
     #[test]
@@ -632,8 +728,19 @@ mod tests {
                  VALUES ('release-converter-sentinel', '{\"answer\":42}', 30);",
             )
             .unwrap();
+        let before = preservation_receipt(&connection).unwrap();
         convert_legacy_current(&mut connection).unwrap();
         validate_input(&connection).unwrap();
+        assert_eq!(
+            connection.query_row("SELECT COUNT(*) FROM selection_deck_operations", [], |row| row.get::<_, i64>(0)).unwrap(),
+            0
+        );
+        // The new table is additive and empty. Compare every pre-existing typed
+        // value after excluding only that newly introduced table in a rolled-back test transaction.
+        let comparison = connection.transaction().unwrap();
+        comparison.execute_batch("DROP TABLE selection_deck_operations;").unwrap();
+        assert_eq!(preservation_receipt(&comparison).unwrap(), before);
+        comparison.rollback().unwrap();
         let deck: (String, i64, i64) = connection
             .query_row(
                 "SELECT name, created_at, updated_at FROM decks

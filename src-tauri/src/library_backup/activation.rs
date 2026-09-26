@@ -261,17 +261,41 @@ pub(crate) fn apply_pending_restore(
     apply_source_restore(paths, &pending_restore_path(paths))
 }
 
-/// The selected source is a native-owned staged file, never a caller path.
+/// Process-owned, validated input. No journal exists until exclusive activation.
+/// Dropping this value preserves its source/candidate for inspection; it never
+/// installs or replays an abandoned preparation at startup.
+#[derive(Debug)]
+pub(super) struct PreparedRestore {
+    root: PathBuf,
+    transaction: PathBuf,
+    source_sha256: String,
+    candidate_sha256: String,
+}
+
+/// Startup already owns a closed library. Live restore uses preparation and
+/// installation separately so extraction/validation does not close IPC admission.
 pub(super) fn apply_source_restore(
     paths: &AppPaths,
     pending: &Path,
 ) -> Result<Option<PendingRestoreGuard>, String> {
-    if recover(paths)? {
+    if recover(paths)? || !pending.is_file() {
         return Ok(None);
     }
+    let prepared = prepare_source_restore(paths, pending)?;
+    install_prepared_restore(paths, prepared).map(Some)
+}
+
+/// Copy, extract, migrate and validate only private candidate files. The active
+/// library may remain open. Caller owns maintenance and an original-generation
+/// request lease, not exclusive replacement admission.
+pub(super) fn prepare_source_restore(
+    paths: &AppPaths,
+    pending: &Path,
+) -> Result<PreparedRestore, String> {
     let root = paths.app_data_dir();
-    if !pending.is_file() {
-        return Ok(None);
+    check_path(root, Path::new(JOURNAL))?;
+    if root.join(JOURNAL).exists() {
+        return Err("Recover the interrupted restore before preparing another library.".into());
     }
     // These belong to the pre-journal implementation. Never delete an unknown
     // interrupted operation's only rollback copy to make room for a new one.
@@ -311,6 +335,41 @@ pub(super) fn apply_source_restore(
     }).map_err(|error| error.message)?;
     drop(staged);
     sync_tree(&candidate)?;
+    Ok(PreparedRestore {
+        root: root.to_path_buf(),
+        source_sha256: hash_file(&source)?,
+        candidate_sha256: hash_tree(&candidate)?,
+        transaction,
+    })
+}
+
+/// Called only after the original-generation lease has been released and all
+/// other library users have drained. Verify the exact prepared bytes BEFORE
+/// writing a journal or moving any active file; never re-resolve the old handle.
+pub(super) fn install_prepared_restore(
+    paths: &AppPaths,
+    prepared: PreparedRestore,
+) -> Result<PendingRestoreGuard, String> {
+    let root = paths.app_data_dir();
+    if prepared.root != root {
+        return Err("A restore candidate belongs to a different library.".into());
+    }
+    check_path(root, Path::new(JOURNAL))?;
+    if root.join(JOURNAL).exists() {
+        return Err("An interrupted restore must be recovered before activation.".into());
+    }
+    let transaction = prepared.transaction;
+    let relative = transaction
+        .strip_prefix(root)
+        .map_err(|_| "Restore candidate escaped its library directory.".to_string())?;
+    check_path(root, relative)?;
+    check_path(&transaction, Path::new("source.ostudybackup"))?;
+    check_path(&transaction, Path::new("candidate"))?;
+    if hash_file(&transaction.join("source.ostudybackup"))? != prepared.source_sha256
+        || hash_tree(&transaction.join("candidate"))? != prepared.candidate_sha256
+    {
+        return Err("The prepared restore candidate changed. The active library was not replaced; recovery files were preserved.".into());
+    }
     let original = ENTRIES
         .iter()
         .map(|relative| {
@@ -329,7 +388,7 @@ pub(super) fn apply_source_restore(
             .ok_or_else(|| "Invalid restore transaction directory.".to_string())?
             .to_string(),
         original,
-        source_sha256: hash_file(&source)?,
+        source_sha256: prepared.source_sha256,
     };
     let previous = transaction.join("previous");
     fs::create_dir(&previous).map_err(io_error)?;
@@ -347,7 +406,7 @@ pub(super) fn apply_source_restore(
         finished: false,
     };
     guard.install()?;
-    Ok(Some(guard))
+    Ok(guard)
 }
 
 pub(super) fn transaction_committed(root: &Path, operation: &str) -> Result<bool, String> {
@@ -503,6 +562,37 @@ fn sync_tree(path: &Path) -> Result<(), String> {
     sync(path)
 }
 
+/// Length-framed names, entry types and file digests bind every candidate
+/// file and empty directory. Sorting makes enumeration order irrelevant.
+fn hash_tree(path: &Path) -> Result<String, String> {
+    let mut entries = fs::read_dir(path)
+        .map_err(io_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(io_error)?;
+    entries.sort_by_key(|entry| entry.file_name());
+    let mut digest = Sha256::new();
+    for entry in entries {
+        let name = entry.file_name();
+        let name = name
+            .to_str()
+            .ok_or_else(|| "A restore candidate filename is not UTF-8.".to_string())?;
+        digest.update((name.len() as u64).to_be_bytes());
+        digest.update(name.as_bytes());
+        let kind = entry.file_type().map_err(io_error)?;
+        let content = if kind.is_dir() {
+            digest.update(b"directory");
+            hash_tree(&entry.path())?
+        } else if kind.is_file() {
+            digest.update(b"file");
+            hash_file(&entry.path())?
+        } else {
+            return Err("Restore candidates must contain only regular files and directories.".into());
+        };
+        digest.update(content.as_bytes());
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
 fn io_error(error: std::io::Error) -> String {
     format!("Library restore filesystem operation failed: {error}. Recovery files were preserved.")
 }
@@ -510,3 +600,7 @@ fn io_error(error: std::io::Error) -> String {
 #[cfg(test)]
 #[path = "activation_tests.rs"]
 mod current_format_tests;
+
+#[cfg(test)]
+#[path = "preparation_tests.rs"]
+mod preparation_tests;
