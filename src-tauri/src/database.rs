@@ -974,6 +974,10 @@ mod tests {
 }
 
 #[cfg(test)]
+#[path = "database/release_baseline_tests.rs"]
+mod release_baseline_current_format_tests;
+
+#[cfg(test)]
 #[path = "database/interactive_migration_tests.rs"]
 mod interactive_migration_tests;
 
