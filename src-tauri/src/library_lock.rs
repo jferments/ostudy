@@ -11,6 +11,9 @@ use std::{
     sync::OnceLock,
 };
 
+#[path = "platform/file_lock.rs"]
+mod file_lock;
+
 pub(crate) const IN_USE: &str = "OSTUDY_LIBRARY_IN_USE";
 const LOCK_FILE: &str = "library-owner.lock";
 static PROCESS_LOCK: OnceLock<LibraryLock> = OnceLock::new();
@@ -47,7 +50,7 @@ impl LibraryLock {
             .truncate(false)
             .open(path)
             .map_err(|error| format!("Could not open the library ownership lock: {error}"))?;
-        match file.try_lock() {
+        match file_lock::try_lock_exclusive(&file) {
             Ok(()) => Ok(Self {
                 root: root.to_path_buf(),
                 _file: file,
