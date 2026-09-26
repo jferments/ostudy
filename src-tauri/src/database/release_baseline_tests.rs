@@ -1,7 +1,7 @@
 use super::*;
 use rusqlite::types::ValueRef;
 
-const RELEASE_BASELINE_PATH: &str = "migrations/0001_release_baseline.sql";
+const RELEASE_BASELINE_PATH: &str = "schema/0001_release_baseline.sql";
 
 #[test]
 fn release_baseline_is_committed_and_matches_schema30() {
