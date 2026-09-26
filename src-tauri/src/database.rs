@@ -624,7 +624,7 @@ pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), Com
                 .map_err(|message| CommandError::new("invalid_backup", message))?;
             verify_repair_ledger(connection)
                 .map_err(|message| CommandError::new("invalid_backup", message))
-        },
+        }
         _ => Err(CommandError::new(
             "invalid_backup",
             "The backup does not have a supported oStudy schema lineage.",
