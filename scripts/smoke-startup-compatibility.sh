@@ -311,22 +311,29 @@ if grep -Eq 'application_startup_blocked|panicked at|Failed to setup app|panic_c
   exit 1
 fi
 
+status_json="$(
+  XDG_DATA_HOME="$DATA_HOME" \
+    python3 "$SCRIPT_DIR/library-status.py" --profile development --verify --json
+)"
+release_state="$(
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["libraries"][0]["state"])' \
+    <<<"$status_json"
+)"
+[[ "$release_state" == "release-current" ]] || {
+  printf '%s\n' "$status_json" >&2
+  printf 'ERROR: recovered database did not reach the verified release-v1 baseline.\n' >&2
+  exit 1
+}
+
 lineage="$(sqlite3 "$APP_DATA/library.sqlite3" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
 schema_version="$(sqlite3 "$APP_DATA/library.sqlite3" 'PRAGMA user_version;')"
-expected_schema_version="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --latest)"
-expected_migrations="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --ledger)"
-migrations="$(sqlite3 -separator '|' "$APP_DATA/library.sqlite3" 'SELECT version, name, checksum FROM schema_migrations ORDER BY version;')"
 after_decks="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM decks;')"
 after_cards="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM cards;')"
 after_reviews="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_events;')"
 after_attributions="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_event_attributions;')"
 
-[[ "$lineage" == "ostudy-public-v1" && "$schema_version" == "$expected_schema_version" ]] || {
-  printf 'ERROR: recovered database did not reach the current public lineage/schema.\n' >&2
-  exit 1
-}
-[[ "$migrations" == "$expected_migrations" ]] || {
-  printf 'ERROR: recovered database has an unexpected current migration ledger.\n' >&2
+[[ "$lineage" == "ostudy-release-v1" && "$schema_version" == "1" ]] || {
+  printf 'ERROR: recovered database did not finish at release-v1 schema 1.\n' >&2
   exit 1
 }
 [[ "$before_decks" == "$after_decks" && "$before_cards" == "$after_cards" ]] || {
@@ -338,4 +345,4 @@ after_attributions="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM 
   exit 1
 }
 
-printf 'Native startup compatibility smoke passed: the current runtime refused historical-v26 data unchanged, explicit recovery converted only an isolated copy to public-v1, and ordinary startup migrated it to the current schema with learner data preserved.\n'
+printf 'Native startup compatibility smoke passed: the current runtime refused historical-v26 data unchanged, explicit recovery converted only an isolated copy to public-v1, and ordinary startup normalized and preservation-converted it to release-v1 schema 1 with learner data preserved.\n'

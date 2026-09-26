@@ -416,8 +416,9 @@ def main() -> int:
         "The preserved pre-public source was never opened by SQLite during conversion."
     )
     print(
-        "Start current oStudy normally. Its ordinary public migration chain will "
-        "advance the recovered public-v1 copy to the current schema."
+        "Start current oStudy normally. It will validate and advance the recovered "
+        "public-v1 copy through the immutable compatibility chain, then preservation-"
+        "convert it to the current release-v1 schema."
     )
     return 0
 
