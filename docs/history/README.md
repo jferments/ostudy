@@ -13,6 +13,12 @@ Historical records can contain completed milestones, superseded filenames, old c
 - [Code review 2026-08-03](code-review-2026-08-03.md) — dated repository review that informed subsequent refactoring.
 - [Pre-public schema evolution](pre-public-schema-evolution.md) — schema history retained after establishing the public lineage.
 
+## Release-baseline work
+
+[PR #106 implementation plan](pr-106-implementation-plan.md) preserves the pre-merge plan byte-for-byte from the documentation branch's `df92673aa3adf5c01c3ca688c8d4f073d3689819` snapshot. Its active/pending language is historical; PR #106 was squash-merged as `9ef91e79346b6d0d0ace983da3c1583303f15a43` on 2026-09-26. Do not rerun its completed adoption, installation or recovery stages merely because the old checklist remains here.
+
+Use the [completion record](../development/lk-followups/consolidation-qualification.md) for the final source/run identities and recorded disposable installed-copy acceptance, and the [hardening register](../development/post-106-hardening.md) for separately planned audit follow-ups. Neither record authorizes destructive work on a protected learner library.
+
 ## Completed frontend/UI work
 
 - [Frontend/CSS ownership refactor checkpoint](frontend-css-refactor-checkpoint.md) — PR #75/#76 completion record for explicit CSS/UI ownership and the standalone artifact boundary. Its old branch-specific source-export workflow has been removed.

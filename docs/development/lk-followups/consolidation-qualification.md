@@ -1,394 +1,84 @@
-# PR #106 roadmap — post-#104 stabilization, production baseline, release readiness, and tooling
+# PR #106 completion record — production baseline and release readiness
 
-Status: **active PR #106 qualification and installed-copy/manual acceptance** on top of merged PR #104. This roadmap defines the acceptance boundaries; the current head and pass/fail state belong to PR #106 and exact-SHA Actions evidence. PR #105 is explicitly deferred and is **not** an activation dependency.
+Status: **squash-merged on 2026-09-26** as `9ef91e79346b6d0d0ace983da3c1583303f15a43`. The qualified source candidate was `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`; both commits have tree `45f939843b55aa2b9813536b423bf0d83636d382`. PR #106 is no longer an active implementation branch or a dependency waiting for PR #105.
 
-This roadmap owns the current post-#104 production-baseline and migration cleanup that was previously assigned to PR #105/LK-13, together with development/production data isolation, contributor tooling, bounded cleanup, packaging safety, and final qualification.
+This record closes the post-#104 production/development isolation, contributor tooling, baseline/conversion, backup/restore, packaging and acceptance tranche. The [original implementation plan](../../history/pr-106-implementation-plan.md) is preserved as historical evidence, not instructions to repeat its completed stages. Current owners are [library restore](../../architecture/library-restore.md), [the durable-data inventory](../post-104-data-contract-audit.md), and [local testing and handoff](../local-testing-and-handoff.md).
 
-It does **not** implement responsive lessons, TTS/narration, PowerPoint, STT, voice cloning, speech grading, or any other LK-10–LK-12 feature. Those remain preserved in deferred PR #105. Future #105 schema changes extend the production baseline established here through normal reviewed forward migrations.
+PR #105 remains deferred: responsive lessons, narration/TTS, PowerPoint, STT, voice cloning and speech grading were not implemented here. Future durable changes extend the release baseline through reviewed forward migrations; they do not restart schema consolidation.
 
-Activated baseline: PR #104 squash-merged as `6529004ad4e31946df4116f7a0591d6c80d8e586` from accepted source head `bc1e1c2179b80f73496ddd41312fbc8fdc512896`. The merged public schema is version **30**. PR #106 integrates that exact `main` commit as ancestry and must preserve #104's native-owned study-material pipeline rather than reopening document/AI architecture.
+## Delivered boundary
 
-## Product result
+Production retains `io.github.jferments.ostudy`. Maintained development and Android debug use `io.github.jferments.ostudy.dev`, with separate ordinary storage and credential namespaces. Tests use explicitly isolated storage. A worktree alone is not a new data profile; multiple development worktrees can still share the development library. Changing XDG directories alone does not create a separate production keyring namespace.
 
-After this PR, oStudy has a production-safe local installation boundary suitable for important real study data and a separate development boundary safe for ongoing experimentation.
+Fresh libraries use `ostudy-release-v1`, schema **1**, from `src-tauri/schema/0001_release_baseline.sql`. Immutable public-v1 migrations **1–30** and repairs **1–3** remain compatibility input. Supported public-v1 complete-backup inputs at schemas **10–30** are admitted, normalized and preservation-checked before atomic release-lineage conversion. The explicit final-v26 historical recovery route stays outside ordinary startup. Do not delete migration ledgers, alter checksums or relabel installed data by hand.
 
-The intended local topology is:
+Complete-library backup writes format **4** and retains supported earlier package readers. Restore validates a staged package and activates it in the running native process, with journaled filesystem replacement, coordinated SQLite sidecars, request-generation fencing, durable completion receipts and UI refresh. Startup resolves interrupted activation. Saved OS credentials are neither included in the backup nor deleted by restore; successful live replacement clears the process's entire session-only credential map.
 
-```text
-Production oStudy
-  application identity: io.github.jferments.ostudy
-  production data / managed files / credentials
-  known-good installed package
-            │
-            └── real learner library
-
-Development oStudy
-  development identity: io.github.jferments.ostudy.dev
-  separate data / managed files / credentials
-  launched from the source checkout
-            │
-            └── disposable development library
-
-Automated tests
-  temporary isolated storage
-  never production or ordinary development data
-```
-
-A source checkout is not allowed to rely on human memory to avoid the production library. Development launch/build wrappers must select the development profile, and a development startup that resolves the production storage boundary must fail closed.
-
-The current schema/migration lineage is audited and, where safe, simplified into a documented production baseline before the learner begins depending on it. Obsolete **development-only** migration/converter/runtime machinery may be archived only after an explicit recovery path and preservation evidence exist. Released production migrations, once established, become compatibility obligations and are not periodically rewritten for aesthetics.
-
-Contributor setup and local testing must not require the repository owner's private self-hosted runner, VM registration, runner-local caches, signing credentials, or GitHub configuration. Repository-owned setup/doctor/check commands define the test contract; CI invokes the same maintained boundaries in a controlled environment.
-
-## Scope and non-goals
-
-### Included
-
-- development versus production application/data/credential isolation;
-- explicit guards preventing normal development launchers from using production storage;
-- clean contributor setup/doctor/build/run/test tooling;
-- post-#104 schema/migration/reader audit;
-- one current production baseline and supported upgrade/recovery contract;
-- isolated-copy adoption/preservation proof for retained pre-baseline data where required;
-- gated archival of obsolete **pre-release development** migration/reader machinery;
-- complete backup/restore/reopen verification across current retained data;
-- normal uninstall preserving user data;
-- explicit destructive purge as a separate confirmed operation;
-- proven-dead code/dependency/documentation cleanup;
-- package/release contracts required for a trustworthy native Linux install;
-- exact-head Linux/Android qualification and manual production/dev isolation acceptance.
-
-### Not included
-
-- LK-10 lessons, LK-11 narration/TTS, LK-12 PowerPoint;
-- a second migration-history cleanup when #105 later adds ordinary forward migrations;
-- full Debian/Fedora/Arch/Flatpak public distribution matrix;
-- final public `install.sh` dispatcher, signed release manifest, Flathub/F-Droid publication, or ostudy.io brochure site;
-- automatic merge;
-- personal-library upload to GitHub or CI;
-- destructive reset as routine troubleshooting;
-- weakening tests, permissions, assertions, timeouts, or recovery guarantees to obtain green CI.
-
-The full public installer/distribution work follows this PR and consumes the stable contracts established here.
+Process ownership uses a retained lock descriptor and permanent lock file. The final Android correction uses the native nonblocking lock adapter; desktop locking remains unchanged. Never unlink `library-owner.lock` to bypass ownership. Normal Debian removal owns program/system-integration files, not learner XDG data. Explicit destructive purge is separate from ordinary removal and was not the acceptance procedure.
 
 ## Acceptance boundaries
 
-### AC-01 — production baseline and migration/recovery contract
+| Identifier | Completed implementation/acceptance boundary | Principal evidence owners |
+| --- | --- | --- |
+| AC-01 | Current baseline, supported conversion and fail-closed unsupported input | `database/release.rs`, `database/entry_tests.rs` |
+| AC-02 | Production/development/test isolation; disposable installed-copy remove/reinstall preservation | `application_profile.rs`, package-data verifiers, human acceptance in PR #106 |
+| AC-03 | Repository-owned setup/doctor/build/run/check tooling, independent of private runner registration | `scripts/ostudy-dev`, `scripts/verify-development-tooling.mjs` |
+| AC-04 | Frozen-source Linux/package/Android qualification and disposable installed-copy acceptance | Check 36254323670 attempt 2; human acceptance in PR #106 |
+| AC-05 | Journaled, recoverable activation and exclusive process ownership | `library_backup/activation_tests.rs`, `library_lock_tests.rs`, `platform/file_lock_tests.rs` |
+| AC-06 | Same-process restore, stable Database clones, stale-request refusal, receipts and credential cleanup | `library_backup/live_tests.rs`, `library_session_tests.rs`, `ai/library_restore_secret_tests.rs`, frontend transport/settings tests |
+| AC-07 | Release documentation, cleanup dispositions and bounded diagnostics | documentation/current-data/cleanup verifiers; documentation continuation in PR #108 |
+| AC-08 | Mechanically derived release-v1 baseline and typed preservation converter, with immutable historical readers | `database/release_baseline_tests.rs`, `database/release.rs`, historical recovery tests |
 
-The post-#104 schema and durable payload set has one documented current production baseline. Fresh current libraries and correctly migrated retained libraries are behaviorally equivalent at supported boundaries. Unknown/future/tampered/corrupt inputs fail closed.
+Native paths in this table are relative to `src-tauri/src/`. A passed gate does not establish that every later audit observation is fixed. The [post-release-baseline hardening register](../post-106-hardening.md) explicitly separates confirmed observations, qualified findings and future implementation.
 
-Obsolete pre-release development migration/converter/read machinery may leave the ordinary startup/package path only when:
+## Qualification and human evidence
 
-- its live callers and serialized consumers are proven absent;
-- retained data that still needs it has an explicit offline recovery/conversion route;
-- migration/checksum provenance is preserved rather than rewritten;
-- isolated-copy conversion/preservation tests pass;
-- normal current startup no longer depends on the archived machinery.
+[Check 36254323670, attempt 2](https://github.com/jferments/ostudy/actions/runs/36254323670/attempts/2) tested exactly `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Its named Static, Linux full, production Debian package, Android compile/package and Android emulator smoke steps succeeded. The standalone Fast step was **skipped** in that all-full run; do not describe it as a separately executed passing step. The PR's evidence records the Linux/nested/reuse coverage separately. The post-squash `main` Check is [36257586166](https://github.com/jferments/ostudy/actions/runs/36257586166); its coverage belongs to its own step evidence, not an inference from the word success.
 
-Future released schema changes resume as immutable forward migrations from this baseline.
+[PR #106](https://github.com/jferments/ostudy/pull/106) records completed disposable installed-copy acceptance: historical-backup restoration without native PID replacement, a post-restore write surviving reopen, independent production/development libraries, and actual ordinary package removal/reinstallation preserving learner data. This is recorded human evidence, not a new execution by the documentation author.
 
-### AC-02 — production/development/test isolation and safe uninstall
+The protected school-library release-v1 cutover was **not** part of that completed disposable acceptance. An earlier read-only public-v1/schema-30 audit is not evidence of its conversion. Physical-device, live-provider, visual/accessibility and public signing/distribution acceptance likewise are not implied by the automated run or by merge.
 
-Production, development, and automated-test profiles cannot resolve to the same ordinary storage or credential namespace.
+## Completed delivery stages
 
-Normal package removal deletes package-owned executable/integration files but preserves learner data. Destructive user-data purge is a separate explicit operation with a precise validated target and strong confirmation.
+### 106-A — development / production / test profile isolation
 
-Reinstalling the same/newer compatible production package reopens the retained production library. Development uninstall/build cleanup cannot delete production data.
+Implemented explicit profile/storage/credential boundaries and development guards. Current commands and cautions belong in [local testing](../local-testing-and-handoff.md).
 
-### AC-03 — contributor-local development and CI portability
+### 106-B — contributor setup, build, doctor, and local test tooling
 
-A contributor on a supported development system can obtain the required source toolchain, run environment diagnostics, build/run oStudy Dev, and execute maintained static/fast/full checks without recreating the repository owner's GitHub runner.
+Implemented repository-owned contributor wrappers. See [the command runbook](../../agents/COMMAND-RUNBOOK.md); do not reproduce private CI registration or caches for ordinary development.
 
-Private runner registration, Actions tokens, release signing material, runner-local evidence/caches, and host-specific services are not ordinary developer prerequisites.
+### 106-C — post-#104 schema and durable-data audit
 
-CI remains authoritative exact-SHA qualification, but calls repository-owned commands rather than depending on undocumented machine-only behavior.
+Completed the [inventory](../post-104-data-contract-audit.md). The terminal public-v1 schema is compatibility evidence, not the current writer.
 
-### AC-04 — release-readiness qualification and installed-copy acceptance
+### 106-D — production baseline and gated archival of obsolete development migration machinery
 
-One frozen exact SHA passes the required repository/platform gates. A real production package installs beside the development checkout, and human acceptance verifies:
+Implemented release-v1 and staged preservation conversion after the recorded lineage gate. Explicit historical recovery remains; normal startup does not adopt arbitrary pre-public databases.
 
-- production and development libraries are different;
-- content created in one is invisible to the other;
-- development startup cannot target production storage;
-- production uninstall preserves production data;
-- production reinstall reopens that data;
-- a complete backup can be created and verified;
-- no destructive test is performed against the only valuable copy of a learner library.
+### 106-E — backup, upgrade, uninstall, and learner-data safety
 
-### AC-05 — crash-safe complete-library activation
+Implemented and exercised the backup/restore/package boundaries. Retain original backups, prior coherent libraries and restore journals; cleanup is not permission to erase recovery evidence.
 
-Complete-library activation is journaled and recoverable across abrupt termination. SQLite database/WAL/SHM/rollback-journal state, managed files, retained input/previous libraries and process ownership move under one explicit activation owner. Ambiguous commit state is resolved from durable markers rather than guessed from an interrupted reply.
+### 106-F — proven-dead code, dependencies, documentation, and bounded workflow cleanup
 
-### AC-06 — same-process restore and stale-request exclusion
+Closed the release cleanup scope. PR #108 completes documentation alignment; runtime audit findings remain separately scoped in the hardening register.
 
-Normal restore completes in the running native process. The maintenance boundary drains active work, advances the library generation after successful replacement, rejects stale-generation requests, records a durable completion receipt, refreshes the UI, and clears the native process's session-only credential map without deleting saved OS-keyring entries.
+### 106-G — production package and release boundary required for local use
 
-### AC-07 — maintained documentation and release-readiness cleanup
+Qualified the production Debian/Ubuntu package boundary. A signed multi-platform public distribution, Flathub/F-Droid publication and the website remain separate projects.
 
-Maintained user, architecture, agent, testing, cleanup and release-baseline documentation must describe the implemented contracts rather than historical stage behavior. Documentation verification and release-readiness cleanup checks cover the current owning boundaries; historical plans remain evidence rather than current product specification.
+### 106-H — freeze and exact-head terminal qualification
 
-### AC-08 — release-v1 baseline and staged preservation conversion
+Completed on the source SHA and run recorded above. Preserve the freeze boundary; do not reopen the merged release tranche for incidental cleanup.
 
-Fresh 0.1 libraries use the checksum-protected `ostudy-release-v1` schema-1 baseline. Supported `ostudy-public-v1` inputs remain immutable compatibility evidence/readers and are staged, normalized and preservation-verified before atomic lineage conversion. The explicit final-v26 historical recovery route remains outside ordinary startup.
+### 106-I — human production/dev isolation and release-readiness acceptance
 
-## 106-A — development / production / test profile isolation
+Disposable installed-copy acceptance is recorded complete. Valuable-library cutover is a separate deliberate operation, not a prerequisite for documentation work and not an automated cleanup action.
 
-Inspect the final post-#104 startup/path/platform/secret boundaries at the exact merged baseline.
+## Post-merge handoff
 
-Implement an application-owned profile/build contract rather than relying on ad-hoc shell environment variables alone.
+PR #108 must integrate the actual squash commit with a reviewed non-force merge, target `main`, and retain only its intended documentation diff. Its earlier runtime terminology changes are deferred, not silently merged into #106. Keep both histories; do not force-push, replay the old #106 branch over main, or infer acceptance for a new SHA from its ancestry alone.
 
-Production keeps the stable release identifier:
-
-```text
-io.github.jferments.ostudy
-```
-
-Development receives a distinct identity such as:
-
-```text
-io.github.jferments.ostudy.dev
-```
-
-and corresponding distinct Tauri data/config/cache/state and desktop keyring namespaces. The exact naming/config mechanism must preserve the stable production identifier and package compatibility.
-
-Ordinary checkout commands such as development hot reload, standalone development build, and `run-app.sh` must select the development profile. Production package/release commands select production explicitly.
-
-Add a hard development guard: if a development process resolves the production app-data directory or production secret namespace, startup/build launch refuses rather than warning and continuing.
-
-Tests cover path derivation, profile selection, environment overrides used by tests, keyring namespace separation, managed files, backups, and launcher behavior.
-
-Do not migrate or copy the production library automatically merely because a development library exists. Cross-profile transfer is explicit backup/import/recovery behavior.
-
-## 106-B — contributor setup, build, doctor, and local test tooling
-
-Make the supported contributor flow easy to discover and self-contained.
-
-Target experience:
-
-```bash
-git clone ...
-cd ostudy
-
-./scripts/ostudy-dev setup
-./scripts/ostudy-dev doctor
-./scripts/ostudy-dev run
-```
-
-and maintained validation:
-
-```bash
-./scripts/ostudy-dev check-changed
-./scripts/ostudy-dev check-static
-./scripts/ostudy-dev check-fast
-./scripts/ostudy-dev check
-```
-
-The precise command surface may reuse existing scripts rather than duplicating them. One wrapper should not conceal multiple contradictory toolchain definitions.
-
-Audit what truly belongs to:
-
-- ordinary contributor setup;
-- source builds;
-- Android development;
-- CI-only runner provisioning;
-- release signing/publication.
-
-Developer setup may install/build dependencies needed to compile and test. It must not require release credentials or private infrastructure.
-
-`doctor` should clearly report missing versions/capabilities and distinguish optional platform gates from ordinary frontend/native development.
-
-CI should invoke the same underlying build/test contracts with extra isolation/evidence controls rather than maintaining a parallel private test implementation.
-
-## 106-C — post-#104 schema and durable-data audit
-
-At the exact merged #104 baseline, inventory:
-
-- schema version and immutable migration registry/checksums;
-- tables/indexes/triggers/FTS state;
-- durable JSON/payload versions;
-- current backup/restore and content-transfer formats;
-- managed file kinds and integrity metadata;
-- startup/adoption/readers/repairs;
-- current document, collection, StudyTarget, guide, Tutor project/conversation, question, media, schedule, review, draft, and asset ownership.
-
-Build an evidence-backed issue register. Every proposed deletion/repair names its caller/consumer evidence, invariant impact, smallest regression, and disposition.
-
-Tests include fresh current creation, current no-op reopen, supported forward upgrade, future/unknown/tampered/corrupt refusal, foreign keys, FTS, transactional failure, managed-file preservation, and complete restore/reopen parity.
-
-A newly demonstrated defect is fixed with a small forward migration/repair. Released migration bytes/checksums are never edited to manufacture a cleaner history.
-
-## 106-D — production baseline and gated archival of obsolete development migration machinery
-
-After 106-C defines the real lineage, establish the clean production starting point that future public installations use.
-
-The implementation must distinguish:
-
-```text
-historical pre-release development formats
-        │
-        ├── archive/recovery path where needed
-        ▼
-════════ production baseline ════════
-        │
-        ├── immutable future migration N+1
-        ├── immutable future migration N+2
-        └── ...
-```
-
-Do not remove a reader merely because it looks old. Trace runtime/compile/test/package/restore/import consumers and retained-data obligations.
-
-Where old development-only machinery is retired from normal runtime/package paths, preserve:
-
-- source provenance and hashes;
-- any required fixture/converter material;
-- an explicit offline historical-backup recovery entry point;
-- tests proving the current runtime does not accidentally depend on the archive.
-
-If a retained local library requires adoption, test conversion on an isolated copy first. Personal data remains on the user's machine. Record only privacy-safe evidence such as input lineage, converter SHA, preservation digest/counts/hashes, output baseline identity, and successful reopen.
-
-## 106-E — backup, upgrade, uninstall, and learner-data safety
-
-Exercise current complete-library backup/restore across every retained current feature.
-
-Package/uninstall policy:
-
-```text
-normal uninstall
-  -> remove package-owned program/integration files
-  -> preserve learner data and credentials unless platform policy requires otherwise
-
-explicit purge
-  -> separate user-invoked action
-  -> validate exact oStudy user-data target
-  -> show destructive consequence
-  -> require strong confirmation
-```
-
-System/root package operations must not casually recurse through arbitrary user home paths. Static package policy and built-Debian inspection must reject package ownership or maintainer-script references to the production XDG learner-data directory.
-
-For significant production upgrades, define the safe sequence around backup, supported forward migration, verification, and failure behavior. Do not promise a binary downgrade can safely open a database already migrated by a newer version.
-
-Tests cover install/reinstall/remove semantics at the package boundary where automatable, plus backup/restore and migration fault injection.
-
-## 106-F — proven-dead code, dependencies, documentation, and bounded workflow cleanup
-
-Use a deletion ledger: candidate owner, direct/indirect callers, serialized entry points, platform/packaging fallback need, replacement, exclusive styles/dependencies/tests, regression, disposition.
-
-Remove only code with no current runtime, compile-time, dynamic, test, packaging, platform, or supported compatibility consumer. An awkward live module is refactoring scope, not dead code.
-
-Reconcile canonical documentation for:
-
-- production versus development installs/data;
-- contributor setup/build/test;
-- current schema/baseline/recovery;
-- backup/restore and uninstall;
-- Linux/Android packaging status;
-- document/collection/guide/Tutor behavior after #104;
-- exact CI qualification semantics.
-
-Remove stale lesson/TTS/PPTX claims from current docs if any accidentally present; those remain deferred roadmap material.
-
-Workflow changes are permitted only for demonstrated problems with an owning regression. Preserve source-read-only Actions, exact tested SHA, truthful gate applicability, bounded evidence, and ANCHORLINE recovery behavior.
-
-## 106-G — production package and release boundary required for local use
-
-Before the full public installer project, qualify at least one native production Linux package suitable for the current Ubuntu/Debian user path.
-
-The package must:
-
-- use the production application identity/profile;
-- install independently of the source checkout;
-- contain runtime rather than developer toolchain requirements;
-- preserve desktop/MIME integration;
-- coexist with oStudy Dev;
-- preserve user data on normal removal;
-- reopen retained data after reinstall.
-
-Do not broaden this increment into the complete Fedora/Arch/Flatpak/release-manifest project. Its purpose is to prove the production package/data boundary and make a known-good local school installation possible.
-
-## 106-H — freeze and exact-head terminal qualification
-
-Complete broad source/data/docs/dependency/cleanup review **before** terminal qualification.
-
-Freeze one exact candidate, then run and record the required current gates, including:
-
-- static qualification;
-- fast qualification;
-- authoritative full Linux qualification;
-- Android compile/package;
-- Android emulator smoke;
-- PR/repository contract checks that apply.
-
-Qualification reuse, if allowed by the current conservative fingerprint, must name the earlier producing SHA and reused tier. Source/tests/scripts/workflows/config/assets/lockfiles or other invalidating paths require fresh applicable execution.
-
-Once expensive gates run, do not reopen broad optional cleanup. Diagnose actual failures; nonblocking late findings become follow-up work.
-
-## 106-I — human production/dev isolation and release-readiness acceptance
-
-Use disposable/synthetic content first.
-
-Required observations:
-
-1. Install the qualified production package.
-2. Verify its production application/data identity.
-3. Create a small disposable production deck/card and restart.
-4. Launch oStudy Dev from the source checkout and verify a separate development library.
-5. Create different disposable development content and confirm neither profile sees the other's content.
-6. Verify the development guard refuses any attempt to resolve production storage.
-7. Create and verify a complete production backup.
-8. Remove the production package normally and confirm its user data remains.
-9. Reinstall the same compatible production package and confirm the disposable production data reappears.
-10. If existing retained development data must be adopted, run only the qualified isolated-copy path before any intentional production import/adoption.
-11. Only after these checks should the human begin treating the installed production profile as the protected school library.
-
-Do not use the only copy of valuable school data for destructive/uninstall/migration experiments.
-
-## Human actions by stage
-
-### PR #104 merge handoff — completed
-
-PR #104 is merged at `6529004ad4e31946df4116f7a0591d6c80d8e586`. PR #106 has reconstructed the exact merged boundary and begun 106-A. No further #104 action is required.
-
-### Personal-library lineage gate — completed
-
-The human ran:
-
-```bash
-./scripts/ostudy-dev library-status --verify
-```
-
-against the current PR branch. Privacy-safe outcome:
-
-- development profile: no library present;
-- production profile: `ostudy-public-v1`, schema 30, full migration/repair ledgers current;
-- SQLite integrity: `ok`;
-- foreign keys: `ok`.
-
-No personal content or database bytes were uploaded or committed. Because no retained valuable library needs final-v26 runtime adoption, 106-D may retire the automatic Rust transition while keeping explicit historical recovery tooling.
-
-### Before production-install acceptance
-
-Use disposable production content for install/uninstall/reinstall tests. Keep the real nursing-school library empty or separately backed up until the isolation and reinstall checks pass.
-
-### After #106 qualifies and is merged
-
-Install the known-good production package, create an external whole-library backup location, and use the production profile for school. Continue development only through oStudy Dev. Keep the production version pinned/frozen unless intentionally upgrading through a qualified release.
-
-### During the later public installer project
-
-The protected production library stays independent of installer-development VMs/test profiles. Installer acceptance uses clean VMs and disposable data. No need to move school data into those environments.
-
-## Delivery sequence
-
-1. **106-A:** production/development/test profile and credential isolation.
-2. **106-B:** contributor setup/build/doctor/local-test portability.
-3. **106-C:** exact post-#104 schema/durable-data audit and issue register.
-4. **106-D:** production baseline + gated archival/recovery of obsolete pre-release migration machinery — implementation complete after the human lineage gate; terminal qualification pending.
-5. **106-E:** backup/upgrade/uninstall/data-safety contracts.
-6. **106-F:** proven-dead code/dependency/docs and evidence-backed workflow cleanup.
-7. **106-G:** qualified production Debian/Ubuntu package boundary for local use.
-8. **106-H:** freeze exact candidate and run terminal repository/platform qualification.
-9. **106-I:** production/dev isolation, uninstall/reinstall, backup, and local-release human acceptance.
-10. **Handoff:** exact evidence, known limits, writer release, and follow-on public installer/distribution scope.
-
-Proposed implementation title after activation: **chore(release): establish production isolation, baseline and release readiness**.
+Use the [hardening register](../post-106-hardening.md) for the next bounded work after documentation. No branch cleanup, package cleanup or documentation action authorizes deleting learner libraries, backups, restore transactions, lock files, runner caches, or unrelated branches. Human review still controls merge.

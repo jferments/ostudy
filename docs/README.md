@@ -9,10 +9,12 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Create a first deck and study session; find current navigation | [Getting started](user-guide/getting-started.md) |
 | Create/edit cards, use templates, search, and manage selections | [Flashcards and authoring](user-guide/flashcards-workspace.md) |
 | Organize folders, reorder decks, and understand selection/lifecycle rules | [Folders and deck organization](user-guide/flashcards-organization.md) |
+| Enter and edit mathematical notation | [Formula entry](user-guide/formula-entry.md) |
 | Choose a practice scope, rate answers, control schedules, and interpret results | [Practice and analytics](user-guide/practice-and-analytics.md) |
-| Configure local/cloud models and per-profile reasoning/credentials | [AI providers](user-guide/ai-providers.md) |
+| Configure provider credentials and task-specific models/reasoning | [AI providers](user-guide/ai-providers.md) |
 | Import source material and generate learning artifacts | [Documents and AI generation](user-guide/documents-and-ai-generation.md) |
 | Read, annotate, export, delete, and practice from generated guides | [Study guides](user-guide/study-guides.md) |
+| Use optional source-grounded chat, projects and learner-controlled memory | [Tutor memory and privacy](user-guide/tutor-memory-and-privacy.md) |
 | Adjust themes, fonts, motion, help, and explicitly started tutorials | [Appearance and guidance](user-guide/appearance-and-guidance.md) |
 | Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
@@ -38,15 +40,17 @@ Focused references provide deeper contracts:
 | Frontend state, interaction, navigation, styling, and accessibility | [UI architecture](architecture/ui.md) |
 | Notes/presentations, rich content, templates, scheduling, and interchange | [Card format and data model](architecture/card-format-and-data-model.md) |
 | Native transport, profile aggregates, probes, and credential isolation | [AI infrastructure](architecture/ai-infrastructure.md) |
-| Model-owned reasoning and task defaults | [AI model profiles](architecture/ai-model-profiles.md) |
+| Task model/reasoning assignments and provider profiles | [AI model profiles](architecture/ai-model-profiles.md) |
 | Canonical sources, parsing/OCR, lifecycle, and learning artifacts | [AI and document processing](architecture/ai-and-document-processing.md) |
 | Native evidence, fallible interpretations, partial analysis, and revision safety | [Knowledge representation](architecture/knowledge-representation.md) |
 | Bounded task routing, prompts, concurrency, and checkpoint policy | [Document AI routing](architecture/document-ai-routing.md) |
 | Editor adapter and validated structured content | [Rich document editor](architecture/rich-document-editor.md) |
 | File, lifecycle, time, secret, and resource ports | [Platform services](architecture/platform-services.md) |
 | One-way offers, merge semantics, and encrypted transport | [Device sync architecture](architecture/device-sync.md) |
+| Complete-library activation, request generations and durable receipts | [Library restore ownership](architecture/library-restore.md) |
+| Current writer versus supported legacy data contracts | [Durable-data inventory](development/post-104-data-contract-audit.md) |
 
-[Architecture Decision Records](decisions/) preserve durable reasoning and explicit supersessions. An older ADR or parser evaluation is historical evidence when a later accepted decision replaces its implementation; it is not a second current backend choice.
+The [Architecture Decision Records index](decisions/README.md) explains durable reasoning, explicit supersessions and historical numeric collisions. Cite full filenames rather than an ambiguous number. An older ADR or parser evaluation is historical evidence when a later accepted decision replaces its implementation; it is not a second current backend choice.
 
 ## Develop and maintain
 
@@ -54,9 +58,9 @@ Focused references provide deeper contracts:
 
 Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](agents/README.md), and the canonical [GitHub-direct procedure](agents/GITHUB-DIRECT-DEVELOPMENT.md). [Interruption recovery / ANCHORLINE](agents/RECOVERY-PROTOCOL.md) defines resumption after stalled responses or stale conversational state. [Execution state](agents/EXECUTION-STATE.md), [failure triage](agents/FAILURE-TRIAGE.md), and [Connector diagnostics](agents/GITHUB-CONNECTOR.md) explain evidence and resumption without turning optional services into prerequisites.
 
-[Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
+[Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) preserves earlier findings and removals. The [post-#106 hardening register](development/post-106-hardening.md) records the latest accepted, qualified, rejected and deferred review findings, their owning boundaries and proposed PR sequence. Planned remedies are not implementation claims.
 
-PR #96 completed the shadcn/Base UI/Tailwind presentation migration described by the [Phase 0 affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), [completed migration roadmap](development/ui-overhaul-roadmap.md), [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md), and [PR #96 implementation record](development/ui-overhaul-current-implementation.md). The current post-migration aesthetic work is the [visual refresh roadmap](development/ui-visual-refresh-roadmap.md). [UI architecture](architecture/ui.md) owns the implemented dependency and styling rules rather than either roadmap.
+PR #96 completed the shadcn/Base UI/Tailwind presentation migration described by the [Phase 0 affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), [completed migration roadmap](development/ui-overhaul-roadmap.md), [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md), and [PR #96 implementation record](development/ui-overhaul-current-implementation.md). The post-migration aesthetic direction is the [visual refresh roadmap](development/ui-visual-refresh-roadmap.md). [UI architecture](architecture/ui.md) owns the implemented dependency and styling rules rather than either roadmap.
 
 Focused development references include the [generation contract refactor](development/generation-contract-refactor.md), [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), the [portability inventory](development/platform-portability-inventory.md), and the [editor preview boundary](development/editor-preview.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
@@ -68,11 +72,13 @@ The maintained runner topology is described in [Unified Linux/Android runner](de
 
 ## External formats
 
-The [generated JSON reference](reference/generated-json-import.md), [generator-agent instructions](reference/flashcard-import-agent.md), [version-1 JSON Schema](ostudy-flashcards-v1.schema.json), and [example](examples/cardiovascular.ostudy.json) define compatible content-only imports. They are not instructions to supply internal database IDs or learner history.
+The [generated JSON reference](reference/generated-json-import.md) and [generator-agent instructions](reference/flashcard-import-agent.md) distinguish the v1 recall and v2 typed-question import contracts. The [version-1 JSON Schema](ostudy-flashcards-v1.schema.json) and [example](examples/cardiovascular.ostudy.json) describe v1, not an implicit v2 schema. Content imports do not supply internal database IDs or learner history.
 
 ## Roadmap and historical material
 
-The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered folders/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12). Active PR #106 now owns production/development isolation, contributor tooling, the post-#104 current-format adoption/baseline gate, cleanup, packaging safety, and integrated qualification. Treat each stage checklist according to its recorded implementation status rather than as a blanket “next implementation” list.
+The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered collections/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12).
+
+PR #106 is merged. Its [completion record](development/lk-followups/consolidation-qualification.md) identifies the release-v1 baseline, conversion and same-process restore owners, final source/merge identities, Linux/Android evidence and recorded disposable installed-copy acceptance. Its [original plan](history/pr-106-implementation-plan.md) is historical. Documentation cleanup does not authorize a protected-library cutover or make the proposed hardening changes current behavior.
 
 [Interactive question types](development/interactive-question-types.md) is the implementation record for the seven question types delivered by merged PR #101, including shared authoring, deterministic evaluation, evidence-based generation, single-best-answer multiple choice, and the free/open-source non-AI offline requirement. Its stage history remains useful provenance; current source and the maintained user/architecture guides describe the available product.
 

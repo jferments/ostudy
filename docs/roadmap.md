@@ -9,7 +9,8 @@ The active codebase already includes:
 - a local SQLite library for folders, decks, notes, studyable card presentations, schedules, review history, sessions, settings, and analytics;
 - rich Basic, Reverse, and Fill in the blank authoring plus native single-choice, select-all, true/false, matching, grouping, ordering, and image-occlusion questions; validated math, managed image/audio/video content, reusable templates, durable drafts, tags, full-text Search/Filter, duplicate detection, and bounded bulk work;
 - FSRS-backed scheduling, exact/deck/scheduled/extra study scopes, suspend/bury/reset/reschedule controls, daily limits, resumable practice sessions, and deterministic analytics;
-- contextual `.studydeck` exchange, strict generated `.ostudy.json` import, complete `.ostudybackup` recovery, and explicit encrypted private-LAN trusted-device synchronization with three-way merge/conflict records;
+- contextual `.studydeck` exchange, strict generated `.ostudy.json` import, format-4 complete `.ostudybackup` recovery, and explicit encrypted private-LAN/direct-USB trusted-device synchronization with three-way merge/conflict records;
+- the release-v1 schema-1 baseline, preserved historical readers/conversion, production/development isolation, and journaled same-process complete-library restoration;
 - retained PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV sources normalized into one canonical document model;
 - native PDF extraction/rendering and selective OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
@@ -19,7 +20,15 @@ The active codebase already includes:
 - a qualified Ubuntu/Debian Linux path and a qualified Android source-build/debug-install path with API 36 emulator qualification;
 - tiered exact-SHA qualification on an isolated self-hosted Linux/Android runner.
 
-Historical stage plans under [`history/`](history/) explain how this foundation was built; they are not the current roadmap.
+Historical stage plans under [`history/`](history/) explain how this foundation was built; they are not the current roadmap. Platform qualification always belongs to a named source/run and does not imply signed public distribution or untested physical-device behavior.
+
+## Post-baseline delivery
+
+PR #106 is merged; its [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover. PR #108 finishes documentation alignment without implementing the later runtime remedies.
+
+The [post-#106 hardening register](development/post-106-hardening.md) owns the proposed H-01–H-10 PR sequence and audit dispositions. Start with atomic save-selection-as-deck, collection activity/restore coordination, and observable asynchronous frontend behavior. Follow with durability, correctness gates, explicit IPC/typed contracts and measured native/startup performance work. Reader retirement and broad structural refactors require their own evidence; they are not automatic cleanup prerequisites.
+
+PR #105 remains deferred for responsive lessons, retained narration/TTS and PowerPoint. Those capabilities are planned, not implemented, and should consume the shared source/knowledge/guide boundaries rather than duplicate them. See the [preserved lesson plan](development/lk-followups/lessons-narration.md).
 
 ## Current priorities
 
@@ -34,7 +43,7 @@ The document and Study Guide stack is one of the newest and most complex areas. 
 - large-document memory, concurrency, progress, battery, and foreground/background behavior;
 - explicit failure/degradation when the source/parser/model cannot support a trustworthy result.
 
-Assisted authoring should surface uncertainty rather than turn imperfect extraction or model output into unquestionable facts.
+Assisted authoring should surface uncertainty rather than turn imperfect extraction or model output into unquestionable facts. Keep generation progress, elapsed time, Stop and useful token/cache cost observations discoverable; optional technical detail is not a reason to hide user cost control.
 
 ### 2. Refine everyday Flashcards and Study Guide ergonomics
 
@@ -49,13 +58,13 @@ Recent UI work removed permanent low-frequency workspaces, quieted empty states,
 
 ### 3. Qualify synchronization on more real devices and libraries
 
-The protocol, encrypted transport, package validation, merge engine, baselines, and conflicts are implemented. Continue with:
+The protocol, encrypted transport, package validation, merge engine, baselines, and conflicts are implemented. Package v3 already has explicit Documents and Study Guides scopes. Continue with:
 
-- broader physical-device/network combinations;
+- broader physical-device/network/USB combinations;
 - clearer conflict review/resolution;
 - large libraries, long histories, many assets, interruption/expiry/low-storage conditions;
 - transfer efficiency without weakening explicit one-way offers;
-- a separately versioned extension before Study Guide/topic/document artifact graphs become part of peer synchronization.
+- separately reviewed, versioned extensions for additional graph entities beyond the current allowlist, without including private Tutor state or derived caches by default.
 
 Synchronization remains user initiated: pairing must not become a permanent background subscription and credential transfer must require fresh sender opt-in for each offer.
 
@@ -123,7 +132,7 @@ Future sync work can improve peer ergonomics, discovery, efficiency, conflict re
 
 ## Later possibilities
 
-Potential later work includes recording and speech-grading workflows, narration/TTS-assisted study, richer collaborative sharing, additional imports, and optional local feedback effects. Mathematical/scientific notation and managed audio/video card content are already part of the current foundation. These require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan.
+Potential later work includes recording and speech-grading workflows, narration/TTS-assisted study, richer collaborative sharing, additional imports, and optional local feedback effects. These future additions require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan. Mathematical/scientific notation and managed audio/video card content are already part of the current foundation.
 
 ## Principles that constrain future work
 
