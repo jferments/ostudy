@@ -409,7 +409,9 @@ mod tests {
         assert!(cause.contains("sensitive filesystem/provider detail"));
         let presentation = startup_failure_presentation(cause, None);
         assert_eq!(presentation.reason_code, "native_startup_failed");
-        assert!(!presentation.message.contains("sensitive filesystem/provider detail"));
+        assert!(!presentation
+            .message
+            .contains("sensitive filesystem/provider detail"));
     }
 
     #[test]
