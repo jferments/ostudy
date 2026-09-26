@@ -186,7 +186,8 @@ fn validate_selection_receipt_schema(connection: &Connection, version: i64) -> R
         }
         return Ok(());
     }
-    let actual = actual.ok_or_else(|| "The selection-deck receipt table is missing.".to_string())?;
+    let actual =
+        actual.ok_or_else(|| "The selection-deck receipt table is missing.".to_string())?;
     let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
     expected
         .execute_batch(RELEASE_MIGRATIONS[0].sql)
@@ -220,7 +221,10 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
             continue;
         }
         if format!("{:x}", Sha256::digest(migration.sql.as_bytes())) != migration.checksum {
-            return Err(format!("Bundled release migration {} checksum mismatch.", migration.version));
+            return Err(format!(
+                "Bundled release migration {} checksum mismatch.",
+                migration.version
+            ));
         }
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -675,13 +679,20 @@ mod tests {
         transaction.execute_batch(BASELINE_SQL).unwrap();
         write_release_ledger(&transaction).unwrap();
         transaction.commit().unwrap();
-        connection.execute_batch(
-            "CREATE TEMP TRIGGER fail_release_migration BEFORE INSERT ON schema_migrations
+        connection
+            .execute_batch(
+                "CREATE TEMP TRIGGER fail_release_migration BEFORE INSERT ON schema_migrations
              WHEN NEW.version=2 BEGIN SELECT RAISE(ABORT,'injected migration failure'); END;",
-        ).unwrap();
+            )
+            .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), BASELINE_VERSION);
-        connection.execute_batch("DROP TRIGGER fail_release_migration;").unwrap();
+        assert_eq!(
+            validate_supported_input(&connection).unwrap(),
+            BASELINE_VERSION
+        );
+        connection
+            .execute_batch("DROP TRIGGER fail_release_migration;")
+            .unwrap();
         assert!(apply_migrations(&mut connection).unwrap());
         let changes = connection.total_changes();
         assert!(!apply_migrations(&mut connection).unwrap());
@@ -732,13 +743,21 @@ mod tests {
         convert_legacy_current(&mut connection).unwrap();
         validate_input(&connection).unwrap();
         assert_eq!(
-            connection.query_row("SELECT COUNT(*) FROM selection_deck_operations", [], |row| row.get::<_, i64>(0)).unwrap(),
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM selection_deck_operations",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
             0
         );
         // The new table is additive and empty. Compare every pre-existing typed
         // value after excluding only that newly introduced table in a rolled-back test transaction.
         let comparison = connection.transaction().unwrap();
-        comparison.execute_batch("DROP TABLE selection_deck_operations;").unwrap();
+        comparison
+            .execute_batch("DROP TABLE selection_deck_operations;")
+            .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();
         let deck: (String, i64, i64) = connection

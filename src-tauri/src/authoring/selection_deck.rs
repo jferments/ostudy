@@ -187,7 +187,10 @@ fn load_source(connection: &Connection, id: &str) -> Result<Source, CommandError
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(|| {
-            CommandError::new("card_not_found", "A selected note is no longer in an active deck.")
+            CommandError::new(
+                "card_not_found",
+                "A selected note is no longer in an active deck.",
+            )
         })?;
     let mut statement = connection
         .prepare(
@@ -227,14 +230,12 @@ fn source_identity(connection: &Connection, source: &Source) -> Result<String, C
     ensure_assets_exist(connection, &assets)?;
     let content = match (source.kind.as_str(), source.format.as_str(), source.version) {
         ("basic" | "cloze", "tiptap-json", 1) if source.definition.is_none() => {
-            let front: serde_json::Value = serde_json::from_str(
-                source.front.as_deref().ok_or_else(invalid_source)?,
-            )
-            .map_err(CommandError::serialization)?;
-            let back: serde_json::Value = serde_json::from_str(
-                source.back.as_deref().ok_or_else(invalid_source)?,
-            )
-            .map_err(CommandError::serialization)?;
+            let front: serde_json::Value =
+                serde_json::from_str(source.front.as_deref().ok_or_else(invalid_source)?)
+                    .map_err(CommandError::serialization)?;
+            let back: serde_json::Value =
+                serde_json::from_str(source.back.as_deref().ok_or_else(invalid_source)?)
+                    .map_err(CommandError::serialization)?;
             validate_document(&front)?;
             validate_document(&back)?;
             if source.cards.iter().any(|(_, _, key)| key.is_some()) {
@@ -252,13 +253,13 @@ fn source_identity(connection: &Connection, source: &Source) -> Result<String, C
             ))
             .map_err(CommandError::serialization)?
         }
-        ("interactive", "question-json", 1)
-            if source.front.is_none() && source.back.is_none() =>
-        {
-            let question = ValidatedQuestion::parse(
-                source.definition.as_deref().ok_or_else(invalid_source)?,
-            )?;
-            let expected = question.presentation_keys().into_iter().collect::<BTreeSet<_>>();
+        ("interactive", "question-json", 1) if source.front.is_none() && source.back.is_none() => {
+            let question =
+                ValidatedQuestion::parse(source.definition.as_deref().ok_or_else(invalid_source)?)?;
+            let expected = question
+                .presentation_keys()
+                .into_iter()
+                .collect::<BTreeSet<_>>();
             let actual = source
                 .cards
                 .iter()
@@ -387,7 +388,9 @@ fn decode_receipt(
         || result.deck.created_at < 0
         || result.deck.updated_at != result.deck.created_at
         || validate_name(result.deck.name.clone()).as_ref().ok() != Some(&result.deck.name)
-        || validate_description(result.deck.description.clone()).as_ref().ok()
+        || validate_description(result.deck.description.clone())
+            .as_ref()
+            .ok()
             != Some(&result.deck.description)
     {
         return Err(invalid_receipt());

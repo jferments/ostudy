@@ -23,8 +23,13 @@ fn seed(connection: &mut Connection) -> (String, String) {
         },
     )
     .unwrap();
-    let content = validate_content(rich("Question"), rich("Answer"), String::new(), String::new())
-        .unwrap();
+    let content = validate_content(
+        rich("Question"),
+        rich("Answer"),
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
     let transaction = connection.transaction().unwrap();
     let note = super::super::insert_organized_card(
         &transaction,
@@ -50,7 +55,9 @@ fn input(operation: u32, notes: Vec<String>) -> SaveSelectionAsDeckInput {
 
 fn count(connection: &Connection, table: &str) -> i64 {
     connection
-        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get(0)
+        })
         .unwrap()
 }
 
@@ -77,7 +84,8 @@ fn committed_operation_replays_before_source_checks_and_rejects_conflicting_inpu
             let (_, note) = seed(connection);
             let request = input(1, vec![note.clone(), note.clone()]);
             let first = save_selection_as_deck_in_connection(connection, request.clone())?;
-            connection.execute("UPDATE notes SET revision=revision+1 WHERE id=?1", [&note])
+            connection
+                .execute("UPDATE notes SET revision=revision+1 WHERE id=?1", [&note])
                 .map_err(CommandError::database)?;
             let replay = save_selection_as_deck_in_connection(connection, input(1, vec![note]))?;
             assert_eq!(first, replay);
@@ -86,7 +94,9 @@ fn committed_operation_replays_before_source_checks_and_rejects_conflicting_inpu
             let mut conflict = request;
             conflict.description = Some("A different intention".to_string());
             assert_eq!(
-                save_selection_as_deck_in_connection(connection, conflict).unwrap_err().code,
+                save_selection_as_deck_in_connection(connection, conflict)
+                    .unwrap_err()
+                    .code,
                 "selection_deck_operation_conflict"
             );
             Ok(())
@@ -100,17 +110,24 @@ fn failed_receipt_insert_rolls_back_every_copy_and_destination() {
     database
         .with_connection(|connection| {
             let (_, note) = seed(connection);
-            connection.execute_batch(
-                "CREATE TEMP TRIGGER fail_selection_receipt
+            connection
+                .execute_batch(
+                    "CREATE TEMP TRIGGER fail_selection_receipt
                  BEFORE INSERT ON selection_deck_operations
                  BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;",
-            ).map_err(CommandError::database)?;
+                )
+                .map_err(CommandError::database)?;
             let tables = ["decks", "notes", "cards", "card_schedules", "note_tags"];
             let before = tables.map(|table| count(connection, table));
-            assert!(save_selection_as_deck_in_connection(connection, input(2, vec![note.clone()])).is_err());
+            assert!(
+                save_selection_as_deck_in_connection(connection, input(2, vec![note.clone()]))
+                    .is_err()
+            );
             assert_eq!(before, tables.map(|table| count(connection, table)));
             assert_eq!(count(connection, "selection_deck_operations"), 0);
-            connection.execute_batch("DROP TRIGGER fail_selection_receipt;").map_err(CommandError::database)?;
+            connection
+                .execute_batch("DROP TRIGGER fail_selection_receipt;")
+                .map_err(CommandError::database)?;
             let result = save_selection_as_deck_in_connection(connection, input(2, vec![note]))?;
             assert_eq!(result.affected_count, 1);
             Ok(())
@@ -182,48 +199,68 @@ fn copied_presentations_are_fresh_and_original_notes_schedules_and_reviews_are_u
 #[test]
 fn concurrent_retries_commit_one_result() {
     let database = Database::open_in_memory().unwrap();
-    let note = database.with_connection(|connection| Ok(seed(connection).1)).unwrap();
+    let note = database
+        .with_connection(|connection| Ok(seed(connection).1))
+        .unwrap();
     let request = input(5, vec![note]);
     let other_database = database.clone();
     let other_request = request.clone();
     let worker = std::thread::spawn(move || {
-        other_database.with_connection(|connection| save_selection_as_deck_in_connection(connection, other_request)).unwrap()
+        other_database
+            .with_connection(|connection| {
+                save_selection_as_deck_in_connection(connection, other_request)
+            })
+            .unwrap()
     });
-    let result = database.with_connection(|connection| save_selection_as_deck_in_connection(connection, request)).unwrap();
+    let result = database
+        .with_connection(|connection| save_selection_as_deck_in_connection(connection, request))
+        .unwrap();
     assert_eq!(result, worker.join().unwrap());
-    database.with_connection(|connection| {
-        assert_eq!(count(connection, "decks"), 2);
-        assert_eq!(count(connection, "selection_deck_operations"), 1);
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            assert_eq!(count(connection, "decks"), 2);
+            assert_eq!(count(connection, "selection_deck_operations"), 1);
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]
 fn receipt_survives_reopen_and_deleted_destination_without_resurrection() {
     let root = std::env::temp_dir().join(format!(
         "ostudy-selection-replay-{}-{}",
-        std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed),
     ));
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("library.sqlite3");
     let database = Database::open(&path).unwrap();
-    let (request, first) = database.with_connection(|connection| {
-        let (source_deck, note) = seed(connection);
-        let request = input(6, vec![note]);
-        let first = save_selection_as_deck_in_connection(connection, request.clone())?;
-        connection.execute("DELETE FROM decks WHERE id IN (?1,?2)", params![source_deck,first.deck.id]).map_err(CommandError::database)?;
-        Ok((request,first))
-    }).unwrap();
+    let (request, first) = database
+        .with_connection(|connection| {
+            let (source_deck, note) = seed(connection);
+            let request = input(6, vec![note]);
+            let first = save_selection_as_deck_in_connection(connection, request.clone())?;
+            connection
+                .execute(
+                    "DELETE FROM decks WHERE id IN (?1,?2)",
+                    params![source_deck, first.deck.id],
+                )
+                .map_err(CommandError::database)?;
+            Ok((request, first))
+        })
+        .unwrap();
     drop(database);
     let reopened = Database::open(&path).unwrap();
-    reopened.with_connection(|connection| {
-        let replay = save_selection_as_deck_in_connection(connection, request)?;
-        assert_eq!(replay, first);
-        assert_eq!(count(connection, "decks"), 0);
-        assert_eq!(count(connection, "selection_deck_operations"), 1);
-        crate::database::validate_backup_lineage(connection)?;
-        Ok(())
-    }).unwrap();
+    reopened
+        .with_connection(|connection| {
+            let replay = save_selection_as_deck_in_connection(connection, request)?;
+            assert_eq!(replay, first);
+            assert_eq!(count(connection, "decks"), 0);
+            assert_eq!(count(connection, "selection_deck_operations"), 1);
+            crate::database::validate_backup_lineage(connection)?;
+            Ok(())
+        })
+        .unwrap();
     drop(reopened);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -231,15 +268,20 @@ fn receipt_survives_reopen_and_deleted_destination_without_resurrection() {
 #[test]
 fn long_unicode_names_and_descriptions_fit_the_receipt_and_replay() {
     let database = Database::open_in_memory().unwrap();
-    database.with_connection(|connection| {
-        let (_, note) = seed(connection);
-        let mut request = input(7, vec![note]);
-        request.name = "🧠".repeat(200);
-        request.description = Some("🧠".repeat(2000));
-        let first = save_selection_as_deck_in_connection(connection, request.clone())?;
-        assert_eq!(save_selection_as_deck_in_connection(connection, request)?, first);
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            let (_, note) = seed(connection);
+            let mut request = input(7, vec![note]);
+            request.name = "🧠".repeat(200);
+            request.description = Some("🧠".repeat(2000));
+            let first = save_selection_as_deck_in_connection(connection, request.clone())?;
+            assert_eq!(
+                save_selection_as_deck_in_connection(connection, request)?,
+                first
+            );
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]

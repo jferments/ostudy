@@ -586,7 +586,9 @@ fn hash_tree(path: &Path) -> Result<String, String> {
             digest.update(b"file");
             hash_file(&entry.path())?
         } else {
-            return Err("Restore candidates must contain only regular files and directories.".into());
+            return Err(
+                "Restore candidates must contain only regular files and directories.".into(),
+            );
         };
         digest.update(content.as_bytes());
     }

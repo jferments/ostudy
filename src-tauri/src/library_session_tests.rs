@@ -102,9 +102,17 @@ fn completed_preparation_cannot_silently_adopt_a_new_library_generation() {
     let original_generation = session.status().unwrap().generation;
     let preparation = session.enter(Some(original_generation)).unwrap();
     drop(preparation);
-    session.replace(Some(original_generation)).unwrap().finish(true).unwrap();
+    session
+        .replace(Some(original_generation))
+        .unwrap()
+        .finish(true)
+        .unwrap();
     assert_eq!(
-        session.replace(Some(original_generation)).err().unwrap().code,
+        session
+            .replace(Some(original_generation))
+            .err()
+            .unwrap()
+            .code,
         "library_generation_changed"
     );
     assert!(!session.status().unwrap().restoring);
