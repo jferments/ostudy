@@ -56,7 +56,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current public migration registry is defined by `src-tauri/src/database.rs`; the post-PR-#104 baseline is schema version 30. Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
+The current 0.1 runtime lineage is `ostudy-release-v1`, schema 1, defined by the canonical release baseline under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
 
 ### Exact-tree reuse
 
@@ -206,7 +206,7 @@ See [Failure triage](../agents/FAILURE-TRIAGE.md).
 
 The full gate uses isolated app data and built binaries. It verifies representative first-run/public migration, supported pre-public adoption, startup reconciliation, persistence, and application workflows rather than relying only on in-memory tests.
 
-The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving adoption into `ostudy-public-v1`; this historical v26 input must not be confused with the current public migration count/version.
+The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving recovery into the historical `ostudy-public-v1` compatibility lineage. Current runtime startup subsequently converges supported public-v1 data to `ostudy-release-v1` / schema 1; neither historical v26 nor public-v1 schema 30 should be described as the fresh-release schema.
 
 Native WebDriver uses fresh isolated XDG/application data and exercises representative built-app behavior: current visible destinations/internal Practice, fresh library/authoring, deck-context Practice return and review completion, Analytics/restart persistence, responsive shell geometry, current Study Guides behavior, dialogs/focus/scroll containment, and native window behavior where applicable. Mutating interactions are not blindly retried after an ambiguous transport disconnect because the operation may already have committed.
 

@@ -86,8 +86,6 @@ replay and pending-input preservation. Session/transport tests reject stale work
 and verify that preparation alone cannot produce completion. UI tests exercise
 explicit destructive confirmation and same-process completion.
 
-These contracts do not change schema-30 migration bytes or the backup version.
-Historical backup readers remain. Schema consolidation is separate implementation
-and conversion work, not uninstall, ledger deletion or manual version relabeling.
+These contracts do not rewrite the immutable public-v1 schema-30 migration bytes or the backup version. Historical backup readers remain. PR #106's separate release-baseline boundary converts supported public-v1 libraries to `ostudy-release-v1` / schema 1 only after staged schema/value preservation proof; restore must use that database owner rather than deleting ledgers or manually relabelling a library.
 See [agent restore rules](../agents/LIBRARY-RESTORE.md) and the
 [user backup guide](../user-guide/backups-imports-and-sharing.md).

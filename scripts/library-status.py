@@ -52,6 +52,23 @@ def repair_registry() -> list[tuple[int, str, str]]:
     return rows
 
 
+def release_contract() -> dict[str, Any]:
+    source = (ROOT / "src-tauri/src/database/release.rs").read_text(encoding="utf-8")
+    patterns = {
+        "lineage": r'pub\(crate\) const SCHEMA_LINEAGE: &str = "([^"]+)";',
+        "version": r"pub\(crate\) const SCHEMA_VERSION: i64 = (\d+);",
+        "name": r'pub\(crate\) const BASELINE_NAME: &str = "([^"]+)";',
+        "checksum": r'pub\(crate\) const BASELINE_CHECKSUM: &str =\s*"([0-9a-f]{64})";',
+    }
+    values: dict[str, Any] = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, source)
+        if not match:
+            raise RuntimeError(f"The release schema {key} is missing or malformed.")
+        values[key] = int(match.group(1)) if key == "version" else match.group(1)
+    return values
+
+
 def pre_public_contract() -> dict[str, Any]:
     return json.loads(
         (ROOT / "scripts/history/pre-public-v26/ledger.json").read_text(
@@ -132,6 +149,7 @@ def classify_database(
     verify: bool,
     expected_migrations: list[tuple[int, str, str]],
     expected_repairs: list[tuple[int, str, str]],
+    release: dict[str, Any],
     legacy: dict[str, Any],
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
@@ -162,7 +180,19 @@ def classify_database(
             repairs=[name for _, name, _ in repair_rows],
         )
 
-        if lineage == "ostudy-public-v1":
+        if lineage == release["lineage"]:
+            expected_release_migration = [
+                (release["version"], release["name"], release["checksum"])
+            ]
+            if (
+                migration_rows == expected_release_migration
+                and user_version == release["version"]
+                and repair_rows == []
+            ):
+                report["state"] = "release-current"
+            else:
+                report["state"] = "release-unsupported-or-damaged"
+        elif lineage == "ostudy-public-v1":
             prefix = expected_migrations[: len(migration_rows)]
             migrations_valid = bool(migration_rows) and migration_rows == prefix
             repairs_valid = all(
@@ -172,7 +202,7 @@ def classify_database(
             if not migrations_valid or user_version != len(migration_rows) or not repairs_valid:
                 report["state"] = "public-unsupported-or-damaged"
             elif len(migration_rows) == len(expected_migrations) and repair_rows == expected_repairs:
-                report["state"] = "public-current"
+                report["state"] = "legacy-public-current"
             else:
                 report["state"] = "public-supported-older"
         elif lineage is not None:
@@ -229,6 +259,7 @@ def app_data_root() -> Path:
 def collect(profile: str, verify: bool) -> list[dict[str, Any]]:
     expected_migrations = public_registry()
     expected_repairs = repair_registry()
+    release = release_contract()
     legacy = pre_public_contract()
     names = PROFILE_IDS.keys() if profile == "both" else [profile]
     reports = []
@@ -239,6 +270,7 @@ def collect(profile: str, verify: bool) -> list[dict[str, Any]]:
             verify=verify,
             expected_migrations=expected_migrations,
             expected_repairs=expected_repairs,
+            release=release,
             legacy=legacy,
         )
         report.update(profile=name, applicationId=PROFILE_IDS[name], appDataDir=str(app_dir))
@@ -282,6 +314,7 @@ def status_exit_code(reports: list[dict[str, Any]]) -> int:
     unsafe_states = {
         "unreadable",
         "integrity-failed",
+        "release-unsupported-or-damaged",
         "public-unsupported-or-damaged",
         "unsupported-lineage",
         "unknown-pre-public",

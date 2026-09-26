@@ -56,6 +56,7 @@ class LibraryStatusTests(unittest.TestCase):
     def setUp(self):
         self.migrations = status.public_registry()
         self.repairs = status.repair_registry()
+        self.release = status.release_contract()
         self.legacy = status.pre_public_contract()
 
     def classify(self, path: Path, verify=False):
@@ -64,6 +65,7 @@ class LibraryStatusTests(unittest.TestCase):
             verify=verify,
             expected_migrations=self.migrations,
             expected_repairs=self.repairs,
+            release=self.release,
             legacy=self.legacy,
         )
 
@@ -72,7 +74,31 @@ class LibraryStatusTests(unittest.TestCase):
             report = self.classify(Path(root) / "missing.sqlite3")
             self.assertEqual(report["state"], "absent")
 
-    def test_current_public_library_is_recognized_and_verified_read_only(self):
+    def test_current_release_library_is_recognized_and_verified_read_only(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "library.sqlite3"
+            release_migration = [
+                (
+                    self.release["version"],
+                    self.release["name"],
+                    self.release["checksum"],
+                )
+            ]
+            create_ledger_db(
+                path,
+                release_migration,
+                [],
+                lineage=self.release["lineage"],
+                user_version=self.release["version"],
+            )
+            before = path.read_bytes()
+            report = self.classify(path, verify=True)
+            self.assertEqual(report["state"], "release-current")
+            self.assertEqual(report["integrityCheck"], "ok")
+            self.assertEqual(report["foreignKeyCheck"], "ok")
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_terminal_public_v1_library_is_recognized_as_legacy_conversion_input(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "library.sqlite3"
             create_ledger_db(
@@ -82,12 +108,8 @@ class LibraryStatusTests(unittest.TestCase):
                 lineage="ostudy-public-v1",
                 user_version=len(self.migrations),
             )
-            before = path.read_bytes()
-            report = self.classify(path, verify=True)
-            self.assertEqual(report["state"], "public-current")
-            self.assertEqual(report["integrityCheck"], "ok")
-            self.assertEqual(report["foreignKeyCheck"], "ok")
-            self.assertEqual(path.read_bytes(), before)
+            report = self.classify(path)
+            self.assertEqual(report["state"], "legacy-public-current")
 
     def test_exact_final_pre_public_contract_is_distinguished_from_unknown_data(self):
         with tempfile.TemporaryDirectory() as root:
@@ -117,6 +139,27 @@ class LibraryStatusTests(unittest.TestCase):
             create_ledger_db(damaged, bad, legacy_repairs, user_version=0)
             self.assertEqual(self.classify(damaged)["state"], "unknown-pre-public")
 
+    def test_mismatched_release_ledger_is_not_called_current(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "library.sqlite3"
+            bad = [
+                (
+                    self.release["version"],
+                    self.release["name"],
+                    "f" * 64,
+                )
+            ]
+            create_ledger_db(
+                path,
+                bad,
+                [],
+                lineage=self.release["lineage"],
+                user_version=self.release["version"],
+            )
+            self.assertEqual(
+                self.classify(path)["state"], "release-unsupported-or-damaged"
+            )
+
     def test_future_or_mismatched_public_ledger_is_not_called_current(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "library.sqlite3"
@@ -135,6 +178,7 @@ class LibraryStatusTests(unittest.TestCase):
 
     def test_command_result_fails_for_unknown_or_damaged_state(self):
         unsafe = [
+            {"state": "release-unsupported-or-damaged"},
             {"state": "public-unsupported-or-damaged"},
             {"state": "unsupported-lineage"},
             {"state": "unknown-pre-public"},
@@ -142,7 +186,8 @@ class LibraryStatusTests(unittest.TestCase):
         ]
         safe = [
             {"state": "absent"},
-            {"state": "public-current"},
+            {"state": "release-current"},
+            {"state": "legacy-public-current"},
             {"state": "public-supported-older"},
             {"state": "pre-public-v26-exact"},
         ]

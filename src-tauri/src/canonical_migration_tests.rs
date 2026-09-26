@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde_json::Value;
 
 use crate::{
-    database::{Database, LATEST_SCHEMA_VERSION},
+    database::{Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION},
     document_domain::{SourceLocator, SourceUnitKind},
     error::CommandError,
     util::unix_time_millis,
@@ -11,12 +11,6 @@ use crate::{
 const PUBLIC_BASELINE_CHECKSUM: &str =
     "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85";
 const DOCUMENT_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM: &str =
-    "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f";
-const CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM: &str =
-    "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085";
-const DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CHECKSUM: &str =
-    "14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031";
 const EXPECTED_CANONICAL_CHUNK_HASH: &str =
     "1ddbbf54830254d96e8eaf5c04a21564d65f02984061b9d7b3c49931223bad3d";
 const EXPECTED_CANONICAL_BLOCK_HASH: &str =
@@ -139,14 +133,29 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     let version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(CommandError::database)?;
-    assert_eq!(version, LATEST_SCHEMA_VERSION);
+    assert_eq!(version, CURRENT_SCHEMA_VERSION);
 
-    let migration_rows: i64 = connection
-        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
+    let lineage: String = connection
+        .query_row(
+            "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
+            [],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
-    assert_eq!(migration_rows, LATEST_SCHEMA_VERSION);
+    assert_eq!(lineage, CURRENT_SCHEMA_LINEAGE);
+
+    let migration: (i64, String) = connection
+        .query_row(
+            "SELECT version, name FROM schema_migrations",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(CommandError::database)?;
+    assert_eq!(migration, (CURRENT_SCHEMA_VERSION, "release_baseline".to_string()));
+    let repair_rows: i64 = connection
+        .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
+        .map_err(CommandError::database)?;
+    assert_eq!(repair_rows, 0);
 
     let counts: (i64, i64, i64, i64, String) = connection
         .query_row(
@@ -270,41 +279,9 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_ne!(chunk.2, "5".repeat(64));
     assert_eq!(chunk.2, EXPECTED_CANONICAL_CHUNK_HASH);
 
-    let semantic_repair: (String, String, i64) = connection
-        .query_row(
-            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(CommandError::database)?;
-    assert_eq!(semantic_repair.0, "canonical_semantic_chunk_hashes");
-    assert_eq!(semantic_repair.1, CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM);
-    assert_eq!(semantic_repair.2, 1);
-
-    let block_repair: (String, String, i64) = connection
-        .query_row(
-            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 2",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(CommandError::database)?;
-    assert_eq!(block_repair.0, "canonical_block_hashes");
-    assert_eq!(block_repair.1, CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM);
-    assert_eq!(block_repair.2, 1);
-
-    let metadata_repair: (String, String, i64) = connection
-        .query_row(
-            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 3",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(CommandError::database)?;
-    assert_eq!(metadata_repair.0, "document_artifact_user_edits");
-    assert_eq!(
-        metadata_repair.1,
-        DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CHECKSUM
-    );
-    assert_eq!(metadata_repair.2, 0);
+    // Legacy repair effects are preserved in the data above, but the release
+    // lineage starts with an empty repair ledger because those repairs are
+    // folded into the canonical 0.1 baseline.
 
     let legacy_page_count: i64 = connection
         .query_row(

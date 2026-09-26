@@ -45,7 +45,5 @@ actual exact-SHA steps; skipped gates, live-provider tests, installed-copy check
 and physical-device tests are not implied by workflow success. Do not ask the
 human to regenerate expensive document work merely to verify restore persistence.
 
-Schema consolidation is not part of the backup repair. Keep the current lineage,
-immutable migrations and supported backup readers until a separately implemented
-baseline/converter has preservation evidence. No workstation schema-squashing
+Schema consolidation is a separate database-owner boundary from backup activation. The qualified 0.1 design keeps immutable public-v1 migrations and supported backup readers as compatibility inputs, then uses the release-v1 baseline/converter only after staged preservation evidence. No workstation schema-squashing
 commands precede that implementation.

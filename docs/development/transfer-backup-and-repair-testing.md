@@ -1,10 +1,7 @@
 # Transfer, backup, and restore local acceptance
 
 This guide maintains the transfer checks originally introduced in Stages 3.4 and
-3.5 and the current same-process restore checks. Historical schema-13 repair
-fixtures below are not the current schema or instructions for modifying a real
-library. The current schema remains `ostudy-public-v1`, version 30; schema
-consolidation is separate implementation work.
+3.5 and the current same-process restore checks. Historical schema-13 repair fixtures below are not the current schema or instructions for modifying a real library. The 0.1 runtime schema is `ostudy-release-v1`, version 1. The immutable `ostudy-public-v1` chain through schema 30 remains compatibility/recovery input and is converted only through the staged preservation boundary.
 
 ## Safety first
 
