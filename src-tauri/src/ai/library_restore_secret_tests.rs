@@ -44,7 +44,8 @@ fn library_restore_clears_every_session_entry_without_database_or_os_access() {
     for id in &ids {
         let error = manager
             .resolve(id, AuthMode::Bearer, CredentialStorage::Session)
-            .unwrap_err();
+            .err()
+            .expect("session credential should be missing");
         assert_eq!(error.code, "ai_credential_required");
     }
     assert!(manager.session.lock().unwrap().is_empty());

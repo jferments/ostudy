@@ -288,7 +288,7 @@ pub(super) fn apply_source_restore(
     }
     let transaction = new_transaction(root)?;
     let source = transaction.join("source.ostudybackup");
-    copy_and_sync(&pending, &source).map_err(|error| error.message)?;
+    copy_and_sync(pending, &source).map_err(|error| error.message)?;
     let candidate = transaction.join("candidate");
     fs::create_dir(&candidate).map_err(io_error)?;
     extract_backup_package(
