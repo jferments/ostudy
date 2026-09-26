@@ -58,7 +58,10 @@ fn android_library_lock_excludes_competitors_and_releases_on_close() {
         try_lock_exclusive(&competitor),
         Err(TryLockError::WouldBlock)
     ));
-    assert_eq!(fs::read(&fixture.0).unwrap(), b"preserved lock-file contents");
+    assert_eq!(
+        fs::read(&fixture.0).unwrap(),
+        b"preserved lock-file contents"
+    );
     drop(owner);
     native_flock::try_lock_exclusive(&competitor).unwrap();
 }
