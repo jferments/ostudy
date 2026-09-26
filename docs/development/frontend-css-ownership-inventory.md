@@ -74,9 +74,9 @@ Feature layout helpers do not belong in the global foundation.
 - `Button`, `InlineNotice`, `EmptyState`, `Panel`, `Surface`, `FormField`, status/badge primitives: reusable controls and feedback.
 - Workspace/screen/control/overlay patterns: reusable layout and interaction presentation.
 - Overlay modules: dialog, sheet, backdrop, menu, and toast ownership.
-- `RichTextEditor.module.css`: editor toolbar/editable chrome.
-- `RichContent.module.css`: rendered educational headings, prose, lists, tables, code, links, images, indentation, and scoped third-party markup bridge.
-- Feature CSS Modules: presentation whose meaning belongs to one feature/screen/component.
+- Ordinary application presentation uses complete `tw:` Tailwind utilities and semantic tokens through the owned UI vocabulary.
+- `RichContent.module.css`: specialized rendered educational content, ProseMirror descendants, media/math geometry, and scoped third-party markup where utilities are not the right ownership boundary.
+- Any remaining CSS Module must have a registered specialized content/platform owner; do not introduce a feature CSS Module merely to preserve the pre-migration styling pattern.
 
 Some migrated views preserve semantic class **keys** through `ownedClassNames(...)`. Those strings are not global CSS classes: `scripts/verify-owned-class-usage.mjs` parses production TSX and proves each key resolves through an imported CSS Module/shared owner before rendering.
 

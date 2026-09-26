@@ -16,7 +16,7 @@ The explicit source-checkout recovery path for final pre-public v26 remains sepa
 
 | Surface | Current writer/current form | Supported reader/compatibility state | Disposition for 106-D |
 | --- | --- | --- | --- |
-| SQLite library | lineage `ostudy-public-v1`, schema/user version **30**, immutable migrations `0001`–`0030` | exact known migration-prefix admission plus current repair-ledger validation; one exact final pre-public-v26 adoption path remains live | **retain the v1 migration chain by default**: it is current compatibility, supports historical backups, and is already fail-closed. A replacement baseline needs a concrete simplification/release benefit plus synthetic + isolated real-copy preservation; never edit migration bytes in place |
+| SQLite library | current writer lineage `ostudy-release-v1`, schema/user version **1**, generated release baseline | fresh release-v1 opens directly; supported `ostudy-public-v1` schema 10–30 inputs retain immutable migration/repair-ledger admission and are normalized/preservation-verified before atomic lineage conversion | **release-v1 is the current runtime baseline**; retain public-v1 migrations/repairs as compatibility evidence/readers and preserve the explicit final-v26 offline recovery path. Never edit historical migration bytes in place |
 | Public data repairs | repair versions **1–3**: canonical semantic hashes, canonical block hashes, document-artifact user edits | checksum-protected and applied/verified by normal startup | **retain as current compatibility**, or fold only as part of the same explicitly verified new baseline; never confuse with the old pre-public repair ledger |
 | Final pre-public lineage | exact v26 migration/repair ledger, accepted SQLite marker 0 or 26 | normal runtime conversion retired; explicit source-checkout recovery uses `scripts/history/pre-public-v26/ledger.json` plus `transition-pre-public-data.sh` | archived outside runtime after the human actual-library gate; preserve explicit offline recovery |
 | Rich note transport | `content_format=tiptap-json`, transport `content_schema_version=1` | canonical rich root schema 1–3; schema 3 owns typed math + managed audio/video and is validated through the schema-3 wrapper | retain all supported rich readers |
@@ -33,13 +33,13 @@ The explicit source-checkout recovery path for final pre-public v26 remains sepa
 
 ## 106-C findings
 
-1. **Schema 30 is the actual post-#104 registry.** Older stage documents naming 17/18/21 describe historical checkpoints, not current runtime.
-2. **The public repair registry is not empty.** Three public repairs are active compatibility contracts. The pre-public transition clearing its old repair ledger does not authorize deleting the current repair framework.
+1. **Schema 30 is the terminal pre-0.1 public-v1 registry, not the current writer.** Older stage documents naming 17/18/21 describe historical checkpoints; PR #106's current runtime writer is `ostudy-release-v1` schema 1.
+2. **The public-v1 repair registry is retained compatibility evidence.** Three public repairs remain required for supported legacy admission/normalization even though the current release-v1 baseline does not replay that ledger for fresh libraries. The pre-public transition clearing its old repair ledger does not authorize deleting the compatibility framework.
 3. **The backup schema-10 floor is intentional.** Historical Tutor backup tests construct real schema-10/11 snapshots and require them to remain admissible after later migrations.
 4. **Rich-content docs were stale.** Current native admission supports rich-root schema 3 for math/media while preserving the transport-envelope version 1. Canonical docs are corrected in this increment.
 5. **Generated-import docs were stale.** The importer supports both v1 and v2; interactive questions require v2. Canonical reference docs are corrected in this increment.
 6. **The v26 runtime adoption path was retired in 106-D after the human gate.** Historical recovery remains explicit and staged; current application startup leaves non-public data unchanged.
-7. **Public migrations 1–30 are current compatibility, not automatic cleanup targets.** Keep them unless 106-D demonstrates a concrete release/runtime benefit from a replacement baseline. If a replacement is justified, use an explicit new lineage/baseline transition with preservation receipts rather than rewriting known migration bytes.
+7. **Public migrations 1–30 are retained compatibility, not the current writer and not automatic cleanup targets.** The implemented release-v1 baseline/converter supplies the current runtime simplification; the immutable public-v1 migration bytes remain available to validate and normalize supported historical inputs.
 
 ## 106-D entry conditions
 

@@ -4,7 +4,7 @@ ostudy keeps your study library on your device. You can create cards, organize d
 
 ## Find your way around
 
-The main destinations are **Flashcards**, **Study Guides**, **Documents**, **Analytics**, and **Settings**. On a wide or medium window they appear in the labeled sidebar. On a compact phone layout, Flashcards, Study Guides, Documents, and Analytics are directly available in the bottom navigation; the upper-right gear opens Settings. There is no separate mobile More menu.
+The main destinations are **Flashcards**, **Study Guides**, **Documents**, **Tutor**, **Analytics**, and **Settings**. On a wide or medium window they appear in the labeled sidebar. On a compact phone layout, Flashcards, Study Guides, Documents, Tutor, and Analytics are directly available in the bottom navigation; the upper-right gear opens Settings. There is no separate mobile More menu.
 
 Flashcards has two tabs: **Decks** and **Search/Filter** (shown as Search in compact presentation). Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup/Sync**.
 

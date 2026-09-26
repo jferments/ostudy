@@ -54,7 +54,7 @@ export function TutorSources({
         const member = choice.scope as MaterialScope, key = studyScopeKey(member);
         return <label key={key} className={styles.sourceChoice}>
           <Checkbox checked={selected.some((entry) => studyScopeKey(entry) === key)} onCheckedChange={(checked) => toggle(member, checked)} />
-          <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : member.kind === "collection" ? "Document folder" : "Document"}</small></span>
+          <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : member.kind === "collection" ? "Document collection" : "Document"}</small></span>
         </label>;
       })}
       {!available.length ? <p className={styles.muted}>Import a document or create flashcards to add study sources.</p> : null}

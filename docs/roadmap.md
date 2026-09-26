@@ -7,13 +7,14 @@ ostudy is being developed in layers, but the roadmap is not a list of promises o
 The active codebase already includes:
 
 - a local SQLite library for folders, decks, notes, studyable card presentations, schedules, review history, sessions, settings, and analytics;
-- rich Basic, Reverse, and Fill in the blank authoring, answer-key/task-list support, managed images, reusable templates, durable drafts, tags, full-text Search/Filter, duplicate detection, and bounded bulk work;
+- rich Basic, Reverse, and Fill in the blank authoring plus native single-choice, select-all, true/false, matching, grouping, ordering, and image-occlusion questions; validated math, managed image/audio/video content, reusable templates, durable drafts, tags, full-text Search/Filter, duplicate detection, and bounded bulk work;
 - FSRS-backed scheduling, exact/deck/scheduled/extra study scopes, suspend/bury/reset/reschedule controls, daily limits, resumable practice sessions, and deterministic analytics;
 - contextual `.studydeck` exchange, strict generated `.ostudy.json` import, complete `.ostudybackup` recovery, and explicit encrypted private-LAN trusted-device synchronization with three-way merge/conflict records;
 - retained PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV sources normalized into one canonical document model;
 - native PDF extraction/rendering and selective OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
 - implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, and OpenRouter, with native credential isolation/capability probing and no silent local-to-cloud fallback;
+- a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/collection grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
 - one React/Rust application across desktop and Android, with wide/medium/compact navigation, shared accessible overlays/patterns, themes, local typography, reduced motion, safe areas, and keyboard/touch behavior;
 - a qualified Ubuntu/Debian Linux path and a qualified Android source-build/debug-install path with API 36 emulator qualification;
 - tiered exact-SHA qualification on an isolated self-hosted Linux/Android runner.
@@ -91,9 +92,9 @@ These are directions, not current feature claims. They should reuse managed docu
 
 Generate configurable question sets, including multiple choice/application/scenario questions, with explanations and source grounding. Quiz attempts need their own explicit evidence model and must not silently contaminate the flashcard review ledger.
 
-### Interactive AI tutoring
+### Tutor refinement and guided study
 
-Provide conversational tutoring over selected documents and learner context through a narrow task interface. Tutoring must use the explicitly selected provider, show when source evidence is missing, and avoid becoming an unreviewable writer of scheduling/analytics state.
+Tutor already provides conversational study with optional source grounding, projects/history, saved-knowledge retrieval, and contextual entry from supported workflows. Continue improving source-grounded explanations, multi-source navigation, question practice inside conversation, retrieval transparency, interruption/retry behavior, and learner-controlled memory. Tutor must continue using the explicitly selected provider, identify missing source evidence when the request requires grounding, and remain unable to rewrite scheduling/analytics state as an unreviewable side effect.
 
 ### Learning recommendations
 
@@ -122,7 +123,7 @@ Future sync work can improve peer ergonomics, discovery, efficiency, conflict re
 
 ## Later possibilities
 
-Potential later work includes mathematical/scientific notation, audio-assisted cards, richer collaborative sharing, additional imports, and optional local feedback effects. These require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan.
+Potential later work includes recording and speech-grading workflows, narration/TTS-assisted study, richer collaborative sharing, additional imports, and optional local feedback effects. Mathematical/scientific notation and managed audio/video card content are already part of the current foundation. These require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan.
 
 ## Principles that constrain future work
 

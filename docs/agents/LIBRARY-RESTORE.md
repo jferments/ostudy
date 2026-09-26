@@ -26,8 +26,9 @@ repository GitHub-direct workflow; no personal libraries enter GitHub or CI.
   must replay its receipt, not repeat replacement. Preserve files and fail closed
   when a coherent library cannot be established. Cleanup failure is not permission
   to undo a committed restore.
-- Do not erase saved keys or log credential/content bytes. Only session credentials
-  tied to the replaced/restored profiles are cleared during live activation.
+- Do not erase saved keys or log credential/content bytes. Live library replacement
+  clears **all** session-only credentials held by the native process, including
+  orphaned entries; it does not read, delete, or probe saved OS-keyring credentials.
 
 ## Tests and handoff
 

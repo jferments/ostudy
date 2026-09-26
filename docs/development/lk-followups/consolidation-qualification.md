@@ -1,6 +1,6 @@
 # PR #106 roadmap — post-#104 stabilization, production baseline, release readiness, and tooling
 
-Status: **final validation/manual acceptance** on merged PR #104. PR #105 is explicitly deferred and is **not** an activation dependency.
+Status: **active PR #106 qualification and installed-copy/manual acceptance** on top of merged PR #104. This roadmap defines the acceptance boundaries; the current head and pass/fail state belong to PR #106 and exact-SHA Actions evidence. PR #105 is explicitly deferred and is **not** an activation dependency.
 
 This roadmap owns the current post-#104 production-baseline and migration cleanup that was previously assigned to PR #105/LK-13, together with development/production data isolation, contributor tooling, bounded cleanup, packaging safety, and final qualification.
 
@@ -114,6 +114,22 @@ One frozen exact SHA passes the required repository/platform gates. A real produ
 - production reinstall reopens that data;
 - a complete backup can be created and verified;
 - no destructive test is performed against the only valuable copy of a learner library.
+
+### AC-05 — crash-safe complete-library activation
+
+Complete-library activation is journaled and recoverable across abrupt termination. SQLite database/WAL/SHM/rollback-journal state, managed files, retained input/previous libraries and process ownership move under one explicit activation owner. Ambiguous commit state is resolved from durable markers rather than guessed from an interrupted reply.
+
+### AC-06 — same-process restore and stale-request exclusion
+
+Normal restore completes in the running native process. The maintenance boundary drains active work, advances the library generation after successful replacement, rejects stale-generation requests, records a durable completion receipt, refreshes the UI, and clears the native process's session-only credential map without deleting saved OS-keyring entries.
+
+### AC-07 — maintained documentation and release-readiness cleanup
+
+Maintained user, architecture, agent, testing, cleanup and release-baseline documentation must describe the implemented contracts rather than historical stage behavior. Documentation verification and release-readiness cleanup checks cover the current owning boundaries; historical plans remain evidence rather than current product specification.
+
+### AC-08 — release-v1 baseline and staged preservation conversion
+
+Fresh 0.1 libraries use the checksum-protected `ostudy-release-v1` schema-1 baseline. Supported `ostudy-public-v1` inputs remain immutable compatibility evidence/readers and are staged, normalized and preservation-verified before atomic lineage conversion. The explicit final-v26 historical recovery route remains outside ordinary startup.
 
 ## 106-A — development / production / test profile isolation
 

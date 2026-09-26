@@ -78,7 +78,7 @@ Android uses PdfRenderer through the private Kotlin document plugin. Platform ad
 
 ## OCR and resource budgets
 
-Desktop OCR uses Tesseract with required language data through the narrow OCR engine contract. Missing executable/trained data is reported as a runtime/setup issue at the relevant boundary. Android uses bundled ML Kit Text Recognition v2 Latin, not an implicit network model download or Tesseract dependency.
+Desktop OCR uses Tesseract with required language data through the narrow OCR engine contract. Missing executable/trained data is reported as a runtime/setup issue at the relevant boundary. Android uses bundled Tesseract4Android/Tesseract with the pinned packaged language data; it does not depend on Google ML Kit text recognition or a network model download.
 
 Shared planning considers source workload, CPU, memory, estimated bitmap size, worker ceilings, and queue capacity. User/environment caps are ceilings, not permission to allocate without regard to observed resources. Unknown observations result in conservative limits. Independent OCR work can overlap, while ordered output and bounded queues protect memory and deterministic evidence.
 
@@ -120,7 +120,7 @@ Provider transport is entirely native. Local/LAN jobs run serially under current
 
 The provider dialect requests enforceable structured output: the appropriate JSON-schema or strict-tool representation for that provider. Rust then validates domain shape, limits, allowed fields, choice/cloze grammar, exact cloze excerpt text, source ranges, tags, and curation indices. Successful HTTP and valid JSON do not establish a usable candidate.
 
-Generated cards normalize into the existing native authoring model with independent local schedules. Definition/scenario/application/multiple-choice educational forms can use Basic cards rather than inventing a scheduler type per prompt style. Invalid individual candidates are rejected according to the task policy; malformed outer responses fail the request. Curation may select validated candidates, not gain arbitrary library-write authority.
+Generated cards normalize into the existing native authoring and scheduling model with independent local schedules. Recall-style definitions, scenarios, application prompts, reversible definitions, and cloze prompts use the established recall card families where appropriate. Interactive generation uses native typed questions (`single_choice`, `select_all`, `true_false`, `matching`, `grouping`, and `ordering`) rather than flattening those assessments into Basic cards; legacy text-only `multiple_choice` output is rejected. Image occlusion remains manually authored. Invalid individual candidates are rejected according to the task policy; malformed outer responses fail the request. Curation may select validated candidates, not gain arbitrary library-write authority.
 
 There is no separate generated-card approval queue. User review remains important after validated publication because syntax and citations cannot prove factual accuracy or useful pedagogy. Generated and manual material use the same ordinary editing/deletion tools.
 

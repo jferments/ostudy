@@ -80,7 +80,7 @@ Choose **Restore backup**, select the `.ostudybackup`, and confirm **Restore lib
 
 Completion reports decks, cards, and documents only after the restored database reopens and reconciliation succeeds. A backup containing documents but no decks is not empty. A valid empty destination, a file-picker completion, or an old “restore prepared” message does not prove activation. Verify documents/guides, managed images, schedules, recent reviews, questions/attempts, settings, and recoverable drafts. Do not regenerate completed document material merely to test restoration.
 
-Saved API keys remain in the operating-system secure store and are not part of the backup. Restoration does not delete that store. Session-only credentials from the replaced library are cleared; enter them again when needed. Two desktop production instances with different XDG roots still use the production keyring namespace; development has a separate namespace.
+Saved API keys remain in the operating-system secure store and are not part of the backup. Restoration does not delete that store. All session-only credentials held by the running native process are cleared during live library replacement, including orphaned entries; enter any needed session keys again. Two desktop production instances with different XDG roots still use the production keyring namespace; development has a separate namespace.
 
 Keep the original backup after restoration. oStudy also retains the previous library and selected package under its `restore-transactions` recovery area. These copies consume disk space and are not a substitute for an external backup. Do not remove recovery files, SQLite journal files, or `library-owner.lock` to bypass a failure.
 

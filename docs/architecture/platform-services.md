@@ -49,7 +49,7 @@ Lifecycle events offer opportunities to flush/checkpoint; they are not guarantee
 
 Before a supported canonical card/template/bulk/generated-batch or nonsecret AI-profile metadata commit, the controller flushes the latest draft and passes its exact ID/revision. Native code validates freshness and coordinates canonical records, image promotion, and draft retirement within the durable mutation. Failure retains the recoverable draft; loss of a success response does not authorize duplicate targetless creation.
 
-Whole-library backup version 3 includes active/conflicted durable drafts and staged images, while older supported backup versions remain readable. Transient file transfers and in-flight document processing remain outside a coherent backup snapshot and can block backup admission.
+Whole-library backup format 4 includes active/conflicted durable drafts, staged images, and the current retained document/library graph, while older supported backup versions remain readable. Transient file transfers and in-flight document processing remain outside a coherent backup snapshot and can block backup admission.
 
 Desktop close protection is native when document work is active. Android user-started work can use a foreground service with a visible notification and bounded wake lock. Backgrounding the Activity is not the same as terminating the process, but neither mechanism guarantees survival through process death or reboot. Startup never silently restarts provider transmission.
 
@@ -57,7 +57,7 @@ Desktop close protection is native when document work is active. Android user-st
 
 The private [ostudy platform plugin](../../plugins/ostudy-platform/) implements Android file/share/secret/lifecycle operations, PDF rendering/OCR, QR acquisition, and document execution bridging. Kotlin returns bounded application-owned results; Rust retains validation, persistence, OCR selection, resource policy, and generation decisions.
 
-Android uses PdfRenderer and bundled ML Kit Latin text recognition for its PDF/OCR path, not desktop PDFium/Tesseract. Google Code Scanner separately acquires device-sync QR input through Play services, with pasted text as fallback. Neither scanner success nor a valid decoded string bypasses native invitation validation.
+Android uses PdfRenderer plus bundled Tesseract4Android/Tesseract for its PDF/OCR path; desktop PDFium remains a separate rendering/text-rescue boundary. JourneyApps ZXing Embedded/ZXing core acquires device-sync QR input locally, with pasted text as fallback. Neither scanner success nor a valid decoded string bypasses native invitation validation.
 
 Back, safe-area/IME observations, activity restoration, canceled pickers, plugin command routing, and debug/release identity have instrumentation and static contracts. Frontend mocks alone cannot qualify these services.
 

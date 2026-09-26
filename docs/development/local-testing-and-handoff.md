@@ -56,7 +56,7 @@ git rev-parse origin/main
 
 If the checkout is an older clean `main`, update it with `git pull --ff-only`, then rebuild with `./scripts/build.sh` before running `./run-app.sh`. If local edits exist, preserve them and use the detached exact-SHA review-worktree procedure above instead of forcing the checkout.
 
-The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at the current schema 30 paired with an older build that supports only schema 29 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 30 should proceed through ordinary read-only admission and startup without this future-schema error.
+Interpret database identity as a **lineage plus version**, not as one globally increasing schema number. Current 0.1 libraries use `ostudy-release-v1` schema 1, while the retained pre-0.1 compatibility lineage reaches `ostudy-public-v1` schema 30. A source build that predates the release lineage can therefore refuse a release-v1 library even though its numeric version is smaller, while a current build can admit supported public-v1 inputs and convert them through the verified release-baseline path. Never downgrade or hand-edit schema metadata to make an older executable accept a newer lineage.
 
 ## Linux: ordinary test-drive
 

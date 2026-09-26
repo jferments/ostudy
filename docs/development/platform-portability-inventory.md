@@ -27,7 +27,7 @@ The following assumptions have left the active inventory because the replacement
 - time, time-zone identity, lifecycle observation, and resource facts enter through typed ports;
 - card, template, bulk-entry, and AI-provider-metadata editors use typed, bounded, revision-safe durable drafts;
 - final authoring transactions validate the exact flushed draft and retire it atomically with canonical content and asset promotion;
-- complete backup version 3 includes active persistent drafts and staged images without allowing transient operations to produce incoherent snapshots.
+- complete backup format 4 includes active persistent drafts, staged images, and the current retained document/library graph without allowing transient operations to produce incoherent snapshots; older supported package readers remain explicit compatibility.
 
 ## Exit discipline
 
