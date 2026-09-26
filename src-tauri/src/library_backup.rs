@@ -219,6 +219,10 @@ pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), 
     Ok(())
 }
 
+fn snapshot_schema_version(connection: &Connection) -> Result<i64, CommandError> {
+    crate::database::schema_identity(connection).map(|(_, version)| version)
+}
+
 fn snapshot_summary(connection: &Connection) -> Result<BackupSummary, CommandError> {
     Ok(BackupSummary {
         deck_count: count_table(connection, "decks", "deleted_at IS NULL")?,
