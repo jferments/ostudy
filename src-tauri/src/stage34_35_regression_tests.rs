@@ -46,14 +46,17 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(deck, (222, 7));
-            let repair_ledger: (i64, i64) = connection
+            let release_state: (String, i64, i64) = connection
                 .query_row(
-                    "SELECT COUNT(*), COALESCE(SUM(changed_rows), 0) FROM data_repairs",
+                    "SELECT
+                         (SELECT value FROM schema_metadata WHERE key = 'schema_lineage'),
+                         (SELECT COUNT(*) FROM schema_migrations),
+                         (SELECT COUNT(*) FROM data_repairs)",
                     [],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_ledger, (3, 0));
+            assert_eq!(release_state, ("ostudy-release-v1".to_string(), 1, 0));
             Ok(())
         })
         .expect("canonical startup should be read-only");

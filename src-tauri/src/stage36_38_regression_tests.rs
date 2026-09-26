@@ -11,7 +11,7 @@ use rusqlite::{
 
 use crate::{
     analytics::{load_analytics, AnalyticsQueryDto},
-    database::{Database, LATEST_SCHEMA_VERSION},
+    database::{Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION},
     deletion_purge::purge_finalized_in_connection,
     study_calendar::StudyTimeContext,
     studyability::CardEligibility,
@@ -882,7 +882,7 @@ fn due_boundary_never_overrides_archive_or_manual_suspension() {
 }
 
 #[test]
-fn public_baseline_preserves_stage36_38_attribution_schema() {
+fn release_baseline_preserves_stage36_38_attribution_schema() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
@@ -896,26 +896,16 @@ fn public_baseline_preserves_stage36_38_attribution_schema() {
                     |row| row.get(0),
                 )
                 .expect("public schema lineage should load");
-            let public_baseline_present: i64 = connection
+            let release_baseline_present: i64 = connection
                 .query_row(
                     "SELECT EXISTS(
                          SELECT 1 FROM schema_migrations
-                         WHERE version = 1 AND name = 'public_baseline'
+                         WHERE version = 1 AND name = 'release_baseline'
                      )",
                     [],
                     |row| row.get(0),
                 )
-                .expect("public baseline ledger entry should load");
-            let canonical_migration_present: i64 = connection
-                .query_row(
-                    "SELECT EXISTS(
-                         SELECT 1 FROM schema_migrations
-                         WHERE version = 2 AND name = 'canonical_documents'
-                     )",
-                    [],
-                    |row| row.get(0),
-                )
-                .expect("canonical migration ledger entry should load");
+                .expect("release baseline ledger entry should load");
             let migration_count: i64 = connection
                 .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
                     row.get(0)
@@ -942,14 +932,13 @@ fn public_baseline_preserves_stage36_38_attribution_schema() {
                     |row| row.get(0),
                 )
                 .expect("attribution tables should load");
-            assert_eq!(schema_version, LATEST_SCHEMA_VERSION);
-            assert_eq!(schema_lineage, "ostudy-public-v1");
-            assert_eq!(public_baseline_present, 1);
-            assert_eq!(canonical_migration_present, 1);
-            assert_eq!(migration_count, LATEST_SCHEMA_VERSION);
-            assert_eq!(repair_state, (3, 0));
+            assert_eq!(schema_version, CURRENT_SCHEMA_VERSION);
+            assert_eq!(schema_lineage, CURRENT_SCHEMA_LINEAGE);
+            assert_eq!(release_baseline_present, 1);
+            assert_eq!(migration_count, CURRENT_SCHEMA_VERSION);
+            assert_eq!(repair_state, (0, 0));
             assert_eq!(attribution_tables, 4);
             Ok(())
         })
-        .expect("public schema should retain Stage 3.6-3.8 attribution state");
+        .expect("release schema should retain Stage 3.6-3.8 attribution state");
 }
