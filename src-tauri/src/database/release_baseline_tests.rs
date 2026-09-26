@@ -2,8 +2,6 @@ use super::*;
 use rusqlite::types::ValueRef;
 
 const RELEASE_BASELINE_PATH: &str = "migrations/0001_release_baseline.sql";
-const BEGIN_MARKER: &str = "OSTUDY_RELEASE_BASELINE_BEGIN";
-const END_MARKER: &str = "OSTUDY_RELEASE_BASELINE_END";
 
 #[test]
 fn release_baseline_is_committed_and_matches_schema30() {
@@ -27,11 +25,23 @@ fn release_baseline_is_committed_and_matches_schema30() {
             "The release baseline is stale. Regenerate it from the exact qualified schema-30 source."
         ),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            println!("{BEGIN_MARKER}");
-            print!("{rendered}");
-            println!("{END_MARKER}");
+            use base64::Engine as _;
+            use sha2::{Digest, Sha256};
+
+            let encoded =
+                base64::engine::general_purpose::STANDARD.encode(rendered.as_bytes());
+            let chunks = encoded.as_bytes().chunks(6000).collect::<Vec<_>>();
+            eprintln!(
+                "OSTUDY_RELEASE_BASELINE_SHA256={:x}",
+                Sha256::digest(rendered.as_bytes())
+            );
+            eprintln!("OSTUDY_RELEASE_BASELINE_CHUNKS={}", chunks.len());
+            for (index, chunk) in chunks.into_iter().enumerate() {
+                let chunk = std::str::from_utf8(chunk).expect("base64 output is ASCII");
+                eprintln!("OSTUDY_RELEASE_BASELINE_CHUNK_{index:04}={chunk}");
+            }
             panic!(
-                "The release baseline is not committed. Capture the generated SQL between the baseline markers."
+                "The release baseline is not committed. Capture the generated base64 chunks."
             );
         }
         Err(error) => panic!("Could not read the release baseline fixture: {error}"),
