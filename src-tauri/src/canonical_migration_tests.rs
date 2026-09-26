@@ -145,13 +145,14 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_eq!(lineage, CURRENT_SCHEMA_LINEAGE);
 
     let migration: (i64, String) = connection
-        .query_row(
-            "SELECT version, name FROM schema_migrations",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+        .query_row("SELECT version, name FROM schema_migrations", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
         .map_err(CommandError::database)?;
-    assert_eq!(migration, (CURRENT_SCHEMA_VERSION, "release_baseline".to_string()));
+    assert_eq!(
+        migration,
+        (CURRENT_SCHEMA_VERSION, "release_baseline".to_string())
+    );
     let repair_rows: i64 = connection
         .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
         .map_err(CommandError::database)?;
