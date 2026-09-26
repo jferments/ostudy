@@ -93,7 +93,7 @@ requireText("canonical document schema v1", canonicalDocument, 'pub(crate) const
 for (const needle of [
   "ostudy-release-v1",
   "schema **1**",
-  "legacy `ostudy-public-v1` schemas **10–30**",
+  "Legacy `ostudy-public-v1` schemas **10–30**",
   "repair versions **1–3**",
   "writer v3",
   "explicit source-checkout recovery",
