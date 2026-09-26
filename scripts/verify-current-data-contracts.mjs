@@ -47,8 +47,11 @@ function requireText(label, source, needle) {
 requireText("legacy public lineage", database, 'const LEGACY_PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1"');
 requireText("legacy schema 30", database, "pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;");
 requireText("release lineage", release, 'pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";');
-requireText("release schema 1", release, "pub(crate) const SCHEMA_VERSION: i64 = 1;");
+requireText("release baseline schema 1", release, "pub(crate) const BASELINE_VERSION: i64 = 1;");
+requireText("release current schema 2", release, "pub(crate) const SCHEMA_VERSION: i64 = 2;");
 requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
+requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
+requireText("selection-deck migration checksum", release, '"94ca4c6af675b669ff36713869285db082ae032b2e607f1a293d7ecfd158e828"');
 requireText("staged legacy converter", release, "Backup::new(connection, &mut staged)");
 requireText("typed preservation receipt", release, "fn preservation_receipt(connection: &Connection)");
 requireText("atomic live ledger conversion", release, "transaction_with_behavior(TransactionBehavior::Immediate)");
@@ -70,7 +73,7 @@ requireText("explicit public-v1 conversion", recovery, 'PUBLIC_SCHEMA_LINEAGE = 
 requireText("backup format", backup, 'const BACKUP_VERSION: i64 = 4;');
 requireText("backup package floor", backup, 'const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;');
 requireText("release backup admission", backup, "lineage == CURRENT_SCHEMA_LINEAGE");
-requireText("release backup schema", backup, "version == CURRENT_SCHEMA_VERSION");
+requireText("release backup schema window", backup, "(MIN_SUPPORTED_RELEASE_SCHEMA_VERSION..=CURRENT_SCHEMA_VERSION).contains(&version)");
 requireText("legacy backup admission", backup, 'lineage == "ostudy-public-v1"');
 requireText("legacy backup SQLite floor", backup, "(10..=LATEST_SCHEMA_VERSION).contains(&version)");
 requireText("studydeck writer", studydeck, 'const CURRENT_PACKAGE_VERSION: i64 = 3;');
@@ -92,7 +95,8 @@ requireText("canonical document schema v1", canonicalDocument, 'pub(crate) const
 
 for (const needle of [
   "ostudy-release-v1",
-  "schema **1**",
+  "**baseline is schema 1**",
+  "**schema 2**",
   "Legacy `ostudy-public-v1` schemas **10–30**",
   "repair versions **1–3**",
   "writer v3",

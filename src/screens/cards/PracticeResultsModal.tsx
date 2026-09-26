@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Modal } from "../../components/Modal";
-import { transferCards, type SelectionCard } from "../../ipc/cards";
-import { getErrorMessage } from "../../ipc/common";
-import { createDeck, deleteDeck, type DeckSummary } from "../../ipc/decks";
+import type { SelectionCard } from "../../ipc/cards";
+import { createOperationId, getErrorMessage } from "../../ipc/common";
+import { saveSelectionAsDeck, type DeckSummary } from "../../ipc/decks";
 import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { Panel } from "../../ui/primitives/Panel";
@@ -23,6 +23,7 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
   const [deckName, setDeckName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pendingSaveRef = useRef<{ key: string; operationId: string } | null>(null);
 
   function startTemporaryPractice(): void {
     if (cards.length === 0 || isSaving) return;
@@ -33,23 +34,29 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
   async function savePermanentDeck(): Promise<void> {
     const name = deckName.trim();
     if (name === "" || cards.length === 0 || isSaving) return;
+    const description = `Created from a card selection in ${sourceLabel}.`;
+    const noteIds = [...new Set(cards.map((card) => card.noteId))].sort();
+    const key = JSON.stringify({ name, description, noteIds });
+    if (pendingSaveRef.current?.key !== key) {
+      pendingSaveRef.current = { key, operationId: createOperationId() };
+    }
+    const operationId = pendingSaveRef.current.operationId;
+
     setIsSaving(true);
     setErrorMessage(null);
-    let createdDeck: DeckSummary | null = null;
     try {
-      createdDeck = await createDeck({ name, description: `Created from a card selection in ${sourceLabel}.` });
-      const result = await transferCards({ noteIds: cards.map((card) => card.noteId), targetDeckId: createdDeck.id, mode: "copy", skipDuplicates: true });
-      if (result.affectedCount === 0) throw new Error("No cards could be copied into the new deck.");
-      await refreshDecks();
+      const result = await saveSelectionAsDeck({ operationId, name, description, noteIds });
+      if (pendingSaveRef.current?.operationId === result.operationId) pendingSaveRef.current = null;
       const duplicateText = result.skippedDuplicates > 0
         ? ` ${result.skippedDuplicates} exact ${result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"} omitted.` : "";
-      showToast("success", `Created “${createdDeck.name}” with ${result.affectedCount} ${result.affectedCount === 1 ? "card" : "cards"}.${duplicateText}`);
+      showToast("success", `Created “${result.deck.name}” with ${result.affectedCount} ${result.affectedCount === 1 ? "card" : "cards"}.${duplicateText}`);
+      try {
+        await refreshDecks();
+      } catch (refreshError: unknown) {
+        showToast("info", `The deck was created, but refreshing the deck list failed: ${getErrorMessage(refreshError)} Refresh the view before creating it again.`);
+      }
       onClose();
     } catch (error: unknown) {
-      if (createdDeck) {
-        try { await deleteDeck(createdDeck.id); }
-        catch (rollbackError: unknown) { console.error("Unable to remove incomplete filtered deck:", getErrorMessage(rollbackError)); }
-      }
       setErrorMessage(getErrorMessage(error));
     } finally { setIsSaving(false); }
   }

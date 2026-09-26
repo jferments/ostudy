@@ -9,8 +9,8 @@ migrations `0001_public_baseline.sql` through `0030_generation_operation_outcome
 and repair records 1–3 remain supported input contracts. They are not the normal
 fresh-install path for the 0.1 release.
 
-The 0.1 runtime lineage is `ostudy-release-v1`, schema version **1**. Fresh
-libraries execute one canonical release baseline:
+The 0.1 runtime lineage is `ostudy-release-v1`. Its immutable **baseline is
+schema 1**. Fresh libraries execute that canonical baseline first:
 
 ```text
 src-tauri/schema/0001_release_baseline.sql
@@ -23,10 +23,15 @@ the required legacy repairs. Its canonical SHA-256 is:
 64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8
 ```
 
-The release migration ledger therefore contains one row named
-`release_baseline`; the release repair ledger starts empty. Future release
-migrations and repairs append from this baseline rather than replaying the thirty
-pre-release migrations on every new library.
+The baseline ledger starts with one row named `release_baseline`; the release
+repair ledger starts empty. Forward release migrations append from this baseline
+rather than replaying the thirty pre-release migrations on every new library.
+
+The first forward release migration is schema **2**,
+`selection_deck_operations`. It adds only the durable replay receipt for the
+atomic **Save selection as deck** mutation. Current libraries therefore open as
+`ostudy-release-v1` schema 2, while schema-1 release libraries and backups remain
+supported upgrade inputs.
 
 ## Existing public-v1 libraries
 
@@ -61,8 +66,9 @@ data_repairs
 PRAGMA user_version
 ```
 
-After conversion the library is `ostudy-release-v1`, schema 1. Reopening that
-current release library is a no-op.
+After preservation-proven lineage conversion, the schema-1 baseline is upgraded
+through the ordinary release migration registry to the current release schema.
+Reopening an already-current release library does not replay completed migrations.
 
 ## Backup compatibility
 

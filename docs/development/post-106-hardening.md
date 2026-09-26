@@ -14,13 +14,15 @@ Each implementation PR owns its focused regressions, source-derived documentatio
 
 ### H-01 — atomic, retry-safe save-selection-as-deck
 
-Owner: `src/screens/cards/PracticeResultsModal.tsx`, deck/authoring transfer services and their operation receipts.
+Status: **implemented in the H-01 follow-up branch; qualification recorded on that PR.**
 
-Confirmed from source: React creates a deck, copies notes, then refreshes inside one try/catch that deletes the new deck on any error. A failed refresh after committed copying therefore triggers destructive compensation. Existing tests do not cover that post-commit case.
+Owner: `src/screens/cards/PracticeResultsModal.tsx`, `authoring/selection_deck.rs`, deck copy primitives and the release migration registry.
 
-Implement one native create-and-copy transaction with a stable operation identity, request fingerprint and replayable committed result. Preserve source notes/assets/questions/review history and give copied presentations fresh schedules. Reuse a suitable receipt owner; any needed durable extension is a forward release migration, not a baseline rewrite.
+The frontend now sends one stable operation identity to a native transaction that creates the destination deck, copies the selected notes/questions/assets/tags, creates fresh schedules, and stores a replayable committed result. Release migration 2 adds only the operation-receipt table; the schema-1 baseline remains immutable and supported as an upgrade/backup input. React no longer deletes a committed result when its follow-up deck-list refresh fails.
 
-Exit: failed copying leaves no partially created result; lost reply replays the same deck; reused identity with different input is rejected; refresh/navigation failure cannot delete or recreate committed content. Keep empty-result semantics explicit. No type-generator or controller-wide refactor prerequisite.
+Focused regressions cover rollback on copy failure, replay without duplicate creation, identity-conflict refusal, preservation of source scheduling evidence, fresh copied schedules, typed interactive question copying, post-commit refresh failure, and same-operation retry after a lost response.
+
+Exit: failed copying leaves no partially created result; lost reply replays the same deck; reused identity with different input is rejected; refresh/navigation failure cannot delete or recreate committed content. The next hardening scope is H-02, not a broader controller/type-generation refactor.
 
 ### H-02 — activity admission, lifecycle visibility and restore preparation
 

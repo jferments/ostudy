@@ -235,6 +235,7 @@ pub fn run() {
             authoring::card_commands::analyze_bulk_cards,
             authoring::card_commands::bulk_create_cards,
             authoring::transfer::transfer_cards,
+            authoring::selection_deck::save_selection_as_deck,
             authoring::card_commands::bulk_tag_cards,
             deletion_commands::delete_cards_with_undo,
             authoring::card_types_and_templates::create_card_note,

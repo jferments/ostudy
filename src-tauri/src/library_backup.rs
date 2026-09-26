@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::{Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION, LATEST_SCHEMA_VERSION},
+    database::{
+        Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION, LATEST_SCHEMA_VERSION,
+        MIN_SUPPORTED_RELEASE_SCHEMA_VERSION,
+    },
     document_backup,
     error::CommandError,
     media::inspect_managed_asset_bytes,
@@ -204,7 +207,7 @@ pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), 
     crate::database::validate_backup_lineage(connection)?;
     let (lineage, version) = crate::database::schema_identity(connection)?;
     let supported = if lineage == CURRENT_SCHEMA_LINEAGE {
-        version == CURRENT_SCHEMA_VERSION
+        (MIN_SUPPORTED_RELEASE_SCHEMA_VERSION..=CURRENT_SCHEMA_VERSION).contains(&version)
     } else if lineage == "ostudy-public-v1" {
         (10..=LATEST_SCHEMA_VERSION).contains(&version)
     } else {
