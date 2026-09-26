@@ -105,7 +105,7 @@ pub(crate) fn document_seeds(
         .map_err(CommandError::database)?;
     if rows.len() > 100_000 {
         return Err(invalid(
-            "The selected document collections contain too many semantic source windows.",
+            "The selected document folders contain too many semantic source windows.",
         ));
     }
     let members = snapshot

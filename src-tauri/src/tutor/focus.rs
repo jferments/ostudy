@@ -209,7 +209,7 @@ pub(crate) fn resolve(
                     && !explicit_document_authority
                 {
                     return Err(invalid(
-                        "A document collection does not implicitly authorize generated guide content. Select the guide explicitly.",
+                        "A document folder does not implicitly authorize generated guide content. Select the guide explicitly.",
                     ));
                 }
                 if !scope_documents(connection, scope)?.contains(document_id) {

@@ -35,8 +35,8 @@ concurrency:
 permissions:
   contents: read
 
-# Read-only generated-source validation and optional auxiliary inspection are
-# isolated in maintain-generated-candidates.yml; neither workflow writes source.
+# Source-writing maintenance is deliberately isolated in
+# maintain-generated-candidates.yml and is never performed by Check.
 # Pull-request metadata is validated independently by pr-contract.yml so a
 # malformed compatibility ledger can never block source qualification.
 # Draft source updates stay fast. Ready pull requests and explicit manual

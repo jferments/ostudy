@@ -234,7 +234,7 @@ fn schema_objects(connection: &Connection) -> Result<Vec<(String, String, String
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?.trim().to_string(),
+                normalize_schema_sql(&row.get::<_, String>(2)?),
             ))
         })
         .map_err(|error| format!("Could not read release schema objects: {error}"))?
@@ -332,6 +332,65 @@ fn hash_value(digest: &mut Sha256, value: ValueRef<'_>) {
     }
 }
 
+fn normalize_schema_sql(sql: &str) -> String {
+    let mut normalized = String::with_capacity(sql.len());
+    let mut characters = sql.chars().peekable();
+    let mut quote: Option<char> = None;
+    let mut in_brackets = false;
+    let mut pending_space = false;
+
+    while let Some(character) = characters.next() {
+        if let Some(delimiter) = quote {
+            normalized.push(character);
+            if character == delimiter {
+                if characters.peek().copied() == Some(delimiter) {
+                    normalized.push(characters.next().expect("peeked quote should exist"));
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+
+        if in_brackets {
+            normalized.push(character);
+            if character == ']' {
+                in_brackets = false;
+            }
+            continue;
+        }
+
+        match character {
+            '\'' | '"' | '`' => {
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+                quote = Some(character);
+            }
+            '[' => {
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+                in_brackets = true;
+            }
+            character if character.is_whitespace() => pending_space = true,
+            _ => {
+                if pending_space && !normalized.is_empty() {
+                    normalized.push(' ');
+                }
+                pending_space = false;
+                normalized.push(character);
+            }
+        }
+    }
+
+    normalized.trim().to_string()
+}
+
 fn quote_identifier(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
@@ -356,6 +415,26 @@ mod tests {
         assert_eq!(migrations, 1);
         assert_eq!(repairs, 0);
         assert_eq!(super::super::entry::user_version(&connection).unwrap(), 1);
+    }
+
+    #[test]
+    fn schema_equivalence_ignores_formatting_only_differences() {
+        let canonical =
+            "CREATE TABLE \"example\" ( value TEXT NOT NULL CHECK(value IN ('a  b', 'c')) ) STRICT";
+        let reformatted = "CREATE   TABLE \"example\" (
+            value TEXT NOT NULL
+            CHECK(value IN ('a  b', 'c'))
+        ) STRICT";
+        let changed_literal =
+            "CREATE TABLE \"example\" ( value TEXT NOT NULL CHECK(value IN ('a b', 'c')) ) STRICT";
+        assert_eq!(
+            normalize_schema_sql(canonical),
+            normalize_schema_sql(reformatted)
+        );
+        assert_ne!(
+            normalize_schema_sql(canonical),
+            normalize_schema_sql(changed_literal)
+        );
     }
 
     #[test]
