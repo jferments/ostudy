@@ -35,12 +35,14 @@ requireText("pre-public fail-closed marker", database, "PRE_PUBLIC_RESET_PREFIX"
 requireText("reset helper manifest", projectManifests, '"scripts/reset-pre-public-data.sh"');
 requireText("completed retirement gate", audit, "human lineage gate confirmed");
 requireText("explicit historical recovery", audit, "explicit staged recovery tool");
-requireText("migration retention", audit, "public migrations 1–30");
-requireText("repair retention", audit, "public repairs 1–3");
+requireText("release baseline", audit, "`ostudy-release-v1` / schema 1");
+requireText("migration retention", audit, "public-v1 migrations 1–30");
+requireText("repair retention", audit, "public-v1 repairs 1–3");
+requireText("legacy compatibility disposition", audit, "retain as compatibility evidence");
 
 if (failures.length > 0) {
   console.error("Release-readiness cleanup verification failed:");
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Release-readiness cleanup records v26 runtime retirement while retaining explicit historical recovery and current compatibility readers.");
+console.log("OK   Release-readiness cleanup records the release-v1 baseline while retaining public-v1 compatibility evidence and explicit historical recovery.");
