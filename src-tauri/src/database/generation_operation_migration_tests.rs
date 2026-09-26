@@ -45,6 +45,10 @@ fn document_operation_outcome_migration_preserves_legacy_rows_without_inventing_
     assert_eq!(connection.total_changes(), before);
     assert_eq!(
         entry::user_version(&connection).unwrap(),
-        LATEST_SCHEMA_VERSION
+        CURRENT_SCHEMA_VERSION
+    );
+    assert_eq!(
+        schema_identity(&connection).unwrap(),
+        (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
     );
 }
