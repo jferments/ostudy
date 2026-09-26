@@ -219,16 +219,6 @@ pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), 
     Ok(())
 }
 
-fn snapshot_schema_version(connection: &Connection) -> Result<i64, CommandError> {
-    connection
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
-}
-
 fn snapshot_summary(connection: &Connection) -> Result<BackupSummary, CommandError> {
     Ok(BackupSummary {
         deck_count: count_table(connection, "decks", "deleted_at IS NULL")?,

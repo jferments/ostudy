@@ -167,17 +167,14 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
 }
 
 fn write_release_ledger(transaction: &Transaction<'_>) -> Result<(), String> {
-    let changed = transaction
+    transaction
         .execute(
-            "UPDATE schema_metadata
-             SET value = ?1
-             WHERE key = 'schema_lineage'",
+            "INSERT INTO schema_metadata(key, value)
+             VALUES ('schema_lineage', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [SCHEMA_LINEAGE],
         )
         .map_err(|error| format!("Could not set the release schema lineage: {error}"))?;
-    if changed != 1 {
-        return Err("The release schema lineage row is missing or duplicated.".to_string());
-    }
     transaction
         .execute("DELETE FROM schema_migrations", [])
         .map_err(|error| format!("Could not replace the legacy migration ledger: {error}"))?;
@@ -232,7 +229,7 @@ fn schema_objects(connection: &Connection) -> Result<Vec<(String, String, String
                       name",
         )
         .map_err(|error| format!("Could not inspect release schema objects: {error}"))?;
-    statement
+    let objects = statement
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -242,7 +239,8 @@ fn schema_objects(connection: &Connection) -> Result<Vec<(String, String, String
         })
         .map_err(|error| format!("Could not read release schema objects: {error}"))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("Could not decode release schema objects: {error}"))
+        .map_err(|error| format!("Could not decode release schema objects: {error}"))?;
+    Ok(objects)
 }
 
 /// Hash every non-ledger SQLite value with explicit type/length framing. Row
