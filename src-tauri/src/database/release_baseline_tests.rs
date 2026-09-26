@@ -98,7 +98,11 @@ fn render_release_baseline(connection: &Connection) -> Result<String, String> {
     Ok(output)
 }
 
-fn append_seed_rows(connection: &Connection, table: &str, output: &mut String) -> Result<(), String> {
+fn append_seed_rows(
+    connection: &Connection,
+    table: &str,
+    output: &mut String,
+) -> Result<(), String> {
     let identifier = quote_identifier(table);
     let mut statement = connection
         .prepare(&format!("SELECT * FROM {identifier}"))
@@ -140,10 +144,9 @@ fn append_seed_rows(connection: &Connection, table: &str, output: &mut String) -
             if index != 0 {
                 output.push_str(", ");
             }
-            output.push_str(&sql_literal(
-                row.get_ref(index)
-                    .map_err(|error| format!("Could not read release seed value: {error}"))?,
-            )?);
+            output.push_str(&sql_literal(row.get_ref(index).map_err(|error| {
+                format!("Could not read release seed value: {error}")
+            })?)?);
         }
         output.push_str(");\n");
     }
@@ -162,7 +165,9 @@ fn sql_literal(value: ValueRef<'_>) -> Result<String, String> {
         ValueRef::Null => Ok("NULL".to_string()),
         ValueRef::Integer(value) => Ok(value.to_string()),
         ValueRef::Real(value) if value.is_finite() => Ok(format!("{value:.17}")),
-        ValueRef::Real(_) => Err("Release seed rows cannot contain non-finite numbers.".to_string()),
+        ValueRef::Real(_) => {
+            Err("Release seed rows cannot contain non-finite numbers.".to_string())
+        }
         ValueRef::Text(value) => {
             let value = std::str::from_utf8(value)
                 .map_err(|error| format!("Release seed text is not UTF-8: {error}"))?;
