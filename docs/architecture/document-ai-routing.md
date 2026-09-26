@@ -1,169 +1,125 @@
 # Document AI architecture, routing, and concurrency
 
-ostudy separates four concerns that were historically mixed together in one large Rust file:
+ostudy separates canonical evidence, shared source understanding, artifact authoring/orchestration, and provider-specific transport. This guide describes the knowledge-first implementation after merged PR #106. [ADR 0041](../decisions/0041-modular-document-ai-architecture.md) preserves the earlier modularization rationale; its original outline-first stages are not the current pipeline.
 
-1. canonical document content and provenance;
-2. format-neutral document-learning reasoning;
-3. large-job orchestration and resumability; and
-4. provider-specific transport.
-
-This separation is required for more than source-code tidiness. It lets PDF, slide, word-processing, web, and future document adapters feed one reasoning system; lets flashcards, study guides, practice tests, tutoring, and semantic search reuse the same learning model; and prevents provider wire behavior from redefining ostudy's domain contracts.
-
-The architectural decision and compatibility policy are recorded in [ADR 0041](../decisions/0041-modular-document-ai-architecture.md).
+Implemented document adapters, cards, guides, Tutor and semantic retrieval share native-owned source knowledge. Future lessons or practice-test features must reuse those boundaries, but their presence in a roadmap is not implementation evidence. See [processing architecture](ai-and-document-processing.md), [knowledge representation](knowledge-representation.md), and [the hardening register](../development/post-106-hardening.md) for current limitations and separately planned changes.
 
 ## End-to-end dependency direction
 
-The intended flow is one-way:
-
 ```text
-format adapter
-    |
-    v
-CanonicalDocument + semantic chunks + source locators + visual evidence
-    |
-    v
-document-generation workflow
-    |
-    v
-ai::document_intelligence facade
-    |
-    +--> outline reasoning
-    +--> flashcard authoring
-    +--> curation
-    |
-    v
-provider-neutral contracts and schemas
-    |
-    v
-provider transport
-    |
-    v
-AI gateway / provider endpoint
+format adapter / retained images
+    -> canonical source evidence, locators and bounded chunks
+    -> shared knowledge preparation and exact evidence admission
+    -> retained units, analysis receipts and source dispositions
+    -> native document view / learning plan / collection synthesis
+    -> bounded card or guide authoring, or scoped Tutor retrieval
+    -> native validation and revision-checked publication
+
+provider work at the relevant stages
+    -> bounded provider-neutral task request
+    -> provider dialect + shared native gateway
+    -> untrusted result returned to the owning task validator
 ```
 
-A provider response is never the canonical document representation. Canonical text, structure, source locators, and visual-evidence identities come from the document adapter and semantic planner. AI output is a derived learning artifact that must pass native decoding, validation, normalization, and persistence rules.
+A provider response is never the canonical document representation. Text, structure, source locators and visual-evidence identities originate in native source preparation. Extracted knowledge is an admitted interpretation with provenance, not a guarantee of exhaustive or correct understanding. Artifact output must pass native decoding, validation, normalization and persistence rules.
 
-Provider transport must not know about `SemanticWindow`, `CanonicalDocument`, PDF parsing, slide parsing, or semantic partition construction. A domain task first selects and bounds the source text and visual evidence, then passes an ordinary structured task request to transport. Conversely, provider request bodies, endpoint paths, response envelopes, tool-call arguments, and token-field aliases must not leak into outline, flashcard, or curation logic.
+Domain owners choose relevant evidence and budget each request. Provider adapters encode bounded text, schema and attached images; gateway transport does not choose source windows, learning topics, library writes or retrieval permissions. Provider endpoint paths, response envelopes, strict-tool conventions and token aliases stay inside their wire/transport owners.
 
 ## Module ownership
 
-The stable application-facing boundary is `src-tauri/src/ai/document_intelligence/mod.rs`. The directory is deliberately divided by responsibility:
+| Owner under `src-tauri/src/` | Responsibility |
+| --- | --- |
+| `document_outline_service.rs` | Coordinates shared preparation, prepared-source snapshots, derived document view, and atomic outline/display-metadata publication; later enrichment/indexing stays separate |
+| `knowledge/` | Source projections, admitted knowledge/evidence, partial-analysis receipts, snapshots, authoring catalogs, collection views, scoped retrieval and derived indexing |
+| `document_generation.rs` and related document services | Native artifact jobs, bounded work, checkpoints, progress, cancellation and publication through existing authoring owners |
+| `study_materials/` | Document/collection StudyTarget orchestration, source-note reuse and collection guide publication |
+| `ai/document_intelligence/mod.rs` | Provider-neutral artifact-authoring facade, exports and optional metadata entry point; not the whole document scheduler or a second source-analysis pipeline |
+| `ai/document_intelligence/context.rs` | Freezes task/profile/model/capability/credential/reasoning context and validates freshness |
+| `ai/document_intelligence/flashcards.rs` | Recall/typed-question candidate authoring, content/evidence admission and task bounds |
+| `ai/document_intelligence/study_guide.rs` | Bounded document/collection semantic-section authoring contracts |
+| `ai/document_intelligence/curation.rs` | Selection-only curation of already validated candidates |
+| `ai/document_intelligence/transport.rs` | Domain-facing structured-request coordination over native provider/gateway boundaries |
+| `ai/providers/`, `ai/gateway/` | Provider wire dialects, endpoint/HTTP policy, streaming, safe transport retries, usage normalization and redaction |
+| `ai/profiles/` | Provider policy, credentials/metadata coordination and authoritative task model/reasoning assignments |
 
-- `mod.rs` coordinates bounded work, cache reuse, deterministic source-order persistence, and final assembly.
-- `context.rs` snapshots the selected profile, network scope, credential storage mode, negotiated provider capabilities, resolved reasoning effort, and accumulated usage for one job.
-- `contracts.rs` owns provider-neutral outlines, source visual evidence, supported generated-card variants, and all native validation and normalization.
-- `outline.rs` owns source-grounded outline prompts, local fragment normalization, deterministic hierarchy assembly, optional whole-document synthesis, and compact projections used by later tasks.
-- `flashcards.rs` owns card-authoring prompts, bounded repair, card-count/output budgeting, and conversion into locally validated ostudy card values.
-- `curation.rs` owns bounded selection-only quality curation and deterministic final de-duplication. It never rewrites cards.
-- `schemas.rs` owns the authoritative provider-neutral JSON schemas for outline, flashcard, global synthesis, and curation tasks.
-- `transport.rs` owns credential resolution, endpoint construction, provider request bodies, schema lowering, compatibility retries, response decoding, policy/resource stops, and token-envelope parsing.
-- `support.rs` owns small shared retry/error and bounded-diagnostic helpers.
-
-These are ownership boundaries, not merely file names. A new learning-artifact type should normally add domain reasoning beside `outline.rs`, `flashcards.rs`, and `curation.rs`, then reuse contracts, context, and transport. A new provider should normally extend transport or the shared provider gateway without duplicating document reasoning.
+Historical `outline.rs`, outline DTOs and checkpoint names remain where consumed. Their existence does not prove a second raw-source outline traversal. Add a new provider through its dialect/gateway contract; add an artifact through bounded native task and publication owners rather than duplicating parsing, knowledge or transport.
 
 ## Canonical source units and compatibility projections
 
-PR #63 made canonical source locators authoritative. Document reasoning therefore speaks in terms of **source units**, **source windows**, **semantic partitions**, and **visual evidence** rather than assuming every input is a PDF page.
+Reasoning uses source units, windows, semantic partitions and visual evidence rather than assuming every source is a PDF page. Current non-PDF input uses Xberg; PDF and retained image sets have their own native adapters.
 
-Some persisted and provider-schema fields still use PDF-era names such as `pageStart`, `pageEnd`, `page_count`, and `SourcePageImage`. They are compatibility projections: their numeric values represent one-based canonical source-unit bounds, while the canonical `SourceLocator` remains the richer provenance identity. Renaming these fields would require a separately versioned persistence and checkpoint change, so this architecture refactor documents rather than disguises them.
+Some persisted/provider fields retain names such as `pageStart`, `pageEnd`, `page_count` and `SourcePageImage`. They project one-based canonical source-unit bounds; the canonical `SourceLocator` carries the richer provenance. Rename serialized fields only with coordinated reader/checkpoint compatibility, not cosmetic substitution.
 
-Prompt wording changed from PDF-specific to canonical source-unit language. Outline, flashcard, and curation prompt versions therefore advance. Persisted outline/card JSON shapes do not change. Rebuildable checkpoint identities include the relevant prompt/schema versions, so old acceleration rows stop matching and are recomputed without a database migration or loss of learner data.
+Prompt/schema/backend/assembly versions identify producer contracts. An old migration or parser name can remain legitimate evidence even when its runtime adapter is retired. A version change does not authorize deleting learner edits, schedules, reviews, or supported historical input.
 
-## Semantic extraction and provider request boundaries
+## Shared extraction and request boundaries
 
-Semantic extraction preserves headings, source provenance, element types, visual-evidence references, and section relationships. Provider requests are then packed by bounded source-token and source-unit capacity rather than split every time a heading changes. A highly structured textbook or lecture deck must not degenerate into one provider request per heading, page, or slide.
+Source preparation preserves headings, relationships, qualifiers, exact native spans, locators and eligible images. Bounded interpretation requests select native evidence IDs rather than rewriting quotations as provenance. Valid siblings and per-source dispositions survive a targeted repair; partial analysis and explicit no-learning results remain distinguishable.
 
-The semantic planner determines what belongs together. The document-intelligence layer determines what learning task to perform. Transport determines only how that already-bounded request is represented on the wire.
+Request packing accounts for evidence, instructions/schema, output and reasoning reserves, optional images and safety margin. Headings are metadata, not a mandate for one request per heading/page. Aggregate material larger than one model context is handled through bounded work, not automatically rejected as one oversized request.
 
-This distinction is important for future embeddings. A small local embedding model may create versioned vectors over canonical chunks to improve retrieval, topic maps, coverage analysis, and window selection. Those vectors are derived indexes keyed by source hashes. They do not replace canonical content, source locators, deterministic outline assembly, or native validation, and they do not belong in provider transport.
+Saved compatible knowledge is reusable by cards, guides and Tutor. Changing a consuming model does not automatically re-extract it. Embeddings already exist as a separately configured derived retrieval index; changing embedding space rebuilds that index, not authoritative source interpretation. Indexing failure must not erase successfully retained knowledge. Ordinary navigation or opening a source selector does not authorize provider transmission.
 
-## Outline reasoning
+## Derived outline and learning context
 
-The outline is a reusable document-learning model rather than a flashcard-only intermediate.
+`ensure_document_outline` first prepares shared knowledge, obtains a prepared DocumentSnapshot and bounded catalogs, then requests the document view from `knowledge/document_view`. Native assembly owns topic grouping, ranges, stable identities and coverage. Optional balanced knowledge-only reduction may improve a global summary or advisory core selection; invalid or incomplete reduction leaves the native aggregate authoritative.
 
-Each canonical source window produces a small, validated outline fragment. Independent fragment requests may finish out of order, but validated fragments are persisted and assembled in canonical window order. Rust remains authoritative for hierarchy, section bounds, de-duplication, and provenance.
+The snapshot includes expected source projections and receipts even when some sources produced no units. It is checked around provider work and inside the publication transaction. A changed or removed source, changed interpretation, or new source cannot silently enter a stale outline publication. Deterministic outline/display metadata and ready-state changes publish together. Optional provider metadata and derived indexing are separate postprocessing, not another required raw-source traversal.
 
-After deterministic assembly, an optional bounded whole-document synthesis may improve the concise global summary, major objectives, and key concepts. It cannot recreate or reorder section hierarchy. If synthesis fails, the deterministic assembled outline remains valid and the job continues.
+A collection's LearningContext describes its exact authorized document/range snapshot. CollectionSynthesis is a derived cross-source map; it neither clones source interpretations nor substitutes relevance-ranked Tutor retrieval for complete generation coverage. Large collection catalogs are grouped into bounded authoring work while retaining their source-owned knowledge.
 
-For multi-window documents, a provider fragment that remains malformed after bounded repair may use a deterministic source-derived local fallback. The fallback is deliberately narrow and retains source provenance. Single-window jobs fail explicitly rather than concealing a complete provider failure behind a weak fallback.
+## Flashcard and guide authoring
 
-## Flashcard authoring and curation
+Authoring receives bounded admitted knowledge, deduplicated evidence, compact learning context and permitted visual inputs rather than a repeated copy of the whole raw document. Card support selects native knowledge identities; guide sections identify the units they explain. Native publication verifies source/unit freshness and attaches support in the same transaction as the created artifacts.
 
-Flashcard generation receives only the current semantic window plus a compact outline projection relevant to that window. This avoids repeatedly sending the complete document while still letting the model judge local material against global learning objectives.
+Recall candidates use Basic, genuine reversible-definition and cloze forms. Interactive candidates use typed `single_choice`, `select_all`, `true_false`, `matching`, `grouping` and `ordering` questions. Automatic image occlusion is not generated. Legacy text-only `multiple_choice` output is rejected rather than flattened into a Basic card. Native validation checks field sizes, choices/items, cloze substrings, tags, evidence bindings, policy and output bounds.
 
-Provider output is decoded into application-owned recall and assessment candidates. Recall output uses Basic, genuine reversible-definition, and cloze forms. Interactive output uses the native typed question families `single_choice`, `select_all`, `true_false`, `matching`, `grouping`, and `ordering`; automatic image occlusion is not generated. Native Rust then validates field sizes, option/item cardinality, duplicate choices, cloze substrings, tag rules, evidence bindings, supported modes, and card-count limits. Legacy text-only `multiple_choice` output is rejected in favor of `single_choice`. Definition candidates alone become reversible basic cards. Cloze markers are constructed locally from exact source-grounded substrings.
+Malformed candidates do not automatically discard independently valid siblings. Repairs are bounded and classified by the owning task; provider truncation, unsupported policy, invalid candidate content, transport failure and ambiguous publication are not interchangeable reasons to replay a whole operation. A complete valid result is not rejected merely because the provider reports a length finish marker.
 
-Malformed candidates do not automatically discard valid siblings from the same response. When every candidate is invalid, the task receives one bounded repair attempt with the validation detail. A response that reaches a completion limit is classified separately from an ordinary schema mismatch.
+Curation remains selection-only and cannot rewrite the library. A failed optional curation batch does not silently delete its already validated candidates. Final duplicate handling and import use native authoring rules, including stable presentation identities and local schedules. No generated-card approval queue is introduced.
 
-Curation is selection-only. It receives bounded compact card summaries and global outline context, then returns indices to retain. A failed curation batch keeps its already validated candidates rather than silently deleting them. Final native de-duplication is deterministic.
+A collection deck copies eligible unedited, range-authorized document-generated notes through StudyTarget orchestration. CollectionSynthesis does not author replacement flashcards through a parallel quality shortcut. Collection guides author semantic sections from retained authorized knowledge using the shared guide contract. Source membership changes do not erase existing learner cards/reviews.
 
 ## Multimodal evidence
 
-Visual evidence is selected by the canonical document workflow and passed to a domain task with its source identity. Transport only encodes bounded image bytes in the provider's supported request format.
+Domain preparation chooses visual evidence by native identity and verified model capability. Only image references whose bytes were actually attached are selectable as image evidence for that request. Merely listing an image ID does not establish visual grounding.
 
-This permits diagrams, tables, equations, slide layout, and image-only source units to inform outlines and learning artifacts without making those tasks PDF-specific. Text remains the primary textual evidence when extraction is available. An image-only document requires a verified image-capable profile; otherwise the workflow fails with a stable actionable error rather than pretending that an empty text extraction is sufficient.
+PDF pages, retained images and extracted non-PDF assets can contribute evidence according to their actual adapters. Do not claim rendered slides or a platform text layer that the adapter did not produce. Image-only material needs suitable verified visual capability or an explicit actionable failure; empty text is not fabricated evidence.
 
-The current shipping adapter still renders PDF pages, which explains remaining compatibility names. Future adapters can render slides, document pages, or other source units into the same visual-evidence contract.
+## Bounded concurrency and deterministic publication
 
-## Bounded concurrency and deterministic persistence
+Independent cloud-backed work can overlap within the native queue/resource policy. Local/LAN inference remains serial under current policy. Bounds come from the owning queue and current resource/task contracts, not a permanently copied number in prose or a provider-brand assumption.
 
-For large documents, outline, generation, and curation batches are independent units of provider work. Cloud-backed windows may execute with bounded concurrency while checkpoint and database writes remain serialized in source-window order. This preserves deterministic durable state while allowing network and inference latency to overlap.
+Completion order must not define artifact ordering, checkpoint identity or SQL publication semantics. No new artifact generator may introduce unbounded fan-out or hold the database lock across provider work. Cancellation belongs to the exact task/subscription; losing one consumer must not discard another consumer's useful shared result.
 
-Concurrency follows execution topology rather than provider brand: cloud profiles may run up to four independent document windows concurrently, while local and LAN profiles remain serial unless a future explicit server-capacity capability says otherwise. Independent windows deliberately do not share a sticky provider session because they contain different source material; concentrating concurrent work on one endpoint can reduce throughput without meaningful prompt-cache reuse.
-
-No document task may introduce unbounded fan-out. A new artifact generator must reuse the shared document concurrency policy and must preserve source-order persistence and result assembly.
+Request leases and activity admission have separate safety responsibilities. The collection ActivityGuard/close-warning integration gap is recorded in H-02; this documentation does not claim that a private cancellation registry already supplies that missing integration.
 
 ## Checkpoints and resumability
 
-Outline fragments and generated-window cards are rebuildable acceleration data. A cache read, decode, or write failure is logged and degrades to recomputation; it must not discard an otherwise valid provider result.
+Distinguish reusable knowledge from artifact-authoring checkpoints. Compatible knowledge is source/evidence-bound and consumer-model independent. Artifact checkpoints also carry relevant authoring prompt/schema, model/capability, policy, plan and support-catalog identities. A consumer-model change can require new artifact work without requiring new source interpretation.
 
-Checkpoint identity includes inputs that change semantics:
+Guide checkpoints include content and exact support/catalog fingerprints. Old content-only or stale-source checkpoints cannot be relabelled as current. Per-unit/window/section receipts preserve accepted work where the owning operation permits reuse. A missing optional cache can degrade to recomputation; a corrupt authoritative receipt, stale source or uncertain committed operation requires its explicit reconciliation path instead of blind replay.
 
-- provider kind, profile, and model;
-- extraction backend;
-- normalized provider-capability fingerprint;
-- resolved reasoning effort;
-- semantic planning fingerprint;
-- relevant prompt/schema versions;
-- source-window hash and canonical locator;
-- card-count budget; and
-- final outline identity for generation windows.
+Credential changes do not by themselves rewrite learner content, but a live request must still satisfy its frozen credential/profile trust boundary. Documents, cards, schedules, reviews and learner edits are not disposable acceleration data. New immutable managed paths prevent a failed rebuild from destroying the last committed evidence.
 
-Credential rotation and unrelated profile revision counters do not invalidate reusable learning results. Canonical learner data—documents, decks, cards, schedules, and review history—does not depend on checkpoint survival.
+## Provider routing and reasoning
 
-## Provider routing
+OpenRouter requests express explicit endpoint eligibility, privacy, structured-parameter and throughput preferences through the native provider adapter. Optional zero-data-retention settings can reduce eligibility; request flags are not proof of a provider's external retention behavior. Fallback among explicitly eligible endpoints for the selected provider/model is distinct from silently switching a local task to cloud or choosing another model, which is not permitted.
 
-OpenRouter routing treats compatibility, privacy, and model precision as hard eligibility constraints. Document requests require parameter-compatible endpoints, deny provider data collection by default, honor the profile's optional zero-data-retention requirement, and restrict eligible endpoint quantization to INT8, FP8/MXFP8, FP16, BF16, or FP32 execution.
+DeepSeek strict tools, OpenRouter strict JSON schema and llama.cpp-compatible structured-request variants use their native dialects. Compatibility lowering and bounded dialect negotiation remain wire concerns, not source-selection logic.
 
-Long document processing is throughput-sensitive rather than price-sensitive. A single job may issue many outline, generation, repair, and curation completions; repeatedly selecting a slow endpoint can multiply a modest per-request delay into tens of minutes. OpenRouter document traffic is sorted by provider throughput while preserving fallbacks across every otherwise eligible endpoint. Existing p90 throughput and latency preferences remain secondary signals. Connection probes use the same route policy so a successful profile test exercises the same provider class used by document work.
+Task assignments own the active model and requested reasoning; profile-level legacy last-selected fields are not a second authority for the task-request path. Effective reasoning follows declared/probed capability and the native resolution policy, with requested/effective values retained as provenance. Do not silently increase optional reasoning to obtain a valid response. Visible structured-output reserves and hidden reasoning headroom are budgeted separately.
 
-DeepSeek document requests use the provider's strict function/tool contract after explicit schema lowering. OpenRouter uses its strict JSON-schema contract after explicit portable lowering. llama.cpp uses its OpenAI-compatible chat endpoint with image parts when enabled and a bounded compatibility retry for servers that expose the alternate `json_schema` request shape. These wire differences live only in transport.
+## Timeouts, retries and usage
 
-## Timeouts, retries, and structured-output exhaustion
+Transport resilience uses inactivity rather than treating every slow but responsive stream as failed. Relevant received stream events reset the inactivity timer; this is not an unlimited execution guarantee or permission to ignore cancellation. Task-level content repair, output compaction, provider-dialect compatibility and transient transport retries remain distinct budgets. A retry must not regenerate already durable successful siblings or repeat a committed mutation after an ambiguous acknowledgement.
 
-Provider resilience is based on transport inactivity rather than a blunt whole-request wall clock. The profile timeout bounds silence while connecting and between received stream events. A provider heartbeat, reasoning delta, output delta, tool-argument delta, or final usage event proves the connection is responsive and resets that timer. A silent transport failure is retried once with the same logical request. Completed windows remain checkpointed for Retry.
+Gateway/provider adapters normalize reported usage into application-owned observations. Usage received before a later failure remains useful evidence. Missing usage is unknown, not an invented exact estimate or zero. Elapsed time, input/output/reasoning/cache tokens and retry counts are useful learner cost controls; expanded implementation detail can remain contextual without hiding those observations.
 
-Structured-output exhaustion is separate from transport failure. The selected model's declared reasoning capabilities are normalized before planning, and the task's requested reasoning effort is resolved once for the job. Optional reasoning is never silently promoted from a requested lower effort to a more expensive unsupported effort. If the requested effort is unavailable and reasoning is not mandatory, reasoning is disabled for that task. Mandatory-reasoning models use their lowest declared supported effort. The resolved effort is part of checkpoint identity.
+Routine diagnostics exclude raw source text, prompts, provider responses, credentials, reasoning bodies and inline images. Bounded identifiers, counts, phases, timings and safe error codes are allowed. New wire envelopes need parsing/redaction fixtures rather than provider-specific payloads leaking into domain logs.
 
-Completion budgets reserve visible structured output separately from hidden reasoning. For reasoning models, the wire-level ceiling includes reasoning headroom while the domain schema retains its provider-neutral visible-output budget. Large-document generation keeps the bounded 16-candidate window capacity. If a generation result is genuinely truncated, ostudy may retry with a smaller card count without reducing the original completion-token floor. A `finish_reason=length` marker alone is not failure: a complete schema-valid result is accepted; only an incomplete result is truncation.
+## Enforcement and extension
 
-## Usage and diagnostics
+`./scripts/check-static.sh` includes `verify-document-ai-boundaries.mjs` and the adjacent provider/processing/IPC policy checks. They protect module topology, bounded owners, provider-wire separation and permitted dependencies. They do not establish factual grounding, exhaustive extraction, exact Rust/TypeScript shape equivalence, platform runtime behavior or live-provider reliability by themselves.
 
-Operational token counts and request timing are safe numeric metadata. Transport normalizes OpenAI-style usage envelopes, nested response envelopes, and llama.cpp timing/token fields into one job accumulator. Usage reported before a later document failure is retained with the failure so the UI does not replace a real count with “not reported.”
-
-Routine diagnostics never contain source text, prompts, provider completions, credentials, or inline images. They may contain provider/model identifiers, source-window indices, canonical locator identities, token counts, duration, retry counts, and stable error codes. Any new provider envelope must extend transport parsing and tests rather than leaking provider-specific fields into domain logs.
-
-## Enforcement
-
-`./scripts/check-static.sh` runs `verify-document-ai-boundaries.mjs`. The verifier and its fixture tests enforce:
-
-- the required module set and normal Rust module topology;
-- removal of the old monolith and path-attributed aliases;
-- a bounded per-module size ceiling;
-- provider-wire vocabulary confined to transport;
-- no semantic-window or canonical-document dependency in transport; and
-- the expected transport ownership points.
-
-The size ceiling is an architectural tripwire, not a target. Approaching it should trigger another responsibility review before the file becomes a new monolith.
-
-These rules apply to initial flashcard generation and future document-aware tasks. New features should reuse canonical chunks, source locators, visual evidence, capacity-bounded windows, deterministic native assembly, normalized provider capabilities, checkpoint identity, and shared routing/concurrency rather than introducing feature-specific page loops or provider pipelines.
+Structural size bounds are tripwires for responsibility review, not reasons to create arbitrary numbered include fragments. New artifacts reuse canonical evidence, retained knowledge, exact scopes, bounded authoring, deterministic publication and explicit lifecycle/compatibility rules. Focused native/component regressions and exact-SHA platform qualification remain separate from static policy checks and from manual educational/visual acceptance.

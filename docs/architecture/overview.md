@@ -2,7 +2,7 @@
 
 This is the comprehensive architectural description of **ostudy**. It explains what the application currently contains, who owns each responsibility, how important workflows cross those boundaries, and why those boundaries exist. It is intended for a contributor or agent who needs to make a change without reconstructing the design from months of conversations.
 
-The documentation refresh was grounded in merged main `2e284a9f084b3bce41c2f7fe40950d1846a61a4b`, after PR #86, and the documentation/isolated-cleanup changes accompanying this guide. This is a source description, not a claim that every platform, external provider, or physical device was newly qualified. Current qualification belongs to the exact commit's PR/Actions evidence. Historical decisions remain in [ADRs](../decisions/); implementation-stage plans are not alternative current specifications.
+This guide is reconciled with merged PR #106, main `9ef91e79346b6d0d0ace983da3c1583303f15a43`, including the knowledge-first learning pipeline and release-v1/same-process restore boundary. It describes source and intended invariants, not proof that every call site already satisfies every invariant or that every platform/provider/device was newly tested. The [completion record](../development/lk-followups/consolidation-qualification.md) distinguishes implementation, exact-SHA qualification and recorded manual acceptance; the [hardening register](../development/post-106-hardening.md) records known gaps and unimplemented remedies. Historical decisions remain in the [ADR index](../decisions/README.md); implementation-stage plans are not alternative current specifications.
 
 ## Contents
 
@@ -100,9 +100,11 @@ A controller's location is not itself an invariant. General controllers live in 
 
 Startup must not expose an ordinary library before its durable state is ready. It resolves app-private paths and diagnostics, acquires the persistent library-owner lock, recovers any interrupted or indeterminate restore journal, opens and admits SQLite, composes native services, and reconciles persisted records whose process-local work cannot have survived restart. These include stale synchronization sessions, interrupted external-file transfers, drafts/staged assets, pending deletions/purges, document task state, and detached source relationships.
 
-Normal whole-library restore completes inside the running native process rather than waiting for a manual application restart. The restore owner closes IPC admission, drains request/activity leases, validates and stages the candidate, journals coordinated database/managed-file replacement, reopens and reconciles the replacement, records a durable completion receipt, advances the library generation, and then refreshes the interface. Startup recovery exists for interrupted or indeterminate activation; source/code rollback and data recovery consequently require different reasoning.
+Normal whole-library restore completes inside the running native process rather than waiting for a manual application restart. The restore owner acquires maintenance admission, closes IPC admission, drains request leases, validates and stages the candidate, journals coordinated database/managed-file replacement, reopens and reconciles the replacement, records a durable completion receipt, advances the library generation, and then refreshes the interface. Startup recovery exists for interrupted or indeterminate activation; source/code rollback and data recovery consequently require different reasoning.
 
 Schema compatibility is explicit. The current 0.1 writer is `ostudy-release-v1` schema 1, whose canonical baseline is verified by [database initialization](../../src-tauri/src/database.rs). Supported legacy `ostudy-public-v1` schema 10–30 inputs are first admitted read-only against their immutable migration/repair ledgers and persisted payload contracts, normalized through the terminal public-v1 state, preservation-checked, and then converted to the release lineage by the dedicated database owner. The explicit final pre-public recovery path remains separate from ordinary startup. Whole-library restore uses the same admission/conversion ownership before activation. Historical migrations retain registered identities/checksums; unsupported, future, tampered, or corrupt durable state fails visibly instead of being guessed or silently replaced.
+
+The shared activity gate refuses maintenance while registered processing work is active; request leases separately protect synchronous dispatch and complete asynchronous futures. These are not interchangeable mechanisms. Collection composition currently holds a request lease but does not join the common activity gate, and restore closes request admission before package validation. H-02 in the hardening register records the resulting admission/responsiveness/close-warning gap rather than claiming it is fixed by this guide.
 
 The AI runtime can initialize without contacting a model. An unavailable secure store should not prevent non-AI study; the relevant secret operation reports its availability or uses an explicitly requested session-only credential. Startup and foreground restoration never implicitly grant permission to resume transmitting source material to a provider.
 
@@ -114,7 +116,7 @@ React components render bounded native read models and local interaction state. 
 
 Controllers separate independent request lanes. A user can change a search or model profile while an earlier native read is still running. That earlier success or failure may arrive, but its obsolete identity must not overwrite the newer state. The native work does not have to be physically canceled for the display to reject a stale result. Independent concerns require independent lanes so one refresh does not accidentally invalidate another unrelated read.
 
-Durable writes are different. Once native code has committed, the UI reports success even if a later list reconciliation fails. It should offer a refresh or contextual informational message, not encourage a new mutation as though nothing happened. The controller preserves the operation identity for ambiguous retries, guards repeated submission, and treats UI dismissal separately from mutation cancellation.
+Durable writes are different. Once native code has committed, the UI reports success even if a later list reconciliation fails. It should offer a refresh or contextual informational message, not encourage a new mutation as though nothing happened. Supported controllers preserve the operation identity for ambiguous retries, guard repeated submission, and treat UI dismissal separately from mutation cancellation. The current save-selection-as-deck path is a known exception: its frontend create/copy/refresh catch can delete a committed result after refresh failure. H-01 owns the planned native atomic/replayable repair; this invariant must not be mistaken for evidence that the repair has shipped.
 
 The deck library illustrates useful frontend decomposition: a route composes the library controller, organization/selection models, pointer-session logic, reorder logic, presentational rows/folders, and shared sheets. Pointer motion updates transient feedback, not the database. A drop becomes a semantic move request against an organization revision. The same move policy supports keyboard and menu alternatives.
 
@@ -138,11 +140,11 @@ Sources: [Flashcards route model](../../src/navigation/flashcardsRoutes.ts), [St
 
 ## Interaction and visual architecture
 
-The shared overlay provider owns stacking, focus containment/restoration, topmost Escape/Back dismissal, inert background behavior, and scroll locking. Features use Dialog, Sheet, Menu, overflow, and confirmation primitives rather than creating competing focus traps or backdrops. Busy/non-dismissible behavior is explicit. Native shutdown protection remains native because a React dialog cannot reliably prevent all process termination.
+Base UI, behind oStudy's shared adapters, owns browser focus containment/restoration, modality, popup behavior and scroll locking. OverlayProvider owns application stack/parent registration and native Back policy; it is not a competing DOM focus trap. Features use Dialog, Sheet, Menu, overflow, and confirmation primitives rather than creating competing focus traps or backdrops. Busy/non-dismissible behavior is explicit. Native shutdown protection remains native because a React dialog cannot reliably prevent all process termination.
 
 A Study Guide reader is currently an **inline workspace**, even though its implementation file retains the name `StudyGuideDialog.tsx`. It is not a modal covering the application navigation. A filename must not override the actual accessibility role and composition. Desktop window management uses native OS chrome; the removed in-app maximize/full-screen adapter is not part of current frontend ownership.
 
-Styling has one global entry, `src/ui/foundations/index.css`, which establishes layers, root sizing, local typography, safe areas, and semantic foundations. Ordinary application presentation uses complete `tw:` Tailwind utilities and oStudy semantic tokens through owned UI primitives; specialized rich-content/platform geometry can retain explicit CSS Module owners where utilities are not the right boundary. Generated reference/semantic/component tokens connect themes to controls without separate feature implementations for Light, Dark, Console, or Synthwave. Named layers make overlay/effect ordering reviewable.
+Styling has one global entry, `src/ui/foundations/index.css`, which establishes layers, root sizing, local typography, safe areas, and semantic foundations. Ordinary application presentation uses complete `tw:` Tailwind utilities and oStudy semantic tokens through owned UI primitives; registered remaining CSS Modules and specialized rich-content/platform geometry retain explicit owners where utilities are not the right boundary. Do not introduce a new feature stylesheet merely to recreate the older CSS-Modules-first presentation pattern. Generated reference/semantic/component tokens connect themes to controls without separate feature implementations for Light, Dark, Console, or Synthwave. Named layers make overlay/effect ordering reviewable.
 
 Layout responds to viewport and available container width, pointer precision, safe areas, text scale, reduced motion, and transparency/forced-colors needs. It does not infer product behavior from an OS name or user agent. Medium width is a real labeled-sidebar layout rather than an accidental mixture of phone and desktop breakpoints. Visual compactness does not reduce interactive target requirements.
 
@@ -150,7 +152,7 @@ Interface and card typography/scale are separate. The local IBM Plex Sans defaul
 
 Help topics and optional tutorials use stable semantic targets. Tutorials default off and start only by explicit user action; observers maintain an already-active spotlight rather than auto-launch guidance. Decorative artwork and celebrations can be disabled without hiding educational images, controls, or results. Semantic feedback events are consumed by the experience layer; a review must not wait for a particle animation or haptic effect.
 
-See [UI architecture](ui.md), [appearance guide](../user-guide/appearance-and-guidance.md), and [ADR 0048](../decisions/0048-frontend-state-and-style-ownership.md).
+See [UI architecture](ui.md), [appearance guide](../user-guide/appearance-and-guidance.md), and [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md). [ADR 0048](../decisions/0048-frontend-state-and-style-ownership.md) retains state-ownership rationale, but its ordinary presentation choice is superseded.
 
 ## Native command and error boundary
 
@@ -162,7 +164,7 @@ TypeScript DTOs improve call-site correctness, but Rust validation is still requ
 
 Errors have stable codes and safe user-facing messages. Detailed SQLite or platform failures can be recorded in bounded local diagnostics, but raw credential/provider/source payloads do not become ordinary UI errors. The UI should distinguish unavailable capability, invalid input, stale revision, already committed replay, failed reconciliation, and interrupted work rather than collapsing them into one “try again” action.
 
-The IPC verifier compares frontend command names to the native command registry and rejects direct frontend bypasses. This is a useful structural contract, not proof that every request's semantics are correct. Native and component behavior tests remain necessary.
+The IPC verifier compares frontend command names/registration, rejects duplicate command symbols and wire names, and rejects direct frontend bypasses. Current TypeScript wire interfaces are handwritten; this verifier does not prove Rust/TypeScript payload-shape equivalence. Vite currently aliases SDK core imports through the library-generation transport; focused transport tests exist, but explicit gateway wiring and generated contract checks remain H-06/H-07 follow-ups. Native and component behavior tests remain necessary.
 
 ## Durable data model
 
@@ -171,14 +173,16 @@ The simplest useful conceptual graph is:
 ```text
 folder → decks
            └── notes: editable structured content, tags, source associations
-                 └── cards: stable forward/reverse/cloze presentations
+                 └── cards: stable recall/interactive presentations
                        └── current schedules
 
 practice session → ordered session-card snapshots → review events
 
-source document → canonical units/blocks/chunks/assets → learning plan/topics
+source document → canonical evidence → shared knowledge → learning plan/topics
                                                         ├── generated note links
                                                         └── guide revisions/sections
+collection → selected documents/ranges → synthesis + StudyTarget deck/guide
+Tutor project → independent scoped conversations/turns and memory preferences
 learner annotations ── document/topic identity or exact generated base
 ```
 
@@ -186,17 +190,19 @@ A folder organizes decks and does not own an independent schedule. A note owns s
 
 SQLite holds structured entities, relationship tables, optimistic revisions, operation identities, search indexes, historical evidence, document metadata/checkpoints, and settings. [Managed paths](../../src-tauri/src/paths.rs) separate card images, staging/quarantine, retained document sources, renders and versioned assets, and external transfer staging/exports. The database records controlled identities and integrity metadata rather than accepting arbitrary imported absolute paths.
 
-The codebase uses ordinary relational constraints and explicit SQL, not a remote synchronization database or an LLM memory store. It can produce bounded projections tailored to a screen while preserving canonical entities as the write authority. UI summary counts are not independent editable facts.
+The codebase uses ordinary local relational constraints and explicit SQL, not a remote synchronization database. Tutor memory and shared knowledge are application-owned domains in that library; model output does not control their persistence or permissions. It can produce bounded projections tailored to a screen while preserving canonical entities as the write authority. UI summary counts are not independent editable facts.
 
 Database schema version, `.studydeck` format version, backup version, sync protocol/package version, canonical document schema, provider prompt schema, and UI-checkpoint version are distinct namespaces. Updating one does not imply all the others changed. Compatibility must identify which contract is being preserved.
 
-For exact columns and current migration inventory use [migrations](../../src-tauri/migrations/), [database code](../../src-tauri/src/database.rs), and the [card/data-model reference](card-format-and-data-model.md). Do not duplicate every SQL column in prose as a competing schema.
+For exact columns and current schema identity use the [release baseline](../../src-tauri/schema/0001_release_baseline.sql), [database code](../../src-tauri/src/database.rs), [retained public-v1 migrations](../../src-tauri/migrations/), and the [card/data-model reference](card-format-and-data-model.md). Do not duplicate every SQL column in prose as a competing schema.
 
 ## Rich content and authoring
 
-The canonical rich document is validated, versioned Tiptap/ProseMirror JSON. Native code derives normalized searchable text and validates allowed nodes, marks, links, structure, size, and managed image references. Arbitrary HTML is not the storage contract. The editor adapter isolates Tiptap details so feature screens do not independently invent serialization or validation.
+The canonical rich document is validated, versioned Tiptap/ProseMirror JSON. Native code derives normalized searchable text and validates allowed nodes, marks, links, structure, size, and managed image references. Arbitrary HTML is not the storage contract. The editor adapter isolates Tiptap details so feature screens do not independently invent serialization or validation. Rich-root schema 3 adds typed mathematical content and managed audio/video while supported earlier roots remain readable. MathLive input and KaTeX display are locally packaged. Transport-envelope version, rich-root schema and SQLite lineage/version are separate contracts.
 
 A Basic note usually has a forward card; an enabled reverse presentation has its own stable identity and schedule. Editing the shared source or tags affects both, while review histories remain independent. A cloze note has one stable scheduled card. One-at-a-time and all-together hiding are presentation modes; a session fixes the selected group, preventing a resumed question from silently becoming a different blank.
+
+Interactive questions use native typed definitions, captured question instances, learner responses and deterministic evaluation rather than encoding objective questions as Basic text. Single choice, select-all, true/false, matching, grouping and ordering share the existing scheduling boundary. Manually authored image occlusion can create stable child presentations. Private keys/rationales remain behind reveal/check admission; one compound board does not create one review per tile.
 
 Templates contain named fields and safe layout rules. Rendering is structural substitution, not evaluation of JavaScript, HTML, SQL, or shell expressions. Inline values and block-rich content have different layout needs; the native renderer validates the resulting document and preview/generation share that renderer. Generated template output becomes ordinary independent notes/cards with fresh schedules. Later template changes do not retroactively rewrite existing study material.
 
@@ -224,7 +230,7 @@ Do not hold a broad database lock or connection across model HTTP, OCR, file-pic
 
 Managed assets are a lifecycle, not just a path in a rich-text node. Staged images can belong to an unfinished draft. Committed images are associated with live content; quarantined/deletion-owned bytes can support Undo; unreachable residue is reconciled after interruption. The asset ledger and actual bytes must agree on identity, relative path, size, MIME and integrity evidence.
 
-Rich content retains `study-asset://<asset-id>` identities. The WebView resolves those through the managed asset protocol and receives only authorized bytes. An internal custom URL is not permission to traverse arbitrary filesystem paths. External file imports similarly use opaque staged handles rather than passing desktop paths or Android content URIs around feature code.
+Rich content retains `study-asset://<asset-id>` identities. Managed image presentation uses the asset protocol; managed audio/video playback uses its bounded native byte-to-Blob path. Both receive only authorized bytes rather than durable arbitrary filesystem or remote URLs. An internal custom URL is not permission to traverse arbitrary filesystem paths. External file imports similarly use opaque staged handles rather than passing desktop paths or Android content URIs around feature code.
 
 Deleting a folder only changes organization and returns its decks to an unsorted scope. Archiving a deck retains it and changes study availability. Deleting a deck/note/card follows an explicit recovery window and then finalized purge semantics. Undo is a bounded durable recovery operation, not a permanent trash archive.
 
@@ -284,9 +290,9 @@ Sources: [studydeck](../../src-tauri/src/studydeck/), [generated import](../../s
 
 ## Trusted-device synchronization
 
-Synchronization is explicit **one-way offer/receive**, not a cloud account, permanent background relationship, live shared SQLite file, or general CRDT. The sender creates a short-lived invitation; the receiver scans/accepts it; authenticated encrypted transport carries the selected snapshot; the receiver merges it and returns acknowledgement. A reverse transfer is a new deliberate offer from the other device.
+Synchronization is explicit **one-way offer/receive**, not a cloud account, permanent background relationship, live shared SQLite file, or general CRDT. LAN pairing uses a short-lived invitation with QR/pasted acquisition; direct Linux-to-Android USB uses its platform accessory flow without requiring ADB or a camera. The receiver explicitly accepts; authenticated encrypted transport carries the selected snapshot; the receiver merges it and returns acknowledgement. A reverse transfer is a new deliberate offer from the other device.
 
-The protocol combines stable Ed25519 identity, fresh X25519 agreement material, HKDF-derived keys, ChaCha20-Poly1305 framed TCP traffic, and a one-time pairing secret. Session transcript binding includes the endpoint/identity/expiry/scope. A QR is a short-lived acceptance capability, not a reusable password. Android acquires the QR through bundled JourneyApps ZXing Embedded/ZXing core; the app still validates the decoded protocol and crypto data. Pasted invitation text is the fallback where scanning is unavailable.
+The protocol combines stable Ed25519 identity, fresh X25519 agreement material, HKDF-derived keys, ChaCha20-Poly1305 framed transport (TCP for LAN), and a one-time pairing secret. Session transcript binding includes the endpoint/identity/expiry/scope. A QR is a short-lived acceptance capability, not a reusable password. Android acquires the QR through bundled JourneyApps ZXing Embedded/ZXing core; the app still validates the decoded protocol and crypto data. Pasted invitation text is the fallback where scanning is unavailable.
 
 Only one unclaimed outgoing offer is kept at a time; overlapping sessions for the same peer are rejected. Waiting/connecting/transferring can be canceled by signaling and shutting down the socket. The final short SQLite merge is intentionally non-cancellable so the receiver never exposes half a committed graph. Restart invalidates process-local sockets and reconciles stale durable session rows.
 
@@ -312,7 +318,7 @@ Credential bytes are held behind native OS/session storage after entry. A newly 
 
 Implemented [provider adapters](../../src-tauri/src/ai/providers/) are llama.cpp/Unsloth-compatible servers, DeepSeek, and OpenRouter. Other native catalog entries are planned, not usable adapters. Dialect modules isolate endpoint/request/schema/response differences; compatible wire conventions do not imply identical capability semantics. The local server owns model loading and chat templates. The app does not install a model runtime.
 
-Reasoning effort is profile-owned, resolved against the selected model's advertised capability, with requested/effective values in job provenance. A default-model change switches profile identity, not another profile's reasoning/key/privacy state. Migration 0008 moves the supported legacy global preference into profiles and removes the old live global key. Current document learning uses the configured flashcard-generation task default rather than an imaginary independent study-guide selector.
+Task assignments own the active provider/profile, model and requested reasoning selection for document generation, Tutor and embeddings. Provider profiles own endpoint/authentication/privacy policy and retain legacy last-selected fields for existing consumers; those fields do not override the task-request path. Effective reasoning is resolved against the chosen model's capability and recorded in job provenance. Historical migration 0008 moved the former global preference into profiles; it is not the current task-selection architecture. Document learning uses the flashcard-generation task assignment rather than an independent study-guide selector.
 
 OpenRouter routing/privacy flags are deliberate requests and may reduce endpoint availability; they are not a proof of external provider behavior. No failure, slowness, or local-server outage authorizes silent provider fallback. See [AI infrastructure](ai-infrastructure.md), [model profiles](ai-model-profiles.md), and [ADR 0046](../decisions/0046-modular-ai-infrastructure.md).
 
@@ -340,23 +346,27 @@ Parsing answers what the source contains; document intelligence decides how to o
 
 Large work is **request-bounded**, not rejected solely because the aggregate document cannot fit one context window. Each request budget accounts for source text, instructions/schema, expected output, optional images, and safety reserves. Oversized chunks split into bounded continuations with source provenance. Heading structure remains metadata and does not force inefficient one-heading-per-request execution.
 
-A first pass obtains bounded outline fragments. Rust assembles hierarchy deterministically, sanitizes ranges/counts, deduplicates concepts/objectives, orders source coverage, and uses safe fallback structure when needed. A bounded whole-document digest can support a global summary without recursively returning unbounded complete outlines to a model. Failure of optional synthesis need not invalidate an already valid native aggregate.
+Shared semantic analysis first publishes admitted knowledge with exact native evidence references and per-source dispositions. The outline is then a derived document view over retained knowledge, not a second raw-source outline traversal. Native assembly preserves hierarchy, ranges, qualifications and minority-topic coverage. Optional bounded knowledge-only reduction can improve the global view; invalid or incomplete reduction does not displace the complete native catalog. DocumentSnapshot checks all expected sources, including empty/no-learning dispositions, around provider work and inside atomic publication.
 
-The learning plan gives stable topic identities. Flashcard and study-guide generation consume bounded relevant source/outline/topic context. Supported visual evidence is selected by verified model capability. Local/LAN model jobs remain serial under current policy; cloud requests can overlap within bounded concurrency. Completion order does not define final publication order: native assembly/checkpoints and SQL writes remain deterministic.
+The learning plan gives stable topic identities. Flashcard and study-guide generation consume bounded knowledge catalogs, evidence, learning context and topic support rather than repeatedly sending the full raw source. Compatible knowledge is reusable across consumer-model changes; embedding-model changes rebuild a derived retrieval index, not source interpretation. Supported visual evidence is selected by verified model capability. Local/LAN model jobs remain serial under current policy; cloud requests can overlap within bounded concurrency. Completion order does not define final publication order: native assembly/checkpoints and SQL writes remain deterministic.
 
 Provider-enforced structured output is necessary but insufficient. Adapters use their appropriate schema/strict-tool dialects, then Rust checks the stricter domain grammar, limits, source ranges, cloze exact-substring rules, choices, and curation indices. A malformed outer response fails the request; a structurally valid but unusable candidate can be rejected without granting it write authority. Curation selects acceptable candidates and cannot arbitrarily rewrite the library.
 
 Generated cards normalize into the existing authoring and scheduling model. Recall-style definitions, scenarios, application prompts, reversible definitions, and cloze prompts use the established recall families where appropriate. Interactive generation produces native typed `single_choice`, `select_all`, `true_false`, `matching`, `grouping`, and `ordering` questions; legacy text-only `multiple_choice` output is rejected and image occlusion remains manually authored. There is no hidden generated-card approval queue. “Generate more” reuses valid retained derivatives/understanding and current coverage rather than rerendering an unchanged source unnecessarily.
 
+Document collections are single-level organization over retained documents and selected ranges. CollectionSynthesis is a derived map, not duplicated source knowledge. A collection StudyTarget assembles its ordinary deck from eligible unedited document-generated notes and authors its guide from retained authorized knowledge; it does not invent replacement flashcards through a second collection generator. Source removal prevents new contributions without erasing surviving learner cards, schedules or reviews.
+
+Tutor is a current consumer of this shared knowledge, with optional selected-material grounding and learner-controlled conversation history. Projects organize chats and supply defaults/instructions; project membership does not grant retrieval permission. Scope/evidence revisions and hidden-answer rules govern context before transmission. A general conversation can proceed without source retrieval, but source-only requests must identify evidence gaps. See [knowledge representation](knowledge-representation.md) and [Tutor privacy](../user-guide/tutor-memory-and-privacy.md).
+
 Checkpoints carry source/backend/prompt/schema/assembly identity. They are reusable only while compatible. Retry never treats an old derivative as authoritative solely because the file exists. New asset versions use immutable managed paths so a failed rebuild cannot destroy the last committed evidence.
 
-Task cancellation is exact-document scoped across extraction, rendering, OCR, and provider transport. A responsive SSE stream resets its inactivity timer; this is not a total duration limit. A failed stream does not publish partial raw output as success. Desktop close protection warns about active work; Android uses a user-visible foreground execution lease. Process death is recovered from durable state, never a promise that the old socket or WebView callback survived.
+Task cancellation is exact-document scoped across extraction, rendering, OCR, and provider transport. A responsive SSE stream resets its inactivity timer; this is not a total duration limit. A failed stream does not publish partial raw output as success. Desktop close protection warns about the task classes wired into its guard; the collection-job visibility gap is recorded in H-02. For document execution, Android uses a user-visible foreground execution lease. Process death is recovered from durable state, never a promise that the old socket or WebView callback survived.
 
 Usage/time/cost observations retain their provenance. Missing provider token usage is unknown, not a fabricated exact estimate. Operational diagnostics may contain bounded counts/engine/model IDs without recording raw prompts, reasoning, or source text. See [document AI routing](document-ai-routing.md) and [processing architecture](ai-and-document-processing.md).
 
 ## Study guides and topic-linked learning
 
-A guide is generated content with a revision lifecycle, not a long card answer or a blob owned by the Documents screen. It shares a source and learning plan with generated flashcards but can exist independently. Native topic/card links connect exact identities; editable tags and text similarity do not become the source-of-truth mapping.
+A guide is generated semantic content with a revision lifecycle, not a long card answer or a blob owned by the Documents screen. Document and collection guides use a shared reader/effective-snapshot boundary for narrative sections, key points, terminology, processes, comparisons and supported tables/examples/visual explanations. It shares a source and learning plan with generated flashcards but can exist independently. Native topic/card links connect exact identities; editable tags and text similarity do not become the source-of-truth mapping.
 
 The guide library uses bounded summary pages, search/sort, counts, and an explicit open request. Opening one item hydrates its guide, not every list row. The inline reader preserves main navigation. Technical revision metadata stays native/diagnostic rather than cluttering the everyday reading surface.
 
@@ -424,7 +434,7 @@ The test strategy layers inexpensive structural checks, focused behavior tests, 
 
 Vitest/Testing Library tests protect components, controllers, request lanes, navigation, selection, overlays, and state transitions. Rust tests cover validation, SQL invariants, operation replay, schedules/history, migrations/repairs, transfer graphs, source processing, and provider dialects with deterministic fixtures. Native WebDriver tests exercise persistence and actual Tauri/WebKit interaction. Android compile/package and instrumentation smoke test its separate integration boundary.
 
-Focused reproduction comes before another expensive matrix. A regression test should target the current production owner, not an unmounted predecessor that happens to have extensive tests. During this documentation refresh, unused guide implementations and their exclusive styles/tests were retired while their active-reader coverage was retained and active-library empty-state coverage was added.
+Focused reproduction comes before another expensive matrix. A regression test should target the current production owner, not an unmounted predecessor that happens to have extensive tests. Earlier cleanup retired unused guide implementations with their exclusive styles/tests while retaining active-reader coverage. PR #108 changes documentation only; it neither implements the hardening register nor executes a new product test merely by describing one.
 
 Performance and visual baselines preserve provenance and comparison contracts. A recorded old UI is not the current product specification. Wall-clock performance is advisory/manual; deterministic correctness tests must not pass or fail merely because an arbitrary worker ran slower. Removing stale code must not rewrite historical measurements to manufacture a new baseline.
 
@@ -448,7 +458,7 @@ Separate parser/render/OCR engines add native dependency management but handle d
 
 Draft/operation/file ledgers and checkpoint versions add code because interruption and lost acknowledgements are normal, especially on mobile. Removing them merely to shorten a flow would trade visible complexity for data loss/duplicate work. Conversely, unused alternate components and unconsumed internal APIs are not valuable compatibility simply because they once shipped in a development PR.
 
-Retain compatibility only with a named consumer: released migration identity, supported backup/interchange reader, persisted checkpoint, asset/citation identity, or real platform fallback. Historical ADRs and fixtures remain useful evidence. Maintained docs must not keep contradictory old instructions alongside a new appendix. The [cleanup audit](../development/documentation-and-cleanup-audit.md) records proven removals and limits of this review.
+Retain compatibility only with a named consumer: released migration identity, supported backup/interchange reader, persisted checkpoint, asset/citation identity, or real platform fallback. Historical ADRs and fixtures remain useful evidence. Maintained docs must not keep contradictory old instructions alongside a new appendix. The [cleanup audit](../development/documentation-and-cleanup-audit.md) records earlier proven removals. The [post-#106 hardening register](../development/post-106-hardening.md) distinguishes confirmed gaps, qualified hypotheses, rejected remedies and future acceptance boundaries.
 
 New work should enter through the narrowest existing boundary. A provider adds a native dialect plus deterministic contracts/probe/privacy tests. A document format supplies an explicit adapter returning canonical data. A platform implements required ports and packaging/runtime tests. A new learning tool reuses source/topic/authoring services but receives its own narrow task contract, not generic prompt/SQL IPC. A changed durable representation needs migrations/readers and a coordinated backup/sync/privacy review.
 
@@ -464,7 +474,8 @@ Known limits include incomplete platform/release qualification, model/extraction
 | Shared interaction/visual system | `src/ui/`, `src/platform/`, `src/components/NavigationSidebar.tsx`, `src/components/MobileAppBar.tsx` |
 | Flashcards library | `src/screens/flashcards/`, especially `deck-library/` controller/models/views |
 | Card browsing/editing | `src/screens/cards/`, `CardEditorScreenBase.tsx`, `src/editor/`, `src/controllers/useDurableDraft.ts` |
-| Native composition/data | `src-tauri/src/lib.rs`, `startup.rs`, `database.rs`, `paths.rs`, `data_repairs.rs`, `migrations/` |
+| Native composition/data | `src-tauri/src/lib.rs`, `startup.rs`, `database.rs`, `database/release.rs`, `src-tauri/schema/`, `paths.rs`, retained migrations/repairs |
+| Restore and admission | `library_backup/live.rs`, `library_backup/activation.rs`, `library_session.rs`, `task_activity.rs`, `library_lock.rs`, `platform/file_lock.rs` |
 | Cards/templates/drafts | `authoring/`, `cards/content.rs`, `editor_drafts.rs`, `decks.rs`, `deck_folders.rs` under native source |
 | Learning/schedules | `scheduler.rs`, `practice.rs`, `practice_selection.rs`, `practice_resume.rs`, `schedule_controls.rs`, `study_calendar.rs`, `studyability.rs` |
 | Read projections/history | `deck_cards.rs`, `projections/`, `analytics/`, `workload.rs` |
@@ -474,6 +485,7 @@ Known limits include incomplete platform/release qualification, model/extraction
 | Source ingestion | `documents/`, `document_ingestion/`, `pdf_backend/`, `pdf_document_ingestion/`, `xberg_document_adapter/` |
 | Canonical learning artifacts | `document_canonical*.rs`, `document_learning*.rs`, `document_topic_links.rs`, `document_citations.rs`, `document_artifacts.rs` |
 | Generation and guides | `ai/document_intelligence/`, `document_generation.rs`, `document_checkpoints.rs`, `document_study_guide*.rs`, `src/screens/StudyGuidesScreen.tsx`, `StudyGuideDialog.tsx` |
+| Knowledge, collections and Tutor | `src-tauri/src/knowledge/`, `collections.rs`, `study_materials/`, `tutor/`, `src/screens/tutor/` |
 | Sync | `src-tauri/src/device_sync/`, `src/screens/settings/DeviceSyncSettings.tsx` |
 | Android | `plugins/ostudy-platform/`, `src-tauri/gen/android/`, Android scripts/instrumentation |
 | Build/evidence/policy | `scripts/`, `.github/workflows/`, `tests/scripts/`, `tests/webdriver/`, co-located frontend and native tests |
