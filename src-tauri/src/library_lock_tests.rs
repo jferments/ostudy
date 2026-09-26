@@ -67,7 +67,10 @@ fn lock_child_process() {
     let Some(root) = std::env::var_os("OSTUDY_OWNER_LOCK_CHILD") else {
         return;
     };
-    acquire_for_process(Path::new(&root)).unwrap();
+    let root = Path::new(&root);
+    acquire_for_process(root).unwrap();
+    acquire_for_process(root).expect("same-process recreation must reuse the active library lock");
+    assert!(acquire_for_process(&root.join("different-library")).is_err());
     println!("OWNER_LOCK_READY");
     std::io::stdout().flush().unwrap();
     let mut input = Vec::new();

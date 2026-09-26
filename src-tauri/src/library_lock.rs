@@ -7,7 +7,7 @@
 
 use std::{
     fs::{self, File, OpenOptions, TryLockError},
-    path::Path,
+    path::{Path, PathBuf},
     sync::OnceLock,
 };
 
@@ -16,6 +16,7 @@ const LOCK_FILE: &str = "library-owner.lock";
 static PROCESS_LOCK: OnceLock<LibraryLock> = OnceLock::new();
 
 struct LibraryLock {
+    root: PathBuf,
     _file: File,
 }
 
@@ -47,7 +48,10 @@ impl LibraryLock {
             .open(path)
             .map_err(|error| format!("Could not open the library ownership lock: {error}"))?;
         match file.try_lock() {
-            Ok(()) => Ok(Self { _file: file }),
+            Ok(()) => Ok(Self {
+                root: root.to_path_buf(),
+                _file: file,
+            }),
             Err(TryLockError::WouldBlock) => Err(format!(
                 "{IN_USE}: Another oStudy process is using this library. Close that instance before opening the same library. No restore was attempted."
             )),
@@ -59,10 +63,45 @@ impl LibraryLock {
 }
 
 pub(crate) fn acquire_for_process(root: &Path) -> Result<(), String> {
-    let lock = LibraryLock::acquire(root)?;
-    PROCESS_LOCK
-        .set(lock)
-        .map_err(|_| "This process already owns an oStudy library.".to_string())
+    if let Some(existing) = PROCESS_LOCK.get() {
+        return if existing.root == root {
+            Ok(())
+        } else {
+            Err(
+                "This process already owns a different oStudy library. Restart before changing the active library root."
+                    .to_string(),
+            )
+        };
+    }
+
+    match LibraryLock::acquire(root) {
+        Ok(lock) => match PROCESS_LOCK.set(lock) {
+            Ok(()) => Ok(()),
+            Err(lock) => {
+                if PROCESS_LOCK
+                    .get()
+                    .is_some_and(|existing| existing.root == lock.root)
+                {
+                    Ok(())
+                } else {
+                    Err(
+                        "This process already owns a different oStudy library. Restart before changing the active library root."
+                            .to_string(),
+                    )
+                }
+            }
+        },
+        Err(error) => {
+            if PROCESS_LOCK
+                .get()
+                .is_some_and(|existing| existing.root == root)
+            {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
