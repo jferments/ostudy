@@ -86,6 +86,13 @@ fn unavailable() -> CommandError {
 }
 
 #[cfg(test)]
+pub(crate) fn isolated_activity_for_test() -> (ActivityGuard, impl Fn() -> bool) {
+    let gate = Arc::new(ActivityGate::default());
+    let activity = gate.enter(false).unwrap();
+    (activity, move || gate.enter(true).is_err())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -115,11 +122,4 @@ mod tests {
         drop(maintenance);
         assert!(gate.enter(true).is_ok());
     }
-}
-
-#[cfg(test)]
-pub(crate) fn isolated_activity_for_test() -> (ActivityGuard, impl Fn() -> bool) {
-    let gate = Arc::new(ActivityGate::default());
-    let activity = gate.enter(false).unwrap();
-    (activity, move || gate.enter(true).is_err())
 }
