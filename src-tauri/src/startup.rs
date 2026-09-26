@@ -11,6 +11,7 @@ use crate::{
 };
 
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
+const STARTUP_STAGE_PREFIX: &str = "OSTUDY_STARTUP_STAGE:";
 
 #[cfg(desktop)]
 const MAIN_WINDOW_ICON: tauri::image::Image<'static> = tauri::include_image!("./icons/icon.png");
@@ -58,53 +59,75 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
 }
 
 fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let app_data_directory = app.path().app_data_dir().map_err(|error| {
-        io::Error::other(format!(
-            "Could not resolve the application data directory: {error}"
-        ))
-    })?;
+    let app_data_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| startup_stage_error("app_data_dir", error))?;
     #[cfg(desktop)]
     let desktop_profile = application_profile::validate_desktop_runtime(
         app.config().identifier.as_str(),
         &app_data_directory,
         cfg!(debug_assertions),
     )
-    .map_err(io::Error::other)?;
+    .map_err(|error| startup_stage_error("application_profile", error))?;
     #[cfg(desktop)]
     apply_main_window_profile(app, desktop_profile);
 
-    crate::library_lock::acquire_for_process(&app_data_directory).map_err(io::Error::other)?;
+    crate::library_lock::acquire_for_process(&app_data_directory)
+        .map_err(|error| startup_stage_error("library_lock", error))?;
     let resource_directory = app.path().resource_dir().ok();
-    let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
+    let paths = AppPaths::new(app_data_directory)
+        .map_err(|error| startup_stage_error("app_paths", error))?;
     logging::initialize(paths.app_data_dir());
     #[cfg(desktop)]
     apply_main_window_icon(app);
-    let mut pending_restore =
-        library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
-    let database = database::Database::open(paths.database_path()).map_err(io::Error::other)?;
+    let mut pending_restore = library_backup::apply_pending_restore(&paths)
+        .map_err(|error| startup_stage_error("restore_recovery", error))?;
+    let database = database::Database::open(paths.database_path())
+        .map_err(|error| startup_stage_error("database_open", error))?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
-    platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
-    let ai_runtime =
-        AiRuntimeState::new(platform_runtime.secure_secret_store()).map_err(io::Error::other)?;
+    platform::install_global(platform_runtime.clone())
+        .map_err(|error| startup_stage_error("platform_runtime", error))?;
+    let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
+        .map_err(|error| startup_stage_error("ai_runtime", error))?;
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
-        .map_err(|error| io::Error::other(error.to_string()))?;
+        .map_err(|error| startup_stage_error("pdf_runtime", error))?;
 
-    reconcile_library(&database, &paths).map_err(|error| io::Error::other(error.message))?;
+    reconcile_library(&database, &paths)
+        .map_err(|error| startup_stage_error("reconciliation", error.message))?;
     if let Some(restore) = pending_restore.as_mut() {
-        restore.try_commit().map_err(io::Error::other)?;
+        restore
+            .try_commit()
+            .map_err(|error| startup_stage_error("restore_commit", error))?;
     }
 
     if !app.manage(paths.clone()) {
-        return Err(io::Error::other("Application paths were already initialized.").into());
+        return Err(startup_stage_error(
+            "state_publish_paths",
+            "Application paths were already initialized.",
+        )
+        .into());
     }
     if !app.manage(platform_runtime.clone()) {
-        return Err(io::Error::other("The platform runtime was already initialized.").into());
+        return Err(startup_stage_error(
+            "state_publish_platform",
+            "The platform runtime was already initialized.",
+        )
+        .into());
     }
     if !app.manage(ai_runtime) {
-        return Err(io::Error::other("The AI runtime state was already initialized.").into());
+        return Err(startup_stage_error(
+            "state_publish_ai",
+            "The AI runtime state was already initialized.",
+        )
+        .into());
     }
     if !app.manage(pdf_render_runtime) {
-        return Err(io::Error::other("The PDF renderer state was already initialized.").into());
+        return Err(startup_stage_error(
+            "state_publish_pdf",
+            "The PDF renderer state was already initialized.",
+        )
+        .into());
     }
 
     let lifecycle = platform_runtime
@@ -131,9 +154,27 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     // product while another managed runtime or durable reconciliation is missing.
     let _ = logging::flush(Duration::from_millis(500));
     if !app.manage(database) {
-        return Err(io::Error::other("The database state was already initialized.").into());
+        return Err(startup_stage_error(
+            "state_publish_database",
+            "The database state was already initialized.",
+        )
+        .into());
     }
     Ok(())
+}
+
+fn startup_stage_error(stage: &'static str, error: impl std::fmt::Display) -> io::Error {
+    io::Error::other(format!("{STARTUP_STAGE_PREFIX}{stage}:{error}"))
+}
+
+fn split_startup_stage(error: &str) -> (Option<&str>, &str) {
+    let Some(rest) = error.strip_prefix(STARTUP_STAGE_PREFIX) else {
+        return (None, error);
+    };
+    let Some((stage, cause)) = rest.split_once(':') else {
+        return (None, error);
+    };
+    (Some(stage), cause)
 }
 
 /// The same durable reconciliation is used by startup and live restoration.
@@ -227,8 +268,9 @@ fn apply_main_window_icon(app: &tauri::AppHandle) {
 }
 
 fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
+    let (startup_stage, cause) = split_startup_stage(error);
     let app_data_directory = app.path().app_data_dir().ok();
-    let presentation = startup_failure_presentation(error, app_data_directory.as_deref());
+    let presentation = startup_failure_presentation(cause, app_data_directory.as_deref());
 
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -239,13 +281,19 @@ fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
             "app.startup",
             presentation.event,
             "ostudy startup is blocked because the database is outside the current public lineage.",
-            serde_json::json!({ "reasonCode": presentation.reason_code }),
+            serde_json::json!({
+                "reasonCode": presentation.reason_code,
+                "startupStage": startup_stage,
+            }),
         ),
         StartupFailureKind::Internal => logging::error_target(
             "app.startup",
             presentation.event,
             "ostudy could not finish native startup.",
-            serde_json::json!({ "reasonCode": presentation.reason_code }),
+            serde_json::json!({
+                "reasonCode": presentation.reason_code,
+                "startupStage": startup_stage,
+            }),
         ),
     }
     let _ = logging::flush(Duration::from_millis(500));
@@ -347,6 +395,21 @@ mod tests {
         assert_eq!(presentation.reason_code, "library_already_open");
         assert!(presentation.message.contains("Do not delete"));
         assert!(!presentation.message.contains("reset-pre-public"));
+    }
+
+    #[test]
+    fn startup_stage_annotation_exposes_only_the_safe_stage() {
+        let error = startup_stage_error(
+            "database_open",
+            "sensitive filesystem/provider detail should stay out of structured fields",
+        )
+        .to_string();
+        let (stage, cause) = split_startup_stage(&error);
+        assert_eq!(stage, Some("database_open"));
+        assert!(cause.contains("sensitive filesystem/provider detail"));
+        let presentation = startup_failure_presentation(cause, None);
+        assert_eq!(presentation.reason_code, "native_startup_failed");
+        assert!(!presentation.message.contains("sensitive filesystem/provider detail"));
     }
 
     #[test]
