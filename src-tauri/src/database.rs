@@ -16,11 +16,14 @@ use crate::{
     util::unix_time_millis,
 };
 
-const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
+const LEGACY_PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
 pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
 #[path = "database/entry.rs"]
 mod entry;
+
+#[path = "database/release.rs"]
+mod release;
 
 #[path = "database/table_rebuild.rs"]
 mod table_rebuild;
@@ -246,7 +249,12 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
+/// Terminal version of the pre-0.1 public-v1 compatibility lineage.
+pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;
+/// Compatibility alias retained while historical public-v1 migrations remain readable.
 pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
+pub(crate) const CURRENT_SCHEMA_VERSION: i64 = release::SCHEMA_VERSION;
+pub(crate) const CURRENT_SCHEMA_LINEAGE: &str = release::SCHEMA_LINEAGE;
 
 #[derive(Clone)]
 pub struct Database {
@@ -296,20 +304,28 @@ impl Database {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DatabaseLineage {
     Empty,
-    Public,
+    Release,
+    LegacyPublic,
     PrePublic,
     Unknown(String),
 }
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     let lineage = inspect_lineage(connection)?;
-    match lineage {
+    match &lineage {
         DatabaseLineage::Empty => {
             if entry::user_version(connection)? != 0 {
-                return Err("An empty database has an unknown schema version. The database was not modified.".to_string());
+                return Err(
+                    "An empty database has an unknown schema version. The database was not modified."
+                        .to_string(),
+                );
             }
         }
-        DatabaseLineage::Public => {
+        DatabaseLineage::Release => {
+            release::validate_input(connection)?;
+            verify_integrity(connection)?;
+        }
+        DatabaseLineage::LegacyPublic => {
             entry::validate_public_input(connection)?;
             verify_integrity(connection)?;
         }
@@ -324,29 +340,45 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             ));
         }
     }
-    configure_connection(connection)?;
 
+    configure_connection(connection)?;
     let started = Instant::now();
-    let migrated = apply_migrations(connection, matches!(lineage, DatabaseLineage::Empty))?;
-    apply_required_repairs(
-        connection,
-        RepairPhase::AfterMigration(LATEST_SCHEMA_VERSION),
-    )?;
-    verify_repair_ledger(connection)?;
-    if entry::validate_public_input(connection)? != LATEST_SCHEMA_VERSION {
-        return Err("Database conversion did not reach the current schema.".to_string());
-    }
-    if migrated || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
+    let changed = match lineage {
+        DatabaseLineage::Empty => {
+            release::initialize_fresh(connection)?;
+            true
+        }
+        DatabaseLineage::LegacyPublic => {
+            apply_migrations(connection, false)?;
+            apply_required_repairs(
+                connection,
+                RepairPhase::AfterMigration(LEGACY_PUBLIC_SCHEMA_VERSION),
+            )?;
+            verify_repair_ledger(connection)?;
+            if entry::validate_public_input(connection)? != LEGACY_PUBLIC_SCHEMA_VERSION {
+                return Err(
+                    "Legacy database normalization did not reach public-v1 schema 30.".to_string(),
+                );
+            }
+            release::convert_legacy_current(connection)?;
+            true
+        }
+        DatabaseLineage::Release => false,
+        DatabaseLineage::PrePublic | DatabaseLineage::Unknown(_) => unreachable!(),
+    };
+
+    release::validate_input(connection)?;
+    if changed || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
         verify_integrity(connection)?;
     }
     crate::logging::info_target(
         "database.migration",
         "database_schema_ready",
-        "The public database schema is ready.",
+        "The release database schema is ready.",
         json!({
-            "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
-            "schemaVersion": LATEST_SCHEMA_VERSION,
-            "migrationApplied": migrated,
+            "schemaLineage": CURRENT_SCHEMA_LINEAGE,
+            "schemaVersion": CURRENT_SCHEMA_VERSION,
+            "migrationApplied": changed,
             "durationMs": i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX),
         }),
     );
@@ -384,7 +416,8 @@ fn inspect_lineage(connection: &Connection) -> Result<DatabaseLineage, String> {
             .optional()
             .map_err(|error| format!("Could not read the schema lineage: {error}"))?;
         return Ok(match value {
-            Some(value) if value == PUBLIC_SCHEMA_LINEAGE => DatabaseLineage::Public,
+            Some(value) if value == CURRENT_SCHEMA_LINEAGE => DatabaseLineage::Release,
+            Some(value) if value == LEGACY_PUBLIC_SCHEMA_LINEAGE => DatabaseLineage::LegacyPublic,
             Some(value) => DatabaseLineage::Unknown(value),
             None => DatabaseLineage::Unknown("missing".to_string()),
         });
@@ -577,18 +610,33 @@ fn verify_integrity(connection: &Connection) -> Result<(), String> {
 /// Validate a supported read-only backup before replacing the live library.
 /// Startup still performs the additive migrations on the restored copy.
 pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), CommandError> {
-    if inspect_lineage(connection)
+    match inspect_lineage(connection)
         .map_err(|message| CommandError::new("invalid_backup", message))?
-        != DatabaseLineage::Public
     {
-        return Err(CommandError::new(
+        DatabaseLineage::Release => release::validate_input(connection)
+            .map_err(|message| CommandError::new("invalid_backup", message)),
+        DatabaseLineage::LegacyPublic => entry::validate_public_input(connection)
+            .map(|_| ())
+            .map_err(|message| CommandError::new("invalid_backup", message)),
+        _ => Err(CommandError::new(
             "invalid_backup",
-            "The backup does not have the supported public schema lineage.",
-        ));
+            "The backup does not have a supported oStudy schema lineage.",
+        )),
     }
-    entry::validate_public_input(connection)
-        .map(|_| ())
-        .map_err(|message| CommandError::new("invalid_backup", message))
+}
+
+pub(crate) fn schema_identity(connection: &Connection) -> Result<(String, i64), CommandError> {
+    validate_backup_lineage(connection)?;
+    let lineage: String = connection
+        .query_row(
+            "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    let version = entry::user_version(connection)
+        .map_err(|message| CommandError::new("invalid_backup", message))?;
+    Ok((lineage, version))
 }
 
 #[cfg(test)]
@@ -654,7 +702,7 @@ mod tests {
         .expect("public baseline objects should serialize");
         let manifest = serde_json::json!({
             "formatVersion": 1,
-            "schemaLineage": PUBLIC_SCHEMA_LINEAGE,
+            "schemaLineage": LEGACY_PUBLIC_SCHEMA_LINEAGE,
             "schemaVersion": MIGRATIONS[0].version,
             "baselineSha256": format!(
                 "{:x}",
@@ -682,7 +730,7 @@ mod tests {
                 let version: i64 = connection
                     .query_row("PRAGMA user_version", [], |row| row.get(0))
                     .map_err(CommandError::database)?;
-                assert_eq!(version, LATEST_SCHEMA_VERSION);
+                assert_eq!(version, CURRENT_SCHEMA_VERSION);
                 let lineage: String = connection
                     .query_row(
                         "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
@@ -690,7 +738,7 @@ mod tests {
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(lineage, PUBLIC_SCHEMA_LINEAGE);
+                assert_eq!(lineage, CURRENT_SCHEMA_LINEAGE);
                 Ok(())
             })
             .expect("latest public schema should be idempotent");
@@ -924,8 +972,11 @@ mod tests {
 
     #[test]
     fn public_migration_checksum_and_future_version_are_enforced() {
-        let mut connection = Connection::open_in_memory().expect("database should open");
-        initialize_connection(&mut connection).expect("public migrations should apply");
+        let mut connection = public_baseline_connection().expect("legacy baseline should open");
+        for migration in &MIGRATIONS[1..] {
+            apply_transactional_migration(&mut connection, migration)
+                .expect("legacy migration should apply");
+        }
         connection
             .execute(
                 "UPDATE schema_migrations SET checksum = 'modified' WHERE version = 1",

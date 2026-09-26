@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::{Database, LATEST_SCHEMA_VERSION},
+    database::{
+        Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION, LATEST_SCHEMA_VERSION,
+    },
     document_backup,
     error::CommandError,
     media::inspect_managed_asset_bytes,
@@ -202,13 +204,18 @@ pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), 
         ));
     }
     crate::database::validate_backup_lineage(connection)?;
-    let version = snapshot_schema_version(connection)?;
-    // Keep every supported public backup readable as new migrations are added.
-    // The immutable lineage/checksum check above still rejects forged or future ledgers.
-    if !(10..=LATEST_SCHEMA_VERSION).contains(&version) {
+    let (lineage, version) = crate::database::schema_identity(connection)?;
+    let supported = if lineage == CURRENT_SCHEMA_LINEAGE {
+        version == CURRENT_SCHEMA_VERSION
+    } else if lineage == "ostudy-public-v1" {
+        (10..=LATEST_SCHEMA_VERSION).contains(&version)
+    } else {
+        false
+    };
+    if !supported {
         return Err(CommandError::new(
             "unsupported_backup_schema",
-            format!("This backup uses unsupported database schema {version}."),
+            format!("This backup uses unsupported database lineage {lineage} schema {version}."),
         ));
     }
     Ok(())
