@@ -18,9 +18,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::{
-        Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION, LATEST_SCHEMA_VERSION,
-    },
+    database::{Database, CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION, LATEST_SCHEMA_VERSION},
     document_backup,
     error::CommandError,
     media::inspect_managed_asset_bytes,

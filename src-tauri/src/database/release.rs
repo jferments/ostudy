@@ -9,12 +9,7 @@
 use std::time::Duration;
 
 use rusqlite::{
-    backup::Backup,
-    params,
-    types::ValueRef,
-    Connection,
-    OptionalExtension,
-    Transaction,
+    backup::Backup, params, types::ValueRef, Connection, OptionalExtension, Transaction,
     TransactionBehavior,
 };
 use sha2::{Digest, Sha256};
@@ -59,7 +54,9 @@ pub(super) fn validate_input(connection: &Connection) -> Result<(), String> {
         return Err("The release schema lineage does not match this oStudy build.".to_string());
     }
     let rows: i64 = connection
-        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .map_err(|error| format!("Could not inspect the release migration ledger: {error}"))?;
     if rows != 1 {
         return Err(
@@ -125,8 +122,9 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
     let mut staged = Connection::open_in_memory()
         .map_err(|error| format!("Could not open the staged release converter: {error}"))?;
     {
-        let backup = Backup::new(connection, &mut staged)
-            .map_err(|error| format!("Could not stage the legacy library for conversion: {error}"))?;
+        let backup = Backup::new(connection, &mut staged).map_err(|error| {
+            format!("Could not stage the legacy library for conversion: {error}")
+        })?;
         backup
             .run_to_completion(128, Duration::from_millis(1), None)
             .map_err(|error| format!("Could not copy the legacy library into staging: {error}"))?;
@@ -191,12 +189,7 @@ fn write_release_ledger(transaction: &Transaction<'_>) -> Result<(), String> {
         .execute(
             "INSERT INTO schema_migrations(version, name, checksum, applied_at)
              VALUES (?1, ?2, ?3, ?4)",
-            params![
-                SCHEMA_VERSION,
-                BASELINE_NAME,
-                BASELINE_CHECKSUM,
-                applied_at
-            ],
+            params![SCHEMA_VERSION, BASELINE_NAME, BASELINE_CHECKSUM, applied_at],
         )
         .map_err(|error| format!("Could not record the release baseline: {error}"))?;
     transaction
@@ -355,7 +348,9 @@ mod tests {
         initialize_fresh(&mut connection).unwrap();
         validate_input(&connection).unwrap();
         let migrations: i64 = connection
-            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let repairs: i64 = connection
             .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))

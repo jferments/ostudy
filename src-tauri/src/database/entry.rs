@@ -19,8 +19,7 @@ pub(super) fn validate_current_payload(connection: &Connection) -> Result<(), St
     crate::documents::image_sets::repository::validate(connection)
         .map_err(|error| error.message)?;
     crate::documents::image_sets::cache::validate(connection).map_err(|error| error.message)?;
-    crate::documents::image_sets::storage::validate(connection)
-        .map_err(|error| error.message)?;
+    crate::documents::image_sets::storage::validate(connection).map_err(|error| error.message)?;
     Ok(())
 }
 
