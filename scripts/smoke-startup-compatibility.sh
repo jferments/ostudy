@@ -325,17 +325,10 @@ release_state="$(
   exit 1
 }
 
-lineage="$(sqlite3 "$APP_DATA/library.sqlite3" "SELECT value FROM schema_metadata WHERE key='schema_lineage';")"
-schema_version="$(sqlite3 "$APP_DATA/library.sqlite3" 'PRAGMA user_version;')"
 after_decks="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM decks;')"
 after_cards="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM cards;')"
 after_reviews="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_events;')"
 after_attributions="$(sqlite3 "$APP_DATA/library.sqlite3" 'SELECT COUNT(*) FROM review_event_attributions;')"
-
-[[ "$lineage" == "ostudy-release-v1" && "$schema_version" == "1" ]] || {
-  printf 'ERROR: recovered database did not finish at release-v1 schema 1.\n' >&2
-  exit 1
-}
 [[ "$before_decks" == "$after_decks" && "$before_cards" == "$after_cards" ]] || {
   printf 'ERROR: decks or cards changed across explicit recovery/current migration.\n' >&2
   exit 1

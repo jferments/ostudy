@@ -41,12 +41,12 @@ class CurrentPublicMigrationContractTests(unittest.TestCase):
                 f"missing migration file for {line}",
             )
 
-    def test_startup_smoke_consumes_current_contract_instead_of_hard_coding_latest(self) -> None:
+    def test_startup_smoke_validates_release_contract_not_legacy_registry(self) -> None:
         smoke = SMOKE.read_text(encoding="utf-8")
-        self.assertIn('current-public-migrations.mjs" --latest', smoke)
-        self.assertIn('current-public-migrations.mjs" --ledger', smoke)
-        self.assertIn('"$schema_version" == "$expected_schema_version"', smoke)
-        self.assertNotRegex(smoke, r'\[\[ "\$schema_version" == "\d+" \]\]')
+        self.assertIn('library-status.py" --profile development --verify --json', smoke)
+        self.assertIn('"release-current"', smoke)
+        self.assertNotIn('current-public-migrations.mjs" --latest', smoke)
+        self.assertNotIn('current-public-migrations.mjs" --ledger', smoke)
         self.assertNotIn("expected_migrations=\"$(cat <<'EOF'\n1|public_baseline", smoke)
 
     def test_startup_smoke_creates_destination_parent_before_copying_recovered_app_data(self) -> None:
