@@ -63,9 +63,9 @@ These request policies are not an independent audit of the external provider. Ch
 
 ## Verification is more than connectivity
 
-The connection test checks endpoint/authentication, model discovery/selection, and relevant text/structured-output capabilities. Results distinguish supported, unsupported, and unknown evidence. A successful HTTP response alone does not prove that a model can satisfy the document schema.
+The connection test checks endpoint/authentication, model discovery/selection, and relevant text/structured-output capabilities. For document-learning assignments, its representative document-contract phase uses the same effective reasoning setting that generation will use; it does not silently disable optional reasoning just to make the probe easier. Results distinguish supported, unsupported, and unknown evidence. A successful HTTP response alone does not prove that a model can satisfy the document schema.
 
-Evidence is tied to profile revision, credential epoch, and model identity. Changing those invalidates older evidence. The ordinary result appears first; **Technical details** exposes probe phases and capability information for diagnosis. Fix a failing provider test before repeatedly starting document generation.
+Evidence is tied to profile revision, credential epoch, model identity, and the tested reasoning configuration. Changing those invalidates older evidence. The ordinary result appears first; **Technical details** exposes probe phases and capability information for diagnosis. Fix a failing provider test before repeatedly starting document generation. If a real document reaches a provider completion limit, ostudy treats that as an output-budget recovery rather than pretending it was an ordinary schema-repair failure.
 
 ## Data flow and privacy
 

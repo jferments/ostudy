@@ -112,15 +112,6 @@ bash "$SCRIPT_DIR/test-native-contracts.sh" \
   database::release::h09_tests::disk_conversion_preserves_sibling_managed_files_and_cleans_candidate \
   database::release::tests::schema30_conversion_preserves_all_nonledger_values
 
-step "H-09 startup and conversion measurement"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --lib \
-  database::release::h09_tests::representative_h09_startup_and_conversion_measurement \
-  -- --exact --nocapture
-
 step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
@@ -225,6 +216,15 @@ cargo test \
   --lib \
   database::tests::public_migration_checksum_and_future_version_are_enforced \
   -- --exact
+
+step "H-09 startup and conversion measurement"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::release::h09_tests::representative_h09_startup_and_conversion_measurement \
+  -- --exact --nocapture
 
 ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_timing_finish_step passed

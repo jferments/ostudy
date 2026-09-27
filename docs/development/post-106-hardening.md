@@ -1,6 +1,6 @@
 # Post-#106 hardening and audit disposition
 
-Status: **H-01/H-02 are merged in PR #109. H-03/H-04/H-05 are implemented in PR #110. H-06 onward remain planned follow-up.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
+Status: **H-01/H-02 are merged in PR #109; H-03/H-04/H-05 are merged in PR #110; H-06/H-07 are merged in PR #111; H-08/H-09 are implemented in PR #112; H-10 remains planned follow-up.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
 
 Merged foundation: PR #106, squash `9ef91e79346b6d0d0ace983da3c1583303f15a43`. See the [completion record](lk-followups/consolidation-qualification.md). PR #108 is documentation-only relative to that foundation. The H identifiers below are scope labels, **not reserved GitHub PR numbers**, and do not authorize starting all scopes at once. PR #105 remains the deferred lessons/narration/PowerPoint plan; structural cleanup must not become an endless prerequisite to product work.
 
@@ -88,19 +88,31 @@ Exit: native wire changes update the checked-in contract or fail check-only veri
 
 ### H-08 — bounded nonblocking native command execution
 
+Status: **implemented in PR #112.**
+
 Owners: native command adapters, database owner, request/activity leases.
 
-Move substantial blocking SQL/filesystem work off the native event thread without merely placing synchronous work inside async functions. Keep bounded concurrency and hold leases in the actual worker through completion, including caller cancellation or lost replies. Measure connection wait and execution time without logging learner content.
+PR #112 routes synchronous native command dispatch through a bounded FIFO ordinary worker rather than running substantial SQL/filesystem work on the native event thread. A separate bounded control lane keeps library-session observation, cancellation and platform Back/control operations responsive when ordinary work is blocked. Queue admission is nonblocking and rejects explicitly when full; it does not grow a thread-per-command backlog.
 
-Exit: a blocked database operation does not block unrelated event-thread interaction; transaction/replay/restore behavior is unchanged. A read-only connection pool is a separate measurement-driven proposal, not included automatically.
+The queued closure owns the original library-generation lease until deserialization, domain work, serialization and reply are finished. A lost reply or dropped producer therefore cannot make restore replace the library under accepted work, and a worker panic releases the lease without clearing an independently poisoned database. Queue wait, database-connection wait and database execution durations are recorded as content-free diagnostics after the database mutex is released.
+
+Focused regressions cover FIFO/bounds, event-thread separation, blocked database work with independent control progress, restore drainage after a lost reply, queue rejection cleanup, worker panic/poison behavior and the maintained transaction/replay/session contracts.
+
+Exit: a blocked database operation does not block unrelated control interaction; transaction/replay/restore behavior is unchanged. A read-only connection pool remains a separate measurement-driven proposal and was not introduced.
 
 ### H-09 — bounded startup validation and conversion staging
 
+Status: **implemented in PR #112.**
+
 Owners: `database.rs`, `database/release.rs`, `payload_entry.rs`, restore admission and private staging.
 
-Remove demonstrably redundant current-payload validation while retaining appropriate admission, migration/import/restore and write/read validation. Replace whole-database in-memory staging where justified by a private disk-backed candidate with space/error/interruption handling and the same typed preservation proof.
+PR #112 keeps present-byte admission on every open, backup/import and restore boundary, but removes repeated current-payload scans within one already-admitted current-release initialization. The fact is process-local to that initialization call; no durable validation stamp can authenticate later bytes. Corrupt data written after a prior successful open is rejected on the next open and by read-only backup admission.
 
-Exit: current reopen, unsupported/corrupt input refusal, historical restore, interrupted/low-space staging and typed row/file preservation tests pass. Report representative elapsed-time and peak-memory measurements. A permanent validation stamp is not proof about later bytes.
+The one-time public-v1-to-release converter no longer copies the whole SQLite database into an in-memory connection. It creates a private disk-backed candidate beside the source database (or in the OS temporary directory for an in-memory test source), uses file-backed SQLite temporary storage, disables mmap for the candidate and bounds its page cache. SQLite backup still copies bounded page batches. Only after the candidate passes the existing schema, integrity and typed non-ledger preservation proof can the live lineage transaction begin. Dropping an abandoned candidate removes its database and sidecars; `SQLITE_FULL` becomes an actionable low-space error while the live legacy library remains unchanged.
+
+Focused regressions cover one validation pass per current open, later corrupt-payload refusal, private candidate permissions/cleanup, low-space failure, candidate abandonment before live mutation, schema-30 typed preservation and sibling managed-file preservation. Fast qualification also emits an advisory Linux measurement for legacy conversion/current reopen elapsed time and process peak RSS; those observations are diagnostic evidence, not correctness thresholds.
+
+Exit: current reopen, unsupported/corrupt input refusal, historical compatibility conversion/restore ownership, interrupted/low-space staging and typed row/file preservation are covered without a permanent validation stamp.
 
 ### H-10 — obsolete bundled interfaces, not supported data readers
 
