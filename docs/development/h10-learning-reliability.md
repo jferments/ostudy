@@ -20,13 +20,13 @@ Card generation now states a concept-first teaching policy before choosing a que
 
 Matching drag/drop now resolves the actual scoped drop target beneath a pointer-captured moving tile, treats the row gutter as the same semantic target, keeps unrelated row order stable, cancels safely on lost capture/blur/Escape/question reset/disabled state, suppresses delayed touch compatibility clicks, and retains keyboard/click alternatives.
 
-H-10 cleanup removes dead deck-library props, the fixture-only global reasoning setting, the compatibility Modal facade, dead live Cards/Templates route aliases and the redundant template dirty owner. Historical checkpoint/workspace values are still normalized at their boundary; Templates remains a Settings tab and shares Settings dirty-state protection.
+H-10 cleanup removes dead deck-library props, the fixture-only global reasoning setting, frontend legacy motion fields, the compatibility Modal facade, dead live Cards/Templates route aliases and the redundant template dirty owner. Historical checkpoint/workspace values are still normalized at their boundary; historical `animationsEnabled`/`reduceMotion` rows normalize to current `motionPreference` inside Rust before the frontend receives settings. Templates remains a Settings tab and shares Settings dirty-state protection.
 
 ## Acceptance status
 
 | ID | Boundary | Status and evidence owner |
 | --- | --- | --- |
-| AC-01 | H-10 bundled props | **Implemented.** Current deck-library props and frontend settings types no longer carry `bindPreview`, `onManageTemplates` or global `aiReasoningEffort`; native historical readers remain. |
+| AC-01 | H-10 bundled props | **Implemented.** Current deck-library props and frontend settings types no longer carry `bindPreview`, `onManageTemplates`, global `aiReasoningEffort`, `animationsEnabled` or `reduceMotion`; native historical readers remain. |
 | AC-02 | H-10 overlays | **Implemented.** Card workflows import shared Dialog directly; mutation dismissal/focus/native-Back behavior has focused React coverage. |
 | AC-03 | H-10 routes/settings | **Implemented.** Live application sections/workspaces are current-only; old checkpoint/workspace inputs normalize before live state. Settings owns template dirty state and practice-return/checkpoint contracts remain covered. |
 | AC-04 | Guide feasibility/recovery | **Implemented.** First/recovery output and reasoning/context reserves are preflighted; truncation gets a bounded larger/leaner recovery rather than identical replay. |

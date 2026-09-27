@@ -102,7 +102,7 @@ A shared application abstraction should exist because it carries product semanti
 
 Fine-pointer desktop controls follow Nova's compact geometry. Coarse-pointer capabilities expand interactive targets to the application touch minimum without creating a second mobile component tree. Theme differences change semantic values and optional effects, not the information architecture.
 
-Interface/card font and scale preferences remain independent. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
+Interface/card font and scale preferences remain independent. Current React appearance state consumes `motionPreference`; the native settings reader alone translates historical `animationsEnabled`/`reduceMotion` rows before IPC. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
 
 ## Responsive and accessible presentation
 

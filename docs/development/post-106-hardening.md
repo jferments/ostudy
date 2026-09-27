@@ -120,7 +120,7 @@ Status: **implemented in draft PR #113; terminal qualification and human accepta
 
 Owners: Dialog callers, current settings/appearance interfaces, live routing, fixture-only props and profile DTO consumers.
 
-PR #113 removes the unused `bindPreview`/`onManageTemplates` props and fixture-only global `AppSettings.aiReasoningEffort`. Current AI reasoning remains owned by profile/task assignments; released native migrations/readers are unchanged. Card workflows now use the shared Dialog owner directly and the compatibility `Modal` facade is gone. Focus restoration, Escape/native Back and busy/non-dismissible mutation behavior have focused regressions.
+PR #113 removes the unused `bindPreview`/`onManageTemplates` props, fixture-only global `AppSettings.aiReasoningEffort`, and frontend `animationsEnabled`/`reduceMotion` compatibility fields. Current AI reasoning remains owned by profile/task assignments; historical motion rows normalize to `motionPreference` in the native settings reader before crossing IPC; released migrations/readers are unchanged. Card workflows now use the shared Dialog owner directly and the compatibility `Modal` facade is gone. Focus restoration, Escape/native Back and busy/non-dismissible mutation behavior have focused regressions.
 
 The live React route vocabulary now contains only current application sections and the live Flashcards workspace accepts only Decks/Search. Historical checkpoint/workspace strings remain accepted at their dedicated compatibility readers/route constructor and normalize to current destinations before reaching live UI state. Templates remain a Settings tab, so its dirty state participates in the Settings owner rather than a second top-level route guard.
 
