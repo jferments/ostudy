@@ -137,7 +137,6 @@ function renderLibrary({
           openDeckRequest={openDeckRequest}
           onOpenDeck={onOpenDeck}
           onReturnToLibrary={onReturnToLibrary}
-          onManageTemplates={vi.fn()}
           onCardDirtyChange={vi.fn()}
           showToast={showToast}
         />

@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { LibraryDragFeedback } from "./LibraryDragFeedback";
 
@@ -25,7 +25,6 @@ describe("LibraryDragFeedback", () => {
               announcement: `Nursing, position 2. ${status}.`,
             },
           }}
-          bindPreview={vi.fn()}
         />,
       );
 
@@ -49,7 +48,6 @@ describe("LibraryDragFeedback", () => {
           sourceName: "Biology",
           candidate: null,
         }}
-        bindPreview={vi.fn()}
       />,
     );
 
@@ -76,7 +74,6 @@ describe("LibraryDragFeedback", () => {
             announcement: "Moved Biology to Nursing, position 2.",
           },
         }}
-        bindPreview={vi.fn()}
       />,
     );
 
