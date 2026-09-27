@@ -2,12 +2,33 @@ use super::*;
 use crate::scheduler::insert_new_schedule;
 use rusqlite::TransactionBehavior;
 
+mod compensation;
+
+use compensation::compensate_promotions;
+
+#[cfg(test)]
+mod recovery_tests;
+
 struct StoredImportOperation {
     request_fingerprint: String,
     status: String,
     result_deck_id: Option<String>,
     result_card_count: Option<i64>,
     result_asset_count: Option<i64>,
+}
+
+struct ApplyFailure {
+    primary: CommandError,
+    preserve_inputs: bool,
+}
+
+impl From<CommandError> for ApplyFailure {
+    fn from(primary: CommandError) -> Self {
+        Self {
+            primary,
+            preserve_inputs: false,
+        }
+    }
 }
 
 pub(super) fn import_package(
@@ -32,8 +53,14 @@ pub(super) fn import_package(
     let asset_map = match stage_result {
         Ok(asset_map) => asset_map,
         Err(error) => {
-            fail_operation(connection, paths, operation_id, &draft_id, &error.code)?;
-            return Err(error);
+            return Err(record_failed_operation(
+                connection,
+                paths,
+                operation_id,
+                &draft_id,
+                error,
+                false,
+            ));
         }
     };
 
@@ -48,10 +75,14 @@ pub(super) fn import_package(
     );
     match result {
         Ok(result) => Ok(result),
-        Err(error) => {
-            fail_operation(connection, paths, operation_id, &draft_id, &error.code)?;
-            Err(error)
-        }
+        Err(failure) => Err(record_failed_operation(
+            connection,
+            paths,
+            operation_id,
+            &draft_id,
+            failure.primary,
+            failure.preserve_inputs,
+        )),
     }
 }
 
@@ -180,7 +211,6 @@ fn stage_package_assets(
                 let staged_relative =
                     AppPaths::staged_asset_relative_path(draft_id, &new_id, extension);
                 let staged_path = paths.resolve_relative(&staged_relative);
-                let _ = fs::remove_file(&staged_path);
                 write_new_file(&staged_path, &asset.data)?;
                 sync_directory(staged_path.parent())?;
                 if let Err(error) = connection.execute(
@@ -203,7 +233,12 @@ fn stage_package_assets(
                         staged_relative,
                     ],
                 ) {
-                    let _ = fs::remove_file(staged_path);
+                    crate::logging::warn_target(
+                        "studydeck.import",
+                        "import_staging_ledger_failed",
+                        "Import bytes were staged but their ledger write failed. The private candidate was retained.",
+                        serde_json::json!({"draftId": draft_id, "assetId": new_id}),
+                    );
                     return Err(CommandError::database(error));
                 }
                 connection
@@ -238,7 +273,7 @@ fn apply_package_transaction(
     draft_id: &str,
     package: PackageData,
     asset_map: HashMap<String, String>,
-) -> Result<ImportResultDto, CommandError> {
+) -> Result<ImportResultDto, ApplyFailure> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -395,7 +430,8 @@ fn apply_package_transaction(
         if interactive != card.question_key.is_some() {
             return Err(CommandError::invalid_package(
                 "A generated card has inconsistent interactive presentation metadata.",
-            ));
+            )
+            .into());
         }
         let card_id = choose_id(&transaction, "cards", &card.source_id)?;
         transaction
@@ -448,20 +484,28 @@ fn apply_package_transaction(
             let staged = paths.resolve_relative(&row.1);
             let final_path = paths.resolve_relative(&row.0);
             if let Some(parent) = final_path.parent() {
-                fs::create_dir_all(parent).map_err(CommandError::io)?;
+                durable_fs::create_directories(parent).map_err(CommandError::io)?;
             }
-            if let Err(error) = fs::rename(&staged, &final_path) {
-                compensate_promotions(&promoted);
-                return Err(CommandError::io(error));
+            match fs::symlink_metadata(&final_path) {
+                Ok(_) => {
+                    return Err(CommandError::invalid_package(
+                        "An imported image would replace an existing library file.",
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(CommandError::io(error)),
             }
-            if let Err(error) =
-                sync_directory(staged.parent()).and_then(|_| sync_directory(final_path.parent()))
-            {
-                let _ = fs::rename(&final_path, &staged);
-                compensate_promotions(&promoted);
-                return Err(error);
-            }
-            promoted.push((final_path, staged));
+            fs::rename(&staged, &final_path).map_err(CommandError::io)?;
+            // Register ownership before either directory flush can fail.
+            promoted.push((staged, final_path));
+            let (staged, final_path) = promoted.last().ok_or_else(|| {
+                CommandError::new(
+                    "invalid_import_operation",
+                    "The file promotion was not recorded.",
+                )
+            })?;
+            sync_directory(staged.parent())?;
+            sync_directory(final_path.parent())?;
             transaction
                 .execute(
                     "UPDATE assets
@@ -503,14 +547,27 @@ fn apply_package_transaction(
 
         Ok(())
     })();
-    if let Err(error) = promotion_result {
-        compensate_promotions(&promoted);
-        return Err(error);
+    if let Err(primary) = promotion_result {
+        let recovery = compensate_promotions(operation_id, &promoted);
+        return Err(ApplyFailure {
+            primary,
+            preserve_inputs: recovery.failed > 0,
+        });
     }
 
     if let Err(error) = transaction.commit() {
-        compensate_promotions(&promoted);
-        return Err(CommandError::database(error));
+        // An error is not proof that no durable SQL decision exists. Retain
+        // promoted bytes and draft ownership for receipt/startup reconciliation.
+        crate::logging::warn_target(
+            "studydeck.import",
+            "import_commit_recovery_required",
+            "An import commit could not be confirmed. Its files and operation evidence were retained for reconciliation.",
+            serde_json::json!({"operationId": operation_id, "promotedFiles": promoted.len()}),
+        );
+        return Err(ApplyFailure {
+            primary: CommandError::database(error),
+            preserve_inputs: true,
+        });
     }
     Ok(ImportResultDto {
         deck: result_deck,
@@ -519,10 +576,34 @@ fn apply_package_transaction(
     })
 }
 
-fn compensate_promotions(promoted: &[(PathBuf, PathBuf)]) {
-    for (final_path, staged_path) in promoted.iter().rev() {
-        let _ = fs::rename(final_path, staged_path);
+fn record_failed_operation(
+    connection: &mut Connection,
+    paths: &AppPaths,
+    operation_id: &str,
+    draft_id: &str,
+    primary: CommandError,
+    preserve_inputs: bool,
+) -> CommandError {
+    if let Err(cleanup) = fail_operation(
+        connection,
+        paths,
+        operation_id,
+        draft_id,
+        &primary.code,
+        preserve_inputs,
+    ) {
+        crate::logging::warn_target(
+            "studydeck.import",
+            "import_failure_reconciliation_failed",
+            "Import failure bookkeeping could not finish. The primary failure and retained recovery inputs remain authoritative.",
+            serde_json::json!({
+                "operationId": operation_id,
+                "primaryCode": primary.code,
+                "cleanupCode": cleanup.code,
+            }),
+        );
     }
+    primary
 }
 
 fn fail_operation(
@@ -531,8 +612,11 @@ fn fail_operation(
     operation_id: &str,
     draft_id: &str,
     error_code: &str,
+    preserve_inputs: bool,
 ) -> Result<(), CommandError> {
-    cleanup_draft(connection, paths, draft_id)?;
+    if !preserve_inputs {
+        cleanup_draft(connection, paths, draft_id)?;
+    }
     let now = unix_time_millis()?;
     connection
         .execute(
@@ -600,20 +684,22 @@ fn cleanup_draft(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    for (asset_id, _, _) in &assets {
+    let mut retired = Vec::new();
+    for (asset_id, relative, staged) in assets {
         let references: i64 = transaction
             .query_row(
                 "SELECT
                      (SELECT COUNT(*) FROM note_assets WHERE asset_id = ?1) +
                      (SELECT COUNT(*) FROM card_template_assets WHERE asset_id = ?1)",
-                [asset_id],
+                [&asset_id],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
         if references == 0 {
             transaction
-                .execute("DELETE FROM assets WHERE id = ?1", [asset_id])
+                .execute("DELETE FROM assets WHERE id = ?1", [&asset_id])
                 .map_err(CommandError::database)?;
+            retired.push((relative, staged));
         }
     }
     let now = unix_time_millis()?;
@@ -626,14 +712,19 @@ fn cleanup_draft(
         )
         .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)?;
-    for (_, relative, staged) in assets {
+    for (relative, staged) in retired {
         if let Some(staged) = staged {
-            let _ = fs::remove_file(paths.resolve_relative(&staged));
+            remove_retired_file(&paths.resolve_relative(&staged))?;
         }
-        let final_path = paths.resolve_relative(&relative);
-        if final_path.exists() {
-            let _ = fs::remove_file(final_path);
-        }
+        remove_retired_file(&paths.resolve_relative(&relative))?;
     }
     Ok(())
+}
+
+fn remove_retired_file(path: &Path) -> Result<(), CommandError> {
+    match fs::remove_file(path) {
+        Ok(()) => sync_directory(path.parent()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(CommandError::io(error)),
+    }
 }

@@ -36,7 +36,9 @@ impl Drop for Fixture {
 fn directory_flush_refuses_missing_and_non_directory_paths() {
     let fixture = Fixture::new();
     assert_eq!(
-        sync_directory(&fixture.0.join("missing")).unwrap_err().kind(),
+        sync_directory(&fixture.0.join("missing"))
+            .unwrap_err()
+            .kind(),
         io::ErrorKind::NotFound
     );
     fs::write(fixture.path(), b"not a directory").unwrap();

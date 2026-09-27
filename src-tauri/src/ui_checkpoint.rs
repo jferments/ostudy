@@ -658,7 +658,11 @@ mod tests {
         checkpoint.practice.as_mut().unwrap().position = 9;
         write_checkpoint(&paths, &checkpoint).unwrap();
         let parent = paths.app_data_dir().join(DEVICE_STATE_DIRECTORY);
-        fs::write(parent.join(".ostudy-write-abandoned.partial"), b"uncommitted").unwrap();
+        fs::write(
+            parent.join(".ostudy-write-abandoned.partial"),
+            b"uncommitted",
+        )
+        .unwrap();
         assert_eq!(read_ui_checkpoint(&paths).unwrap(), Some(checkpoint));
         assert!(parent.join(".ostudy-write-abandoned.partial").exists());
         cleanup(&paths);
