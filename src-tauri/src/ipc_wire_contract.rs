@@ -12,11 +12,8 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::{
-    decks::DeckSummaryDto,
-    error::CommandError,
-    library_backup::live::LiveRestoreResult,
-    library_session::SessionStatus,
-    settings::AppSettingsDto,
+    decks::DeckSummaryDto, error::CommandError, library_backup::live::LiveRestoreResult,
+    library_session::SessionStatus, settings::AppSettingsDto,
 };
 
 #[derive(Clone, Copy)]
@@ -392,7 +389,11 @@ mod tests {
         ] {
             let object = fixtures[fixture_name].as_object().unwrap();
             let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
-            let mut expected = contract.fields.iter().map(|field| field.name).collect::<Vec<_>>();
+            let mut expected = contract
+                .fields
+                .iter()
+                .map(|field| field.name)
+                .collect::<Vec<_>>();
             actual.sort_unstable();
             expected.sort_unstable();
             assert_eq!(actual, expected, "{fixture_name} field drift");
