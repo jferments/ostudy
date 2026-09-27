@@ -118,6 +118,11 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }:
     suppressClickRef.current = false;
     try { event.currentTarget.setPointerCapture(event.pointerId); }
     catch { return; }
+    // Cancel native text/image dragging at its starting event, not after the
+    // browser has already extended a text selection across the destination.
+    // Interactive descendants returned above keep their own native behavior.
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
     pointerRef.current = {
       pointerId: event.pointerId, itemId, resetKey, startX: event.clientX, startY: event.clientY,
       x: event.clientX, y: event.clientY, active: false, owner: event.currentTarget,
@@ -131,6 +136,14 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }:
     if (!drag.active && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 8) {
       drag.active = true;
       suppressClickRef.current = true;
+      const selection = window.getSelection();
+      const scope = latest.current.scopeRef?.current ?? drag.owner;
+      // Retire an existing selection in this board only. Unrelated page text and
+      // selections in embedded controls are not globally cleared on pointer-down.
+      if (selection?.anchorNode && selection.focusNode
+        && scope.contains(selection.anchorNode) && scope.contains(selection.focusNode)) {
+        selection.removeAllRanges();
+      }
       setDraggingItemId(drag.itemId);
       frame.current = requestAnimationFrame(scrollEdges);
     }

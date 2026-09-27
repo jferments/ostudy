@@ -7,6 +7,11 @@ export const neutralTile = "tw:border-border tw:bg-background";
 export const connectedTile = "tw:border-primary/60 tw:bg-accent";
 export const correctTile = "tw:border-success/60 tw:bg-success-soft";
 export const incorrectTile = "tw:border-destructive/60 tw:bg-destructive-soft";
+/** Solid semantic colors keep both the moving tile and its destination readable.
+ * Rich descendants inherit the active foreground instead of retaining an accent
+ * color that disappears against the active background.
+ */
+export const activePointerTile = "tw:border-primary tw:bg-primary tw:text-primary-foreground tw:[&_*]:text-inherit";
 
 export function tileResult(correct: boolean | undefined): string {
   return correct === undefined ? neutralTile : correct ? correctTile : incorrectTile;

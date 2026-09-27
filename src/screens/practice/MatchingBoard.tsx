@@ -7,7 +7,7 @@ import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
 import { QuestionTile } from "./QuestionTile";
-import { answerTile, connectedTile, rematchMatching, matchingRows, tileResult, type Placement } from "./questionPresentation";
+import { activePointerTile, answerTile, connectedTile, rematchMatching, matchingRows, tileResult, type Placement } from "./questionPresentation";
 import { usePracticePointerDrop } from "./usePracticePointerDrop";
 
 export function MatchingBoard({ question, assignments, assets, disabled, evaluation, onChange, onError }: {
@@ -51,7 +51,9 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
     {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
       Drag a left tile up or down to line up a pair, or onto its match. You can also select two tiles. Drag a connected tile again to change its match; dropping onto another pair swaps them.
     </p> : null}
-    <div ref={root} className="tw:relative tw:grid tw:gap-3" aria-label="Matching pairs">
+    <div ref={root} data-matching-drag-active={pointer.draggingItemId !== null || undefined}
+      className={cn("tw:relative tw:grid tw:gap-3", pointer.draggingItemId !== null && "tw:select-none tw:[&_*]:select-none")}
+      aria-label="Matching pairs">
       {question.targets.map((target, index) => {
         const rowId = rows[index];
         if (!rowId) return null;
@@ -61,6 +63,7 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
         const result = results.get(item.id);
         const correct = result ? result.selectedTargetId === result.expectedTargetId : undefined;
         const expected = result ? targets.get(result.expectedTargetId) : null;
+        const over = pointer.draggingItemId !== null && pointer.overTargetId === target.id;
         return <div key={target.id} data-practice-drop-target-id={target.id}
           className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
           <QuestionTile key={item.id} id={item.id} label={`Select ${extractRichDocumentText(item.content) || `item ${index + 1}`}`}
@@ -84,8 +87,9 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
             </Button> : linked ? <span aria-label="Connected pair">↔</span> : null}
           </div>
           <div data-match-target={target.id} data-practice-drop-target-id={target.id} data-connected={linked || undefined}
+            data-drop-active={over || undefined}
             className={cn(answerTile, correct === undefined && linked ? connectedTile : tileResult(correct), "tw:grid tw:content-center tw:gap-2",
-              pointer.overTargetId === target.id && "tw:ring-2 tw:ring-primary")}
+              over && [activePointerTile, "tw:ring-2 tw:ring-primary"])}
             role="button" tabIndex={disabled || evaluation !== null ? -1 : 0} aria-label={`Match with ${extractRichDocumentText(target.content) || `target ${index + 1}`}`}
             aria-disabled={disabled || evaluation !== null}
             onClick={(event) => {
