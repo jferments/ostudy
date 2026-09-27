@@ -87,12 +87,12 @@ export function useStudyTargetBundleController({
     } finally {
       if (readSequence.current === sequence) setLoading(false);
     }
-  }, [refreshKey, target?.id, target?.kind]);
+  }, []);
 
   useEffect(() => {
     void load();
     return () => { readSequence.current += 1; };
-  }, [load]);
+  }, [load, refreshKey, target?.id, target?.kind]);
 
   useEffect(() => {
     const currentTarget = targetRef.current;
