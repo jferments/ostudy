@@ -44,10 +44,6 @@ export interface AppearanceSettings {
   decorativeArtwork?: boolean;
   celebrationsEnabled?: boolean;
   tutorialsEnabled?: boolean;
-  /** Transitional compatibility with settings written before motionPreference. */
-  animationsEnabled?: boolean;
-  /** Transitional compatibility with settings written before motionPreference. */
-  reduceMotion?: boolean;
 }
 
 export interface AppearanceEnvironment {
@@ -74,13 +70,7 @@ export function resolveAppearanceProfile(
   settings: AppearanceSettings,
   environment: AppearanceEnvironment,
 ): AppearanceProfile {
-  const motionPreference =
-    settings.motionPreference ??
-    (settings.animationsEnabled === false
-      ? "none"
-      : settings.reduceMotion
-        ? "reduced"
-        : "system");
+  const motionPreference = settings.motionPreference ?? "system";
   const motion = resolveMotion(motionPreference, environment.systemReducedMotion);
   const material = resolveMaterial(
     settings.materialPreference ?? "automatic",

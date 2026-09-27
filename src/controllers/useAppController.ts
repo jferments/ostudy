@@ -794,13 +794,7 @@ function normalizeRestoredReturnTarget(
 }
 
 function normalizeSettings(settings: AppSettings): AppSettings {
-  const motionPreference =
-    settings.motionPreference ??
-    (settings.animationsEnabled === false
-      ? "none"
-      : settings.reduceMotion
-        ? "reduced"
-        : "system");
+  const motionPreference = settings.motionPreference ?? "system";
   return {
     theme: settings.theme,
     uiFont: settings.uiFont,

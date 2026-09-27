@@ -14,10 +14,6 @@ export interface AppSettings {
   decorativeArtwork?: boolean;
   celebrationsEnabled?: boolean;
   tutorialsEnabled?: boolean;
-  /** Durable read compatibility until all bundled callers use motionPreference. */
-  animationsEnabled?: boolean;
-  /** Durable read compatibility until all bundled callers use motionPreference. */
-  reduceMotion?: boolean;
   confirmDeletions: boolean;
   practiceShuffle: boolean;
   /** Show the question again beside the answer after revealing a Basic card. */

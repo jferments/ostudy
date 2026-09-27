@@ -36,6 +36,7 @@ import type { AppSettings } from "../ipc/settings";
 import type { PracticeCheckpoint, PracticeCursorCheckpoint } from "../ipc/uiCheckpoint";
 import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 import { useExperience } from "../ui/feedback/ExperienceProvider";
+import { useAnimationsEnabled } from "../ui/hooks/useAnimationsEnabled";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
@@ -104,6 +105,7 @@ export function PracticeScreen({
   onChooseDecks,
   showToast,
 }: PracticeScreenProps) {
+  const flipAnimationEnabled = useAnimationsEnabled();
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
   const [practiceRequest, setPracticeRequest] = useState<CanonicalPracticeRequest | null>(null);
   const [recovery, setRecovery] = useState<PracticeRecovery | null>(null);
@@ -691,7 +693,7 @@ export function PracticeScreen({
     <ActivePractice session={session} current={current} position={sessionWindowStart + position} revealed={revealed}
       ratedCount={ratedCount} previewSet={previewSet} isRevealing={isRevealing} isRating={isRating} isEnding={isEnding}
       isManaging={isStarting || isManaging || isLoadingWindow || isLoadingEditor}
-      flipAnimationEnabled={settings.animationsEnabled && !settings.reduceMotion}
+      flipAnimationEnabled={flipAnimationEnabled}
       displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? false} errorMessage={errorMessage}
       onReveal={() => void revealAnswer()} onScore={(score) => void submitScore(score)} onEdit={() => void editCurrentCard()}
       onScheduleAction={(action, intent) => void manageCurrent(action, intent)} onEnd={() => void endSession()}

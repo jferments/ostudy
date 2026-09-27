@@ -215,7 +215,6 @@ function App() {
                           ) : controller.section === "analytics" ? (
                             <AnalyticsScreen
                               decks={controller.decks}
-                              settings={controller.activeSettings}
                               launchRequest={controller.analyticsLaunch}
                               onLaunchConsumed={controller.consumeAnalyticsLaunch}
                               onPracticeScope={controller.practiceScope}
