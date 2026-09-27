@@ -2,6 +2,8 @@ use rusqlite::Connection;
 
 use crate::error::CommandError;
 
+pub(crate) mod durable_fs;
+
 pub fn unix_time_millis() -> Result<i64, CommandError> {
     crate::platform::now_utc_millis()
         .map_err(|message| CommandError::new("invalid_system_clock", message))

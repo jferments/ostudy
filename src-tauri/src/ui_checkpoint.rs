@@ -6,8 +6,7 @@
 //! request identities.
 
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -17,7 +16,7 @@ use tauri::State;
 use crate::{
     error::CommandError,
     paths::AppPaths,
-    util::{unix_time_millis, validate_entity_id},
+    util::{durable_fs, unix_time_millis, validate_entity_id},
 };
 
 const CHECKPOINT_SCHEMA_VERSION: i64 = 2;
@@ -217,28 +216,16 @@ fn write_checkpoint(paths: &AppPaths, checkpoint: &UiCheckpointDto) -> Result<()
             "The device restoration checkpoint is larger than the supported limit.",
         ));
     }
-
     let path = checkpoint_path(paths, CHECKPOINT_V2_FILENAME);
-    let parent = path.parent().ok_or_else(|| {
-        CommandError::new(
+    if path.parent().is_none() {
+        return Err(CommandError::new(
             "invalid_ui_checkpoint_path",
             "The device restoration directory is invalid.",
-        )
-    })?;
-    fs::create_dir_all(parent).map_err(CommandError::io)?;
-    let temporary = parent.join(format!("{CHECKPOINT_V2_FILENAME}.partial"));
-    remove_file_if_exists(&temporary)?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(CommandError::io)?;
-    file.write_all(&encoded).map_err(CommandError::io)?;
-    file.sync_all().map_err(CommandError::io)?;
-    drop(file);
-    remove_file_if_exists(&path)?;
-    fs::rename(&temporary, &path).map_err(CommandError::io)?;
-    sync_directory(parent)
+        ));
+    }
+    // Publication never deletes the previous checkpoint before rename. Pending
+    // candidates have no read/startup authority and are retained on failure.
+    durable_fs::write_replacing_file(&path, &encoded).map_err(CommandError::io)
 }
 
 fn normalize_legacy_checkpoint(mut legacy: LegacyUiCheckpoint) -> UiCheckpointDto {
@@ -451,9 +438,8 @@ fn quarantine_invalid_checkpoint(
         .join(format!(
             "invalid-ui-checkpoint-v{schema_version}.json.quarantine"
         ));
-    remove_file_if_exists(&quarantine)?;
     match fs::rename(path, quarantine) {
-        Ok(()) => Ok(()),
+        Ok(()) => durable_fs::sync_optional_directory(path.parent()).map_err(CommandError::io),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(CommandError::io(error)),
     }
@@ -461,18 +447,10 @@ fn quarantine_invalid_checkpoint(
 
 fn remove_file_if_exists(path: &Path) -> Result<(), CommandError> {
     match fs::remove_file(path) {
-        Ok(()) => Ok(()),
+        Ok(()) => durable_fs::sync_optional_directory(path.parent()).map_err(CommandError::io),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(CommandError::io(error)),
     }
-}
-
-fn sync_directory(path: &Path) -> Result<(), CommandError> {
-    let directory = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(CommandError::io)?;
-    directory.sync_all().map_err(CommandError::io)
 }
 
 #[cfg(test)]
@@ -668,5 +646,21 @@ mod tests {
             validate_checkpoint(&checkpoint).unwrap_err().code,
             "invalid_ui_checkpoint"
         );
+    }
+
+    #[test]
+    fn replacement_preserves_practice_state_and_does_not_adopt_an_abandoned_partial() {
+        let paths = test_paths("replacement");
+        let mut checkpoint: UiCheckpointDto =
+            serde_json::from_slice(fixture("v2-study-guides-practice-return")).unwrap();
+        write_checkpoint(&paths, &checkpoint).unwrap();
+        checkpoint.updated_at += 1;
+        checkpoint.practice.as_mut().unwrap().position = 9;
+        write_checkpoint(&paths, &checkpoint).unwrap();
+        let parent = paths.app_data_dir().join(DEVICE_STATE_DIRECTORY);
+        fs::write(parent.join(".ostudy-write-abandoned.partial"), b"uncommitted").unwrap();
+        assert_eq!(read_ui_checkpoint(&paths).unwrap(), Some(checkpoint));
+        assert!(parent.join(".ostudy-write-abandoned.partial").exists());
+        cleanup(&paths);
     }
 }

@@ -82,6 +82,9 @@ pnpm test
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+step "Filesystem durability and checkpoint publication contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" util::durable_fs::tests:: ui_checkpoint::tests::
+
 step "StudyTarget composition parallel-isolation regression"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
