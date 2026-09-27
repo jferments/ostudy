@@ -1,4 +1,4 @@
-name: Validate generated Rust candidates
+name: Validate generated candidates
 
 on:
   push:
@@ -33,6 +33,42 @@ jobs:
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Dependency resolution runs only on disposable copies. A differing lock
+      # is diagnostic output for the source writer, never a workspace rewrite,
+      # commit, push, or qualification of unpublished dependency changes.
+      - name: Inspect JavaScript lockfile without rewriting maintained source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          candidate="$(mktemp -d "$RUNNER_TEMP/ostudy-lockfile.XXXXXXXX")"
+          trap 'rm -rf -- "$candidate"' EXIT
+          cp package.json pnpm-workspace.yaml pnpm-lock.yaml "$candidate/"
+          (
+            cd "$candidate"
+            pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          )
+          git diff --exit-code
+          if cmp -s pnpm-lock.yaml "$candidate/pnpm-lock.yaml"; then
+            echo 'The committed JavaScript lockfile matches the published manifests.'
+          else
+            python3 - "$candidate/pnpm-lock.yaml" <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          import pathlib
+          import sys
+          data = pathlib.Path(sys.argv[1]).read_bytes()
+          header = f"blob {len(data)}\0".encode()
+          print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(header + data).hexdigest())
+          print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
+          encoded = base64.b64encode(gzip.compress(data, mtime=0)).decode()
+          for index, offset in enumerate(range(0, len(encoded), 4000)):
+              print(f"LOCKFILE_CANDIDATE_GZIP_{index:04}=" + encoded[offset:offset + 4000])
+          PY
+            echo 'The committed lockfile is stale. Review and publish the candidate through the normal source-writer protocol.' >&2
+            exit 1
+          fi
 
       # Packaging copies only already-published source and the installed pinned
       # formatter. It neither formats source nor creates a replacement tree.
