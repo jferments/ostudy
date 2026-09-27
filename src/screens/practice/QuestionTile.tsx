@@ -11,8 +11,8 @@ export function QuestionTile({ id, label, children, pointer, disabled, selected 
   selected?: boolean; connected?: boolean; correct?: boolean; onSelect?: () => void; dropTargetId?: string;
 }) {
   const dragging = pointer.draggingItemId === id;
-  function select(): void {
-    if (!disabled && !pointer.shouldSuppressClick()) onSelect?.();
+  function select(pointerClick = false): void {
+    if (!disabled && (!pointerClick || !pointer.shouldSuppressClick())) onSelect?.();
   }
   return <div role="button" tabIndex={disabled ? -1 : 0} aria-label={label} aria-disabled={disabled}
     aria-pressed={selected} data-question-item-id={id} data-practice-drop-target-id={dropTargetId}
@@ -28,7 +28,7 @@ export function QuestionTile({ id, label, children, pointer, disabled, selected 
     onClick={(event) => {
       if (event.target instanceof Element && event.target !== event.currentTarget
         && event.target.closest("a,button,input,textarea,select,audio,video,[contenteditable=true]")) return;
-      select();
+      select(true);
     }}
     onKeyDown={(event) => {
       if (event.target !== event.currentTarget || event.nativeEvent.isComposing) return;
