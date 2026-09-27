@@ -53,9 +53,11 @@ impl Candidate {
                 estimated_bytes,
             )
         })?;
-        connection.busy_timeout(Duration::from_secs(5)).map_err(|error| {
-            stage_error("configure the conversion candidate", error, estimated_bytes)
-        })?;
+        connection
+            .busy_timeout(Duration::from_secs(5))
+            .map_err(|error| {
+                stage_error("configure the conversion candidate", error, estimated_bytes)
+            })?;
         connection
             .execute_batch(&format!(
                 "PRAGMA journal_mode = DELETE;
@@ -65,11 +67,7 @@ impl Candidate {
                  PRAGMA cache_size = -{STAGING_CACHE_KIB};"
             ))
             .map_err(|error| {
-                stage_error(
-                    "configure bounded SQLite staging",
-                    error,
-                    estimated_bytes,
-                )
+                stage_error("configure bounded SQLite staging", error, estimated_bytes)
             })?;
         if let Some(maximum_pages) = page_limit {
             connection
@@ -170,7 +168,10 @@ fn staging_directory(source: &Connection) -> Result<PathBuf, String> {
         })?;
     if !file.is_empty() && file != ":memory:" {
         let path = PathBuf::from(file);
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             return Ok(parent.to_path_buf());
         }
         return std::env::current_dir().map_err(|error| {
