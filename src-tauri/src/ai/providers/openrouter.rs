@@ -18,10 +18,10 @@ pub(super) fn apply_request_policy(
     body["provider"] = provider_preferences(require_parameters, require_zero_data_retention);
 }
 
-/// Apply an explicit reasoning choice when one has been resolved for this
-/// request. `automatic` deliberately leaves routing/model defaults untouched;
-/// `none` must be transmitted because omitting the field can enable a model's
-/// provider-default reasoning and consume a small probe/output budget.
+/// The unified OpenRouter reasoning object accepts effort OR max_tokens, not
+/// both. The caller resolves the requested effort and derives a cap only when
+/// the model advertises that capability; provenance retains the user's choice.
+/// `none` is explicit because omission can enable provider-default reasoning.
 pub(super) fn apply_reasoning_policy(
     body: &mut Value,
     reasoning_effort: &str,
@@ -30,16 +30,11 @@ pub(super) fn apply_reasoning_policy(
     if reasoning_effort == "automatic" {
         return;
     }
-    let mut reasoning = json!({
-        "effort": reasoning_effort,
-        "exclude": true,
-    });
-    if reasoning_effort != "none" {
-        if let Some(max_tokens) = reasoning_max_tokens.filter(|value| *value > 0) {
-            reasoning["max_tokens"] = json!(max_tokens);
-        }
-    }
-    body["reasoning"] = reasoning;
+    let limit = reasoning_max_tokens.filter(|value| *value > 0 && reasoning_effort != "none");
+    body["reasoning"] = match limit {
+        Some(max_tokens) => json!({"max_tokens": max_tokens, "exclude": true}),
+        None => json!({"effort": reasoning_effort, "exclude": true}),
+    };
 }
 
 pub(super) fn apply_document_policy(
@@ -182,10 +177,28 @@ mod tests {
             Some(&json!("context-compression"))
         );
         assert_eq!(body.pointer("/plugins/0/enabled"), Some(&json!(false)));
-        assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
+        assert!(body.pointer("/reasoning/effort").is_none());
         assert_eq!(body.pointer("/reasoning/max_tokens"), Some(&json!(4_000)));
         assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
         assert!(body.get("session_id").is_none());
+    }
+
+    #[test]
+    fn advertised_budget_and_effort_never_compete_on_the_wire() {
+        for effort in REASONING_EFFORTS {
+            for budget in [None, Some(0), Some(4_000)] {
+                let mut body = json!({});
+                apply_reasoning_policy(&mut body, effort, budget);
+                let reasoning = &body["reasoning"];
+                assert_ne!(reasoning.get("effort").is_some(), reasoning.get("max_tokens").is_some());
+                if effort == "none" || budget.is_none() || budget == Some(0) {
+                    assert_eq!(reasoning["effort"], effort);
+                } else {
+                    assert_eq!(reasoning["max_tokens"], 4_000);
+                }
+                assert_eq!(reasoning["exclude"], true);
+            }
+        }
     }
 
     #[test]
