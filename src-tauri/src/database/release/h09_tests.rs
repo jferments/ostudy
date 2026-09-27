@@ -77,7 +77,7 @@ fn low_space_staging_failure_preserves_the_live_legacy_library() {
 
 #[test]
 fn abandoned_disk_candidate_never_changes_live_lineage() {
-    let mut connection = legacy_current_fixture();
+    let connection = legacy_current_fixture();
     let before = preservation_receipt(&connection).unwrap();
     let mut candidate = staging::Candidate::copy_from(&connection).unwrap();
     let candidate_path = candidate.path().to_path_buf();
