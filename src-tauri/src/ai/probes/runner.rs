@@ -354,17 +354,22 @@ pub(super) async fn test_profile(
     };
     let reasoning_supports_max_tokens = models
         .as_deref()
-        .and_then(|models| models.iter().find(|model| model.id == request_profile.model_id))
+        .and_then(|models| {
+            models
+                .iter()
+                .find(|model| model.id == request_profile.model_id)
+        })
         .and_then(|model| model.reasoning.as_ref())
         .is_some_and(|reasoning| reasoning.supports_max_tokens);
-    let document_probe_reasoning_limit =
-        (profile.provider_kind == ProviderKind::Openrouter).then(|| {
+    let document_probe_reasoning_limit = (profile.provider_kind == ProviderKind::Openrouter)
+        .then(|| {
             super::super::reasoning::structured_reasoning_token_limit(
                 &request_profile.reasoning_effort,
                 document_probe_max_tokens,
                 reasoning_supports_max_tokens,
             )
-        }).flatten();
+        })
+        .flatten();
     let (document_schema_outcome, document_schema_supported) =
         match providers::run_document_schema_probe(
             &runtime.gateway,

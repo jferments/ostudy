@@ -168,10 +168,7 @@ mod tests {
             structured_reasoning_token_limit("low", total, true),
             Some(4_000)
         );
-        assert_eq!(
-            structured_reasoning_token_limit("low", total, false),
-            None
-        );
+        assert_eq!(structured_reasoning_token_limit("low", total, false), None);
         assert_eq!(structured_completion_token_ceiling("none", 6_000), 6_000);
     }
 }

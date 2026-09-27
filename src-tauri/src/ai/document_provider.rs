@@ -245,10 +245,7 @@ mod tests {
             capabilities.completion_token_ceiling("high", 10_000),
             50_000
         );
-        assert_eq!(
-            capabilities.completion_token_ceiling("low", 6_000),
-            10_000
-        );
+        assert_eq!(capabilities.completion_token_ceiling("low", 6_000), 10_000);
         assert_eq!(capabilities.reasoning_token_limit("low", 10_000), None);
     }
 
@@ -271,7 +268,10 @@ mod tests {
         };
         let total = capabilities.completion_token_ceiling("low", 6_000);
         assert_eq!(total, 10_000);
-        assert_eq!(capabilities.reasoning_token_limit("low", total), Some(4_000));
+        assert_eq!(
+            capabilities.reasoning_token_limit("low", total),
+            Some(4_000)
+        );
     }
 
     #[test]
