@@ -104,6 +104,23 @@ cargo test \
 step "Current-format entry, preservation and native execution contracts"
 bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests::
 
+step "H-09 disk-backed conversion staging contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" \
+  database::release::staging::tests:: \
+  database::release::h09_tests::low_space_staging_failure_preserves_the_live_legacy_library \
+  database::release::h09_tests::abandoned_disk_candidate_never_changes_live_lineage \
+  database::release::h09_tests::disk_conversion_preserves_sibling_managed_files_and_cleans_candidate \
+  database::release::tests::schema30_conversion_preserves_all_nonledger_values
+
+step "H-09 startup and conversion measurement"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::release::h09_tests::representative_h09_startup_and_conversion_measurement \
+  -- --exact --nocapture
+
 step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
