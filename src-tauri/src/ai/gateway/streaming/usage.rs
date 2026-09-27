@@ -126,6 +126,36 @@ pub(crate) fn safe_usage_envelope(value: &Value) -> Option<Value> {
     }))
 }
 
+/// Events are cumulative snapshots, never increments. Later cost-only or
+/// partial reports may enrich an earlier token report but must not erase it.
+/// Both arguments contain only fields admitted by safe_usage_envelope.
+pub(super) fn merge_usage_snapshot(current: &mut Option<Value>, next: Value) {
+    let Some(previous) = current.as_mut() else {
+        *current = Some(next);
+        return;
+    };
+    let counts_changed = !next["prompt_tokens"].is_null() || !next["completion_tokens"].is_null();
+    let next_has_total = !next["total_tokens"].is_null();
+    merge_known(previous, &next);
+    if counts_changed && !next_has_total {
+        previous["total_tokens"] = json!(nonnegative_integer(previous.get("prompt_tokens"))
+            .zip(nonnegative_integer(previous.get("completion_tokens")))
+            .map(|(input, output)| input.saturating_add(output)));
+    }
+}
+
+fn merge_known(current: &mut Value, next: &Value) {
+    if let Some(fields) = next.as_object() {
+        for (key, value) in fields {
+            if !value.is_null() {
+                merge_known(&mut current[key], value);
+            }
+        }
+    } else if !next.is_null() {
+        *current = next.clone();
+    }
+}
+
 pub(crate) fn usage_delta(usage: &Value) -> DocumentTaskUsageDelta {
     DocumentTaskUsageDelta {
         prompt_tokens: nonnegative_integer(usage.get("prompt_tokens")),

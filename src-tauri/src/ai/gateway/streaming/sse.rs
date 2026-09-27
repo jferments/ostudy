@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
-use super::usage::safe_usage_envelope;
+use super::usage::{merge_usage_snapshot, safe_usage_envelope};
 use crate::ai::gateway::{
     contracts::AiGatewayError,
     errors::{classify_stream_event_error, error},
@@ -153,7 +153,7 @@ impl SseChatAccumulator {
             )
         })?;
         if let Some(usage) = safe_usage_envelope(&value) {
-            self.usage = Some(usage);
+            merge_usage_snapshot(&mut self.usage, usage);
         }
         if self.openrouter {
             if self.upstream_provider.is_none() {

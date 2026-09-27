@@ -480,16 +480,25 @@ pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
 
 impl Attempt {
     pub(crate) fn response(&mut self, response: &Value) {
-        self.finish_response(response, false);
+        self.finish_response(response, false, None);
     }
 
     /// Embedding APIs do not emit completion/reasoning tokens. Recording a
     /// provider response as zero-output is protocol semantics, not imputation.
     pub(crate) fn non_generative_response(&mut self, response: &Value) {
-        self.finish_response(response, true);
+        self.finish_response(response, true, None);
     }
 
-    fn finish_response(&mut self, response: &Value, non_generative: bool) {
+    /// A failed stream may already have supplied billable token usage. Store its
+    /// safe observation and failure together, never a temporary success record.
+    pub(crate) fn failed_with_observation(&mut self, code: &str, observation: &Value) {
+        self.finish_response(observation, false, Some(code));
+    }
+
+    fn finish_response(&mut self, response: &Value, non_generative: bool, failure: Option<&str>) {
+        if self.finished {
+            return;
+        }
         let usage = super::gateway::normalized_usage(response);
         let number = |pointer: &str| -> Option<i64> {
             usage
@@ -502,7 +511,9 @@ impl Attempt {
         let reasoning_tokens =
             number("/completion_tokens_details/reasoning_tokens").or(non_generative.then_some(0));
         let total_tokens = number("/total_tokens").or_else(|| {
-            number("/prompt_tokens").map(|input| input.saturating_add(output_tokens.unwrap_or(0)))
+            number("/prompt_tokens")
+                .zip(output_tokens)
+                .map(|(input, output)| input.saturating_add(output))
         });
         let cost = usage
             .as_ref()
@@ -512,7 +523,7 @@ impl Attempt {
         let result = self.context.database.with_connection(|connection| {
             connection
                 .execute(
-                    "UPDATE generation_requests SET status='response',finished_at=?1,
+                    "UPDATE generation_requests SET status=?13,error_code=?14,finished_at=?1,
                  input_tokens=?2,output_tokens=?3,reasoning_tokens=?4,cached_input_tokens=?5,
                  cache_write_tokens=?6,total_tokens=?7,cost=?8,response_id=?9,finish_reason=?10,
                  payload_bytes_json=json_set(payload_bytes_json,'$.response',json(?11))
@@ -534,7 +545,9 @@ impl Attempt {
                             80
                         ),
                         payload::response_measure(response).to_string(),
-                        self.id
+                        self.id,
+                        if failure.is_some() { "failed" } else { "response" },
+                        bounded(failure, 80)
                     ],
                 )
                 .map_err(CommandError::database)?;
