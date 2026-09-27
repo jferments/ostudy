@@ -48,7 +48,10 @@ fn bounded_fifo_dispatch_never_runs_work_on_the_submitting_thread() {
             .unwrap();
     }
     assert_eq!(
-        executor.submit(|| panic!("must not run"), || {}).unwrap_err().code,
+        executor
+            .submit(|| panic!("must not run"), || {})
+            .unwrap_err()
+            .code,
         "native_command_queue_full"
     );
     release_tx.send(()).unwrap();
@@ -95,7 +98,9 @@ fn blocked_database_work_does_not_block_control_dispatch() {
         .unwrap();
     receive(&started_rx);
     let (control_tx, control_rx) = channel();
-    controls.submit(move || control_tx.send(()).unwrap(), || {}).unwrap();
+    controls
+        .submit(move || control_tx.send(()).unwrap(), || {})
+        .unwrap();
     receive(&control_rx);
     assert!(done_rx.try_recv().is_err());
     unlock_tx.send(()).unwrap();
@@ -155,18 +160,28 @@ fn lost_reply_and_dropped_producer_keep_worker_leases_until_commit_and_restore_d
         thread::yield_now();
     }
     assert!(drained_rx.try_recv().is_err());
-    assert_eq!(session.enter(Some(0)).err().unwrap().code, "library_restore_in_progress");
+    assert_eq!(
+        session.enter(Some(0)).err().unwrap().code,
+        "library_restore_in_progress"
+    );
     release_tx.send(()).unwrap();
     receive(&drained_rx);
     restore.join().unwrap();
     assert!(!activity_gate.has_work());
     assert!(activity_gate.maintenance().is_ok());
     assert_eq!(session.status().unwrap().generation, 1);
-    assert_eq!(session.enter(Some(0)).err().unwrap().code, "library_generation_changed");
+    assert_eq!(
+        session.enter(Some(0)).err().unwrap().code,
+        "library_generation_changed"
+    );
     database
         .with_connection(|connection| {
             let count: i64 = connection
-                .query_row("SELECT COUNT(*) FROM execution_probe WHERE value=7", [], |row| row.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM execution_probe WHERE value=7",
+                    [],
+                    |row| row.get(0),
+                )
                 .map_err(CommandError::database)?;
             assert_eq!(count, 1);
             Ok(())
@@ -191,7 +206,9 @@ fn queue_rejection_drops_the_original_lease_without_running_the_request() {
         )
         .unwrap();
     receive(&started_rx);
-    executor.submit(move || done_tx.send(()).unwrap(), || {}).unwrap();
+    executor
+        .submit(move || done_tx.send(()).unwrap(), || {})
+        .unwrap();
     let lease = session.enter(Some(0)).unwrap();
     let ran = Arc::new(AtomicBool::new(false));
     let rejected_ran = Arc::clone(&ran);
@@ -230,9 +247,14 @@ fn worker_panic_releases_lease_but_does_not_clear_database_poison() {
         .unwrap();
     receive(&panicked_rx);
     assert_eq!(session.state.lock().unwrap().readers, 0);
-    assert_eq!(database.with_connection(|_| Ok(())).unwrap_err().code, "database_lock_poisoned");
+    assert_eq!(
+        database.with_connection(|_| Ok(())).unwrap_err().code,
+        "database_lock_poisoned"
+    );
     let (done_tx, done_rx) = channel();
-    executor.submit(move || done_tx.send(()).unwrap(), || {}).unwrap();
+    executor
+        .submit(move || done_tx.send(()).unwrap(), || {})
+        .unwrap();
     receive(&done_rx);
 }
 
@@ -249,7 +271,12 @@ fn only_explicit_control_commands_use_the_reserved_lane() {
     ] {
         assert!(is_control(command));
     }
-    for command in ["create_deck", "get_analytics", "delete_document", "cancel_unregistered"] {
+    for command in [
+        "create_deck",
+        "get_analytics",
+        "delete_document",
+        "cancel_unregistered",
+    ] {
         assert!(!is_control(command));
     }
 }

@@ -14,10 +14,10 @@ use tauri::{ipc::InvokeBody, Manager};
 use crate::{database::Database, error::CommandError};
 
 pub(crate) mod commands;
-mod execution;
 #[cfg(test)]
 #[path = "library_session_tests.rs"]
 mod current_format_tests;
+mod execution;
 
 static SESSION: LazyLock<Arc<Session>> = LazyLock::new(|| Arc::new(Session::default()));
 
@@ -170,7 +170,10 @@ pub(crate) fn enter_current() -> Result<Lease, CommandError> {
 /// Close protection includes queued and running requests, without reserving a
 /// shared activity guard that would conflict with a command's own maintenance.
 pub(crate) fn has_active_requests() -> bool {
-    SESSION.state.lock().map_or(true, |state| state.readers != 0)
+    SESSION
+        .state
+        .lock()
+        .map_or(true, |state| state.readers != 0)
 }
 
 pub(crate) fn begin_restore(generation: Option<u64>) -> Result<Replacement, CommandError> {
