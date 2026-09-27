@@ -1,6 +1,7 @@
 import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/documents";
 import { progressStyles } from "./presentation";
 import { Progress } from "../../ui/primitives/Progress";
+import { Disclosure } from "../../ui/primitives/FormControls";
 
 export function GenerationProgressPanel({ document, progress, now }: {
   document: DocumentSummary; progress: DocumentGenerationProgress | null; now: number;
@@ -18,32 +19,46 @@ export function GenerationProgressPanel({ document, progress, now }: {
 export function GenerationDiagnostics({ progress, now }: {
   progress: DocumentGenerationProgress | null; now: number;
 }) {
+  const hasUsage = progress !== null && progress.usageReportedRequests > 0;
   const promptTokens = progress?.promptTokens ?? 0;
-  const cacheRatio = promptTokens > 0 && progress ? Math.min(100, (progress.cachedPromptTokens / promptTokens) * 100) : null;
-  return <dl className={progressStyles.stats}>
-    <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
-    <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
-    <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
-    <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{formatRetryCount(progress)}</dd></div>
-    <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${formatTokenCount(progress.reasoningTokens)}` : "—"}</dd></div>
-    <div><dt>Prompt / output</dt><dd>{progress ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "—"}</dd></div>
-    <div><dt>Prompt cache</dt><dd>{progress && cacheRatio !== null ? `${formatTokenCount(progress.cachedPromptTokens)} (${cacheRatio.toFixed(1)}%)` : "Awaiting usage"}</dd></div>
-  </dl>;
+  const cacheRatio = hasUsage && promptTokens > 0 && progress
+    ? Math.min(100, (progress.cachedPromptTokens / promptTokens) * 100) : null;
+  const retryDetails = progress ? [
+    { label: "Response contract repair", count: progress.contractRepairRetryCount, explanation: "Retry after a response failed its required structure or content contract." },
+    { label: "Smaller output", count: progress.outputCompactionRetryCount, explanation: "Retry with a reduced output size after a completion limit." },
+    { label: "Temporary transport failure", count: progress.transientRetryCount, explanation: "Retry after a transient provider or network failure." },
+    { label: "Provider compatibility", count: progress.compatibilityRetryCount, explanation: "Retry using the supported provider request format." },
+  ] : [];
+  return <>
+    <dl className={progressStyles.stats}>
+      <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
+      <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
+      <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
+      <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{progress ? progress.retryCount.toLocaleString() : "—"}</dd></div>
+      <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${hasUsage ? formatTokenCount(progress.reasoningTokens) : "Awaiting usage"}` : "—"}</dd></div>
+      <div><dt>Prompt / output</dt><dd>{progress && hasUsage ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "Awaiting usage"}</dd></div>
+      <div><dt>Prompt cache</dt><dd>{progress && hasUsage ? `${formatTokenCount(progress.cachedPromptTokens)}${cacheRatio !== null ? ` (${cacheRatio.toFixed(1)}%)` : ""}` : "Awaiting usage"}</dd></div>
+    </dl>
+    {progress && progress.usageUnreportedRequests > 0 ? <p className={progressStyles.detail}>
+      Usage incomplete: {progress.usageUnreportedRequests.toLocaleString()} requests did not report token counts. Totals and cache ratios describe reported usage only.
+    </p> : null}
+    {progress ? <Disclosure title="Generation details" className="tw:border-0">
+      <div className="tw:grid tw:gap-3 tw:p-3">
+        <dl className={progressStyles.stats}>
+          <div><dt>Usage reports</dt><dd>{progress.usageReportedRequests.toLocaleString()} reported requests</dd></div>
+          <div><dt>Cache writes</dt><dd>{hasUsage ? `${formatTokenCount(progress.cacheWriteTokens)} tokens` : "Awaiting usage"}</dd></div>
+        </dl>
+        <dl className="tw:m-0 tw:grid tw:gap-2 tw:text-sm">
+          {retryDetails.map(({ label, count, explanation }) => <div key={label}>
+            <dt className="tw:font-medium">{label}</dt>
+            <dd className="tw:m-0 tw:text-muted-foreground">{count === undefined ? "Not reported" : `${count.toLocaleString()} retries`}. {explanation}</dd>
+          </div>)}
+        </dl>
+      </div>
+    </Disclosure> : null}
+  </>;
 }
 
-function formatRetryCount(progress: DocumentGenerationProgress | null): string {
-  if (!progress) return "—";
-  if (progress.retryCount === 0) return "0";
-  const parts = [
-    ["contract", progress.contractRepairRetryCount ?? 0],
-    ["compact", progress.outputCompactionRetryCount ?? 0],
-    ["transport", progress.transientRetryCount ?? 0],
-    ["compat", progress.compatibilityRetryCount ?? 0],
-  ].filter(([, count]) => Number(count) > 0)
-    .map(([label, count]) => `${label} ${Number(count).toLocaleString()}`);
-  return parts.length ? `${progress.retryCount.toLocaleString()} · ${parts.join(" · ")}`
-    : progress.retryCount.toLocaleString();
-}
 function formatProviderActivity(progress: DocumentGenerationProgress | null, now: number): string {
   if (!progress) return "Preparing";
   const providerAge = activityAgeSeconds(progress.lastProviderActivityAt, now);
@@ -187,10 +202,13 @@ export function formatSourceUnitMetric(document: DocumentSummary): string {
 }
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
   let value = bytes / 1024;
-  let unit = units[0];
-  for (let index = 1; index < units.length && value >= 1024; index += 1) { value /= 1024; unit = units[index]; }
+  let unit = "KB";
+  for (const nextUnit of ["MB", "GB"]) {
+    if (value < 1024) break;
+    value /= 1024;
+    unit = nextUnit;
+  }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 export function formatProcessingDuration(value: number | null): string {
@@ -209,7 +227,11 @@ function formatLiveDuration(startedAt: number | null, now: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 export function formatApiTokens(document: DocumentSummary, progress: DocumentGenerationProgress | null): string {
-  if (document.lifecycleState === "processing") return progress && progress.totalTokens > 0 ? formatTokenCount(progress.totalTokens) : "Awaiting provider usage";
+  if (document.lifecycleState === "processing") {
+    if (!progress || progress.usageReportedRequests === 0) return "Awaiting provider usage";
+    const formatted = formatTokenCount(progress.totalTokens);
+    return progress.usageUnreportedRequests > 0 ? `${formatted}+ reported` : formatted;
+  }
   if (document.apiTokenCount === null) return "Not reported by provider";
   const formatted = document.apiTokenCount.toLocaleString();
   return document.apiTokenUsageComplete ? formatted : formatted + "+ reported";

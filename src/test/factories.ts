@@ -31,6 +31,16 @@ export function resetTestEntityIds(): void {
   nextIdentifier = 1;
 }
 
+export function requiredTestValue<T>(
+  value: T | null | undefined,
+  label = "test fixture value",
+): T {
+  if (value === null || value === undefined) {
+    throw new Error(`Missing required ${label}.`);
+  }
+  return value;
+}
+
 export function paragraphDocument(text = "Content"): RichDocument {
   return {
     type: "doc",

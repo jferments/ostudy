@@ -5,6 +5,7 @@ import { InteractiveQuestionActivity } from "./InteractiveQuestionActivity";
 import { QuestionBody } from "./QuestionBody";
 import { connectMatching, matchingRows } from "./questionPresentation";
 
+import { requiredTestValue as required } from "../../test/factories";
 vi.mock("../../editor/RichTextView", () => ({
   RichTextView: ({ document }: { document: { content?: Array<{ content?: Array<{ text?: string }> }> } }) => (
     <span>{document.content?.flatMap((node) => node.content ?? []).map((node) => node.text ?? "").join(" ")}</span>
@@ -62,7 +63,7 @@ describe("interactive input and inline feedback", () => {
     onCheck.mockResolvedValue(checked);
     fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
     await waitFor(() => expect(onChecked).toHaveBeenCalledWith(checked));
-    expect(onCheck.mock.calls[0][0].request.answer.response).toEqual({ kind: "select_all", selectedOptionIds: [] });
+    expect(required(onCheck.mock.calls[0]?.[0], "check input").request.answer.response).toEqual({ kind: "select_all", selectedOptionIds: [] });
   });
 
   it("uses keycaps for T/F and persists false, ignoring IME input", async () => {
@@ -74,7 +75,7 @@ describe("interactive input and inline feedback", () => {
     expect(onSave).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "f" });
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0][0].request.answer.response).toEqual({ kind: "true_false", selected: false });
+    expect(required(onSave.mock.calls[0]?.[0], "save input").request.answer.response).toEqual({ kind: "true_false", selected: false });
   });
 
   it("matches by selecting whole tiles without a separate drag button", async () => {
@@ -82,7 +83,7 @@ describe("interactive input and inline feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select Left A" }));
     fireEvent.click(screen.getByRole("button", { name: "Match with Right Y" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0][0].request.answer.response).toEqual({ kind: "matching", assignments: [{ itemId: id("a"), targetId: id("y") }] });
+    expect(required(onSave.mock.calls[0]?.[0], "save input").request.answer.response).toEqual({ kind: "matching", assignments: [{ itemId: id("a"), targetId: id("y") }] });
     expect(screen.queryByText(/Drag \/ select/)).toBeNull();
     expect(screen.getByRole("button", { name: "Unlink Left A" })).toBeTruthy();
   });
@@ -91,7 +92,7 @@ describe("interactive input and inline feedback", () => {
     const { onSave } = mount(matching);
     drag(screen.getByRole("button", { name: "Select Left A" }), screen.getByRole("button", { name: "Match with Right X" }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls.at(-1)?.[0].request.answer.response.assignments).toEqual([{ itemId: id("a"), targetId: id("x") }]);
+    expect(required(onSave.mock.calls.at(-1)?.[0], "latest save input").request.answer.response.assignments).toEqual([{ itemId: id("a"), targetId: id("x") }]);
   });
 
   it("sorts onto a same-column row and keeps an existing connection in place", async () => {
@@ -101,7 +102,7 @@ describe("interactive input and inline feedback", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Select Left B" }).getAttribute("aria-disabled")).toBe("false"));
     drag(screen.getByRole("button", { name: "Select Left B" }), screen.getByRole("button", { name: "Select Left C" }), "pen");
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
-    expect(onSave.mock.calls.at(-1)?.[0].request.answer.response.assignments).toEqual([
+    expect(required(onSave.mock.calls.at(-1)?.[0], "latest save input").request.answer.response.assignments).toEqual([
       { itemId: id("a"), targetId: id("y") }, { itemId: id("b"), targetId: id("z") },
     ]);
   });
@@ -125,7 +126,7 @@ describe("interactive input and inline feedback", () => {
     expect(screen.getByRole("button", { name: "Select Dachshund" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Return to items" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
-    expect(onSave.mock.calls.at(-1)?.[0].request.answer.response.assignments).toEqual([]);
+    expect(required(onSave.mock.calls.at(-1)?.[0], "latest save input").request.answer.response.assignments).toEqual([]);
   });
 
   it("uses whole-tile pen dragging for grouping and cancels without saving", async () => {
@@ -135,21 +136,21 @@ describe("interactive input and inline feedback", () => {
     expect(onSave).not.toHaveBeenCalled();
     drag(screen.getByRole("button", { name: "Select Dachshund" }), target, "pen");
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0][0].request.answer.response.assignments).toEqual([{ itemId: id("a"), targetId: id("x") }]);
+    expect(required(onSave.mock.calls[0]?.[0], "save input").request.answer.response.assignments).toEqual([{ itemId: id("a"), targetId: id("x") }]);
   });
 
   it("orders through arrow controls without losing any item", async () => {
     const { onSave } = mount({ kind: "ordering", prompt: rich("Order"), items: [item("a", "First"), item("b", "Second"), item("c", "Third")] });
-    fireEvent.click(screen.getAllByRole("button", { name: "Move down" })[0]);
+    fireEvent.click(required(screen.getAllByRole("button", { name: "Move down" })[0], "indexed role result"));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0][0].request.answer.response.orderedItemIds).toEqual([id("b"), id("a"), id("c")]);
+    expect(required(onSave.mock.calls[0]?.[0], "save input").request.answer.response.orderedItemIds).toEqual([id("b"), id("a"), id("c")]);
   });
 
   it("orders by dragging the body of a tile", async () => {
     const { onSave } = mount({ kind: "ordering", prompt: rich("Order"), items: [item("a", "First"), item("b", "Second"), item("c", "Third")] });
     drag(screen.getByRole("button", { name: "Move Third" }), screen.getByRole("button", { name: "Move First" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0][0].request.answer.response.orderedItemIds).toEqual([id("c"), id("a"), id("b")]);
+    expect(required(onSave.mock.calls[0]?.[0], "save input").request.answer.response.orderedItemIds).toEqual([id("c"), id("a"), id("b")]);
   });
 
   for (const kind of ["single_choice", "select_all"] as const) it(`${kind} colors options by their keys and attaches rationales to the same option`, () => {

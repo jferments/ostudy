@@ -54,9 +54,9 @@ export function ResponsiveActionGroup({
   const layoutOverflow = actions.filter((action) => !isDirect(action.placement, layoutMode));
   // A one-item ellipsis menu adds a click without reducing complexity. Promote
   // its sole action directly, preserving the requested text/icon presentation.
-  const direct =
-    layoutOverflow.length === 1 ? [...layoutDirect, layoutOverflow[0]] : layoutDirect;
-  const overflow = layoutOverflow.length === 1 ? [] : layoutOverflow;
+  const soleOverflow = layoutOverflow.length === 1 ? layoutOverflow[0] : undefined;
+  const direct = soleOverflow ? [...layoutDirect, soleOverflow] : layoutDirect;
+  const overflow = soleOverflow ? [] : layoutOverflow;
 
   return (
     <div

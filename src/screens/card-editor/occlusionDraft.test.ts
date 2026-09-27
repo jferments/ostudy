@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { RichDocument } from "../../ipc/common";
 import {
   addOcclusionQuestion, applyOcclusionGeometry, collectOcclusionDraftAssets, mutateOcclusionRegion,
@@ -13,7 +14,7 @@ const rich = (text: string): RichDocument => ({ type: "doc", content: [{ type: "
 function fixture() {
   const empty = { ...newOcclusionDraft(), imageAssetId: imageId, imageSize: { width: 1000, height: 800 } };
   const created = mutateOcclusionRegion(empty, { kind: "create", rectangle: { x: 0.1, y: 0.2, width: 0.2, height: 0.1 } }, false);
-  return updateOcclusionQuestion(created, created.questions[0].id, { answer: rich("First answer") });
+  return updateOcclusionQuestion(created, required(created.questions[0], "created question 1").id, { answer: rich("First answer") });
 }
 
 describe("image occlusion authored draft", () => {
@@ -29,46 +30,46 @@ describe("image occlusion authored draft", () => {
     const draft = fixture();
     expect(draft.masks).toHaveLength(1);
     expect(draft.questions).toHaveLength(1);
-    expect(draft.questions[0].id).not.toBe(draft.masks[0].id);
-    expect(draft.questions[0].maskIds).toEqual([draft.masks[0].id]);
+    expect(required(draft.questions[0], "draft question 1").id).not.toBe(required(draft.masks[0], "draft mask 1").id);
+    expect(required(draft.questions[0], "draft question 1").maskIds).toEqual([required(draft.masks[0], "draft mask 1").id]);
     expect(occlusionDraftReady(draft)).toBe(true);
-    const missing = updateOcclusionQuestion(draft, draft.questions[0].id, { answer: rich("") });
+    const missing = updateOcclusionQuestion(draft, required(draft.questions[0], "draft question 1").id, { answer: rich("") });
     expect(occlusionDraftReady(missing)).toBe(false);
   });
 
   it("supports several questions per region and several regions per question", () => {
     const first = fixture();
     const second = addOcclusionQuestion(first);
-    expect(second.questions[1].maskIds).toEqual(first.questions[0].maskIds);
-    expect(second.questions[1].id).not.toBe(first.questions[0].id);
+    expect(required(second.questions[1], "second question 2").maskIds).toEqual(required(first.questions[0], "first question 1").maskIds);
+    expect(required(second.questions[1], "second question 2").id).not.toBe(required(first.questions[0], "first question 1").id);
     const multi = mutateOcclusionRegion(second, {
       kind: "create", rectangle: { x: 0.5, y: 0.5, width: 0.2, height: 0.2 },
     }, true);
     expect(multi.questions).toHaveLength(2);
-    expect(multi.questions[0].maskIds).toHaveLength(1);
-    expect(multi.questions[1].maskIds).toHaveLength(2);
-    expect(multi.questions[0].answer).toEqual(first.questions[0].answer);
+    expect(required(multi.questions[0], "multi question 1").maskIds).toHaveLength(1);
+    expect(required(multi.questions[1], "multi question 2").maskIds).toHaveLength(2);
+    expect(required(multi.questions[0], "multi question 1").answer).toEqual(required(first.questions[0], "first question 1").answer);
   });
 
   it("does not reset question identity when geometry is moved and undone", () => {
     const first = fixture();
-    const mask = first.masks[0];
+    const mask = required(first.masks[0], "first mask 1");
     const moved = applyOcclusionGeometry(first, {
       kind: "change", maskId: mask.id, before: mask.rect, after: { ...mask.rect, x: 0.6 },
     });
-    const edited = updateOcclusionQuestion(moved, first.questions[0].id, { answer: rich("Newer answer text") });
+    const edited = updateOcclusionQuestion(moved, required(first.questions[0], "first question 1").id, { answer: rich("Newer answer text") });
     const restored = undoOcclusionGeometry(edited, "undo");
     expect(restored.masks).toEqual(first.masks);
-    expect(restored.questions[0].id).toBe(first.questions[0].id);
-    expect(restored.questions[0].answer).toEqual(rich("Newer answer text"));
+    expect(required(restored.questions[0], "restored question 1").id).toBe(required(first.questions[0], "first question 1").id);
+    expect(required(restored.questions[0], "restored question 1").answer).toEqual(rich("Newer answer text"));
     expect(undoOcclusionGeometry(restored, "redo").masks).toEqual(moved.masks);
   });
 
   it("removing a region preserves question text and undo restores its bindings", () => {
     const first = fixture();
-    const removed = removeOcclusionRegion(first, first.masks[0].id);
-    expect(removed.questions[0].answer).toEqual(first.questions[0].answer);
-    expect(removed.questions[0].maskIds).toEqual([]);
+    const removed = removeOcclusionRegion(first, required(first.masks[0], "first mask 1").id);
+    expect(required(removed.questions[0], "removed question 1").answer).toEqual(required(first.questions[0], "first question 1").answer);
+    expect(required(removed.questions[0], "removed question 1").maskIds).toEqual([]);
     expect(occlusionDraftReady(removed)).toBe(false);
     const restored = undoOcclusionGeometry(removed, "undo");
     expect(restored.questions).toEqual(first.questions);
@@ -78,10 +79,10 @@ describe("image occlusion authored draft", () => {
   it("removing a question never removes shared regions or restores deleted prose through geometry undo", () => {
     const first = addOcclusionQuestion(fixture());
     const moved = applyOcclusionGeometry(first, {
-      kind: "change", maskId: first.masks[0].id, before: first.masks[0].rect,
-      after: { ...first.masks[0].rect, x: 0.6 },
+      kind: "change", maskId: required(first.masks[0], "first mask 1").id, before: required(first.masks[0], "first mask 1").rect,
+      after: { ...required(first.masks[0], "first mask 1").rect, x: 0.6 },
     });
-    const removed = removeOcclusionQuestion(moved, first.questions[0].id);
+    const removed = removeOcclusionQuestion(moved, required(first.questions[0], "first question 1").id);
     expect(removed.questions).toHaveLength(1);
     expect(removed.masks).toHaveLength(1);
     expect(undoOcclusionGeometry(removed, "undo").questions).toEqual(removed.questions);
@@ -105,7 +106,7 @@ describe("image occlusion authored draft", () => {
   it("retains source and rich-answer assets and blocks publication during an unresolved import", () => {
     let draft = fixture();
     const answer = { type: "doc", content: [{ type: "image", attrs: { assetId: "b".repeat(32), src: `study-asset://${"b".repeat(32)}` } }] };
-    draft = updateOcclusionQuestion(draft, draft.questions[0].id, { answer });
+    draft = updateOcclusionQuestion(draft, required(draft.questions[0], "draft question 1").id, { answer });
     expect(collectOcclusionDraftAssets(draft)).toEqual([imageId, "b".repeat(32)]);
     const pending = { ...draft, pendingImport: { operationId: "c".repeat(32), assetDraftId: "d".repeat(32), stagedFileId: "e".repeat(32) } };
     expect(occlusionDraftReady(pending)).toBe(false);
@@ -114,9 +115,9 @@ describe("image occlusion authored draft", () => {
 
   it("rejects missing targets, duplicate identities and non-finite or out-of-image regions", () => {
     const draft = fixture();
-    expect(occlusionDraftReady({ ...draft, masks: [{ ...draft.masks[0], rect: { x: NaN, y: 0, width: 1, height: 1 } }] })).toBe(false);
-    expect(occlusionDraftReady({ ...draft, masks: [{ ...draft.masks[0], rect: { x: 0.8, y: 0, width: 0.4, height: 1 } }] })).toBe(false);
-    expect(occlusionDraftReady({ ...draft, questions: [{ ...draft.questions[0], id: draft.masks[0].id }] })).toBe(false);
-    expect(occlusionDraftReady(updateOcclusionQuestion(draft, draft.questions[0].id, { maskIds: ["f".repeat(32)] }))).toBe(false);
+    expect(occlusionDraftReady({ ...draft, masks: [{ ...required(draft.masks[0], "draft mask 1"), rect: { x: NaN, y: 0, width: 1, height: 1 } }] })).toBe(false);
+    expect(occlusionDraftReady({ ...draft, masks: [{ ...required(draft.masks[0], "draft mask 1"), rect: { x: 0.8, y: 0, width: 0.4, height: 1 } }] })).toBe(false);
+    expect(occlusionDraftReady({ ...draft, questions: [{ ...required(draft.questions[0], "draft question 1"), id: required(draft.masks[0], "draft mask 1").id }] })).toBe(false);
+    expect(occlusionDraftReady(updateOcclusionQuestion(draft, required(draft.questions[0], "draft question 1").id, { maskIds: ["f".repeat(32)] }))).toBe(false);
   });
 });

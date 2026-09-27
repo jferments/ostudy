@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { requiredTestValue as required } from "../../../test/factories";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
 import { applyOptimisticMove, createDeckLibrarySnapshot } from "./organizationModel";
@@ -237,7 +238,7 @@ describe("drag session candidate model", () => {
       placements: [],
     });
     const candidate = resolveDragCandidate(
-      { kind: "folder", id: folders[1].id },
+      { kind: "folder", id: required(folders[1], "folder 2").id },
       { x: 20, y: 190 },
       {
         destinations: [],
@@ -259,7 +260,7 @@ describe("drag session candidate model", () => {
 
     expect(candidate).toMatchObject({
       status: "noop",
-      intent: { kind: "folder", folderId: folders[1].id, targetIndex: 1 },
+      intent: { kind: "folder", folderId: required(folders[1], "folder 2").id, targetIndex: 1 },
     });
   });
 

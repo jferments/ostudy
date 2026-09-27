@@ -4,6 +4,7 @@ import { listLatestDocumentStudyGuideJobs } from "../ipc/documentArtifactProgres
 import type { DocumentArtifactJob } from "../ipc/studyGuides";
 import { useDocumentArtifactProgress } from "./useDocumentArtifactProgress";
 
+import { requiredTestValue as required } from "../test/factories";
 vi.mock("../ipc/documentArtifactProgress", () => ({ listLatestDocumentStudyGuideJobs: vi.fn() }));
 const read = vi.mocked(listLatestDocumentStudyGuideJobs);
 const job = { id: "job", documentId: "document", state: "generating", totalUnits: 10, completedUnits: 4 } as DocumentArtifactJob;
@@ -15,9 +16,9 @@ describe("durable artifact observation", () => {
     read.mockResolvedValueOnce([job]).mockResolvedValueOnce([{ ...job, state: "succeeded", completedUnits: 10 }]);
     const { result } = renderHook(() => useDocumentArtifactProgress(false));
     await act(async () => { await Promise.resolve(); });
-    expect(result.current.jobs.document.completedUnits).toBe(4);
+    expect(required(result.current.jobs.document, "document job").completedUnits).toBe(4);
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
-    expect(result.current.jobs.document.state).toBe("succeeded");
+    expect(required(result.current.jobs.document, "document job").state).toBe("succeeded");
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(read).toHaveBeenCalledTimes(2);
   });

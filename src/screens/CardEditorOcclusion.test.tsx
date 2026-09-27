@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../test/factories";
 import type { RichTextEditorProps } from "../editor/RichTextEditor";
 import { extractRichDocumentText } from "../editor/richText";
 import type { SaveQuestionNoteInput, QuestionDefinition, QuestionNote } from "../ipc/questions";
@@ -105,15 +106,15 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save question" }));
     await waitFor(() => expect(mocks.saved).toHaveBeenCalledExactlyOnceWith("e".repeat(32), false));
     expect(mocks.accepted).toHaveBeenCalledTimes(1);
-    const input = mocks.save.mock.calls[0][0];
+    const input = required(mocks.save.mock.calls[0]?.[0], "save question input");
     expect(input.assetDraftId).toBe("7".repeat(32));
     expect(input.editorDraft).toEqual({ draftId: "d".repeat(32), revision: 1 });
     const definition = savedDefinition();
     if (definition.question.kind !== "image_occlusion") throw new Error("Expected image definition");
     expect(definition.question.imageAssetId).toBe(asset.id);
     expect(definition.question.masks).toHaveLength(1);
-    expect(definition.question.questions[0].maskIds).toEqual([definition.question.masks[0].id]);
-    expect(extractRichDocumentText(definition.question.questions[0].answer)).toBe("A labeled structure");
+    expect(required(definition.question.questions[0], "saved occlusion question").maskIds).toEqual([required(definition.question.masks[0], "saved occlusion mask").id]);
+    expect(extractRichDocumentText(required(definition.question.questions[0], "saved occlusion question").answer)).toBe("A labeled structure");
     expect(Object.keys(definition.question).sort()).toEqual(["imageAssetId", "kind", "masks", "questions"]);
     expect(mocks.flush).toHaveBeenCalledTimes(2);
   });
@@ -139,9 +140,9 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
     const definition = savedDefinition();
     if (definition.question.kind !== "image_occlusion") throw new Error("Expected image definition");
     expect(definition.question.questions).toEqual(note.definition.question.kind === "image_occlusion" ? note.definition.question.questions : []);
-    expect(definition.question.masks[0].id).toBe("1".repeat(32));
-    expect(definition.question.masks[0].rect.x).toBeGreaterThan(0.2);
-    expect(mocks.save.mock.calls[0][0]).toMatchObject({ noteId: note.noteId, revision: 4 });
+    expect(required(definition.question.masks[0], "saved occlusion mask").id).toBe("1".repeat(32));
+    expect(required(definition.question.masks[0], "saved occlusion mask").rect.x).toBeGreaterThan(0.2);
+    expect(required(mocks.save.mock.calls[0]?.[0], "save question input")).toMatchObject({ noteId: note.noteId, revision: 4 });
     expect(mocks.pick).not.toHaveBeenCalled();
   });
 
@@ -155,7 +156,7 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
     expect(screen.queryByRole("textbox", { name: "Answer" })).toBeNull();
     expect(screen.getByText("0 regions · 0 study cards")).toBeTruthy();
     expect(mocks.restart).toHaveBeenCalledTimes(1);
-    expect(mocks.restart.mock.calls[0][0].questionDrafts.image_occlusion).toMatchObject({
+    expect(required(mocks.restart.mock.calls[0]?.[0], "restart input").questionDrafts.image_occlusion).toMatchObject({
       imageAssetId: null, masks: [], questions: [], pendingImport: null,
     });
   });

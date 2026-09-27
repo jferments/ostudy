@@ -1,10 +1,16 @@
-name: Validate generated Rust candidates
+name: Validate generated candidates
 
 on:
   push:
     branches-ignore: [main]
     paths:
       - .github/workflows/maintain-generated-candidates.yml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - versions.env
+      - eslint.config.mjs
+      - tsconfig.app.json
   workflow_dispatch:
     inputs:
       export_auxiliary_bundle:
@@ -33,6 +39,67 @@ jobs:
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Resolve dependencies only on a disposable copy of this exact commit.
+      # Candidate bytes and check-only diagnostics are evidence for the source
+      # writer, never a maintained-source rewrite, commit, push or qualification
+      # of unpublished dependencies. No package lifecycle scripts run here.
+      - name: Inspect JavaScript candidates with the pinned toolchain
+        run: |
+          set -euo pipefail
+          source ./versions.env
+          source ./scripts/lib/node-toolchain.bash
+          ostudy_activate_node_toolchain
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          candidate="$(mktemp -d "$RUNNER_TEMP/ostudy-lockfile.XXXXXXXX")"
+          trap 'rm -rf -- "$candidate"' EXIT
+          git archive HEAD | tar -x -C "$candidate"
+          (
+            cd "$candidate"
+            pnpm install --ignore-scripts --no-frozen-lockfile
+          )
+          git diff --exit-code
+          status=0
+          (
+            cd "$candidate"
+            pnpm exec tsc -b --pretty false
+          ) || status=1
+          (
+            cd "$candidate"
+            pnpm exec eslint src --max-warnings=0 --format json > "$candidate/lint-findings.json"
+          ) || status=1
+          node --input-type=module - "$candidate" <<'JS'
+          import { readFileSync } from "node:fs";
+          import { relative } from "node:path";
+          const root = process.argv[2];
+          const results = JSON.parse(readFileSync(`${root}/lint-findings.json`, "utf8"));
+          for (const result of results) {
+            for (const message of result.messages) {
+              console.log(`${relative(root, result.filePath)}:${message.line ?? 0}:${message.column ?? 0} ${message.ruleId ?? "parser"}: ${message.message.replaceAll("\n", " ")}`);
+            }
+          }
+          JS
+          if cmp -s pnpm-lock.yaml "$candidate/pnpm-lock.yaml"; then
+            echo 'The committed JavaScript lockfile matches the published manifests.'
+          else
+            python3 - "$candidate/pnpm-lock.yaml" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+          data = pathlib.Path(sys.argv[1]).read_bytes()
+          header = f"blob {len(data)}\0".encode()
+          print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(header + data).hexdigest())
+          print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
+          print("LOCKFILE_CANDIDATE_TEXT_BEGIN")
+          sys.stdout.write(data.decode("utf-8"))
+          print("LOCKFILE_CANDIDATE_TEXT_END")
+          PY
+            echo 'The committed lockfile is stale. Review and publish the candidate through the normal source-writer protocol.' >&2
+            status=1
+          fi
+          git diff --check
+          git diff --exit-code
+          exit "$status"
 
       # Packaging copies only already-published source and the installed pinned
       # formatter. It neither formats source nor creates a replacement tree.

@@ -15,7 +15,7 @@ const prepared = {
   asset: { id: "c".repeat(32), originalFilename: "occlusion-source.png", mimeType: "image/png", byteSize: 200, createdAt: 1 },
   width: 400, height: 300, pixelFingerprint: "d".repeat(64),
 };
-function harness() {
+function useHarness() {
   const [draft, setDraft] = useState(newOcclusionDraft);
   const importing = useOcclusionImport({
     draft, assetDraftId: draftId, disabled: false,
@@ -40,7 +40,7 @@ describe("recoverable occlusion image import", () => {
     mocks.flush.mockImplementation(async (draft) => { order.push(draft.pendingImport.stagedFileId ? "flush-stage" : "flush-picker"); });
     mocks.pick.mockImplementation(async () => { order.push("pick"); return { id: stagedId }; });
     mocks.prepare.mockImplementation(async () => { order.push("prepare"); return prepared; });
-    const { result } = renderHook(harness);
+    const { result } = renderHook(useHarness);
     act(() => result.current.importing.start());
     await waitFor(() => expect(result.current.draft.imageAssetId).toBe(prepared.asset.id));
     expect(order).toEqual(["flush-picker", "pick", "flush-stage", "prepare"]);
@@ -51,7 +51,7 @@ describe("recoverable occlusion image import", () => {
 
   it("retries a lost preparation acknowledgement with the same staged handle and no second picker", async () => {
     mocks.prepare.mockRejectedValueOnce(new Error("Acknowledgement lost"));
-    const { result } = renderHook(harness);
+    const { result } = renderHook(useHarness);
     act(() => result.current.importing.start());
     await waitFor(() => expect(result.current.importing.error).toBe("Acknowledgement lost"));
     const pending = result.current.draft.pendingImport;
@@ -65,7 +65,7 @@ describe("recoverable occlusion image import", () => {
 
   it("does not open a picker when persisting its identity fails", async () => {
     mocks.flush.mockRejectedValueOnce(new Error("Draft unavailable"));
-    const { result } = renderHook(harness);
+    const { result } = renderHook(useHarness);
     act(() => result.current.importing.start());
     await waitFor(() => expect(result.current.importing.error).toBe("Draft unavailable"));
     expect(mocks.pick).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("recoverable occlusion image import", () => {
 
   it("treats picker cancellation as no mutation rather than an import error", async () => {
     mocks.pick.mockResolvedValueOnce(null);
-    const { result } = renderHook(harness);
+    const { result } = renderHook(useHarness);
     act(() => result.current.importing.start());
     await waitFor(() => expect(mocks.pick).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(result.current.draft.pendingImport).toBeNull());

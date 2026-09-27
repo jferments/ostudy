@@ -30,6 +30,7 @@ const allowedRootEntries = new Set([
   "README.md",
   "assets",
   "components.json", // shadcn CLI discovers its project configuration at the root.
+  "eslint.config.mjs", // ESLint flat-config discovery uses the conventional repository root.
   "docs",
   "index.html",
   "package.json",

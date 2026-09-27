@@ -29,6 +29,7 @@ function apply<T extends RegionBindings>(state: GeometryState<T>, command: Geome
   const index = state.masks.findIndex((mask) => mask.id === command.maskId);
   if (index < 0) return null;
   const mask = state.masks[index];
+  if (!mask) return null;
   const expected = command.kind === "remove" ? command.expected : command.before;
   if (!sameRectangle(mask.rect, expected)) return null;
   if (command.kind === "change") {

@@ -29,6 +29,9 @@ const expected = new Map([
   ["@types/react-dom", env.get("REACT_DOM_TYPES_VERSION")],
   ["@vitejs/plugin-react", env.get("VITE_REACT_PLUGIN_VERSION")],
   ["typescript", env.get("TYPESCRIPT_VERSION")],
+  ["eslint", env.get("ESLINT_VERSION")],
+  ["eslint-plugin-react-hooks", env.get("REACT_HOOKS_ESLINT_VERSION")],
+  ["@typescript-eslint/parser", env.get("TYPESCRIPT_ESLINT_PARSER_VERSION")],
   ["vite", env.get("VITE_VERSION")],
   ["esbuild", env.get("ESBUILD_VERSION")],
   ["vitest", env.get("VITEST_VERSION")],
@@ -45,6 +48,8 @@ for (const name of Object.keys({
 
 const failures = [];
 for (const [name, version] of expected) {
+  const declared = manifest.dependencies?.[name] ?? manifest.devDependencies?.[name];
+  if (declared !== version) failures.push(`${name}: manifest pin ${declared} differs from versions.env ${version}`);
   const packageFile = join(root, "node_modules", name, "package.json");
   try {
     const found = JSON.parse(await readFile(packageFile, "utf8")).version;

@@ -79,8 +79,9 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
         return;
       }
       const totalCards = outcome.exported.reduce((sum, exported) => sum + exported.cardCount, 0);
-      showToast("success", outcome.exported.length === 1
-        ? `Exported ${outcome.exported[0].receipt.displayName}.`
+      const onlyExport = outcome.exported.length === 1 ? outcome.exported[0] : undefined;
+      showToast("success", onlyExport
+        ? `Exported ${onlyExport.receipt.displayName}.`
         : `Exported ${outcome.exported.length} deck files with ${totalCards} total cards.`);
       onClose();
     } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }

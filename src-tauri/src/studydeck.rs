@@ -41,7 +41,7 @@ use crate::{
     error::CommandError,
     media::inspect_managed_asset_bytes as detect_image_bytes,
     paths::AppPaths,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    util::{durable_fs, generate_id, unix_time_millis, validate_entity_id},
 };
 
 const PACKAGE_FORMAT: &str = "studydeck-sqlite";
@@ -443,22 +443,11 @@ fn temporary_export_path(destination: &Path) -> PathBuf {
 }
 
 fn replace_export_file(temporary: &Path, destination: &Path) -> Result<(), CommandError> {
-    if destination.exists() {
-        let backup = destination.with_extension("studydeck.previous");
-        let _ = fs::remove_file(&backup);
-        fs::rename(destination, &backup).map_err(CommandError::io)?;
-        match fs::rename(temporary, destination) {
-            Ok(()) => {
-                let _ = fs::remove_file(backup);
-            }
-            Err(error) => {
-                let _ = fs::rename(&backup, destination);
-                return Err(CommandError::io(error));
-            }
-        }
-    } else {
-        fs::rename(temporary, destination).map_err(CommandError::io)?;
-    }
+    // The validated temporary package is already synced by its owner. Rename
+    // replaces atomically without first moving/deleting the old destination.
+    // A failure leaves that old destination intact; no compensating rename is
+    // necessary and a parent-sync error cannot justify deleting the new file.
+    fs::rename(temporary, destination).map_err(CommandError::io)?;
     sync_directory(destination.parent())
 }
 
@@ -638,7 +627,7 @@ fn duplicate_fingerprint(front: &str, back: &str) -> String {
 
 fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(CommandError::io)?;
+        durable_fs::create_directories(parent).map_err(CommandError::io)?;
     }
     let mut file = OpenOptions::new()
         .write(true)
@@ -649,16 +638,8 @@ fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
     file.sync_all().map_err(CommandError::io)
 }
 
-#[cfg(unix)]
 fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
     let path = path
         .ok_or_else(|| CommandError::new("invalid_path", "The parent directory is unavailable."))?;
-    File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(CommandError::io)
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
-    Ok(())
+    durable_fs::sync_directory(path).map_err(CommandError::io)
 }

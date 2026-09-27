@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import type { ImageMask, NormalizedRect } from "../../ipc/questions";
 import {
@@ -27,7 +27,11 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   const svgRef = useRef<SVGSVGElement>(null);
   const latest = useRef(options);
   latest.current = options;
-  const gestures = useMemo(() => new OcclusionGestures(), [options.imageKey]);
+  const gestureOwner = useRef<{ imageKey: string; gestures: OcclusionGestures } | null>(null);
+  if (!gestureOwner.current || gestureOwner.current.imageKey !== options.imageKey) {
+    gestureOwner.current = { imageKey: options.imageKey, gestures: new OcclusionGestures() };
+  }
+  const gestures = gestureOwner.current.gestures;
   const captures = useRef(new Set<number>());
   const [frame, setFrame] = useState<Size>({ width: 1, height: 1 });
   const frameRef = useRef(frame);
@@ -109,7 +113,13 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   }, [gestures]);
 
   useEffect(() => {
-    if (options.disabled) cancel();
+    if (!options.disabled) return;
+    setInteraction(gestures.cancel());
+    const svg = svgRef.current;
+    for (const id of captures.current) {
+      if (svg?.hasPointerCapture(id)) svg.releasePointerCapture(id);
+    }
+    captures.current.clear();
   }, [options.disabled, gestures]);
 
   useEffect(() => {

@@ -673,6 +673,6 @@ function unitPlural(kind: string): string {
 }
 
 function capitalize(value: string): string {
-  return value ? value[0].toUpperCase() + value.slice(1) : value;
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 

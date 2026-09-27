@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../test/factories";
 import * as documents from "../ipc/documents";
 import * as externalFiles from "../ipc/externalFiles";
 import * as studyMaterials from "../ipc/studyMaterials";
@@ -102,9 +103,9 @@ beforeEach(() => {
     id: "5".repeat(32),
     guideId: guide.id,
     targetId: guide.targetId,
-    blockKey: guide.content.sections[0].blockKey,
+    blockKey: required(guide.content.sections[0], "guide section").blockKey,
     overlayKind: "body_override",
-    baseContentHash: guide.content.sections[0].contentHash,
+    baseContentHash: required(guide.content.sections[0], "guide section").contentHash,
     richDoc: { type: "doc", content: [] },
     plainText: "Edited preload section.",
     state: "active",
@@ -194,9 +195,9 @@ it("saves source-bound section overrides from the overflow menu with the exact b
       expect.objectContaining({
         collectionId,
         guideId: guide.id,
-        blockKey: guide.content.sections[0].blockKey,
+        blockKey: required(guide.content.sections[0], "guide section").blockKey,
         overlayKind: "body_override",
-        baseContentHash: guide.content.sections[0].contentHash,
+        baseContentHash: required(guide.content.sections[0], "guide section").contentHash,
         plainText: "Edited preload section.",
       }),
     );

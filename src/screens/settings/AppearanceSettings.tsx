@@ -41,7 +41,7 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
         </div>
         <RadioGroup label="Application theme" value={draft.theme} presentation="cards"
           options={(["light", "dark", "console", "synthwave"] as const).map((theme) => ({
-            value: theme, ariaLabel: theme[0].toUpperCase() + theme.slice(1),
+            value: theme, ariaLabel: theme.charAt(0).toUpperCase() + theme.slice(1),
             label: <ThemePreview theme={theme} />,
           }))} onValueChange={(theme) => update({ theme })} />
       </Panel>

@@ -275,7 +275,7 @@ export function useDeckLibraryPointerSession(
     if (rect.width <= 0 || rect.height <= 0) return false;
 
     const placeholder = document.createElement("div");
-    placeholder.className = dragStyles.placeholder;
+    placeholder.className = dragStyles.placeholder ?? "";
     placeholder.dataset.dragPlaceholder = "true";
     placeholder.dataset.status = "pending";
     placeholder.setAttribute("aria-hidden", "true");
@@ -284,7 +284,7 @@ export function useDeckLibraryPointerSession(
     sourceRow.parentElement.insertBefore(placeholder, sourceRow);
 
     const preview = document.createElement("div");
-    preview.className = dragStyles.preview;
+    preview.className = dragStyles.preview ?? "";
     preview.dataset.dragPreview = "true";
     preview.dataset.dragPanelPreview = "true";
     preview.dataset.status = "pending";
@@ -293,14 +293,14 @@ export function useDeckLibraryPointerSession(
     preview.style.height = `${rect.height}px`;
 
     const cloneHost = document.createElement("div");
-    cloneHost.className = dragStyles.cloneHost;
+    cloneHost.className = dragStyles.cloneHost ?? "";
     const clone = sourceRow.cloneNode(true) as HTMLElement;
     sanitizePreviewClone(clone);
     cloneHost.append(clone);
     preview.append(cloneHost);
 
     const destination = document.createElement("span");
-    destination.className = dragStyles.destination;
+    destination.className = dragStyles.destination ?? "";
     destination.textContent = "Choose a destination";
     preview.append(destination);
     document.body.append(preview);

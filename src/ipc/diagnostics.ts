@@ -4,6 +4,7 @@ const MAX_MESSAGE_CHARS = 4_000;
 const MAX_STACK_CHARS = 12_000;
 const MAX_FIELD_CHARS = 2_000;
 const MAX_BATCH_EVENTS = 32;
+const MAX_PENDING_EVENTS = 128;
 const FLUSH_DELAY_MS = 250;
 const EVENT_PATTERN = /^[a-z][a-z0-9_]{0,95}$/u;
 const TARGET_PATTERN = /^[a-z][a-z0-9_.-]{0,127}$/u;
@@ -29,7 +30,59 @@ export interface FrontendDiagnosticEvent {
   fields?: Record<string, unknown>;
 }
 
+// Caught failures need durable evidence too, but never their arbitrary message,
+// stack, URI, clipboard contents, or share metadata. Callers select static facts.
+const CAUGHT_FAILURES = {
+  platform_initialization_failed: "Native platform capability initialization failed.",
+  android_back_interception_failed: "Android Back interception could not be updated.",
+  android_back_listener_failed: "The Android Back listener could not be registered.",
+  android_insets_listener_failed: "The Android insets listener could not be registered.",
+  android_network_listener_failed: "The Android network listener could not be registered.",
+  android_back_cleanup_failed: "Android Back interception cleanup failed.",
+  platform_listener_cleanup_failed: "A platform listener could not be unregistered.",
+  incoming_share_list_failed: "Pending Android shares could not be listed.",
+  incoming_share_listener_failed: "The Android incoming-share listener could not be registered.",
+  clipboard_image_read_failed: "Clipboard image acquisition was unavailable.",
+} as const;
+
+type CaughtFailure = keyof typeof CAUGHT_FAILURES;
+
+function safeFailureCode(value: unknown): string {
+  try {
+    if (value instanceof DOMException) {
+      if (value.name === "NotAllowedError" || value.name === "SecurityError") return "permission_denied";
+      if (value.name === "NotSupportedError") return "unsupported";
+      if (value.name === "AbortError") return "aborted";
+    }
+    const code = value && typeof value === "object" && "code" in value ? value.code : null;
+    // Do not accept arbitrary strings even when they resemble error codes.
+    switch (code) {
+      case "library_generation_mismatch":
+      case "library_maintenance_busy":
+      case "library_recovery_required":
+      case "platform_unavailable":
+      case "permission_denied":
+        return code;
+      default:
+        return "unexpected";
+    }
+  } catch {
+    return "unexpected";
+  }
+}
+
+export function reportFrontendFailure(event: CaughtFailure, error: unknown): void {
+  queueFrontendDiagnostic({
+    level: event === "clipboard_image_read_failed" ? "debug" : "warn",
+    target: event === "clipboard_image_read_failed" ? "frontend.clipboard" : "frontend.platform",
+    event,
+    message: CAUGHT_FAILURES[event],
+    fields: { code: safeFailureCode(error) },
+  });
+}
+
 const pendingEvents: FrontendDiagnosticEvent[] = [];
+let droppedEvents = 0;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInProgress = false;
 let globalHandlersInstalled = false;
@@ -133,7 +186,20 @@ export async function recordWebviewDiagnostic(
 }
 
 export function queueFrontendDiagnostic(event: FrontendDiagnosticEvent): void {
-  pendingEvents.push(normalizedDiagnostic(event));
+  // A single stalled invoke must not let producers retain an unbounded queue.
+  // Keep the earliest evidence and account for later drops without retaining it.
+  if (pendingEvents.length >= MAX_PENDING_EVENTS) {
+    droppedEvents = Math.min(Number.MAX_SAFE_INTEGER, droppedEvents + 1);
+    return;
+  }
+  try {
+    pendingEvents.push(normalizedDiagnostic(event));
+  } catch {
+    // Even an unexpected getter/value in a diagnostic is not an app failure.
+    droppedEvents = Math.min(Number.MAX_SAFE_INTEGER, droppedEvents + 1);
+    return;
+  }
+  if (flushInProgress) return;
   if (pendingEvents.length >= MAX_BATCH_EVENTS || event.level === "error") {
     void flushFrontendDiagnostics();
     return;
@@ -147,20 +213,30 @@ export function queueFrontendDiagnostic(event: FrontendDiagnosticEvent): void {
 }
 
 export async function flushFrontendDiagnostics(): Promise<void> {
-  if (flushInProgress || pendingEvents.length === 0) return;
+  if (flushInProgress || (pendingEvents.length === 0 && droppedEvents === 0)) return;
   flushInProgress = true;
   if (flushTimer !== null) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
   try {
-    while (pendingEvents.length > 0) {
-      const events = pendingEvents.splice(0, MAX_BATCH_EVENTS);
+    while (pendingEvents.length > 0 || droppedEvents > 0) {
+      const events: FrontendDiagnosticEvent[] = [];
+      if (droppedEvents > 0) {
+        events.push({
+          level: "warn",
+          target: "frontend.diagnostics",
+          event: "frontend_diagnostics_dropped",
+          message: "Frontend diagnostics were dropped before native delivery.",
+          fields: { count: droppedEvents },
+        });
+        droppedEvents = 0;
+      }
+      events.push(...pendingEvents.splice(0, MAX_BATCH_EVENTS - events.length));
       try {
         await invoke<void>("record_webview_diagnostic_batch", { input: { events } });
       } catch {
-        // A broken diagnostics bridge must not retry recursively or retain an
-        // unbounded queue. The native logger separately reports writer drops.
+        // Do not replay a failed batch or report its failure through this bridge.
       }
     }
   } finally {

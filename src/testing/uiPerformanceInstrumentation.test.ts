@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../test/factories";
 import {
   armUiPerformanceMeasurement,
   beginUiPerformancePointerWork,
@@ -167,7 +168,7 @@ describe("UI performance instrumentation", () => {
     const pending = finishUiPerformanceMeasurement();
     expect(frameCallbacks).toHaveLength(3);
 
-    frameCallbacks[2](performance.now());
+    required(frameCallbacks[2], "third animation frame")(performance.now());
 
     await expect(pending).rejects.toThrow(/No visible-response mutation/);
     target.remove();

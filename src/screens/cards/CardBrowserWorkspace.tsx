@@ -376,11 +376,11 @@ export function CardBrowserWorkspace({
       {selectedCards.size > 0 ? (
         <SelectionToolbar selectedCount={selectedCards.size}
           primaryAction={{ id: "practice-selected", label: "Practice selected", onSelect: () => setPracticeCards(selected) }}
-          secondaryActions={[
+          secondaryActions={([
             ["move_copy", "Move / copy cards"], ["add_tags", "Add tags"], ["remove_tags", "Remove tags"],
             ["suspend", "Suspend cards"], ["resume", "Resume cards"], ["bury", "Bury until tomorrow"],
             ["unbury", "Unbury cards"], ["reschedule", "Reschedule cards"], ["reset", "Reset schedules"], ["delete", "Delete cards"],
-          ].map(([id, label]) => ({ id, label, placement: "overflow-only" as const, disabled: isApplyingSchedule,
+          ] as const).map(([id, label]) => ({ id, label, placement: "overflow-only" as const, disabled: isApplyingSchedule,
             destructive: id === "delete" || id === "reset", onSelect: () => chooseSelectionAction(id as SelectionAction) }))}
           clearLabel="Deselect all" onClearSelection={() => setSelectedCards(new Map())} />
       ) : null}

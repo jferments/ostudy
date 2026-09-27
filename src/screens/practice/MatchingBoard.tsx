@@ -35,7 +35,9 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
     </p> : null}
     <div ref={root} className="tw:relative tw:grid tw:gap-3" aria-label="Matching pairs">
       {question.targets.map((target, index) => {
-        const item = items.get(rows[index]);
+        const rowId = rows[index];
+        if (!rowId) return null;
+        const item = items.get(rowId);
         if (!item) return null;
         const linked = connected.has(item.id);
         const result = results.get(item.id);

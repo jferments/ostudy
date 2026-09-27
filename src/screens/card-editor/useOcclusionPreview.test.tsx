@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { newOcclusionDraft, type OcclusionEditorDraft } from "./occlusionDraft";
 import { useOcclusionPreview } from "./useOcclusionPreview";
 
@@ -44,7 +45,7 @@ describe("native image authoring preview lifecycle", () => {
     expect(mocks.render).not.toHaveBeenCalled();
     rerender({ value: draft(), enabled: true });
     await waitFor(() => expect(result.current.url).toBe("blob:preview-1"));
-    expect(mocks.render.mock.calls[0][0]).toMatchObject({ presentationKey: "c".repeat(32), maximumEdge: 1600, revealed: false });
+    expect(required(mocks.render.mock.calls[0]?.[0], "preview render input")).toMatchObject({ presentationKey: "c".repeat(32), maximumEdge: 1600, revealed: false });
     unmount();
     expect(mocks.revokeUrl).toHaveBeenCalledExactlyOnceWith("blob:preview-1");
   });
@@ -62,7 +63,7 @@ describe("native image authoring preview lifecycle", () => {
     expect(mocks.revokeUrl).toHaveBeenCalledWith("blob:preview-1");
     await act(async () => { next.resolve(new ArrayBuffer(8)); });
     await waitFor(() => expect(result.current.url).toBe("blob:preview-2"));
-    expect(mocks.render.mock.calls[1][0].revealed).toBe(true);
+    expect(required(mocks.render.mock.calls[1]?.[0], "preview render input").revealed).toBe(true);
   });
 
   it("serializes rapid target changes and skips an obsolete queued preview", async () => {
@@ -80,7 +81,7 @@ describe("native image authoring preview lifecycle", () => {
     await act(async () => { first.resolve(new ArrayBuffer(8)); });
     await waitFor(() => expect(result.current.url).toBe("blob:preview-1"));
     expect(mocks.render).toHaveBeenCalledTimes(2);
-    expect(mocks.render.mock.calls[1][0]).toMatchObject({ presentationKey: "c".repeat(32), revealed: true });
+    expect(required(mocks.render.mock.calls[1]?.[0], "preview render input")).toMatchObject({ presentationKey: "c".repeat(32), revealed: true });
     expect(mocks.createUrl).toHaveBeenCalledTimes(1);
   });
 
@@ -92,7 +93,7 @@ describe("native image authoring preview lifecycle", () => {
     await waitFor(() => expect(result.current.error).toBe("Image temporarily busy"));
     act(() => result.current.retry());
     await waitFor(() => expect(result.current.url).toBe("blob:preview-1"));
-    expect(mocks.render.mock.calls[1][0]).toEqual(mocks.render.mock.calls[0][0]);
+    expect(required(mocks.render.mock.calls[1]?.[0], "preview render input")).toEqual(required(mocks.render.mock.calls[0]?.[0], "preview render input"));
     expect(value).toEqual(before);
   });
 });

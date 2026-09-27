@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { scheduleFormula } from "./renderQueue";
 import { renderFormula } from "./render";
 
+import { requiredTestValue as required } from "../test/factories";
 vi.mock("./render", () => ({ renderFormula: vi.fn() }));
 let frames: FrameRequestCallback[] = [];
 let disposers: (() => void)[] = [];
@@ -71,7 +72,7 @@ describe("bounded mathematical presentation queue", () => {
 
   it("cancels obsolete queued formulas without painting stale replies", () => {
     const element = host("old");
-    disposers[0]();
+    required(disposers[0], "first render disposer")();
     disposers.push(scheduleFormula(element, "new", true));
     tick();
     expect(renderFormula).toHaveBeenCalledExactlyOnceWith(element, "new", true);

@@ -43,7 +43,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     : members.length > 1
       ? `${members.length} sources`
       : members.length === 1
-        ? tutor.choices.find((choice) => sameStudyScope(choice.scope, members[0]))?.title ?? "Selected source"
+        ? (() => {
+            const member = members[0];
+            return member
+              ? tutor.choices.find((choice) => sameStudyScope(choice.scope, member))?.title ?? "Selected source"
+              : "Selected source";
+          })()
         : null;
   const projectLabel = tutor.projects.find((project) => project.id === tutor.detail?.conversation.projectId)?.title;
   const materialLabel = tutor.target?.title ?? sourceLabel;
@@ -274,7 +279,8 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
 
 export function TutorScreen() {
   const tutor = useTutor();
-  useEffect(() => { void tutor.initialize(); }, [tutor.initialize]);
+  const initialize = tutor.initialize;
+  useEffect(() => { void initialize(); }, [initialize]);
   return (
     <PageScaffold width="full" className={styles.screen} data-testid="tutor-screen">
       <PageHeader title="Tutor" icon="brain" description="Explore ideas with your study material, or start a general conversation." />

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { ImageOcclusionAttemptView, RevealPracticeQuestionInput } from "../../ipc/questionAttempts";
 import type { ImageViewport } from "../../editor/occlusion/geometry";
 import { Button } from "../../ui/primitives/Button";
@@ -49,7 +50,7 @@ beforeEach(() => {
 describe("image-occlusion Practice interaction", () => {
   it("starts with a small masked raster and uses Reveal instead of a fabricated objective Check", async () => {
     render(<Harness />);
-    expect(mocks.image.mock.calls[0][2]).toBe(1024);
+    expect(required(mocks.image.mock.calls[0]?.[2], "image call argument")).toBe(1024);
     expect(screen.getByText("blob:prepared-1")).toBeTruthy();
     expect(screen.queryByText(/ANSWER_FROM_NATIVE/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Check answer" })).toBeNull();
@@ -95,7 +96,7 @@ describe("image-occlusion Practice interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
     expect(screen.queryByText(/ANSWER_FROM_NATIVE/)).toBeNull();
     expect(screen.getByRole("button", { name: "Revealing…" })).toHaveProperty("disabled", true);
-    await act(async () => { finish(receipt(mocks.reveal.mock.calls[0][0])); });
+    await act(async () => { finish(receipt(required(mocks.reveal.mock.calls[0]?.[0], "reveal input"))); });
     await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
   });
 });

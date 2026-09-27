@@ -88,7 +88,7 @@ function decodeText(value: string): string {
   const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
   return value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos|nbsp);/giu, (entity, code: string) => {
     if (!code.startsWith("#")) return named[code.toLowerCase()] ?? entity;
-    const hex = code[1].toLowerCase() === "x";
+    const hex = code.charAt(1).toLowerCase() === "x";
     const number = Number.parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10);
     return number > 0 && number <= 0x10ffff && !(number >= 0xd800 && number <= 0xdfff)
       ? String.fromCodePoint(number) : "\ufffd";

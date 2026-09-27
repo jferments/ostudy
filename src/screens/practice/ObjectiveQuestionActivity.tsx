@@ -43,14 +43,18 @@ export function InteractiveQuestionActivity({
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const saveErrorRef = useRef<unknown | null>(null);
   const shownAtRef = useRef(Date.now());
+  const attemptRef = useRef(attempt);
+  const changeResponseRef = useRef<(next: QuestionResponse) => void>(() => undefined);
+  attemptRef.current = attempt;
   const checked = attempt.progress.phase === "checked";
   const busy = disabled || isSaving || isChecking;
   const { topId } = useOverlayContext();
 
   useEffect(() => { revisionRef.current = attempt.revision; }, [attempt.revision]);
   useEffect(() => {
-    setResponse(initialResponse(attempt));
-    revisionRef.current = attempt.revision;
+    const currentAttempt = attemptRef.current;
+    setResponse(initialResponse(currentAttempt));
+    revisionRef.current = currentAttempt.revision;
     sequenceRef.current = 0;
     latestSequenceRef.current = 0;
     chainRef.current = Promise.resolve();
@@ -67,9 +71,9 @@ export function InteractiveQuestionActivity({
       if (target instanceof HTMLElement && (target.isContentEditable
         || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "AUDIO", "VIDEO"].includes(target.tagName))) return;
       if (event.key.toLowerCase() === "t") {
-        event.preventDefault(); changeResponse({ kind: "true_false", selected: true });
+        event.preventDefault(); changeResponseRef.current({ kind: "true_false", selected: true });
       } else if (event.key.toLowerCase() === "f") {
-        event.preventDefault(); changeResponse({ kind: "true_false", selected: false });
+        event.preventDefault(); changeResponseRef.current({ kind: "true_false", selected: false });
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -101,6 +105,7 @@ export function InteractiveQuestionActivity({
       } finally { setIsSaving(false); }
     });
   }
+  changeResponseRef.current = changeResponse;
   async function checkAnswer(): Promise<void> {
     if (busy || checked || !responseReady(response)) return;
     await chainRef.current;

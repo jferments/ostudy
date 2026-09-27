@@ -149,6 +149,8 @@ export function useAppController() {
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsCheckpointRef = useRef<AnalyticsCheckpoint | null>(null);
   const analyticsRequestSequence = useRef(1);
+  const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
+  const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
   const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
@@ -347,17 +349,12 @@ export function useAppController() {
   useEffect(() => {
     if (section === "decks" && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
-      void (practiceWorkflow ? returnPracticeToOrigin() : navigate("decks"));
+      void (practiceWorkflow
+        ? returnPracticeToOriginRef.current()
+        : navigateRef.current("decks"));
       return true;
     });
-  }, [
-    hasUnsavedCard,
-    hasUnsavedSettings,
-    hasUnsavedTemplate,
-    savedSettings,
-    practiceWorkflow,
-    section,
-  ]);
+  }, [practiceWorkflow, section]);
 
   useEffect(() => {
     if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
@@ -686,6 +683,9 @@ export function useAppController() {
     );
   }
 
+
+  navigateRef.current = navigate;
+  returnPracticeToOriginRef.current = returnPracticeToOrigin;
   async function choosePracticeDecks(): Promise<void> {
     const restoreDeckSelection = practiceWorkflow?.returnTarget?.restoreDeckSelection;
     await returnFromPractice({

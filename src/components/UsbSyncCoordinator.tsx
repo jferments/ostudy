@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getErrorMessage } from "../ipc/common";
 import {
@@ -126,12 +126,13 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     };
   }, [android]);
 
-  useEffect(() => {
-    if (!pending || phase !== "pending" || receiving.current) return;
-    void acceptRequest();
-  }, [pending, phase]);
+  const rejectRequest = useCallback((): void => {
+    setPending(null);
+    setProgress(null);
+    setPhase("pending");
+  }, []);
 
-  async function acceptRequest(): Promise<void> {
+  const acceptRequest = useCallback(async (): Promise<void> => {
     if (receiving.current) return;
     receiving.current = true;
     setPhase("receiving");
@@ -147,22 +148,19 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
           result.conflictCount > 0 ? ` and ${result.conflictCount} conflicts need review` : ""
         }.${credentialWarning}`,
       );
-      setPending(null);
-      setProgress(null);
-      setPhase("pending");
+      rejectRequest();
     } catch (error: unknown) {
-      void rejectRequest();
+      rejectRequest();
       showToast("error", getErrorMessage(error));
     } finally {
       receiving.current = false;
     }
-  }
+  }, [refreshDecks, rejectRequest, showToast]);
 
-  function rejectRequest(): void {
-    setPending(null);
-    setProgress(null);
-    setPhase("pending");
-  }
+  useEffect(() => {
+    if (!pending || phase !== "pending" || receiving.current) return;
+    void acceptRequest();
+  }, [acceptRequest, pending, phase]);
 
   if (!android || !pending || phase !== "receiving") return null;
 

@@ -21,7 +21,10 @@ function scopeLabel(scope: StudyScope, choices: ScopeChoice[]): string {
   const members = scopeMembers(scope);
   if (members.length > 1) return `${members.length} sources`;
   if (members.length === 1) {
-    return choices.find((choice) => sameStudyScope(choice.scope, members[0]))?.title ?? "Selected source";
+    const member = members[0];
+    return member
+      ? choices.find((choice) => sameStudyScope(choice.scope, member))?.title ?? "Selected source"
+      : "Selected source";
   }
   return "General discussion";
 }

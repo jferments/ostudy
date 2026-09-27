@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { ResponsiveActionGroup, type ResponsiveAction } from "./ResponsiveActionGroup";
 
@@ -133,7 +134,7 @@ describe("ResponsiveActionGroup", () => {
     expect(() =>
       render(
         <LayoutModeProvider>
-          <ResponsiveActionGroup label="Bad" actions={[actions[0], actions[0]]} />
+          <ResponsiveActionGroup label="Bad" actions={[required(actions[0], "first action"), required(actions[0], "first action")]} />
         </LayoutModeProvider>,
       ),
     ).toThrow("ResponsiveActionGroup requires unique, nonblank action IDs.");

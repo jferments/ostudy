@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { RichFieldListProps } from "../../editor/RichFieldList";
 import { extractRichDocumentText } from "../../editor/richText";
 import type { QuestionEditorDraft } from "./questionDraft";
@@ -40,8 +41,8 @@ describe("choice authoring answer-key preview", () => {
     expect(screen.getByText(/Select the correct answer below\./)).toBeTruthy();
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
-    fireEvent.click(radios[1]);
-    expect(radios[1].getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(required(radios[1], "second radio"));
+    expect(required(radios[1], "second radio").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("key").textContent).not.toBe("");
     expect(screen.queryByText(/^Correct$/)).toBeNull();
   });
@@ -52,8 +53,8 @@ describe("choice authoring answer-key preview", () => {
     const choices = screen.getByRole("group", { name: "Correct answers" });
     const boxes = choices.querySelectorAll('[role="checkbox"]');
     expect(boxes).toHaveLength(2);
-    fireEvent.click(boxes[0]);
-    fireEvent.click(boxes[1]);
+    fireEvent.click(required(boxes[0], "first checkbox"));
+    fireEvent.click(required(boxes[1], "second checkbox"));
     expect(screen.getByTestId("key").textContent?.split(",")).toHaveLength(2);
     const optional = [...container.querySelectorAll('[data-optional="true"]')].map((node) => node.textContent);
     expect(optional).toContain("Overall explanation");

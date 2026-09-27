@@ -20,7 +20,9 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
   const parentId = useOverlayParentId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { register } = useOverlayActions();
-  const groups = [items.filter((item) => !item.destructive), items.filter((item) => item.destructive)];
+  const standardItems = items.filter((item) => !item.destructive);
+  const destructiveItems = items.filter((item) => item.destructive);
+  const groups = [standardItems, destructiveItems];
   const iconTriggerClassName = cn(
     className,
     triggerIcon === "timer" && "tw:[&_svg]:translate-y-0.5",
@@ -51,7 +53,7 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
       ? <IconButton ref={triggerRef} icon={triggerIcon} label={label} tooltip={false} className={iconTriggerClassName} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)} />
       : <Button ref={triggerRef} className={className} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)}>{label}</Button>}
     {open ? <Sheet title={label} width="small" onClose={() => setOpen(false)}><div className="tw:grid tw:gap-1 tw:p-3" aria-label={label}>
-      {groups.map((group, index) => <div key={index} className={index === 1 && groups[0].length > 0 && group.length > 0 ? "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-2" : undefined}>
+      {groups.map((group, index) => <div key={index} className={index === 1 && standardItems.length > 0 && group.length > 0 ? "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-2" : undefined}>
         {group.map((item) => <Button key={item.id} variant={item.destructive ? "dangerGhost" : "ghost"} className="tw:w-full tw:justify-start tw:px-4 tw:py-3 tw:text-body" disabled={item.disabled} onClick={() => select(item)}>{item.label}</Button>)}
       </div>)}
     </div></Sheet> : null}
@@ -59,9 +61,9 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
   return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
     <DropdownMenuTrigger render={trigger} />
     <DropdownMenuContent aria-label={label}>
-      {groups[0].map((item) => <DropdownMenuItem key={item.id} disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuItem>)}
-      {groups[0].length > 0 && groups[1].length > 0 ? <DropdownMenuSeparator /> : null}
-      {groups[1].map((item) => <DropdownMenuItem key={item.id} destructive disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuItem>)}
+      {standardItems.map((item) => <DropdownMenuItem key={item.id} disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuItem>)}
+      {standardItems.length > 0 && destructiveItems.length > 0 ? <DropdownMenuSeparator /> : null}
+      {destructiveItems.map((item) => <DropdownMenuItem key={item.id} destructive disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuItem>)}
     </DropdownMenuContent>
   </DropdownMenu>;
 }
