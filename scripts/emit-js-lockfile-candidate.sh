@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Keep normal qualification immutable. When manifests legitimately outgrow the
-# committed lockfile, resolve a candidate only in a disposable exact-source copy
-# and print reviewable bytes/hash; this helper never rewrites maintained source.
-if pnpm install --frozen-lockfile; then
-  exit 0
-else
-  frozen_status=$?
-fi
-
+# Resolve an outdated JavaScript lockfile only in a disposable exact-source copy.
+# The candidate is review evidence; this script never rewrites maintained source.
 candidate="$(mktemp -d -t ostudy-pnpm-lock-candidate.XXXXXXXX)"
 cleanup() { rm -rf -- "$candidate"; }
 trap cleanup EXIT
@@ -35,5 +28,3 @@ if not data.endswith(b"\n"):
 print("LOCKFILE_CANDIDATE_TEXT_END")
 PY
 )
-
-exit "$frozen_status"
