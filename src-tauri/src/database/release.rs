@@ -15,6 +15,7 @@ use crate::util::unix_time_millis;
 
 use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
 
+#[path = "release/staging.rs"]
 mod staging;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
@@ -780,4 +781,5 @@ mod tests {
 }
 
 #[cfg(test)]
+#[path = "release/h09_tests.rs"]
 mod h09_tests;
