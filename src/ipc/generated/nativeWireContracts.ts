@@ -19,13 +19,13 @@ export interface NativeDeckSummary {
 }
 
 export interface NativeAppSettings {
-  theme: string;
+  theme: "light" | "dark" | "console" | "synthwave";
   uiFont: string;
   cardFont: string;
   uiScale: number;
   cardBaseSize: number;
-  motionPreference: string;
-  materialPreference: string;
+  motionPreference: "system" | "full" | "reduced" | "none";
+  materialPreference: "automatic" | "rich" | "simple";
   decorativeArtwork: boolean;
   celebrationsEnabled: boolean;
   tutorialsEnabled: boolean;
@@ -37,12 +37,24 @@ export interface NativeAppSettings {
   dailyReviewLimit: number;
 }
 
+export interface NativeCompletedLibraryRestore {
+  operationId: string;
+  deckCount: number;
+  cardCount: number;
+  documentCount: number;
+  templateCount: number;
+  reviewCount: number;
+  assetCount: number;
+  restartRequired: boolean;
+  completed: boolean;
+}
+
 export interface NativeLibrarySession {
   generation: number;
   ready: boolean;
   restoring: boolean;
   recoveryRequired: boolean;
-  lastRestore: unknown | null;
+  lastRestore: NativeCompletedLibraryRestore | null;
 }
 
 export type NativeWireEncodingFixture =

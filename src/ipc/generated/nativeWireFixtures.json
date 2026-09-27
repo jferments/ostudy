@@ -49,9 +49,30 @@
   },
   "librarySession": {
     "generation": 7,
-    "lastRestore": null,
+    "lastRestore": {
+      "operationId": "22222222222222222222222222222222",
+      "deckCount": 2,
+      "cardCount": 5,
+      "documentCount": 1,
+      "templateCount": 3,
+      "reviewCount": 8,
+      "assetCount": 4,
+      "restartRequired": false,
+      "completed": true
+    },
     "ready": true,
     "recoveryRequired": false,
     "restoring": false
+  },
+  "completedRestore": {
+    "operationId": "22222222222222222222222222222222",
+    "deckCount": 2,
+    "cardCount": 5,
+    "documentCount": 1,
+    "templateCount": 3,
+    "reviewCount": 8,
+    "assetCount": 4,
+    "restartRequired": false,
+    "completed": true
   }
 }

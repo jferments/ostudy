@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 use crate::{
     decks::DeckSummaryDto,
     error::CommandError,
+    library_backup::live::LiveRestoreResult,
     library_session::SessionStatus,
     settings::AppSettingsDto,
 };
@@ -24,7 +25,7 @@ enum TypeScriptType {
     Number,
     Boolean,
     NullableNumber,
-    NullableUnknown,
+    Named(&'static str),
 }
 
 impl TypeScriptType {
@@ -34,7 +35,7 @@ impl TypeScriptType {
             Self::Number => "number",
             Self::Boolean => "boolean",
             Self::NullableNumber => "number | null",
-            Self::NullableUnknown => "unknown | null",
+            Self::Named(source) => source,
         }
     }
 }
@@ -108,7 +109,7 @@ const DECK_SUMMARY_FIELDS: &[FieldContract] = &[
 const APP_SETTINGS_FIELDS: &[FieldContract] = &[
     FieldContract {
         name: "theme",
-        ty: TypeScriptType::String,
+        ty: TypeScriptType::Named("\"light\" | \"dark\" | \"console\" | \"synthwave\""),
     },
     FieldContract {
         name: "uiFont",
@@ -128,11 +129,11 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
     },
     FieldContract {
         name: "motionPreference",
-        ty: TypeScriptType::String,
+        ty: TypeScriptType::Named("\"system\" | \"full\" | \"reduced\" | \"none\""),
     },
     FieldContract {
         name: "materialPreference",
-        ty: TypeScriptType::String,
+        ty: TypeScriptType::Named("\"automatic\" | \"rich\" | \"simple\""),
     },
     FieldContract {
         name: "decorativeArtwork",
@@ -172,6 +173,45 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
     },
 ];
 
+const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
+    FieldContract {
+        name: "operationId",
+        ty: TypeScriptType::String,
+    },
+    FieldContract {
+        name: "deckCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "cardCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "documentCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "templateCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "reviewCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "assetCount",
+        ty: TypeScriptType::Number,
+    },
+    FieldContract {
+        name: "restartRequired",
+        ty: TypeScriptType::Boolean,
+    },
+    FieldContract {
+        name: "completed",
+        ty: TypeScriptType::Boolean,
+    },
+];
+
 const LIBRARY_SESSION_FIELDS: &[FieldContract] = &[
     FieldContract {
         name: "generation",
@@ -191,7 +231,7 @@ const LIBRARY_SESSION_FIELDS: &[FieldContract] = &[
     },
     FieldContract {
         name: "lastRestore",
-        ty: TypeScriptType::NullableUnknown,
+        ty: TypeScriptType::Named("NativeCompletedLibraryRestore | null"),
     },
 ];
 
@@ -207,6 +247,10 @@ const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeAppSettings",
         fields: APP_SETTINGS_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeCompletedLibraryRestore",
+        fields: COMPLETED_RESTORE_FIELDS,
     },
     ObjectContract {
         name: "NativeLibrarySession",
@@ -248,6 +292,17 @@ pub fn render_typescript() -> String {
 }
 
 pub fn representative_fixtures() -> Value {
+    let restore = LiveRestoreResult {
+        operation_id: "22222222222222222222222222222222".to_string(),
+        deck_count: 2,
+        card_count: 5,
+        document_count: 1,
+        template_count: 3,
+        review_count: 8,
+        asset_count: 4,
+        restart_required: false,
+        completed: true,
+    };
     json!({
         "commandError": CommandError::new("example_error", "Example safe message."),
         "deckSummary": DeckSummaryDto {
@@ -280,12 +335,13 @@ pub fn representative_fixtures() -> Value {
             daily_new_limit: 20,
             daily_review_limit: 200,
         },
+        "completedRestore": restore.clone(),
         "librarySession": SessionStatus {
             generation: 7,
             ready: true,
             restoring: false,
             recovery_required: false,
-            last_restore: None,
+            last_restore: Some(restore),
         },
         "encoding": EncodingFixture::Ready {
             bytes: vec![0, 127, 255],
@@ -331,7 +387,8 @@ mod tests {
             ("commandError", OBJECT_CONTRACTS[0]),
             ("deckSummary", OBJECT_CONTRACTS[1]),
             ("appSettings", OBJECT_CONTRACTS[2]),
-            ("librarySession", OBJECT_CONTRACTS[3]),
+            ("completedRestore", OBJECT_CONTRACTS[3]),
+            ("librarySession", OBJECT_CONTRACTS[4]),
         ] {
             let object = fixtures[fixture_name].as_object().unwrap();
             let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
