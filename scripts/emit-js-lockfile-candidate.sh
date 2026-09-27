@@ -11,7 +11,14 @@ git archive --format=tar HEAD | tar -x -C "$candidate"
 (
   cd "$candidate"
   pnpm install --ignore-scripts --lockfile-only --no-frozen-lockfile
-  python3 - pnpm-lock.yaml <<'PY'
+)
+diff_file="$candidate/pnpm-lock.diff"
+diff -u --label a/pnpm-lock.yaml --label b/pnpm-lock.yaml \
+  pnpm-lock.yaml "$candidate/pnpm-lock.yaml" > "$diff_file" || true
+printf 'LOCKFILE_CANDIDATE_DIFF_GZIP_BASE64='
+gzip -c "$diff_file" | base64 -w 0
+printf '\n'
+python3 - "$candidate/pnpm-lock.yaml" <<'PY'
 import hashlib
 import pathlib
 import sys
@@ -21,7 +28,3 @@ git_header = f"blob {len(data)}\0".encode()
 print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(git_header + data).hexdigest())
 print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
 PY
-)
-printf 'LOCKFILE_CANDIDATE_GZIP_BASE64='
-gzip -c "$candidate/pnpm-lock.yaml" | base64 -w 0
-printf '\n'
