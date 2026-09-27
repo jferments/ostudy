@@ -1,12 +1,12 @@
 # Post-#106 hardening and audit disposition
 
-Status: **H-01/H-02 implemented in PR #109; qualification pending on its exact head. H-03 onward remain planned follow-up.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
+Status: **H-01/H-02 are merged in PR #109. H-03/H-04/H-05 are implemented in PR #110. H-06 onward remain planned follow-up.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
 
 Merged foundation: PR #106, squash `9ef91e79346b6d0d0ace983da3c1583303f15a43`. See the [completion record](lk-followups/consolidation-qualification.md). PR #108 is documentation-only relative to that foundation. The H identifiers below are scope labels, **not reserved GitHub PR numbers**, and do not authorize starting all scopes at once. PR #105 remains the deferred lessons/narration/PowerPoint plan; structural cleanup must not become an endless prerequisite to product work.
 
 ## Delivery rules
 
-PR #108 is merged. PR #109 owns H-01 and H-02 together at the human's explicit request; do not split or duplicate those active changes. After #109 merges, H-03 is the next planned hardening boundary. Establish the H-05/H-06 safeguards before broad frontend restructuring, preserve the H-02/H-06 lifetime contracts before H-08, and require a proven filesystem/staging contract before H-09. H-04 can be independent of frontend work; dependencies describe semantics, not permission for competing writers or duplicate full matrices.
+PR #108 and PR #109 are merged. PR #110 owns H-03, H-04 and H-05 together at the human's explicit request; do not split or duplicate those changes while that PR is active. After #110, H-06 is the next planned hardening boundary. H-05's hook/indexed-access safeguards are established before broader frontend restructuring; preserve the H-02/H-06 lifetime contracts before H-08, and retain H-04's filesystem/staging contract before H-09. Dependencies describe semantics, not permission for competing writers or duplicate full matrices.
 
 Each implementation PR owns its focused regressions, source-derived documentation, compatibility decisions and exact-SHA qualification. Freeze a complete candidate before terminal gates; record fresh versus safely reused execution and unrun human/platform boundaries separately. Use the [GitHub-direct procedure](../agents/GITHUB-DIRECT-DEVELOPMENT.md). No automatic merge, source-writing Actions, alternate publisher, forced history rewrite, new service, or live-library experiment is introduced by this plan.
 
@@ -14,7 +14,7 @@ Each implementation PR owns its focused regressions, source-derived documentatio
 
 ### H-01 — atomic, retry-safe save-selection-as-deck
 
-Status: **implemented in PR #109; exact-head Static/Fast qualification and human local acceptance remain the current boundary.**
+Status: **implemented and merged in PR #109.**
 
 Owner: `src/screens/cards/PracticeResultsModal.tsx`, `authoring/selection_deck.rs`, deck copy primitives and the release migration registry.
 
@@ -26,7 +26,7 @@ Exit: failed copying leaves no partially created result; lost reply replays the 
 
 ### H-02 — activity admission, lifecycle visibility and restore preparation
 
-Status: **implemented in PR #109; exact-head qualification and human local acceptance remain the current boundary.**
+Status: **implemented and merged in PR #109.**
 
 Owners: `study_materials/cancellation.rs`, `task_activity.rs`, `library_session.rs`, `library_backup/live.rs` / `activation.rs`, and native close policy.
 
@@ -38,25 +38,31 @@ Focused regressions cover activity reservation/drop behavior, collection cancell
 
 ### H-03 — observable frontend failures and asynchronous lifetimes
 
+Status: **implemented in PR #110.**
+
 Owners: `src/platform/PlatformProvider.tsx`, startup/share listeners, `src/ipc/diagnostics.ts`, `ImageSetWorkspace.tsx`, `DocumentProgress.tsx`.
 
-Replace identified console-only failure paths with deliberate bounded structured events. Do not forward arbitrary console objects, prompts, credentials or source text. Invalidate both clipboard fallback timers and unresolved reads on cleanup/source change; reproduce both paste-event orderings before claiming duplicate ingestion is fixed. Listener-lifetime disposed flags remain legitimate; request lanes address competing reads, not every cleanup case.
+PR #110 routes identified caught platform/startup/share failures through a bounded, privacy-safe diagnostic queue instead of console-only paths, while listener owners reject late callbacks after disposal. Clipboard fallback timers and unresolved reads are invalidated when their owner changes, paste-event/fallback ordering is de-duplicated, and incoming-share reconciliation retains current items without canceling already-admitted document work.
 
-Preserve visible progress, elapsed time, Stop, input/output/reasoning/cache usage and retry count. Expanded retry categories may use a Details disclosure and readable explanations. Unknown provider usage is not zero. Do not hide useful cost information or cancel already-admitted document jobs when the uploader closes.
+Generation progress keeps Stop, elapsed time, request/retry state and input/output/reasoning/cache usage visible. Expanded retry diagnostics move behind an accessible details disclosure; unknown provider usage remains distinct from a reported zero.
 
 Exit: late listeners/clipboard results cannot act on obsolete owners; one gesture cannot add twice; unavailable diagnostics cannot recurse or grow an unbounded queue; post-navigation work continues legitimately.
 
 ### H-04 — portable filesystem durability and recovery evidence
 
+Status: **implemented in PR #110, with Windows runtime execution still a separate platform-qualification boundary.**
+
 Owners: document/checkpoint/backup/asset filesystem helpers and `studydeck/import.rs` compensation.
 
-The helper copies have divergent platform and missing-parent behavior. The Windows concern is source/API-based, not Windows runtime qualification. Define explicit file-content and directory-entry durability contracts; centralize matching mechanics without silently converting mandatory durability into successful no-ops. Preserve primary errors and record safe secondary compensation failures.
+PR #110 centralizes shared durable file publication/directory-sync mechanics behind explicit contracts, uses platform-specific directory handling rather than assuming Unix semantics, and makes atomic replacement preserve recoverable old-or-new visibility. Studydeck import compensation preserves the primary import failure, continues bounded recovery after a secondary failure, retains recovery inputs instead of overwriting/deleting conflicting evidence, and records only bounded recovery facts. The Windows implementation remains source/API-reviewed rather than Windows-runtime-qualified.
 
 Exit: publication/rename/flush fault injection, retained recovery material and coherent old-or-new visibility. Windows behavior needs Windows execution evidence; Linux or Android success does not qualify it. No learner-data, recovery-directory or runner-cache purge.
 
 ### H-05 — frontend correctness gates
 
-Add narrowly selected React hook correctness rules and stronger indexed-access checking. Fix actual semantic findings with focused regressions; do not hide them behind blanket exclusions, unsafe assertions, dependency-array churn or a stylistic reformat. Integrate check-only execution into existing wrappers. Do not adopt React Compiler merely to enforce hook rules.
+Status: **implemented in PR #110.**
+
+Static qualification now enforces React hook correctness (`rules-of-hooks` and `exhaustive-deps`) and TypeScript `noUncheckedIndexedAccess` against production source and tests. ESLint/parser/plugin versions are pinned in the normal JavaScript dependency contract. The implementation fixes the actual ownership/dependency/indexing findings rather than disabling rules or excluding tests; test fixtures use explicit runtime presence checks where they intentionally index known fixture values. React Compiler is not introduced.
 
 Exit: checks are enforced against the current source; lifecycle and stale-read behavior remains covered. The cleanup verifier's historical #106 activation-text assertion should eventually be replaced with a maintained status contract, not erased to conceal a failure. PR #108 retains that phrase only as an explicitly historical quotation.
 
