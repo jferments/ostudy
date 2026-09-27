@@ -3,7 +3,9 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use crate::{error::CommandError, task_cancellation::CancellationSignal};
+use crate::{
+    error::CommandError, task_activity::ActivityGuard, task_cancellation::CancellationSignal,
+};
 
 static ACTIVE: LazyLock<Mutex<HashMap<String, CancellationSignal>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -11,10 +13,15 @@ static ACTIVE: LazyLock<Mutex<HashMap<String, CancellationSignal>>> =
 pub(crate) struct Guard {
     operation_id: String,
     signal: CancellationSignal,
+    _activity: ActivityGuard,
 }
 
 impl Guard {
     pub(crate) fn begin(operation_id: &str) -> Result<Self, CommandError> {
+        Self::with_activity(operation_id, ActivityGuard::begin()?)
+    }
+
+    fn with_activity(operation_id: &str, activity: ActivityGuard) -> Result<Self, CommandError> {
         let signal = CancellationSignal::new();
         let mut active = ACTIVE.lock().map_err(|_| registry_error())?;
         if active.contains_key(operation_id) {
@@ -27,6 +34,7 @@ impl Guard {
         Ok(Self {
             operation_id: operation_id.to_string(),
             signal,
+            _activity: activity,
         })
     }
 
@@ -37,6 +45,7 @@ impl Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
+        self.signal.cancel();
         if let Ok(mut active) = ACTIVE.lock() {
             active.remove(&self.operation_id);
         }
@@ -73,21 +82,48 @@ fn registry_error() -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_activity::TestGate;
 
     #[test]
     fn operations_cancel_independently() {
-        let first = Guard::begin("a").unwrap();
-        let second = Guard::begin("b").unwrap();
+        let gate = TestGate::default();
+        let first = Guard::with_activity("h02-first", gate.activity().unwrap()).unwrap();
+        let second = Guard::with_activity("h02-second", gate.activity().unwrap()).unwrap();
         let first_signal = first.signal();
         let second_signal = second.signal();
 
-        cancel("a").unwrap();
+        cancel("h02-first").unwrap();
         assert!(first_signal.is_canceled());
         assert!(!second_signal.is_canceled());
+        assert!(gate.maintenance().is_err());
+        assert!(
+            gate.has_work(),
+            "close protection lasts until actual completion"
+        );
 
         drop(first);
-        assert!(!is_active("a"));
-        assert!(is_active("b"));
+        assert!(!is_active("h02-first"));
+        assert!(is_active("h02-second"));
+        assert!(gate.maintenance().is_err());
         drop(second);
+        assert!(!gate.has_work());
+        assert!(gate.maintenance().is_ok());
+    }
+
+    #[test]
+    fn maintenance_first_refuses_registration_and_duplicate_start_releases_its_activity() {
+        let gate = TestGate::default();
+        let maintenance = gate.maintenance().unwrap();
+        let begin = || Guard::with_activity("h02-duplicate", gate.activity()?);
+        assert!(begin().is_err());
+        assert!(!is_active("h02-duplicate"));
+        drop(maintenance);
+        let first = begin().unwrap();
+        assert!(begin().is_err());
+        assert!(is_active("h02-duplicate"));
+        drop(first);
+        assert!(!is_active("h02-duplicate"));
+        assert!(!gate.has_work());
+        assert!(gate.maintenance().is_ok());
     }
 }

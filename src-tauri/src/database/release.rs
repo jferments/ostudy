@@ -19,11 +19,26 @@ use crate::util::unix_time_millis;
 use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+pub(crate) const BASELINE_VERSION: i64 = 1;
+pub(crate) const SCHEMA_VERSION: i64 = 2;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
 const BASELINE_SQL: &str = include_str!("../../schema/0001_release_baseline.sql");
+
+struct ReleaseMigration {
+    version: i64,
+    name: &'static str,
+    checksum: &'static str,
+    sql: &'static str,
+}
+
+const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[ReleaseMigration {
+    version: 2,
+    name: "selection_deck_operations",
+    checksum: "c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238",
+    sql: include_str!("../../schema/0002_selection_deck_operations.sql"),
+}];
 
 pub(super) fn initialize_fresh(connection: &mut Connection) -> Result<(), String> {
     let transaction = connection
@@ -33,15 +48,32 @@ pub(super) fn initialize_fresh(connection: &mut Connection) -> Result<(), String
         .execute_batch(BASELINE_SQL)
         .map_err(|error| format!("Could not create the oStudy 0.1 release schema: {error}"))?;
     write_release_ledger(&transaction)?;
-    validate_input(&transaction)?;
+    validate_baseline_input(&transaction)?;
     transaction
         .commit()
         .map_err(|error| format!("Could not commit the oStudy 0.1 release schema: {error}"))?;
-    Ok(())
+    apply_migrations(connection)?;
+    validate_input(connection)
 }
 
 /// Read-only admission for an already-current release-lineage database.
 pub(super) fn validate_input(connection: &Connection) -> Result<(), String> {
+    let version = validate_supported_input(connection)?;
+    if version != SCHEMA_VERSION {
+        return Err(format!(
+            "This release database is schema {version}; schema {SCHEMA_VERSION} is required after migration."
+        ));
+    }
+    Ok(())
+}
+
+/// Backup admission accepts every immutable release-v1 version this build knows
+/// how to migrate. It never applies a migration to the read-only input.
+pub(super) fn validate_backup_input(connection: &Connection) -> Result<(), String> {
+    validate_supported_input(connection).map(|_| ())
+}
+
+pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, String> {
     let lineage: Option<String> = connection
         .query_row(
             "SELECT value FROM schema_metadata WHERE key = 'schema_lineage'",
@@ -53,26 +85,35 @@ pub(super) fn validate_input(connection: &Connection) -> Result<(), String> {
     if lineage.as_deref() != Some(SCHEMA_LINEAGE) {
         return Err("The release schema lineage does not match this oStudy build.".to_string());
     }
+    let user_version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| format!("Could not read the release SQLite user_version: {error}"))?;
+    if !(BASELINE_VERSION..=SCHEMA_VERSION).contains(&user_version) {
+        return Err(format!(
+            "Release schema {user_version} is not supported by this oStudy build."
+        ));
+    }
     let rows: i64 = connection
         .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
             row.get(0)
         })
         .map_err(|error| format!("Could not inspect the release migration ledger: {error}"))?;
-    if rows != 1 {
+    if rows != user_version {
         return Err(
-            "The release migration ledger must contain exactly one baseline row.".to_string(),
+            "The release migration ledger does not match SQLite user_version. The database was not modified."
+                .to_string(),
         );
     }
-    let recorded: (i64, String, String) = connection
+    let baseline: (i64, String, String) = connection
         .query_row(
-            "SELECT version, name, checksum FROM schema_migrations",
-            [],
+            "SELECT version, name, checksum FROM schema_migrations WHERE version = ?1",
+            [BASELINE_VERSION],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
-        .map_err(|error| format!("Could not read the release migration ledger: {error}"))?;
-    if recorded
+        .map_err(|error| format!("Could not read the release baseline ledger: {error}"))?;
+    if baseline
         != (
-            SCHEMA_VERSION,
+            BASELINE_VERSION,
             BASELINE_NAME.to_string(),
             BASELINE_CHECKSUM.to_string(),
         )
@@ -82,14 +123,39 @@ pub(super) fn validate_input(connection: &Connection) -> Result<(), String> {
                 .to_string(),
         );
     }
-    let user_version: i64 = connection
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .map_err(|error| format!("Could not read the release SQLite user_version: {error}"))?;
-    if user_version != SCHEMA_VERSION {
-        return Err(
-            "SQLite user_version and the release baseline ledger disagree. The database was not modified."
-                .to_string(),
-        );
+    for migration in RELEASE_MIGRATIONS {
+        let recorded: Option<(String, String)> = connection
+            .query_row(
+                "SELECT name, checksum FROM schema_migrations WHERE version = ?1",
+                [migration.version],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| {
+                format!(
+                    "Could not inspect release migration {}: {error}",
+                    migration.version
+                )
+            })?;
+        if migration.version <= user_version {
+            let Some((name, checksum)) = recorded else {
+                return Err(format!(
+                    "Release migration {} is missing. The database was not modified.",
+                    migration.version
+                ));
+            };
+            if name != migration.name || checksum != migration.checksum {
+                return Err(format!(
+                    "Release migration {} does not match this oStudy build. The database was not modified.",
+                    migration.version
+                ));
+            }
+        } else if recorded.is_some() {
+            return Err(
+                "The release migration ledger contains a migration beyond SQLite user_version."
+                    .to_string(),
+            );
+        }
     }
     let repair_rows: i64 = connection
         .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
@@ -100,8 +166,118 @@ pub(super) fn validate_input(connection: &Connection) -> Result<(), String> {
                 .to_string(),
         );
     }
+    validate_selection_receipt_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
+    Ok(user_version)
+}
+
+fn validate_selection_receipt_schema(connection: &Connection, version: i64) -> Result<(), String> {
+    let actual: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='selection_deck_operations'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if version == BASELINE_VERSION {
+        if actual.is_some() {
+            return Err("An unregistered selection-deck migration is present.".to_string());
+        }
+        return Ok(());
+    }
+    let actual =
+        actual.ok_or_else(|| "The selection-deck receipt table is missing.".to_string())?;
+    let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    expected
+        .execute_batch(RELEASE_MIGRATIONS[0].sql)
+        .map_err(|error| error.to_string())?;
+    let sql: String = expected
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE name='selection_deck_operations'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if normalize_schema_sql(&actual) != normalize_schema_sql(&sql) {
+        return Err("The selection-deck receipt schema does not match this build.".to_string());
+    }
+    crate::authoring::selection_deck::validate_stored_receipts(connection)
+}
+
+fn validate_baseline_input(connection: &Connection) -> Result<(), String> {
+    let version = validate_supported_input(connection)?;
+    if version != BASELINE_VERSION {
+        return Err("The staged release baseline has an unexpected schema version.".to_string());
+    }
     Ok(())
+}
+
+pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, String> {
+    let current = validate_supported_input(connection)?;
+    let mut applied = false;
+    for migration in RELEASE_MIGRATIONS {
+        if migration.version <= current {
+            continue;
+        }
+        if format!("{:x}", Sha256::digest(migration.sql.as_bytes())) != migration.checksum {
+            return Err(format!(
+                "Bundled release migration {} checksum mismatch.",
+                migration.version
+            ));
+        }
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| {
+                format!(
+                    "Could not begin release migration {}: {error}",
+                    migration.version
+                )
+            })?;
+        transaction.execute_batch(migration.sql).map_err(|error| {
+            format!(
+                "Could not apply release migration {}: {error}",
+                migration.version
+            )
+        })?;
+        let applied_at = unix_time_millis().map_err(|error| error.message)?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, name, checksum, applied_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    migration.version,
+                    migration.name,
+                    migration.checksum,
+                    applied_at
+                ],
+            )
+            .map_err(|error| {
+                format!(
+                    "Could not record release migration {}: {error}",
+                    migration.version
+                )
+            })?;
+        transaction
+            .pragma_update(None, "user_version", migration.version)
+            .map_err(|error| {
+                format!(
+                    "Could not set release SQLite user_version to {}: {error}",
+                    migration.version
+                )
+            })?;
+        validate_supported_input(&transaction)?;
+        verify_integrity(&transaction)?;
+        transaction.commit().map_err(|error| {
+            format!(
+                "Could not commit release migration {}: {error}",
+                migration.version
+            )
+        })?;
+        applied = true;
+    }
+    validate_input(connection)?;
+    Ok(applied)
 }
 
 /// Convert a fully normalized legacy schema-30 connection without rewriting
@@ -134,7 +310,7 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| format!("Could not begin staged release conversion: {error}"))?;
         write_release_ledger(&transaction)?;
-        validate_input(&transaction)?;
+        validate_baseline_input(&transaction)?;
         if preservation_receipt(&transaction)? != before {
             return Err(
                 "Learner data changed in the staged release conversion. The live database was not modified."
@@ -147,12 +323,14 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
     }
     verify_integrity(&staged)?;
     verify_schema_matches_release_baseline(&staged)?;
+    apply_migrations(&mut staged)?;
+    validate_input(&staged)?;
 
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not begin release lineage conversion: {error}"))?;
     write_release_ledger(&transaction)?;
-    validate_input(&transaction)?;
+    validate_baseline_input(&transaction)?;
     if preservation_receipt(&transaction)? != before {
         return Err(
             "Learner data changed during release lineage conversion. The transaction was rolled back."
@@ -162,6 +340,7 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
     transaction
         .commit()
         .map_err(|error| format!("Could not commit release lineage conversion: {error}"))?;
+    apply_migrations(connection)?;
     verify_integrity(connection)?;
     Ok(())
 }
@@ -186,11 +365,16 @@ fn write_release_ledger(transaction: &Transaction<'_>) -> Result<(), String> {
         .execute(
             "INSERT INTO schema_migrations(version, name, checksum, applied_at)
              VALUES (?1, ?2, ?3, ?4)",
-            params![SCHEMA_VERSION, BASELINE_NAME, BASELINE_CHECKSUM, applied_at],
+            params![
+                BASELINE_VERSION,
+                BASELINE_NAME,
+                BASELINE_CHECKSUM,
+                applied_at
+            ],
         )
         .map_err(|error| format!("Could not record the release baseline: {error}"))?;
     transaction
-        .pragma_update(None, "user_version", SCHEMA_VERSION)
+        .pragma_update(None, "user_version", BASELINE_VERSION)
         .map_err(|error| format!("Could not stamp the release schema version: {error}"))?;
     Ok(())
 }
@@ -400,6 +584,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn release_migration_checksums_match_committed_sql() {
+        for migration in RELEASE_MIGRATIONS {
+            assert_eq!(
+                format!("{:x}", Sha256::digest(migration.sql.as_bytes())),
+                migration.checksum,
+                "release migration {} checksum changed",
+                migration.version
+            );
+        }
+    }
+
+    #[test]
     fn fresh_release_uses_one_baseline_and_no_historical_repairs() {
         let mut connection = Connection::open_in_memory().unwrap();
         initialize_fresh(&mut connection).unwrap();
@@ -412,9 +608,96 @@ mod tests {
         let repairs: i64 = connection
             .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(migrations, 1);
+        assert_eq!(migrations, SCHEMA_VERSION);
         assert_eq!(repairs, 0);
-        assert_eq!(super::super::entry::user_version(&connection).unwrap(), 1);
+        assert_eq!(
+            super::super::entry::user_version(&connection).unwrap(),
+            SCHEMA_VERSION
+        );
+        let receipt_table: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_schema
+                     WHERE type = 'table' AND name = 'selection_deck_operations'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(receipt_table, 1);
+    }
+
+    #[test]
+    fn schema_one_is_readable_and_migrates_forward() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        transaction.execute_batch(BASELINE_SQL).unwrap();
+        write_release_ledger(&transaction).unwrap();
+        transaction.commit().unwrap();
+
+        assert_eq!(
+            validate_supported_input(&connection).unwrap(),
+            BASELINE_VERSION
+        );
+        validate_backup_input(&connection).unwrap();
+        assert!(validate_input(&connection).is_err());
+        assert!(apply_migrations(&mut connection).unwrap());
+        validate_input(&connection).unwrap();
+        assert_eq!(
+            super::super::entry::user_version(&connection).unwrap(),
+            SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn malformed_release_ledgers_and_receipts_are_rejected_without_writes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_fresh(&mut connection).unwrap();
+        for corruption in [
+            "UPDATE schema_migrations SET checksum='bad' WHERE version=2;",
+            "PRAGMA user_version=3;",
+            "DELETE FROM schema_migrations WHERE version=1;",
+            "DROP TABLE selection_deck_operations;",
+            "INSERT INTO selection_deck_operations VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{}', 1);",
+        ] {
+            let transaction = connection.transaction().unwrap();
+            transaction.execute_batch(corruption).unwrap();
+            let changes = transaction.total_changes();
+            assert!(validate_backup_input(&transaction).is_err(), "{corruption}");
+            assert_eq!(transaction.total_changes(), changes);
+            transaction.rollback().unwrap();
+        }
+        validate_input(&connection).unwrap();
+    }
+
+    #[test]
+    fn migration_failure_rolls_back_ddl_ledger_and_version_then_retries_cleanly() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        let transaction = connection.transaction().unwrap();
+        transaction.execute_batch(BASELINE_SQL).unwrap();
+        write_release_ledger(&transaction).unwrap();
+        transaction.commit().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TEMP TRIGGER fail_release_migration BEFORE INSERT ON schema_migrations
+             WHEN NEW.version=2 BEGIN SELECT RAISE(ABORT,'injected migration failure'); END;",
+            )
+            .unwrap();
+        assert!(apply_migrations(&mut connection).is_err());
+        assert_eq!(
+            validate_supported_input(&connection).unwrap(),
+            BASELINE_VERSION
+        );
+        connection
+            .execute_batch("DROP TRIGGER fail_release_migration;")
+            .unwrap();
+        assert!(apply_migrations(&mut connection).unwrap());
+        let changes = connection.total_changes();
+        assert!(!apply_migrations(&mut connection).unwrap());
+        assert_eq!(connection.total_changes(), changes);
+        validate_backup_input(&connection).unwrap();
     }
 
     #[test]
@@ -458,8 +741,25 @@ mod tests {
             .unwrap();
         let before = preservation_receipt(&connection).unwrap();
         convert_legacy_current(&mut connection).unwrap();
-        assert_eq!(preservation_receipt(&connection).unwrap(), before);
         validate_input(&connection).unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM selection_deck_operations",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        // The new table is additive and empty. Compare every pre-existing typed
+        // value after excluding only that newly introduced table in a rolled-back test transaction.
+        let comparison = connection.transaction().unwrap();
+        comparison
+            .execute_batch("DROP TABLE selection_deck_operations;")
+            .unwrap();
+        assert_eq!(preservation_receipt(&comparison).unwrap(), before);
+        comparison.rollback().unwrap();
         let deck: (String, i64, i64) = connection
             .query_row(
                 "SELECT name, created_at, updated_at FROM decks

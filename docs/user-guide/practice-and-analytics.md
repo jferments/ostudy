@@ -8,7 +8,7 @@ Practice is a contextual workflow: start from a deck, selected decks, Search res
 
 **Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck Practice action follows the deck-practice scope rather than merely opening an editor. It does not make suspended, buried, archived, or otherwise unavailable cards studyable. Extra practice is not capped at an arbitrary 10,000-card prefix: the whole studyable selected scope can become the session.
 
-**Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary.
+**Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary. If you choose **Save as new deck**, oStudy creates that destination and copies the selected notes in one retry-safe native operation. The originals and their review histories stay where they are; copied presentations receive fresh schedules. If the screen cannot refresh after the native operation commits, the created deck is retained rather than deleted or created a second time.
 
 Read the scope and workload before starting. A loading or failed workload request is not an empty library. Folder membership is a way to select decks; it does not own schedules or create its own review history.
 

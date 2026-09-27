@@ -1179,6 +1179,7 @@ const fn default_true() -> bool {
 pub(crate) mod card_commands;
 mod card_note;
 pub(crate) mod card_types_and_templates;
+pub(crate) mod selection_deck;
 pub(crate) mod transfer;
 
 #[cfg(test)]

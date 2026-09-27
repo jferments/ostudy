@@ -56,6 +56,7 @@ def release_contract() -> dict[str, Any]:
     source = (ROOT / "src-tauri/src/database/release.rs").read_text(encoding="utf-8")
     patterns = {
         "lineage": r'pub\(crate\) const SCHEMA_LINEAGE: &str = "([^"]+)";',
+        "baselineVersion": r"pub\(crate\) const BASELINE_VERSION: i64 = (\d+);",
         "version": r"pub\(crate\) const SCHEMA_VERSION: i64 = (\d+);",
         "name": r'pub\(crate\) const BASELINE_NAME: &str = "([^"]+)";',
         "checksum": r'pub\(crate\) const BASELINE_CHECKSUM: &str =\s*"([0-9a-f]{64})";',
@@ -65,7 +66,25 @@ def release_contract() -> dict[str, Any]:
         match = re.search(pattern, source)
         if not match:
             raise RuntimeError(f"The release schema {key} is missing or malformed.")
-        values[key] = int(match.group(1)) if key == "version" else match.group(1)
+        values[key] = int(match.group(1)) if key in {"baselineVersion", "version"} else match.group(1)
+
+    rows = [
+        (values["baselineVersion"], values["name"], values["checksum"])
+    ]
+    registry = source.split("const RELEASE_MIGRATIONS:", 1)[1].split(
+        "/// Read-only admission", 1
+    )[0]
+    for body in re.findall(r"ReleaseMigration\s*\{([\s\S]*?)\}", registry):
+        version = re.search(r"version:\s*(\d+)", body)
+        name = re.search(r'name:\s*"([^"]+)"', body)
+        checksum = re.search(r'checksum:\s*"([0-9a-f]{64})"', body)
+        if not (version and name and checksum):
+            raise RuntimeError("The release migration registry is malformed.")
+        rows.append((int(version.group(1)), name.group(1), checksum.group(1)))
+    rows.sort(key=lambda row: row[0])
+    if [row[0] for row in rows] != list(range(values["baselineVersion"], values["version"] + 1)):
+        raise RuntimeError("The release migration registry is not contiguous.")
+    values["migrations"] = rows
     return values
 
 
@@ -181,15 +200,18 @@ def classify_database(
         )
 
         if lineage == release["lineage"]:
-            expected_release_migration = [
-                (release["version"], release["name"], release["checksum"])
-            ]
-            if (
-                migration_rows == expected_release_migration
-                and user_version == release["version"]
+            expected_release_migrations = release["migrations"]
+            prefix = expected_release_migrations[: len(migration_rows)]
+            release_valid = (
+                bool(migration_rows)
+                and migration_rows == prefix
+                and user_version == migration_rows[-1][0]
                 and repair_rows == []
-            ):
+            )
+            if release_valid and user_version == release["version"]:
                 report["state"] = "release-current"
+            elif release_valid and release["baselineVersion"] <= user_version < release["version"]:
+                report["state"] = "release-supported-older"
             else:
                 report["state"] = "release-unsupported-or-damaged"
         elif lineage == "ostudy-public-v1":

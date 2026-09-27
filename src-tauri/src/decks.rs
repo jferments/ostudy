@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -37,7 +37,7 @@ pub struct SetDeckArchivedInput {
     pub archived: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeckSummaryDto {
     pub id: String,
@@ -114,14 +114,23 @@ pub(crate) fn create_deck_in_connection(
     connection: &mut Connection,
     input: CreateDeckInput,
 ) -> Result<DeckSummaryDto, CommandError> {
-    let name = validate_name(input.name)?;
-    let description = validate_description(input.description.unwrap_or_default())?;
     let now = unix_time_millis()?;
-
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
-    let id = generate_id(&transaction)?;
+    let result = create_deck_in_transaction(&transaction, input, now)?;
+    transaction.commit().map_err(CommandError::database)?;
+    Ok(result)
+}
+
+pub(crate) fn create_deck_in_transaction(
+    transaction: &Transaction<'_>,
+    input: CreateDeckInput,
+    now: i64,
+) -> Result<DeckSummaryDto, CommandError> {
+    let name = validate_name(input.name)?;
+    let description = validate_description(input.description.unwrap_or_default())?;
+    let id = generate_id(transaction)?;
     let sort_order: i64 = transaction
         .query_row(
             "SELECT COALESCE(MAX(sort_order), -1) + 1
@@ -139,7 +148,6 @@ pub(crate) fn create_deck_in_connection(
             params![id, name, description, sort_order, now],
         )
         .map_err(CommandError::database)?;
-    transaction.commit().map_err(CommandError::database)?;
 
     Ok(DeckSummaryDto {
         id,

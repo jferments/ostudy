@@ -80,3 +80,41 @@ fn verified_rollback_can_reopen_without_replaying_old_work() {
     assert!(session.enter(Some(1)).is_ok());
     assert!(session.enter(Some(0)).is_err());
 }
+
+#[test]
+fn preparation_keeps_ordinary_requests_open_and_releases_its_own_lease_before_activation() {
+    let session = Arc::new(Session::default());
+    let preparation = session.enter(Some(0)).unwrap();
+    let ordinary_read = session.enter(Some(0)).unwrap();
+    let ordinary_write = session.enter(Some(0)).unwrap();
+    assert!(!session.status().unwrap().restoring);
+    drop((ordinary_read, ordinary_write));
+    drop(preparation);
+    let replacement = session.replace(Some(0)).unwrap();
+    assert!(session.status().unwrap().restoring);
+    replacement.finish(false).unwrap();
+    assert!(session.enter(Some(0)).is_ok());
+}
+
+#[test]
+fn completed_preparation_cannot_silently_adopt_a_new_library_generation() {
+    let session = Arc::new(Session::default());
+    let original_generation = session.status().unwrap().generation;
+    let preparation = session.enter(Some(original_generation)).unwrap();
+    drop(preparation);
+    session
+        .replace(Some(original_generation))
+        .unwrap()
+        .finish(true)
+        .unwrap();
+    assert_eq!(
+        session
+            .replace(Some(original_generation))
+            .err()
+            .unwrap()
+            .code,
+        "library_generation_changed"
+    );
+    assert!(!session.status().unwrap().restoring);
+    assert!(session.enter(Some(original_generation + 1)).is_ok());
+}

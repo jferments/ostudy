@@ -1,6 +1,11 @@
 use rusqlite::params;
 
-use crate::{asset_lifecycle, error::CommandError, paths::AppPaths};
+use crate::{
+    asset_lifecycle,
+    database::{CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION},
+    error::CommandError,
+    paths::AppPaths,
+};
 
 #[test]
 fn canonical_database_reopen_does_not_mutate_application_rows() {
@@ -56,7 +61,14 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(release_state, ("ostudy-release-v1".to_string(), 1, 0));
+            assert_eq!(
+                release_state,
+                (
+                    CURRENT_SCHEMA_LINEAGE.to_string(),
+                    CURRENT_SCHEMA_VERSION,
+                    0
+                )
+            );
             Ok(())
         })
         .expect("canonical startup should be read-only");

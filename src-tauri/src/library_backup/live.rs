@@ -51,7 +51,9 @@ pub(crate) fn restore(
         return Ok(result);
     }
     let _maintenance = MaintenanceGuard::begin()?;
-    let mut replacement = library_session::begin_restore(generation)?;
+    // Preparation holds the original epoch without closing ordinary IPC.
+    // Maintenance already excludes long-running work and protects window close.
+    let preparation_lease = library_session::enter(generation)?;
     let staged = database.with_connection(|connection| {
         external_files::resolve_staged_import(
             connection,
@@ -61,12 +63,16 @@ pub(crate) fn restore(
             &[external_files::ExternalFileKind::Ostudybackup],
         )
     })?;
-    // Invalid input fails before closing the old connection or moving any data.
-    validate_backup_package(&staged.path, None)?;
-    let outcome = activate(
+    let prepared = activation::prepare_source_restore(paths, &staged.path)
+        .map_err(|message| CommandError::new("invalid_backup", message))?;
+    // Never wait for our own preparation lease. Recheck the ORIGINAL generation
+    // when acquiring exclusive activation, even if preparation was successful.
+    drop(preparation_lease);
+    let mut replacement = library_session::begin_restore(generation)?;
+    let outcome = activate_prepared(
         database,
         paths,
-        &staged.path,
+        prepared,
         &input.staged_file_id,
         crate::startup::reconcile_library,
         || replacement.switching(),
@@ -88,10 +94,10 @@ struct ActivationOutcome {
     changed: bool,
 }
 
-fn activate(
+fn activate_prepared(
     database: &Database,
     paths: &AppPaths,
-    source: &Path,
+    prepared: activation::PreparedRestore,
     operation: &str,
     reconcile: impl Fn(&Database, &AppPaths) -> Result<(), CommandError>,
     mut switching: impl FnMut(),
@@ -120,9 +126,8 @@ fn activate(
             // Preserve an older prepared backup outside its automatic startup
             // slot so it cannot overwrite this restore on a later launch.
             activation::preserve_pending(paths).map_err(recovery_error)?;
-            let mut guard = activation::apply_source_restore(paths, source)
-                .map_err(recovery_error)?
-                .ok_or_else(|| recovery_error("The selected restore source is unavailable."))?;
+            let mut guard = activation::install_prepared_restore(paths, prepared)
+                .map_err(recovery_error)?;
             let candidate: Result<(Connection, LiveRestoreResult), CommandError> = (|| {
                 let restored = Database::open(paths.database_path()).map_err(recovery_error)?;
                 reconcile(&restored, paths)?;
@@ -203,6 +208,27 @@ fn activate(
         result,
         connection_ready: ready,
         changed,
+    }
+}
+
+#[cfg(test)]
+fn activate(
+    database: &Database,
+    paths: &AppPaths,
+    source: &Path,
+    operation: &str,
+    reconcile: impl Fn(&Database, &AppPaths) -> Result<(), CommandError>,
+    switching: impl FnMut(),
+) -> ActivationOutcome {
+    match activation::prepare_source_restore(paths, source) {
+        Ok(prepared) => {
+            activate_prepared(database, paths, prepared, operation, reconcile, switching)
+        }
+        Err(message) => ActivationOutcome {
+            result: Err(CommandError::new("invalid_backup", message)),
+            connection_ready: true,
+            changed: false,
+        },
     }
 }
 

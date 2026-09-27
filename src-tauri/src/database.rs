@@ -253,6 +253,7 @@ const MIGRATIONS: &[Migration] = &[
 pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;
 /// Compatibility alias retained while historical public-v1 migrations remain readable.
 pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
+pub(crate) const MIN_SUPPORTED_RELEASE_SCHEMA_VERSION: i64 = release::BASELINE_VERSION;
 pub(crate) const CURRENT_SCHEMA_VERSION: i64 = release::SCHEMA_VERSION;
 pub(crate) const CURRENT_SCHEMA_LINEAGE: &str = release::SCHEMA_LINEAGE;
 
@@ -322,7 +323,7 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             }
         }
         DatabaseLineage::Release => {
-            release::validate_input(connection)?;
+            release::validate_supported_input(connection)?;
             verify_integrity(connection)?;
         }
         DatabaseLineage::LegacyPublic => {
@@ -367,7 +368,7 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             release::convert_legacy_current(connection)?;
             true
         }
-        DatabaseLineage::Release => false,
+        DatabaseLineage::Release => release::apply_migrations(connection)?,
         DatabaseLineage::PrePublic | DatabaseLineage::Unknown(_) => unreachable!(),
     };
 
@@ -617,7 +618,7 @@ pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), Com
     match inspect_lineage(connection)
         .map_err(|message| CommandError::new("invalid_backup", message))?
     {
-        DatabaseLineage::Release => release::validate_input(connection)
+        DatabaseLineage::Release => release::validate_backup_input(connection)
             .map_err(|message| CommandError::new("invalid_backup", message)),
         DatabaseLineage::LegacyPublic => {
             entry::validate_public_input(connection)

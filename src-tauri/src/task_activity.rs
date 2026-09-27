@@ -9,8 +9,10 @@ use crate::error::CommandError;
 
 static GATE: LazyLock<Arc<ActivityGate>> = LazyLock::new(|| Arc::new(ActivityGate::default()));
 
-pub(crate) fn maintenance_active() -> bool {
-    GATE.state.lock().map_or(true, |state| state.maintenance)
+/// Window-close policy consumes the same safety facts as maintenance admission.
+/// A cancellation request does not release activity until the actual owner exits.
+pub(crate) fn has_active_work() -> bool {
+    GATE.has_work()
 }
 
 #[derive(Default)]
@@ -50,12 +52,16 @@ impl MaintenanceGuard {
 }
 
 impl ActivityGate {
+    fn has_work(&self) -> bool {
+        self.state.lock().map_or(true, |state| state.active != 0)
+    }
+
     fn enter(self: &Arc<Self>, maintenance: bool) -> Result<ActivityGuard, CommandError> {
         let mut state = self.state.lock().map_err(|_| unavailable())?;
         if state.maintenance || (maintenance && state.active != 0) {
             return Err(CommandError::new(
                 "learning_maintenance_busy",
-                "Finish or cancel active document, tutor, preparation, or device synchronization work before library maintenance; finish maintenance before starting another task.",
+                "Finish or cancel active document, collection, tutor, preparation, or device synchronization work before library maintenance; finish maintenance before starting another task.",
             ));
         }
         state.active = state.active.checked_add(1).ok_or_else(unavailable)?;
@@ -93,6 +99,25 @@ pub(crate) fn isolated_activity_for_test() -> (ActivityGuard, impl Fn() -> bool)
 }
 
 #[cfg(test)]
+#[derive(Default)]
+pub(crate) struct TestGate(Arc<ActivityGate>);
+
+#[cfg(test)]
+impl TestGate {
+    pub(crate) fn activity(&self) -> Result<ActivityGuard, CommandError> {
+        self.0.enter(false)
+    }
+
+    pub(crate) fn maintenance(&self) -> Result<ActivityGuard, CommandError> {
+        self.0.enter(true)
+    }
+
+    pub(crate) fn has_work(&self) -> bool {
+        self.0.has_work()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -121,5 +146,28 @@ mod tests {
         }
         drop(maintenance);
         assert!(gate.enter(true).is_ok());
+    }
+
+    #[test]
+    fn simultaneous_work_and_maintenance_cannot_both_enter() {
+        let gate = Arc::new(ActivityGate::default());
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let worker_gate = gate.clone();
+        let worker_barrier = barrier.clone();
+        let worker = std::thread::spawn(move || {
+            worker_barrier.wait();
+            let lease = worker_gate.enter(false);
+            worker_barrier.wait();
+            lease
+        });
+        barrier.wait();
+        let maintenance = gate.enter(true);
+        barrier.wait();
+        let activity = worker.join().unwrap();
+        assert_ne!(activity.is_ok(), maintenance.is_ok());
+        assert!(gate.has_work());
+        drop(activity);
+        drop(maintenance);
+        assert!(!gate.has_work());
     }
 }

@@ -1,12 +1,12 @@
 # Post-#106 hardening and audit disposition
 
-Status: **planned follow-up, not implemented by PR #108**. This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
+Status: **H-01/H-02 implemented in PR #109; qualification pending on its exact head. H-03 onward remain planned follow-up.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
 
 Merged foundation: PR #106, squash `9ef91e79346b6d0d0ace983da3c1583303f15a43`. See the [completion record](lk-followups/consolidation-qualification.md). PR #108 is documentation-only relative to that foundation. The H identifiers below are scope labels, **not reserved GitHub PR numbers**, and do not authorize starting all scopes at once. PR #105 remains the deferred lessons/narration/PowerPoint plan; structural cleanup must not become an endless prerequisite to product work.
 
 ## Delivery rules
 
-Finish #108 first. Create one short-lived branch for one coherent boundary from the then-current merged main. Start with H-01, H-02 and H-03. Establish the H-05/H-06 safeguards before broad frontend restructuring, H-02/H-06 lifetime tests before H-08, and a proven filesystem/staging contract before H-09. H-04 can be independent of frontend work; dependencies describe semantics, not permission for competing writers or duplicate full matrices.
+PR #108 is merged. PR #109 owns H-01 and H-02 together at the human's explicit request; do not split or duplicate those active changes. After #109 merges, H-03 is the next planned hardening boundary. Establish the H-05/H-06 safeguards before broad frontend restructuring, preserve the H-02/H-06 lifetime contracts before H-08, and require a proven filesystem/staging contract before H-09. H-04 can be independent of frontend work; dependencies describe semantics, not permission for competing writers or duplicate full matrices.
 
 Each implementation PR owns its focused regressions, source-derived documentation, compatibility decisions and exact-SHA qualification. Freeze a complete candidate before terminal gates; record fresh versus safely reused execution and unrun human/platform boundaries separately. Use the [GitHub-direct procedure](../agents/GITHUB-DIRECT-DEVELOPMENT.md). No automatic merge, source-writing Actions, alternate publisher, forced history rewrite, new service, or live-library experiment is introduced by this plan.
 
@@ -14,23 +14,27 @@ Each implementation PR owns its focused regressions, source-derived documentatio
 
 ### H-01 — atomic, retry-safe save-selection-as-deck
 
-Owner: `src/screens/cards/PracticeResultsModal.tsx`, deck/authoring transfer services and their operation receipts.
+Status: **implemented in PR #109; exact-head Static/Fast qualification and human local acceptance remain the current boundary.**
 
-Confirmed from source: React creates a deck, copies notes, then refreshes inside one try/catch that deletes the new deck on any error. A failed refresh after committed copying therefore triggers destructive compensation. Existing tests do not cover that post-commit case.
+Owner: `src/screens/cards/PracticeResultsModal.tsx`, `authoring/selection_deck.rs`, deck copy primitives and the release migration registry.
 
-Implement one native create-and-copy transaction with a stable operation identity, request fingerprint and replayable committed result. Preserve source notes/assets/questions/review history and give copied presentations fresh schedules. Reuse a suitable receipt owner; any needed durable extension is a forward release migration, not a baseline rewrite.
+The frontend now sends one stable operation identity to a native transaction that creates the destination deck, copies the selected notes/questions/assets/tags, creates fresh schedules, and stores a replayable committed result. Release migration 2 adds only the operation-receipt table; the schema-1 baseline remains immutable and supported as an upgrade/backup input. React no longer deletes a committed result when its follow-up deck-list refresh fails.
 
-Exit: failed copying leaves no partially created result; lost reply replays the same deck; reused identity with different input is rejected; refresh/navigation failure cannot delete or recreate committed content. Keep empty-result semantics explicit. No type-generator or controller-wide refactor prerequisite.
+Focused regressions cover rollback on copy failure, replay without duplicate creation, identity-conflict refusal, preservation of source scheduling evidence, fresh copied schedules, typed interactive question copying, post-commit refresh failure, and same-operation retry after a lost response.
+
+Exit: failed copying leaves no partially created result; lost reply replays the same deck; reused identity with different input is rejected; refresh/navigation failure cannot delete or recreate committed content. H-02 is implemented in the same requested PR; H-03 follows after #109 rather than a broader controller/type-generation refactor.
 
 ### H-02 — activity admission, lifecycle visibility and restore preparation
 
-Owners: `study_materials/cancellation.rs`, `composition.rs`, `task_activity.rs`, `library_session.rs`, `library_backup/live.rs`, native close policy.
+Status: **implemented in PR #109; exact-head qualification and human local acceptance remain the current boundary.**
 
-Confirmed gap: collection cancellation registration does not acquire the common ActivityGuard. Qualification: the leased composition command already holds a request lease, so a free-running cross-library replacement is not established. The concern is maintenance admission, blocked commands while waiting for that lease, cancellation availability and close-warning visibility.
+Owners: `study_materials/cancellation.rs`, `task_activity.rs`, `library_session.rs`, `library_backup/live.rs` / `activation.rs`, and native close policy.
 
-Integrate collection work with shared safety facts while retaining domain-specific progress/cancellation owners. Prepare a protected backup candidate before unnecessarily closing ordinary admission; recheck candidate identity and generation before exclusive activation. Never activate merely because a drain timeout expired.
+Collection study-material work now acquires the shared ActivityGuard for the same owned lifetime as its feature-local cancellation guard. Maintenance admission and close protection therefore see collection work consistently, while the feature registry still owns cancellation/progress. Request leases continue to protect actual command completion independently of activity admission.
 
-Exit: both task-first and maintenance-first races, cancellation cleanup, close warning, invalid backup, changed candidate, stale-generation request and receipt replay have deterministic tests. Leases remain held until actual worker completion.
+Restore now resolves, copies, extracts, upgrades and validates a private candidate before closing ordinary request admission. Before exclusive activation it releases its preparation lease, acquires maintenance/exclusive admission, rechecks the original library generation, and verifies the retained source/candidate identity before journaled installation. Invalid preparation cannot replace the live library, and an abandoned prepared candidate has no startup authority.
+
+Focused regressions cover activity reservation/drop behavior, collection cancellation cleanup, maintenance refusal while activity exists, request-generation races, private candidate validation/identity checks, and the existing crash-recovery/receipt paths. No timeout authorizes replacement while an old request still owns the library.
 
 ### H-03 — observable frontend failures and asynchronous lifetimes
 

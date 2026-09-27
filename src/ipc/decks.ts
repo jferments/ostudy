@@ -34,6 +34,20 @@ export interface SetDeckArchivedInput {
   archived: boolean;
 }
 
+export interface SaveSelectionAsDeckInput {
+  operationId: string;
+  name: string;
+  description?: string;
+  noteIds: string[];
+}
+
+export interface SaveSelectionAsDeckResult {
+  operationId: string;
+  deck: DeckSummary;
+  affectedCount: number;
+  skippedDuplicates: number;
+}
+
 export interface DeckCardSummaryQuery {
   deckId: string;
   query: string;
@@ -111,6 +125,12 @@ export async function setDeckArchived(input: SetDeckArchivedInput): Promise<Deck
 
 export async function deleteDeck(deckId: string): Promise<DeletionResult> {
   return invoke<DeletionResult>("delete_deck", { deckId });
+}
+
+export async function saveSelectionAsDeck(
+  input: SaveSelectionAsDeckInput,
+): Promise<SaveSelectionAsDeckResult> {
+  return invoke<SaveSelectionAsDeckResult>("save_selection_as_deck", { input });
 }
 
 export async function listDeckCardSummaries(

@@ -77,16 +77,9 @@ class LibraryStatusTests(unittest.TestCase):
     def test_current_release_library_is_recognized_and_verified_read_only(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "library.sqlite3"
-            release_migration = [
-                (
-                    self.release["version"],
-                    self.release["name"],
-                    self.release["checksum"],
-                )
-            ]
             create_ledger_db(
                 path,
-                release_migration,
+                self.release["migrations"],
                 [],
                 lineage=self.release["lineage"],
                 user_version=self.release["version"],
@@ -97,6 +90,19 @@ class LibraryStatusTests(unittest.TestCase):
             self.assertEqual(report["integrityCheck"], "ok")
             self.assertEqual(report["foreignKeyCheck"], "ok")
             self.assertEqual(path.read_bytes(), before)
+
+    def test_supported_older_release_library_is_recognized_as_upgrade_input(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "library.sqlite3"
+            baseline = [self.release["migrations"][0]]
+            create_ledger_db(
+                path,
+                baseline,
+                [],
+                lineage=self.release["lineage"],
+                user_version=self.release["baselineVersion"],
+            )
+            self.assertEqual(self.classify(path)["state"], "release-supported-older")
 
     def test_terminal_public_v1_library_is_recognized_as_legacy_conversion_input(self):
         with tempfile.TemporaryDirectory() as root:
@@ -142,13 +148,8 @@ class LibraryStatusTests(unittest.TestCase):
     def test_mismatched_release_ledger_is_not_called_current(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "library.sqlite3"
-            bad = [
-                (
-                    self.release["version"],
-                    self.release["name"],
-                    "f" * 64,
-                )
-            ]
+            bad = list(self.release["migrations"])
+            bad[-1] = (bad[-1][0], bad[-1][1], "f" * 64)
             create_ledger_db(
                 path,
                 bad,
@@ -187,6 +188,7 @@ class LibraryStatusTests(unittest.TestCase):
         safe = [
             {"state": "absent"},
             {"state": "release-current"},
+            {"state": "release-supported-older"},
             {"state": "legacy-public-current"},
             {"state": "public-supported-older"},
             {"state": "pre-public-v26-exact"},
