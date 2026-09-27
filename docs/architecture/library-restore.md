@@ -2,10 +2,10 @@
 
 `library_backup.rs` owns the package contract. Its `package` module owns format-4
 SQLite containers, coherent SQLite snapshots, managed-file validation and isolated
-extraction. `activation` owns journaled filesystem replacement; `live` owns
-same-process activation and durable completion receipts. The asynchronous
-`library_backup_commands.rs` adapter keeps this work off the native event loop.
-Package preparation is never reported as completed restoration.
+extraction. `activation` owns private candidate preparation and journaled filesystem
+replacement; `live` owns same-process activation and durable completion receipts.
+The asynchronous `library_backup_commands.rs` adapter keeps this work off the native
+event loop. Package preparation is never reported as completed restoration.
 
 ## Runtime admission
 
@@ -22,18 +22,34 @@ Duplicate Rust macro symbols and duplicate registered wire names are separately
 forbidden. The asset protocol holds a lease across ledger lookup and file reads;
 responses are not cached across library replacement.
 
-Restore obtains the existing maintenance guard, closes IPC admission, and drains
-leases before closing the old connection. Detached processing and synchronization
-workers retain activity guards until their actual work ends, including canceled
-transports whose cleanup has not finished. No database/file IO happens while the
-session-state mutex is held. The stable managed `Database` object and its clones
-see the replacement connection only after activation and reconciliation succeed.
+Restore first obtains the existing maintenance guard and an ordinary request lease
+for the original page generation. It resolves the staged input and prepares a
+private validated candidate while ordinary IPC admission remains open. Invalid
+input therefore fails without closing the active connection or ordinary admission.
+Before exclusive activation, it releases its own preparation lease and rechecks the
+original generation while closing admission and draining the remaining leases.
 
-## Durable activation
+Document, collection, Tutor, preparation and synchronization workers retain shared
+activity guards until their actual work ends, including canceled transports whose
+cleanup has not finished. Maintenance admission and close protection consult these
+common activity facts. Domain registries still own their cancellation/progress
+policies. No database/file IO happens while the session-state mutex is held. The
+stable managed `Database` object and its clones see the replacement connection only
+after activation and reconciliation succeed.
 
-The source package is retained in a unique `restore-transactions/<operation-id>`
-directory. Validate and upgrade an isolated candidate before touching the active
-library. Persist `library-restore-journal.json` before the first active-file move.
+## Private preparation and durable activation
+
+The source package is copied into a unique `restore-transactions/<operation-id>`
+directory. Extraction, schema upgrade and validation operate only on its candidate.
+The native `PreparedRestore` value binds the library root, copied source digest and
+a length-framed digest of the candidate tree. It is not a client-supplied path or
+serialized authorization token. An abandoned preparation retains its files but has
+no active journal, so startup does not silently install it.
+
+Exclusive activation verifies those same private bytes before recording a journal
+or moving any active file. Changing the external input afterward does not change
+the selected private snapshot; changing the retained source or candidate refuses
+activation. Persist `library-restore-journal.json` before the first active-file move.
 The journal contains an operation identity, input hash and original-entry presence
 bits, never arbitrary filesystem paths. Paths are application-owned constants.
 
@@ -83,9 +99,12 @@ Current-format preservation tests compare typed rows, stable identities,
 schedules, attempts, reviews, drafts and managed-file hashes. Activation tests
 terminate child processes at install/rollback/commit boundaries and retain actual
 committed WAL rows. Live tests exercise stable database clones, rollback, receipt
-replay and pending-input preservation. Session/transport tests reject stale work
-and verify that preparation alone cannot produce completion. UI tests exercise
-explicit destructive confirmation and same-process completion.
+replay and pending-input preservation. Preparation tests cover invalid backups,
+continued writes to the current library, abandoned candidates, changed input paths
+and tampered private bytes. Shared activity tests cover both admission orders,
+duplicate registration and cancellation cleanup. Session/transport tests reject
+stale work and verify that preparation alone cannot produce completion. UI tests
+exercise explicit destructive confirmation and same-process completion.
 
 These contracts do not rewrite the immutable public-v1 schema-30 migration bytes or the backup version. Historical backup readers remain. PR #106's release-baseline boundary converts supported public-v1 libraries to the immutable `ostudy-release-v1` schema-1 baseline only after staged schema/value preservation proof; ordinary release migrations then advance that restored library to the current schema. Restore must use that database owner rather than deleting ledgers or manually relabelling a library.
 See [agent restore rules](../agents/LIBRARY-RESTORE.md) and the
