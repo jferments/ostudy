@@ -175,7 +175,11 @@ fn filename_subject(original_filename: &str, source_format: &str) -> Option<Stri
 
 fn repeated_parent_subject(outline: &DocumentOutline) -> Option<String> {
     let mut counts = std::collections::BTreeMap::<String, (String, usize)>::new();
-    for title in outline.sections.iter().map(|section| section.title.as_str()) {
+    for title in outline
+        .sections
+        .iter()
+        .map(|section| section.title.as_str())
+    {
         let Some((parent, _)) = title.split_once(" — ") else {
             continue;
         };
@@ -511,14 +515,16 @@ mod tests {
         ]
         .into_iter()
         .enumerate()
-        .map(|(index, title)| crate::ai::document_intelligence::OutlineSection {
-            title: title.into(),
-            page_start: index as i64 + 1,
-            page_end: index as i64 + 1,
-            summary: title.into(),
-            learning_objectives: vec![],
-            key_concepts: vec![title.into()],
-        })
+        .map(
+            |(index, title)| crate::ai::document_intelligence::OutlineSection {
+                title: title.into(),
+                page_start: index as i64 + 1,
+                page_end: index as i64 + 1,
+                summary: title.into(),
+                learning_objectives: vec![],
+                key_concepts: vec![title.into()],
+            },
+        )
         .collect();
         let leaf = outline.sections[0].title.clone();
         let provider = DocumentArtifactMetadataCandidate {

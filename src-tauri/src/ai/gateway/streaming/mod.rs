@@ -41,7 +41,9 @@ struct StreamCapture {
 
 impl StreamCapture {
     fn usage(&self) -> Option<&Value> {
-        self.stream.as_ref().and_then(|stream| stream.usage.as_ref())
+        self.stream
+            .as_ref()
+            .and_then(|stream| stream.usage.as_ref())
     }
 
     fn observation(&self) -> Value {

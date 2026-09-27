@@ -288,7 +288,10 @@ mod teaching_tests {
             "they are not quotas",
             "existing structured card/assessment envelope only",
         ] {
-            assert!(prompt.contains(required), "missing teaching boundary: {required}");
+            assert!(
+                prompt.contains(required),
+                "missing teaching boundary: {required}"
+            );
         }
     }
 
@@ -298,7 +301,9 @@ mod teaching_tests {
         let mut other = catalog.units[0].clone();
         other.id = "b".repeat(32);
         catalog.units.push(other);
-        catalog.document_core_units.insert(catalog.units[0].id.clone());
+        catalog
+            .document_core_units
+            .insert(catalog.units[0].id.clone());
         let card = |label: &str, alias: &str| {
             json!({"type":"basic","front":label,"back":"A source-supported answer",
                 CARD_SUPPORT_KEY: catalog.select(&[alias.into()], 2).unwrap()})
@@ -307,14 +312,23 @@ mod teaching_tests {
         let repeat = card("Another core target", "K0");
         let breadth = card("A different supported target", "K1");
         let selected = select_cards(
-            vec![first.clone(), repeat.clone(), breadth.clone(), first.clone()],
+            vec![
+                first.clone(),
+                repeat.clone(),
+                breadth.clone(),
+                first.clone(),
+            ],
             3,
             &catalog,
             &GenerationPolicy::default(),
         )
         .unwrap();
         assert_eq!(selected, vec![first, breadth, repeat]);
-        assert_eq!(catalog.units.len(), 2, "selection cannot delete retained knowledge");
+        assert_eq!(
+            catalog.units.len(),
+            2,
+            "selection cannot delete retained knowledge"
+        );
     }
 
     #[test]
@@ -329,9 +343,13 @@ mod teaching_tests {
         assert_ne!(policy.fingerprint().unwrap(), old);
         let mut reordered = policy.clone();
         reordered.allowed_types.reverse();
-        assert_eq!(policy.fingerprint().unwrap(), reordered.fingerprint().unwrap());
         assert_eq!(
-            serde_json::from_value::<GenerationPolicy>(serde_json::to_value(&policy).unwrap()).unwrap(),
+            policy.fingerprint().unwrap(),
+            reordered.fingerprint().unwrap()
+        );
+        assert_eq!(
+            serde_json::from_value::<GenerationPolicy>(serde_json::to_value(&policy).unwrap())
+                .unwrap(),
             policy
         );
     }
