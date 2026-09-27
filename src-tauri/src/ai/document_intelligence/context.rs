@@ -95,6 +95,11 @@ impl DocumentTaskContext {
             .completion_token_ceiling(&self.reasoning_effort, visible_tokens)
     }
 
+    pub(crate) fn reasoning_token_limit(&self, completion_token_ceiling: usize) -> Option<usize> {
+        self.capabilities
+            .reasoning_token_limit(&self.reasoning_effort, completion_token_ceiling)
+    }
+
     pub(crate) fn context_window_tokens(&self) -> Option<usize> {
         self.capabilities.context_window_tokens
     }

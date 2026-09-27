@@ -187,7 +187,6 @@ async fn analyze(
         ))
         .map_err(CommandError::serialization)?,
     );
-    let output_tokens = task.completion_token_ceiling(EXTRACTION_COMPLETION_TOKENS);
     let mut request_task = task.clone();
     request_task.diagnostic_window_key = Some(analysis_store::window_id(&pending, &contract)?);
     let task = &request_task;
@@ -218,7 +217,7 @@ async fn analyze(
                         system_prompt: &extraction_prompt(),
                         user_text: &call.user,
                         schema: &call.schema,
-                        max_tokens: output_tokens,
+                        max_tokens: task.completion_token_ceiling(call.visible_completion_tokens),
                         images,
                     },
                     cancellation,
@@ -251,6 +250,7 @@ pub(super) struct WindowCall {
     user: String,
     schema: Value,
     cancellation: CancellationSignal,
+    visible_completion_tokens: usize,
 }
 
 #[derive(Debug)]
@@ -486,30 +486,69 @@ where
             user: initial_prompt.clone(),
             schema: schema::initial(catalog, sources),
             cancellation: cancellation.clone(),
+            visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
         })
         .await
         .and_then(|value| decode::initial(value, catalog, sources));
         match decoded {
             Ok(report) => report,
             Err(error) if recoverable_envelope(&error) => {
+                let truncated = error.code == "ai_document_output_truncated";
+                let reason = if truncated {
+                    crate::ai::generation::RecoveryReason::OutputCompaction
+                } else {
+                    crate::ai::generation::RecoveryReason::ContractRepair
+                };
                 if !crate::ai::generation::reserve_recovery(
                     diagnostics,
                     "knowledge_extraction",
                     logical_key,
-                    crate::ai::generation::RecoveryReason::ContractRepair,
+                    reason,
                     &error.code,
                 ) {
                     return Err(error);
                 }
                 already_retried = true;
                 check_canceled(cancellation)?;
+                let retry_visible_tokens = if truncated {
+                    EXTRACTION_COMPLETION_TOKENS.saturating_mul(2)
+                } else {
+                    EXTRACTION_COMPLETION_TOKENS
+                };
+                let retry_instruction = if truncated {
+                    "The prior response reached its completion ceiling. Return a complete, concise instance of the same schema. Prioritize distinct high-value knowledge and explicit source dispositions; do not add commentary or duplicate units."
+                        .to_string()
+                } else {
+                    format!(
+                        "The prior response failed: {}. Correct this protocol error using the explicit output schema; do not add alternate top-level fields. Keep complete evidence selections and qualifications.",
+                        error.message
+                    )
+                };
                 crate::logging::warn_target(
                     "ai.knowledge.extraction",
-                    "knowledge_envelope_repair_started",
-                    "Retrying the response protocol once using the specific safe shape failure.",
-                    json!({"windowId":analysis_store::window_id(sources,contract)?,"code":error.code,"detail":error.message}),
+                    if truncated {
+                        "knowledge_output_compaction_started"
+                    } else {
+                        "knowledge_envelope_repair_started"
+                    },
+                    if truncated {
+                        "Retrying a truncated semantic window once with additional structured-output headroom."
+                    } else {
+                        "Retrying the response protocol once using the specific safe shape failure."
+                    },
+                    json!({
+                        "windowId": analysis_store::window_id(sources, contract)?,
+                        "code": error.code,
+                        "visibleOutputTokens": retry_visible_tokens,
+                    }),
                 );
-                let value=call(WindowCall{user:format!("{initial_prompt}\nThe prior response failed: {}. Correct this protocol error using the explicit output schema; do not add alternate top-level fields. Keep complete evidence selections and qualifications.",error.message),schema:schema::initial(catalog,sources),cancellation:cancellation.clone()}).await?;
+                let value = call(WindowCall {
+                    user: format!("{initial_prompt}\n{retry_instruction}"),
+                    schema: schema::initial(catalog, sources),
+                    cancellation: cancellation.clone(),
+                    visible_completion_tokens: retry_visible_tokens,
+                })
+                .await?;
                 decode::initial(value, catalog, sources)?
             }
             Err(error) => return Err(error),
@@ -535,6 +574,7 @@ where
             user,
             schema: repair_schema,
             cancellation: cancellation.clone(),
+            visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
         })
         .await
         {

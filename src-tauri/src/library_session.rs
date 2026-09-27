@@ -1,6 +1,6 @@
 //! Admission for one live learner-library generation.
 //!
-//! Synchronous IPC holds a lease through dispatch. Async forwarding adapters
+//! Synchronous IPC holds a lease through queued worker completion. Async adapters
 //! hold a second lease through the entire future, using the ORIGINAL request's
 //! generation. A queued old future cannot start against a replacement library.
 //! Restore closes admission before draining leases; no database/file IO occurs
@@ -17,6 +17,7 @@ pub(crate) mod commands;
 #[cfg(test)]
 #[path = "library_session_tests.rs"]
 mod current_format_tests;
+mod execution;
 
 static SESSION: LazyLock<Arc<Session>> = LazyLock::new(|| Arc::new(Session::default()));
 
@@ -166,6 +167,15 @@ pub(crate) fn enter_current() -> Result<Lease, CommandError> {
     SESSION.enter(Some(generation))
 }
 
+/// Close protection includes queued and running requests, without reserving a
+/// shared activity guard that would conflict with a command's own maintenance.
+pub(crate) fn has_active_requests() -> bool {
+    SESSION
+        .state
+        .lock()
+        .map_or(true, |state| state.readers != 0)
+}
+
 pub(crate) fn begin_restore(generation: Option<u64>) -> Result<Replacement, CommandError> {
     SESSION.replace(generation)
 }
@@ -185,9 +195,12 @@ where
     R: tauri::Runtime,
     F: Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
 {
+    let dispatch = Arc::new(dispatch);
     move |invoke| {
         match invoke.message.command() {
-            "get_library_session" | "prepare_library_restore_async" => return dispatch(invoke),
+            "get_library_session" | "prepare_library_restore_async" => {
+                return execution::dispatch(Arc::clone(&dispatch), invoke, None);
+            }
             _ => {}
         }
         let generation = match invoke.message.payload() {
@@ -206,14 +219,14 @@ where
             },
             InvokeBody::Raw(_) => None,
         };
-        let _lease = match enter(generation) {
+        let lease = match enter(generation) {
             Ok(lease) => lease,
             Err(error) => {
                 invoke.resolver.reject(error);
                 return true;
             }
         };
-        dispatch(invoke)
+        execution::dispatch(Arc::clone(&dispatch), invoke, Some(lease))
     }
 }
 

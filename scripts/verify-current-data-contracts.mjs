@@ -7,6 +7,7 @@ const failures = [];
 const [
   database,
   release,
+  releaseStaging,
   repairs,
   prePublicLedger,
   recovery,
@@ -24,6 +25,7 @@ const [
 ] = await Promise.all([
   read("src-tauri/src/database.rs"),
   read("src-tauri/src/database/release.rs"),
+  read("src-tauri/src/database/release/staging.rs"),
   read("src-tauri/src/data_repairs.rs"),
   read("scripts/history/pre-public-v26/ledger.json"),
   read("scripts/restore_pre_public_backup.py"),
@@ -52,7 +54,10 @@ requireText("release current schema 2", release, "pub(crate) const SCHEMA_VERSIO
 requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
 requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
 requireText("selection-deck migration checksum", release, '"c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"');
-requireText("staged legacy converter", release, "Backup::new(connection, &mut staged)");
+requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
+requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
+requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");
+requireText("low-space staging classification", releaseStaging, "rusqlite::ffi::SQLITE_FULL");
 requireText("typed preservation receipt", release, "fn preservation_receipt(connection: &Connection)");
 requireText("atomic live ledger conversion", release, "transaction_with_behavior(TransactionBehavior::Immediate)");
 

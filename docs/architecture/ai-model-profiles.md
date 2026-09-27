@@ -10,6 +10,8 @@ Automatic resolves through capability policy. A model that requires reasoning ca
 
 Generation provenance records **requested** and **effective** reasoning effort. This makes capability adaptation visible to diagnosis instead of pretending the exact requested value was always used. Reasoning output itself is not a generic frontend result or routine diagnostic payload.
 
+OpenRouter's representative document-contract probe uses the same effective reasoning policy as document generation. A probe must not earn a green document-capability result by silently disabling optional reasoning that the assigned learning task will actually use. Structured document requests reserve visible JSON completion separately from hidden reasoning headroom; when model metadata declares an explicit reasoning-token limit, the adapter sends the matching cap so hidden reasoning cannot consume the visible structured-output reserve.
+
 Changing a task's default model leaves each profile's effort/key/timeout/privacy settings intact. Current document learning, including study guides, uses the flashcard-generation default; there is no requirement for a separate study-guide task-default UI in the current application.
 
 ## Migration from the legacy global setting

@@ -9,10 +9,10 @@ use crate::error::CommandError;
 
 static GATE: LazyLock<Arc<ActivityGate>> = LazyLock::new(|| Arc::new(ActivityGate::default()));
 
-/// Window-close policy consumes the same safety facts as maintenance admission.
+/// Window-close policy includes both background activities and queued/running IPC.
 /// A cancellation request does not release activity until the actual owner exits.
 pub(crate) fn has_active_work() -> bool {
-    GATE.has_work()
+    GATE.has_work() || crate::library_session::has_active_requests()
 }
 
 #[derive(Default)]

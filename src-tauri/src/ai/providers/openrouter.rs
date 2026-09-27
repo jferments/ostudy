@@ -22,19 +22,30 @@ pub(super) fn apply_request_policy(
 /// request. `automatic` deliberately leaves routing/model defaults untouched;
 /// `none` must be transmitted because omitting the field can enable a model's
 /// provider-default reasoning and consume a small probe/output budget.
-pub(super) fn apply_reasoning_policy(body: &mut Value, reasoning_effort: &str) {
+pub(super) fn apply_reasoning_policy(
+    body: &mut Value,
+    reasoning_effort: &str,
+    reasoning_max_tokens: Option<usize>,
+) {
     if reasoning_effort == "automatic" {
         return;
     }
-    body["reasoning"] = json!({
+    let mut reasoning = json!({
         "effort": reasoning_effort,
         "exclude": true,
     });
+    if reasoning_effort != "none" {
+        if let Some(max_tokens) = reasoning_max_tokens.filter(|value| *value > 0) {
+            reasoning["max_tokens"] = json!(max_tokens);
+        }
+    }
+    body["reasoning"] = reasoning;
 }
 
 pub(super) fn apply_document_policy(
     body: &mut Value,
     reasoning_effort: &str,
+    reasoning_max_tokens: Option<usize>,
     require_zero_data_retention: bool,
 ) {
     apply_request_policy(body, true, require_zero_data_retention);
@@ -42,7 +53,7 @@ pub(super) fn apply_document_policy(
         "id": "context-compression",
         "enabled": false,
     }]);
-    apply_reasoning_policy(body, reasoning_effort);
+    apply_reasoning_policy(body, reasoning_effort, reasoning_max_tokens);
 }
 
 /// OpenRouter's model catalog declares `structured_outputs` separately from
@@ -165,13 +176,14 @@ mod tests {
     #[test]
     fn document_policy_disables_compression_and_excludes_returned_reasoning() {
         let mut body = json!({});
-        apply_document_policy(&mut body, "low", false);
+        apply_document_policy(&mut body, "low", Some(4_000), false);
         assert_eq!(
             body.pointer("/plugins/0/id"),
             Some(&json!("context-compression"))
         );
         assert_eq!(body.pointer("/plugins/0/enabled"), Some(&json!(false)));
         assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
+        assert_eq!(body.pointer("/reasoning/max_tokens"), Some(&json!(4_000)));
         assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
         assert!(body.get("session_id").is_none());
     }
@@ -179,12 +191,13 @@ mod tests {
     #[test]
     fn reasoning_none_is_transmitted_instead_of_falling_back_to_model_defaults() {
         let mut body = json!({});
-        apply_reasoning_policy(&mut body, "none");
+        apply_reasoning_policy(&mut body, "none", Some(999));
         assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("none")));
         assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
+        assert!(body.pointer("/reasoning/max_tokens").is_none());
 
         let mut automatic = json!({});
-        apply_reasoning_policy(&mut automatic, "automatic");
+        apply_reasoning_policy(&mut automatic, "automatic", Some(999));
         assert!(automatic.get("reasoning").is_none());
     }
 

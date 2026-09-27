@@ -225,11 +225,9 @@ pub(super) async fn test_profile(
         ));
     }
 
-    // Capability probes should spend their small output budgets validating the
-    // requested contract, not a provider-default hidden reasoning trace. For an
-    // OpenRouter model that declares optional reasoning, explicitly disable it.
-    // Models with mandatory reasoning retain their configured/default effort;
-    // models with no reasoning metadata receive no reasoning parameter at all.
+    // The document probe must exercise the same effective reasoning policy as
+    // production. A green probe that silently disables optional reasoning does
+    // not qualify the configuration that document learning will actually use.
     request_profile.reasoning_effort = probe_reasoning_effort(&request_profile, models.as_deref());
 
     let mut properties = ProviderProperties::default();
@@ -345,8 +343,42 @@ pub(super) async fn test_profile(
     };
 
     let document_started = Instant::now();
+    let document_probe_visible_tokens = 768_usize;
+    let document_probe_max_tokens = if profile.provider_kind == ProviderKind::Openrouter {
+        super::super::reasoning::structured_completion_token_ceiling(
+            &request_profile.reasoning_effort,
+            document_probe_visible_tokens,
+        )
+    } else {
+        document_probe_visible_tokens
+    };
+    let reasoning_supports_max_tokens = models
+        .as_deref()
+        .and_then(|models| {
+            models
+                .iter()
+                .find(|model| model.id == request_profile.model_id)
+        })
+        .and_then(|model| model.reasoning.as_ref())
+        .is_some_and(|reasoning| reasoning.supports_max_tokens);
+    let document_probe_reasoning_limit = (profile.provider_kind == ProviderKind::Openrouter)
+        .then(|| {
+            super::super::reasoning::structured_reasoning_token_limit(
+                &request_profile.reasoning_effort,
+                document_probe_max_tokens,
+                reasoning_supports_max_tokens,
+            )
+        })
+        .flatten();
     let (document_schema_outcome, document_schema_supported) =
-        match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await
+        match providers::run_document_schema_probe(
+            &runtime.gateway,
+            &request_profile,
+            bearer,
+            document_probe_max_tokens,
+            document_probe_reasoning_limit,
+        )
+        .await
         {
             Ok(outcome) => {
                 let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
@@ -436,17 +468,16 @@ fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderMo
         .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
         .and_then(|model| model.reasoning.as_ref())
     else {
-        return "automatic".to_string();
+        // Production treats absent reasoning evidence conservatively as none.
+        return "none".to_string();
     };
-    if reasoning.mandatory {
-        if profile.reasoning_effort == "none" {
-            "automatic".to_string()
-        } else {
-            profile.reasoning_effort.clone()
-        }
-    } else {
-        "none".to_string()
-    }
+    super::super::reasoning::resolve_declared_effort(
+        &profile.reasoning_effort,
+        reasoning.supported_efforts.as_deref(),
+        reasoning.default_effort.as_deref(),
+        reasoning.default_enabled,
+        reasoning.mandatory,
+    )
 }
 
 fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), CommandError> {

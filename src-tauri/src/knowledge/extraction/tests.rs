@@ -56,6 +56,41 @@ async fn mixed_window_preserves_good_sibling_then_resumes_only_rejected_slot() {
     .unwrap();
 }
 
+#[tokio::test]
+async fn truncated_window_retries_with_real_output_headroom_instead_of_contract_replay() {
+    let (db, source, _, _) = fixture();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let contract = hash("truncation-headroom-test");
+    let signal = CancellationSignal::new();
+    let responses = RefCell::new(VecDeque::from([
+        Err(CommandError::new(
+            "ai_document_output_truncated",
+            "completion limit",
+        )),
+        Ok(json!({"units":[proposal("E0")],"noLearningSourceIds":[]})),
+    ]));
+    let budgets = RefCell::new(Vec::new());
+    let prompts = RefCell::new(Vec::new());
+    let result = run_window(&db, &sources, &contract, &catalog, &signal, false, |call| {
+        budgets.borrow_mut().push(call.visible_completion_tokens);
+        prompts.borrow_mut().push(call.user);
+        std::future::ready(responses.borrow_mut().pop_front().unwrap())
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(result[&sources[0].id].len(), 1);
+    assert_eq!(
+        *budgets.borrow(),
+        vec![
+            EXTRACTION_COMPLETION_TOKENS,
+            EXTRACTION_COMPLETION_TOKENS * 2
+        ]
+    );
+    assert!(prompts.borrow()[1].contains("completion ceiling"));
+}
+
 #[test]
 fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
     let (_, mut source, _, _) = fixture();

@@ -8,7 +8,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::probes::{load_capability_records, CapabilityStatus},
+    ai::{
+        probes::{load_capability_records, CapabilityStatus},
+        reasoning,
+    },
     database::Database,
     error::CommandError,
 };
@@ -73,53 +76,13 @@ impl DocumentProviderCapabilities {
         let Some(reasoning) = self.reasoning.as_ref() else {
             return "none".to_string();
         };
-        let supports = |effort: &str| {
-            reasoning
-                .supported_efforts
-                .as_ref()
-                .is_none_or(|efforts| efforts.iter().any(|value| value == effort))
-        };
-        let lowest_supported = || {
-            ["minimal", "low", "medium", "high", "xhigh", "max"]
-                .into_iter()
-                .find(|effort| supports(effort))
-                .unwrap_or("medium")
-                .to_string()
-        };
-
-        if requested == "none" {
-            return if reasoning.mandatory {
-                lowest_supported()
-            } else {
-                "none".to_string()
-            };
-        }
-        if requested == "automatic" {
-            if reasoning.default_enabled != Some(true) && !reasoning.mandatory {
-                return "none".to_string();
-            }
-            if let Some(default) = reasoning.default_effort.as_deref() {
-                if default == "none" && !reasoning.mandatory {
-                    return "none".to_string();
-                }
-                if supports(default) {
-                    return default.to_string();
-                }
-            }
-            return if reasoning.mandatory {
-                lowest_supported()
-            } else {
-                "none".to_string()
-            };
-        }
-        if supports(requested) {
-            return requested.to_string();
-        }
-        if reasoning.mandatory {
-            lowest_supported()
-        } else {
-            "none".to_string()
-        }
+        reasoning::resolve_declared_effort(
+            requested,
+            reasoning.supported_efforts.as_deref(),
+            reasoning.default_effort.as_deref(),
+            reasoning.default_enabled,
+            reasoning.mandatory,
+        )
     }
 
     pub(crate) fn completion_token_ceiling(
@@ -130,18 +93,27 @@ impl DocumentProviderCapabilities {
         if self.provider_kind != "openrouter" || effective_reasoning_effort == "none" {
             return visible_completion_tokens;
         }
-        let visible_percent = match effective_reasoning_effort {
-            "minimal" => 90_usize,
-            "low" => 80,
-            "medium" => 50,
-            "high" => 20,
-            "xhigh" | "max" => 5,
-            _ => 100,
-        };
-        visible_completion_tokens
-            .saturating_mul(100)
-            .saturating_add(visible_percent - 1)
-            / visible_percent
+        reasoning::structured_completion_token_ceiling(
+            effective_reasoning_effort,
+            visible_completion_tokens,
+        )
+    }
+
+    pub(crate) fn reasoning_token_limit(
+        &self,
+        effective_reasoning_effort: &str,
+        completion_token_ceiling: usize,
+    ) -> Option<usize> {
+        if self.provider_kind != "openrouter" || effective_reasoning_effort == "none" {
+            return None;
+        }
+        reasoning::structured_reasoning_token_limit(
+            effective_reasoning_effort,
+            completion_token_ceiling,
+            self.reasoning
+                .as_ref()
+                .is_some_and(|reasoning| reasoning.supports_max_tokens),
+        )
     }
 
     pub(crate) fn planning_fingerprint(&self) -> String {
@@ -272,6 +244,33 @@ mod tests {
         assert_eq!(
             capabilities.completion_token_ceiling("high", 10_000),
             50_000
+        );
+        assert_eq!(capabilities.completion_token_ceiling("low", 6_000), 10_000);
+        assert_eq!(capabilities.reasoning_token_limit("low", 10_000), None);
+    }
+
+    #[test]
+    fn explicit_reasoning_limit_preserves_visible_structured_output() {
+        let capabilities = DocumentProviderCapabilities {
+            provider_kind: "openrouter".to_string(),
+            model_id: "bounded-reasoning".to_string(),
+            context_window_tokens: Some(1_000_000),
+            image_input: false,
+            usage_reporting: true,
+            structured_output: StructuredOutputStrategy::JsonSchema,
+            reasoning: Some(DocumentReasoningCapabilities {
+                supported_efforts: Some(vec!["low".to_string()]),
+                default_effort: Some("low".to_string()),
+                default_enabled: Some(true),
+                supports_max_tokens: true,
+                mandatory: false,
+            }),
+        };
+        let total = capabilities.completion_token_ceiling("low", 6_000);
+        assert_eq!(total, 10_000);
+        assert_eq!(
+            capabilities.reasoning_token_limit("low", total),
+            Some(4_000)
         );
     }
 

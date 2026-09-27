@@ -48,6 +48,7 @@ fn interleaved_tool_results_preserve_all_knowledge_and_native_provenance() {
         &strict_transport_schema(),
         6000,
         "none",
+        None,
     )
     .unwrap();
     let name = request.body["tools"][0]["function"]["name"].clone();

@@ -6,17 +6,17 @@
 //! including a typed digest of every non-ledger row, then commits only lineage
 //! metadata and ledger replacement in one SQLite transaction.
 
-use std::time::Duration;
-
 use rusqlite::{
-    backup::Backup, params, types::ValueRef, Connection, OptionalExtension, Transaction,
-    TransactionBehavior,
+    params, types::ValueRef, Connection, OptionalExtension, Transaction, TransactionBehavior,
 };
 use sha2::{Digest, Sha256};
 
 use crate::util::unix_time_millis;
 
 use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
+
+#[path = "release/staging.rs"]
+mod staging;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
@@ -284,6 +284,13 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
 /// learner-owned rows. The isolated candidate must prove both schema equivalence
 /// and a typed value digest before the live metadata transaction can begin.
 pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), String> {
+    convert_legacy_current_with(connection, staging::Candidate::copy_from)
+}
+
+fn convert_legacy_current_with<F>(connection: &mut Connection, stage: F) -> Result<(), String>
+where
+    F: FnOnce(&Connection) -> Result<staging::Candidate, String>,
+{
     let legacy_version = entry::validate_public_input(connection)?;
     if legacy_version != LEGACY_PUBLIC_SCHEMA_VERSION {
         return Err(format!(
@@ -295,17 +302,18 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
     verify_schema_matches_release_baseline(connection)?;
     let before = preservation_receipt(connection)?;
 
-    let mut staged = Connection::open_in_memory()
-        .map_err(|error| format!("Could not open the staged release converter: {error}"))?;
+    let mut candidate = stage(connection)?;
+    crate::logging::info_target(
+        "database.migration",
+        "release_conversion_staged",
+        "A private disk-backed release conversion candidate is ready for validation.",
+        serde_json::json!({
+            "estimatedSourceBytes": candidate.estimated_bytes(),
+            "diskBacked": true,
+        }),
+    );
     {
-        let backup = Backup::new(connection, &mut staged).map_err(|error| {
-            format!("Could not stage the legacy library for conversion: {error}")
-        })?;
-        backup
-            .run_to_completion(128, Duration::from_millis(1), None)
-            .map_err(|error| format!("Could not copy the legacy library into staging: {error}"))?;
-    }
-    {
+        let staged = candidate.connection_mut();
         let transaction = staged
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| format!("Could not begin staged release conversion: {error}"))?;
@@ -321,10 +329,10 @@ pub(super) fn convert_legacy_current(connection: &mut Connection) -> Result<(), 
             .commit()
             .map_err(|error| format!("Could not commit staged release conversion: {error}"))?;
     }
-    verify_integrity(&staged)?;
-    verify_schema_matches_release_baseline(&staged)?;
-    apply_migrations(&mut staged)?;
-    validate_input(&staged)?;
+    verify_integrity(candidate.connection())?;
+    verify_schema_matches_release_baseline(candidate.connection())?;
+    apply_migrations(candidate.connection_mut())?;
+    validate_input(candidate.connection())?;
 
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -771,3 +779,7 @@ mod tests {
         assert_eq!(deck, ("Preserved".to_string(), 10, 20));
     }
 }
+
+#[cfg(test)]
+#[path = "release/h09_tests.rs"]
+mod h09_tests;
