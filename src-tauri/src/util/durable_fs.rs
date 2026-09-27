@@ -193,4 +193,5 @@ fn new_temporary(parent: &Path) -> io::Result<(PathBuf, File)> {
 }
 
 #[cfg(test)]
+#[path = "durable_fs/publication_tests.rs"]
 mod tests;
