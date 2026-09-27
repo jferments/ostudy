@@ -71,7 +71,6 @@ node "$SCRIPT_DIR/verify-android-usb-accessory-manifest.mjs"
 node "$SCRIPT_DIR/verify-usb-sync-hardening.mjs"
 node "$SCRIPT_DIR/verify-android-qr-scanner.mjs"
 node "$SCRIPT_DIR/verify-library-backup-threading.mjs"
-node "$SCRIPT_DIR/generate-ipc-command-contracts.mjs" --check
 node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
 node "$SCRIPT_DIR/verify-actions-storage-policy.mjs"
@@ -106,6 +105,7 @@ if ! pnpm install --frozen-lockfile; then
 fi
 pnpm run fonts:install
 pnpm run verify:versions
+node "$SCRIPT_DIR/generate-ipc-command-contracts.mjs" --check
 pnpm run verify:fonts
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 
