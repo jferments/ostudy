@@ -11,7 +11,19 @@ mod payload_entry;
 
 use super::{verify_public_ledger_exists, LATEST_SCHEMA_VERSION, MIGRATIONS};
 
+#[cfg(test)]
+thread_local! {
+    static CURRENT_PAYLOAD_PASSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn current_payload_passes() -> usize {
+    CURRENT_PAYLOAD_PASSES.get()
+}
+
 pub(super) fn validate_current_payload(connection: &Connection) -> Result<(), String> {
+    #[cfg(test)]
+    CURRENT_PAYLOAD_PASSES.set(CURRENT_PAYLOAD_PASSES.get() + 1);
     payload_entry::validate(connection, super::LEGACY_PUBLIC_SCHEMA_VERSION)?;
     knowledge_entry::validate(connection)?;
     crate::document_canonical_store::evidence::validate(connection)

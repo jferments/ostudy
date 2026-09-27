@@ -282,13 +282,30 @@ impl Database {
         &self,
         operation: impl FnOnce(&mut Connection) -> Result<T, CommandError>,
     ) -> Result<T, CommandError> {
+        let waiting = Instant::now();
         let mut connection = self.connection.lock().map_err(|_| {
             CommandError::new(
                 "database_lock_poisoned",
                 "The local database lock could not be acquired. Restart oStudy.",
             )
         })?;
-        operation(&mut connection)
+        let acquired = Instant::now();
+        let result = operation(&mut connection);
+        let execution = acquired.elapsed();
+        // Diagnostics must not extend the single-connection critical section.
+        // Preserve the original result and poison policy; never log SQL or data.
+        drop(connection);
+        crate::logging::debug_target(
+            "database.connection",
+            "database_operation_completed",
+            "A local database operation completed.",
+            json!({
+                "connectionWaitMicros": u64::try_from(acquired.duration_since(waiting).as_micros()).unwrap_or(u64::MAX),
+                "executionMicros": u64::try_from(execution.as_micros()).unwrap_or(u64::MAX),
+                "failed": result.is_err(),
+            }),
+        );
+        result
     }
 
     #[cfg(test)]
@@ -312,7 +329,9 @@ enum DatabaseLineage {
 }
 
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
+    let started = Instant::now();
     let lineage = inspect_lineage(connection)?;
+    let mut admitted_current_release = false;
     match &lineage {
         DatabaseLineage::Empty => {
             if entry::user_version(connection)? != 0 {
@@ -323,7 +342,8 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             }
         }
         DatabaseLineage::Release => {
-            release::validate_supported_input(connection)?;
+            admitted_current_release =
+                release::validate_supported_input(connection)? == CURRENT_SCHEMA_VERSION;
             verify_integrity(connection)?;
         }
         DatabaseLineage::LegacyPublic => {
@@ -343,7 +363,6 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     }
 
     configure_connection(connection)?;
-    let started = Instant::now();
     let changed = match lineage {
         DatabaseLineage::Empty => {
             release::initialize_fresh(connection)?;
@@ -368,11 +387,16 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
             release::convert_legacy_current(connection)?;
             true
         }
+        // This local fact applies only to the bytes admitted above, during this
+        // exclusive initialization. It is not persisted or reused on reopen.
+        DatabaseLineage::Release if admitted_current_release => false,
         DatabaseLineage::Release => release::apply_migrations(connection)?,
         DatabaseLineage::PrePublic | DatabaseLineage::Unknown(_) => unreachable!(),
     };
 
-    release::validate_input(connection)?;
+    if changed {
+        release::validate_input(connection)?;
+    }
     if changed || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
         verify_integrity(connection)?;
     }
@@ -1051,3 +1075,7 @@ mod image_source_migration_tests;
 #[cfg(test)]
 #[path = "database/generation_operation_migration_tests.rs"]
 mod generation_operation_migration_tests;
+
+#[cfg(test)]
+#[path = "database/startup_validation_tests.rs"]
+mod startup_validation_tests;

@@ -102,7 +102,7 @@ cargo test \
   study_materials::composition::tests::
 
 step "Current-format entry, preservation and native execution contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests::
+bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests::
 
 step "External file transfer and recovery contracts"
 cargo test \
