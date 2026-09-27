@@ -99,7 +99,7 @@ node "$SCRIPT_DIR/verify-test-policy.mjs"
 bash "$SCRIPT_DIR/verify-script-syntax.sh"
 
 step "Frozen JavaScript installation and dependency verification"
-pnpm install --frozen-lockfile
+bash "$SCRIPT_DIR/install-frozen-js-deps.sh"
 pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts
