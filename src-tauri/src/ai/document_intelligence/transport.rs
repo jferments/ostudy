@@ -77,6 +77,7 @@ async fn request_json_inner(
         json!({"provider":task.provider_kind,"model":task.model_id,
             "schemaFingerprint":crate::ai::structured_output::fingerprint(request.schema),
             "schemaBytes":request.schema.to_string().len(),"outputBudget":request.max_tokens,
+            "reasoningBudget":task.reasoning_token_limit(request.max_tokens),
             "imageCount":request.images.len()}));
     let profile = task.profile();
     let credential =
@@ -100,6 +101,7 @@ async fn request_json_inner(
         request.schema,
         request.max_tokens,
         &task.reasoning_effort,
+        task.reasoning_token_limit(request.max_tokens),
     )
     .map_err(gateway_to_command)?;
     if task.provider_kind == "openrouter" && !task.profile().require_zero_data_retention {

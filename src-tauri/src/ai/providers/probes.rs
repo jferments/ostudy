@@ -121,6 +121,8 @@ pub(crate) async fn run_document_schema_probe(
     gateway: &AiGateway,
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
+    max_tokens: usize,
+    reasoning_max_tokens: Option<usize>,
 ) -> Result<CompletionOutcome, AiGatewayError> {
     let schema = document_schema_probe_schema();
     let prepared = prepare_document_request(
@@ -132,10 +134,19 @@ pub(crate) async fn run_document_schema_probe(
             "blanks containing stable, mode one_at_a_time, tags containing probe."
         ).to_string()),
         &schema,
-        768,
+        max_tokens,
         &profile.reasoning_effort,
+        reasoning_max_tokens,
     )?;
     let response = send_prepared_probe(gateway, profile, bearer, &prepared).await?;
+    if openai_compatible::completion_finish_reason(&response).as_deref() == Some("length") {
+        return Err(crate::ai::gateway::error(
+            "ai_document_schema_probe_truncated",
+            "The model exhausted the configured completion budget before finishing ostudy's representative document contract.",
+            false,
+            None,
+        ));
+    }
     let decoded = decode_document_output(&prepared, &response).map_err(|failure| {
         crate::ai::gateway::error(
             "ai_document_schema_probe_invalid",

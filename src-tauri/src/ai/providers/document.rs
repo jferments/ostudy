@@ -41,6 +41,7 @@ pub(crate) fn prepare_document_request(
     schema: &Value,
     max_tokens: usize,
     reasoning_effort: &str,
+    reasoning_max_tokens: Option<usize>,
 ) -> Result<PreparedDocumentRequest, AiGatewayError> {
     let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
     let system_prompt = crate::ai::structured_output::system_with_schema(system_prompt, schema);
@@ -103,6 +104,7 @@ pub(crate) fn prepare_document_request(
             openrouter::apply_document_policy(
                 &mut body,
                 reasoning_effort,
+                reasoning_max_tokens,
                 profile.require_zero_data_retention,
             );
             openai_compatible::set_json_schema(
@@ -217,6 +219,7 @@ mod tests {
             &schema,
             100,
             "none",
+            None,
         )
         .unwrap();
         let deepseek = prepare_document_request(
@@ -230,6 +233,7 @@ mod tests {
             &schema,
             100,
             "none",
+            None,
         )
         .unwrap();
         let openrouter = prepare_document_request(
@@ -243,6 +247,7 @@ mod tests {
             &schema,
             100,
             "low",
+            Some(40),
         )
         .unwrap();
 
@@ -278,6 +283,10 @@ mod tests {
             openrouter.body.pointer("/provider/require_parameters"),
             Some(&json!(true))
         );
+        assert_eq!(
+            openrouter.body.pointer("/reasoning/max_tokens"),
+            Some(&json!(40))
+        );
     }
 
     #[test]
@@ -301,6 +310,7 @@ mod tests {
             &schema,
             100,
             "none",
+            None,
         )
         .unwrap();
         assert_eq!(

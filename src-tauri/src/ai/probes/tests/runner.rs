@@ -86,7 +86,7 @@ fn exact_model_match_remains_exact() {
 }
 
 #[test]
-fn openrouter_probe_disables_optional_reasoning_but_not_mandatory_reasoning() {
+fn openrouter_probe_uses_the_same_effective_reasoning_as_document_generation() {
     let optional = profile(ProviderKind::Openrouter, "deepseek/deepseek-v4-flash");
     let optional_models = vec![model(
         "deepseek/deepseek-v4-flash",
@@ -100,7 +100,7 @@ fn openrouter_probe_disables_optional_reasoning_but_not_mandatory_reasoning() {
     )];
     assert_eq!(
         probe_reasoning_effort_for_test(&optional, Some(&optional_models)),
-        "none"
+        "low"
     );
 
     let mandatory = profile(ProviderKind::Openrouter, "reasoning/mandatory");
@@ -121,11 +121,11 @@ fn openrouter_probe_disables_optional_reasoning_but_not_mandatory_reasoning() {
 }
 
 #[test]
-fn openrouter_probe_omits_reasoning_when_catalog_has_no_reasoning_contract() {
+fn openrouter_probe_matches_runtime_none_when_catalog_has_no_reasoning_contract() {
     let profile = profile(ProviderKind::Openrouter, "openai/example");
     let models = vec![model("openai/example", None)];
     assert_eq!(
         probe_reasoning_effort_for_test(&profile, Some(&models)),
-        "automatic"
+        "none"
     );
 }

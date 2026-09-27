@@ -48,6 +48,7 @@ fn all_provider_dialects_deliver_the_semantic_contract_and_preserve_native_evide
             &schema,
             6000,
             "none",
+            None,
         )
         .unwrap();
         let system = request.body["messages"][0]["content"].as_str().unwrap();

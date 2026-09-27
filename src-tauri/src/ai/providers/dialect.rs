@@ -76,7 +76,7 @@ impl ProviderDialect {
             Self::Deepseek => deepseek::disable_thinking(body),
             Self::Openrouter => {
                 openrouter::apply_request_policy(body, true, profile.require_zero_data_retention);
-                openrouter::apply_reasoning_policy(body, &profile.reasoning_effort);
+                openrouter::apply_reasoning_policy(body, &profile.reasoning_effort, None);
             }
         }
     }
@@ -126,7 +126,7 @@ impl ProviderDialect {
                     true,
                     profile.require_zero_data_retention,
                 );
-                openrouter::apply_reasoning_policy(&mut body, &profile.reasoning_effort);
+                openrouter::apply_reasoning_policy(&mut body, &profile.reasoning_effort, None);
                 openai_compatible::set_json_schema(
                     &mut body,
                     "ostudy_connection_probe",
