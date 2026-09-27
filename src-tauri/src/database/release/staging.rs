@@ -9,7 +9,7 @@ use std::{
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use rusqlite::{backup::Backup, Connection};
@@ -181,10 +181,7 @@ fn staging_directory(source: &Connection) -> Result<PathBuf, String> {
 }
 
 fn create_private_candidate_path(directory: &Path) -> Result<PathBuf, String> {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let timestamp = crate::util::unix_time_millis().map_err(|error| error.message)?;
     for _ in 0..32 {
         let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let path = directory.join(format!(
