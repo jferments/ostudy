@@ -5,6 +5,12 @@ on:
     branches-ignore: [main]
     paths:
       - .github/workflows/maintain-generated-candidates.yml
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - versions.env
+      - eslint.config.mjs
+      - tsconfig.app.json
   workflow_dispatch:
     inputs:
       export_auxiliary_bundle:
