@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 
 import type { DeletionResult } from "./common";
 import type { PreparedExport } from "./externalFiles";

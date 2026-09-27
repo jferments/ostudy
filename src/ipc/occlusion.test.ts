@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prepareOcclusionImage, previewOcclusionImage, type PreviewOcclusionInput } from "./occlusion";
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("./transport", () => ({ invoke }));
 
 beforeEach(() => { invoke.mockReset(); });
 

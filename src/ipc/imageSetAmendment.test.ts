@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { amendImageSet, type AmendImageSetInput } from "./imageSets";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
 const request: AmendImageSetInput = {
   operationId: "a".repeat(32), documentId: "b".repeat(32),

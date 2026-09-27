@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,7 +12,7 @@ import {
   startDevicePairing,
 } from "./deviceSync";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 describe("device synchronization IPC", () => {

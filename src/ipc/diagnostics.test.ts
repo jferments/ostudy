@@ -1,9 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { recordWebviewDiagnostic } from "./diagnostics";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
 describe("recordWebviewDiagnostic", () => {
   beforeEach(() => {

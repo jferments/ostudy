@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import type { DocumentArtifactJob } from "./studyGuides";
 
 /** One durable latest-job snapshot, not one IPC call per document or topic. */

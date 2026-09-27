@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 
 import type { Asset } from "./assets";
 import type { DeletionResult, RichDocument, UndoDeletionResult } from "./common";

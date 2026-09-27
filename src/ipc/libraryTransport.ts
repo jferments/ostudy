@@ -1,4 +1,4 @@
-import type { InvokeArgs, InvokeOptions } from "@ostudy/tauri-core";
+import type { InvokeArgs, InvokeOptions } from "@tauri-apps/api/core";
 
 export type NativeInvoke = <T>(
   command: string,

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 const USB_AUTO_JOIN_INVITATION = "ostudy-sync://usb-attached";

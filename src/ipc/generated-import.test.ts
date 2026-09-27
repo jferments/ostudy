@@ -1,9 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { importGeneratedFlashcards } from "./generated-import";
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("./transport", () => ({
   invoke: vi.fn(),
 }));
 

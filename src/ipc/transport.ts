@@ -1,9 +1,12 @@
-/** Vite's exact @tauri-apps/api/core alias preserves the SDK surface while all
- * existing typed IPC gateways acquire the same native library generation.
- * The private raw alias resolves to the installed, pinned SDK, not this module.
- */
-export * from "@ostudy/tauri-core";
-import { invoke as nativeInvoke } from "@ostudy/tauri-core";
+import { invoke as nativeInvoke } from "@tauri-apps/api/core";
+
 import { createLibraryTransport } from "./libraryTransport";
 
+/**
+ * Application-owned native command transport.
+ *
+ * Domain gateways import this invoke explicitly. Non-command SDK utilities
+ * (events, plugin listeners, convertFileSrc, isTauri) remain direct Tauri imports
+ * at their narrow platform owners.
+ */
 export const invoke = createLibraryTransport(nativeInvoke);

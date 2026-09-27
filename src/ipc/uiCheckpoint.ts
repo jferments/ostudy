@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 
 import type { AnalyticsRange } from "./analytics";
 import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";

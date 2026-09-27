@@ -1,8 +1,8 @@
 import {
   addPluginListener,
-  invoke,
   type PluginListener,
 } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { reportFrontendFailure } from "./diagnostics";
 

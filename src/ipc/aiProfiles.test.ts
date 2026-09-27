@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +10,7 @@ import {
   updateAiProviderProfile,
 } from "./aiProfiles";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 vi.mock("./common", async (importOriginal) => {
   const original = await importOriginal<typeof import("./common")>();
   return { ...original, createOperationId: () => "f".repeat(32) };

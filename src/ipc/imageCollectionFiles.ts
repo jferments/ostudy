@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import type { StagedExternalFile } from "./externalFiles";
 
 /** Browser-granted bytes only; never accept a local path or fetch a remote URL. */

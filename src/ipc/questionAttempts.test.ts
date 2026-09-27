@@ -12,7 +12,7 @@ import {
 } from "./questionAttempts";
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("./transport", () => ({ invoke }));
 
 const target: QuestionAttemptTarget = {
   sessionId: "a".repeat(32),

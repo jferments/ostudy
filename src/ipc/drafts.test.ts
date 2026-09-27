@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,7 +9,7 @@ import {
   saveEditorDraft,
 } from "./drafts";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
 const draftId = "d".repeat(32);
 const operationId = "o".repeat(32);
