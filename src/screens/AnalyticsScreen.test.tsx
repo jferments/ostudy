@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsIpc from "../ipc/analytics";
 import * as decksIpc from "../ipc/decks";
-import * as settingsIpc from "../ipc/settings";
 import { deferred } from "../test/factories";
 import { AnalyticsScreen } from "./AnalyticsScreen";
 
@@ -34,21 +33,6 @@ const deck: decksIpc.DeckSummary = {
 };
 
 const tagId = "b".repeat(32);
-
-const settings: settingsIpc.AppSettings = {
-  theme: "dark",
-  uiFont: "system",
-  cardFont: "system",
-  uiScale: 100,
-  cardBaseSize: 18,
-  animationsEnabled: true,
-  reduceMotion: false,
-  confirmDeletions: true,
-  practiceShuffle: true,
-  desiredRetention: 0.9,
-  dailyNewLimit: 20,
-  dailyReviewLimit: 200,
-};
 
 function analyticsForRange(
   range: analyticsIpc.AnalyticsRange,
@@ -230,7 +214,6 @@ function renderAnalytics(onPracticeScope = vi.fn(), onSearchTag = vi.fn()) {
   render(
     <AnalyticsScreen
       decks={[deck]}
-      settings={settings}
       launchRequest={null}
       onLaunchConsumed={vi.fn()}
       onPracticeScope={onPracticeScope}

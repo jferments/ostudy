@@ -10,15 +10,15 @@ import { buildDifficultyTimelineSeries } from "./difficultySeries";
 import { styles } from "./presentation";
 
 ChartJS.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip, Legend);
-interface ProgressChartProps { buckets: TimelineBucket[]; range: AnalyticsRange; reduceMotion?: boolean; }
+interface ProgressChartProps { buckets: TimelineBucket[]; range: AnalyticsRange; }
 const compactDateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const monthFormatter = new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" });
 type ChartPoint = number | null;
 type LineChartData = ChartData<"line", ChartPoint[], string>;
 
-export function ProgressChart({ buckets, range, reduceMotion = false }: ProgressChartProps) {
+export function ProgressChart({ buckets, range }: ProgressChartProps) {
   const animationsEnabled = useAnimationsEnabled();
-  const motionDisabled = reduceMotion || !animationsEnabled;
+  const motionDisabled = !animationsEnabled;
   const colors = readChartColors();
   const labels = useMemo(() => buckets.map((bucket) => formatBucketLabel(bucket.startAt, range)), [buckets, range]);
   const series = useMemo(() => buildDifficultyTimelineSeries(buckets), [buckets]);

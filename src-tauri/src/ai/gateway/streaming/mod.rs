@@ -32,6 +32,33 @@ use usage::usage_delta;
 
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 
+/// Owned by the physical attempt, not its successful decode path. A failure,
+/// cancellation or empty reasoning-only completion must not erase reported cost.
+struct StreamCapture {
+    maximum_content_bytes: usize,
+    stream: Option<SseChatAccumulator>,
+}
+
+impl StreamCapture {
+    fn usage(&self) -> Option<&Value> {
+        self.stream
+            .as_ref()
+            .and_then(|stream| stream.usage.as_ref())
+    }
+
+    fn observation(&self) -> Value {
+        let mut observation = json!({});
+        if let Some(stream) = &self.stream {
+            if let Some(usage) = &stream.usage {
+                observation["usage"] = usage.clone();
+            }
+            observation["id"] = json!(stream.generation_id);
+            observation["choices"] = json!([{"finish_reason": stream.finish_reason}]);
+        }
+        observation
+    }
+}
+
 impl AiGateway {
     /// Interactive tasks supply their own cancellation lifetime rather than
     /// impersonating a document job. The same SSE framing, inactivity limits,
@@ -192,24 +219,30 @@ impl AiGateway {
         }
         record_current_provider_request();
         let mut attempt = crate::ai::generation::start_current_attempt(body);
+        let mut capture = StreamCapture {
+            maximum_content_bytes,
+            stream: None,
+        };
         let result = self
             .post_sse_chat_json_inner(
                 url,
                 bearer,
                 body,
                 inactivity_timeout_ms,
-                maximum_content_bytes,
+                &mut capture,
                 cancellation,
             )
             .await;
+        // Exactly once per physical request, whether decoding succeeds or fails.
+        // Missing usage stays unknown; a failed result does not imply zero cost.
+        record_current_usage(capture.usage().map(usage_delta).unwrap_or_default());
         if let Some(attempt) = attempt.as_mut() {
             match &result {
                 Ok(response) => attempt.response(response),
-                Err(error) => attempt.failed(&error.safe.code),
+                Err(error) => {
+                    attempt.failed_with_observation(&error.safe.code, &capture.observation())
+                }
             }
-        }
-        if result.is_err() {
-            record_current_usage(Default::default());
         }
         result
     }
@@ -220,7 +253,7 @@ impl AiGateway {
         bearer: Option<&str>,
         body: &Value,
         inactivity_timeout_ms: i64,
-        maximum_content_bytes: usize,
+        capture: &mut StreamCapture,
         cancellation: &CancellationSignal,
     ) -> Result<Value, AiGatewayError> {
         if cancellation.is_canceled() {
@@ -296,16 +329,17 @@ impl AiGateway {
             ));
         }
 
+        let maximum_content_bytes = capture.maximum_content_bytes;
         let maximum_wire_bytes = maximum_content_bytes
             .saturating_mul(STREAM_WIRE_MULTIPLIER)
             .max(maximum_content_bytes);
-        let mut stream = SseChatAccumulator::for_request(
+        let stream = capture.stream.insert(SseChatAccumulator::for_request(
             maximum_content_bytes,
             maximum_wire_bytes,
             openrouter,
             generation_id,
             retry_after_seconds,
-        );
+        ));
         record_current_provider_activity(false);
         let before_first = stream.model_progress_bytes();
         stream.push_bytes(&first_chunk)?;
@@ -348,7 +382,6 @@ impl AiGateway {
             return Err(empty_stream_failure(finish));
         }
         let usage = stream.usage.clone();
-        record_current_usage(usage.as_ref().map(usage_delta).unwrap_or_default());
         crate::logging::debug_target(
             "ai.gateway.streaming",
             "provider_stream_completed",
@@ -370,11 +403,12 @@ impl AiGateway {
             }),
         );
         let calls = stream.tool_calls();
+        let content = std::mem::take(&mut stream.content);
         let message = if calls.is_empty() {
-            json!({ "content": stream.content })
+            json!({ "content": content })
         } else {
             json!({
-                "content": if stream.content.trim().is_empty() { Value::Null } else { Value::String(stream.content) },
+                "content": if content.trim().is_empty() { Value::Null } else { Value::String(content) },
                 "tool_calls": calls
             })
         };
@@ -408,3 +442,6 @@ where
         },
     }
 }
+
+#[cfg(test)]
+mod accounting_tests;

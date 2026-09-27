@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Modal } from "../../components/Modal";
 import { TagInput } from "../../components/TagInput";
 import { bulkTagCards, type SelectionCard, type TagChangeMode, type TagSummary } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface BulkTagModalProps {
@@ -48,7 +47,7 @@ export function BulkTagModal({ cards, mode, suggestions, onClose, onComplete, sh
   }
 
   return (
-    <Modal title={adding ? "Add tags to selected cards" : "Remove tags from selected cards"}
+    <Dialog title={adding ? "Add tags to selected cards" : "Remove tags from selected cards"}
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="medium" busy={isSaving} dismissible={!isSaving}
       onClose={() => { if (!isSaving) onClose(); }}>
@@ -67,6 +66,6 @@ export function BulkTagModal({ cards, mode, suggestions, onClose, onComplete, sh
           </Button>
         </DialogActions>
       </div>
-    </Modal>
+    </Dialog>
   );
 }

@@ -78,20 +78,17 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
     assert_eq!(
         DOCUMENT_GUIDE_COMPLETION_PLAN,
         StudyGuideCompletionPlan {
-            initial_visible_tokens: 3_200,
-            repair_visible_tokens: 3_200,
+            initial_visible_tokens: 6_144,
+            repair_visible_tokens: 12_288,
         }
     );
     assert_eq!(
         COLLECTION_GUIDE_COMPLETION_PLANS[0],
-        StudyGuideCompletionPlan {
-            initial_visible_tokens: 6_144,
-            repair_visible_tokens: 6_144,
-        }
+        DOCUMENT_GUIDE_COMPLETION_PLAN
     );
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .iter()
-        .all(|plan| plan.repair_visible_tokens == plan.initial_visible_tokens));
+        .all(|plan| plan.repair_visible_tokens == plan.initial_visible_tokens * 2));
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .windows(2)
         .all(|pair| pair[0].repair_visible_tokens > pair[1].repair_visible_tokens));

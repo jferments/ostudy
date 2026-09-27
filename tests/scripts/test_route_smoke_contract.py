@@ -56,7 +56,7 @@ class RouteSmokeContractTests(unittest.TestCase):
     def test_repository_contract_passes(self) -> None:
         completed = self.run_verifier(ROOT)
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("8 application sections, 1 application workflow", completed.stdout)
+        self.assertIn("6 application sections, 1 application workflow", completed.stdout)
         self.assertIn("8 route-entry; 0 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
         self.assertIn("5 compact primary / 0 More / 1 app-bar destinations", completed.stdout)

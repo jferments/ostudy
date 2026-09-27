@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { Modal } from "../../components/Modal";
 import type { SelectionCard } from "../../ipc/cards";
 import { createMutationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import { applyScheduleAction, type RescheduleIntent } from "../../ipc/scheduling";
@@ -7,7 +6,7 @@ import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { scheduleActionNotice } from "./scheduleActionResult";
 import styles from "./browserPresentation";
 
@@ -83,9 +82,9 @@ export function ScheduleActionModal({ cards, action, onClose, onComplete, showTo
   }
 
   return (
-    <Modal title={action === "reset" ? "Reset schedule" : "Reschedule cards"}
+    <Dialog title={action === "reset" ? "Reset schedule" : "Reschedule cards"}
       description={`${cards.length} ${cards.length === 1 ? "card" : "cards"} selected`}
-      width="medium" busy={isSaving} dismissible={!isSaving} onClose={close}>
+      width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => close()}>
       {action === "reset" ? (
         <InlineNotice kind="warning">
           The selected cards will become New and ready now. Existing review history remains
@@ -123,7 +122,7 @@ export function ScheduleActionModal({ cards, action, onClose, onComplete, showTo
           {isSaving ? "Applying…" : action === "reset" ? "Reset schedule" : "Reschedule"}
         </Button>
       </DialogActions>
-    </Modal>
+    </Dialog>
   );
 }
 

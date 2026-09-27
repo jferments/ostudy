@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { Modal } from "../../components/Modal";
 import type { SelectionCard } from "../../ipc/cards";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import {
@@ -12,7 +11,7 @@ import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { Panel } from "../../ui/primitives/Panel";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface PracticeResultsModalProps {
@@ -94,7 +93,7 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
 
   const retrying = pendingSaveRef.current !== null;
   return (
-    <Modal title="Practice these cards"
+    <Dialog title="Practice these cards"
       description={`${cards.length} selected ${cards.length === 1 ? "card" : "cards"} from ${sourceLabel}.`}
       width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!busyRef.current) onClose(); }}>
       <div className={styles.screen} aria-busy={isSaving}>
@@ -117,7 +116,7 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
         <DialogActions><Button variant="secondary" disabled={isSaving} onClick={onClose}>Close</Button></DialogActions>
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 

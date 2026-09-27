@@ -142,8 +142,14 @@ radio, drag, link and text-selection events must not flip or rate a card.
 Use answer -> Check answer -> feedback -> difficulty/continue. Do not auto-submit
 on the final tile drop or leak correctness on each placement. True/false supports
 t/f shortcuts only outside editing, IME composition and overlays. Drag activities
-must also support keyboard and non-drag click/tap alternatives. Reuse mechanics,
-not HTML5 desktop-only drag behavior or a new platform-specific product flow.
+must also support keyboard and non-drag click/tap alternatives. Matching pointer
+capture never makes the moving tile the semantic target: hit testing looks through
+the captured tile within the current board, accepts the row gutter for that same
+target, and cancels without applying a stale drop on lost capture, blur, Escape,
+question reset or disabled/revealed state. Reassigning one pair must not reshuffle
+unrelated rows, and delayed touch compatibility clicks after a drag are suppressed.
+Reuse mechanics, not HTML5 desktop-only drag behavior or a new platform-specific
+product flow.
 
 Objective correctness is separate from partial diagnostics, learner difficulty
 and the effective FSRS rating. Single-choice compares one submitted ID; select-all

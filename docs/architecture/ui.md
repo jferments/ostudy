@@ -44,7 +44,7 @@ Selecting Flashcards/Decks returns to the library root. All decks returns from d
 
 The schema-v2 device-local checkpoint separates destination from a real resumable-session hint and logical return target. Native SQLite owns session progress; the checkpoint is not a serialized React store or a content backup.
 
-Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy route values are compatibility readers, not obsolete visible tabs. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
+Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy Cards/Templates checkpoint and Flashcards-workspace values are accepted only at their compatibility boundaries and normalize to current destinations before reaching live React route state. The current application-section vocabulary is therefore exactly Flashcards, Study Guides, Documents, Tutor, Analytics and Settings; the live Flashcards workspace is exactly Decks/Search. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
 
 ## Flashcards library and interaction
 
@@ -80,7 +80,7 @@ Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional 
 
 Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap.
 
-Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Features use semantic confirmation/overflow APIs rather than ordinary `window.confirm` or handwritten backdrops.
+Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Feature workflows import the shared Dialog/Sheet owners directly; the retired compatibility Modal wrapper is not another lifecycle. Features use semantic confirmation/overflow APIs rather than ordinary `window.confirm` or handwritten backdrops.
 
 An inline workspace stays nonmodal. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
 
@@ -102,7 +102,7 @@ A shared application abstraction should exist because it carries product semanti
 
 Fine-pointer desktop controls follow Nova's compact geometry. Coarse-pointer capabilities expand interactive targets to the application touch minimum without creating a second mobile component tree. Theme differences change semantic values and optional effects, not the information architecture.
 
-Interface/card font and scale preferences remain independent. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
+Interface/card font and scale preferences remain independent. Current React appearance state consumes `motionPreference`; the native settings reader alone translates historical `animationsEnabled`/`reduceMotion` rows before IPC. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
 
 ## Responsive and accessible presentation
 

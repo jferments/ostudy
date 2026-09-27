@@ -9,6 +9,9 @@ use url::Url;
 use super::*;
 use crate::{ai::gateway::AiGateway, task_cancellation};
 
+#[path = "stream_usage_tests.rs"]
+mod stream_usage;
+
 fn request() -> Value {
     json!({"model":"test-model","max_tokens":4096,"messages":[
         {"role":"system","content":"Application instructions"},

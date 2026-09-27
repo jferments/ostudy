@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 interface PointerDrag {
   pointerId: number;
   itemId: string;
+  resetKey: string | undefined;
   startX: number;
   startY: number;
   x: number;
@@ -14,33 +15,51 @@ interface PracticePointerDropOptions {
   disabled: boolean;
   onDrop: (itemId: string, targetId: string) => void;
   scopeRef?: RefObject<HTMLElement | null>;
+  resetKey?: string;
 }
 const DROP_TARGET_SELECTOR = "[data-practice-drop-target-id]";
 const INTERACTIVE = "a,button,input,textarea,select,audio,video,[contenteditable=true],[role=checkbox],[role=radio],[data-no-drag]";
 
-export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticePointerDropOptions) {
-  const latest = useRef({ disabled, onDrop, scopeRef });
-  latest.current = { disabled, onDrop, scopeRef };
+export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }: PracticePointerDropOptions) {
+  const latest = useRef({ disabled, onDrop, scopeRef, resetKey });
+  latest.current = { disabled, onDrop, scopeRef, resetKey };
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [overTargetId, setOverTargetId] = useState<string | null>(null);
   const pointerRef = useRef<PointerDrag | null>(null);
   const suppressClickRef = useRef(false);
   const frame = useRef<number | null>(null);
-  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelRef = useRef<() => void>(() => undefined);
 
   function hit(x: number, y: number): string | null {
-    const node = document.elementFromPoint(x, y)?.closest<HTMLElement>(DROP_TARGET_SELECTOR);
     const scope = latest.current.scopeRef?.current;
-    return node && (!scope || scope.contains(node)) ? node.dataset.practiceDropTargetId ?? null : null;
+    if (latest.current.scopeRef && !scope) return null;
+    // Pointer capture retargets events to the dragged tile. Rich descendants can
+    // also restore pointer-events, so never mistake the moving tile for a drop
+    // target. Inspect the hit stack, scoped to this question, instead.
+    const stack = typeof document.elementsFromPoint === "function"
+      ? document.elementsFromPoint(x, y)
+      : [document.elementFromPoint(x, y)].filter((node): node is Element => node !== null);
+    const owner = pointerRef.current?.owner;
+    for (const element of stack) {
+      if (owner?.contains(element)) continue;
+      const node = element.closest<HTMLElement>(DROP_TARGET_SELECTOR);
+      if (!node || owner?.contains(node) || (scope && !scope.contains(node))) continue;
+      if (node.getAttribute("aria-disabled") === "true") continue;
+      return node.dataset.practiceDropTargetId ?? null;
+    }
+    return null;
   }
   function release(): void {
     const drag = pointerRef.current;
     pointerRef.current = null;
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = null;
-    if (drag?.owner.hasPointerCapture(drag.pointerId)) drag.owner.releasePointerCapture(drag.pointerId);
+    // Capture can already be lost after a native interruption or node removal.
+    // UI cleanup must still finish; it must never commit an interrupted gesture.
+    try {
+      if (drag?.owner.hasPointerCapture(drag.pointerId)) drag.owner.releasePointerCapture(drag.pointerId);
+    } catch { /* The browser already retired this pointer/capture. */ }
   }
   function cancel(): void {
     release();
@@ -52,6 +71,9 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
   function scrollEdges(): void {
     const drag = pointerRef.current;
     if (!drag?.active) return;
+    if (latest.current.disabled || drag.resetKey !== latest.current.resetKey || !drag.owner.isConnected) {
+      cancel(); return;
+    }
     let parent = drag.owner.parentElement;
     while (parent) {
       const style = getComputedStyle(parent);
@@ -70,33 +92,41 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
   useEffect(() => {
     const interrupted = () => cancelRef.current();
     const visibility = () => { if (document.hidden) cancelRef.current(); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && pointerRef.current) {
+        event.preventDefault(); event.stopPropagation(); cancelRef.current();
+      }
+    };
     window.addEventListener("blur", interrupted);
+    window.addEventListener("keydown", escape, true);
     document.addEventListener("visibilitychange", visibility);
     return () => {
       release();
-      if (clickTimer.current !== null) clearTimeout(clickTimer.current);
       window.removeEventListener("blur", interrupted);
+      window.removeEventListener("keydown", escape, true);
       document.removeEventListener("visibilitychange", visibility);
     };
   }, []);
   useEffect(() => { if (disabled) cancelRef.current(); }, [disabled]);
+  useEffect(() => { cancelRef.current(); }, [resetKey]);
 
   function pointerDown(event: ReactPointerEvent<HTMLElement>, itemId: string): void {
     if (disabled || event.button !== 0) return;
     if (pointerRef.current) { cancel(); return; }
     if (event.target instanceof Element && event.target !== event.currentTarget
       && event.target.closest(INTERACTIVE)) return;
-    if (clickTimer.current !== null) clearTimeout(clickTimer.current);
     suppressClickRef.current = false;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try { event.currentTarget.setPointerCapture(event.pointerId); }
+    catch { return; }
     pointerRef.current = {
-      pointerId: event.pointerId, itemId, startX: event.clientX, startY: event.clientY,
+      pointerId: event.pointerId, itemId, resetKey, startX: event.clientX, startY: event.clientY,
       x: event.clientX, y: event.clientY, active: false, owner: event.currentTarget,
     };
   }
   function pointerMove(event: ReactPointerEvent<HTMLElement>): void {
     const drag = pointerRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (latest.current.disabled || drag.resetKey !== latest.current.resetKey) { cancel(); return; }
     drag.x = event.clientX; drag.y = event.clientY;
     if (!drag.active && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 8) {
       drag.active = true;
@@ -113,11 +143,12 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
   function finish(event: ReactPointerEvent<HTMLElement>, commit: boolean): void {
     const drag = pointerRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const targetId = commit && drag.active ? hit(event.clientX, event.clientY) : null;
+    const current = !latest.current.disabled && drag.resetKey === latest.current.resetKey && drag.owner.isConnected;
+    const targetId = commit && current && drag.active ? hit(event.clientX, event.clientY) : null;
     cancel();
-    if (targetId && !latest.current.disabled) latest.current.onDrop(drag.itemId, targetId);
-    // Suppress the synthetic click immediately following a drag, not later taps.
-    clickTimer.current = setTimeout(() => { suppressClickRef.current = false; }, 0);
+    if (targetId) latest.current.onDrop(drag.itemId, targetId);
+    // Touch/WebView compatibility clicks can arrive after a zero-delay timer.
+    // Keep suppression until a fresh pointer-down; keyboard selection bypasses it.
   }
   return {
     draggingItemId, offset, overTargetId, pointerDown, pointerMove,

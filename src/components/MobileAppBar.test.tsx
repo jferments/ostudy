@@ -42,7 +42,7 @@ describe("MobileAppBar", () => {
     expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("marks the Settings gear active for Settings and its Card templates compatibility route", () => {
+  it("marks the Settings gear active only on the current Settings destination", () => {
     const view = render(
       <MobileAppBar section="settings" activeWorkflow={null} onNavigate={vi.fn()} />,
     );
@@ -51,10 +51,8 @@ describe("MobileAppBar", () => {
     );
 
     view.rerender(
-      <MobileAppBar section="templates" activeWorkflow={null} onNavigate={vi.fn()} />,
+      <MobileAppBar section="documents" activeWorkflow={null} onNavigate={vi.fn()} />,
     );
-    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-current")).toBe(
-      "page",
-    );
+    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-current")).toBeNull();
   });
 });

@@ -5,7 +5,6 @@ import type { Analytics, AnalyticsRange, TagAnalytics } from "../ipc/analytics";
 import { getErrorMessage } from "../ipc/common";
 import type { DeckSummary } from "../ipc/decks";
 import type { ReviewOutcome } from "../ipc/practice";
-import type { AppSettings } from "../ipc/settings";
 import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
 import { QuestionTypeBreakdown } from "./analytics/QuestionTypeBreakdown";
@@ -21,7 +20,6 @@ import { styles, outcomeColors } from "./analytics/presentation";
 
 interface AnalyticsScreenProps {
   decks: DeckSummary[];
-  settings: AppSettings;
   launchRequest: AnalyticsLaunchRequest | null;
   onLaunchConsumed: () => void;
   onPracticeScope: (deckIds: string[], tagIds: string[]) => void;
@@ -34,7 +32,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }
 const compactDateFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 /** Bounded current-inventory projections and immutable review evidence share presentation, not data ownership. */
-export function AnalyticsScreen({ decks, settings, launchRequest, onLaunchConsumed, onPracticeScope, onSearchTag, showToast }: AnalyticsScreenProps) {
+export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPracticeScope, onSearchTag, showToast }: AnalyticsScreenProps) {
   const [range, setRange] = useState<AnalyticsRange>("7d");
   const [customStartLocalDate, setCustomStartLocalDate] = useState(() => localDateDaysAgo(6));
   const [customEndLocalDate, setCustomEndLocalDate] = useState(() => localDateDaysAgo(0));
@@ -160,7 +158,7 @@ export function AnalyticsScreen({ decks, settings, launchRequest, onLaunchConsum
             <LoadingState label="Analyzing data…" />
           </div>
         ) : analytics ? (
-          <ProgressChart buckets={analytics.timeline} range={analytics.scope.range} reduceMotion={settings.reduceMotion} />
+          <ProgressChart buckets={analytics.timeline} range={analytics.scope.range} />
         ) : (
           <div className="tw:grid tw:min-h-40 tw:place-items-center tw:text-sm tw:text-muted-foreground">
             Analytics will appear here when the data can be analyzed.

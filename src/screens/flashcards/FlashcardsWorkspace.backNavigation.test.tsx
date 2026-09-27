@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings } from "../../ipc/settings";
 import type {
   AnalyticsSearchLaunch,
-  FlashcardsWorkspaceName,
+  CurrentFlashcardsWorkspaceName,
 } from "../../navigation/flashcardsRoutes";
 import {
   dispatchPlatformBack,
@@ -58,9 +58,9 @@ const settings: AppSettings = {
 };
 
 interface RenderWorkspaceOptions {
-  workspace?: FlashcardsWorkspaceName;
+  workspace?: CurrentFlashcardsWorkspaceName;
   navigationKey?: number;
-  onWorkspaceChange?: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
+  onWorkspaceChange?: (workspace: CurrentFlashcardsWorkspaceName) => void | Promise<void>;
   analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
 
@@ -173,16 +173,4 @@ describe("FlashcardsWorkspace root navigation", () => {
     view.unmount();
   });
 
-  it.each(["templates", "transfer"] as const)(
-    "recovers the legacy %s workspace to Decks without rendering obsolete tabs",
-    (workspace) => {
-      const view = renderWorkspace({ workspace });
-      expect(screen.getByRole("tab", { name: "Decks" }).getAttribute("aria-selected")).toBe(
-        "true",
-      );
-      expect(screen.getByText("Deck library workspace")).toBeTruthy();
-      expect(screen.getAllByRole("tab")).toHaveLength(2);
-      view.unmount();
-    },
-  );
 });

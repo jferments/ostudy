@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Modal } from "../../components/Modal";
 import type { ShowToast } from "../../components/Toast";
 import { deleteCards, undoDeletion, type SelectionCard } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface DeleteCardsModalProps {
@@ -56,7 +55,7 @@ export function DeleteCardsModal({ cards, onClose, onComplete, showToast }: Dele
   }
 
   return (
-    <Modal title="Delete selected cards"
+    <Dialog title="Delete selected cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="small" busy={isDeleting} dismissible={!isDeleting}
       onClose={() => { if (!isDeleting) onClose(); }}>
@@ -73,6 +72,6 @@ export function DeleteCardsModal({ cards, onClose, onComplete, showToast }: Dele
           </Button>
         </DialogActions>
       </div>
-    </Modal>
+    </Dialog>
   );
 }

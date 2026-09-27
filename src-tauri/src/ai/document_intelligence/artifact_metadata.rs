@@ -10,8 +10,8 @@ use super::{
     transport::{request_json_cancellable, JsonTaskRequest},
 };
 
-pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 3;
-pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 3;
+pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 4;
+pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 4;
 pub(crate) const ARTIFACT_METADATA_SCHEMA_VERSION: i64 = 1;
 pub(crate) const ARTIFACT_TITLE_MAX_CHARS: usize = 120;
 pub(crate) const ARTIFACT_DESCRIPTION_MAX_CHARS: usize = 800;
@@ -42,7 +42,7 @@ pub(super) async fn request_document_artifact_metadata(
     let schema = artifact_metadata_schema();
     let system = artifact_metadata_system_prompt();
     let user = format!(
-        "<ostudy-validated-learning-plan>\n{}\n</ostudy-validated-learning-plan>\n\nReturn concise subject-centered display metadata for this learning material.",
+        "<ostudy-validated-learning-plan>\n{}\n</ostudy-validated-learning-plan>\n\nReturn concise subject-centered display metadata for this learning material. Inspect the full represented source range before choosing a subject. A section title describes that section, not the whole source. When multiple subjects are present, do not promote the first, most detailed or most frequently repeated narrow label into an umbrella title. The sections are [firstSourceUnit, lastSourceUnit, title] tuples. A sampled outline is explicitly marked; omitted detail is not evidence that the source only covers the visible subtopic.",
         bounded_learning_plan_context(outline)?,
     );
     request_json_cancellable(
@@ -93,30 +93,52 @@ fn artifact_metadata_schema() -> Value {
 }
 
 fn bounded_learning_plan_context(outline: &DocumentOutline) -> Result<String, CommandError> {
-    let sections = outline
-        .sections
-        .iter()
-        .take(24)
-        .map(|section| {
-            json!({
-                "title": truncate_chars(&section.title, 180),
-                "summary": truncate_chars(&section.summary, 420),
-                "learningObjectives": section.learning_objectives.iter().take(3).collect::<Vec<_>>(),
-                "keyConcepts": section.key_concepts.iter().take(5).collect::<Vec<_>>(),
+    let indices = representative_indices(outline.sections.len(), 96);
+    // Compact fields BEFORE serialization. Cutting the encoded JSON used to
+    // produce malformed context and silently omit the later document sections.
+    for (title_chars, summary_chars, objectives) in
+        [(96, 1_200, 8), (64, 600, 4), (40, 240, 2), (24, 80, 0)]
+    {
+        let sections = indices
+            .iter()
+            .map(|index| {
+                let section = &outline.sections[*index];
+                json!([
+                    section.page_start,
+                    section.page_end,
+                    truncate_chars(&section.title, title_chars)
+                ])
             })
-        })
-        .collect::<Vec<_>>();
-    let encoded = serde_json::to_string(&json!({
-        "summary": truncate_chars(&outline.summary, 3_000),
-        "learningObjectives": outline.learning_objectives.iter().take(20).collect::<Vec<_>>(),
-        "keyConcepts": outline.key_concepts.iter().take(32).collect::<Vec<_>>(),
-        "sections": sections,
-    }))
-    .map_err(CommandError::serialization)?;
-    Ok(truncate_chars(
-        &encoded,
-        ARTIFACT_METADATA_CONTEXT_MAX_CHARS,
+            .collect::<Vec<_>>();
+        let encoded = serde_json::to_string(&json!({
+            "summary": truncate_chars(&outline.summary, summary_chars),
+            "totalSections": outline.sections.len(),
+            "representedSections": indices.len(),
+            "sectionSelection": if indices.len() == outline.sections.len() { "all" } else { "evenly distributed including first and last" },
+            "learningObjectives": representative_indices(outline.learning_objectives.len(), objectives)
+                .iter().map(|index| truncate_chars(&outline.learning_objectives[*index], title_chars)).collect::<Vec<_>>(),
+            "keyConcepts": representative_indices(outline.key_concepts.len(), 12)
+                .iter().map(|index| truncate_chars(&outline.key_concepts[*index], title_chars)).collect::<Vec<_>>(),
+            "sections": sections,
+        })).map_err(CommandError::serialization)?;
+        if encoded.chars().count() <= ARTIFACT_METADATA_CONTEXT_MAX_CHARS {
+            return Ok(encoded);
+        }
+    }
+    Err(CommandError::new(
+        "artifact_metadata_context_too_large",
+        "Display metadata context could not be bounded safely; source-level fallback metadata remains available.",
     ))
+}
+
+fn representative_indices(total: usize, maximum: usize) -> Vec<usize> {
+    let count = total.min(maximum);
+    if count < 2 {
+        return (0..count).collect();
+    }
+    (0..count)
+        .map(|index| index * (total - 1) / (count - 1))
+        .collect()
 }
 
 fn decode_artifact_metadata(
@@ -168,6 +190,45 @@ mod tests {
         assert!(prompt.contains("ai-generated"));
         assert!(prompt.contains("generated from"));
         assert!(prompt.contains("filenames"));
+    }
+
+    #[test]
+    fn document_metadata_context_is_valid_json_and_represents_late_sections() {
+        for count in [0, 1, 14, 96, 160, 256] {
+            let outline = DocumentOutline {
+                summary: "\"\\\nα".repeat(2_000),
+                learning_objectives: vec!["A broad learning objective".into(); 32],
+                key_concepts: vec!["A source-supported concept".into(); 50],
+                sections: (0..count)
+                    .map(|index| super::super::contracts::OutlineSection {
+                        title: format!("Subject {index} {}", "quoted \"material\" ".repeat(40)),
+                        page_start: index as i64 + 1,
+                        page_end: index as i64 + 1,
+                        summary: "long detail".repeat(500),
+                        learning_objectives: vec![],
+                        key_concepts: vec![],
+                    })
+                    .collect(),
+            };
+            let encoded = bounded_learning_plan_context(&outline).unwrap();
+            assert!(encoded.chars().count() <= ARTIFACT_METADATA_CONTEXT_MAX_CHARS);
+            let decoded: Value = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded["totalSections"], count);
+            let sections = decoded["sections"].as_array().unwrap();
+            assert_eq!(sections.len(), count.min(96));
+            if count > 0 {
+                assert_eq!(sections.first().unwrap()[0], 1);
+                assert_eq!(sections.last().unwrap()[1], count);
+            }
+            assert_eq!(
+                decoded["sectionSelection"],
+                if count <= 96 {
+                    "all"
+                } else {
+                    "evenly distributed including first and last"
+                }
+            );
+        }
     }
 
     #[test]

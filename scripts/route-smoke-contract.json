@@ -32,16 +32,6 @@
       "role": "primary-destination"
     },
     {
-      "id": "cards",
-      "role": "compatibility-alias",
-      "target": "decks/search"
-    },
-    {
-      "id": "templates",
-      "role": "compatibility-alias",
-      "target": "settings"
-    },
-    {
       "id": "analytics",
       "role": "primary-destination"
     },

@@ -16,22 +16,40 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
   onError: (message: string) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const itemIds = question.items.map((item) => item.id);
+  const targetIds = question.targets.map((item) => item.id);
+  const seed = JSON.stringify([itemIds, targetIds]);
+  const [layout, setLayout] = useState({ seed, order: itemIds });
+  const [selection, setSelection] = useState<{ seed: string; itemId: string } | null>(null);
+  const selected = selection?.seed === seed ? selection.itemId : null;
   const items = new Map(question.items.map((item) => [item.id, item]));
   const targets = new Map(question.targets.map((item) => [item.id, item]));
-  const rows = matchingRows(question.items.map((item) => item.id), question.targets.map((item) => item.id), assignments);
+  const rows = matchingRows(layout.seed === seed ? layout.order : itemIds, targetIds, assignments);
   const connected = new Set(assignments.map((entry) => entry.itemId));
   const results = new Map(evaluation?.components.flatMap((part) => part.kind === "placement" ? [[part.itemId, part] as const] : []) ?? []);
   function assign(itemId: string, targetId: string): void {
     if (disabled || evaluation || !items.has(itemId) || !targets.has(targetId)) return;
     const next = rematchMatching(assignments, itemId, targetId);
-    if (next) { onChange(next); setSelected(null); }
+    if (!next) return;
+    // Pairing changes only these two visual rows. Rebuilding loose rows from the
+    // initial shuffle rotated unrelated tiles after a drop, making targets jump.
+    const order = [...rows];
+    const from = order.indexOf(itemId);
+    const to = targetIds.indexOf(targetId);
+    const displaced = order[to];
+    if (from >= 0 && to >= 0 && displaced !== undefined) {
+      order[from] = displaced;
+      order[to] = itemId;
+    }
+    setLayout({ seed, order });
+    setSelection(null);
+    onChange(next);
   }
-  const pointer = usePracticePointerDrop({ disabled: disabled || evaluation !== null, onDrop: assign, scopeRef: root });
+  const pointer = usePracticePointerDrop({ disabled: disabled || evaluation !== null, onDrop: assign, scopeRef: root, resetKey: seed });
 
   return <div className="tw:grid tw:gap-3">
     {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
-      Drag a tile up or down to line up a pair, or onto its match. You can also select two tiles. Drag a connected tile again to change its match; dropping onto another pair swaps them.
+      Drag a left tile up or down to line up a pair, or onto its match. You can also select two tiles. Drag a connected tile again to change its match; dropping onto another pair swaps them.
     </p> : null}
     <div ref={root} className="tw:relative tw:grid tw:gap-3" aria-label="Matching pairs">
       {question.targets.map((target, index) => {
@@ -43,10 +61,11 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
         const result = results.get(item.id);
         const correct = result ? result.selectedTargetId === result.expectedTargetId : undefined;
         const expected = result ? targets.get(result.expectedTargetId) : null;
-        return <div key={target.id} className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
-          <QuestionTile id={item.id} label={`Select ${extractRichDocumentText(item.content) || `item ${index + 1}`}`}
+        return <div key={target.id} data-practice-drop-target-id={target.id}
+          className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
+          <QuestionTile key={item.id} id={item.id} label={`Select ${extractRichDocumentText(item.content) || `item ${index + 1}`}`}
             dropTargetId={target.id} pointer={pointer} disabled={disabled || evaluation !== null} connected={linked} selected={selected === item.id}
-            correct={correct} onSelect={() => setSelected((value) => value === item.id ? null : item.id)}>
+            correct={correct} onSelect={() => setSelection((value) => value?.seed === seed && value.itemId === item.id ? null : { seed, itemId: item.id })}>
             <RichTextView document={item.content} assets={assets} onLinkError={onError} />
             {linked && !evaluation ? <span className="tw:text-xs tw:font-medium tw:text-primary">Connected</span> : null}
             {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-sm", correct ? "tw:text-success" : "tw:text-destructive")}>
@@ -60,7 +79,7 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
           <div className="tw:z-10 tw:flex tw:items-center tw:justify-center">
             {linked && !evaluation ? <Button variant="text" size="small" disabled={disabled}
               aria-label={`Unlink ${extractRichDocumentText(item.content) || `pair ${index + 1}`}`} title="Unlink pair"
-              onClick={() => { onChange(assignments.filter((entry) => entry.itemId !== item.id)); setSelected(null); }}>
+              onClick={() => { setLayout({ seed, order: rows }); onChange(assignments.filter((entry) => entry.itemId !== item.id)); setSelection(null); }}>
               <Icon name="close" size={16} />
             </Button> : linked ? <span aria-label="Connected pair">↔</span> : null}
           </div>
@@ -71,10 +90,10 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
             aria-disabled={disabled || evaluation !== null}
             onClick={(event) => {
               if (event.target instanceof Element && event.target.closest("a,button,audio,video,input")) return;
-              if (selected) assign(selected, target.id);
+              if (!pointer.shouldSuppressClick() && selected) assign(selected, target.id);
             }}
             onKeyDown={(event) => {
-              if (event.target !== event.currentTarget || (event.key !== " " && event.key !== "Enter")) return;
+              if (event.target !== event.currentTarget || event.nativeEvent.isComposing || (event.key !== " " && event.key !== "Enter")) return;
               event.preventDefault(); event.stopPropagation(); if (selected) assign(selected, target.id);
             }}>
             <RichTextView document={target.content} assets={assets} onLinkError={onError} />

@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import * as analyticsIpc from "../ipc/analytics";
-import { makeSettings } from "../test/factories";
 import { AnalyticsScreen } from "./AnalyticsScreen";
 
 vi.mock("../ipc/analytics", () => ({
@@ -21,7 +20,6 @@ describe("Analytics loading presentation", () => {
     render(
       <AnalyticsScreen
         decks={[]}
-        settings={makeSettings()}
         launchRequest={null}
         onLaunchConsumed={vi.fn()}
         onPracticeScope={vi.fn()}

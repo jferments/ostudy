@@ -30,7 +30,7 @@ export interface AnalyticsSearchLaunch {
 
 export interface FlashcardsRootRoute {
   requestId: number;
-  workspace: FlashcardsWorkspaceName;
+  workspace: CurrentFlashcardsWorkspaceName;
   view: "root";
   restoreDeckSelection?: TransientDeckSelectionEntry[];
   analyticsSearchLaunch?: AnalyticsSearchLaunch;

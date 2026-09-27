@@ -7,7 +7,7 @@ import type { AppSettings } from "../../ipc/settings";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type {
   AnalyticsSearchLaunch,
-  FlashcardsWorkspaceName,
+  CurrentFlashcardsWorkspaceName,
   TransientDeckSelectionEntry,
 } from "../../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
@@ -20,9 +20,9 @@ import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 import { WorkspaceTabs } from "../../ui/primitives/Tabs";
 
 interface FlashcardsWorkspaceProps {
-  workspace: FlashcardsWorkspaceName;
+  workspace: CurrentFlashcardsWorkspaceName;
   navigationKey: number;
-  onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
+  onWorkspaceChange: (workspace: CurrentFlashcardsWorkspaceName) => void | Promise<void>;
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
@@ -78,7 +78,7 @@ export function FlashcardsWorkspace({
   showToast,
 }: FlashcardsWorkspaceProps) {
   const workspaceChangeRef = useRef(onWorkspaceChange);
-  const visibleWorkspace: "decks" | "search" = workspace === "search" ? "search" : "decks";
+  const visibleWorkspace = workspace;
 
   useLayoutEffect(() => {
     workspaceChangeRef.current = onWorkspaceChange;

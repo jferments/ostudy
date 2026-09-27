@@ -72,17 +72,12 @@ describe("appearance resolution", () => {
     expect(profile.tutorialsEnabled).toBe(false);
   });
 
-  it("maps legacy animation settings during the bundled transition", () => {
+  it("uses system motion when the current preference is absent", () => {
     const profile = resolveAppearanceProfile(
-      {
-        ...settings,
-        motionPreference: undefined,
-        animationsEnabled: false,
-        reduceMotion: false,
-      },
+      { ...settings, motionPreference: undefined },
       environment,
     );
-    expect(profile.motion).toBe("none");
+    expect(profile.motion).toBe("full");
   });
 
   it("exposes each bundled font preset and resolves it to a local-first family", () => {

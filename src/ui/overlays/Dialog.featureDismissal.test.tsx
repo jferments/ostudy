@@ -1,12 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Modal } from "./Modal";
+import { Dialog } from "./Dialog";
+
 function Harness({ onClose }: { onClose: () => void }) {
   const [open, setOpen] = useState(true);
-  return open ? <Modal title="Confirm action" description="Review the change." onClose={() => { onClose(); setOpen(false); }}><button type="button">Inside action</button></Modal> : null;
+  return open ? <Dialog title="Confirm action" description="Review the change." onClose={() => { onClose(); setOpen(false); }}><button type="button">Inside action</button></Dialog> : null;
 }
-describe("Modal", () => {
+
+// These are the former compatibility-Modal assertions, retained at the actual
+// dialog owner after the last feature caller migrated to it directly.
+describe("Dialog feature dismissal", () => {
   it("exposes a labelled modal dialog", () => {
     render(<Harness onClose={vi.fn()} />);
     expect(screen.getByRole("dialog", { name: "Confirm action" }).getAttribute("aria-modal")).toBe("true");

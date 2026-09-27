@@ -118,9 +118,12 @@ describe("Document job presentation", () => {
       makeDocument({ generatedDeckId: null, generatedCardCount: 0 }),
     ]);
     // This test owns the collection-discovery race. Keep the independent
-    // artifact-progress poll pending so its rerender cannot close the menu and
-    // turn this into a scheduler-timing test.
+    // progress reads pending so their rerenders cannot close the menu and turn
+    // this into a scheduler-timing test.
     vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+    vi.mocked(documentIpc.getDocumentGenerationProgress).mockReturnValueOnce(
       new Promise(() => undefined),
     );
     renderDocuments();

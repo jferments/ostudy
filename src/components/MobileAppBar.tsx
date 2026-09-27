@@ -8,8 +8,6 @@ const TITLES: Record<AppSection, string> = {
   "study-guides": "Study Guides",
   documents: "Documents",
   tutor: "Tutor",
-  cards: "Search",
-  templates: "Card templates",
   analytics: "Analytics",
   settings: "Settings",
 };
@@ -31,8 +29,7 @@ export function MobileAppBar({
       : section === "decks"
         ? null
         : TITLES[section];
-  const settingsActive =
-    activeWorkflow === null && (section === "settings" || section === "templates");
+  const settingsActive = activeWorkflow === null && section === "settings";
   return (
     <CompactAppHeader data-testid="mobile-app-bar">
       <BrandLockup compact />
