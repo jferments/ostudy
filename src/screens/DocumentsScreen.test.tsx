@@ -492,8 +492,9 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
-    expect(await screen.findByText("Retry generation")).toBeTruthy();
-    expect(screen.queryByText("Generate study guide")).toBeNull();
+    const menu = await screen.findByRole("menu", { name: "More actions for Cardiac physiology" });
+    expect(within(menu).getByRole("menuitem", { name: "Retry generation" })).toBeTruthy();
+    expect(within(menu).queryByText("Generate study guide")).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
     expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
