@@ -22,7 +22,6 @@ print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(git_header + data).hexdigest
 print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
 PY
 )
-printf 'LOCKFILE_CANDIDATE_DIFF_BEGIN\n'
-diff -u --label a/pnpm-lock.yaml --label b/pnpm-lock.yaml \
-  pnpm-lock.yaml "$candidate/pnpm-lock.yaml" || true
-printf 'LOCKFILE_CANDIDATE_DIFF_END\n'
+printf 'LOCKFILE_CANDIDATE_GZIP_BASE64='
+gzip -c "$candidate/pnpm-lock.yaml" | base64 -w 0
+printf '\n'
