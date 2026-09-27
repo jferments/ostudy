@@ -29,7 +29,7 @@ afterEach(async () => {
 
 describe("bounded caught-failure diagnostics", () => {
   it("retains a bounded queue behind a stalled native call and reports the drop count", async () => {
-    let release = () => { throw new Error("the transport was not started"); };
+    let release: () => void = () => { throw new Error("the transport was not started"); };
     nativeInvoke.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
     diagnostics.queueFrontendDiagnostic({ level: "error", target: "frontend.test", event: "first_failure", message: "First failure." });
     for (let index = 0; index < 1000; index += 1) {

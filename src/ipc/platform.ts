@@ -4,6 +4,7 @@ import {
   type PluginListener,
 } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { reportFrontendFailure } from "./diagnostics";
 
 const PLATFORM_PLUGIN = "ostudy-platform";
 const USB_PLUGIN = "ostudy-usb";
@@ -112,8 +113,8 @@ export async function listenToLifecycle(
     // lifecycle events. The shared Rust stream remains authoritative there.
   }
   return () => {
-    core();
-    android?.();
+    try { core(); }
+    finally { android?.(); }
   };
 }
 
@@ -158,7 +159,16 @@ export async function listenToAndroidUsbSync(
 }
 
 function pluginUnlisten(listener: PluginListener): UnlistenFn {
+  let removed = false;
   return () => {
-    void listener.unregister();
+    if (removed) return;
+    removed = true;
+    try {
+      void listener.unregister().catch((error: unknown) => {
+        reportFrontendFailure("platform_listener_cleanup_failed", error);
+      });
+    } catch (error: unknown) {
+      reportFrontendFailure("platform_listener_cleanup_failed", error);
+    }
   };
 }

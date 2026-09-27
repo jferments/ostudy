@@ -239,20 +239,28 @@ expectContains(
   'root.dataset.androidBackListener = "ready";\n        const backStack = subscribePlatformBackStack',
   "listener-before-interception Android Back ordering",
 );
+const diagnostics = await read("src/ipc/diagnostics.ts");
 for (const diagnostic of [
-  "Unable to register the Android Back listener:",
-  "Unable to register the Android insets listener:",
-  "Unable to register the Android network listener:",
+  "android_back_listener_failed",
+  "android_insets_listener_failed",
+  "android_network_listener_failed",
 ]) {
-  expectContains(platformProvider, diagnostic, `Android plugin listener diagnostic ${diagnostic}`);
+  expectContains(platformProvider, `reportFrontendFailure("${diagnostic}", error)`, `Android plugin listener diagnostic ${diagnostic}`);
+  expectContains(diagnostics, `${diagnostic}:`, `static diagnostic catalog entry ${diagnostic}`);
 }
 
 const incomingShareCoordinator = await read("src/components/IncomingShareCoordinator.tsx");
 expectContains(
   incomingShareCoordinator,
-  "Unable to register the Android incoming-share listener:",
+  'reportFrontendFailure("incoming_share_listener_failed", error)',
   "incoming-share plugin listener diagnostic",
 );
+expectContains(diagnostics, "incoming_share_listener_failed:", "static incoming-share diagnostic catalog entry");
+for (const [name, source] of [["platform", platformProvider], ["incoming-share", incomingShareCoordinator]]) {
+  if (/console\.(error|warn)\s*\(/u.test(source)) {
+    failures.push(`${name} caught failures must use bounded structured diagnostics, not console-only output`);
+  }
+}
 
 const postbuild = await read("scripts/android-gradle-postbuild.sh");
 for (const token of [

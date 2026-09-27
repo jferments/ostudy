@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
 import { getImageSet, getImageSetPreview, type ImageSetDetails, type ImageSetPreview } from "../../ipc/imageSets";
-import { dataTransferImageFiles, IMAGE_FILE_ACCEPT, readClipboardImageFiles } from "../../platform/imageInput";
+import { dataTransferImageFiles, IMAGE_FILE_ACCEPT } from "../../platform/imageInput";
+import { ImagePasteSession } from "../../platform/imagePaste";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
@@ -30,7 +31,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const collections = documentJobs?.imageCollections;
   const [draftKey] = useState(createOperationId);
   const key = documentId
-    ? Object.keys(collections?.jobs ?? {}).find((id) => collections?.jobs[id].documentId === documentId) ?? documentId
+    ? Object.keys(collections?.jobs ?? {}).find((id) => collections?.jobs[id]?.documentId === documentId) ?? documentId
     : draftKey;
   const job = collections?.jobs[key];
   const savedId = job?.documentId ?? documentId;
@@ -56,46 +57,19 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
     return () => { current = false; };
   }, [savedId, savedCount, phase]);
 
-  const pasteGesture = useRef(0);
+  const pasteSession = useRef<ImagePasteSession | null>(null);
   useEffect(() => {
-    const receivePaste = (event: ClipboardEvent) => {
-      if (!event.clipboardData || !addImages) return;
-      const files = dataTransferImageFiles(event.clipboardData);
-      if (files.length === 0) return;
-      pasteGesture.current += 1;
-      event.preventDefault();
-      event.stopPropagation();
-      addImages(key, savedId, files);
-    };
-    const receivePasteShortcut = (event: KeyboardEvent) => {
-      if (!addImages || event.altKey || (!event.ctrlKey && !event.metaKey)
-        || event.key.toLowerCase() !== "v") return;
-      const gesture = ++pasteGesture.current;
-      window.setTimeout(() => {
-        if (pasteGesture.current !== gesture) return;
-        void readClipboardImageFiles().then((files) => {
-          if (pasteGesture.current !== gesture || files.length === 0) return;
-          pasteGesture.current += 1;
-          addImages(key, savedId, files);
-        }).catch(() => {
-          // The ordinary paste event remains authoritative when clipboard-read
-          // permission/API support is unavailable.
-        });
-      }, 0);
-    };
-    window.addEventListener("paste", receivePaste, true);
-    window.addEventListener("keydown", receivePasteShortcut, true);
-    return () => {
-      window.removeEventListener("paste", receivePaste, true);
-      window.removeEventListener("keydown", receivePasteShortcut, true);
-    };
+    if (!addImages) return;
+    const session = pasteSession.current ?? new ImagePasteSession();
+    pasteSession.current = session;
+    return session.bind((files) => addImages(key, savedId, files));
   }, [addImages, key, savedId]);
 
   useEffect(() => {
     let current = true;
     setPreview(null);
     setPreviewError(null);
-    if (!savedId || !details || !previewId) {
+    if (!savedId || !details || details.documentId !== savedId || !previewId) {
       setPreviewLoading(false);
       return () => { current = false; };
     }
