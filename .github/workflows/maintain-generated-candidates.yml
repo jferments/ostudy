@@ -77,8 +77,6 @@ jobs:
             echo 'The committed JavaScript lockfile matches the published manifests.'
           else
             python3 - "$candidate/pnpm-lock.yaml" <<'PY'
-          import base64
-          import gzip
           import hashlib
           import pathlib
           import sys
@@ -86,9 +84,9 @@ jobs:
           header = f"blob {len(data)}\0".encode()
           print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(header + data).hexdigest())
           print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
-          encoded = base64.b64encode(gzip.compress(data, mtime=0)).decode()
-          for index, offset in enumerate(range(0, len(encoded), 4000)):
-              print(f"LOCKFILE_CANDIDATE_GZIP_{index:04}=" + encoded[offset:offset + 4000])
+          print("LOCKFILE_CANDIDATE_TEXT_BEGIN")
+          sys.stdout.write(data.decode("utf-8"))
+          print("LOCKFILE_CANDIDATE_TEXT_END")
           PY
             echo 'The committed lockfile is stale. Review and publish the candidate through the normal source-writer protocol.' >&2
             status=1
