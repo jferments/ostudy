@@ -359,7 +359,8 @@ function formatSourceLocator(locator: { unitKind: string; unitNumbers: number[] 
   const kind = locator.unitKind.replaceAll("_", " ");
   if (numbers.length === 0) return kind;
   const first = numbers[0], last = numbers[numbers.length - 1];
+  if (first === undefined || last === undefined) return kind;
   const label = first === last ? `${first}` : `${first}–${last}`;
   return `${capitalize(kind)} ${label}`;
 }
-function capitalize(value: string): string { return value.length === 0 ? value : `${value[0].toUpperCase()}${value.slice(1)}`; }
+function capitalize(value: string): string { return value.length === 0 ? value : `${value.charAt(0).toUpperCase()}${value.slice(1)}`; }

@@ -93,10 +93,16 @@ export function selectFigureAssetIds(assetIds: string[], maximum: number): strin
   if (maximum <= 0) return [];
   const unique = [...new Set(assetIds)].sort();
   if (unique.length <= maximum) return unique;
-  if (maximum === 1) return [unique[Math.floor(unique.length / 2)]];
+  if (maximum === 1) {
+    const selected = unique[Math.floor(unique.length / 2)];
+    return selected === undefined ? [] : [selected];
+  }
   const last = unique.length - 1;
-  return Array.from({ length: maximum }, (_, index) =>
-    unique[Math.floor(index * last / (maximum - 1))]);
+  return Array.from({ length: maximum }, (_, index) => {
+    const selected = unique[Math.floor(index * last / (maximum - 1))];
+    if (selected === undefined) throw new Error("Figure selection index is outside the available assets.");
+    return selected;
+  });
 }
 
 export function detectedImageMimeType(buffer: ArrayBuffer): string | null {

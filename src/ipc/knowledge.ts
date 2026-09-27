@@ -18,7 +18,10 @@ export function selectedScope(members: MaterialScope[]): StudyScope {
   });
   if (unique.length > 16) throw new Error("Select at most 16 study sources.");
   if (!unique.length) return { kind: "general", id: null };
-  if (unique.length === 1) return unique[0];
+  if (unique.length === 1) {
+    const only = unique[0];
+    if (only) return only;
+  }
   return { kind: "selection", id: null, members: unique };
 }
 

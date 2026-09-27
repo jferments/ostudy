@@ -441,7 +441,11 @@ export function moveChoiceOption(
   const target = index + delta;
   if (index < 0 || target < 0 || target >= draft.options.length) return draft;
   const options = [...draft.options];
-  [options[index], options[target]] = [options[target], options[index]];
+  const current = options[index];
+  const destination = options[target];
+  if (!current || !destination) return draft;
+  options[index] = destination;
+  options[target] = current;
   return { ...draft, options };
 }
 
@@ -469,7 +473,11 @@ export function moveMatchingPair(
   const target = index + delta;
   if (index < 0 || target < 0 || target >= draft.pairs.length) return draft;
   const pairs = [...draft.pairs];
-  [pairs[index], pairs[target]] = [pairs[target], pairs[index]];
+  const current = pairs[index];
+  const destination = pairs[target];
+  if (!current || !destination) return draft;
+  pairs[index] = destination;
+  pairs[target] = current;
   return { ...draft, pairs };
 }
 
@@ -585,7 +593,11 @@ function moveFields<T extends { id: string }>(fields: T[], id: string, delta: -1
   const target = index + delta;
   if (index < 0 || target < 0 || target >= fields.length) return fields;
   const next = [...fields];
-  [next[index], next[target]] = [next[target], next[index]];
+  const current = next[index];
+  const destination = next[target];
+  if (!current || !destination) return fields;
+  next[index] = destination;
+  next[target] = current;
   return next;
 }
 

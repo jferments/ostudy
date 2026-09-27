@@ -18,7 +18,10 @@ export function beginTiptapFormulaEdit(editor: Editor): FormulaEditSession | nul
     selection.$from.sameParent(selection.$to) &&
     !selection.$from.parent.type.spec.code
   )) return null;
-  if (!schema.nodes.inlineMath || !schema.nodes.blockMath) return null;
+  const inlineMath = schema.nodes.inlineMath;
+  const blockMath = schema.nodes.blockMath;
+  const paragraph = schema.nodes.paragraph;
+  if (!inlineMath || !blockMath || !paragraph) return null;
 
   let finished = false;
   const initialValue = Object.freeze({
@@ -47,8 +50,8 @@ export function beginTiptapFormulaEdit(editor: Editor): FormulaEditSession | nul
       if (value.placement !== "inline" && value.placement !== "block") {
         return { ok: false, reason: "invalid-placement", message: "Choose inline or block placement." };
       }
-      const formula = schema.nodes[value.placement === "inline" ? "inlineMath" : "blockMath"]
-        .create({ latex: value.latex }, null, []);
+      const formulaType = value.placement === "inline" ? inlineMath : blockMath;
+      const formula = formulaType.create({ latex: value.latex }, null, []);
       let transaction: Transaction;
       try {
         transaction = editor.state.tr.setSelection(selection);
@@ -58,7 +61,7 @@ export function beginTiptapFormulaEdit(editor: Editor): FormulaEditSession | nul
           // A block cannot be replaced with a bare inline child of the document,
           // list, quote or table cell. Wrap it without flattening that container.
           const replacement = value.placement === "inline" && selectedMath?.isBlock
-            ? schema.nodes.paragraph.create(null, formula)
+            ? paragraph.create(null, formula)
             : formula;
           transaction.replaceSelectionWith(replacement, false);
         }

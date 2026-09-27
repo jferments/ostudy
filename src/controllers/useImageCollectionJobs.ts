@@ -71,6 +71,7 @@ export function useImageCollectionJobs(services: Services) {
       while (!session.stopped) {
         while (session.batches.length > 0 && !session.stopped) {
           const batch = session.batches[0];
+          if (!batch) break;
           session.value.phase = "uploading";
           publish(session);
           for (const selection of batch.selections) {

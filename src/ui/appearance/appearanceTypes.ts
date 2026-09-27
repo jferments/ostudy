@@ -143,10 +143,11 @@ export function resolveFontFamily(value: string, theme: ThemeName): string {
     serif: "var(--ostudy-font-family-serif)",
     mono: "var(--ostudy-font-family-mono)",
   };
+  const system = presets.system ?? "var(--ostudy-font-family-system)";
   const effective = theme === "console" && value === "system" ? "mono" : value;
   if (effective.startsWith("custom:")) {
     const custom = effective.slice("custom:".length).trim().replaceAll("'", "");
-    return custom ? `'${custom}', ${presets.system}` : presets.system;
+    return custom ? `'${custom}', ${system}` : system;
   }
-  return presets[effective] ?? presets.system;
+  return presets[effective] ?? system;
 }

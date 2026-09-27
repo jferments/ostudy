@@ -89,7 +89,7 @@ export function TiptapRichTextEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class: contentStyles.content,
+        class: contentStyles.content ?? "",
         "aria-label": label,
         role: "textbox",
         "aria-multiline": "true",

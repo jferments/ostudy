@@ -20,7 +20,13 @@ export function OrderingBoard({ question, orderedItemIds, assets, disabled, eval
   function move(itemId: string, delta: number): void {
     const index = orderedItemIds.indexOf(itemId); const to = index + delta;
     if (disabled || index < 0 || to < 0 || to >= orderedItemIds.length) return;
-    const next = [...orderedItemIds]; [next[index], next[to]] = [next[to], next[index]]; onChange(next);
+    const next = [...orderedItemIds];
+    const current = next[index];
+    const destination = next[to];
+    if (current === undefined || destination === undefined) return;
+    next[index] = destination;
+    next[to] = current;
+    onChange(next);
   }
   function drop(itemId: string, targetId: string): void {
     if (disabled || !items.has(itemId) || itemId === targetId) return;

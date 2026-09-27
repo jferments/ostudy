@@ -33,7 +33,7 @@ export function TiptapRichTextView({
     editable: false,
     editorProps: {
       attributes: {
-        class: contentStyles.content,
+        class: contentStyles.content ?? "",
         tabindex: "0",
       },
     },

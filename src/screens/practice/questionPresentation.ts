@@ -29,7 +29,14 @@ export function matchingRows(itemIds: readonly string[], targetIds: readonly str
   const used = new Set(assignments.map((pair) => pair.itemId));
   const loose = itemIds.filter((id) => !used.has(id));
   let cursor = 0;
-  return targetIds.map((id) => connected.get(id) ?? loose[cursor++]);
+  return targetIds.map((id) => {
+    const connectedItem = connected.get(id);
+    if (connectedItem) return connectedItem;
+    const looseItem = loose[cursor];
+    cursor += 1;
+    if (!looseItem) throw new Error("Matching response does not contain enough unassigned items.");
+    return looseItem;
+  });
 }
 
 /** New connections never displace another pair implicitly. */

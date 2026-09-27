@@ -20,6 +20,7 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
     () => FORMULA_TOOL_GROUPS.find((candidate) => candidate.id === activeGroup) ?? FORMULA_TOOL_GROUPS[0],
     [activeGroup],
   );
+  if (!group) throw new Error("Formula tools require at least one configured group.");
 
   function insert(template: string): void {
     input?.applyTemplate(template);
