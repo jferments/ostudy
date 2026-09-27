@@ -190,7 +190,10 @@ mod tests {
                 let mut body = json!({});
                 apply_reasoning_policy(&mut body, effort, budget);
                 let reasoning = &body["reasoning"];
-                assert_ne!(reasoning.get("effort").is_some(), reasoning.get("max_tokens").is_some());
+                assert_ne!(
+                    reasoning.get("effort").is_some(),
+                    reasoning.get("max_tokens").is_some()
+                );
                 if effort == "none" || budget.is_none() || budget == Some(0) {
                     assert_eq!(reasoning["effort"], effort);
                 } else {

@@ -89,7 +89,11 @@ fn choose_plan(
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
     // Split multi-unit work before reducing its reserved output. Smaller-context
     // models can still author one indivisible unit using a compatible allowance.
-    let choices = if unit_count > 1 { 1 } else { COLLECTION_GUIDE_COMPLETION_PLANS.len() };
+    let choices = if unit_count > 1 {
+        1
+    } else {
+        COLLECTION_GUIDE_COMPLETION_PLANS.len()
+    };
     for plan in COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().take(choices) {
         match preflight(plan) {
             Ok(()) => return Ok(plan),
@@ -108,8 +112,15 @@ fn choose_plan(
 pub(super) fn compact_recovery_schema(schema: &Value) -> Value {
     let mut compact = schema.clone();
     for field in [
-        "explanations", "processSteps", "comparisons", "commonMisconceptions",
-        "callouts", "tables", "workedExamples", "retrievalChecks", "visualExplanations",
+        "explanations",
+        "processSteps",
+        "comparisons",
+        "commonMisconceptions",
+        "callouts",
+        "tables",
+        "workedExamples",
+        "retrievalChecks",
+        "visualExplanations",
     ] {
         compact["properties"]["content"]["properties"][field]["maxItems"] = Value::from(0);
     }
@@ -124,7 +135,11 @@ mod tests {
     #[test]
     fn guide_recovery_has_real_preflighted_headroom_instead_of_identical_replay() {
         let mut observed = Vec::new();
-        let plan = choose_plan(13, |plan| { observed.push(plan); Ok(()) }).unwrap();
+        let plan = choose_plan(13, |plan| {
+            observed.push(plan);
+            Ok(())
+        })
+        .unwrap();
         assert_eq!(plan, DOCUMENT_GUIDE_COMPLETION_PLAN);
         assert_eq!(observed, vec![plan]);
         for plan in COLLECTION_GUIDE_COMPLETION_PLANS {
@@ -135,14 +150,24 @@ mod tests {
     #[test]
     fn small_context_fallback_is_only_for_indivisible_knowledge() {
         let fits = |plan: StudyGuideCompletionPlan| {
-            if plan.repair_visible_tokens <= 6_144 { Ok(()) }
-            else { Err(CommandError::new("ai_document_context_budget", "split")) }
+            if plan.repair_visible_tokens <= 6_144 {
+                Ok(())
+            } else {
+                Err(CommandError::new("ai_document_context_budget", "split"))
+            }
         };
         assert_eq!(choose_plan(1, fits).unwrap().repair_visible_tokens, 6_144);
-        assert_eq!(choose_plan(2, fits).unwrap_err().code, "ai_document_context_budget");
         assert_eq!(
-            choose_plan(1, |_| Err(CommandError::new("ai_profile_changed", "changed")))
-                .unwrap_err().code,
+            choose_plan(2, fits).unwrap_err().code,
+            "ai_document_context_budget"
+        );
+        assert_eq!(
+            choose_plan(1, |_| Err(CommandError::new(
+                "ai_profile_changed",
+                "changed"
+            )))
+            .unwrap_err()
+            .code,
             "ai_profile_changed"
         );
     }
@@ -151,12 +176,18 @@ mod tests {
     fn guide_first_pass_explains_joint_budget_and_preserves_qualifications() {
         let instruction = DOCUMENT_GUIDE_COMPLETION_PLAN.instructions();
         for required in [
-            "6144 tokens", "4,200 human-readable characters", "including all categories",
-            "nonempty supported keyPoints", "unused arrays must be []", "never cut a qualification",
+            "6144 tokens",
+            "4,200 human-readable characters",
+            "including all categories",
+            "nonempty supported keyPoints",
+            "unused arrays must be []",
+            "never cut a qualification",
         ] {
             assert!(instruction.contains(required), "{required}");
         }
-        assert!(DOCUMENT_GUIDE_COMPLETION_PLAN.recovery_instructions().contains("12288"));
+        assert!(DOCUMENT_GUIDE_COMPLETION_PLAN
+            .recovery_instructions()
+            .contains("12288"));
     }
 
     #[test]
@@ -165,13 +196,22 @@ mod tests {
         let schema = protocol::schema(&catalog, true);
         let compact = compact_recovery_schema(&schema);
         assert_eq!(compact["required"], schema["required"]);
-        assert_eq!(compact["properties"]["knowledgeUnitIds"], schema["properties"]["knowledgeUnitIds"]);
+        assert_eq!(
+            compact["properties"]["knowledgeUnitIds"],
+            schema["properties"]["knowledgeUnitIds"]
+        );
         let fields = &compact["properties"]["content"]["properties"];
         assert_eq!(fields["keyPoints"]["minItems"], 1);
         assert_eq!(fields["keyPoints"]["maxItems"], 7);
         assert_eq!(fields["tables"]["maxItems"], 0);
         assert_eq!(fields["visualExplanations"]["maxItems"], 0);
-        assert_eq!(compact["properties"]["content"]["additionalProperties"], json!(false));
-        assert_eq!(schema["properties"]["content"]["properties"]["tables"]["maxItems"], 3);
+        assert_eq!(
+            compact["properties"]["content"]["additionalProperties"],
+            json!(false)
+        );
+        assert_eq!(
+            schema["properties"]["content"]["properties"]["tables"]["maxItems"],
+            3
+        );
     }
 }

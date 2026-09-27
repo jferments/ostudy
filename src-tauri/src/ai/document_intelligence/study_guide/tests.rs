@@ -82,7 +82,10 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
             repair_visible_tokens: 12_288,
         }
     );
-    assert_eq!(COLLECTION_GUIDE_COMPLETION_PLANS[0], DOCUMENT_GUIDE_COMPLETION_PLAN);
+    assert_eq!(
+        COLLECTION_GUIDE_COMPLETION_PLANS[0],
+        DOCUMENT_GUIDE_COMPLETION_PLAN
+    );
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .iter()
         .all(|plan| plan.repair_visible_tokens == plan.initial_visible_tokens * 2));
