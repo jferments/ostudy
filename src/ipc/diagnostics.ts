@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 
 const MAX_MESSAGE_CHARS = 4_000;
 const MAX_STACK_CHARS = 12_000;

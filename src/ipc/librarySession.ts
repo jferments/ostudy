@@ -1,4 +1,5 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { listen } from "@tauri-apps/api/event";
 
 export interface CompletedLibraryRestore {

@@ -68,17 +68,21 @@ Exit: checks are enforced against the current source; lifecycle and stale-read b
 
 ### H-06 — explicit library-aware IPC transport
 
+Status: **implemented in PR #111.**
+
 Owners: `src/ipc/transport.ts`, `libraryTransport.ts`, domain gateways and Vite/Vitest wiring.
 
-The transport already has focused tests; the gap is production build-alias integration, not absence of generation tests. Prefer visible application-owned imports and representative real gateway tests with mocks beneath the transport. Preserve SDK/plugin behavior and original-page generation.
+PR #111 removes the private Vite/TypeScript interception of `@tauri-apps/api/core`. Every domain command gateway imports the application-owned `src/ipc/transport.ts` explicitly; that transport is the sole raw native-command caller and preserves the one-generation-per-page/stale-mutation refusal policy. Non-command SDK utilities remain direct at their narrow platform owners. Repository verification rejects raw gateway invokes and reintroduction of the retired alias, and integration coverage exercises a real gateway through the production transport boundary.
 
 Exit: bootstrap/concurrent requests, plugin passthrough, startup diagnostics and post-restore stale writes use the same path as production; no mutation is replayed automatically with a refreshed generation; raw invocation bypass is rejected.
 
 ### H-07 — native-owned wire types and typed command declarations
 
-Evaluate a narrow Rust-to-TypeScript exporter before choosing a framework. Validate field renames, tagged unions, null versus omitted fields, defaults, numeric and byte encoding, errors and deliberate dynamic JSON. Generated clients must use H-06's transport rather than bypass generation fencing.
+Status: **implemented in PR #111.**
 
-The native leased wrappers deserialize into typed domain inputs; they do not eliminate native validation. Reducing their duplication must preserve command names, argument semantics and original-generation lifetime. The generic dispatch lease alone is not an async-future lease. Keep execution placement separate from shape-only refactoring.
+PR #111 uses a deliberately narrow native-owned exporter rather than adopting a broad IPC framework. Rust owns representative wire descriptors/fixtures for stable cross-boundary shapes and serialization conventions, including camelCase fields, nullable values, tagged unions, numbers and byte-array lowering. Checked-in TypeScript declarations and JSON fixtures are compared against Rust-rendered output in Static/Fast qualification.
+
+The registered Rust command set separately owns command membership. A checked-in generated `NativeCommandGatewayMap` maps every registered command to its exported typed frontend gateway and derives request/result types with TypeScript `Parameters`/`ReturnType`; it is a drift detector/inventory, not a replacement for native validation. Generated declarations contain no invoke implementation and therefore cannot bypass H-06. Native leased wrappers continue to deserialize/validate typed domain input and preserve original-generation lifetime; execution placement remains outside H-07.
 
 Exit: native wire changes update the checked-in contract or fail check-only verification; serialization fixtures agree across the boundary. Actions may compare temporary generator output but never rewrite or publish maintained source.
 

@@ -1,10 +1,7 @@
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-
-const require = createRequire(import.meta.url);
 
 export default defineConfig(() => {
   const performanceCapture = (
@@ -20,9 +17,6 @@ export default defineConfig(() => {
     },
     resolve: {
       alias: [
-        // Preserve existing typed gateway imports while adding one library epoch.
-        { find: /^@tauri-apps\/api\/core$/, replacement: fileURLToPath(new URL("./src/ipc/transport.ts", import.meta.url)) },
-        { find: /^@ostudy\/tauri-core$/, replacement: require.resolve("@tauri-apps/api/core") },
         { find: "@", replacement: fileURLToPath(new URL("./src", import.meta.url)) },
         ...(performanceCapture ? [{ find: "react-dom/client", replacement: "react-dom/profiling" }] : []),
       ],

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,7 +7,7 @@ import {
   type RecentReview,
 } from "./analytics";
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("./transport", () => ({
   invoke: vi.fn(),
 }));
 

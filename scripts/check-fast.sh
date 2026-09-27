@@ -82,6 +82,14 @@ pnpm test
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+step "Native IPC wire contract and serialization fixtures"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  ipc_wire_contract::tests::
+
 step "Filesystem durability and checkpoint publication contracts"
 bash "$SCRIPT_DIR/test-native-contracts.sh" util::durable_fs::tests:: ui_checkpoint::tests:: studydeck::import::
 

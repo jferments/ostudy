@@ -1,0 +1,78 @@
+{
+  "appSettings": {
+    "cardBaseSize": 18,
+    "cardFont": "plex",
+    "celebrationsEnabled": true,
+    "confirmDeletions": true,
+    "dailyNewLimit": 20,
+    "dailyReviewLimit": 200,
+    "decorativeArtwork": true,
+    "desiredRetention": 0.9,
+    "displayQuestionOnAnswer": false,
+    "materialPreference": "automatic",
+    "motionPreference": "system",
+    "practiceShuffle": true,
+    "theme": "dark",
+    "tutorialsEnabled": false,
+    "uiFont": "plex",
+    "uiScale": 100
+  },
+  "commandError": {
+    "code": "example_error",
+    "message": "Example safe message."
+  },
+  "deckSummary": {
+    "archivedAt": null,
+    "createdAt": 10,
+    "description": "Representative deck",
+    "generatedCardCount": 5,
+    "id": "11111111111111111111111111111111",
+    "name": "Physiology",
+    "revision": 4,
+    "sourceNoteCount": 3,
+    "studyableDueCount": 2,
+    "updatedAt": 20
+  },
+  "emptyEncoding": {
+    "kind": "empty"
+  },
+  "encoding": {
+    "bytes": [
+      0,
+      127,
+      255
+    ],
+    "kind": "ready",
+    "optional": null,
+    "signed": -7,
+    "unsigned": 42
+  },
+  "librarySession": {
+    "generation": 7,
+    "lastRestore": {
+      "operationId": "22222222222222222222222222222222",
+      "deckCount": 2,
+      "cardCount": 5,
+      "documentCount": 1,
+      "templateCount": 3,
+      "reviewCount": 8,
+      "assetCount": 4,
+      "restartRequired": false,
+      "completed": true
+    },
+    "ready": true,
+    "recoveryRequired": false,
+    "restoring": false
+  },
+  "completedRestore": {
+    "operationId": "22222222222222222222222222222222",
+    "deckCount": 2,
+    "cardCount": 5,
+    "documentCount": 1,
+    "templateCount": 3,
+    "reviewCount": 8,
+    "assetCount": 4,
+    "restartRequired": false,
+    "completed": true
+  }
+}

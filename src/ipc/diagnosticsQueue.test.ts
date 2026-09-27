@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FrontendDiagnosticEvent } from "./diagnostics";
 
 const nativeInvoke = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke: nativeInvoke }));
+vi.mock("./transport", () => ({ invoke: nativeInvoke }));
 
 let diagnostics: typeof import("./diagnostics");
 

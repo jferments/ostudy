@@ -7,7 +7,20 @@ import { duplicateFunctionNames } from "./lib/ipc-symbol-contract.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const rustRoot = await readFile(join(root, "src-tauri", "src", "lib.rs"), "utf8");
+const viteConfig = await readFile(join(root, "vite.config.ts"), "utf8");
+const tsConfig = await readFile(join(root, "tsconfig.app.json"), "utf8");
+const transportSource = await readFile(join(root, "src", "ipc", "transport.ts"), "utf8");
 const failures = [];
+
+if (viteConfig.includes('@tauri-apps/api/core') || viteConfig.includes('@ostudy/tauri-core')) {
+  failures.push("Vite must not intercept the Tauri core module; domain gateways import the application transport explicitly.");
+}
+if (tsConfig.includes('@ostudy/tauri-core')) {
+  failures.push("TypeScript must not retain the private raw-Tauri alias.");
+}
+if (!transportSource.includes('invoke as nativeInvoke') || !transportSource.includes('from "@tauri-apps/api/core"')) {
+  failures.push("The application transport must own the one raw native invoke import.");
+}
 
 const rustFiles = (await collectFiles(join(root, "src-tauri", "src"))).filter((path) =>
   path.endsWith(".rs"),
@@ -90,6 +103,17 @@ for (const path of await collectFiles(join(root, "src"))) {
   if (!/\.[cm]?[jt]sx?$/u.test(path)) continue;
   const text = await readFile(path, "utf8");
   const displayPath = relative(root, path).replaceAll("\\", "/");
+  if (displayPath.startsWith("src/ipc/") && displayPath !== "src/ipc/transport.ts") {
+    const coreInvokeImport = /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/u;
+    if (coreInvokeImport.test(text)) {
+      failures.push(`IPC gateway bypasses the application transport: ${displayPath}`);
+    }
+    if (/\bimport\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']\.\/transport["']/u.test(text) === false
+        && /\binvoke(?:\s*<[^>]+>)?\s*\(/u.test(text)
+        && displayPath !== "src/ipc/libraryTransport.ts") {
+      failures.push(`IPC module invokes native commands without importing ./transport: ${displayPath}`);
+    }
+  }
   const pattern = /\binvoke(?:\s*<[^>]+>)?\s*\(\s*["']([a-z][a-z0-9_]*)["']/gu;
   for (const match of text.matchAll(pattern)) {
     const command = match[1];

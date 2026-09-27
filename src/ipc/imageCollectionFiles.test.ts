@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { stageImageCollectionFile, stageImageCollectionFileChunk } from "./imageCollectionFiles";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
 describe("image collection byte admission", () => {
   beforeEach(() => vi.clearAllMocks());

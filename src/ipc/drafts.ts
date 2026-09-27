@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 
 export type EditorDraftKind = "card" | "template" | "bulk_cards" | "ai_profile";
 export type EditorDraftState = "active" | "committed" | "discarded" | "conflicted";

@@ -105,6 +105,7 @@ if ! pnpm install --frozen-lockfile; then
 fi
 pnpm run fonts:install
 pnpm run verify:versions
+node "$SCRIPT_DIR/generate-ipc-command-contracts.mjs" --check
 pnpm run verify:fonts
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 

@@ -1,9 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { inspectImageSet, importImageSet, type ImageSetInspection, type ImportImageSetInput } from "./imageSets";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
   // A returned mock is a teardown function to Vitest; resetting must return void.

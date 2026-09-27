@@ -1,8 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./transport";
 import { beforeEach, expect, it, vi } from "vitest";
 import { changeTutorMemory, getTutorMemory, type ChangeTutorMemoryInput } from "./tutorMemory";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./transport", () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolvedValue(null); });
 it("uses narrow local native commands and preserves reset operation identity", async () => {
   const input: ChangeTutorMemoryInput = { operationId: "a".repeat(32), conversationId: "b".repeat(32), expectedRevision: 5, action: "forget_earlier" };
