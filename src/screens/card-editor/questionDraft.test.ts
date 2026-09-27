@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import {
   addChoiceOption,
   addGroupingCategory,
@@ -31,12 +32,12 @@ describe("interactive question drafts", () => {
   it("keeps option identity and the answer key attached while rows move", () => {
     const original = newQuestionDraft("single_choice") as ChoiceDraft;
     const expanded = addChoiceOption(original) as ChoiceDraft;
-    const keyed: ChoiceDraft = { ...expanded, correctOptionIds: [expanded.options[1].id] };
-    const moved = moveChoiceOption(keyed, expanded.options[1].id, -1) as ChoiceDraft;
-    expect(moved.options[0].id).toBe(expanded.options[1].id);
-    expect(moved.correctOptionIds).toEqual([expanded.options[1].id]);
-    const removed = removeChoiceOption(moved, expanded.options[2].id) as ChoiceDraft;
-    expect(removed.correctOptionIds).toEqual([expanded.options[1].id]);
+    const keyed: ChoiceDraft = { ...expanded, correctOptionIds: [required(expanded.options[1], "expanded option 2").id] };
+    const moved = moveChoiceOption(keyed, required(expanded.options[1], "expanded option 2").id, -1) as ChoiceDraft;
+    expect(required(moved.options[0], "moved option 1").id).toBe(required(expanded.options[1], "expanded option 2").id);
+    expect(moved.correctOptionIds).toEqual([required(expanded.options[1], "expanded option 2").id]);
+    const removed = removeChoiceOption(moved, required(expanded.options[2], "expanded option 3").id) as ChoiceDraft;
+    expect(removed.correctOptionIds).toEqual([required(expanded.options[1], "expanded option 2").id]);
   });
 
   it("distinguishes an unfinished select-all key from an intentionally empty key", () => {
@@ -77,7 +78,7 @@ describe("interactive question drafts", () => {
       items: draft.items.map((item, index) => ({
         ...item,
         text: `Finding ${index + 1}`,
-        categoryId: draft.categories[index % draft.categories.length].id,
+        categoryId: required(draft.categories[index % draft.categories.length], "draft category").id,
       })),
     };
     expect(questionDraftReady({ ...filled, items: filled.items.map((item) => ({ ...item, categoryId: "" })) })).toBe(false);
@@ -94,7 +95,7 @@ describe("interactive question drafts", () => {
   it("clears grouping assignments when their category is removed rather than silently reassigning them", () => {
     const draft = newQuestionDraft("grouping") as GroupingDraft;
     const expanded = addGroupingCategory(draft) as GroupingDraft;
-    const removedId = expanded.categories[1].id;
+    const removedId = required(expanded.categories[1], "expanded category").id;
     const assigned: GroupingDraft = {
       ...expanded,
       items: expanded.items.map((item) => ({ ...item, categoryId: removedId })),
@@ -106,8 +107,8 @@ describe("interactive question drafts", () => {
 
   it("uses authored ordering row position as the total-order answer while preserving item identity", () => {
     const draft = newQuestionDraft("ordering") as OrderingDraft;
-    const firstId = draft.items[0].id;
-    const secondId = draft.items[1].id;
+    const firstId = required(draft.items[0], "draft item 1").id;
+    const secondId = required(draft.items[1], "draft item 2").id;
     const moved = moveOrderingItem(draft, secondId, -1) as OrderingDraft;
     expect(moved.items.map((item) => item.id)).toEqual([secondId, firstId]);
     const definition = definitionFromDraft(moved);

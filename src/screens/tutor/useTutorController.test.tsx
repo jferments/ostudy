@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { getAiTaskDefaults, listAiProviderProfiles } from "../../ipc/aiProfiles";
 import { getSemanticPreparation, listSemanticScopeChoices, prepareSemanticMaterial, previewSemanticPreparation } from "../../ipc/knowledge";
 import {
@@ -124,10 +125,10 @@ describe("Tutor controller", () => {
     vi.mocked(sendTutorTurn).mockRejectedValueOnce(new Error("Transport disconnected"));
     const { result } = renderHook(useTutorController);
     await act(async () => { await result.current.send("explain", "Explain triangles"); });
-    const firstRequest = vi.mocked(sendTutorTurn).mock.calls[0][0];
+    const firstRequest = required(vi.mocked(sendTutorTurn).mock.calls[0]?.[0], "sendTutorTurn call argument");
     expect(result.current.pending).toEqual(firstRequest);
     await act(async () => { await result.current.retryPending(); });
-    expect(vi.mocked(sendTutorTurn).mock.calls[1][0]).toEqual(firstRequest);
+    expect(required(vi.mocked(sendTutorTurn).mock.calls[1]?.[0], "sendTutorTurn call argument")).toEqual(firstRequest);
     expect(createTutorConversation).toHaveBeenCalledTimes(1);
     expect(result.current.pending).toBeNull();
   });
@@ -243,12 +244,12 @@ describe("explicit conversation retrieval", () => {
     await act(async () => { result.current.newConversation(deckScope); });
     await act(async () => { result.current.setIncludeConversations(true); });
     await act(async () => { await result.current.send("explain", "Explain the previous discussion"); });
-    const original = vi.mocked(sendTutorTurn).mock.calls[0][0];
+    const original = required(vi.mocked(sendTutorTurn).mock.calls[0]?.[0], "sendTutorTurn call argument");
     await act(async () => { result.current.setIncludeConversations(false); });
     expect(result.current.includeConversations).toBe(true);
     expect(result.current.pending).toEqual(original);
     await act(async () => { await result.current.retryPending(); });
-    expect(vi.mocked(sendTutorTurn).mock.calls[1][0]).toEqual(original);
+    expect(required(vi.mocked(sendTutorTurn).mock.calls[1]?.[0], "sendTutorTurn call argument")).toEqual(original);
   });
 });
 
@@ -263,9 +264,9 @@ describe("safe retry and source selection", () => {
     await act(async () => { await result.current.send("explain"); });
     expect(result.current.draft).toBe(failed.userText);
     expect(result.current.pending).toBeNull();
-    const first = vi.mocked(sendTutorTurn).mock.calls[0][0];
+    const first = required(vi.mocked(sendTutorTurn).mock.calls[0]?.[0], "sendTutorTurn call argument");
     await act(async () => { await result.current.retryTurn(failed); });
-    const next = vi.mocked(sendTutorTurn).mock.calls[1][0];
+    const next = required(vi.mocked(sendTutorTurn).mock.calls[1]?.[0], "sendTutorTurn call argument");
     expect(next.operationId).not.toBe(first.operationId);
     expect(next.expectedRevision).toBe(3);
     expect(next.text).toBe(failed.userText);
@@ -403,7 +404,7 @@ describe("Tutor project organization", () => {
     await act(async () => { await result.current.renameConversation(selected, "Renamed"); });
     const calls = vi.mocked(renameTutorConversation).mock.calls;
     expect(calls).toHaveLength(2);
-    expect(calls[1][0].operationId).toBe(calls[0][0].operationId);
+    expect(required(calls[1]?.[0], "organization call argument").operationId).toBe(required(calls[0]?.[0], "organization call argument").operationId);
     expect(result.current.detail?.conversation.title).toBe("Renamed");
   });
 

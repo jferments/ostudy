@@ -66,6 +66,7 @@ export async function runSequentialDeckMutations<T>(
 
   for (let index = 0; index < requestedIds.length; index += 1) {
     const deckId = requestedIds[index];
+    if (deckId === undefined) throw new Error("Sequential deck mutation index escaped the requested deck list.");
     try {
       successful.push({ deckId, value: await mutate(deckId) });
     } catch (error: unknown) {

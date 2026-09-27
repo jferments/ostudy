@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { ImageOcclusionAttemptView, RevealPracticeQuestionInput } from "../../ipc/questionAttempts";
 import { useOcclusionReveal } from "./useOcclusionReveal";
 
@@ -31,6 +32,10 @@ function receipt(input: RevealPracticeQuestionInput): ImageOcclusionAttemptView 
     assisted: input.request.expectedRevision === 2,
     progress: { ...view.progress, revealId: input.request.revealId, responseTimeMs: input.request.responseTimeMs } };
 }
+function revealInput(index: number): RevealPracticeQuestionInput {
+  const call = required(mocks.reveal.mock.calls[index], `reveal call ${index + 1}`);
+  return required(call[0], `reveal input ${index + 1}`) as RevealPracticeQuestionInput;
+}
 function useHarness(initial = answering()) {
   const [attempt, setAttempt] = useState(initial);
   const interaction = useOcclusionReveal({
@@ -57,7 +62,7 @@ describe("self-assessed reveal mutation ownership", () => {
     act(() => { void result.current.interaction.reveal(); void result.current.interaction.reveal(); });
     expect(mocks.reveal).toHaveBeenCalledTimes(1);
     expect(result.current.interaction.busy).toBe(true);
-    await act(async () => { finish(receipt(mocks.reveal.mock.calls[0][0])); });
+    await act(async () => { finish(receipt(revealInput(0))); });
     await waitFor(() => expect(result.current.attempt.progress.phase).toBe("revealed"));
     expect(mocks.exposed).toHaveBeenCalledTimes(1);
     expect(result.current.interaction.busy).toBe(false);
@@ -68,12 +73,12 @@ describe("self-assessed reveal mutation ownership", () => {
     const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     expect(result.current.interaction.error).toMatch(/same request/);
-    const first = structuredClone(mocks.reveal.mock.calls[0][0]);
+    const first = structuredClone(revealInput(0));
     expect(first.request.responseTimeMs).toBe(234);
     expect(first.request.expectedRevision).toBe(1);
     vi.mocked(Date.now).mockReturnValue(9000);
     await act(async () => { await result.current.interaction.reveal(); });
-    expect(mocks.reveal.mock.calls[1][0]).toEqual(first);
+    expect(revealInput(1)).toEqual(first);
     expect(result.current.attempt.progress.phase).toBe("revealed");
   });
 
@@ -81,11 +86,11 @@ describe("self-assessed reveal mutation ownership", () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Unknown result"));
     const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
-    const first = structuredClone(mocks.reveal.mock.calls[0][0]);
+    const first = structuredClone(revealInput(0));
     await act(async () => { await result.current.interaction.reload(); });
     vi.mocked(Date.now).mockReturnValue(9000);
     await act(async () => { await result.current.interaction.reveal(); });
-    expect(mocks.reveal.mock.calls[1][0]).toEqual(first);
+    expect(revealInput(1)).toEqual(first);
   });
 
   it("newer native assistance evidence admits a new request rather than replaying an invalid revision", async () => {
@@ -93,23 +98,23 @@ describe("self-assessed reveal mutation ownership", () => {
     mocks.reload.mockResolvedValueOnce({ attempt: answering(2), assets: [] });
     const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
-    const first = structuredClone(mocks.reveal.mock.calls[0][0]);
+    const first = structuredClone(revealInput(0));
     await act(async () => { await result.current.interaction.reload(); });
     await act(async () => { await result.current.interaction.reveal(); });
-    const next = mocks.reveal.mock.calls[1][0];
+    const next = revealInput(1);
     expect(next.request.expectedRevision).toBe(2);
     expect(next.request.revealId).not.toBe(first.request.revealId);
   });
 
   it("older native evidence cannot roll back an attempt or discard its ambiguous request", async () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Unknown result"));
-    const { result } = renderHook(() => harness(answering(2)));
+    const { result } = renderHook(() => useHarness(answering(2)));
     await act(async () => { await result.current.interaction.reveal(); });
-    const first = structuredClone(mocks.reveal.mock.calls[0][0]);
+    const first = structuredClone(revealInput(0));
     await act(async () => { await result.current.interaction.reload(); });
     expect(result.current.attempt.revision).toBe(2);
     await act(async () => { await result.current.interaction.reveal(); });
-    expect(mocks.reveal.mock.calls[1][0]).toEqual(first);
+    expect(revealInput(1)).toEqual(first);
   });
 
   it("reloading a committed reveal restores feedback without another native reveal", async () => {
@@ -139,10 +144,10 @@ describe("self-assessed reveal mutation ownership", () => {
     mocks.reveal.mockResolvedValueOnce({ ...revealed(), instanceId: "f".repeat(32) });
     const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
-    const first = structuredClone(mocks.reveal.mock.calls[0][0]);
+    const first = structuredClone(revealInput(0));
     expect(mocks.accepted).not.toHaveBeenCalled();
     expect(result.current.attempt.progress.phase).toBe("answering");
     await act(async () => { await result.current.interaction.reveal(); });
-    expect(mocks.reveal.mock.calls[1][0]).toEqual(first);
+    expect(revealInput(1)).toEqual(first);
   });
 });
