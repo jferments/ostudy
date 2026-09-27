@@ -68,10 +68,16 @@ fn restore_file(staged: &Path, published: &Path) -> io::Result<()> {
     }
     fs::rename(published, staged)?;
     let staged_parent = staged.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "Missing import staging parent.")
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Missing import staging parent.",
+        )
     })?;
     let published_parent = published.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "Missing import destination parent.")
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Missing import destination parent.",
+        )
     })?;
     durable_fs::sync_directory(staged_parent)?;
     durable_fs::sync_directory(published_parent)
@@ -88,7 +94,10 @@ mod tests {
     fn failed_compensation_does_not_stop_remaining_recovery_or_hide_its_count() {
         let promoted = [
             (PathBuf::from("first-staged"), PathBuf::from("first-final")),
-            (PathBuf::from("second-staged"), PathBuf::from("second-final")),
+            (
+                PathBuf::from("second-staged"),
+                PathBuf::from("second-final"),
+            ),
             (PathBuf::from("third-staged"), PathBuf::from("third-final")),
         ];
         let mut visited = Vec::new();

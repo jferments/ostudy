@@ -247,7 +247,10 @@ fn failed_sql_commit_defers_file_compensation_and_retains_promoted_bytes() {
         })
         .unwrap();
     assert!(!fixture.staged.exists());
-    assert_eq!(fs::read(&fixture.published).unwrap(), b"retained import bytes");
+    assert_eq!(
+        fs::read(&fixture.published).unwrap(),
+        b"retained import bytes"
+    );
 }
 
 #[test]
