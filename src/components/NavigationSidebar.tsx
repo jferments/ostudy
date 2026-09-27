@@ -32,10 +32,7 @@ function isActive(
   current: AppSection,
   activeWorkflow: AppWorkflow | null,
 ): boolean {
-  if (activeWorkflow) return false;
-  if (item === "decks") return current === "decks" || current === "cards";
-  if (item === "settings") return current === "settings" || current === "templates";
-  return item === current;
+  return activeWorkflow === null && item === current;
 }
 
 export function NavigationSidebar({

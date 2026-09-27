@@ -76,7 +76,6 @@ function App() {
   const controller = useAppController();
   const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
-  const legacyTemplatesSection = controller.section === "templates";
 
   useEffect(() => {
     if (controller.isLoading || controller.fatalError) return;
@@ -226,15 +225,6 @@ function App() {
                           ) : controller.section === "settings" ? (
                             <SettingsScreen
                               settings={controller.savedSettings}
-                              onPreviewSettings={controller.setActiveSettings}
-                              onSavedSettings={controller.saveSettingsLocally}
-                              onDirtyChange={controller.setHasUnsavedSettings}
-                              showToast={controller.showToast}
-                            />
-                          ) : legacyTemplatesSection ? (
-                            <SettingsScreen
-                              settings={controller.savedSettings}
-                              initialSection="templates"
                               onPreviewSettings={controller.setActiveSettings}
                               onSavedSettings={controller.saveSettingsLocally}
                               onDirtyChange={controller.setHasUnsavedSettings}

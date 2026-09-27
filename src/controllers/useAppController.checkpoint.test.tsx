@@ -95,9 +95,9 @@ function Harness() {
       </button>
       <button
         type="button"
-        onClick={() => void controller.navigateFlashcardsWorkspace("templates")}
+        onClick={() => void controller.navigateFlashcardsWorkspace("search")}
       >
-        Open Templates
+        Open Search workspace
       </button>
       <button
         type="button"
@@ -227,7 +227,7 @@ describe("application checkpoint lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     expect(screen.getByLabelText("analytics search launch").textContent).not.toBe("none");
-    fireEvent.click(screen.getByRole("button", { name: "Open Templates" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
     await waitFor(() =>
       expect(screen.getByLabelText("analytics search launch").textContent).toBe("none"),
     );

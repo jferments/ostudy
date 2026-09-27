@@ -24,8 +24,8 @@ import {
   createFlashcardsDeckRoute,
   createFlashcardsRootRoute,
   normalizeFlashcardsWorkspace,
+  type CurrentFlashcardsWorkspaceName,
   type FlashcardsRoute,
-  type FlashcardsWorkspaceName,
   type TransientDeckSelectionEntry,
 } from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
@@ -42,19 +42,15 @@ export type AppSection =
   | "study-guides"
   | "documents"
   | "tutor"
-  | "cards"
-  | "templates"
   | "analytics"
   | "settings";
-
-type VisibleAppSection = Exclude<AppSection, "cards" | "templates">;
 
 export type AppWorkflow = "practice";
 
 export interface PracticeReturnTarget {
   section: AppSection;
   deckId?: string;
-  flashcardsWorkspace?: FlashcardsWorkspaceName;
+  flashcardsWorkspace?: CurrentFlashcardsWorkspaceName;
   restoreDeckSelection?: TransientDeckSelectionEntry[];
 }
 
@@ -124,11 +120,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dailyReviewLimit: 200,
 };
 
-interface NormalizedDestination {
-  section: VisibleAppSection;
-  flashcardsWorkspace?: FlashcardsWorkspaceName;
-}
-
 export function useAppController() {
   const [section, setSection] = useState<AppSection>("decks");
   const [flashcardsRoute, setFlashcardsRoute] = useState<FlashcardsRoute>(() =>
@@ -152,7 +143,6 @@ export function useAppController() {
   const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
   const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
-  const [hasUnsavedTemplate, setHasUnsavedTemplate] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
   const deckRefreshLane = useRequestLane();
   const confirm = useConfirm();
@@ -222,13 +212,10 @@ export function useAppController() {
         setActiveSettings(normalizedSettings);
         setDecks(loadedDecks);
         if (restoredCheckpoint) {
-          const restored = normalizeDestination(restoredCheckpoint.section);
-          const restoredSection = restored.section;
+          const restoredSection: AppSection = restoredCheckpoint.section;
           const restoredWorkspace =
             restoredSection === "decks"
-              ? normalizeFlashcardsWorkspace(
-                  restoredCheckpoint.flashcardsWorkspace ?? restored.flashcardsWorkspace,
-                )
+              ? normalizeFlashcardsWorkspace(restoredCheckpoint.flashcardsWorkspace)
               : "decks";
           const requestId = nextFlashcardsRequestId();
           const restoredDeckId = restoredCheckpoint.deckId;
@@ -357,14 +344,14 @@ export function useAppController() {
   }, [practiceWorkflow, section]);
 
   useEffect(() => {
-    if (!hasUnsavedCard && !hasUnsavedTemplate && !hasUnsavedSettings) return;
+    if (!hasUnsavedCard && !hasUnsavedSettings) return;
     function warnBeforeClose(event: BeforeUnloadEvent): void {
       event.preventDefault();
       event.returnValue = "";
     }
     window.addEventListener("beforeunload", warnBeforeClose);
     return () => window.removeEventListener("beforeunload", warnBeforeClose);
-  }, [hasUnsavedCard, hasUnsavedSettings, hasUnsavedTemplate]);
+  }, [hasUnsavedCard, hasUnsavedSettings]);
 
   async function confirmDiscardCard(): Promise<boolean> {
     if (!hasUnsavedCard) return true;
@@ -379,28 +366,12 @@ export function useAppController() {
     return true;
   }
 
-  async function confirmDiscardTemplate(): Promise<boolean> {
-    const templateWorkspaceOpen =
-      section === "templates" ||
-      (section === "decks" && flashcardsWorkspace === "templates");
-    if (!templateWorkspaceOpen || !hasUnsavedTemplate) return true;
-    const accepted = await confirm({
-      title: "Discard template changes?",
-      description: "The unsaved changes to this card template will be lost.",
-      confirmLabel: "Discard changes",
-      destructive: true,
-    });
-    if (!accepted) return false;
-    setHasUnsavedTemplate(false);
-    return true;
-  }
-
   async function confirmDiscardSettings(): Promise<boolean> {
     if (section !== "settings" || !hasUnsavedSettings) return true;
     const accepted = await confirm({
       title: "Discard settings changes?",
       description:
-        "Unsaved preference previews, AI provider metadata, and credential entry will be discarded. Saved credentials are unchanged.",
+        "Unsaved preference previews, AI provider metadata, credential entry, and card template edits will be discarded. Saved credentials are unchanged.",
       confirmLabel: "Discard changes",
       destructive: true,
     });
@@ -412,7 +383,6 @@ export function useAppController() {
 
   async function canLeaveCurrentSection(): Promise<boolean> {
     if (!(await confirmDiscardCard())) return false;
-    if (!(await confirmDiscardTemplate())) return false;
     return confirmDiscardSettings();
   }
 
@@ -515,11 +485,9 @@ export function useAppController() {
   }
 
   async function navigate(next: AppSection): Promise<void> {
-    const destination = normalizeDestination(next);
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
-    const alreadyAtNonFlashcardsRoot =
-      destination.section === section && destination.section !== "decks";
+    const alreadyAtNonFlashcardsRoot = next === section && next !== "decks";
     if (alreadyAtNonFlashcardsRoot && !leavingPracticeWorkflow) return;
     if (!(await canLeaveCurrentSection())) return;
     if (leavingPracticeWorkflow) {
@@ -527,35 +495,30 @@ export function useAppController() {
       setPracticeWorkflow(null);
     }
     if (
-      destination.section !== "decks" &&
+      next !== "decks" &&
       flashcardsRoute.view === "root" &&
       flashcardsRoute.analyticsSearchLaunch
     ) {
       setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
     }
-    if (destination.section === "analytics") {
+    if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
       const analytics = { range: "7d" as const, deckIds: [], tagIds: [] };
       analyticsCheckpointRef.current = analytics;
       setAnalyticsLaunch({ requestId, ...analytics });
     }
-    if (destination.section === "decks") {
-      setFlashcardsRoute(
-        createFlashcardsRootRoute(
-          destination.flashcardsWorkspace ?? "decks",
-          nextFlashcardsRequestId(),
-        ),
-      );
+    if (next === "decks") {
+      setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
     }
-    setSection(destination.section);
+    setSection(next);
   }
 
   async function navigateFlashcardsWorkspace(
-    next: FlashcardsWorkspaceName,
+    next: CurrentFlashcardsWorkspaceName,
   ): Promise<void> {
     if (!(await canLeaveCurrentSection())) return;
     setSection("decks");
@@ -648,10 +611,8 @@ export function useAppController() {
       toCheckpointReturnTarget(target),
       currentDecks,
     );
-    const destination = normalizeDestination(restoredTarget.section);
-    const workspace =
-      restoredTarget.flashcardsWorkspace ?? destination.flashcardsWorkspace ?? "decks";
-    if (destination.section === "decks") {
+    const workspace = restoredTarget.flashcardsWorkspace ?? "decks";
+    if (restoredTarget.section === "decks") {
       setFlashcardsRoute(
         restoredTarget.deckId
           ? createFlashcardsDeckRoute(restoredTarget.deckId, nextFlashcardsRequestId())
@@ -661,7 +622,7 @@ export function useAppController() {
               reconcileReturnedDeckSelection(target.restoreDeckSelection, currentDecks),
             ),
       );
-    } else if (destination.section === "analytics") {
+    } else if (restoredTarget.section === "analytics") {
       const analytics = analyticsCheckpointRef.current ?? {
         range: "7d",
         deckIds: [],
@@ -671,7 +632,7 @@ export function useAppController() {
       analyticsRequestSequence.current += 1;
       setAnalyticsLaunch({ requestId, ...analytics });
     }
-    setSection(destination.section);
+    setSection(restoredTarget.section);
   }
 
   async function returnPracticeToOrigin(): Promise<void> {
@@ -757,19 +718,10 @@ export function useAppController() {
     choosePracticeDecks,
     viewSessionAnalytics,
     setHasUnsavedCard,
-    setHasUnsavedTemplate,
     setHasUnsavedSettings,
     setActiveSettings,
     saveSettingsLocally,
   };
-}
-
-function normalizeDestination(section: AppSection): NormalizedDestination {
-  if (section === "cards") return { section: "decks", flashcardsWorkspace: "search" };
-  if (section === "templates") {
-    return { section: "decks", flashcardsWorkspace: "templates" };
-  }
-  return { section };
 }
 
 interface CheckpointSnapshotState {
@@ -781,13 +733,12 @@ interface CheckpointSnapshotState {
 }
 
 function createCheckpointSnapshot(state: CheckpointSnapshotState): SaveUiCheckpointInput {
-  const destination = normalizeDestination(state.section);
   const visibleTarget: PracticeReturnTarget =
-    destination.section === "decks"
+    state.section === "decks"
       ? state.flashcardsRoute.view === "deck"
         ? { section: "decks", flashcardsWorkspace: "decks", deckId: state.flashcardsRoute.deckId }
         : { section: "decks", flashcardsWorkspace: state.flashcardsRoute.workspace }
-      : { section: destination.section };
+      : { section: state.section };
   const returnTarget = state.practiceWorkflow?.returnTarget ?? visibleTarget;
   const practice =
     state.practiceWorkflow && state.practiceCursor
@@ -797,31 +748,29 @@ function createCheckpointSnapshot(state: CheckpointSnapshotState): SaveUiCheckpo
         }
       : undefined;
   return {
-    section: destination.section,
+    section: state.section,
     flashcardsWorkspace:
-      destination.section === "decks" ? state.flashcardsRoute.workspace : undefined,
+      state.section === "decks" ? state.flashcardsRoute.workspace : undefined,
     deckId:
-      destination.section === "decks" && state.flashcardsRoute.view === "deck"
+      state.section === "decks" && state.flashcardsRoute.view === "deck"
         ? state.flashcardsRoute.deckId
         : undefined,
     practice,
-    analytics: destination.section === "analytics" ? state.analytics ?? undefined : undefined,
+    analytics: state.section === "analytics" ? state.analytics ?? undefined : undefined,
   };
 }
 
 function toCheckpointReturnTarget(target: PracticeReturnTarget): CheckpointReturnTarget {
-  const destination = normalizeDestination(target.section);
-  if (destination.section !== "decks") {
+  if (target.section !== "decks") {
     return {
-      section: destination.section,
+      section: target.section,
       flashcardsWorkspace: null,
       deckId: null,
     };
   }
   return {
     section: "decks",
-    flashcardsWorkspace:
-      target.flashcardsWorkspace ?? destination.flashcardsWorkspace ?? "decks",
+    flashcardsWorkspace: target.flashcardsWorkspace ?? "decks",
     deckId: target.deckId ?? null,
   };
 }
@@ -840,7 +789,7 @@ function normalizeRestoredReturnTarget(
   }
   return {
     section: "decks",
-    flashcardsWorkspace: target.flashcardsWorkspace ?? "decks",
+    flashcardsWorkspace: normalizeFlashcardsWorkspace(target.flashcardsWorkspace),
   };
 }
 
