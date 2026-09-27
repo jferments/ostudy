@@ -20,6 +20,22 @@ interface PracticePointerDropOptions {
 const DROP_TARGET_SELECTOR = "[data-practice-drop-target-id]";
 const INTERACTIVE = "a,button,input,textarea,select,audio,video,[contenteditable=true],[role=checkbox],[role=radio],[data-no-drag]";
 
+/** Some WebViews clear document selection as a side effect of programmatic
+ * focus. Preserve it until this gesture actually owns a drag; keyboard focus
+ * still moves to the tile whose native pointer-down we prevented.
+ */
+function focusDragHandle(owner: HTMLElement): void {
+  const selection = window.getSelection();
+  const ranges = selection && !selection.isCollapsed
+    ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+    : [];
+  owner.focus({ preventScroll: true });
+  if (selection && ranges.length > 0) {
+    selection.removeAllRanges();
+    for (const range of ranges) selection.addRange(range);
+  }
+}
+
 export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }: PracticePointerDropOptions) {
   const latest = useRef({ disabled, onDrop, scopeRef, resetKey });
   latest.current = { disabled, onDrop, scopeRef, resetKey };
@@ -122,7 +138,7 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }:
     // browser has already extended a text selection across the destination.
     // Interactive descendants returned above keep their own native behavior.
     event.preventDefault();
-    event.currentTarget.focus({ preventScroll: true });
+    focusDragHandle(event.currentTarget);
     pointerRef.current = {
       pointerId: event.pointerId, itemId, resetKey, startX: event.clientX, startY: event.clientY,
       x: event.clientX, y: event.clientY, active: false, owner: event.currentTarget,
