@@ -21,7 +21,13 @@ const asFrontendSession = (value: NativeLibrarySession): LibrarySession => value
 describe("native-owned IPC wire fixtures", () => {
   it("keeps generated native product DTOs assignable to frontend contracts", () => {
     expect(asFrontendDeck(fixtures.deckSummary)).toMatchObject({ name: "Physiology" });
-    expect(asFrontendSettings(fixtures.appSettings)).toMatchObject({ theme: "dark" });
+    const nativeSettings: NativeAppSettings = {
+      ...fixtures.appSettings,
+      theme: "dark",
+      motionPreference: "system",
+      materialPreference: "automatic",
+    };
+    expect(asFrontendSettings(nativeSettings)).toMatchObject({ theme: "dark" });
     expect(asFrontendError(fixtures.commandError)).toEqual({
       code: "example_error",
       message: "Example safe message.",
