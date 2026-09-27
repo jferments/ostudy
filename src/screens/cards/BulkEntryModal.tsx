@@ -1,5 +1,4 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { Modal } from "../../components/Modal";
 import { useDurableDraft } from "../../controllers/useDurableDraft";
 import { analyzeBulkCards, bulkCreateCards, type BulkAnalyzeResult, type BulkCardRowInput } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
@@ -9,7 +8,7 @@ import { Textarea } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { Panel } from "../../ui/primitives/Panel";
 import { cn } from "../../ui/internal/cn";
 import styles from "./browserPresentation";
@@ -109,7 +108,7 @@ export function BulkEntryModal({ decks, defaultDeckId, fixedDeckId, onClose, onS
   }
 
   return (
-    <Modal title="Bulk add cards" description="Enter several plain-text cards at once. Empty rows are ignored."
+    <Dialog title="Bulk add cards" description="Enter several plain-text cards at once. Empty rows are ignored."
       width="large" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!isSaving) onClose(); }}>
       <div className={styles.screen} aria-busy={isSaving}>
         <div className={styles.bulkEntryControls}>
@@ -174,7 +173,7 @@ export function BulkEntryModal({ decks, defaultDeckId, fixedDeckId, onClose, onS
           </Button>
         </DialogActions>
       </div>
-    </Modal>
+    </Dialog>
   );
 }
 

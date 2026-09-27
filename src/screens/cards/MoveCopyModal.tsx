@@ -1,5 +1,4 @@
 import { useMemo, useState, type ChangeEvent } from "react";
-import { Modal } from "../../components/Modal";
 import { transferCards, type TransferCardsMode } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
@@ -8,7 +7,7 @@ import { Checkbox, RadioGroup } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 export interface TransferableCard { noteId: string; deckId: string; }
@@ -64,7 +63,7 @@ export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: 
   }
 
   return (
-    <Modal title="Move or copy cards"
+    <Dialog title="Move or copy cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="medium" busy={isSaving} dismissible={!isSaving}
       onClose={() => { if (!isSaving) onClose(); }}>
@@ -100,6 +99,6 @@ export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: 
           </DialogActions>
         </div>
       )}
-    </Modal>
+    </Dialog>
   );
 }
