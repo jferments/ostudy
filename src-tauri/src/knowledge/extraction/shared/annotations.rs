@@ -186,6 +186,7 @@ fn request(
                         }}}
             }}),
         cancellation: signal.clone(),
+        visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
     }
 }
 
