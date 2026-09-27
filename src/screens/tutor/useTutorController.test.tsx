@@ -118,7 +118,7 @@ describe("Tutor controller", () => {
     expect(createTutorConversation).toHaveBeenCalledTimes(1);
     expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: conversation.id,
       expectedRevision: 1, mode: "explain", text: "Explain triangles", focus: null, questionId: null }));
-    expect(result.current.detail?.turns[0].assistantText).toBe(turn.assistantText);
+    expect(required(result.current.detail?.turns[0], "first tutor turn").assistantText).toBe(turn.assistantText);
   });
 
   it("retains the exact operation after an ambiguous result instead of duplicating a turn", async () => {
@@ -139,7 +139,7 @@ describe("Tutor controller", () => {
     await act(async () => { await result.current.send("explain", "Explain triangles"); });
     expect(result.current.needsRefresh).toBe(true);
     expect(result.current.pending).toBeNull();
-    expect(result.current.detail?.turns[0].id).toBe(turn.id);
+    expect(required(result.current.detail?.turns[0], "first tutor turn").id).toBe(turn.id);
     await act(async () => { await result.current.refresh(); });
     expect(sendTutorTurn).toHaveBeenCalledTimes(1);
     expect(result.current.needsRefresh).toBe(false);

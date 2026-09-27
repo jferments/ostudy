@@ -17,18 +17,18 @@ describe("region geometry history", () => {
     const undone = stepGeometryHistory(edited, moved.history, "undo");
     expect(undone.state.masks).toEqual(state.masks);
     expect(undone.state.questions.map((q) => q.answer)).toEqual(["Newer answer", "Newer answer"]);
-    expect(stepGeometryHistory(undone.state, undone.history, "redo").state.masks[0].rect.x).toBe(0.3);
+    expect(required(stepGeometryHistory(undone.state, undone.history, "redo").state.masks[0], "redo mask").rect.x).toBe(0.3);
   });
 
   it("removal clears references, preserves question drafts and restores only still-existing questions", () => {
     const removed = commitGeometry(state, EMPTY_GEOMETRY_HISTORY, { kind: "remove", maskId: "a", expected: a.rect });
     expect(removed.state.questions.map((q) => q.maskIds)).toEqual([[], ["b"]]);
-    required(expect(removed.required(state.questions[0], "state question"), "history question").answer).toBe("First answer");
-    const edited = { ...removed.state, questions: [{ ...required(removed.required(state.questions[1], "state question"), "history question"), answer: "Updated" }] };
+    expect(required(removed.state.questions[0], "removed question").answer).toBe("First answer");
+    const edited = { ...removed.state, questions: [{ ...required(removed.state.questions[1], "removed question"), answer: "Updated" }] };
     const undone = stepGeometryHistory(edited, removed.history, "undo");
     expect(undone.state.masks).toEqual(state.masks);
     expect(undone.state.questions).toEqual([{ id: "q2", maskIds: ["b", "a"], answer: "Updated" }]);
-    expect(stepGeometryHistory(undone.state, undone.history, "redo").required(state.questions[0], "state question").maskIds).toEqual(["b"]);
+    expect(required(stepGeometryHistory(undone.state, undone.history, "redo").state.questions[0], "redo question").maskIds).toEqual(["b"]);
   });
 
   it("refuses stale mutations and never overwrites a conflicting region on undo", () => {

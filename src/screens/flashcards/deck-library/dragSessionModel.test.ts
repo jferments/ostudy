@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { requiredTestValue as required } from "../../test/factories";
+import { requiredTestValue as required } from "../../../test/factories";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
 import { applyOptimisticMove, createDeckLibrarySnapshot } from "./organizationModel";
