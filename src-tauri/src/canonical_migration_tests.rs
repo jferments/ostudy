@@ -144,15 +144,36 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         .map_err(CommandError::database)?;
     assert_eq!(lineage, CURRENT_SCHEMA_LINEAGE);
 
-    let migration: (i64, String) = connection
-        .query_row("SELECT version, name FROM schema_migrations", [], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+    let baseline_present: i64 = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM schema_migrations
+                 WHERE version = 1 AND name = 'release_baseline'
+             )",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    assert_eq!(baseline_present, 1);
+    let latest_migration: (i64, String) = connection
+        .query_row(
+            "SELECT version, name FROM schema_migrations
+             ORDER BY version DESC LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .map_err(CommandError::database)?;
     assert_eq!(
-        migration,
-        (CURRENT_SCHEMA_VERSION, "release_baseline".to_string())
+        latest_migration,
+        (
+            CURRENT_SCHEMA_VERSION,
+            "selection_deck_operations".to_string()
+        )
     );
+    let migration_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+        .map_err(CommandError::database)?;
+    assert_eq!(migration_count, CURRENT_SCHEMA_VERSION);
     let repair_rows: i64 = connection
         .query_row("SELECT COUNT(*) FROM data_repairs", [], |row| row.get(0))
         .map_err(CommandError::database)?;
