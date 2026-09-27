@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type { AiProviderProfileDetail } from "../../ipc/aiProfiles";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
@@ -162,7 +163,7 @@ describe("AiLlmSettings", () => {
       },
     });
     const value = controller(selected);
-    value.catalog[0].chatTemplatePolicy = "server_model";
+    required(value.catalog[0], "catalog profile").chatTemplatePolicy = "server_model";
     renderSettings(value);
     const trigger = screen.getByRole("button", { name: "Advanced settings" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");

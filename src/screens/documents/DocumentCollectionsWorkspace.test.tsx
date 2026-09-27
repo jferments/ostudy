@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import * as collections from "../../ipc/collections";
 import type { DocumentSummary } from "../../ipc/documents";
 import * as studyMaterials from "../../ipc/studyMaterials";
@@ -387,7 +388,7 @@ describe("Document collections workspace", () => {
     const added = {
       ...empty,
       revision: 4,
-      memberships: [{ ...organization.memberships[0], collectionId: folderId }],
+      memberships: [{ ...required(organization.memberships[0], "organization membership"), collectionId: folderId }],
     };
     vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValueOnce(empty);
     vi.mocked(collections.addDocumentCollectionMembership).mockResolvedValueOnce(added);

@@ -4,6 +4,7 @@ import type { ToastAction } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import { DeckDetailRoute } from "./DeckDetailRoute";
 
+import { requiredTestValue as required } from "../../test/factories";
 const calls = vi.hoisted(() => ({
   deck: vi.fn(), setArchived: vi.fn(), deleteDeck: vi.fn(), undo: vi.fn(),
   confirm: vi.fn(), invalidate: vi.fn(),
@@ -23,7 +24,7 @@ vi.mock("../cards/CardBrowserWorkspace", () => ({
 }));
 vi.mock("./DeckTransferDialog", () => ({
   DeckTransferDialog: ({ request }: { request: { kind: string; decks: DeckSummary[] } }) =>
-    <section role="dialog" aria-label="Export selected deck">{request.decks[0].name}</section>,
+    <section role="dialog" aria-label="Export selected deck">{required(request.decks[0], "export deck").name}</section>,
 }));
 
 const deck: DeckSummary = {

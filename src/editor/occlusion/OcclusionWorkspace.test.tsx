@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { Textarea } from "../../ui/primitives/FormControls";
 import { OcclusionWorkspace, type OcclusionWorkspaceProps } from "./OcclusionWorkspace";
 
@@ -61,7 +62,7 @@ describe("image occlusion workspace", () => {
     expect(options.onMutation).not.toHaveBeenCalled();
     fireEvent.pointerUp(canvas, point(0.5, 0.5, 1, pointerType));
     expect(options.onMutation).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(options.onMutation).mock.calls[0][0]).toMatchObject({ kind: "create" });
+    expect(required(vi.mocked(options.onMutation).mock.calls[0]?.[0], "occlusion mutation")).toMatchObject({ kind: "create" });
   });
 
   it("supports two taps and Add rectangle without a drag gesture", () => {
@@ -118,7 +119,7 @@ describe("image occlusion workspace", () => {
     render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
     fireEvent.keyDown(canvas, { key: "ArrowRight" });
-    expect(vi.mocked(options.onMutation).mock.calls[0][0]).toMatchObject({
+    expect(required(vi.mocked(options.onMutation).mock.calls[0]?.[0], "occlusion mutation")).toMatchObject({
       kind: "change", maskId: mask.id, after: { x: 0.201 },
     });
     fireEvent.click(screen.getByRole("button", { name: "Move down" }));

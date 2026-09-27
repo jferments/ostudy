@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { PracticeCard } from "../../ipc/practice";
 import type { ImageOcclusionAttemptView, PracticeQuestion } from "../../ipc/questionAttempts";
 import { mergePracticeQuestion, mergeQuestionAttempt } from "./questionSession";
@@ -34,7 +35,7 @@ describe("captured question acknowledgement merging", () => {
     const reordered = [second, first];
     const next = mergeQuestionAttempt(reordered, attempt("a".repeat(32), true));
     expect(next[0]).toBe(second);
-    expect(question(next[1]).attempt.progress.phase).toBe("revealed");
+    expect(question(required(next[1], "practice card")).attempt.progress.phase).toBe("revealed");
     expect(question(first).attempt.progress.phase).toBe("answering");
   });
 
@@ -50,8 +51,8 @@ describe("captured question acknowledgement merging", () => {
     const cards = mergeQuestionAttempt([card("a".repeat(32))], attempt("a".repeat(32), true));
     const media = { id: "4".repeat(32), originalFilename: "answer.png", mimeType: "image/png", byteSize: 1, createdAt: 1 };
     const next = mergePracticeQuestion(cards, { attempt: attempt("a".repeat(32), true), assets: [media] });
-    expect(question(next[0]).assets).toEqual([media]);
-    expect(question(next[0]).attempt.progress.phase).toBe("revealed");
+    expect(question(required(next[0], "practice card")).assets).toEqual([media]);
+    expect(question(required(next[0], "practice card")).attempt.progress.phase).toBe("revealed");
     const stale = { ...attempt("a".repeat(32)), revision: 2 };
     expect(mergePracticeQuestion(next, { attempt: stale, assets: [] })).toBe(next);
     expect(mergePracticeQuestion(next, { attempt: attempt("a".repeat(32)), assets: [] })).toBe(next);

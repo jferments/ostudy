@@ -3,6 +3,7 @@ import { undoDepth } from "@tiptap/pm/history";
 import { AllSelection, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { RichDocument } from "../../ipc/common";
 import { createEditorExtensions } from "../extensions";
 import type { FormulaPlacement } from "../formula";
@@ -182,7 +183,7 @@ describe("captured formula editing through the real adapter", () => {
       selectedMath(editor, "blockMath");
       const before = editor.getJSON();
       expect(begin(editor).save({ latex: "y", placement: "inline" })).toEqual({ ok: true });
-      expect(editor.state.doc.firstChild?.type.name).toBe(content[0].type);
+      expect(editor.state.doc.firstChild?.type.name).toBe(required(content[0], "container fixture").type);
       expect(formulas(editor)).toEqual([{ type: "inlineMath", attrs: { latex: "y" } }]);
       expect(() => editor.state.doc.check()).not.toThrow();
       expect(editor.commands.undo()).toBe(true);

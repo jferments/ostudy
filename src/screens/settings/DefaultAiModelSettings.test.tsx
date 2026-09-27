@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import { listAiProviderModels, testAiProviderProfile } from "../../ipc/aiProfiles";
 import {
@@ -244,7 +245,7 @@ describe("DefaultAiModelSettings", () => {
     });
 
     render(<DefaultAiModelSettings controller={controller()} />);
-    const testButton = screen.getAllByRole("button", { name: "Test model" })[0];
+    const testButton = required(screen.getAllByRole("button", { name: "Test model" })[0], "Test model button");
     fireEvent.click(testButton);
 
     const alert = await screen.findByRole("alert");
@@ -292,7 +293,7 @@ describe("DefaultAiModelSettings", () => {
     });
 
     render(<DefaultAiModelSettings controller={controller()} />);
-    const testButton = screen.getAllByRole("button", { name: "Test model" })[0];
+    const testButton = required(screen.getAllByRole("button", { name: "Test model" })[0], "Test model button");
     fireEvent.click(testButton);
 
     const alert = await screen.findByRole("alert");

@@ -4,6 +4,7 @@ import { getQuestionGenerationPolicy, saveQuestionGenerationPolicy } from "../..
 import { QuestionGenerationSettings } from "./QuestionGenerationSettings";
 import { recommendedQuestionMix } from "./questionGenerationDraft";
 
+import { requiredTestValue as required } from "../../test/factories";
 vi.mock("../../ipc/questionGeneration", () => ({
   getQuestionGenerationPolicy: vi.fn(),
   saveQuestionGenerationPolicy: vi.fn(),
@@ -36,7 +37,7 @@ describe("question generation controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save question preferences" }));
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("success", "Question generation preferences saved."));
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save.mock.calls[0][0]).toMatchObject({ revision: 4, policy: { allowedTypes: ["recall"] } });
+    expect(required(save.mock.calls[0]?.[0], "save input")).toMatchObject({ revision: 4, policy: { allowedTypes: ["recall"] } });
     // The notification runs before React commits the saved draft and its effect.
     await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
     expect(load).toHaveBeenCalledTimes(1);

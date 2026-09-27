@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../test/factories";
 import * as aiIpc from "../ipc/aiProfiles";
 import * as backupIpc from "../ipc/backup";
 import * as settingsIpc from "../ipc/settings";
@@ -182,7 +183,7 @@ describe("SettingsScreen", () => {
       "Card templates",
       "Diagnostics",
     ]);
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(required(tabs[0], "Appearance tab").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").textContent).toContain("Typography");
   });
 

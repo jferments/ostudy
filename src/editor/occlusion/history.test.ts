@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { commitGeometry, EMPTY_GEOMETRY_HISTORY, stepGeometryHistory } from "./history";
 
 const a = { id: "a", rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } };
@@ -22,12 +23,12 @@ describe("region geometry history", () => {
   it("removal clears references, preserves question drafts and restores only still-existing questions", () => {
     const removed = commitGeometry(state, EMPTY_GEOMETRY_HISTORY, { kind: "remove", maskId: "a", expected: a.rect });
     expect(removed.state.questions.map((q) => q.maskIds)).toEqual([[], ["b"]]);
-    expect(removed.state.questions[0].answer).toBe("First answer");
-    const edited = { ...removed.state, questions: [{ ...removed.state.questions[1], answer: "Updated" }] };
+    required(expect(removed.required(state.questions[0], "state question"), "history question").answer).toBe("First answer");
+    const edited = { ...removed.state, questions: [{ ...required(removed.required(state.questions[1], "state question"), "history question"), answer: "Updated" }] };
     const undone = stepGeometryHistory(edited, removed.history, "undo");
     expect(undone.state.masks).toEqual(state.masks);
     expect(undone.state.questions).toEqual([{ id: "q2", maskIds: ["b", "a"], answer: "Updated" }]);
-    expect(stepGeometryHistory(undone.state, undone.history, "redo").state.questions[0].maskIds).toEqual(["b"]);
+    expect(stepGeometryHistory(undone.state, undone.history, "redo").required(state.questions[0], "state question").maskIds).toEqual(["b"]);
   });
 
   it("refuses stale mutations and never overwrites a conflicting region on undo", () => {
@@ -43,7 +44,7 @@ describe("region geometry history", () => {
   it("does not create duplicate region IDs or no-op undo entries", () => {
     expect(commitGeometry(state, EMPTY_GEOMETRY_HISTORY, { kind: "insert", mask: a, index: 0, restoreQuestionIds: [] }).applied).toBe(false);
     expect(commitGeometry(state, EMPTY_GEOMETRY_HISTORY, { kind: "change", maskId: "a", before: a.rect, after: a.rect }).applied).toBe(false);
-    expect(state.questions[0].maskIds).toEqual(["a"]);
+    expect(required(state.questions[0], "state question").maskIds).toEqual(["a"]);
   });
 
   it("a new edit discards redo without dropping older undo operations", () => {

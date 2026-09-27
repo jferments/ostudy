@@ -4,6 +4,7 @@ import * as syncIpc from "../../ipc/deviceSync";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
 
+import { requiredTestValue as required } from "../../test/factories";
 vi.mock("../../ipc/deviceSync", () => ({
   getDeviceSyncState: vi.fn(), updateDeviceSyncName: vi.fn(), startDevicePairing: vi.fn(),
   joinDevicePairing: vi.fn(), cancelDeviceSyncSession: vi.fn(), scanDevicePairingQr: vi.fn(),
@@ -57,7 +58,7 @@ describe("DeviceSyncSettings", () => {
     });
     vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValue("ostudy-sync://pair/scanned");
     vi.mocked(syncIpc.joinDevicePairing).mockResolvedValue({
-      sessionId: "5".repeat(32), peer: state().peers[0], changedRowCount: 12, conflictCount: 1,
+      sessionId: "5".repeat(32), peer: required(state().peers[0], "sync peer"), changedRowCount: 12, conflictCount: 1,
       transferredCredentialCount: 0, credentialWarning: null, sentPackageBytes: 0, receivedPackageBytes: 20,
     });
     vi.mocked(syncIpc.cancelDeviceSyncSession).mockResolvedValue(undefined);
@@ -210,7 +211,7 @@ describe("DeviceSyncSettings", () => {
 
   it("reports optional credential-store failure without failing the received library", async () => {
     vi.mocked(syncIpc.joinDevicePairing).mockResolvedValueOnce({
-      sessionId: "5".repeat(32), peer: state().peers[0], changedRowCount: 12, conflictCount: 0, transferredCredentialCount: 0,
+      sessionId: "5".repeat(32), peer: required(state().peers[0], "sync peer"), changedRowCount: 12, conflictCount: 0, transferredCredentialCount: 0,
       credentialWarning: "Selected study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed.",
       sentPackageBytes: 0, receivedPackageBytes: 20,
     });

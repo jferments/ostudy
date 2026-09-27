@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../test/factories";
 import type { ShowToast } from "../components/Toast";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
@@ -454,7 +455,7 @@ describe("Study-guide mathematical presentation", () => {
     loaded.overview.summary = String.raw`Summary \(x_1\)`;
     loaded.overview.learningObjectives = [String.raw`Find \(x_2\)`];
     loaded.overview.keyConcepts = [String.raw`Know \(x_3\)`];
-    const section = loaded.sections[0];
+    const section = required(loaded.sections[0], "generated section");
     section.title = String.raw`Topic \(x_4\)`;
     section.content = {
       overview: String.raw`Overview \(x_5\)`, keyPoints: [String.raw`Point \(x_6\)`],
@@ -507,7 +508,7 @@ describe("Study-guide mathematical presentation", () => {
 
   it("renders fresh generated content and guide notes through the same offline reader", async () => {
     const generated = guide();
-    generated.sections[0].content.overview = String.raw`Generated \(x+y\)`;
+    required(generated.sections[0], "generated section").content.overview = String.raw`Generated \(x+y\)`;
     generated.overlays = [{ ...topicNote(), topicId: null, overlayKind: "guide_note", plainText: String.raw`Note \(z\)` }];
     mockedGetGuide.mockResolvedValue(null);
     mockedGenerate.mockResolvedValue(generated);

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import { changeTutorMemory, getTutorMemory, type TutorMemory } from "../../ipc/tutorMemory";
 import { TutorMemoryControls } from "./TutorMemoryControls";
 
@@ -44,12 +45,12 @@ describe("conversation memory controls", () => {
     await screen.findByText("An earlier topic");
     fireEvent.click(screen.getByRole("checkbox", { name: "Allow this conversation in semantic retrieval" }));
     await screen.findByRole("button", { name: "Check memory change result" });
-    const original = change.mock.calls[0][0];
+    const original = required(change.mock.calls[0]?.[0], "memory change input");
     expect(original.action).toBe("allow_retrieval");
     expect(original.expectedRevision).toBe(3);
     fireEvent.click(screen.getByRole("button", { name: "Check memory change result" }));
     await waitFor(() => expect(callbacks.onChanged).toHaveBeenCalledTimes(1));
-    expect(change.mock.calls[1][0]).toEqual(original);
+    expect(required(change.mock.calls[1]?.[0], "memory change input")).toEqual(original);
   });
 
   it("does not replay a saved reset because the conversation refresh failed", async () => {
@@ -59,7 +60,7 @@ describe("conversation memory controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Forget earlier context" }));
     await screen.findByText(/Memory settings were saved/);
     expect(change).toHaveBeenCalledTimes(1);
-    expect(change.mock.calls[0][0].action).toBe("forget_earlier");
+    expect(required(change.mock.calls[0]?.[0], "memory change input").action).toBe("forget_earlier");
     expect(screen.queryByRole("button", { name: "Check memory change result" })).toBeNull();
   });
 });

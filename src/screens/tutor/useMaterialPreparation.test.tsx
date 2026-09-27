@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requiredTestValue as required } from "../../test/factories";
 import {
   cancelLearningTask, getLearningTaskProgress, getSemanticPreparation, prepareSemanticMaterial,
   previewSemanticPreparation, type PreparationPreview, type PreparationStatus, type StudyScope,
@@ -57,10 +58,10 @@ describe("explicit semantic preparation", () => {
     const { result } = renderHook(() => useMaterialPreparation(scope));
     await act(async () => { await result.current.review(); });
     await act(async () => { await result.current.confirm(); });
-    const original = vi.mocked(prepareSemanticMaterial).mock.calls[0][0];
+    const original = required(vi.mocked(prepareSemanticMaterial).mock.calls[0]?.[0], "preparation input");
     expect(result.current.pending).toEqual(original);
     await act(async () => { await result.current.confirm(); });
-    expect(vi.mocked(prepareSemanticMaterial).mock.calls[1][0]).toEqual(original);
+    expect(required(vi.mocked(prepareSemanticMaterial).mock.calls[1]?.[0], "preparation input")).toEqual(original);
     expect(result.current.pending).toBeNull();
   });
 
@@ -69,13 +70,13 @@ describe("explicit semantic preparation", () => {
     const { result } = renderHook(() => useMaterialPreparation(scope));
     await act(async () => { await result.current.review(); });
     await act(async () => { await result.current.confirm(); });
-    const original = vi.mocked(prepareSemanticMaterial).mock.calls[0][0];
+    const original = required(vi.mocked(prepareSemanticMaterial).mock.calls[0]?.[0], "preparation input");
     await act(async () => { await result.current.reload(); });
     expect(result.current.status).toBeNull();
     expect(result.current.pending).toEqual(original);
     expect(result.current.locked).toBe(true);
     await act(async () => { await result.current.confirm(); });
-    expect(vi.mocked(prepareSemanticMaterial).mock.calls[1][0]).toEqual(original);
+    expect(required(vi.mocked(prepareSemanticMaterial).mock.calls[1]?.[0], "preparation input")).toEqual(original);
     expect(result.current.pending).toBeNull();
   });
 
@@ -95,7 +96,7 @@ describe("explicit semantic preparation", () => {
     const { result } = renderHook(() => useMaterialPreparation(scope));
     await act(async () => { await result.current.review(); });
     await act(async () => { await result.current.confirm(); });
-    const original = vi.mocked(prepareSemanticMaterial).mock.calls[0][0];
+    const original = required(vi.mocked(prepareSemanticMaterial).mock.calls[0]?.[0], "preparation input");
     await act(async () => { await result.current.cancel(); });
     expect(cancelLearningTask).toHaveBeenCalledWith(original.operationId);
     expect(result.current.locked).toBe(true);
