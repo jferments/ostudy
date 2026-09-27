@@ -171,7 +171,9 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         )
     );
     let migration_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)?;
     assert_eq!(migration_count, CURRENT_SCHEMA_VERSION);
     let repair_rows: i64 = connection
