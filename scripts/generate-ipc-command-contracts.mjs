@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,13 +52,12 @@ if (current !== output) {
     .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
     .update(bytes)
     .digest("hex");
+  const compressed = gzipSync(bytes, { level: 9 }).toString("base64");
   console.error("Generated IPC command contracts are stale or missing.");
   console.error("Run: node scripts/generate-ipc-command-contracts.mjs --write");
   console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_GIT_BLOB=${gitHash}`);
-  console.log("IPC_COMMAND_CONTRACT_CANDIDATE_BEGIN");
-  process.stdout.write(output);
-  if (!output.endsWith("\n")) process.stdout.write("\n");
-  console.log("IPC_COMMAND_CONTRACT_CANDIDATE_END");
+  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BYTES=${bytes.length}`);
+  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_GZIP_BASE64=${compressed}`);
   process.exit(1);
 }
 console.log(`OK   generated IPC command contracts: ${registered.size} commands.`);
