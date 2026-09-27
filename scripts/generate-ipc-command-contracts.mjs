@@ -55,7 +55,16 @@ if (current !== output) {
   console.error("Run: node scripts/generate-ipc-command-contracts.mjs --write");
   console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_GIT_BLOB=${gitHash}`);
   console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BYTES=${bytes.length}`);
-  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BASE64=${bytes.toString("base64")}`);
+  const encoded = bytes.toString("base64");
+  const chunkSize = 3_000;
+  const chunkCount = Math.ceil(encoded.length / chunkSize);
+  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BASE64_CHUNKS=${chunkCount}`);
+  for (let index = 0; index < chunkCount; index += 1) {
+    const label = String(index).padStart(3, "0");
+    console.log(
+      `IPC_COMMAND_CONTRACT_CANDIDATE_BASE64_${label}=${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`,
+    );
+  }
   process.exit(1);
 }
 console.log(`OK   generated IPC command contracts: ${registered.size} commands.`);
