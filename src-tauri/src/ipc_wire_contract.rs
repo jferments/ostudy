@@ -283,11 +283,11 @@ pub fn render_typescript() -> String {
         }
         output.push_str("}\n\n");
     }
-    output.push_str(
-        "export type NativeWireEncodingFixture =\n\
-         \  | { kind: \"ready\"; bytes: number[]; optional: string | null; signed: number; unsigned: number }\n\
-         \  | { kind: \"empty\" };\n",
-    );
+    output.push_str(concat!(
+        "export type NativeWireEncodingFixture =\n",
+        "  | { kind: \"ready\"; bytes: number[]; optional: string | null; signed: number; unsigned: number }\n",
+        "  | { kind: \"empty\" };\n",
+    ));
     output
 }
 
