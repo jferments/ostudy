@@ -56,6 +56,6 @@ describe("current application settings ownership", () => {
     expect(result.current.activeSettings).not.toHaveProperty("aiReasoningEffort");
     act(() => result.current.saveSettingsLocally(oldHarness));
     expect(result.current.savedSettings).not.toHaveProperty("aiReasoningEffort");
-    expect(result.current.activeSettings.motionPreference).toBe(oldHarness.motionPreference);
+    expect(result.current.activeSettings.theme).toBe(oldHarness.theme);
   });
 });
