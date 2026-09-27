@@ -126,14 +126,21 @@ fn deterministic_title(
                 filename_subject(original_filename, source_format)
                     .filter(|title| title_has_document_scope(title, outline))
             } else {
-                outline.sections.iter().map(|section| section.title.as_str())
+                outline
+                    .sections
+                    .iter()
+                    .map(|section| section.title.as_str())
                     .chain(outline.key_concepts.iter().map(String::as_str))
                     .find_map(|value| accepted_title(value, original_filename, source_format))
             }
         })
         .or_else(|| {
-            accepted_title(first_sentence(&outline.summary), original_filename, source_format)
-                .filter(|title| title_has_document_scope(title, outline))
+            accepted_title(
+                first_sentence(&outline.summary),
+                original_filename,
+                source_format,
+            )
+            .filter(|title| title_has_document_scope(title, outline))
         })
         .unwrap_or_else(|| "Study material".to_string())
 }
@@ -143,13 +150,23 @@ fn deterministic_title(
 /// unrelated subsection. Generic counters/exports are not a document subject.
 fn filename_subject(original_filename: &str, source_format: &str) -> Option<String> {
     let stem = source_stem(original_filename, source_format);
-    let subject = stem.rsplit_once(" - ").map_or(stem.as_str(), |(_, suffix)| suffix);
+    let subject = stem
+        .rsplit_once(" - ")
+        .map_or(stem.as_str(), |(_, suffix)| suffix);
     let normalized = normalize_metadata(&subject.replace('_', " "), ARTIFACT_TITLE_MAX_CHARS);
     let words = normalized.split_whitespace().collect::<Vec<_>>();
-    if words.len() < 2 || looks_like_inventory_title(&normalized)
+    if words.len() < 2
+        || looks_like_inventory_title(&normalized)
         || contains_generator_boilerplate(&normalized)
-        || words.iter().filter(|word| word.chars().any(char::is_alphabetic)).count() < 2
-        || matches!(words[0].to_ascii_lowercase().as_str(), "chapter" | "scan" | "document" | "untitled" | "export")
+        || words
+            .iter()
+            .filter(|word| word.chars().any(char::is_alphabetic))
+            .count()
+            < 2
+        || matches!(
+            words[0].to_ascii_lowercase().as_str(),
+            "chapter" | "scan" | "document" | "untitled" | "export"
+        )
     {
         return None;
     }
@@ -171,7 +188,8 @@ fn repeated_parent_subject(outline: &DocumentOutline) -> Option<String> {
         entry.1 = entry.1.saturating_add(1);
     }
     let required = outline.sections.len().saturating_mul(2).div_ceil(3).max(2);
-    counts.into_values()
+    counts
+        .into_values()
         .filter(|(_, count)| *count >= required)
         .max_by_key(|(_, count)| *count)
         .map(|(title, _)| title)
@@ -182,16 +200,33 @@ fn title_has_document_scope(title: &str, outline: &DocumentOutline) -> bool {
         return true;
     }
     let candidate = normalized_key(title);
-    let section_coverage = outline.sections.iter().filter(|section| {
-        let section_text = format!("{} {} {}", section.title, section.summary, section.key_concepts.join(" "));
-        normalized_key(&section_text).contains(&candidate)
-    }).count();
+    let section_coverage = outline
+        .sections
+        .iter()
+        .filter(|section| {
+            let section_text = format!(
+                "{} {} {}",
+                section.title,
+                section.summary,
+                section.key_concepts.join(" ")
+            );
+            normalized_key(&section_text).contains(&candidate)
+        })
+        .count();
     if section_coverage >= outline.sections.len().saturating_mul(2).div_ceil(3) {
         return true;
     }
     let is_leaf_label = outline.sections.iter().any(|section| {
-        section.title.split(" / ").map(normalized_key).any(|label| label == candidate)
-            || section.key_concepts.iter().map(|value| normalized_key(value)).any(|label| label == candidate)
+        section
+            .title
+            .split(" / ")
+            .map(normalized_key)
+            .any(|label| label == candidate)
+            || section
+                .key_concepts
+                .iter()
+                .map(|value| normalized_key(value))
+                .any(|label| label == candidate)
     });
     !is_leaf_label
 }
@@ -468,24 +503,45 @@ mod tests {
     fn document_fallback_never_promotes_one_subsection_over_a_broad_source_subject() {
         let mut outline = outline();
         outline.sections = [
-            "Patient education for hyperlipidemia therapy", "Antihypertensive mechanisms",
-            "Heart failure treatment", "Antiarrhythmic classes", "Anticoagulant monitoring",
-        ].into_iter().enumerate().map(|(index, title)| crate::ai::document_intelligence::OutlineSection {
-            title: title.into(), page_start: index as i64 + 1, page_end: index as i64 + 1,
-            summary: title.into(), learning_objectives: vec![], key_concepts: vec![title.into()],
-        }).collect();
+            "Patient education for hyperlipidemia therapy",
+            "Antihypertensive mechanisms",
+            "Heart failure treatment",
+            "Antiarrhythmic classes",
+            "Anticoagulant monitoring",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, title)| crate::ai::document_intelligence::OutlineSection {
+            title: title.into(),
+            page_start: index as i64 + 1,
+            page_end: index as i64 + 1,
+            summary: title.into(),
+            learning_objectives: vec![],
+            key_concepts: vec![title.into()],
+        })
+        .collect();
         let leaf = outline.sections[0].title.clone();
         let provider = DocumentArtifactMetadataCandidate {
-            document_title: leaf.clone(), deck_title: leaf.clone(), deck_description: "Drug therapy concepts.".into(),
+            document_title: leaf.clone(),
+            deck_title: leaf.clone(),
+            deck_description: "Drug therapy concepts.".into(),
         };
         for candidate in [None, Some(&provider)] {
-            let result = derive_desired_metadata(&outline, candidate, Some(&leaf),
-                "Example textbook (2021, publisher) - Cardiovascular drugs.pdf", "pdf");
+            let result = derive_desired_metadata(
+                &outline,
+                candidate,
+                Some(&leaf),
+                "Example textbook (2021, publisher) - Cardiovascular drugs.pdf",
+                "pdf",
+            );
             assert_eq!(result.document_title, "Cardiovascular drugs");
             assert_eq!(result.deck_title, "Cardiovascular drugs");
         }
         outline.sections.reverse();
-        assert_eq!(deterministic_title(&outline, "Cardiovascular_drugs.pdf", "pdf"), "Cardiovascular drugs");
+        assert_eq!(
+            deterministic_title(&outline, "Cardiovascular_drugs.pdf", "pdf"),
+            "Cardiovascular drugs"
+        );
         for filename in ["chapter8.pdf", "scan 123.pdf", "document 2026.pdf"] {
             assert!(filename_subject(filename, "pdf").is_none());
         }
@@ -494,10 +550,20 @@ mod tests {
     #[test]
     fn a_repeated_parent_for_only_two_sections_is_not_the_entire_document() {
         let mut outline = outline();
-        outline.sections = (0..6).map(|index| crate::ai::document_intelligence::OutlineSection {
-            title: if index < 2 { format!("Minor subject — example {index}") } else { format!("Other subject {index}") },
-            page_start: index + 1, page_end: index + 1, summary: String::new(), learning_objectives: vec![], key_concepts: vec![],
-        }).collect();
+        outline.sections = (0..6)
+            .map(|index| crate::ai::document_intelligence::OutlineSection {
+                title: if index < 2 {
+                    format!("Minor subject — example {index}")
+                } else {
+                    format!("Other subject {index}")
+                },
+                page_start: index + 1,
+                page_end: index + 1,
+                summary: String::new(),
+                learning_objectives: vec![],
+                key_concepts: vec![],
+            })
+            .collect();
         assert!(repeated_parent_subject(&outline).is_none());
     }
 

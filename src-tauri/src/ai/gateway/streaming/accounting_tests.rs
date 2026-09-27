@@ -9,7 +9,9 @@ fn document_usage_snapshots_merge_known_fields_without_summing_or_erasing_them()
         json!({"usage":{"completion_tokens":40}}),
         json!({"usage":{"cost":0.1,"prompt_tokens_details":{"cached_tokens":0}}}),
     ] {
-        stream.push_bytes(format!("data: {value}\n\n").as_bytes()).unwrap();
+        stream
+            .push_bytes(format!("data: {value}\n\n").as_bytes())
+            .unwrap();
     }
     let usage = stream.usage.as_ref().unwrap();
     assert_eq!(usage["prompt_tokens"], 100);

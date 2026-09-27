@@ -237,7 +237,9 @@ impl AiGateway {
         if let Some(attempt) = attempt.as_mut() {
             match &result {
                 Ok(response) => attempt.response(response),
-                Err(error) => attempt.failed_with_observation(&error.safe.code, &capture.observation()),
+                Err(error) => {
+                    attempt.failed_with_observation(&error.safe.code, &capture.observation())
+                }
             }
         }
         result

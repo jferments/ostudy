@@ -96,11 +96,20 @@ fn bounded_learning_plan_context(outline: &DocumentOutline) -> Result<String, Co
     let indices = representative_indices(outline.sections.len(), 96);
     // Compact fields BEFORE serialization. Cutting the encoded JSON used to
     // produce malformed context and silently omit the later document sections.
-    for (title_chars, summary_chars, objectives) in [(96, 1_200, 8), (64, 600, 4), (40, 240, 2), (24, 80, 0)] {
-        let sections = indices.iter().map(|index| {
-            let section = &outline.sections[*index];
-            json!([section.page_start, section.page_end, truncate_chars(&section.title, title_chars)])
-        }).collect::<Vec<_>>();
+    for (title_chars, summary_chars, objectives) in
+        [(96, 1_200, 8), (64, 600, 4), (40, 240, 2), (24, 80, 0)]
+    {
+        let sections = indices
+            .iter()
+            .map(|index| {
+                let section = &outline.sections[*index];
+                json!([
+                    section.page_start,
+                    section.page_end,
+                    truncate_chars(&section.title, title_chars)
+                ])
+            })
+            .collect::<Vec<_>>();
         let encoded = serde_json::to_string(&json!({
             "summary": truncate_chars(&outline.summary, summary_chars),
             "totalSections": outline.sections.len(),
@@ -127,7 +136,9 @@ fn representative_indices(total: usize, maximum: usize) -> Vec<usize> {
     if count < 2 {
         return (0..count).collect();
     }
-    (0..count).map(|index| index * (total - 1) / (count - 1)).collect()
+    (0..count)
+        .map(|index| index * (total - 1) / (count - 1))
+        .collect()
 }
 
 fn decode_artifact_metadata(
@@ -185,13 +196,19 @@ mod tests {
     fn document_metadata_context_is_valid_json_and_represents_late_sections() {
         for count in [0, 1, 14, 96, 160, 256] {
             let outline = DocumentOutline {
-                summary: "\"\\\nα".repeat(2_000), learning_objectives: vec!["A broad learning objective".into(); 32],
+                summary: "\"\\\nα".repeat(2_000),
+                learning_objectives: vec!["A broad learning objective".into(); 32],
                 key_concepts: vec!["A source-supported concept".into(); 50],
-                sections: (0..count).map(|index| super::super::contracts::OutlineSection {
-                    title: format!("Subject {index} {}", "quoted \"material\" ".repeat(40)),
-                    page_start: index as i64 + 1, page_end: index as i64 + 1,
-                    summary: "long detail".repeat(500), learning_objectives: vec![], key_concepts: vec![],
-                }).collect(),
+                sections: (0..count)
+                    .map(|index| super::super::contracts::OutlineSection {
+                        title: format!("Subject {index} {}", "quoted \"material\" ".repeat(40)),
+                        page_start: index as i64 + 1,
+                        page_end: index as i64 + 1,
+                        summary: "long detail".repeat(500),
+                        learning_objectives: vec![],
+                        key_concepts: vec![],
+                    })
+                    .collect(),
             };
             let encoded = bounded_learning_plan_context(&outline).unwrap();
             assert!(encoded.chars().count() <= ARTIFACT_METADATA_CONTEXT_MAX_CHARS);
@@ -203,7 +220,14 @@ mod tests {
                 assert_eq!(sections.first().unwrap()[0], 1);
                 assert_eq!(sections.last().unwrap()[1], count);
             }
-            assert_eq!(decoded["sectionSelection"], if count <= 96 { "all" } else { "evenly distributed including first and last" });
+            assert_eq!(
+                decoded["sectionSelection"],
+                if count <= 96 {
+                    "all"
+                } else {
+                    "evenly distributed including first and last"
+                }
+            );
         }
     }
 

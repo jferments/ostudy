@@ -546,7 +546,11 @@ impl Attempt {
                         ),
                         payload::response_measure(response).to_string(),
                         self.id,
-                        if failure.is_some() { "failed" } else { "response" },
+                        if failure.is_some() {
+                            "failed"
+                        } else {
+                            "response"
+                        },
                         bounded(failure, 80)
                     ],
                 )
