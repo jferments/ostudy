@@ -31,11 +31,30 @@ interface DocumentsScreenProps {
   headerSupplement?: ReactNode;
 }
 
+type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
+
+interface DocumentsScreenContentProps extends DocumentsScreenProps {
+  jobs: DocumentsScreenJobs;
+}
+
 export function DocumentsScreen(props: DocumentsScreenProps) {
   const jobs = useDocumentJobs();
-  if (!jobs) return <DocumentJobsProvider refreshDecks={props.refreshDecks} showToast={props.showToast}>
-    <DocumentsScreen {...props} />
-  </DocumentJobsProvider>;
+  if (jobs) return <DocumentsScreenContent {...props} jobs={jobs} />;
+  return (
+    <DocumentJobsProvider refreshDecks={props.refreshDecks} showToast={props.showToast}>
+      <ProvidedDocumentsScreen {...props} />
+    </DocumentJobsProvider>
+  );
+}
+
+function ProvidedDocumentsScreen(props: DocumentsScreenProps) {
+  const jobs = useDocumentJobs();
+  if (!jobs) return null;
+  return <DocumentsScreenContent {...props} jobs={jobs} />;
+}
+
+function DocumentsScreenContent(input: DocumentsScreenContentProps) {
+  const { jobs, ...props } = input;
   const {
     documents, generationProgress, learningPlans, clockNow, isLoading, isUploading, busyDocumentIds,
     cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,

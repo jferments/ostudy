@@ -110,7 +110,7 @@ export function useDurableDraft<T extends Record<string, unknown>>(
       return;
     }
     let active = true;
-    void open(options.payload, operationIdRef.current).catch((error: unknown) => {
+    void open(optionsRef.current.payload, operationIdRef.current).catch((error: unknown) => {
       if (!active) return;
       setErrorMessage(getErrorMessage(error));
       setStatus("save_failed");

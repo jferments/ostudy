@@ -28,6 +28,7 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
   const suppressClickRef = useRef(false);
   const frame = useRef<number | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelRef = useRef<() => void>(() => undefined);
 
   function hit(x: number, y: number): string | null {
     const node = document.elementFromPoint(x, y)?.closest<HTMLElement>(DROP_TARGET_SELECTOR);
@@ -47,6 +48,7 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
     setOverTargetId(null);
     setOffset({ x: 0, y: 0 });
   }
+  cancelRef.current = cancel;
   function scrollEdges(): void {
     const drag = pointerRef.current;
     if (!drag?.active) return;
@@ -66,8 +68,8 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
     frame.current = requestAnimationFrame(scrollEdges);
   }
   useEffect(() => {
-    const interrupted = () => cancel();
-    const visibility = () => { if (document.hidden) cancel(); };
+    const interrupted = () => cancelRef.current();
+    const visibility = () => { if (document.hidden) cancelRef.current(); };
     window.addEventListener("blur", interrupted);
     document.addEventListener("visibilitychange", visibility);
     return () => {
@@ -77,7 +79,7 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticeP
       document.removeEventListener("visibilitychange", visibility);
     };
   }, []);
-  useEffect(() => { if (disabled) cancel(); }, [disabled]);
+  useEffect(() => { if (disabled) cancelRef.current(); }, [disabled]);
 
   function pointerDown(event: ReactPointerEvent<HTMLElement>, itemId: string): void {
     if (disabled || event.button !== 0) return;

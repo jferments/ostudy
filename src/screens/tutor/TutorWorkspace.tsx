@@ -274,7 +274,8 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
 
 export function TutorScreen() {
   const tutor = useTutor();
-  useEffect(() => { void tutor.initialize(); }, [tutor.initialize]);
+  const initialize = tutor.initialize;
+  useEffect(() => { void initialize(); }, [initialize]);
   return (
     <PageScaffold width="full" className={styles.screen} data-testid="tutor-screen">
       <PageHeader title="Tutor" icon="brain" description="Explore ideas with your study material, or start a general conversation." />

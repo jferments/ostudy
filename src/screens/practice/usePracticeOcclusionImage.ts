@@ -52,8 +52,13 @@ export function usePracticeOcclusionImage(target: QuestionAttemptTarget, revisio
       setFailure(null);
     };
     image.onerror = () => fail("The study image could not be displayed. Retry the image; no answer or rating has been changed.");
+    const requestTarget: QuestionAttemptTarget = {
+      sessionId: target.sessionId,
+      cardId: target.cardId,
+      instanceId: target.instanceId,
+    };
     void occlusionRasterReads.read(() => live, () => readPracticeOcclusionImage({
-      target, expectedRevision: revision, maximumEdge,
+      target: requestTarget, expectedRevision: revision, maximumEdge,
     })).then((bytes) => {
       if (!live || !bytes) return;
       objectUrl = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));

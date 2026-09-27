@@ -62,10 +62,13 @@ export function useStudyTargetBundleController({
   const cancelingRef = useRef(false);
   const readSequence = useRef(0);
   const receipt = useRef<{ key: string; operationId: string } | null>(null);
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   const load = useCallback(async () => {
     const sequence = ++readSequence.current;
-    if (!target) {
+    const currentTarget = targetRef.current;
+    if (!currentTarget) {
       setStatus(null);
       setError(null);
       setLoading(false);
@@ -73,7 +76,7 @@ export function useStudyTargetBundleController({
     }
     setLoading(true);
     try {
-      const next = await getStudyTargetBundle({ target });
+      const next = await getStudyTargetBundle({ target: currentTarget });
       if (readSequence.current !== sequence) return next;
       setStatus(next);
       setError(null);
@@ -92,14 +95,15 @@ export function useStudyTargetBundleController({
   }, [load]);
 
   useEffect(() => {
-    if (!busy || !target) return;
+    const currentTarget = targetRef.current;
+    if (!busy || !currentTarget) return;
     let disposed = false;
     let polling = false;
     const poll = async () => {
       if (disposed || polling) return;
       polling = true;
       try {
-        const next = await getStudyTargetBundle({ target });
+        const next = await getStudyTargetBundle({ target: currentTarget });
         if (!disposed && next) setStatus(next);
       } catch {
         // The composing command owns the terminal error. A transient status read

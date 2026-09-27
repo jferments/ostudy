@@ -31,7 +31,7 @@ function receipt(input: RevealPracticeQuestionInput): ImageOcclusionAttemptView 
     assisted: input.request.expectedRevision === 2,
     progress: { ...view.progress, revealId: input.request.revealId, responseTimeMs: input.request.responseTimeMs } };
 }
-function harness(initial = answering()) {
+function useHarness(initial = answering()) {
   const [attempt, setAttempt] = useState(initial);
   const interaction = useOcclusionReveal({
     target, attempt, disabled: false, imageReady: true, loadedAt: 1000,
@@ -53,7 +53,7 @@ describe("self-assessed reveal mutation ownership", () => {
   it("holds one request across duplicate clicks while the native mutation is pending", async () => {
     let finish!: (view: ImageOcclusionAttemptView) => void;
     mocks.reveal.mockImplementationOnce(() => new Promise<ImageOcclusionAttemptView>((resolve) => { finish = resolve; }));
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     act(() => { void result.current.interaction.reveal(); void result.current.interaction.reveal(); });
     expect(mocks.reveal).toHaveBeenCalledTimes(1);
     expect(result.current.interaction.busy).toBe(true);
@@ -65,7 +65,7 @@ describe("self-assessed reveal mutation ownership", () => {
 
   it("a lost acknowledgement retries the exact identity, revision and first response time", async () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Acknowledgement lost"));
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     expect(result.current.interaction.error).toMatch(/same request/);
     const first = structuredClone(mocks.reveal.mock.calls[0][0]);
@@ -79,7 +79,7 @@ describe("self-assessed reveal mutation ownership", () => {
 
   it("unchanged answering state after reload does not authorize a new retry identity", async () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Unknown result"));
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     const first = structuredClone(mocks.reveal.mock.calls[0][0]);
     await act(async () => { await result.current.interaction.reload(); });
@@ -91,7 +91,7 @@ describe("self-assessed reveal mutation ownership", () => {
   it("newer native assistance evidence admits a new request rather than replaying an invalid revision", async () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Unknown result"));
     mocks.reload.mockResolvedValueOnce({ attempt: answering(2), assets: [] });
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     const first = structuredClone(mocks.reveal.mock.calls[0][0]);
     await act(async () => { await result.current.interaction.reload(); });
@@ -115,7 +115,7 @@ describe("self-assessed reveal mutation ownership", () => {
   it("reloading a committed reveal restores feedback without another native reveal", async () => {
     mocks.reveal.mockRejectedValueOnce(new Error("Acknowledgement lost"));
     mocks.reload.mockResolvedValueOnce({ attempt: revealed(), assets: [] });
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     await act(async () => { await result.current.interaction.reload(); });
     expect(result.current.attempt.progress.phase).toBe("revealed");
@@ -126,7 +126,7 @@ describe("self-assessed reveal mutation ownership", () => {
 
   it("a feedback-refresh failure does not turn a committed reveal into a second mutation", async () => {
     mocks.exposed.mockRejectedValueOnce(new Error("Interval refresh failed"));
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     expect(result.current.attempt.progress.phase).toBe("revealed");
     expect(result.current.interaction.error).toMatch(/saved answer state/);
@@ -137,7 +137,7 @@ describe("self-assessed reveal mutation ownership", () => {
 
   it("a response for a different captured question is rejected without losing the original retry identity", async () => {
     mocks.reveal.mockResolvedValueOnce({ ...revealed(), instanceId: "f".repeat(32) });
-    const { result } = renderHook(() => harness());
+    const { result } = renderHook(() => useHarness());
     await act(async () => { await result.current.interaction.reveal(); });
     const first = structuredClone(mocks.reveal.mock.calls[0][0]);
     expect(mocks.accepted).not.toHaveBeenCalled();

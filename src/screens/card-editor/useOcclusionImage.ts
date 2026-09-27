@@ -28,33 +28,41 @@ export function useOcclusionImport(options: ImportOptions) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = options.draft.pendingImport;
+  const pendingOperationId = pending?.operationId ?? null;
+  const pendingStagedFileId = pending?.stagedFileId ?? null;
+  const pendingAssetDraftId = pending?.assetDraftId ?? null;
 
   useEffect(() => {
-    if (!pending || pending.operationId !== requestedId || options.disabled) return;
+    if (!pendingOperationId || pendingOperationId !== requestedId || options.disabled || !pendingAssetDraftId) return;
     let live = true;
     setBusy(true);
     setError(null);
     const run = async () => {
-      if (pending.assetDraftId !== latest.current.assetDraftId) {
+      if (pendingAssetDraftId !== latest.current.assetDraftId) {
         throw new Error("This image selection belongs to an earlier editor draft. Cancel it and choose the image again.");
       }
       // The effect runs after the parent has installed pending into its durable payload.
       await latest.current.flushDraft();
       if (!live) return;
-      if (!pending.stagedFileId) {
-        const selected = await selectAndStageExternalImport("image", pending.operationId);
+      if (!pendingStagedFileId) {
+        const selected = await selectAndStageExternalImport("image", pendingOperationId);
         if (!live) return;
-        latest.current.onUpdate((draft) => draft.pendingImport?.operationId === pending.operationId
-          ? { ...draft, pendingImport: selected ? { ...pending, stagedFileId: selected.id } : null }
+        latest.current.onUpdate((draft) => draft.pendingImport?.operationId === pendingOperationId
+          ? {
+              ...draft,
+              pendingImport: selected
+                ? { operationId: pendingOperationId, assetDraftId: pendingAssetDraftId, stagedFileId: selected.id }
+                : null,
+            }
           : draft);
         if (!selected) setRequestedId(null);
         return;
       }
-      const prepared = await prepareOcclusionImage(pending.stagedFileId, pending.assetDraftId);
+      const prepared = await prepareOcclusionImage(pendingStagedFileId, pendingAssetDraftId);
       if (!live) return;
-      if (latest.current.draft.pendingImport?.operationId !== pending.operationId) return;
+      if (latest.current.draft.pendingImport?.operationId !== pendingOperationId) return;
       latest.current.onAssetImported(prepared.asset);
-      latest.current.onUpdate((draft) => draft.pendingImport?.operationId === pending.operationId
+      latest.current.onUpdate((draft) => draft.pendingImport?.operationId === pendingOperationId
         ? {
             ...newOcclusionDraft(), imageAssetId: prepared.asset.id,
             imageSize: { width: prepared.width, height: prepared.height },
@@ -70,7 +78,14 @@ export function useOcclusionImport(options: ImportOptions) {
       if (live) setBusy(false);
     });
     return () => { live = false; };
-  }, [requestedId, pending?.operationId, pending?.stagedFileId, options.assetDraftId, options.disabled]);
+  }, [
+    requestedId,
+    pendingOperationId,
+    pendingStagedFileId,
+    pendingAssetDraftId,
+    options.assetDraftId,
+    options.disabled,
+  ]);
 
   function start(): void {
     const current = latest.current;

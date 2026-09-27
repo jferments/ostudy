@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { TemplatesController } from "../controllers/templatesController";
 import { useDurableDraft } from "../controllers/useDurableDraft";
@@ -65,10 +65,23 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     payload: (draft ?? newTemplateDraft()) as TemplateDraft & Record<string, unknown>,
     assetIds: usedAssetIds, enabled: draft !== null, onRecovered: (payload) => setDraft(payload),
   });
+  const loadTemplates = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const loaded = await controller.list();
+      if (loaded) setTemplates(loaded);
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [controller]);
+
   useEffect(() => {
     void loadTemplates();
     return () => controller.invalidate();
-  }, [controller]);
+  }, [controller, loadTemplates]);
   useEffect(() => {
     onDirtyChange(durableDraft.hasUnsavedLocalChanges);
     return () => onDirtyChange(false);
@@ -87,17 +100,8 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [assetDraftId, usedAssetKey]);
+  }, [assetDraftId, controller, usedAssetKey]);
 
-  async function loadTemplates(): Promise<void> {
-    setIsLoading(true);
-    setErrorMessage(null);
-    try {
-      const loaded = await controller.list();
-      if (loaded) setTemplates(loaded);
-    } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
-    finally { setIsLoading(false); }
-  }
   async function openDraft(next: TemplateDraft): Promise<void> {
     setDraft(next);
     setBaseline(next);
