@@ -16,15 +16,13 @@ import hashlib
 import pathlib
 import sys
 
-path = pathlib.Path(sys.argv[1])
-data = path.read_bytes()
+data = pathlib.Path(sys.argv[1]).read_bytes()
 git_header = f"blob {len(data)}\0".encode()
 print("LOCKFILE_CANDIDATE_GIT_BLOB=" + hashlib.sha1(git_header + data).hexdigest())
 print("LOCKFILE_CANDIDATE_SHA256=" + hashlib.sha256(data).hexdigest())
-print("LOCKFILE_CANDIDATE_TEXT_BEGIN")
-sys.stdout.write(data.decode("utf-8"))
-if not data.endswith(b"\n"):
-    print()
-print("LOCKFILE_CANDIDATE_TEXT_END")
 PY
 )
+printf 'LOCKFILE_CANDIDATE_DIFF_BEGIN\n'
+diff -u --label a/pnpm-lock.yaml --label b/pnpm-lock.yaml \
+  pnpm-lock.yaml "$candidate/pnpm-lock.yaml" || true
+printf 'LOCKFILE_CANDIDATE_DIFF_END\n'
