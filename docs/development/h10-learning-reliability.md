@@ -1,37 +1,43 @@
 # H-10 and document-learning reliability
 
-Implementation scope following merged PR #112, base `3d94096df1209a644fe8cd0da5b506c62a18a392`. This is an acceptance plan, not a completion or live-provider claim. The [hardening register](post-106-hardening.md) owns the H-series scope; [document AI routing](../architecture/document-ai-routing.md) and [UI architecture](../architecture/ui.md) own the maintained contracts.
+Status: **source implementation complete in draft PR #113; exact-head terminal qualification and human live-provider/device acceptance remain.**
 
-## Report and diagnosis boundaries
+Base: `3d94096df1209a644fe8cd0da5b506c62a18a392`. The [hardening register](post-106-hardening.md) owns the H-series scope; [document AI routing](../architecture/document-ai-routing.md) and [UI architecture](../architecture/ui.md) own maintained behavior.
 
-The learner reported that a 138-page cardiovascular-drugs chapter generated cards but failed its first Study Guide topic after two completion-limited responses. Its document title described only hyperlipidemia patient education, and many cards tested isolated details rather than transferable concepts. Matching-question drag/drop also needs behavioral diagnosis and regression coverage.
+## Report and implemented diagnosis
 
-The existing guide completion plan reserves 3,200 visible tokens for both the first attempt and recovery. PR #112 changed truncation recovery in knowledge extraction; that does not establish that guide authoring has adequate output feasibility. Inspect the actual request/schema, reasoning policy, retained-knowledge partitioning and retry ownership together rather than only increasing a constant.
+A 138-page cardiovascular-drugs chapter exposed several independent failures: Study Guide authoring exhausted the provider completion limit twice; whole-document metadata collapsed to one hyperlipidemia subsection; generated cards over-selected isolated factoids; some failed/partial streams lost token-accounting evidence; and matching drag/drop was unreliable under pointer capture.
 
-Missing usage is a separate observation, not a generation failure. Preserve partial reported usage, consume a final usage-only streaming event, never double count snapshots, and never invent missing token counts or retry successful generation to obtain accounting.
+PR #113 repairs those owners rather than adding an unbounded retry. Guide authoring now preflights the recovery request as well as the first attempt, reserves 6,144 visible tokens initially and 12,288 for a truncation recovery, and uses a compact recovery schema/instruction that preserves the narrative overview, high-yield key points, necessary qualifications and supported terms while dropping optional expansion fields. Multi-unit work that cannot reserve that recovery budget partitions before provider dispatch instead of silently shrinking away supported knowledge.
 
-Document-wide metadata must not silently choose the first or most frequent narrow topic as the title of an entire chapter. A document title, section heading and retrieval question have different scopes. Retained knowledge must remain lossless while teaching artifacts prioritize core concepts, relationships, mechanisms, meaningful contrasts and decision-relevant exceptions.
+OpenRouter reasoning requests obey the provider's unified-object constraint: when an explicit reasoning-token cap is used, the request sends that cap instead of simultaneously sending an effort value. The requested/effective reasoning choice remains provenance. This keeps hidden reasoning and visible structured output from competing through an invalid/ambiguous wire combination.
 
-## Acceptance criteria
+Streaming accounting is owned by the physical provider attempt. Cumulative usage snapshots are merged rather than summed, later partial/cost-only reports enrich rather than erase known counts, and usage observed before a truncation/protocol failure is persisted with the failed attempt. Missing fields remain unknown; ostudy never invents zero or retries successful work merely to obtain usage.
 
-| ID | Boundary | Required result |
+Whole-document display metadata now receives valid bounded JSON representing an evenly distributed sample of the whole outline, including the final section, instead of byte-truncating serialized JSON. Provider/source-title candidates that are clearly leaf labels are rejected for multi-section documents. Deterministic fallback prefers a broad repeated parent or descriptive source-level subject rather than promoting the first narrow section. Derived metadata generator/prompt versions change; retained source knowledge and learner edits do not.
+
+Card generation now states a concept-first teaching policy before choosing a question family. Distinct supported concepts, mechanisms, relationships, comparisons and decision-relevant exceptions outrank repeated low-value details and soft format weights. Evidence/importance labels remain advisory and native admission/evidence binding remains authoritative. The policy fingerprint changes derived candidate reuse without rewriting retained knowledge or schedules.
+
+Matching drag/drop now resolves the actual scoped drop target beneath a pointer-captured moving tile, treats the row gutter as the same semantic target, keeps unrelated row order stable, cancels safely on lost capture/blur/Escape/question reset/disabled state, suppresses delayed touch compatibility clicks, and retains keyboard/click alternatives.
+
+H-10 cleanup removes dead deck-library props, the fixture-only global reasoning setting, the compatibility Modal facade, dead live Cards/Templates route aliases and the redundant template dirty owner. Historical checkpoint/workspace values are still normalized at their boundary; Templates remains a Settings tab and shares Settings dirty-state protection.
+
+## Acceptance status
+
+| ID | Boundary | Status and evidence owner |
 | --- | --- | --- |
-| AC-01 | H-10 bundled props | Remove unused `bindPreview`, `onManageTemplates` and fixture-only global `AppSettings.aiReasoningEffort` with their current callers/fixtures. Preserve native historical migrations/readers. |
-| AC-02 | H-10 overlays | Migrate remaining compatibility Modal callers to the shared Dialog facade and retire the unused wrapper. Preserve busy/non-dismissible, nested-overlay, focus, Escape and native Back behavior. |
-| AC-03 | H-10 routes/settings | Normalize supported old checkpoints at the reader boundary, then simplify live route aliases and obsolete appearance interfaces. Preserve Settings/Templates intent, dirty-state guards, practice return targets, real profile/task-assignment fields and restored preferences. |
-| AC-04 | Guide feasibility/recovery | First-pass and recovery requests have coherent schema/instructions, visible-output/reasoning reserves and context preflight. Completion-limited work changes size or allowance within a bounded policy; it does not blindly replay the same request or discard successful sibling work. |
-| AC-05 | Whole-document metadata | Title and introductory scope represent the full source, not a single chapter subsection. Preserve learner edits and compatible retained knowledge; version only affected derived artifact contracts. |
-| AC-06 | Concept-first cards | Generation prioritizes major concepts, mechanisms, comparisons and source-supported applications; isolated details are subordinate and only retained when materially useful. All evidence, qualifications and native validation remain required. |
-| AC-07 | Usage observation | Streaming usage after finish markers is retained once; missing or interrupted reporting is distinct from task failure, with truthful contextual presentation and no fabricated totals. |
-| AC-08 | Matching interaction | Mouse/touch/pointer matching correctly uses target identity despite capture, reassigns without duplicates, cancels safely and retains keyboard/click alternatives. Reset/reveal/disabled states must not apply stale drag actions. |
-| AC-09 | Documentation and qualification | Focused regressions, exact-head Static/Fast and required Linux/package/Android/emulator qualification; reconcile owning docs and PR evidence before handoff. Live-model educational quality and physical-device interactions remain explicit manual boundaries. |
+| AC-01 | H-10 bundled props | **Implemented.** Current deck-library props and frontend settings types no longer carry `bindPreview`, `onManageTemplates` or global `aiReasoningEffort`; native historical readers remain. |
+| AC-02 | H-10 overlays | **Implemented.** Card workflows import shared Dialog directly; mutation dismissal/focus/native-Back behavior has focused React coverage. |
+| AC-03 | H-10 routes/settings | **Implemented.** Live application sections/workspaces are current-only; old checkpoint/workspace inputs normalize before live state. Settings owns template dirty state and practice-return/checkpoint contracts remain covered. |
+| AC-04 | Guide feasibility/recovery | **Implemented.** First/recovery output and reasoning/context reserves are preflighted; truncation gets a bounded larger/leaner recovery rather than identical replay. |
+| AC-05 | Whole-document metadata | **Implemented.** Whole-outline context is valid/bounded and sampled across the represented source; narrow leaf titles are rejected with deterministic broad fallback. |
+| AC-06 | Concept-first cards | **Implemented.** Authoring/selection prioritizes distinct high-value supported concepts before soft type mix or incidental details; native evidence admission is unchanged. |
+| AC-07 | Usage observation | **Implemented.** Physical attempts retain known streaming usage on success/failure, merge cumulative snapshots once, and preserve unknown fields as unknown. |
+| AC-08 | Matching interaction | **Implemented.** Captured-pointer targeting, row stability, reassignment/cancellation and keyboard/click/touch alternatives have deterministic regressions. |
+| AC-09 | Documentation and qualification | **In progress.** Maintained owners are reconciled before candidate freeze; Static/Fast and terminal Linux/package/Android/emulator evidence must be attached to the frozen exact head before handoff. |
 
-## Implementation order
+## Non-goals and manual boundaries
 
-Complete reviewable increments on `agent/h10-learning-quality`: bundled interfaces and matching interaction; generation budgets/protocol and usage; global metadata and concept-prioritized authoring; remaining route/appearance cleanup; documentation and frozen-candidate qualification. Every increment carries focused behavioral coverage. Actual discoveries may alter ordering but not silently remove an acceptance criterion.
+No new provider, silent model fallback, paid service, database pool, scheduler redesign, compatibility-reader purge, released migration rewrite, blanket stored-title rewrite, arbitrary retry/timeouts, weakened validators, new drag/drop framework, runner change or source-writing Action is introduced.
 
-## Non-goals and preservation
-
-No new provider, silent model fallback, paid service, database pool, scheduler redesign, compatibility-reader purge, released migration rewrite, blanket stored-title rewrite, arbitrary retry/timeouts, weakened validators or source-writing Actions. No host/runner infrastructure changes. Do not add a second overlay stack or drag/drop framework without a demonstrated need. Do not merge this PR without a new explicit merge request.
-
-A chapter-specific regression may use synthetic cardiovascular topic labels, but production code must not hardcode this textbook, its name, page count or a preferred medical answer. The actual pharmacology PDF, credentials and learner library are never committed.
+The synthetic regressions deliberately do not hardcode the reported textbook or a preferred medical answer. The actual pharmacology PDF, credentials and learner library are never committed. Reprocessing that source with the user's selected OpenRouter model is a **human live-provider quality boundary**: inspect whether the title reflects the whole cardiovascular-drugs chapter, the Study Guide completes, cards emphasize transferable concepts, and displayed token/cache/retry observations match what the provider actually reports. Physical touch behavior remains a separate device acceptance boundary after emulator qualification.
