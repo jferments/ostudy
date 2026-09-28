@@ -1,6 +1,6 @@
 # Readable learning materials and trustworthy tooling
 
-Status: source implementation complete; terminal qualification and human acceptance remain. Base: `7283216a08e90361271395e7d70a8d38de127aa2`; branch: `agent/readable-guides-and-tooling`. This is the September 27 follow-up requested after manual acceptance found improved flashcards but unacceptable study guides and matching drag feedback. Automated qualification of #113 did not establish educational or physical-pointer acceptance.
+Status: source implementation and automated terminal qualification complete; human acceptance remains. Base: `7283216a08e90361271395e7d70a8d38de127aa2`; branch: `agent/readable-guides-and-tooling`. This is the September 27 follow-up requested after manual acceptance found improved flashcards but unacceptable study guides and matching drag feedback. Automated qualification of #113 did not establish educational or physical-pointer acceptance.
 
 ## Accepted scope
 
