@@ -79,15 +79,7 @@ pub(super) async fn generate_document_study_guide_editorial(
     sections: &[&StudyGuideSectionContent],
     cancellation: &CancellationSignal,
 ) -> Result<(StudyGuideOverview, StudyGuideEditorial), CommandError> {
-    editorial::generate(
-        runtime,
-        task,
-        document_title,
-        plan,
-        sections,
-        cancellation,
-    )
-    .await
+    editorial::generate(runtime, task, document_title, plan, sections, cancellation).await
 }
 
 /// Generate one source-grounded guide section for one stable learning topic.

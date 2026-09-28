@@ -178,7 +178,6 @@ fn concise_generated_section_passes_native_style_validation() {
     assert_eq!(parsed.key_points.len(), 3);
 }
 
-
 #[test]
 fn narrative_only_section_is_valid_and_schema_does_not_require_bullets() {
     let parsed = parse_study_guide_section(json!({
@@ -195,7 +194,10 @@ fn narrative_only_section_is_valid_and_schema_does_not_require_bullets() {
     assert!(parsed.key_points.is_empty());
     let schema = study_guide_section_schema();
     assert!(schema["properties"]["keyPoints"].get("minItems").is_none());
-    assert_eq!(schema["properties"]["overview"]["maxLength"], MAX_OVERVIEW_CHARS);
+    assert_eq!(
+        schema["properties"]["overview"]["maxLength"],
+        MAX_OVERVIEW_CHARS
+    );
 }
 
 #[test]

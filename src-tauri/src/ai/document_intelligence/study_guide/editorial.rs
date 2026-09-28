@@ -256,9 +256,7 @@ fn bounded_complete_text(value: &str, maximum: usize) -> Option<String> {
     }
     let mut last_end = None;
     for (index, character) in compact.char_indices() {
-        if matches!(character, '.' | '!' | '?')
-            && compact[..=index].chars().count() <= maximum
-        {
+        if matches!(character, '.' | '!' | '?') && compact[..=index].chars().count() <= maximum {
             last_end = Some(index + character.len_utf8());
         }
     }
@@ -298,7 +296,9 @@ fn admit(
             });
         }
         if topics.is_empty() {
-            return Err(editorial_error("A study-guide chapter contained no topics."));
+            return Err(editorial_error(
+                "A study-guide chapter contained no topics.",
+            ));
         }
         chapters.push(StudyGuideChapter {
             id: chapter_id(&topics),
@@ -456,7 +456,10 @@ mod tests {
         let (overview, editorial) = admit(response(), &plan).unwrap();
         assert_eq!(editorial.title, "Cardiovascular drugs");
         assert_eq!(editorial.chapters[0].title, "Treatment foundations");
-        assert_eq!(editorial.chapters[0].topics[0].title, "Core treatment goals");
+        assert_eq!(
+            editorial.chapters[0].topics[0].title,
+            "Core treatment goals"
+        );
         assert_eq!(overview.learning_objectives.len(), 2);
         let ids = editorial
             .chapters
@@ -464,7 +467,10 @@ mod tests {
             .flat_map(|chapter| chapter.topics.iter().map(|topic| topic.topic_id.as_str()))
             .collect::<HashSet<_>>();
         assert_eq!(ids.len(), plan.topics.len());
-        assert!(plan.topics.iter().all(|topic| ids.contains(topic.id.as_str())));
+        assert!(plan
+            .topics
+            .iter()
+            .all(|topic| ids.contains(topic.id.as_str())));
     }
 
     #[test]
