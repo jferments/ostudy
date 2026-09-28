@@ -432,14 +432,6 @@ pub(crate) fn set_current_reasoning_context(
     });
 }
 
-pub(crate) fn set_current_reasoning_effort(effort: &str) {
-    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
-        if let Ok(mut progress) = task.progress.lock() {
-            progress.reasoning_effort = effort.chars().take(16).collect();
-        }
-    });
-}
-
 pub(crate) fn set_current_task_phase(
     phase: &str,
     current_window: Option<usize>,
@@ -516,28 +508,32 @@ pub(crate) fn record_current_provider_request() {
     });
 }
 
-pub(crate) fn record_current_request_diagnostics(
-    stage: &str,
-    provider: &str,
-    model: &str,
-    request_bytes: usize,
-    text_bytes: usize,
-    image_count: usize,
-    evidence_bytes: usize,
-    max_output_tokens: usize,
-) {
+pub(crate) struct CurrentRequestDiagnostics<'a> {
+    pub(crate) stage: &'a str,
+    pub(crate) provider: &'a str,
+    pub(crate) model: &'a str,
+    pub(crate) request_bytes: usize,
+    pub(crate) text_bytes: usize,
+    pub(crate) image_count: usize,
+    pub(crate) evidence_bytes: usize,
+    pub(crate) max_output_tokens: usize,
+}
+
+pub(crate) fn record_current_request_diagnostics(diagnostics: CurrentRequestDiagnostics<'_>) {
     let now = unix_time_millis().unwrap_or_default();
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.current_request_started_at = Some(now);
-            progress.current_request_stage = Some(stage.chars().take(80).collect());
-            progress.provider_kind = Some(provider.chars().take(40).collect());
-            progress.model_id = Some(model.chars().take(160).collect());
-            progress.current_request_bytes = Some(request_bytes);
-            progress.current_request_text_bytes = Some(text_bytes);
-            progress.current_request_image_count = Some(image_count);
-            progress.current_request_evidence_bytes = Some(evidence_bytes);
-            progress.current_request_max_output_tokens = Some(max_output_tokens);
+            progress.current_request_stage =
+                Some(diagnostics.stage.chars().take(80).collect());
+            progress.provider_kind =
+                Some(diagnostics.provider.chars().take(40).collect());
+            progress.model_id = Some(diagnostics.model.chars().take(160).collect());
+            progress.current_request_bytes = Some(diagnostics.request_bytes);
+            progress.current_request_text_bytes = Some(diagnostics.text_bytes);
+            progress.current_request_image_count = Some(diagnostics.image_count);
+            progress.current_request_evidence_bytes = Some(diagnostics.evidence_bytes);
+            progress.current_request_max_output_tokens = Some(diagnostics.max_output_tokens);
         }
     });
 }
@@ -793,16 +789,16 @@ mod tests {
                 "none",
             );
             set_current_task_phase("generating", Some(1), 0, 2, Some(4), Some(7), None);
-            record_current_request_diagnostics(
-                "flashcard_authoring",
-                "openrouter",
-                "deepseek/deepseek-v4.1-flash",
-                12_345,
-                4_321,
-                4,
-                2_222,
-                6_144,
-            );
+            record_current_request_diagnostics(CurrentRequestDiagnostics {
+                stage: "flashcard_authoring",
+                provider: "openrouter",
+                model: "deepseek/deepseek-v4.1-flash",
+                request_bytes: 12_345,
+                text_bytes: 4_321,
+                image_count: 4,
+                evidence_bytes: 2_222,
+                max_output_tokens: 6_144,
+            });
             let progress = document_task_progress(&document_id).unwrap();
             assert_eq!(progress.provider_kind.as_deref(), Some("openrouter"));
             assert_eq!(

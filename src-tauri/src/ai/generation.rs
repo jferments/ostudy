@@ -407,14 +407,16 @@ impl Context {
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
         crate::task_cancellation::record_current_request_diagnostics(
-            stage,
-            provider,
-            model,
-            request_bytes,
-            text_bytes,
-            image_count,
-            evidence_bytes,
-            max_output_tokens,
+            crate::task_cancellation::CurrentRequestDiagnostics {
+                stage,
+                provider,
+                model,
+                request_bytes,
+                text_bytes,
+                image_count,
+                evidence_bytes,
+                max_output_tokens,
+            },
         );
         let id = self.database.with_connection(|connection| {
             let tx = connection
