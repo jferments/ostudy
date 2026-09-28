@@ -917,17 +917,9 @@ fn render_study_guide_pdf(
         for (chapter_index, chapter) in export.chapters.iter().enumerate() {
             writer.ensure_space(100.0)?;
             let chapter_heading = format!("{}. {}", chapter_index + 1, chapter.title);
-            writer.register_navigation(
-                &format!("chapter-{}", chapter_index + 1),
-                &chapter_heading,
-            );
+            writer.register_navigation(&format!("chapter-{}", chapter_index + 1), &chapter_heading);
             writer.heading(&chapter_heading, 19.0, 24.0)?;
-            writer.paragraph(
-                &chapter.introduction,
-                BODY_SIZE,
-                BODY_LINE_HEIGHT,
-                false,
-            )?;
+            writer.paragraph(&chapter.introduction, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
             writer.spacer(8.0)?;
             for (section_position, section_index) in chapter.section_indices.iter().enumerate() {
                 let section = export.sections.get(*section_index).ok_or_else(|| {

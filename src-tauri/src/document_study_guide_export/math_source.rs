@@ -65,9 +65,10 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
             .any(|value| contains_math(value))
         || export.key_concepts.iter().any(|value| contains_math(value))
         || export.guide_notes.iter().any(|value| contains_math(value))
-        || export.chapters.iter().any(|chapter| {
-            contains_math(&chapter.title) || contains_math(&chapter.introduction)
-        })
+        || export
+            .chapters
+            .iter()
+            .any(|chapter| contains_math(&chapter.title) || contains_math(&chapter.introduction))
     {
         return true;
     }
@@ -129,9 +130,10 @@ pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
             .any(|value| unsupported(value))
         || export.key_concepts.iter().any(|value| unsupported(value))
         || export.guide_notes.iter().any(|value| unsupported(value))
-        || export.chapters.iter().any(|chapter| {
-            unsupported(&chapter.title) || unsupported(&chapter.introduction)
-        })
+        || export
+            .chapters
+            .iter()
+            .any(|chapter| unsupported(&chapter.title) || unsupported(&chapter.introduction))
     {
         return true;
     }
