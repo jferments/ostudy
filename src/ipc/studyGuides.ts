@@ -44,6 +44,23 @@ export interface StudyGuideOverview {
   keyConcepts: string[];
 }
 
+export interface StudyGuideEditorialTopic {
+  topicId: string;
+  title: string;
+}
+
+export interface StudyGuideChapter {
+  id: string;
+  title: string;
+  introduction: string;
+  topics: StudyGuideEditorialTopic[];
+}
+
+export interface StudyGuideEditorial {
+  title: string;
+  chapters: StudyGuideChapter[];
+}
+
 export interface StudyGuideExplanation {
   heading: string;
   body: string;
@@ -154,6 +171,7 @@ export interface DocumentStudyGuide {
   promptVersion: number;
   assemblyVersion: number;
   overview: StudyGuideOverview;
+  editorial?: StudyGuideEditorial | null;
   overviewText: string;
   sections: DocumentStudyGuideSection[];
   overlays: StudyGuideOverlay[];
