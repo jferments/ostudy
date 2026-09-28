@@ -280,7 +280,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setProbeResult(null);
       setModels([]);
       setModelsLoaded(false);
-      await loadProfiles();
+      const [, savedDefaults] = await Promise.all([loadProfiles(), getAiTaskDefaults()]);
+      setDefaults(savedDefaults);
       showToast("success", wasExisting ? "AI connection updated." : "AI connection saved.");
       if (canDiscoverModels(saved)) await discoverModelsForProfile(saved, false);
     } catch (error: unknown) {
@@ -359,7 +360,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setModels([]);
       setModelsLoaded(false);
       setProbeResult(null);
-      await loadProfiles();
+      const [, savedDefaults] = await Promise.all([loadProfiles(), getAiTaskDefaults()]);
+      setDefaults(savedDefaults);
       showToast(
         "success",
         credentialPersistence === "secure"
@@ -460,7 +462,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       profileId,
       modelId: profileId ? modelId : null,
       reasoningEffort: profileId
-        ? taskKind === "embeddings" ? "none" : reasoningEffort ?? "automatic"
+        ? taskKind === "embeddings" ? "none" : reasoningEffort ?? defaultTaskReasoning(taskKind)
         : null,
       operationId: createOperationId(),
     });
@@ -496,6 +498,11 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     testProfile, setFlashcardDefault, setTaskDefault, pendingTaskDefault, retryTaskDefault,
     discardDraft, reload,
   };
+}
+
+export function defaultTaskReasoning(task: AiTaskKind): AiReasoningEffort {
+  if (task === "flashcard_generation" || task === "embeddings") return "none";
+  return "low";
 }
 
 function canDiscoverModels(profile: AiProviderProfileDetail): boolean {

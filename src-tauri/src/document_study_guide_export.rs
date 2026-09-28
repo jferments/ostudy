@@ -572,9 +572,7 @@ fn compose_effective_export(
     Ok(export)
 }
 
-fn editorial_topic_titles(
-    editorial: Option<&StudyGuideEditorial>,
-) -> HashMap<&str, &str> {
+fn editorial_topic_titles(editorial: Option<&StudyGuideEditorial>) -> HashMap<&str, &str> {
     editorial
         .into_iter()
         .flat_map(|editorial| editorial.chapters.iter())

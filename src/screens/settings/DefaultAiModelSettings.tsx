@@ -2,7 +2,10 @@ import { Panel } from "../../ui/primitives/Panel";
 import { Disclosure } from "../../ui/primitives/FormControls";
 import { useEffect, useMemo, useState } from "react";
 
-import type { AiProfilesController } from "../../controllers/aiProfilesController";
+import {
+  defaultTaskReasoning,
+  type AiProfilesController,
+} from "../../controllers/aiProfilesController";
 import {
   listAiProviderModels,
   testAiProviderProfile,
@@ -250,7 +253,7 @@ function TaskModelRow({
               const next = event.currentTarget.value;
               setProfileId(next);
               setModelId("");
-              setReasoning("automatic");
+              setReasoning(defaultTaskReasoning(task));
               if (!next) void controller.setTaskDefault(task, null, null, null);
             }}
           >
@@ -530,19 +533,20 @@ function assignmentFor(controller: AiProfilesController, task: AiTaskKind): Assi
       return {
         profileId: controller.defaults.flashcardGenerationProfileId,
         modelId: controller.defaults.flashcardGenerationModelId ?? null,
-        reasoningEffort: controller.defaults.flashcardGenerationReasoningEffort ?? "automatic",
+        reasoningEffort:
+          controller.defaults.flashcardGenerationReasoningEffort ?? defaultTaskReasoning(task),
       };
     case "tutor":
       return {
         profileId: controller.defaults.tutorProfileId ?? null,
         modelId: controller.defaults.tutorModelId ?? null,
-        reasoningEffort: controller.defaults.tutorReasoningEffort ?? "automatic",
+        reasoningEffort: controller.defaults.tutorReasoningEffort ?? defaultTaskReasoning(task),
       };
     case "embeddings":
       return {
         profileId: controller.defaults.embeddingsProfileId ?? null,
         modelId: controller.defaults.embeddingsModelId ?? null,
-        reasoningEffort: "none",
+        reasoningEffort: defaultTaskReasoning(task),
       };
   }
 }
