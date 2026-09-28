@@ -7,10 +7,8 @@ use super::*;
 const GENERATED_IMPORT_FORMAT: &str = "ostudy-flashcards";
 const LEGACY_GENERATED_IMPORT_VERSION: i64 = 1;
 const GENERATED_IMPORT_VERSION: i64 = 2;
-const SUPPORTED_GENERATED_IMPORT_VERSIONS: [i64; 2] = [
-    LEGACY_GENERATED_IMPORT_VERSION,
-    GENERATED_IMPORT_VERSION,
-];
+const SUPPORTED_GENERATED_IMPORT_VERSIONS: [i64; 2] =
+    [LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION];
 
 pub(crate) fn is_supported_generated_import_identity(format: &str, version: i64) -> bool {
     format == GENERATED_IMPORT_FORMAT && SUPPORTED_GENERATED_IMPORT_VERSIONS.contains(&version)

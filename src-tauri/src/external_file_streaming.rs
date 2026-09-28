@@ -834,13 +834,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        authoring::card_types_and_templates::generated_import::
-            import_generated_flashcards_bytes_with_commit_context,
+        authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit_context,
         cards::questions::ValidatedQuestion,
     };
 
-    const MIXED_V2_EXAMPLE: &str =
-        include_str!("../../docs/examples/mixed-card-types.ostudy.json");
+    const MIXED_V2_EXAMPLE: &str = include_str!("../../docs/examples/mixed-card-types.ostudy.json");
     static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
     #[test]
