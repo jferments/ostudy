@@ -65,8 +65,7 @@ const REPAIRS: &[DataRepair] = &[
     },
 ];
 
-pub(crate) fn repair_contract_rows(
-) -> Vec<(i64, &'static str, &'static str, i64)> {
+pub(crate) fn repair_contract_rows() -> Vec<(i64, &'static str, &'static str, i64)> {
     REPAIRS
         .iter()
         .map(|repair| {

@@ -253,8 +253,7 @@ const MIGRATIONS: &[Migration] = &[
     },
 ];
 
-pub(crate) fn public_migration_contract_rows(
-) -> Vec<(i64, &'static str, &'static str, bool)> {
+pub(crate) fn public_migration_contract_rows() -> Vec<(i64, &'static str, &'static str, bool)> {
     MIGRATIONS
         .iter()
         .map(|migration| {
@@ -268,8 +267,7 @@ pub(crate) fn public_migration_contract_rows(
         .collect()
 }
 
-pub(crate) fn release_contract_metadata(
-) -> (
+pub(crate) fn release_contract_metadata() -> (
     &'static str,
     i64,
     i64,
