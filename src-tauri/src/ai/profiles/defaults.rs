@@ -19,10 +19,8 @@ struct TaskAssignment {
     reasoning_effort: String,
 }
 
-pub(super) const OPENROUTER_DEFAULT_GENERATION_MODEL: &str =
-    "deepseek/deepseek-v4.1-flash";
-pub(super) const OPENROUTER_DEFAULT_EMBEDDING_MODEL: &str =
-    "qwen/qwen3-embedding-4b";
+pub(super) const OPENROUTER_DEFAULT_GENERATION_MODEL: &str = "deepseek/deepseek-v4.1-flash";
+pub(super) const OPENROUTER_DEFAULT_EMBEDDING_MODEL: &str = "qwen/qwen3-embedding-4b";
 
 pub(super) fn default_reasoning_effort(task: AiTaskKind) -> &'static str {
     match task {

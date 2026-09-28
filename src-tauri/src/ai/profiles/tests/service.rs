@@ -83,7 +83,10 @@ fn session_credential_updates_epoch_without_exposing_value() {
         defaults.embeddings_model_id.as_deref(),
         Some("qwen/qwen3-embedding-4b")
     );
-    assert_eq!(defaults.embeddings_reasoning_effort.as_deref(), Some("none"));
+    assert_eq!(
+        defaults.embeddings_reasoning_effort.as_deref(),
+        Some("none")
+    );
 }
 
 #[test]
@@ -174,7 +177,10 @@ fn first_openrouter_key_seeds_only_unassigned_defaults_and_later_keys_do_not_rep
     let after_second = service::get_task_defaults(&database).unwrap();
     assert_eq!(after_second.tutor_profile_id, seeded.tutor_profile_id);
     assert_eq!(after_second.tutor_model_id, seeded.tutor_model_id);
-    assert_eq!(after_second.embeddings_profile_id, seeded.embeddings_profile_id);
+    assert_eq!(
+        after_second.embeddings_profile_id,
+        seeded.embeddings_profile_id
+    );
     assert_eq!(after_second.embeddings_model_id, seeded.embeddings_model_id);
 }
 
