@@ -1,4 +1,5 @@
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -88,6 +89,21 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
             self.assertTrue(case["whyNotComplete"])
         for key in ("websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"):
             self.assertTrue(dossier[key].startswith("https://"))
+
+    def test_submission_builder_uses_unicode_normalized_collision_keys(self):
+        spec = importlib.util.spec_from_file_location("ostudy_plugin_builder", BUILDER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual(
+            module.archive_collision_key("assets/café.png"),
+            module.archive_collision_key("assets/cafe\u0301.png"),
+        )
+        self.assertEqual(
+            module.archive_collision_key("SKILLS/Example/SKILL.md"),
+            module.archive_collision_key("skills/example/skill.md"),
+        )
 
     def test_web_submission_zip_is_deterministic_and_skills_only(self):
         with tempfile.TemporaryDirectory() as directory:

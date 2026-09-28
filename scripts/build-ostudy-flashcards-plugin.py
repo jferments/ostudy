@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
+import unicodedata
 import zipfile
 
 
@@ -89,6 +90,11 @@ def load_manifest() -> dict:
     return value
 
 
+def archive_collision_key(path: str) -> str:
+    """Match portal-style case/Unicode path normalization for collision checks."""
+    return unicodedata.normalize("NFC", path).casefold()
+
+
 def collect_package_files() -> list[tuple[Path, str]]:
     for forbidden in ("mcp.json", ".mcp.json", ".app.json"):
         if (PLUGIN / forbidden).exists():
@@ -118,7 +124,7 @@ def collect_package_files() -> list[tuple[Path, str]]:
             fail(f"archive paths must use forward slashes: {relative}")
         if len(posix.parts) > MAX_PATH_SEGMENTS:
             fail(f"archive path exceeds {MAX_PATH_SEGMENTS} segments: {relative}")
-        normalized = relative.casefold()
+        normalized = archive_collision_key(relative)
         if normalized in seen:
             fail(f"archive path collides after case normalization: {relative}")
         seen.add(normalized)
