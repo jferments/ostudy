@@ -5,7 +5,8 @@ use super::*;
 // maintaining a parallel card-storage path.
 
 const GENERATED_IMPORT_FORMAT: &str = "ostudy-flashcards";
-const GENERATED_IMPORT_VERSION: i64 = 1;
+const LEGACY_GENERATED_IMPORT_VERSION: i64 = 1;
+const GENERATED_IMPORT_VERSION: i64 = 2;
 const MAX_GENERATED_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_GENERATED_IMPORT_CARDS: usize = 10_000;
 const MAX_GENERATED_IMPORT_ERROR_EXAMPLES: usize = 20;

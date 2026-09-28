@@ -22,12 +22,12 @@ There is no generated-import preview window and no separate generated-import but
 
 ## File identity
 
-The recommended filename suffix is `.ostudy.json`. The file itself is ordinary UTF-8 JSON with this envelope:
+The recommended filename suffix is `.ostudy.json`. New files should use **format version 2**, whose reviewable JSON Schema is [`docs/ostudy-flashcards-v2.schema.json`](../ostudy-flashcards-v2.schema.json). Version 1 remains a Basic/Cloze compatibility reader. The file itself is ordinary UTF-8 JSON with this envelope:
 
 ```json
 {
   "format": "ostudy-flashcards",
-  "formatVersion": 1,
+  "formatVersion": 2,
   "deck": {
     "mode": "create",
     "name": "Required deck name",
@@ -98,7 +98,9 @@ The mode is `one_at_a_time` or `all_together`. Cloze source uses the existing bo
 
 ### Interactive questions (version 2)
 
-Version 2 can carry the six text-native interactive-question definitions used by generated JSON: single-best-answer, select-all, true/false, matching, grouping, and ordering. Definitions pass the same native question validator/evaluator used by ordinary authoring; the JSON importer does not invent a second grading model. Image occlusion is intentionally not part of this text-only transport because generated JSON cannot invent or carry local managed-image ownership.
+Version 2 can carry the six text-native interactive-question definitions used by generated JSON: **single-choice, select-all, true/false, matching, grouping, and ordering**, alongside Basic and Cloze in the same file. Each interactive card uses `"type": "interactive"` and a typed `question` object. Definitions pass the same native question validator/evaluator used by ordinary authoring; the JSON importer does not invent a second grading model. Image occlusion is intentionally not part of this text-only transport because generated JSON cannot invent or carry local managed-image ownership.
+
+A complete mixed-family example is [`docs/examples/mixed-card-types.ostudy.json`](../examples/mixed-card-types.ostudy.json).
 
 ## Restricted Markdown
 
@@ -157,4 +159,4 @@ The harness never touches the user's real application data. It uses a disposable
 - All accepted writes use the same Rust authoring, tag, duplicate, cloze, generated-card, and scheduling logic as the ordinary editor.
 - Validation or persistence failure leaves the library unchanged.
 - Existing `.studydeck` behavior is unchanged.
-- Format versions 1 and 2 remain explicit supported readers. Version 1 stays Basic/Cloze-only; version 2 owns mixed typed questions. Incompatible additions require a later version.
+- Format versions 1 and 2 remain explicit supported readers. Version 1 stays Basic/Cloze-only; **version 2 is the current writer/agent contract and supports Basic, Cloze, single-choice, select-all, true/false, matching, grouping, and ordering in one file**. Incompatible additions require a later version.

@@ -39,11 +39,12 @@ pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImp
     })?;
 
     if parsed.format != GENERATED_IMPORT_FORMAT
-        || ![GENERATED_IMPORT_VERSION, 2].contains(&parsed.format_version)
+        || ![LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION]
+            .contains(&parsed.format_version)
     {
         return Err(CommandError::new(
             "unsupported_flashcard_import",
-            "Expected ostudy-flashcards version 1 (Basic/Cloze) or 2 (mixed question types).",
+            "Expected ostudy-flashcards version 1 (Basic/Cloze) or 2 (mixed card and question types).",
         ));
     }
 
@@ -167,7 +168,7 @@ fn prepare_import_card(
             (recall(CardNoteDraft::Cloze { source: text, mode })?, tags)
         }
         GeneratedImportCard::Interactive { question, tags } => {
-            if version != 2 {
+            if version != GENERATED_IMPORT_VERSION {
                 return Err(CommandError::new(
                     "unsupported_flashcard_import",
                     format!("{path}: interactive questions require formatVersion 2."),
