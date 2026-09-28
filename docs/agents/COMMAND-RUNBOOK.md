@@ -42,7 +42,7 @@ Verify the ordinary contributor environment without rebuilding:
 ./scripts/ostudy-dev doctor
 ```
 
-Use `./scripts/ostudy-dev doctor --native-smoke` when WebDriver/native-smoke tools are also required. These contributor diagnostics intentionally do **not** assert the private Actions runner name, runner account, KVM sizing, runner workspace, or GitHub environment; those belong to `scripts/runner/` and CI only.
+Use `./scripts/ostudy-dev doctor --native-smoke` when WebDriver/native-smoke tools are also required. Script-analysis binaries are check-only rather than core build prerequisites; use `./scripts/ostudy-dev doctor --script-linters` when you specifically want to verify the pinned ShellCheck/Ruff/ty toolset outside the static gate. These contributor diagnostics intentionally do **not** assert the private Actions runner name, runner account, KVM sizing, runner workspace, or GitHub environment; those belong to `scripts/runner/` and CI only.
 
 For a read-only report of the automatically resolved production and development libraries:
 

@@ -10,14 +10,18 @@ source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 
 CHECK_NATIVE_SMOKE=0
-case "${1:-}" in
-  "") ;;
-  --native-smoke) CHECK_NATIVE_SMOKE=1 ;;
-  *)
-    printf 'Usage: ./scripts/doctor.sh [--native-smoke]\n' >&2
-    exit 2
-    ;;
-esac
+CHECK_SCRIPT_LINTERS=0
+while (( $# > 0 )); do
+  case "$1" in
+    --native-smoke) CHECK_NATIVE_SMOKE=1 ;;
+    --script-linters) CHECK_SCRIPT_LINTERS=1 ;;
+    *)
+      printf 'Usage: ./scripts/doctor.sh [--native-smoke] [--script-linters]\n' >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 failures=0
 ok() { printf 'OK   %s\n' "$*"; }
@@ -44,10 +48,16 @@ exact_version() {
 printf 'ostudy development environment diagnostics\n\n'
 
 for command_name in \
-  git curl jq node npm pnpm python3 ruff shellcheck ty rustup rustc cargo rustfmt cargo-clippy \
+  git curl jq node npm pnpm python3 rustup rustc cargo rustfmt cargo-clippy \
   pkg-config sqlite3 sha256sum tar; do
   require_command "$command_name"
 done
+
+if (( CHECK_SCRIPT_LINTERS == 1 )); then
+  for command_name in ruff shellcheck ty; do
+    require_command "$command_name"
+  done
+fi
 
 if [[ -n "${OSTUDY_NODE_TOOLCHAIN_BIN:-}" ]]; then
   ok "Node toolchain: ${OSTUDY_NODE_TOOLCHAIN_SOURCE} (${OSTUDY_NODE_TOOLCHAIN_BIN})"
@@ -67,9 +77,11 @@ if (( failures == 0 )); then
   exact_version "Node" "$(node --version | sed 's/^v//')" "$NODE_VERSION"
   exact_version "npm" "$(npm --version)" "$NPM_VERSION"
   exact_version "pnpm" "$(pnpm --version)" "$PNPM_VERSION"
-  exact_version "Ruff" "$(ruff --version | awk '{print $2}')" "$RUFF_VERSION"
-  exact_version "ShellCheck" "$(shellcheck --version | sed -n 's/^version: //p' | head -n 1)" "$SHELLCHECK_VERSION"
-  exact_version "ty" "$(ty version | awk '{print $2}')" "$TY_VERSION"
+  if (( CHECK_SCRIPT_LINTERS == 1 )); then
+    exact_version "Ruff" "$(ruff --version | awk '{print $2}')" "$RUFF_VERSION"
+    exact_version "ShellCheck" "$(shellcheck --version | sed -n 's/^version: //p' | head -n 1)" "$SHELLCHECK_VERSION"
+    exact_version "ty" "$(ty version | awk '{print $2}')" "$TY_VERSION"
+  fi
   exact_version "Rust" "$(rustc --version | awk '{print $2}')" "$RUST_VERSION"
   exact_version "Cargo" "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
 
@@ -103,8 +115,12 @@ if (( failures > 0 )); then
   exit 1
 fi
 
-if (( CHECK_NATIVE_SMOKE == 1 )); then
-  printf '\nOK   Core and native-smoke requirements passed.\n'
+if (( CHECK_NATIVE_SMOKE == 1 && CHECK_SCRIPT_LINTERS == 1 )); then
+  printf '\nOK   Core build, script-linter, and native-smoke requirements passed.\n'
+elif (( CHECK_NATIVE_SMOKE == 1 )); then
+  printf '\nOK   Core build and native-smoke requirements passed.\n'
+elif (( CHECK_SCRIPT_LINTERS == 1 )); then
+  printf '\nOK   Core build and script-linter requirements passed.\n'
 else
   printf '\nOK   Core build requirements passed.\n'
 fi
