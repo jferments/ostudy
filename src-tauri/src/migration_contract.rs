@@ -104,8 +104,7 @@ fn contract() -> DatabaseContract {
             },
         )
         .collect();
-    let (lineage, baseline_version, version, name, checksum, release_migrations) =
-        database::release_contract_metadata();
+    let release = database::release_contract_metadata();
     DatabaseContract {
         schema_version: 1,
         public: PublicContract {
@@ -116,12 +115,12 @@ fn contract() -> DatabaseContract {
         },
         repairs,
         release: ReleaseContract {
-            lineage,
-            baseline_version,
-            version,
-            name,
-            checksum,
-            migrations: release_migrations
+            lineage: release.lineage,
+            baseline_version: release.baseline_version,
+            version: release.version,
+            name: release.name,
+            checksum: release.checksum,
+            migrations: release.migrations
                 .into_iter()
                 .map(|(version, name, checksum)| ReleaseMigrationContract {
                     version,

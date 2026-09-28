@@ -267,28 +267,30 @@ pub(crate) fn public_migration_contract_rows() -> Vec<(i64, &'static str, &'stat
         .collect()
 }
 
-pub(crate) fn release_contract_metadata() -> (
-    &'static str,
-    i64,
-    i64,
-    &'static str,
-    &'static str,
-    Vec<(i64, &'static str, &'static str)>,
-) {
+pub(crate) struct ReleaseContractMetadata {
+    pub(crate) lineage: &'static str,
+    pub(crate) baseline_version: i64,
+    pub(crate) version: i64,
+    pub(crate) name: &'static str,
+    pub(crate) checksum: &'static str,
+    pub(crate) migrations: Vec<(i64, &'static str, &'static str)>,
+}
+
+pub(crate) fn release_contract_metadata() -> ReleaseContractMetadata {
     let mut migrations = vec![(
         release::BASELINE_VERSION,
         release::BASELINE_NAME,
         release::BASELINE_CHECKSUM,
     )];
     migrations.extend(release::migration_contract_rows());
-    (
-        release::SCHEMA_LINEAGE,
-        release::BASELINE_VERSION,
-        release::SCHEMA_VERSION,
-        release::BASELINE_NAME,
-        release::BASELINE_CHECKSUM,
+    ReleaseContractMetadata {
+        lineage: release::SCHEMA_LINEAGE,
+        baseline_version: release::BASELINE_VERSION,
+        version: release::SCHEMA_VERSION,
+        name: release::BASELINE_NAME,
+        checksum: release::BASELINE_CHECKSUM,
         migrations,
-    )
+    }
 }
 
 /// Terminal version of the pre-0.1 public-v1 compatibility lineage.
