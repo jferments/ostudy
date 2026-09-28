@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use serde_json::{json, Map, Value};
 
 use super::{
-    content::{parse_section_with_images, validate_generated_safety},
+    content::{
+        parse_section_with_images, validate_generated_safety, validate_generated_writing_style,
+    },
     protocol, study_guide_section_schema, GroundedStudyGuideSection, KnowledgeCatalog,
     StudyGuideSectionContent,
 };
@@ -216,8 +218,10 @@ fn valid_field(field: &str, value: Option<&Value>) -> bool {
         ..StudyGuideSectionContent::default()
     });
     probe[field] = value.clone();
-    serde_json::from_value::<StudyGuideSectionContent>(probe)
-        .is_ok_and(|section| validate_generated_safety(&section).is_ok())
+    serde_json::from_value::<StudyGuideSectionContent>(probe).is_ok_and(|section| {
+        validate_generated_safety(&section).is_ok()
+            && validate_generated_writing_style(&section).is_ok()
+    })
 }
 
 #[cfg(test)]

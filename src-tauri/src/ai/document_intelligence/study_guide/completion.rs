@@ -19,23 +19,23 @@ pub(super) struct StudyGuideCompletionPlan {
 // it must not receive half the first-pass allowance merely because of its owner.
 pub(super) const DOCUMENT_GUIDE_COMPLETION_PLAN: StudyGuideCompletionPlan =
     StudyGuideCompletionPlan {
-        initial_visible_tokens: 6_144,
-        repair_visible_tokens: 12_288,
+        initial_visible_tokens: 4_096,
+        repair_visible_tokens: 6_144,
     };
 
 pub(super) const COLLECTION_GUIDE_COMPLETION_PLANS: [StudyGuideCompletionPlan; 4] = [
     DOCUMENT_GUIDE_COMPLETION_PLAN,
     StudyGuideCompletionPlan {
-        initial_visible_tokens: 4_096,
-        repair_visible_tokens: 8_192,
-    },
-    StudyGuideCompletionPlan {
         initial_visible_tokens: 3_072,
-        repair_visible_tokens: 6_144,
+        repair_visible_tokens: 4_096,
     },
     StudyGuideCompletionPlan {
         initial_visible_tokens: 2_048,
-        repair_visible_tokens: 4_096,
+        repair_visible_tokens: 3_072,
+    },
+    StudyGuideCompletionPlan {
+        initial_visible_tokens: 1_536,
+        repair_visible_tokens: 2_048,
     },
 ];
 
@@ -143,20 +143,20 @@ mod tests {
         assert_eq!(plan, DOCUMENT_GUIDE_COMPLETION_PLAN);
         assert_eq!(observed, vec![plan]);
         for plan in COLLECTION_GUIDE_COMPLETION_PLANS {
-            assert_eq!(plan.repair_visible_tokens, plan.initial_visible_tokens * 2);
+            assert!(plan.repair_visible_tokens > plan.initial_visible_tokens);
         }
     }
 
     #[test]
     fn small_context_fallback_is_only_for_indivisible_knowledge() {
         let fits = |plan: StudyGuideCompletionPlan| {
-            if plan.repair_visible_tokens <= 6_144 {
+            if plan.repair_visible_tokens <= 3_072 {
                 Ok(())
             } else {
                 Err(CommandError::new("ai_document_context_budget", "split"))
             }
         };
-        assert_eq!(choose_plan(1, fits).unwrap().repair_visible_tokens, 6_144);
+        assert_eq!(choose_plan(1, fits).unwrap().repair_visible_tokens, 3_072);
         assert_eq!(
             choose_plan(2, fits).unwrap_err().code,
             "ai_document_context_budget"
@@ -176,7 +176,7 @@ mod tests {
     fn guide_first_pass_explains_joint_budget_and_preserves_qualifications() {
         let instruction = DOCUMENT_GUIDE_COMPLETION_PLAN.instructions();
         for required in [
-            "6144 tokens",
+            "4096 tokens",
             "7,500 human-readable characters",
             "including all categories",
             "keyPoints are optional",
@@ -187,7 +187,7 @@ mod tests {
         }
         assert!(DOCUMENT_GUIDE_COMPLETION_PLAN
             .recovery_instructions()
-            .contains("12288"));
+            .contains("6144"));
     }
 
     #[test]

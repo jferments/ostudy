@@ -362,6 +362,18 @@ async fn request_study_guide_section_with_retry(
     match first {
         Ok(section) => Ok(section),
         Err(error) if guide_retryable(&error) => {
+            let style_fallback = if error.code == "ai_document_output_style" {
+                draft.as_ref().and_then(|candidate| {
+                    parse_section_with_images_style_advisory(
+                        candidate.clone(),
+                        knowledge,
+                        !images.is_empty(),
+                    )
+                    .ok()
+                })
+            } else {
+                None
+            };
             if !crate::ai::generation::reserve_recovery(
                 task.diagnostics.as_ref(),
                 "guide_authoring",
@@ -409,10 +421,37 @@ async fn request_study_guide_section_with_retry(
                         }
                         None => request_json(runtime, task, request).await,
                     };
-                    return response
-                        .and_then(|value| repair.apply(value, knowledge, !images.is_empty()))
-                        .map_err(|error| collapse_guide_retry_error(error, "study-guide fields"));
+                    let repaired = response
+                        .and_then(|value| repair.apply(value, knowledge, !images.is_empty()));
+                    return match repaired {
+                        Ok(section) => Ok(section),
+                        Err(repair_error) => {
+                            if let Some(section) = style_fallback {
+                                crate::logging::warn_target(
+                                    "ai.document.study_guide",
+                                    "study_guide_style_repair_exhausted",
+                                    "The bounded style repair failed, so ostudy retained the original source-grounded section and will rely on whole-guide editorial organization rather than discard the guide.",
+                                    json!({"code":repair_error.code.as_str()}),
+                                );
+                                Ok(section)
+                            } else {
+                                Err(collapse_guide_retry_error(
+                                    repair_error,
+                                    "study-guide fields",
+                                ))
+                            }
+                        }
+                    };
                 }
+            }
+            if let Some(section) = style_fallback {
+                crate::logging::warn_target(
+                    "ai.document.study_guide",
+                    "study_guide_style_repair_unavailable",
+                    "The style repair could not be isolated, so ostudy retained the original source-grounded section and will rely on whole-guide editorial organization rather than discard the guide.",
+                    json!({"code":error.code.as_str()}),
+                );
+                return Ok(section);
             }
             let candidate = draft.map_or_else(String::new, |value| {
                 format!("\n<invalid-guide-candidate>\n{value}\n</invalid-guide-candidate>")
@@ -465,7 +504,11 @@ fn collapse_guide_retry_error(error: CommandError, task: &str) -> CommandError {
 }
 
 fn guide_retryable(error: &CommandError) -> bool {
-    retryable_contract_error(error) || error.code == "ai_document_output_truncated"
+    retryable_contract_error(error)
+        || matches!(
+            error.code.as_str(),
+            "ai_document_output_truncated" | "ai_document_output_style"
+        )
 }
 
 fn compact_plan_context(

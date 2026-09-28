@@ -6,6 +6,23 @@ pub(super) fn parse_section_with_images(
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
+    parse_section_with_images_mode(value, knowledge, images_attached, true)
+}
+
+pub(super) fn parse_section_with_images_style_advisory(
+    value: Value,
+    knowledge: &KnowledgeCatalog,
+    images_attached: bool,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    parse_section_with_images_mode(value, knowledge, images_attached, false)
+}
+
+fn parse_section_with_images_mode(
+    value: Value,
+    knowledge: &KnowledgeCatalog,
+    images_attached: bool,
+    require_writing_style: bool,
+) -> Result<GroundedStudyGuideSection, CommandError> {
     let mut value = value;
     if !images_attached {
         if let Some(content) = value.get_mut("content").and_then(Value::as_object_mut) {
@@ -21,7 +38,7 @@ pub(super) fn parse_section_with_images(
             content.insert("visualExplanations".into(), json!([]));
         }
     }
-    parse_grounded_section_with_images(value, knowledge, images_attached)
+    parse_grounded_section_with_images(value, knowledge, images_attached, require_writing_style)
 }
 
 #[cfg(test)]
@@ -29,13 +46,14 @@ pub(super) fn parse_grounded_section(
     value: Value,
     knowledge: &KnowledgeCatalog,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    parse_grounded_section_with_images(value, knowledge, true)
+    parse_grounded_section_with_images(value, knowledge, true, true)
 }
 
 fn parse_grounded_section_with_images(
     value: Value,
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
+    require_writing_style: bool,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let schema = protocol::schema(knowledge, images_attached);
     crate::ai::structured_output::log_shape(&value, &schema, "study_guide_envelope");
@@ -59,7 +77,7 @@ fn parse_grounded_section_with_images(
         })?;
     let ids = protocol::resolve(&ids, knowledge)?;
     Ok(GroundedStudyGuideSection {
-        content: parse_study_guide_section(content.clone())?,
+        content: parse_study_guide_section_mode(content.clone(), require_writing_style)?,
         knowledge_support: knowledge.select(&ids, 64)?,
         catalog_fingerprint: knowledge.fingerprint()?,
     })
@@ -67,6 +85,13 @@ fn parse_grounded_section_with_images(
 
 pub(super) fn parse_study_guide_section(
     value: Value,
+) -> Result<StudyGuideSectionContent, CommandError> {
+    parse_study_guide_section_mode(value, true)
+}
+
+fn parse_study_guide_section_mode(
+    value: Value,
+    require_writing_style: bool,
 ) -> Result<StudyGuideSectionContent, CommandError> {
     let value = protocol::normalize_content(value);
     let section: StudyGuideSectionContent =
@@ -79,6 +104,17 @@ pub(super) fn parse_study_guide_section(
     // Validate BEFORE the shared authored-content normalizer can truncate an
     // oversized field. Never cut a qualification to meet an editorial target.
     validate_generated_safety(&section)?;
+    if let Err(error) = validate_generated_writing_style(&section) {
+        if require_writing_style {
+            return Err(error);
+        }
+        crate::logging::warn_target(
+            "ai.document.study_guide",
+            "study_guide_style_repair_fallback",
+            "A source-grounded guide section was retained after its bounded style repair failed; whole-guide editorial organization remains required.",
+            json!({"code":error.code}),
+        );
+    }
     if let Err(error) = validate_generated_outline_style(section.clone()) {
         crate::logging::debug_target(
             "ai.document.study_guide",
@@ -100,22 +136,6 @@ pub(super) fn validate_generated_safety(
     if section.overview.trim().is_empty() {
         return Err(output_error(
             "A guide requires a source-supported narrative overview.",
-        ));
-    }
-    if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
-        return Err(output_error(
-            "A guide overview must be narrative prose rather than a topic inventory.",
-        ));
-    }
-    if section.key_points.iter().any(|value| {
-        let words = value.split_whitespace().count();
-        words <= 2
-            && !value.contains(':')
-            && !value.contains('=')
-            && !value.chars().any(|character| character.is_ascii_digit())
-    }) {
-        return Err(output_error(
-            "Guide key points must be factual propositions; bare vocabulary belongs in importantTerms.",
         ));
     }
     if generated_section_char_count(section) > 24_000 {
@@ -231,13 +251,45 @@ pub(super) fn validate_generated_safety(
 
 pub(super) fn inventory_like_prose(value: &str) -> bool {
     let clean = value.trim();
+    let has_sentence_ending = clean.contains('.') || clean.contains('!') || clean.contains('?');
+    let nonempty_lines = clean
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
     clean.contains(" / ")
         || clean.contains(" | ")
-        || clean.matches("; ").count() >= 3
-        || (clean.matches(',').count() >= 4
-            && !clean.contains('.')
-            && !clean.contains('!')
-            && !clean.contains('?'))
+        || (nonempty_lines.len() > 1
+            && nonempty_lines.iter().all(|line| {
+                line.starts_with("- ") || line.starts_with("* ") || line.starts_with("• ")
+            }))
+        || (!has_sentence_ending
+            && clean.split_whitespace().count() < 32
+            && (clean.matches("; ").count() >= 3 || clean.matches(',').count() >= 4))
+}
+
+pub(super) fn validate_generated_writing_style(
+    section: &StudyGuideSectionContent,
+) -> Result<(), CommandError> {
+    if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
+        return Err(CommandError::new(
+            "ai_document_output_style",
+            "A guide overview must be narrative prose rather than a topic inventory.",
+        ));
+    }
+    if section.key_points.iter().any(|value| {
+        let words = value.split_whitespace().count();
+        words <= 2
+            && !value.contains(':')
+            && !value.contains('=')
+            && !value.chars().any(|character| character.is_ascii_digit())
+    }) {
+        return Err(CommandError::new(
+            "ai_document_output_style",
+            "Guide key points must be factual propositions; bare vocabulary belongs in importantTerms.",
+        ));
+    }
+    Ok(())
 }
 
 pub(super) fn validate_generated_outline_style(

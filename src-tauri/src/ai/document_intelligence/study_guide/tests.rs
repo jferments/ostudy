@@ -1,23 +1,33 @@
 use super::*;
 
 #[test]
-fn narrative_overview_rejects_inventories_but_allows_paragraphs_without_key_points() {
+fn narrative_style_is_repairable_without_becoming_a_hard_source_safety_failure() {
     let mut section = StudyGuideSectionContent {
         overview: "Enteric neurotransmitters / GI hormones / intrinsic nervous system".into(),
         key_points: vec!["Gastrin".into()],
         ..StudyGuideSectionContent::default()
     };
-    let error = validate_generated_safety(&section).expect_err("inventory must fail");
-    assert_eq!(error.code, "ai_document_output_invalid");
+    assert!(validate_generated_safety(&section).is_ok());
+    let error =
+        validate_generated_writing_style(&section).expect_err("inventory should request repair");
+    assert_eq!(error.code, "ai_document_output_style");
 
     section.overview =
         "Gastrointestinal function is coordinated by neural and hormonal signaling. Enteric and extrinsic pathways integrate motility, secretion, and feedback across the gut.\n\nThese pathways work together rather than as a disconnected inventory of mediators.".into();
     section.key_points.clear();
     assert!(validate_generated_safety(&section).is_ok());
+    assert!(validate_generated_writing_style(&section).is_ok());
     assert!(inventory_like_prose("A / B / C"));
     assert!(!inventory_like_prose(&section.overview));
+    assert!(!inventory_like_prose(
+        "Metabolic syndrome links central adiposity; insulin resistance; dyslipidemia; and hypertension. These abnormalities reinforce cardiovascular risk."
+    ));
 
     section.key_points = vec!["Gastrin".into()];
+    assert!(validate_generated_safety(&section).is_ok());
+    assert!(validate_generated_writing_style(&section).is_err());
+
+    section.overview.clear();
     assert!(validate_generated_safety(&section).is_err());
 }
 
@@ -81,8 +91,8 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
     assert_eq!(
         DOCUMENT_GUIDE_COMPLETION_PLAN,
         StudyGuideCompletionPlan {
-            initial_visible_tokens: 6_144,
-            repair_visible_tokens: 12_288,
+            initial_visible_tokens: 4_096,
+            repair_visible_tokens: 6_144,
         }
     );
     assert_eq!(
@@ -91,7 +101,7 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
     );
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .iter()
-        .all(|plan| plan.repair_visible_tokens == plan.initial_visible_tokens * 2));
+        .all(|plan| plan.repair_visible_tokens > plan.initial_visible_tokens));
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .windows(2)
         .all(|pair| pair[0].repair_visible_tokens > pair[1].repair_visible_tokens));
