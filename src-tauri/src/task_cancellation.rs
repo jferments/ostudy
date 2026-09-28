@@ -426,8 +426,7 @@ pub(crate) fn set_current_reasoning_context(
         if let Ok(mut progress) = task.progress.lock() {
             progress.provider_kind = Some(provider.chars().take(40).collect());
             progress.model_id = Some(model.chars().take(160).collect());
-            progress.requested_reasoning_effort =
-                Some(requested_effort.chars().take(16).collect());
+            progress.requested_reasoning_effort = Some(requested_effort.chars().take(16).collect());
             progress.reasoning_effort = effective_effort.chars().take(16).collect();
         }
     });

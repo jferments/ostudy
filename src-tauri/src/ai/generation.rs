@@ -46,8 +46,6 @@ mod live_metrics_tests {
     }
 }
 
-
-
 #[derive(Clone)]
 pub(crate) struct Context {
     database: Database,
@@ -398,8 +396,7 @@ impl Context {
                 self.observe_cache_prefix(stage, provider, &bytes),
             );
         }
-        let (request_bytes, text_bytes, image_count, evidence_bytes) =
-            live_request_metrics(&sizes);
+        let (request_bytes, text_bytes, image_count, evidence_bytes) = live_request_metrics(&sizes);
         let model = body
             .get("model")
             .and_then(Value::as_str)
