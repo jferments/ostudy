@@ -67,7 +67,8 @@ where
                                 retry_partial: input.retry_partial,
                                 diagnostics: input.diagnostics,
                                 logical_key: input.logical_key,
-                                initial_visible_completion_tokens: input.initial_visible_completion_tokens,
+                                initial_visible_completion_tokens: input
+                                    .initial_visible_completion_tokens,
                             },
                             core_call,
                         ))

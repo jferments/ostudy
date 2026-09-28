@@ -809,7 +809,6 @@ fn insert_current_fallback_attribution(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
