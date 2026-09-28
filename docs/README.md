@@ -49,6 +49,7 @@ Focused references provide deeper contracts:
 | One-way offers, merge semantics, and encrypted transport | [Device sync architecture](architecture/device-sync.md) |
 | Complete-library activation, request generations and durable receipts | [Library restore ownership](architecture/library-restore.md) |
 | Current writer versus supported legacy data contracts | [Durable-data inventory](development/post-104-data-contract-audit.md) |
+| Generated flashcard interchange, machine schemas, and ChatGPT authoring | [Generated JSON import](reference/generated-json-import.md), [v2 schema](ostudy-flashcards-v2.schema.json), and [skills-only plugin](../integrations/ostudy-flashcards/README.md) |
 
 The [Architecture Decision Records index](decisions/README.md) explains durable reasoning, explicit supersessions and historical numeric collisions. Cite full filenames rather than an ambiguous number. An older ADR or parser evaluation is historical evidence when a later accepted decision replaces its implementation; it is not a second current backend choice.
 

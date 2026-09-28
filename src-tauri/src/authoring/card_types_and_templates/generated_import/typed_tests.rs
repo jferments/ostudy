@@ -261,3 +261,25 @@ fn every_component_has_a_stable_grounding_address_and_canonical_math() {
         .unwrap()
         .contains("inlineMath"));
 }
+
+#[test]
+fn skills_only_plugin_fixture_imports_through_native_v2_boundary() {
+    let database = Database::open_in_memory().unwrap();
+    let bytes = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/references/all-card-types.ostudy.json"
+    ));
+    let result = import_generated_flashcards_bytes_with_commit_context(
+        &database,
+        bytes,
+        |connection, _, context, _| {
+            assert_eq!(context.created_notes.len(), 8);
+            assert_eq!(counts(connection), (8, 8, 8, 0));
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert_eq!(result.created_note_count, 8);
+    assert_eq!(result.created_card_count, 8);
+    assert_eq!(result.skipped_duplicate_count, 0);
+}

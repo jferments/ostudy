@@ -18,6 +18,7 @@ const trackedFiles = execFileSync("git", ["ls-files", "-z"], {
 const tracked = new Set(trackedFiles);
 
 const allowedRootEntries = new Set([
+  ".agents",
   ".cargo",
   ".editorconfig",
   ".github",
@@ -33,6 +34,7 @@ const allowedRootEntries = new Set([
   "eslint.config.mjs", // ESLint flat-config discovery uses the conventional repository root.
   "docs",
   "index.html",
+  "integrations",
   "package.json",
   "plugins",
   "pnpm-lock.yaml",
@@ -89,6 +91,34 @@ for (const path of [
   if (!tracked.has(path)) failures.push(`Required native platform plugin source is missing: ${path}`);
 }
 
+// ChatGPT and other external integrations are distributable packages rather
+// than native Tauri plugins. Keep this root just as constrained.
+const allowedIntegrationEntries = new Set(["integrations/ostudy-flashcards"]);
+const integrationEntries = new Set(
+  trackedFiles
+    .filter((path) => path.startsWith("integrations/"))
+    .map((path) => path.split("/").slice(0, 2).join("/")),
+);
+for (const entry of [...integrationEntries].sort()) {
+  if (!allowedIntegrationEntries.has(entry)) {
+    failures.push(`${entry}: unrecognized top-level external integration package`);
+  }
+}
+for (const path of [
+  ".agents/plugins/marketplace.json",
+  "integrations/ostudy-flashcards/plugin.json",
+  "integrations/ostudy-flashcards/README.md",
+  "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/SKILL.md",
+  "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/references/ostudy-flashcards-v2.schema.json",
+  "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/references/all-card-types.ostudy.json",
+  "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/scripts/write_ostudy.py",
+]) {
+  if (!tracked.has(path)) failures.push(`Required oStudy ChatGPT plugin source is missing: ${path}`);
+}
+if (tracked.has("integrations/ostudy-flashcards/mcp.json")) {
+  failures.push("The oStudy Flashcards ChatGPT plugin is intentionally skills-only and must not add mcp.json");
+}
+
 const allowedDocsEntries = new Set([
   "README.md",
   "agents",
@@ -99,6 +129,7 @@ const allowedDocsEntries = new Set([
   "history",
   "installation",
   "ostudy-flashcards-v1.schema.json",
+  "ostudy-flashcards-v2.schema.json",
   "reference",
   "roadmap.md",
   "user-guide",
@@ -143,6 +174,7 @@ const requiredPaths = [
   "docs/reference/flashcard-import-agent.md",
   "docs/history/README.md",
   "docs/ostudy-flashcards-v1.schema.json",
+  "docs/ostudy-flashcards-v2.schema.json",
   "docs/examples/cardiovascular.ostudy.json",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",

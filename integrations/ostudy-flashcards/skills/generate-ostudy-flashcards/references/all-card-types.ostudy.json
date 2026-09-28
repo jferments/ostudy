@@ -1,0 +1,176 @@
+{
+  "format": "ostudy-flashcards",
+  "formatVersion": 2,
+  "deck": {
+    "mode": "create",
+    "name": "oStudy v2 card-type examples",
+    "description": "Conformance examples for the skills-only ChatGPT plugin."
+  },
+  "defaultTags": [
+    "plugin-conformance"
+  ],
+  "cards": [
+    {
+      "type": "basic",
+      "front": "What does preload describe?",
+      "back": "Ventricular filling/stretch at end-diastole.",
+      "tags": [
+        "basic"
+      ]
+    },
+    {
+      "type": "cloze",
+      "text": "The {{c1::sinoatrial node}} is the normal cardiac pacemaker.",
+      "tags": [
+        "cloze"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "single_choice",
+        "prompt": "Which number is prime?",
+        "options": [
+          {
+            "id": "two",
+            "content": "2",
+            "rationale": "2 has exactly two positive divisors."
+          },
+          {
+            "id": "four",
+            "content": "4",
+            "rationale": "4 is divisible by 2."
+          }
+        ],
+        "correctOptionId": "two",
+        "explanation": "A prime has exactly two positive divisors."
+      },
+      "tags": [
+        "single-choice"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "select_all",
+        "prompt": "Select all even numbers.",
+        "options": [
+          {
+            "id": "two",
+            "content": "2"
+          },
+          {
+            "id": "three",
+            "content": "3"
+          },
+          {
+            "id": "four",
+            "content": "4"
+          }
+        ],
+        "correctOptionIds": [
+          "two",
+          "four"
+        ],
+        "explanation": "Even integers are divisible by 2."
+      },
+      "tags": [
+        "select-all"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "true_false",
+        "statement": "Every integer is positive.",
+        "correct": false,
+        "correctedStatement": "Integers can be negative, zero, or positive.",
+        "explanation": "The integer set includes values on both sides of zero."
+      },
+      "tags": [
+        "true-false"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "matching",
+        "prompt": "Match each animal to its class.",
+        "pairs": [
+          {
+            "id": "cat",
+            "left": "Cat",
+            "right": "Mammal"
+          },
+          {
+            "id": "robin",
+            "left": "Robin",
+            "right": "Bird"
+          }
+        ],
+        "explanation": "Each pair tests a direct classification."
+      },
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "grouping",
+        "prompt": "Group each number by parity.",
+        "categories": [
+          {
+            "id": "even",
+            "content": "Even"
+          },
+          {
+            "id": "odd",
+            "content": "Odd"
+          }
+        ],
+        "items": [
+          {
+            "id": "two",
+            "content": "2",
+            "categoryId": "even"
+          },
+          {
+            "id": "three",
+            "content": "3",
+            "categoryId": "odd"
+          }
+        ],
+        "explanation": "Parity classifies integers by divisibility by 2."
+      },
+      "tags": [
+        "grouping"
+      ]
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "ordering",
+        "prompt": "Order the integers from smallest to largest.",
+        "items": [
+          {
+            "id": "one",
+            "content": "1"
+          },
+          {
+            "id": "two",
+            "content": "2"
+          },
+          {
+            "id": "three",
+            "content": "3"
+          }
+        ],
+        "explanation": "The authored item order is the correct sequence."
+      },
+      "tags": [
+        "ordering"
+      ]
+    }
+  ]
+}

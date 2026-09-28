@@ -28,12 +28,16 @@ src-tauri/
   gen/android/             reviewed Android shell/project and instrumentation
 
 plugins/ostudy-platform/    narrow native plugin, including Android Kotlin adapters
+.agents/plugins/            repo-local external-plugin discovery metadata
+integrations/               distributable external/chat integration packages
 scripts/                    setup/build/check/package/diagnostic/policy wrappers
 tests/                      script contracts, native WebDriver, fixtures/baselines
 docs/                       user/install/architecture/development/reference/
                             agent/decision/history documentation
 .github/workflows/          source-read-only qualification and packaging workflows
 ```
+
+`plugins/` is reserved for native Tauri packages. ChatGPT and other external integrations live under `integrations/`; the maintained oStudy Flashcards package is skills-only and uses `.agents/plugins/marketplace.json` only for repository-local discovery during development.
 
 A filename left from an earlier implementation is not proof of its current role. Trace imports, command registration, durable readers, platform selection, and tests before removing an apparent leftover. Feature-local deck-library controllers are deliberately colocated; current native document code still has focused facades plus active root `document_*` owners.
 

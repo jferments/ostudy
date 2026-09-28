@@ -1,0 +1,20 @@
+{
+  "name": "ostudy-local-plugins",
+  "interface": {
+    "displayName": "oStudy Development"
+  },
+  "plugins": [
+    {
+      "name": "ostudy-flashcards",
+      "source": {
+        "source": "local",
+        "path": "./integrations/ostudy-flashcards"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Education"
+    }
+  ]
+}
