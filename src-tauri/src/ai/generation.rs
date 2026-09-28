@@ -22,6 +22,31 @@ mod payload;
 mod recovery;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod live_metrics_tests {
+    use super::*;
+
+    #[test]
+    fn live_request_metrics_are_content_free_and_keep_evidence_separate() {
+        let sizes = json!({
+            "serializedRequestBytes": 12_000,
+            "systemInstructionBytes": 1000,
+            "embeddedSchemaBytes": 500,
+            "wireSchemaBytes": 200,
+            "userTextBytes": 4000,
+            "imageCount": 3,
+            "userParts": {
+                "knowledgeUnits": 700,
+                "groundingEvidence": 800,
+                "sourceEvidence": 900,
+                "otherUserText": 1600
+            }
+        });
+        assert_eq!(live_request_metrics(&sizes), (12_000, 5_700, 3, 2_400));
+    }
+}
+
+
 
 #[derive(Clone)]
 pub(crate) struct Context {
@@ -74,6 +99,41 @@ struct RecoveryLedger {
 }
 
 const CACHE_PREFIX_SAMPLE_MAX_BYTES: usize = 2 * 1024 * 1024;
+
+fn live_request_metrics(sizes: &Value) -> (usize, usize, usize, usize) {
+    let number = |pointer: &str| -> usize {
+        sizes
+            .pointer(pointer)
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0)
+    };
+    let text_bytes = number("/systemInstructionBytes")
+        .saturating_add(number("/embeddedSchemaBytes"))
+        .saturating_add(number("/wireSchemaBytes"))
+        .saturating_add(number("/userTextBytes"));
+    let evidence_bytes = [
+        "/userParts/knowledgeUnits",
+        "/userParts/groundingEvidence",
+        "/userParts/structuralEvidence",
+        "/userParts/sourceEvidence",
+        "/userParts/sourceWindow",
+        "/userParts/collectionDigest",
+        "/userParts/learningPlan",
+        "/userParts/outline",
+        "/userParts/repairDraft",
+        "/userParts/repairTargets",
+    ]
+    .into_iter()
+    .map(number)
+    .fold(0_usize, usize::saturating_add);
+    (
+        number("/serializedRequestBytes"),
+        text_bytes,
+        number("/imageCount"),
+        evidence_bytes,
+    )
+}
 
 #[derive(Debug)]
 struct PrefixSample {
@@ -338,6 +398,27 @@ impl Context {
                 self.observe_cache_prefix(stage, provider, &bytes),
             );
         }
+        let (request_bytes, text_bytes, image_count, evidence_bytes) =
+            live_request_metrics(&sizes);
+        let model = body
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let max_output_tokens = body
+            .get("max_tokens")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        crate::task_cancellation::record_current_request_diagnostics(
+            stage,
+            provider,
+            model,
+            request_bytes,
+            text_bytes,
+            image_count,
+            evidence_bytes,
+            max_output_tokens,
+        );
         let id = self.database.with_connection(|connection| {
             let tx = connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -363,12 +444,10 @@ impl Context {
                     request_key,
                     attempt,
                     provider,
-                    body.get("model")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown"),
+                    model,
                     unix_time_millis()?,
                     sizes.to_string(),
-                    body.get("max_tokens").and_then(Value::as_i64).unwrap_or(0)
+                    i64::try_from(max_output_tokens).unwrap_or(i64::MAX)
                 ],
             )
             .map_err(CommandError::database)?;

@@ -78,7 +78,12 @@ impl DocumentTaskContext {
         self.capabilities = capabilities.clone();
         self.reasoning_effort =
             capabilities.resolve_reasoning_effort(&self.requested_reasoning_effort);
-        crate::task_cancellation::set_current_reasoning_effort(&self.reasoning_effort);
+        crate::task_cancellation::set_current_reasoning_context(
+            &self.provider_kind,
+            &self.model_id,
+            &self.requested_reasoning_effort,
+            &self.reasoning_effort,
+        );
         let recorded_reasoning_effort = crate::task_cancellation::current_reasoning_effort();
         crate::logging::debug_target(
             "ai.document.reasoning",

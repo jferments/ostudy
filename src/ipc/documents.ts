@@ -10,6 +10,7 @@ export type DocumentExtractionMode = "native" | "page_text_fallback" | "ocr_fall
 export interface DocumentGenerationProgress {
   startedAt: number;
   phase: string;
+  phaseStartedAt: number;
   currentWindow: number | null;
   currentWindowEnd?: number | null;
   completedWindows: number;
@@ -17,7 +18,17 @@ export interface DocumentGenerationProgress {
   currentPageStart: number | null;
   currentPageEnd: number | null;
   currentPartition: number | null;
+  providerKind: string | null;
+  modelId: string | null;
+  requestedReasoningEffort: string | null;
   reasoningEffort: string;
+  currentRequestStartedAt: number | null;
+  currentRequestStage: string | null;
+  currentRequestBytes: number | null;
+  currentRequestTextBytes: number | null;
+  currentRequestImageCount: number | null;
+  currentRequestEvidenceBytes: number | null;
+  currentRequestMaxOutputTokens: number | null;
   providerRequestCount: number;
   retryCount: number;
   transientRetryCount?: number;

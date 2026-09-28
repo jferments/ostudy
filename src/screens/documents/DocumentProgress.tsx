@@ -32,10 +32,11 @@ export function GenerationDiagnostics({ progress, now }: {
   return <>
     <dl className={progressStyles.stats}>
       <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
+      <div><dt>Stage elapsed</dt><dd>{formatLiveDuration(progress?.phaseStartedAt ?? null, now)}</dd></div>
       <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
-      <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
+      <div><dt>Provider activity</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
       <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{progress ? progress.retryCount.toLocaleString() : "—"}</dd></div>
-      <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${hasUsage ? formatTokenCount(progress.reasoningTokens) : "Awaiting usage"}` : "—"}</dd></div>
+      <div><dt>Reasoning</dt><dd>{progress ? `${formatReasoning(progress)} · ${hasUsage ? formatTokenCount(progress.reasoningTokens) : "Awaiting usage"}` : "—"}</dd></div>
       <div><dt>Prompt / output</dt><dd>{progress && hasUsage ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "Awaiting usage"}</dd></div>
       <div><dt>Prompt cache</dt><dd>{progress && hasUsage ? `${formatTokenCount(progress.cachedPromptTokens)}${cacheRatio !== null ? ` (${cacheRatio.toFixed(1)}%)` : ""}` : "Awaiting usage"}</dd></div>
     </dl>
@@ -45,9 +46,25 @@ export function GenerationDiagnostics({ progress, now }: {
     {progress ? <Disclosure title="Generation details" className="tw:border-0">
       <div className="tw:grid tw:gap-3 tw:p-3">
         <dl className={progressStyles.stats}>
+          <div><dt>Provider</dt><dd>{progress.providerKind ?? "Not selected yet"}</dd></div>
+          <div><dt>Model</dt><dd className="tw:break-all">{progress.modelId ?? "Not selected yet"}</dd></div>
+          <div><dt>Requested reasoning</dt><dd>{progress.requestedReasoningEffort ?? "Not resolved yet"}</dd></div>
+          <div><dt>Effective reasoning</dt><dd>{progress.reasoningEffort}</dd></div>
           <div><dt>Usage reports</dt><dd>{progress.usageReportedRequests.toLocaleString()} reported requests</dd></div>
           <div><dt>Cache writes</dt><dd>{hasUsage ? `${formatTokenCount(progress.cacheWriteTokens)} tokens` : "Awaiting usage"}</dd></div>
         </dl>
+        {progress.currentRequestStartedAt !== null ? <section className="tw:grid tw:gap-2">
+          <strong className="tw:text-sm">Current provider request</strong>
+          <dl className={progressStyles.stats}>
+            <div><dt>Stage</dt><dd>{formatDiagnosticStage(progress.currentRequestStage)}</dd></div>
+            <div><dt>Request elapsed</dt><dd>{formatLiveDuration(progress.currentRequestStartedAt, now)}</dd></div>
+            <div><dt>Wire size</dt><dd>{formatOptionalBytes(progress.currentRequestBytes)}</dd></div>
+            <div><dt>Text/schema</dt><dd>{formatOptionalBytes(progress.currentRequestTextBytes)}</dd></div>
+            <div><dt>Evidence payload</dt><dd>{formatOptionalBytes(progress.currentRequestEvidenceBytes)}</dd></div>
+            <div><dt>Rendered images</dt><dd>{progress.currentRequestImageCount?.toLocaleString() ?? "Unknown"}</dd></div>
+            <div><dt>Output ceiling</dt><dd>{progress.currentRequestMaxOutputTokens === null ? "Unknown" : `${progress.currentRequestMaxOutputTokens.toLocaleString()} tokens`}</dd></div>
+          </dl>
+        </section> : null}
         <dl className="tw:m-0 tw:grid tw:gap-2 tw:text-sm">
           {retryDetails.map(({ label, count, explanation }) => <div key={label}>
             <dt className="tw:font-medium">{label}</dt>
@@ -57,6 +74,20 @@ export function GenerationDiagnostics({ progress, now }: {
       </div>
     </Disclosure> : null}
   </>;
+}
+
+function formatReasoning(progress: DocumentGenerationProgress): string {
+  const requested = progress.requestedReasoningEffort;
+  return requested && requested !== progress.reasoningEffort
+    ? `${requested} → ${progress.reasoningEffort}`
+    : progress.reasoningEffort;
+}
+function formatOptionalBytes(value: number | null): string {
+  return value === null ? "Unknown" : formatBytes(value);
+}
+function formatDiagnosticStage(stage: string | null): string {
+  if (!stage) return "Unknown";
+  return stage.replaceAll("_", " ").replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
 function formatProviderActivity(progress: DocumentGenerationProgress | null, now: number): string {
