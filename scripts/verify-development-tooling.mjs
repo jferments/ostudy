@@ -60,6 +60,7 @@ requireText("doctor native-smoke tools", doctor, "WebKitWebDriver tauri-driver")
 requireText("doctor script linters", doctor, "ruff shellcheck ty");
 requireText("setup pins script linters", setup, "ostudy_ensure_script_linters");
 requireText("static check owns pinned script linters", staticCheck, "ostudy_ensure_script_linters");
+requireText("full check owns pinned script linters", fullCheck, "ostudy_ensure_script_linters");
 requireText("static check runs script correctness lint", staticCheck, 'lint-scripts.sh');
 requireText("setup links ty", setup, 'ln -sfn "$OSTUDY_TY" "$LOCAL_BIN/ty"');
 requireText("static check owns local doctor", staticCheck, '"$SCRIPT_DIR/doctor.sh"');

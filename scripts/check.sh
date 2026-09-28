@@ -9,6 +9,8 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 # shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/script-linters.bash"
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
@@ -84,6 +86,7 @@ step "Verify audited PDFium runtime"
 "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 
 step "Native environment qualification"
+ostudy_ensure_script_linters
 if [[ "${OSTUDY_SKIP_NATIVE_SMOKE:-0}" == "1" ]]; then
   "$SCRIPT_DIR/doctor.sh"
 else
