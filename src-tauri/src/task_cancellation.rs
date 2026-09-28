@@ -908,7 +908,12 @@ mod tests {
             .expect("task should register");
         CURRENT_DOCUMENT_TASK
             .scope(task, async {
-                set_current_reasoning_effort("minimal");
+                set_current_reasoning_context(
+                    "openrouter",
+                    "fixture/model",
+                    "automatic",
+                    "minimal",
+                );
                 set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
                 record_current_provider_retry("contract_repair");
