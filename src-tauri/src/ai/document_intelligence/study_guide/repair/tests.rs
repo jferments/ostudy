@@ -165,7 +165,7 @@ fn document_guide_repair_keeps_hard_table_shape_and_numeric_literals() {
 }
 
 #[test]
-fn document_guide_repair_enforces_core_and_support_together_after_patching() {
+fn document_guide_repair_treats_empty_optional_key_points_as_valid_but_repairs_support() {
     let catalog = catalog_fixture();
     let mut value = candidate();
     value["content"]["keyPoints"] = json!([]);
@@ -173,7 +173,7 @@ fn document_guide_repair_enforces_core_and_support_together_after_patching() {
     let repair = GuideRepair::prepare(&value, &catalog, false)
         .unwrap()
         .unwrap();
-    assert_eq!(repair.target_count(), 2);
+    assert_eq!(repair.target_count(), 1);
     assert!(repair
         .apply(
             json!({"fields":{"keyPoints":candidate()["content"]["keyPoints"]},
@@ -186,12 +186,7 @@ fn document_guide_repair_enforces_core_and_support_together_after_patching() {
         .unwrap()
         .unwrap();
     assert!(repair
-        .apply(
-            json!({"fields":{"keyPoints":candidate()["content"]["keyPoints"]},
-        "knowledgeUnitIds":["K0"]}),
-            &catalog,
-            false
-        )
+        .apply(json!({"knowledgeUnitIds":["K0"]}), &catalog, false)
         .is_ok());
 }
 

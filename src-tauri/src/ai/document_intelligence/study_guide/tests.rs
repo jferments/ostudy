@@ -141,7 +141,7 @@ fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
     let prompt = study_guide_system_prompt();
     assert!(!prompt.contains("PDF"));
     assert!(prompt.contains("canonical"));
-    assert!(prompt.contains("STUDY-GUIDE AUTHOR"));
+    assert!(prompt.to_ascii_lowercase().contains("study-guide author"));
     assert!(prompt.contains("coherent teaching prose"));
     assert!(prompt.contains("keyPoints are optional"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
@@ -204,7 +204,7 @@ fn narrative_only_section_is_valid_and_schema_does_not_require_bullets() {
 fn soft_style_target_does_not_reject_or_truncate_valid_content() {
     let overview = [
         "Preload reflects ventricular filling before systole and helps explain changes in stroke volume.";
-        5
+        25
     ]
     .join(" ");
     assert!(overview.chars().count() > MAX_OVERVIEW_CHARS);
