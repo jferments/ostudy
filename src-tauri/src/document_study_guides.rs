@@ -351,7 +351,10 @@ pub(crate) fn publish_document_study_guide_with_editorial(
         ));
     }
     if let Some(organization) = &editorial {
-        editorial::validate(organization, plan.topics.iter().map(|topic| topic.id.as_str()))?;
+        editorial::validate(
+            organization,
+            plan.topics.iter().map(|topic| topic.id.as_str()),
+        )?;
         if overview.summary.trim().is_empty()
             || overview.summary.chars().count() > MAX_OVERVIEW_CHARS
         {
@@ -368,7 +371,8 @@ pub(crate) fn publish_document_study_guide_with_editorial(
         .collect::<HashMap<_, _>>();
     let sections = normalize_complete_sections(&plan, section_drafts)?;
     if editorial.is_none() {
-        normalized_overview.summary = guide_display_summary(&normalized_overview.summary, &sections);
+        normalized_overview.summary =
+            guide_display_summary(&normalized_overview.summary, &sections);
     }
     let schema_version = if editorial.is_some() {
         editorial::EDITORIAL_SCHEMA_VERSION
@@ -681,8 +685,14 @@ pub(crate) fn load_document_study_guide(
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
     let (mut overview, editorial) = editorial::decode_overview(&header.7, header.4)?;
     if let Some(organization) = &editorial {
-        editorial::validate(organization, plan.topics.iter().map(|topic| topic.id.as_str()))?;
-        editorial::validate(organization, sections.iter().map(|section| section.topic_id.as_str()))?;
+        editorial::validate(
+            organization,
+            plan.topics.iter().map(|topic| topic.id.as_str()),
+        )?;
+        editorial::validate(
+            organization,
+            sections.iter().map(|section| section.topic_id.as_str()),
+        )?;
         let headings = organization
             .chapters
             .iter()

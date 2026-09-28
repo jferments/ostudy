@@ -26,8 +26,8 @@ fn fixture() -> (Database, String, DocumentLearningPlan) {
             Ok(())
         })
         .unwrap();
-    let locators = [1, 2]
-        .map(|page| SourceLocator::new(SourceUnitKind::Page, vec![page], None).unwrap());
+    let locators =
+        [1, 2].map(|page| SourceLocator::new(SourceUnitKind::Page, vec![page], None).unwrap());
     let plan = ensure_document_learning_plan(
         &database,
         &document_id,
@@ -92,8 +92,8 @@ fn organization(plan: &DocumentLearningPlan) -> StudyGuideEditorial {
         chapters: vec![StudyGuideChapter {
             id: chapter_id(&topics),
             title: "Understanding the relationships".into(),
-            introduction: "The following sections explain the relationships and their restrictions."
-                .into(),
+            introduction:
+                "The following sections explain the relationships and their restrictions.".into(),
             topics,
         }],
     }
@@ -234,7 +234,9 @@ fn section_insert_failure_rolls_back_the_editorial_and_prior_active_transition()
     database
         .with_connection(|connection| {
             let count: i64 = connection
-                .query_row("SELECT COUNT(*) FROM document_study_guides", [], |row| row.get(0))
+                .query_row("SELECT COUNT(*) FROM document_study_guides", [], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(count, 1);
             Ok(())

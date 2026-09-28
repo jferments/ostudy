@@ -109,7 +109,11 @@ pub(crate) fn validate<'a>(
     let mut covered = HashSet::new();
     let mut chapter_ids = HashSet::new();
     for chapter in &editorial.chapters {
-        bounded_text(&chapter.title, 200, "A major chapter needs a bounded heading.")?;
+        bounded_text(
+            &chapter.title,
+            200,
+            "A major chapter needs a bounded heading.",
+        )?;
         bounded_text(
             &chapter.introduction,
             4_000,
@@ -120,9 +124,7 @@ pub(crate) fn validate<'a>(
                 "A major chapter has no topics or exceeds the topic limit.",
             ));
         }
-        if chapter.id != chapter_id(&chapter.topics)
-            || !chapter_ids.insert(chapter.id.as_str())
-        {
+        if chapter.id != chapter_id(&chapter.topics) || !chapter_ids.insert(chapter.id.as_str()) {
             return Err(invalid(
                 "A major chapter has an invalid or duplicate native identity.",
             ));
@@ -193,7 +195,9 @@ pub(super) fn decode_overview(
     schema_version: i64,
 ) -> Result<(StudyGuideOverview, Option<StudyGuideEditorial>), CommandError> {
     if !(1..=EDITORIAL_SCHEMA_VERSION).contains(&schema_version) {
-        return Err(invalid("This study guide uses an unsupported content schema."));
+        return Err(invalid(
+            "This study guide uses an unsupported content schema.",
+        ));
     }
     let mut value: Value = serde_json::from_str(text).map_err(CommandError::serialization)?;
     let object = value
@@ -235,7 +239,9 @@ mod tests {
             chapters: vec![StudyGuideChapter {
                 id: chapter_id(&topics),
                 title: "From principle to application".into(),
-                introduction: "The source first introduces a principle, then shows its qualified application.".into(),
+                introduction:
+                    "The source first introduces a principle, then shows its qualified application."
+                        .into(),
                 topics,
             }],
         }
@@ -309,9 +315,15 @@ mod tests {
 
     #[test]
     fn capitalization_does_not_rewrite_scientific_case() {
-        assert_eq!(capitalize_heading("cardiovascular drugs"), "Cardiovascular drugs");
+        assert_eq!(
+            capitalize_heading("cardiovascular drugs"),
+            "Cardiovascular drugs"
+        );
         assert_eq!(capitalize_heading("pH regulation"), "pH regulation");
         assert_eq!(capitalize_heading("ACE inhibitors"), "ACE inhibitors");
-        assert_eq!(capitalize_heading("énergie et travail"), "Énergie et travail");
+        assert_eq!(
+            capitalize_heading("énergie et travail"),
+            "Énergie et travail"
+        );
     }
 }
