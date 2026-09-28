@@ -114,6 +114,19 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
         height = int.from_bytes(data[20:24], "big")
         self.assertEqual((width, height), (1254, 1254))
 
+    def test_submission_builder_manifest_preflight_loads_supported_category(self):
+        spec = importlib.util.spec_from_file_location("ostudy_plugin_builder_manifest", BUILDER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        manifest = module.load_manifest()
+        self.assertIn("Education & Research", module.CATEGORIES)
+        self.assertEqual(
+            manifest["extensions"]["com.openai"]["interface"]["category"],
+            "Education & Research",
+        )
+
     def test_submission_builder_uses_unicode_normalized_collision_keys(self):
         spec = importlib.util.spec_from_file_location("ostudy_plugin_builder", BUILDER)
         self.assertIsNotNone(spec)
