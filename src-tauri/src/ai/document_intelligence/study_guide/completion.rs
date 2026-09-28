@@ -42,14 +42,14 @@ pub(super) const COLLECTION_GUIDE_COMPLETION_PLANS: [StudyGuideCompletionPlan; 4
 impl StudyGuideCompletionPlan {
     pub(super) fn instructions(self) -> String {
         format!(
-            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional richness. Target at most 4,200 human-readable characters for this request, including all categories. Start with a narrative overview and nonempty supported keyPoints. Teach the central concepts, causal relationships, useful comparisons and decision-relevant exceptions before isolated details. Add only the optional study aids that contribute distinct teaching value; unused arrays must be []. Do not fill every category or restate the same fact in several fields. Preserve entire conditions, uncertainty, numerical signs, units, and exceptions; never cut a qualification to meet an editorial target. This writing target is not permission to claim exhaustive coverage or invent source support.",
+            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional richness. Target at most 7,500 human-readable characters for this request, including all categories. Start with one to three short paragraphs of coherent narrative overview. keyPoints are optional and should be empty unless a short list adds distinct scanning value after the prose. Teach central concepts, causal relationships, useful comparisons and decision-relevant exceptions before isolated details. Add only optional study aids that contribute distinct teaching value; unused arrays must be []. Do not fill every category or restate the same fact in several fields. Preserve entire conditions, uncertainty, numerical signs, units, and exceptions; never cut a qualification to meet an editorial target. This writing target is not permission to claim exhaustive coverage or invent source support.",
             self.initial_visible_tokens
         )
     }
 
     pub(super) fn recovery_instructions(self) -> String {
         format!(
-            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Keep the same supported core concepts and all necessary qualifications, in a short narrative overview, 3–7 keyPoints and essential defined importantTerms. The other study-aid arrays must be empty in this recovery; do not repeat the same idea in multiple categories. Keep total human-readable content under 4,200 characters. Select only the supplied knowledge aliases actually explained. Do not add an explanation of this retry or try to mention every supplied unit.",
+            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Keep the same supported core concepts and all necessary qualifications in one to three short narrative paragraphs. keyPoints remain optional; use only a few if they add information structure that the prose does not. Keep essential defined importantTerms when useful. The other study-aid arrays must be empty in this recovery; do not repeat the same idea in multiple categories. Keep total human-readable content under 7,500 characters. Select only the supplied knowledge aliases actually explained. Do not add an explanation of this retry or try to mention every supplied unit.",
             self.repair_visible_tokens
         )
     }
@@ -177,9 +177,9 @@ mod tests {
         let instruction = DOCUMENT_GUIDE_COMPLETION_PLAN.instructions();
         for required in [
             "6144 tokens",
-            "4,200 human-readable characters",
+            "7,500 human-readable characters",
             "including all categories",
-            "nonempty supported keyPoints",
+            "keyPoints are optional",
             "unused arrays must be []",
             "never cut a qualification",
         ] {
@@ -201,8 +201,8 @@ mod tests {
             schema["properties"]["knowledgeUnitIds"]
         );
         let fields = &compact["properties"]["content"]["properties"];
-        assert_eq!(fields["keyPoints"]["minItems"], 1);
-        assert_eq!(fields["keyPoints"]["maxItems"], 7);
+        assert!(fields["keyPoints"].get("minItems").is_none());
+        assert_eq!(fields["keyPoints"]["maxItems"], 5);
         assert_eq!(fields["tables"]["maxItems"], 0);
         assert_eq!(fields["visualExplanations"]["maxItems"], 0);
         assert_eq!(

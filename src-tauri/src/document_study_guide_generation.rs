@@ -13,8 +13,8 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
-            SourcePageImage,
+            generate_document_study_guide_editorial, generate_study_guide_topic_section,
+            AuthoringEvidence, DocumentTaskContext, SourcePageImage,
         },
         AiRuntimeState,
     },
@@ -25,8 +25,8 @@ use crate::{
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide, validate_study_guide_section_content, DocumentStudyGuide,
-        GroundedStudyGuideSection, StudyGuideOverview, StudyGuideSectionContent,
+        publish_document_study_guide_with_editorial, validate_study_guide_section_content,
+        DocumentStudyGuide, GroundedStudyGuideSection, StudyGuideSectionContent,
         StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION,
         STUDY_GUIDE_SCHEMA_VERSION,
     },
@@ -40,10 +40,7 @@ use crate::{
     util::unix_time_millis,
 };
 
-const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v3-explicit-output-contract";
-const MAX_OVERVIEW_KEY_CONCEPTS: usize = 6;
-const MAX_OVERVIEW_CONCEPT_CAPTION_CHARS: usize = 180;
-
+const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v4-readable-prose";
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideTopicEvidence {
     pub topic_id: String,
@@ -238,6 +235,50 @@ pub(crate) async fn execute_study_guide_generation(
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
 
+    let section_contents = drafts
+        .iter()
+        .map(|draft| &draft.content)
+        .collect::<Vec<_>>();
+    let cancellation = crate::task_cancellation::current_signal()
+        .unwrap_or_else(crate::task_cancellation::CancellationSignal::new);
+    execution.task.ensure_current(execution.database)?;
+    let editorial = generate_document_study_guide_editorial(
+        execution.runtime,
+        execution.task,
+        execution.document_title,
+        execution.plan,
+        &section_contents,
+        &cancellation,
+    )
+    .await;
+    let (overview, editorial) = match editorial {
+        Ok(value) => {
+            execution.task.ensure_current(execution.database)?;
+            value
+        }
+        Err(error) => {
+            if error.code == "ai_request_canceled" {
+                let _ = transition_document_artifact_job(
+                    execution.database,
+                    execution.job_id,
+                    DocumentArtifactJobState::Generating,
+                    DocumentArtifactJobState::Canceled,
+                    execution.plan.topics.len(),
+                );
+            } else {
+                let (usage, complete) = execution.task.usage_summary();
+                let _ = fail_document_artifact_job(
+                    execution.database,
+                    execution.job_id,
+                    &error,
+                    usage,
+                    complete,
+                );
+            }
+            return Err(error);
+        }
+    };
+
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
@@ -245,18 +286,14 @@ pub(crate) async fn execute_study_guide_generation(
         DocumentArtifactJobState::Committing,
         execution.plan.topics.len(),
     )?;
-    let overview = StudyGuideOverview {
-        summary: execution.plan.summary.clone(),
-        learning_objectives: execution.plan.learning_objectives.clone(),
-        key_concepts: overview_key_concepts(execution.plan),
-    };
-    let guide = match publish_document_study_guide(
+    let guide = match publish_document_study_guide_with_editorial(
         execution.database,
         execution.document_id,
         &execution.plan.id,
         Some(execution.job_id),
         overview,
         drafts,
+        Some(editorial),
     ) {
         Ok(guide) => guide,
         Err(error) => {
@@ -583,71 +620,6 @@ fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(
         }
     }
     Ok(())
-}
-
-fn overview_key_concepts(plan: &DocumentLearningPlan) -> Vec<String> {
-    let roots = plan
-        .topics
-        .iter()
-        .filter(|topic| topic.parent_topic_id.is_none())
-        .collect::<Vec<_>>();
-    let candidates = if roots.len() >= 3 {
-        roots
-    } else {
-        plan.topics.iter().collect::<Vec<_>>()
-    };
-    if candidates.is_empty() {
-        return plan
-            .key_concepts
-            .iter()
-            .take(MAX_OVERVIEW_KEY_CONCEPTS)
-            .cloned()
-            .collect();
-    }
-
-    evenly_spaced_indices(candidates.len(), MAX_OVERVIEW_KEY_CONCEPTS)
-        .into_iter()
-        .filter_map(|index| candidates.get(index).copied())
-        .map(|topic| {
-            let title = topic.title.trim();
-            let caption = brief_concept_caption(&topic.summary);
-            if caption.is_empty() || caption.eq_ignore_ascii_case(title) {
-                title.to_string()
-            } else {
-                format!("{title} — {caption}")
-            }
-        })
-        .filter(|value| !value.trim().is_empty())
-        .collect()
-}
-
-fn evenly_spaced_indices(length: usize, maximum: usize) -> Vec<usize> {
-    if length == 0 || maximum == 0 {
-        return Vec::new();
-    }
-    if length <= maximum {
-        return (0..length).collect();
-    }
-    let denominator = maximum.saturating_sub(1).max(1);
-    (0..maximum)
-        .map(|position| position * (length - 1) / denominator)
-        .collect()
-}
-
-fn brief_concept_caption(value: &str) -> String {
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let sentence = compact
-        .find(". ")
-        .map_or(compact.as_str(), |index| &compact[..=index]);
-    if sentence.chars().count() <= MAX_OVERVIEW_CONCEPT_CAPTION_CHARS {
-        return sentence.to_string();
-    }
-    let mut shortened = sentence
-        .chars()
-        .take(MAX_OVERVIEW_CONCEPT_CAPTION_CHARS.saturating_sub(1))
-        .collect::<String>();
-    shortened.push('…');
-    shortened
 }
 
 fn study_guide_contract_key(task: &DocumentTaskContext, plan: &DocumentLearningPlan) -> String {

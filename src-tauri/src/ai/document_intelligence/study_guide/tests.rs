@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn narrative_overview_rejects_keyword_inventory_and_bare_term_key_points() {
+fn narrative_overview_rejects_inventories_but_allows_paragraphs_without_key_points() {
     let mut section = StudyGuideSectionContent {
         overview: "Enteric neurotransmitters / GI hormones / intrinsic nervous system".into(),
         key_points: vec!["Gastrin".into()],
@@ -11,11 +11,14 @@ fn narrative_overview_rejects_keyword_inventory_and_bare_term_key_points() {
     assert_eq!(error.code, "ai_document_output_invalid");
 
     section.overview =
-        "Gastrointestinal function is coordinated by neural and hormonal signaling. Enteric and extrinsic pathways integrate motility, secretion, and feedback across the gut.".into();
-    section.key_points = vec!["Gastrin promotes gastric acid secretion.".into()];
+        "Gastrointestinal function is coordinated by neural and hormonal signaling. Enteric and extrinsic pathways integrate motility, secretion, and feedback across the gut.\n\nThese pathways work together rather than as a disconnected inventory of mediators.".into();
+    section.key_points.clear();
     assert!(validate_generated_safety(&section).is_ok());
     assert!(inventory_like_prose("A / B / C"));
     assert!(!inventory_like_prose(&section.overview));
+
+    section.key_points = vec!["Gastrin".into()];
+    assert!(validate_generated_safety(&section).is_err());
 }
 
 #[test]
@@ -134,13 +137,13 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
 }
 
 #[test]
-fn prompt_requires_outline_style_and_prioritized_key_points() {
+fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
     let prompt = study_guide_system_prompt();
     assert!(!prompt.contains("PDF"));
     assert!(prompt.contains("canonical"));
-    assert!(prompt.contains("study guide"));
-    assert!(prompt.contains("narrative sentences"));
-    assert!(prompt.contains("keyPoints are concise supported factual propositions"));
+    assert!(prompt.contains("STUDY-GUIDE AUTHOR"));
+    assert!(prompt.contains("coherent teaching prose"));
+    assert!(prompt.contains("keyPoints are optional"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
@@ -150,7 +153,7 @@ fn prompt_requires_outline_style_and_prioritized_key_points() {
 }
 
 #[test]
-fn concise_generated_outline_passes_native_style_validation() {
+fn concise_generated_section_passes_native_style_validation() {
     let parsed = parse_study_guide_section(json!({
         "overview": "Preload is ventricular filling/stretch before systole and influences stroke volume.",
         "keyPoints": [
@@ -173,6 +176,26 @@ fn concise_generated_outline_passes_native_style_validation() {
     }))
     .unwrap();
     assert_eq!(parsed.key_points.len(), 3);
+}
+
+
+#[test]
+fn narrative_only_section_is_valid_and_schema_does_not_require_bullets() {
+    let parsed = parse_study_guide_section(json!({
+        "overview": "ACE inhibitors reduce angiotensin II formation and therefore decrease vasoconstriction and aldosterone-mediated sodium retention.\n\nTheir clinical value and adverse effects follow from the same renin–angiotensin–aldosterone pathway, so monitoring and contraindications should be understood as part of the mechanism.",
+        "keyPoints": [],
+        "explanations": [],
+        "importantTerms": [],
+        "processSteps": [],
+        "comparisons": [],
+        "commonMisconceptions": [],
+        "visualExplanations": []
+    }))
+    .unwrap();
+    assert!(parsed.key_points.is_empty());
+    let schema = study_guide_section_schema();
+    assert!(schema["properties"]["keyPoints"].get("minItems").is_none());
+    assert_eq!(schema["properties"]["overview"]["maxLength"], MAX_OVERVIEW_CHARS);
 }
 
 #[test]

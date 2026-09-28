@@ -13,6 +13,7 @@ pub(crate) mod candidates;
 pub(crate) enum Kind {
     Flashcards,
     GuideSection,
+    GuideEditorial,
     CurationSelection,
 }
 
@@ -21,6 +22,7 @@ impl Kind {
         match self {
             Self::Flashcards => "flashcard_authoring",
             Self::GuideSection => "guide_authoring",
+            Self::GuideEditorial => "guide_editorial",
             Self::CurationSelection => "flashcard_curation",
         }
     }
@@ -29,6 +31,7 @@ impl Kind {
         match self {
             Self::Flashcards => "cards",
             Self::GuideSection => "guide_sections",
+            Self::GuideEditorial => "guide_editorials",
             Self::CurationSelection => "curation_selections",
         }
     }

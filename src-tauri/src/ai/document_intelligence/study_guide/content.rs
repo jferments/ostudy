@@ -97,9 +97,9 @@ pub(super) fn parse_study_guide_section(
 pub(super) fn validate_generated_safety(
     section: &StudyGuideSectionContent,
 ) -> Result<(), CommandError> {
-    if section.overview.trim().is_empty() || section.key_points.is_empty() {
+    if section.overview.trim().is_empty() {
         return Err(output_error(
-            "A guide requires an overview and supported key points.",
+            "A guide requires a source-supported narrative overview.",
         ));
     }
     if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
@@ -233,8 +233,7 @@ pub(super) fn inventory_like_prose(value: &str) -> bool {
     let clean = value.trim();
     clean.contains(" / ")
         || clean.contains(" | ")
-        || clean.matches("; ").count() >= 2
-        || clean.lines().count() > 2
+        || clean.matches("; ").count() >= 3
         || (clean.matches(',').count() >= 4
             && !clean.contains('.')
             && !clean.contains('!')
@@ -245,11 +244,6 @@ pub(super) fn validate_generated_outline_style(
     section: StudyGuideSectionContent,
 ) -> Result<StudyGuideSectionContent, CommandError> {
     require_char_limit("overview", &section.overview, MAX_OVERVIEW_CHARS)?;
-    if section.key_points.is_empty() {
-        return Err(output_error(
-            "The generated study-guide section did not include any high-yield key points.",
-        ));
-    }
     require_list_limits(
         "keyPoints",
         &section.key_points,
@@ -514,7 +508,7 @@ pub(super) fn study_guide_section_schema() -> Value {
                 "maxLength": MAX_OVERVIEW_CHARS
             },
             "keyPoints": {
-                "type": "array", "minItems": 1, "maxItems": MAX_KEY_POINTS,
+                "type": "array", "maxItems": MAX_KEY_POINTS,
                 "items": {"type": "string", "minLength": 1, "maxLength": MAX_KEY_POINT_CHARS}
             },
             "explanations": {
