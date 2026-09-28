@@ -21,6 +21,10 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
+pub(crate) mod editorial;
+
+use editorial::StudyGuideEditorial;
+
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
 pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 6;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 3;
@@ -176,6 +180,8 @@ pub(crate) struct DocumentStudyGuide {
     pub prompt_version: i64,
     pub assembly_version: i64,
     pub overview: StudyGuideOverview,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editorial: Option<StudyGuideEditorial>,
     pub overview_text: String,
     pub sections: Vec<DocumentStudyGuideSection>,
     pub overlays: Vec<StudyGuideOverlay>,
@@ -309,6 +315,28 @@ pub(crate) fn publish_document_study_guide(
     overview: StudyGuideOverview,
     section_drafts: Vec<StudyGuideSectionDraft>,
 ) -> Result<DocumentStudyGuide, CommandError> {
+    publish_document_study_guide_with_editorial(
+        database,
+        document_id,
+        plan_id,
+        job_id,
+        overview,
+        section_drafts,
+        None,
+    )
+}
+
+/// Editorial organization is committed with the same immutable guide revision
+/// as its sections. It never rewrites the shared learning plan or source topics.
+pub(crate) fn publish_document_study_guide_with_editorial(
+    database: &Database,
+    document_id: &str,
+    plan_id: &str,
+    job_id: Option<&str>,
+    overview: StudyGuideOverview,
+    section_drafts: Vec<StudyGuideSectionDraft>,
+    editorial: Option<StudyGuideEditorial>,
+) -> Result<DocumentStudyGuide, CommandError> {
     validate_entity_id(document_id, "document")?;
     validate_entity_id(plan_id, "learning plan")?;
     if let Some(job_id) = job_id {
@@ -322,14 +350,32 @@ pub(crate) fn publish_document_study_guide(
             "The selected learning plan does not belong to this document.",
         ));
     }
+    if let Some(organization) = &editorial {
+        editorial::validate(organization, plan.topics.iter().map(|topic| topic.id.as_str()))?;
+        if overview.summary.trim().is_empty()
+            || overview.summary.chars().count() > MAX_OVERVIEW_CHARS
+        {
+            return Err(CommandError::new(
+                "study_guide_editorial_invalid",
+                "The guide introduction is empty or exceeds the supported size.",
+            ));
+        }
+    }
     let mut normalized_overview = normalize_overview(overview);
     let knowledge_by_topic = section_drafts
         .iter()
         .map(|draft| (draft.topic_id.clone(), draft.knowledge_support.clone()))
         .collect::<HashMap<_, _>>();
     let sections = normalize_complete_sections(&plan, section_drafts)?;
-    normalized_overview.summary = guide_display_summary(&normalized_overview.summary, &sections);
-    let overview_json = serialize_json(&normalized_overview)?;
+    if editorial.is_none() {
+        normalized_overview.summary = guide_display_summary(&normalized_overview.summary, &sections);
+    }
+    let schema_version = if editorial.is_some() {
+        editorial::EDITORIAL_SCHEMA_VERSION
+    } else {
+        STUDY_GUIDE_SCHEMA_VERSION
+    };
+    let overview_json = editorial::encode_overview(&normalized_overview, editorial.as_ref())?;
     let overview_text = overview_plain_text(&normalized_overview);
     let now = unix_time_millis()?;
     let guide_id = database.with_connection(|connection| generate_id(connection))?;
@@ -405,7 +451,7 @@ pub(crate) fn publish_document_study_guide(
                     plan_id,
                     job_id,
                     revision,
-                    STUDY_GUIDE_SCHEMA_VERSION,
+                    schema_version,
                     STUDY_GUIDE_PROMPT_VERSION,
                     STUDY_GUIDE_ASSEMBLY_VERSION,
                     overview_json,
@@ -586,7 +632,7 @@ pub(crate) fn load_document_study_guide(
         .iter()
         .map(|topic| (topic.id.as_str(), topic))
         .collect::<HashMap<_, _>>();
-    let sections = database.with_connection(|connection| {
+    let mut sections = database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
                 "SELECT topic_id, sort_index, content_json, content_text,
@@ -633,8 +679,26 @@ pub(crate) fn load_document_study_guide(
         Ok(sections)
     })?;
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
-    let mut overview: StudyGuideOverview = deserialize_json(&header.7)?;
-    overview.summary = guide_display_summary(&overview.summary, &sections);
+    let (mut overview, editorial) = editorial::decode_overview(&header.7, header.4)?;
+    if let Some(organization) = &editorial {
+        editorial::validate(organization, plan.topics.iter().map(|topic| topic.id.as_str()))?;
+        editorial::validate(organization, sections.iter().map(|section| section.topic_id.as_str()))?;
+        let headings = organization
+            .chapters
+            .iter()
+            .flat_map(|chapter| &chapter.topics)
+            .enumerate()
+            .map(|(index, topic)| (topic.topic_id.as_str(), (index, topic.title.as_str())))
+            .collect::<HashMap<_, _>>();
+        for section in &mut sections {
+            if let Some((_, title)) = headings.get(section.topic_id.as_str()) {
+                section.title = editorial::capitalize_heading(title);
+            }
+        }
+        sections.sort_by_key(|section| headings[section.topic_id.as_str()].0);
+    } else {
+        overview.summary = guide_display_summary(&overview.summary, &sections);
+    }
 
     Ok(DocumentStudyGuide {
         id: guide_id.to_string(),
@@ -646,6 +710,7 @@ pub(crate) fn load_document_study_guide(
         prompt_version: header.5,
         assembly_version: header.6,
         overview,
+        editorial,
         overview_text: header.8,
         sections,
         overlays,
@@ -1785,3 +1850,7 @@ mod overlay_regression_tests;
 #[cfg(test)]
 #[path = "document_study_guides/parallel_publication_tests.rs"]
 mod parallel_publication_tests;
+
+#[cfg(test)]
+#[path = "document_study_guides/editorial_publication_tests.rs"]
+mod editorial_publication_tests;
