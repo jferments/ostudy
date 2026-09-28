@@ -38,10 +38,7 @@ pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImp
         )
     })?;
 
-    if parsed.format != GENERATED_IMPORT_FORMAT
-        || ![LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION]
-            .contains(&parsed.format_version)
-    {
+    if !is_supported_generated_import_identity(&parsed.format, parsed.format_version) {
         return Err(CommandError::new(
             "unsupported_flashcard_import",
             "Expected ostudy-flashcards version 1 (Basic/Cloze) or 2 (mixed card and question types).",
