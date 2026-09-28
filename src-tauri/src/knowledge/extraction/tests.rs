@@ -56,6 +56,33 @@ async fn mixed_window_preserves_good_sibling_then_resumes_only_rejected_slot() {
     .unwrap();
 }
 
+#[test]
+fn dense_windows_use_larger_first_pass_only_when_model_context_can_support_it() {
+    let (_, mut first, _, _) = fixture();
+    first.text = "Dense cardiovascular evidence with qualifications. ".repeat(140);
+    let mut second = first.clone();
+    second.id = "d".repeat(32);
+    second.text = "Additional dense pharmacology evidence with conditions. ".repeat(140);
+    let sources = [first, second];
+
+    assert_eq!(
+        initial_extraction_completion_tokens(Some(128_000), &sources),
+        DENSE_EXTRACTION_COMPLETION_TOKENS
+    );
+    assert_eq!(
+        initial_extraction_completion_tokens(Some(32_000), &sources),
+        EXTRACTION_COMPLETION_TOKENS
+    );
+    assert_eq!(
+        initial_extraction_completion_tokens(None, &sources),
+        EXTRACTION_COMPLETION_TOKENS
+    );
+    assert_eq!(
+        extraction_recovery_completion_tokens(DENSE_EXTRACTION_COMPLETION_TOKENS),
+        MAX_EXTRACTION_RECOVERY_TOKENS
+    );
+}
+
 #[tokio::test]
 async fn truncated_window_retries_with_real_output_headroom_instead_of_contract_replay() {
     let (db, source, _, _) = fixture();
