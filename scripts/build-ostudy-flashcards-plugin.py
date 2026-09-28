@@ -51,10 +51,10 @@ def load_manifest() -> dict:
         fail("plugin.json must use the supported portable Agent Plugins schema")
     name = value.get("name")
     version = value.get("version")
-    if not isinstance(name, str) or not name or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
-        fail("plugin.json name must be non-empty kebab-case")
-    if not isinstance(version, str) or not VERSION.fullmatch(version):
-        fail("plugin.json version must be a semantic version")
+    if not isinstance(name, str) or not name or len(name) > 64 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name):
+        fail("plugin.json name must be 1–64 ASCII letters, digits, underscore, or hyphen and start alphanumeric")
+    if not isinstance(version, str) or len(version) > 64 or not VERSION.fullmatch(version):
+        fail("plugin.json version must be a semantic version of at most 64 characters")
     if "skills" in value or "mcpServers" in value:
         fail("portable root plugin.json must use fixed component discovery rather than legacy skills/mcpServers fields")
 
@@ -79,6 +79,7 @@ def load_manifest() -> dict:
         "websiteURL",
         "privacyPolicyURL",
         "termsOfServiceURL",
+        "supportURL",
         "composerIcon",
         "logo",
     ):
@@ -90,6 +91,20 @@ def load_manifest() -> dict:
         fail("plugin.json interface.composerIcon must point to ./assets/logo.png")
     if len(interface["displayName"]) > 30:
         fail("plugin.json interface.displayName must be 30 characters or fewer")
+    if len(interface["longDescription"]) > 4000:
+        fail("plugin.json interface.longDescription must be 4000 characters or fewer")
+    if len(interface["developerName"]) > 80:
+        fail("plugin.json interface.developerName must be 80 characters or fewer")
+    author = value.get("author")
+    if not isinstance(author, dict) or author.get("name") != interface["developerName"]:
+        fail("plugin.json author.name must match interface.developerName")
+    if interface.get("category") not in CATEGORIES:
+        fail("plugin.json interface.category is not a supported Plugins Directory category")
+    capabilities = interface.get("capabilities", [])
+    if not isinstance(capabilities, list) or len(capabilities) > 20:
+        fail("plugin.json interface.capabilities must contain at most 20 entries")
+    if any(not isinstance(item, str) or not item.strip() or len(item) > 120 or "\n" in item for item in capabilities):
+        fail("plugin.json capabilities must be non-empty single-line strings of at most 120 characters")
     if len(interface["shortDescription"]) > 30:
         fail("plugin.json interface.shortDescription must be 30 characters or fewer")
     prompts = interface.get("defaultPrompt", [])
@@ -97,9 +112,15 @@ def load_manifest() -> dict:
         fail("plugin.json interface.defaultPrompt must contain at most three prompts")
     if any(not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 128 or "\n" in prompt for prompt in prompts):
         fail("plugin.json starter prompts must be non-empty single-line strings of at most 128 characters")
-    for field in ("websiteURL", "privacyPolicyURL", "termsOfServiceURL"):
-        if not interface[field].startswith("https://"):
-            fail(f"plugin.json interface.{field} must use HTTPS")
+    prompt_keys = {
+        unicodedata.normalize("NFKC", " ".join(prompt.split())).casefold()
+        for prompt in prompts
+    }
+    if len(prompt_keys) != len(prompts):
+        fail("plugin.json starter prompts must remain unique after Unicode and whitespace normalization")
+    for field in ("websiteURL", "privacyPolicyURL", "termsOfServiceURL", "supportURL"):
+        if not interface[field].startswith("https://") or len(interface[field]) > 1024:
+            fail(f"plugin.json interface.{field} must use HTTPS and be at most 1024 characters")
     validate_branding_png(PLUGIN / "assets" / "logo.png", "plugin branding image")
     return value
 

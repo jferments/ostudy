@@ -23,7 +23,7 @@
         "shortDescription": "Create oStudy flashcard decks",
         "longDescription": "Generate validated .ostudy.json flashcard decks from topics, supplied text, and documents without an MCP server or direct access to the user's oStudy library.",
         "developerName": "jferments",
-        "category": "Education",
+        "category": "Education & Research",
         "capabilities": [
           "Generate flashcards",
           "Create oStudy import files"
@@ -36,7 +36,8 @@
           "Create source-grounded oStudy flashcards from the attached document."
         ],
         "composerIcon": "./assets/logo.png",
-        "logo": "./assets/logo.png"
+        "logo": "./assets/logo.png",
+        "supportURL": "https://ostudy.io/contact/"
       }
     }
   }
