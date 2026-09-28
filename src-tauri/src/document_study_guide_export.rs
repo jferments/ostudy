@@ -28,8 +28,9 @@ use crate::{
     document_domain::SourceLocator,
     document_store,
     document_study_guides::{
-        load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
-        StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState, StudyGuideSectionContent,
+        editorial::StudyGuideEditorial, load_active_document_study_guide, DocumentStudyGuide,
+        DocumentStudyGuideSection, StudyGuideOverlay, StudyGuideOverlayKind,
+        StudyGuideOverlayState, StudyGuideSectionContent,
     },
     document_visual_evidence,
     error::CommandError,
@@ -457,10 +458,15 @@ fn compose_effective_export(
         }
     }
 
+    let editorial_titles = editorial_topic_titles(guide.editorial.as_ref());
     let mut sections = Vec::with_capacity(guide.sections.len());
     let mut annotation_count = guide_notes.len();
     for section in &guide.sections {
-        let mut title = section.title.clone();
+        let mut title = editorial_titles
+            .get(section.topic_id.as_str())
+            .copied()
+            .unwrap_or(section.title.as_str())
+            .to_string();
         let mut body_override = None::<String>;
         let mut notes = Vec::new();
         for overlay in overlays_by_topic
@@ -564,6 +570,17 @@ fn compose_effective_export(
         ));
     }
     Ok(export)
+}
+
+fn editorial_topic_titles(
+    editorial: Option<&StudyGuideEditorial>,
+) -> HashMap<&str, &str> {
+    editorial
+        .into_iter()
+        .flat_map(|editorial| editorial.chapters.iter())
+        .flat_map(|chapter| chapter.topics.iter())
+        .map(|topic| (topic.topic_id.as_str(), topic.title.as_str()))
+        .collect()
 }
 
 fn compose_effective_collection_export(
@@ -2073,6 +2090,31 @@ mod tests {
         for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] {
             assert!(text.contains(expected));
         }
+    }
+
+    #[test]
+    fn editorial_topic_titles_replace_outline_labels_before_pdf_overrides() {
+        use crate::document_study_guides::editorial::{
+            StudyGuideChapter, StudyGuideEditorial, StudyGuideTopicHeading,
+        };
+        let topic_id = "a".repeat(32);
+        let editorial = StudyGuideEditorial {
+            title: "Cardiovascular drugs".to_string(),
+            chapters: vec![StudyGuideChapter {
+                id: "b".repeat(32),
+                title: "Hemodynamic foundations".to_string(),
+                introduction: "A readable chapter introduction.".to_string(),
+                topics: vec![StudyGuideTopicHeading {
+                    topic_id: topic_id.clone(),
+                    title: "Preload and cardiac output".to_string(),
+                }],
+            }],
+        };
+        let titles = editorial_topic_titles(Some(&editorial));
+        assert_eq!(
+            titles.get(topic_id.as_str()).copied(),
+            Some("Preload and cardiac output")
+        );
     }
 
     #[test]

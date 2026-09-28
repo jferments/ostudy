@@ -122,7 +122,7 @@ function editorialGuide(): DocumentStudyGuide {
     ...first,
     topicId: secondTopicId,
     sortIndex: 1,
-    title: "Renin–angiotensin system",
+    title: "raas / sodium balance / vascular tone",
     topicSummary: "RAAS signaling coordinates vascular tone and sodium balance.",
     content: {
       ...first.content,
@@ -139,7 +139,7 @@ function editorialGuide(): DocumentStudyGuide {
       assetIds: [],
     },
   };
-  first.title = "Preload and cardiac output";
+  first.title = "preload / cardiac output / venous return";
   first.content.keyPoints = [];
   value.schemaVersion = 3;
   value.promptVersion = 7;
@@ -348,6 +348,8 @@ describe("StudyGuideDialog", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Hemodynamic foundations" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 3, name: "Preload and cardiac output" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 3, name: "Renin–angiotensin system" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /preload \/ cardiac output/iu })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /raas \/ sodium balance/iu })).toBeNull();
     expect(screen.getByText(/physiologic relationships needed to understand/iu)).toBeTruthy();
     expect(screen.getByText(/Cardiovascular pharmacology connects drug mechanisms/iu)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Key points" })).toBeNull();

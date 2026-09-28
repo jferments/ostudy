@@ -215,19 +215,19 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
             </div>
           </section>
           {guide.editorial ? guide.editorial.chapters.map((chapter) => {
-            const chapterSections = chapter.topics.map((topic) =>
-              guide.sections.find((section) => section.topicId === topic.topicId)).filter(
-                (section): section is DocumentStudyGuideSection => section !== undefined,
-              );
+            const chapterSections = chapter.topics.flatMap((topic) => {
+              const section = guide.sections.find((candidate) => candidate.topicId === topic.topicId);
+              return section ? [{ section, editorialTitle: topic.title }] : [];
+            });
             return <section key={chapter.id} id={`chapter-${chapter.id}`} className={styles.chapter}>
               <header className={styles.chapterHeader}>
                 <h2><StudyMarkdown text={chapter.title} inline /></h2>
                 <div className={styles.chapterIntro}><StudyMarkdown text={chapter.introduction} /></div>
               </header>
               <div className={styles.chapterSections}>
-                {chapterSections.map((section) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
+                {chapterSections.map(({ section, editorialTitle }) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
                   guideId={guide.id} documentId={documentId} projection={topicCards[section.topicId]} actionsDisabled={isSaving || editing !== null}
-                  headingLevel={3} onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
+                  headingLevel={3} displayTitle={editorialTitle} onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
                   onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
                   onStudy={() => void studyTopic(section)} onOpenSource={() => void openSource()} />)}
               </div>
@@ -256,15 +256,18 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
 }
 interface StudyGuideSectionViewProps {
   section: DocumentStudyGuideSection; overlays: StudyGuideOverlay[]; guideId: string; documentId: string;
-  projection?: TopicCardProjection; actionsDisabled: boolean; headingLevel?: 2 | 3; onEditNote: () => void; onEditSection: () => void;
+  projection?: TopicCardProjection; actionsDisabled: boolean; headingLevel?: 2 | 3; displayTitle?: string; onEditNote: () => void; onEditSection: () => void;
   onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void; onStudy: () => void; onOpenSource: () => void;
 }
-function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, headingLevel = 2, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
+function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, headingLevel = 2, displayTitle, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
   const tutor = useOptionalTutor();
   const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
   const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
+  const titleOverride = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "title_override"
+    && overlay.state === "active" && overlay.guideId === guideId && overlay.plainText.trim() !== "");
   const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
-  const tutorTarget: TutorTarget = { title: section.title, scope: { kind: "guide", id: documentId },
+  const effectiveTitle = titleOverride?.plainText.trim() || displayTitle || section.title;
+  const tutorTarget: TutorTarget = { title: effectiveTitle, scope: { kind: "guide", id: documentId },
     focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" };
   const menuItems: OverflowMenuItem[] = [
     { id: "study", label: `Study linked cards${projection ? ` (${projection.cardCount})` : ""}`, disabled: !projection || projection.cardCount === 0, onSelect: onStudy },
@@ -281,8 +284,8 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
   const Heading: "h2" | "h3" = headingLevel === 3 ? "h3" : "h2";
   return <section id={`topic-${section.topicId}`} className={styles.section}>
     <header className={styles.sectionHeader}>
-      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><Heading><StudyMarkdown text={section.title} inline /></Heading></div>
-      <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
+      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><Heading><StudyMarkdown text={effectiveTitle} inline /></Heading></div>
+      <OverflowMenu label={`Section actions for ${effectiveTitle}`} items={menuItems} className={styles.sectionMenu} />
     </header>
     {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent
           content={section.content}
