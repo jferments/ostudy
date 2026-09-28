@@ -20,7 +20,7 @@
     "com.openai": {
       "interface": {
         "displayName": "oStudy Flashcards",
-        "shortDescription": "Create importable oStudy flashcard decks",
+        "shortDescription": "Create oStudy flashcard decks",
         "longDescription": "Generate validated .ostudy.json flashcard decks from topics, supplied text, and documents without an MCP server or direct access to the user's oStudy library.",
         "developerName": "jferments",
         "category": "Education",
@@ -35,6 +35,7 @@
           "Create an oStudy flashcard deck from this topic.",
           "Create source-grounded oStudy flashcards from the attached document."
         ],
+        "composerIcon": "./assets/logo.png",
         "logo": "./assets/logo.png"
       }
     }

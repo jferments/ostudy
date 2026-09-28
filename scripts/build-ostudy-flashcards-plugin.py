@@ -15,6 +15,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import struct
 import sys
 import unicodedata
 import zipfile
@@ -78,21 +79,51 @@ def load_manifest() -> dict:
         "websiteURL",
         "privacyPolicyURL",
         "termsOfServiceURL",
+        "composerIcon",
         "logo",
     ):
         if not isinstance(interface.get(field), str) or not interface[field].strip():
             fail(f"plugin.json interface.{field} is required for the web publication package")
     if interface["logo"] != "./assets/logo.png":
         fail("plugin.json interface.logo must point to ./assets/logo.png")
+    if interface["composerIcon"] != "./assets/logo.png":
+        fail("plugin.json interface.composerIcon must point to ./assets/logo.png")
+    if len(interface["displayName"]) > 30:
+        fail("plugin.json interface.displayName must be 30 characters or fewer")
+    if len(interface["shortDescription"]) > 30:
+        fail("plugin.json interface.shortDescription must be 30 characters or fewer")
+    prompts = interface.get("defaultPrompt", [])
+    if not isinstance(prompts, list) or len(prompts) > 3:
+        fail("plugin.json interface.defaultPrompt must contain at most three prompts")
+    if any(not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 128 or "\n" in prompt for prompt in prompts):
+        fail("plugin.json starter prompts must be non-empty single-line strings of at most 128 characters")
     for field in ("websiteURL", "privacyPolicyURL", "termsOfServiceURL"):
         if not interface[field].startswith("https://"):
             fail(f"plugin.json interface.{field} must use HTTPS")
+    validate_branding_png(PLUGIN / "assets" / "logo.png", "plugin branding image")
     return value
 
 
 def archive_collision_key(path: str) -> str:
     """Match portal-style case/Unicode path normalization for collision checks."""
     return unicodedata.normalize("NFC", path).casefold()
+
+
+def validate_branding_png(path: Path, label: str) -> None:
+    """Validate the portal's packaged-branding constraints for our PNG asset."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        fail(f"{label} could not be read: {error}")
+    if len(data) > 5 * 1024 * 1024:
+        fail(f"{label} must not exceed 5 MiB")
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        fail(f"{label} must be a decodable PNG with an IHDR header")
+    width, height = struct.unpack(">II", data[16:24])
+    if width != height:
+        fail(f"{label} must be square")
+    if width < 48 or width > 4096:
+        fail(f"{label} dimensions must be between 48x48 and 4096x4096 pixels")
 
 
 def collect_package_files() -> list[tuple[Path, str]]:

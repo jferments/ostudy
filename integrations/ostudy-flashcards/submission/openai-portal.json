@@ -6,13 +6,12 @@
   "supportURL": "https://ostudy.io/contact/",
   "privacyPolicyURL": "https://ostudy.io/privacy/",
   "termsOfServiceURL": "https://ostudy.io/terms/",
-  "shortDescription": "Create validated flashcard decks that import directly into oStudy.",
+  "shortDescription": "Create oStudy flashcard decks",
   "longDescription": "Generate high-quality oStudy flashcards from a topic, supplied text, or documents already available to ChatGPT. The plugin creates a validated .ostudy.json file for the user to download and import into oStudy. It is skills-only: it has no MCP server, no authentication, no remote oStudy service, and no direct access to the user's local oStudy library.",
   "starterPrompts": [
     "Create an oStudy flashcard deck that teaches acid-base physiology at a nursing-school level.",
     "Turn the attached lecture document into a comprehensive, source-grounded oStudy flashcard deck.",
-    "Create an oStudy deck from this material, choosing Basic, Cloze, and interactive question types based on what best tests each concept.",
-    "Append a new set of cards to my existing oStudy deck named NCLEX Pharmacology and return the import file."
+    "Create an oStudy deck from this material, choosing Basic, Cloze, and interactive question types based on what best tests each concept."
   ],
   "positiveTestCases": [
     {

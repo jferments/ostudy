@@ -62,7 +62,12 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
         self.assertEqual(interface["websiteURL"], "https://ostudy.io/")
         self.assertEqual(interface["privacyPolicyURL"], "https://ostudy.io/privacy/")
         self.assertEqual(interface["termsOfServiceURL"], "https://ostudy.io/terms/")
+        self.assertEqual(interface["composerIcon"], "./assets/logo.png")
         self.assertEqual(interface["logo"], "./assets/logo.png")
+        self.assertLessEqual(len(interface["displayName"]), 30)
+        self.assertLessEqual(len(interface["shortDescription"]), 30)
+        self.assertLessEqual(len(interface["defaultPrompt"]), 3)
+        self.assertTrue(all(len(prompt) <= 128 and "\\n" not in prompt for prompt in interface["defaultPrompt"]))
         self.assertNotIn("screenshots", interface)
 
         marketplace = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
@@ -75,7 +80,8 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
         dossier = json.loads(DOSSIER.read_text(encoding="utf-8"))
         self.assertEqual(dossier["submissionType"], "Skills only")
         self.assertEqual(dossier["pluginName"], "oStudy Flashcards")
-        self.assertGreaterEqual(len(dossier["starterPrompts"]), 3)
+        self.assertEqual(len(dossier["starterPrompts"]), 3)
+        self.assertLessEqual(len(dossier["shortDescription"]), 30)
         self.assertGreaterEqual(len(dossier["positiveTestCases"]), 5)
         self.assertGreaterEqual(len(dossier["negativeTestCases"]), 3)
         for case in dossier["positiveTestCases"]:
@@ -89,6 +95,17 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
             self.assertTrue(case["whyNotComplete"])
         for key in ("websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"):
             self.assertTrue(dossier[key].startswith("https://"))
+
+    def test_plugin_branding_image_matches_directory_constraints(self):
+        source = ROOT / "assets" / "images" / "racoon mascot (logo).png"
+        self.assertEqual(LOGO.read_bytes(), source.read_bytes())
+        data = LOGO.read_bytes()
+        self.assertLessEqual(len(data), 5 * 1024 * 1024)
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(data[12:16], b"IHDR")
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        self.assertEqual((width, height), (1254, 1254))
 
     def test_submission_builder_uses_unicode_normalized_collision_keys(self):
         spec = importlib.util.spec_from_file_location("ostudy_plugin_builder", BUILDER)
