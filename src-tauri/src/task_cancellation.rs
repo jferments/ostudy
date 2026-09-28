@@ -524,10 +524,8 @@ pub(crate) fn record_current_request_diagnostics(diagnostics: CurrentRequestDiag
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.current_request_started_at = Some(now);
-            progress.current_request_stage =
-                Some(diagnostics.stage.chars().take(80).collect());
-            progress.provider_kind =
-                Some(diagnostics.provider.chars().take(40).collect());
+            progress.current_request_stage = Some(diagnostics.stage.chars().take(80).collect());
+            progress.provider_kind = Some(diagnostics.provider.chars().take(40).collect());
             progress.model_id = Some(diagnostics.model.chars().take(160).collect());
             progress.current_request_bytes = Some(diagnostics.request_bytes);
             progress.current_request_text_bytes = Some(diagnostics.text_bytes);
