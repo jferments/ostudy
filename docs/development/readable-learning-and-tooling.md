@@ -1,6 +1,6 @@
 # Readable learning materials and trustworthy tooling
 
-Status: implementation in progress after PR #113. Base: `7283216a08e90361271395e7d70a8d38de127aa2`; branch: `agent/readable-guides-and-tooling`. This is the September 27 follow-up requested after manual acceptance found improved flashcards but unacceptable study guides and matching drag feedback. Automated qualification of #113 did not establish educational or physical-pointer acceptance.
+Status: source implementation complete; terminal qualification and human acceptance remain. Base: `7283216a08e90361271395e7d70a8d38de127aa2`; branch: `agent/readable-guides-and-tooling`. This is the September 27 follow-up requested after manual acceptance found improved flashcards but unacceptable study guides and matching drag feedback. Automated qualification of #113 did not establish educational or physical-pointer acceptance.
 
 ## Accepted scope
 
@@ -17,6 +17,20 @@ The scope is one requested PR with coherent published increments, not permission
 | AC-07 | Native-owned deterministic migration metadata is exported for maintenance consumers with check-only drift verification. Keep release/public/repair identities separate, released SQL and checksums immutable, independent admission and compatibility fixtures intact, and tools usable without building the desktop app. |
 | AC-08 | Maintained shell/Python scripts gain pinned correctness-oriented ShellCheck/Ruff checks and focused type checks for safety-critical Python. Existing tests remain; add source-grounded synthetic/reference regressions for learning structure and recovery. No paid or private-source evaluation runs implicitly in CI. |
 | AC-09 | Maintained documentation and local handoff agree with implementation. Qualify the exact frozen head through required Static/Fast, Linux full/package and Android compile/emulator gates; report fresh versus reused evidence and unrun live-provider/physical/educational acceptance separately. No automatic merge. |
+| AC-10 | Generated `.ostudy.json` uses version 2 as the current mixed-card contract and can import Basic, Cloze, single-choice, select-all, true/false, matching, grouping and ordering through the same native authoring/question validators used by ordinary cards. Version 1 remains an explicit Basic/Cloze compatibility reader. Text-only JSON does not impersonate managed-image ownership; image occlusion remains an asset-carrying format concern. |
+
+## Implemented source boundaries
+
+PR #114 now contains the requested source changes rather than only plans:
+
+- Matching drag gestures own native selection, use opaque semantic source/destination feedback, and preserve keyboard/click/touch alternatives.
+- New study guides use prose-first section authoring plus a whole-guide editorial pass that preserves every native topic exactly once, with major chapters, narrative introductions, human headings, reader hierarchy and matching PDF hierarchy. Existing guide readers remain compatible.
+- Generation defaults resolve document/card/guide reasoning to Off and Tutor reasoning to Low; first credentialed OpenRouter setup seeds DeepSeek V4.1 Flash for generation/Tutor and Qwen3 Embedding 4B for embeddings only where the learner has not already assigned a task.
+- Live document diagnostics reuse the existing progress/usage owners to expose stage/request timing, provider/model, requested versus effective reasoning, request/evidence/image byte counts, output ceiling, retries, cache and provider-reported usage without recording source text, images, credentials or reasoning bodies.
+- WebDriver mutation requests are no longer covered by the implicit `sitecustomize` retry monkeypatch; an explicit regression proves a lost mutating `execute/sync` response is not replayed.
+- Public migrations, release migrations and repairs are exported from native owners into one deterministic generated manifest. Maintenance tools no longer scrape Rust source, and immutable SQL/checksum/admission checks remain independent.
+- Static qualification includes pinned ShellCheck, Ruff and focused `ty` checking without source rewriting.
+- Generated JSON import version 2 is the current mixed-card contract with a reviewable schema and executable all-family example; version 1 remains readable for Basic/Cloze files.
 
 ## Implementation boundaries
 
@@ -26,9 +40,11 @@ First-key defaults are an onboarding decision, not a hard-coded capability certi
 
 Tooling changes should remove incidental source-layout dependencies without making another status service or general test framework. Generated metadata is compared during qualification; Actions never write maintained source. All destructive filesystem tests use disposable data.
 
+Generated JSON is a text-only interchange boundary. Version 2 covers every text-native scheduled card/question family: Basic, Cloze, single-choice, select-all, true/false, matching, grouping and ordering. Image occlusion is intentionally excluded because importing it safely requires a package that carries and owns managed image assets rather than JSON that references nonexistent local files.
+
 ## Validation and manual acceptance
 
-Use existing native, component, script and WebDriver owners with deterministic fixtures. Important negative cases include mutation-before-disconnect, native text selection during a captured-pointer drag, guide contents that flatten leaf facts, omitted topic coverage, migration metadata drift, first-key replay/credential replacement and partial usage on failed requests.
+Use existing native, component, script and WebDriver owners with deterministic fixtures. Important negative cases include mutation-before-disconnect, native text selection during a captured-pointer drag, guide contents that flatten leaf facts, omitted topic coverage, migration metadata drift, first-key replay/credential replacement, partial usage on failed requests, v1 interactive-card rejection and exact v2 persistence of all six interactive families alongside Basic/Cloze.
 
 Manual acceptance remains required for readable output on the user's cardiovascular-drugs source, actual selected-provider reasoning behavior, desktop pointer ergonomics, physical touch and exported/readable guide appearance. Do not infer these from a green workflow or valid JSON. Preserve the full visual evidence policy while evaluating reasoning Off; reasoning Off is the requested default, not a claim of equivalent quality on every model.
 
