@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as collections from "../../ipc/collections";
 import * as documentArtifactProgress from "../../ipc/documentArtifactProgress";
 import * as documentIpc from "../../ipc/documents";
 import * as studyGuideIpc from "../../ipc/studyGuides";
+import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "../DocumentsScreen";
 
@@ -38,6 +39,24 @@ vi.mock("../../ipc/collections", () => ({
 }));
 
 const documentId = "a".repeat(32);
+const originalMatchMedia = window.matchMedia;
+
+function setCompactLayout(compact: boolean): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: compact && (query === "(max-width: 760px)" || query === "(max-width: 1180px)"),
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
+afterEach(() => {
+  window.matchMedia = originalMatchMedia;
+});
 
 function makeDocument(
   overrides: Partial<documentIpc.DocumentSummary> = {},
@@ -82,20 +101,27 @@ function makeDocument(
   };
 }
 
-function renderDocuments() {
+function renderDocuments(compact = false) {
+  setCompactLayout(compact);
   const showToast = vi.fn();
-  render(<OverlayProvider><DocumentsScreen showToast={showToast} refreshDecks={async () => []} /></OverlayProvider>);
+  render(
+    <LayoutModeProvider>
+      <OverlayProvider>
+        <DocumentsScreen showToast={showToast} refreshDecks={async () => []} />
+      </OverlayProvider>
+    </LayoutModeProvider>,
+  );
   return showToast;
 }
 
-async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLElement> {
+async function openDocumentActions(
+  title = "Cardiac physiology",
+  presentation: "menu" | "dialog" = "menu",
+): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
-  await act(async () => {
-    fireEvent.click(trigger);
-    await Promise.resolve();
-  });
-  return screen.findByRole("menu", { name: label });
+  fireEvent.click(trigger);
+  return screen.findByRole(presentation, { name: label });
 }
 
 async function waitForCollectionDiscovery(): Promise<void> {
@@ -136,17 +162,18 @@ describe("Document job presentation", () => {
     vi.mocked(documentIpc.getDocumentGenerationProgress).mockReturnValueOnce(
       new Promise(() => undefined),
     );
-    renderDocuments();
+    renderDocuments(true);
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await openDocumentActions();
-    expect(await screen.findByText("Retry generation")).toBeTruthy();
+    const actions = await openDocumentActions("Cardiac physiology", "dialog");
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
 
     await act(async () => {
       finish({ revision: 1, collections: [], memberships: [], ranges: [] });
       await Promise.resolve();
     });
-    expect(screen.getByText("Retry generation")).toBeTruthy();
+    expect(actions.isConnected).toBe(true);
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
   });
 
   it("keeps nonfatal analysis details out of cards and successful generation toasts", async () => {
