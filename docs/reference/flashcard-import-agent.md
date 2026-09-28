@@ -22,7 +22,7 @@ Use the current mixed-card format:
 
 `deck.mode` is `create` or `append`. Append requires exactly one active deck with the exact supplied name and must omit or empty `description`.
 
-The authoritative reviewable schema is [`docs/ostudy-flashcards-v2.schema.json`](../ostudy-flashcards-v2.schema.json). The native Rust importer remains authoritative for semantic validation.
+The authoritative reviewable schema is [`docs/reference/ostudy-flashcards-v2.schema.json`](ostudy-flashcards-v2.schema.json). The native Rust importer remains authoritative for semantic validation.
 
 ## Supported card families
 

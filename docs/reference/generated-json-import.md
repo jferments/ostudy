@@ -22,7 +22,7 @@ There is no generated-import preview window and no separate generated-import but
 
 ## File identity
 
-The recommended filename suffix is `.ostudy.json`. New files should use **format version 2**, whose reviewable JSON Schema is [`docs/ostudy-flashcards-v2.schema.json`](../ostudy-flashcards-v2.schema.json). Version 1 remains a Basic/Cloze compatibility reader. The file itself is ordinary UTF-8 JSON with this envelope:
+The recommended filename suffix is `.ostudy.json`. New files should use **format version 2**, whose reviewable JSON Schema is [`docs/reference/ostudy-flashcards-v2.schema.json`](ostudy-flashcards-v2.schema.json). Version 1 remains a Basic/Cloze compatibility reader. The file itself is ordinary UTF-8 JSON with this envelope:
 
 ```json
 {

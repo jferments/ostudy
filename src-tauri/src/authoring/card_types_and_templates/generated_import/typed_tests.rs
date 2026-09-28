@@ -6,7 +6,7 @@ use crate::cards::questions::ValidatedQuestion;
 const MIXED_FAMILY_EXAMPLE: &str =
     include_str!("../../../../../docs/examples/mixed-card-types.ostudy.json");
 const V2_SCHEMA: &str =
-    include_str!("../../../../../docs/ostudy-flashcards-v2.schema.json");
+    include_str!("../../../../../docs/reference/ostudy-flashcards-v2.schema.json");
 
 fn questions() -> Vec<Value> {
     vec![

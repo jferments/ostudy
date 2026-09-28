@@ -72,7 +72,7 @@ The maintained runner topology is described in [Unified Linux/Android runner](de
 
 ## External formats
 
-The [generated JSON reference](reference/generated-json-import.md) and [generator-agent instructions](reference/flashcard-import-agent.md) distinguish the legacy v1 Basic/Cloze reader from the current v2 mixed-card contract. The [version-1 JSON Schema](ostudy-flashcards-v1.schema.json) remains the compatibility reference; the [version-2 JSON Schema](ostudy-flashcards-v2.schema.json) and [mixed-family example](examples/mixed-card-types.ostudy.json) cover Basic, Cloze, single-choice, select-all, true/false, matching, grouping, and ordering. Content imports do not supply internal database IDs or learner history.
+The [generated JSON reference](reference/generated-json-import.md) and [generator-agent instructions](reference/flashcard-import-agent.md) distinguish the legacy v1 Basic/Cloze reader from the current v2 mixed-card contract. The [version-1 JSON Schema](ostudy-flashcards-v1.schema.json) remains the compatibility reference; the [version-2 JSON Schema](reference/ostudy-flashcards-v2.schema.json) and [mixed-family example](examples/mixed-card-types.ostudy.json) cover Basic, Cloze, single-choice, select-all, true/false, matching, grouping, and ordering. Content imports do not supply internal database IDs or learner history.
 
 ## Roadmap and historical material
 
