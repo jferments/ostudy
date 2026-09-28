@@ -57,6 +57,10 @@ requireText("developer CLI help", developerCli, "doctor          Verify core loc
 requireText("doctor core mode", doctor, "CHECK_NATIVE_SMOKE=0");
 requireText("doctor native-smoke mode", doctor, "--native-smoke) CHECK_NATIVE_SMOKE=1");
 requireText("doctor native-smoke tools", doctor, "WebKitWebDriver tauri-driver");
+requireText("doctor script linters", doctor, "ruff shellcheck");
+requireText("setup pins script linters", setup, "ostudy_ensure_script_linters");
+requireText("static check owns pinned script linters", staticCheck, "ostudy_ensure_script_linters");
+requireText("static check runs script correctness lint", staticCheck, 'lint-scripts.sh');
 requireText("static check owns local doctor", staticCheck, '"$SCRIPT_DIR/doctor.sh"');
 requireText("fast check reuses static contract", fastCheck, 'check-static.sh');
 requireText("full check owns native dependencies", fullCheck, 'install-native-deps.sh');

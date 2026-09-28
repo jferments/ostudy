@@ -55,6 +55,13 @@ LOCAL_OPT="$HOME/.local/opt"
 mkdir -p "$LOCAL_BIN" "$LOCAL_OPT"
 export PATH="$LOCAL_BIN:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/script-linters.bash"
+
+log "Installing pinned ShellCheck and Ruff correctness tooling"
+ostudy_ensure_script_linters
+ln -sfn "$OSTUDY_RUFF" "$LOCAL_BIN/ruff"
+ln -sfn "$OSTUDY_SHELLCHECK" "$LOCAL_BIN/shellcheck"
 
 add_path_to_shell_file() {
   local file="$1"

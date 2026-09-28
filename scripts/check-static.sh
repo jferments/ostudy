@@ -9,6 +9,8 @@ source "$ROOT_DIR/versions.env"
 source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 # shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/script-linters.bash"
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/check-state.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
@@ -50,6 +52,9 @@ if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   ostudy_timing_finish_total reused
   exit 0
 fi
+
+step "Pinned script correctness tooling"
+ostudy_ensure_script_linters
 
 step "Environment and repository contracts"
 "$SCRIPT_DIR/doctor.sh"
@@ -97,6 +102,9 @@ node "$SCRIPT_DIR/verify-documentation.mjs"
 step "Behavior-test policy and repository script syntax"
 node "$SCRIPT_DIR/verify-test-policy.mjs"
 bash "$SCRIPT_DIR/verify-script-syntax.sh"
+
+step "Shell and Python correctness linting"
+bash "$SCRIPT_DIR/lint-scripts.sh"
 
 step "Frozen JavaScript installation and dependency verification"
 if ! pnpm install --frozen-lockfile; then
