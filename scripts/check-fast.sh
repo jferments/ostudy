@@ -90,6 +90,14 @@ cargo test \
   --lib \
   ipc_wire_contract::tests::
 
+step "Native database migration metadata contract"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  migration_contract::tests::
+
 step "Filesystem durability and checkpoint publication contracts"
 bash "$SCRIPT_DIR/test-native-contracts.sh" util::durable_fs::tests:: ui_checkpoint::tests:: studydeck::import::
 

@@ -19,6 +19,10 @@ use crate::{
 const LEGACY_PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
 pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
+pub(crate) fn legacy_public_schema_lineage() -> &'static str {
+    LEGACY_PUBLIC_SCHEMA_LINEAGE
+}
+
 #[path = "database/entry.rs"]
 mod entry;
 
@@ -248,6 +252,46 @@ const MIGRATIONS: &[Migration] = &[
         rebuilds_tables: false,
     },
 ];
+
+pub(crate) fn public_migration_contract_rows(
+) -> Vec<(i64, &'static str, &'static str, bool)> {
+    MIGRATIONS
+        .iter()
+        .map(|migration| {
+            (
+                migration.version,
+                migration.name,
+                migration.checksum,
+                migration.rebuilds_tables,
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn release_contract_metadata(
+) -> (
+    &'static str,
+    i64,
+    i64,
+    &'static str,
+    &'static str,
+    Vec<(i64, &'static str, &'static str)>,
+) {
+    let mut migrations = vec![(
+        release::BASELINE_VERSION,
+        release::BASELINE_NAME,
+        release::BASELINE_CHECKSUM,
+    )];
+    migrations.extend(release::migration_contract_rows());
+    (
+        release::SCHEMA_LINEAGE,
+        release::BASELINE_VERSION,
+        release::SCHEMA_VERSION,
+        release::BASELINE_NAME,
+        release::BASELINE_CHECKSUM,
+        migrations,
+    )
+}
 
 /// Terminal version of the pre-0.1 public-v1 compatibility lineage.
 pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;

@@ -1,4 +1,4 @@
-import re
+import json
 import subprocess
 import unittest
 from pathlib import Path
@@ -40,6 +40,17 @@ class CurrentPublicMigrationContractTests(unittest.TestCase):
                 any(path.name.startswith(expected_prefix) for path in migration_files),
                 f"missing migration file for {line}",
             )
+
+    def test_helper_reads_native_generated_contract_instead_of_scraping_rust(self) -> None:
+        source = HELPER.read_text(encoding="utf-8")
+        manifest = ROOT / "scripts" / "generated" / "database-contract.json"
+        self.assertTrue(manifest.is_file())
+        contract = json.loads(manifest.read_text(encoding="utf-8"))
+        self.assertEqual(contract["schemaVersion"], 1)
+        self.assertEqual(contract["public"]["latestSchemaVersion"], int(self.run_helper("--latest")))
+        self.assertNotIn("src-tauri/src/database.rs", source)
+        self.assertNotIn("const MIGRATIONS:", source)
+        self.assertNotIn("matchAll(/Migration", source)
 
     def test_startup_smoke_validates_release_contract_not_legacy_registry(self) -> None:
         smoke = SMOKE.read_text(encoding="utf-8")

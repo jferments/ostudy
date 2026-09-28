@@ -71,6 +71,7 @@ mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
 pub mod ipc_wire_contract;
+pub mod migration_contract;
 mod knowledge;
 mod library_backup;
 mod library_backup_commands;
