@@ -47,6 +47,7 @@ fn input<'a>(
         retry_partial: false,
         diagnostics: None,
         logical_key: Some(contract),
+        initial_visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
     }
 }
 

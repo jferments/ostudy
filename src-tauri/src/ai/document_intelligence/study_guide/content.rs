@@ -83,6 +83,7 @@ fn parse_grounded_section_with_images(
     })
 }
 
+#[cfg(test)]
 pub(super) fn parse_study_guide_section(
     value: Value,
 ) -> Result<StudyGuideSectionContent, CommandError> {

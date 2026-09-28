@@ -45,6 +45,7 @@ async fn scenario(improve: bool) {
         retry_partial: false,
         diagnostics: Some(&context),
         logical_key: Some(&key),
+        initial_visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
     };
     let calls = std::cell::Cell::new(0);
     let result = run(input,&CancellationSignal::new(),|call| {
@@ -134,6 +135,7 @@ async fn document_outcomes_real_failed_checkpoint_never_claims_committed_knowled
         retry_partial: false,
         diagnostics: Some(&context),
         logical_key: Some(&key),
+        initial_visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
     };
     let error=run(input,&CancellationSignal::new(),|_| {
         let context=context.clone();let key=key.clone();let database=&database;let sources=&sources;
