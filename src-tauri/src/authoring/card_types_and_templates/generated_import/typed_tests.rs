@@ -104,7 +104,12 @@ fn documented_v2_schema_and_mixed_family_example_cover_the_runtime_family_set() 
                 .unwrap();
             let kinds = definitions
                 .iter()
-                .map(|definition| ValidatedQuestion::parse(definition).unwrap().kind().as_str())
+                .map(|definition| {
+                    ValidatedQuestion::parse(definition)
+                        .unwrap()
+                        .kind()
+                        .as_str()
+                })
                 .collect::<HashSet<_>>();
             assert_eq!(
                 kinds,
