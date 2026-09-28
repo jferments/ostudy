@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as collectionIpc from "../ipc/collections";
@@ -128,6 +128,19 @@ function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolve
   return { showToast, refreshDecks };
 }
 
+async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLElement> {
+  const label = `More actions for ${title}`;
+  const trigger = screen.getByRole("button", { name: label });
+  await act(async () => {
+    fireEvent.click(trigger);
+    // Base UI publishes controlled dropdown state after the triggering event.
+    // Flush that microtask explicitly instead of making integration assertions
+    // depend on whole-suite scheduler timing.
+    await Promise.resolve();
+  });
+  return screen.findByRole("menu", { name: label });
+}
+
 describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -198,7 +211,7 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByText("PDF · 2.0 KB")).toBeNull();
 
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Generation info"));
     const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
@@ -222,7 +235,7 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Generation info"));
     const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("Word · 2.0 KB")).toBeTruthy();
@@ -306,7 +319,7 @@ describe("DocumentsScreen", () => {
         .toBe(false);
       expect(artifactIpc.listLatestDocumentStudyGuideJobs).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
@@ -440,14 +453,14 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Stop generation"));
 
     await waitFor(() => {
       expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     expect(await screen.findByText("Stopping…")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
@@ -467,7 +480,7 @@ describe("DocumentsScreen", () => {
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Generate more cards"));
 
     await waitFor(() => {
@@ -491,7 +504,7 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     const menu = await screen.findByRole("menu", { name: "More actions for Cardiac physiology" });
     expect(within(menu).getByRole("menuitem", { name: "Retry generation" })).toBeTruthy();
     expect(within(menu).queryByText("Generate study guide")).toBeNull();
@@ -510,7 +523,7 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     expect(await screen.findByText("Generation info")).toBeTruthy();
     expect(screen.getByText("Generate more cards")).toBeTruthy();
     expect(screen.queryByText("Generate study guide")).toBeNull();

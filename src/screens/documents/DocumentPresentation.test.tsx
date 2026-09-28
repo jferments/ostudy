@@ -88,6 +88,16 @@ function renderDocuments() {
   return showToast;
 }
 
+async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLElement> {
+  const label = `More actions for ${title}`;
+  const trigger = screen.getByRole("button", { name: label });
+  await act(async () => {
+    fireEvent.click(trigger);
+    await Promise.resolve();
+  });
+  return screen.findByRole("menu", { name: label });
+}
+
 async function waitForCollectionDiscovery(): Promise<void> {
   await waitFor(() => {
     expect(
@@ -129,7 +139,7 @@ describe("Document job presentation", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     expect(await screen.findByText("Retry generation")).toBeTruthy();
 
     await act(async () => {
@@ -150,7 +160,7 @@ describe("Document job presentation", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     await waitForCollectionDiscovery();
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => expect(toast).toHaveBeenCalledWith(
@@ -187,7 +197,7 @@ describe("Document job presentation", () => {
     expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions();
     fireEvent.click(await screen.findByText("Stop study guide generation"));
     await waitFor(() => expect(
       studyGuideIpc.cancelDocumentStudyGuideGeneration,
