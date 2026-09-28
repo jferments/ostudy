@@ -39,3 +39,24 @@ fi
   "${python_files[@]}"
 printf 'OK   Ruff %s correctness lint: %d tracked Python file(s)\n' \
   "$RUFF_VERSION" "${#python_files[@]}"
+
+TYPE_PROBE="$(mktemp -t ostudy-ty-negative.XXXXXXXX.py)"
+cleanup_type_probe() { rm -f -- "$TYPE_PROBE"; }
+trap cleanup_type_probe EXIT
+cat >"$TYPE_PROBE" <<'PY'
+value: int = "not an integer"
+PY
+if "$OSTUDY_TY" check --python-version 3.12 --no-progress "$TYPE_PROBE" >/dev/null 2>&1; then
+  printf 'ERROR: ty negative control accepted an incompatible assignment.\n' >&2
+  exit 1
+fi
+rm -f -- "$TYPE_PROBE"
+trap - EXIT
+
+"$OSTUDY_TY" check \
+  --python-version 3.12 \
+  --no-progress \
+  --output-format concise \
+  scripts/library-status.py \
+  scripts/restore_pre_public_backup.py
+printf 'OK   ty %s focused type check: library status + pre-public restore\n' "$TY_VERSION"

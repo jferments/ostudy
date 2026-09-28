@@ -89,6 +89,8 @@ The same maintained check wrappers can be reached through `./scripts/ostudy-dev 
 
 Choose the smallest relevant command during iteration. The first two are focused documentation/workflow checks; they do not replace broader gates when required. `check-changed` selects by the current diff, so a clean checkout with no relevant diff can do little. Use explicit static/fast/full wrappers when certifying a particular tier.
 
+Static qualification provisions checksum-pinned standalone ShellCheck, Ruff, and ty binaries outside the worktree. ShellCheck and Ruff provide check-only correctness linting; ty is deliberately focused on the safety-critical library-status and pre-public restore tools rather than treating the whole Python test harness as fully typed. The gate also runs a disposable negative type control so a misconfigured type checker cannot silently report success.
+
 For a specific frontend failure, use `pnpm exec vitest run` followed by the exact existing test path identified in the failure. Do not invent test filenames. For native failures, use the focused command supplied by the current runbook or qualification evidence before rerunning the full matrix.
 
 ## Android environment and automated qualification

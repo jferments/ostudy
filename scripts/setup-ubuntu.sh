@@ -58,10 +58,11 @@ export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/script-linters.bash"
 
-log "Installing pinned ShellCheck and Ruff correctness tooling"
+log "Installing pinned ShellCheck, Ruff, and ty correctness tooling"
 ostudy_ensure_script_linters
 ln -sfn "$OSTUDY_RUFF" "$LOCAL_BIN/ruff"
 ln -sfn "$OSTUDY_SHELLCHECK" "$LOCAL_BIN/shellcheck"
+ln -sfn "$OSTUDY_TY" "$LOCAL_BIN/ty"
 
 add_path_to_shell_file() {
   local file="$1"

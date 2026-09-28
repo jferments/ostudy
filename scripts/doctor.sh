@@ -44,7 +44,7 @@ exact_version() {
 printf 'ostudy development environment diagnostics\n\n'
 
 for command_name in \
-  git curl jq node npm pnpm python3 ruff shellcheck rustup rustc cargo rustfmt cargo-clippy \
+  git curl jq node npm pnpm python3 ruff shellcheck ty rustup rustc cargo rustfmt cargo-clippy \
   pkg-config sqlite3 sha256sum tar; do
   require_command "$command_name"
 done
@@ -69,6 +69,7 @@ if (( failures == 0 )); then
   exact_version "pnpm" "$(pnpm --version)" "$PNPM_VERSION"
   exact_version "Ruff" "$(ruff --version | awk '{print $2}')" "$RUFF_VERSION"
   exact_version "ShellCheck" "$(shellcheck --version | sed -n 's/^version: //p' | head -n 1)" "$SHELLCHECK_VERSION"
+  exact_version "ty" "$(ty version | awk '{print $2}')" "$TY_VERSION"
   exact_version "Rust" "$(rustc --version | awk '{print $2}')" "$RUST_VERSION"
   exact_version "Cargo" "$(cargo --version | awk '{print $2}')" "$CARGO_VERSION"
 

@@ -111,6 +111,7 @@ ostudy_check_fingerprint() {
     printf 'pnpm='; command -v pnpm >/dev/null 2>&1 && pnpm --version || printf 'missing\n'
     printf 'ruff='; command -v ruff >/dev/null 2>&1 && ruff --version || printf 'missing\n'
     printf 'shellcheck='; command -v shellcheck >/dev/null 2>&1 && shellcheck --version || printf 'missing\n'
+    printf 'ty='; command -v ty >/dev/null 2>&1 && ty version || printf 'missing\n'
     printf 'rustc='; command -v rustc >/dev/null 2>&1 && rustc -Vv || printf 'missing\n'
     printf 'cargo='; command -v cargo >/dev/null 2>&1 && cargo --version || printf 'missing\n'
     printf 'platform='; uname -srm
