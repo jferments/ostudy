@@ -71,9 +71,9 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
         self.assertLessEqual(len(interface["longDescription"]), 4000)
         self.assertLessEqual(len(interface["developerName"]), 80)
         self.assertLessEqual(len(interface["capabilities"]), 20)
-        self.assertTrue(all(len(item) <= 120 and "\\n" not in item for item in interface["capabilities"]))
+        self.assertTrue(all(len(item) <= 120 and "\n" not in item for item in interface["capabilities"]))
         self.assertLessEqual(len(interface["defaultPrompt"]), 3)
-        self.assertTrue(all(len(prompt) <= 128 and "\\n" not in prompt for prompt in interface["defaultPrompt"]))
+        self.assertTrue(all(len(prompt) <= 128 and "\n" not in prompt for prompt in interface["defaultPrompt"]))
         self.assertNotIn("screenshots", interface)
 
         marketplace = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
