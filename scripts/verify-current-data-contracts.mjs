@@ -16,6 +16,8 @@ const [
   syncPackage,
   generatedImport,
   generatedPrepare,
+  externalFileStreaming,
+  externalFileCommands,
   richContent,
   checkpoint,
   attempts,
@@ -34,6 +36,8 @@ const [
   read("src-tauri/src/device_sync/package.rs"),
   read("src-tauri/src/authoring/card_types_and_templates/generated_import/mod.rs"),
   read("src-tauri/src/authoring/card_types_and_templates/generated_import/prepare.rs"),
+  read("src-tauri/src/external_file_streaming.rs"),
+  read("src-tauri/src/external_file_commands.rs"),
   read("src-tauri/src/cards/rich_content.rs"),
   read("src-tauri/src/ui_checkpoint.rs"),
   read("src-tauri/src/cards/questions/attempt.rs"),
@@ -90,8 +94,23 @@ requireText("generated import legacy v1 reader", generatedImport, 'const LEGACY_
 requireText("generated import current v2 writer", generatedImport, 'const GENERATED_IMPORT_VERSION: i64 = 2;');
 requireText(
   "generated import explicit v1/v2 readers",
+  generatedImport,
+  "SUPPORTED_GENERATED_IMPORT_VERSIONS",
+);
+requireText(
+  "generated importer uses shared identity policy",
   generatedPrepare,
-  '![LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION]',
+  "is_supported_generated_import_identity",
+);
+requireText(
+  "streaming generated JSON detection uses importer envelope policy",
+  externalFileStreaming,
+  "is_supported_generated_import_envelope(&value)",
+);
+requireText(
+  "Android generated JSON detection uses importer envelope policy",
+  externalFileCommands,
+  "is_supported_generated_import_envelope(&value)",
 );
 requireText("rich schema 3 admission", richContent, 'if !(1..=3).contains(&version)');
 requireText("rich schema 3 projection", richContent, 'if version == 3');

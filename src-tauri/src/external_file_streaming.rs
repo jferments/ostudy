@@ -655,11 +655,8 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
             "Select an ostudy deck, an Anki .apkg deck, or valid generated JSON.",
         )
     })?;
-    if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
-        && value
-            .get("formatVersion")
-            .and_then(serde_json::Value::as_i64)
-            == Some(1)
+    if crate::authoring::card_types_and_templates::generated_import::
+        is_supported_generated_import_envelope(&value)
     {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
@@ -830,12 +827,20 @@ fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::HashSet,
         fs,
         sync::atomic::{AtomicU64, Ordering},
     };
 
     use super::*;
+    use crate::{
+        authoring::card_types_and_templates::generated_import::
+            import_generated_flashcards_bytes_with_commit_context,
+        cards::questions::ValidatedQuestion,
+    };
 
+    const MIXED_V2_EXAMPLE: &str =
+        include_str!("../../docs/examples/mixed-card-types.ostudy.json");
     static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
     #[test]
@@ -870,6 +875,182 @@ mod tests {
             ExternalFileKind::parse("anki_apkg").unwrap().extension(),
             "apkg"
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn generated_json_detection_accepts_v1_and_v2_envelopes() {
+        for version in [1, 2] {
+            let payload = serde_json::to_vec(&serde_json::json!({
+                "format": "ostudy-flashcards",
+                "formatVersion": version,
+                "deck": {"mode": "create", "name": format!("Generated v{version}")},
+                "cards": [{"type": "basic", "front": "Question", "back": "Answer"}]
+            }))
+            .unwrap();
+            let path = test_file(&payload);
+            assert_eq!(
+                detect_kind(
+                    &path,
+                    ExternalImportPurpose::StudyContent,
+                    "generated.ostudy.json"
+                )
+                .unwrap(),
+                ExternalFileKind::GeneratedJson
+            );
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn generated_json_detection_rejects_future_unrelated_and_malformed_json() {
+        let future = test_file(
+            &serde_json::to_vec(&serde_json::json!({
+                "format": "ostudy-flashcards",
+                "formatVersion": 3,
+                "deck": {"mode": "create", "name": "Future"},
+                "cards": [{"type": "basic", "front": "Question", "back": "Answer"}]
+            }))
+            .unwrap(),
+        );
+        let future_error =
+            detect_study_content(&future).expect_err("future generated JSON must not be staged");
+        assert_eq!(future_error.code, "unsupported_flashcard_import");
+        let _ = fs::remove_file(future);
+
+        let unrelated = test_file(br#"{"format":"other","formatVersion":2}"#);
+        let unrelated_error =
+            detect_study_content(&unrelated).expect_err("unrelated JSON must not be staged");
+        assert_eq!(unrelated_error.code, "unsupported_flashcard_import");
+        let _ = fs::remove_file(unrelated);
+
+        let malformed = test_file(br#"{"format":"ostudy-flashcards","formatVersion":"#);
+        let malformed_error =
+            detect_study_content(&malformed).expect_err("malformed JSON must not be staged");
+        assert_eq!(malformed_error.code, "invalid_flashcard_import_json");
+        let _ = fs::remove_file(malformed);
+    }
+
+    #[test]
+    fn mixed_v2_external_detection_reaches_the_authoritative_generated_importer() {
+        let path = test_file(MIXED_V2_EXAMPLE.as_bytes());
+        assert_eq!(
+            detect_kind(
+                &path,
+                ExternalImportPurpose::StudyContent,
+                "mixed-card-types.ostudy.json"
+            )
+            .unwrap(),
+            ExternalFileKind::GeneratedJson
+        );
+
+        let bytes = fs::read(&path).unwrap();
+        let database = Database::open_in_memory().unwrap();
+        let result = import_generated_flashcards_bytes_with_commit_context(
+            &database,
+            &bytes,
+            |_, _, _, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(result.created_note_count, 8);
+        assert_eq!(result.created_card_count, 8);
+
+        database
+            .with_connection(|connection| {
+                let counts = connection
+                    .query_row(
+                        "SELECT
+                           (SELECT COUNT(*) FROM notes WHERE note_type = 'basic'),
+                           (SELECT COUNT(*) FROM notes WHERE note_type = 'cloze'),
+                           (SELECT COUNT(*) FROM notes WHERE note_type = 'interactive')",
+                        [],
+                        |row| {
+                            Ok((
+                                row.get::<_, i64>(0)?,
+                                row.get::<_, i64>(1)?,
+                                row.get::<_, i64>(2)?,
+                            ))
+                        },
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(counts, (1, 1, 6));
+
+                let mut statement = connection
+                    .prepare(
+                        "SELECT question_definition
+                         FROM notes
+                         WHERE note_type = 'interactive'
+                         ORDER BY created_at,id",
+                    )
+                    .map_err(CommandError::database)?;
+                let definitions = statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(CommandError::database)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(CommandError::database)?;
+                let kinds = definitions
+                    .iter()
+                    .map(|definition| {
+                        ValidatedQuestion::parse(definition)
+                            .map(|question| question.kind().as_str())
+                    })
+                    .collect::<Result<HashSet<_>, _>>()?;
+                assert_eq!(
+                    kinds,
+                    HashSet::from([
+                        "single_choice",
+                        "select_all",
+                        "true_false",
+                        "matching",
+                        "grouping",
+                        "ordering",
+                    ])
+                );
+                Ok(())
+            })
+            .unwrap();
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn downstream_v2_validation_failure_is_atomic_after_external_detection() {
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "format": "ostudy-flashcards",
+            "formatVersion": 2,
+            "deck": {"mode": "create", "name": "Invalid mixed deck"},
+            "cards": [
+                {"type": "basic", "front": "Valid question", "back": "Valid answer"},
+                {
+                    "type": "interactive",
+                    "question": {
+                        "kind": "single_choice",
+                        "prompt": "Choose one.",
+                        "options": [
+                            {"id": "a", "content": "A"},
+                            {"id": "b", "content": "B"}
+                        ],
+                        "correctOptionId": "missing"
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+        let path = test_file(&payload);
+        assert_eq!(
+            detect_study_content(&path).unwrap(),
+            ExternalFileKind::GeneratedJson
+        );
+
+        let database = Database::open_in_memory().unwrap();
+        let before = study_graph_counts(&database);
+        let error = import_generated_flashcards_bytes_with_commit_context(
+            &database,
+            &payload,
+            |_, _, _, _| Ok(()),
+        )
+        .expect_err("invalid v2 card must fail in the authoritative importer");
+        assert_eq!(error.code, "invalid_flashcard_import_cards");
+        assert_eq!(study_graph_counts(&database), before);
         let _ = fs::remove_file(path);
     }
 
@@ -932,6 +1113,35 @@ mod tests {
                 "android_document_provider".to_string(),
             )
         );
+    }
+
+    fn study_graph_counts(database: &Database) -> (i64, i64, i64, i64, i64, i64) {
+        database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT
+                           (SELECT COUNT(*) FROM decks),
+                           (SELECT COUNT(*) FROM notes),
+                           (SELECT COUNT(*) FROM cards),
+                           (SELECT COUNT(*) FROM card_schedules),
+                           (SELECT COUNT(*) FROM tags),
+                           (SELECT COUNT(*) FROM note_tags)",
+                        [],
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                                row.get(5)?,
+                            ))
+                        },
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap()
     }
 
     fn test_file(bytes: &[u8]) -> PathBuf {

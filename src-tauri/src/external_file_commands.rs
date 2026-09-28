@@ -588,11 +588,8 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
             "The selected content is neither an ostudy deck nor valid generated JSON.",
         )
     })?;
-    if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
-        && value
-            .get("formatVersion")
-            .and_then(serde_json::Value::as_i64)
-            == Some(1)
+    if crate::authoring::card_types_and_templates::generated_import::
+        is_supported_generated_import_envelope(&value)
     {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
