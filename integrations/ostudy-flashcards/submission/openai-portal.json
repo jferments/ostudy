@@ -1,0 +1,75 @@
+{
+  "submissionType": "Skills only",
+  "pluginName": "oStudy Flashcards",
+  "category": "Education",
+  "websiteURL": "https://ostudy.io/",
+  "supportURL": "https://ostudy.io/contact/",
+  "privacyPolicyURL": "https://ostudy.io/privacy/",
+  "termsOfServiceURL": "https://ostudy.io/terms/",
+  "shortDescription": "Create validated flashcard decks that import directly into oStudy.",
+  "longDescription": "Generate high-quality oStudy flashcards from a topic, supplied text, or documents already available to ChatGPT. The plugin creates a validated .ostudy.json file for the user to download and import into oStudy. It is skills-only: it has no MCP server, no authentication, no remote oStudy service, and no direct access to the user's local oStudy library.",
+  "starterPrompts": [
+    "Create an oStudy flashcard deck that teaches acid-base physiology at a nursing-school level.",
+    "Turn the attached lecture document into a comprehensive, source-grounded oStudy flashcard deck.",
+    "Create an oStudy deck from this material, choosing Basic, Cloze, and interactive question types based on what best tests each concept.",
+    "Append a new set of cards to my existing oStudy deck named NCLEX Pharmacology and return the import file."
+  ],
+  "positiveTestCases": [
+    {
+      "name": "Topic-only deck",
+      "userPrompt": "Create a new oStudy deck named Acid-Base Physiology with 16 high-quality flashcards for a nursing student. Return the validated import file.",
+      "expectedBehavior": "Activate the generate-ostudy-flashcards skill, author a formatVersion 2 create-mode deck, run the bundled deterministic writer, and return a downloadable .ostudy.json artifact.",
+      "expectedResultShape": "One downloadable .ostudy.json file plus a concise summary containing deck name, source-card count, card-type mix, create mode, and the oStudy import path.",
+      "fixtureData": "None."
+    },
+    {
+      "name": "Source-grounded supplied text",
+      "userPrompt": "Using only the following source, create an oStudy flashcard deck and do not add outside facts: The sinoatrial node normally initiates cardiac depolarization. The atrioventricular node delays conduction before the impulse reaches the His-Purkinje system. Return the validated oStudy import file.",
+      "expectedBehavior": "Ground every factual card in the supplied source, avoid unsupported additions, validate the complete v2 deck, and return the file.",
+      "expectedResultShape": "A downloadable .ostudy.json create-mode deck whose factual content is supportable from the supplied text.",
+      "fixtureData": "The complete source is embedded in the prompt."
+    },
+    {
+      "name": "Mixed supported card types",
+      "userPrompt": "Create an oStudy deck named Card Type Acceptance with useful examples of Basic, Cloze, single-choice, select-all, true/false, matching, grouping, and ordering cards. Use simple general-knowledge material so each example is unambiguous. Validate and return the import file.",
+      "expectedBehavior": "Generate formatVersion 2 and use every supported text-native source-card type without image occlusion, then run the bundled validator.",
+      "expectedResultShape": "A downloadable .ostudy.json file containing at least one valid example of all eight supported source-card forms.",
+      "fixtureData": "None."
+    },
+    {
+      "name": "Explicit append semantics",
+      "userPrompt": "Create 10 new oStudy flashcards about beta blockers to append to my existing deck named NCLEX Pharmacology. Return the validated import file.",
+      "expectedBehavior": "Use deck.mode append, preserve the exact requested deck name, omit/empty the deck description, validate the file, and explain that local oStudy will require exactly one active deck with that exact name.",
+      "expectedResultShape": "A downloadable .ostudy.json append-mode file and a concise append compatibility note.",
+      "fixtureData": "No local library is required because the plugin only creates the file."
+    },
+    {
+      "name": "Concept-first generation",
+      "userPrompt": "Create a 24-card oStudy deck about the renin-angiotensin-aldosterone system. Prioritize mechanisms, cause-and-effect relationships, clinically meaningful distinctions, and plausible distractors over isolated trivia. Validate and return the file.",
+      "expectedBehavior": "Use the authoring guidance to choose card types based on the learning target, avoid near-duplicates, validate the complete artifact, and return it.",
+      "expectedResultShape": "One downloadable .ostudy.json file with a coherent mix of appropriate card types and concise learning rationales where useful.",
+      "fixtureData": "None."
+    }
+  ],
+  "negativeTestCases": [
+    {
+      "name": "Unrelated summarization",
+      "userPrompt": "Summarize this material in five paragraphs.",
+      "expectedBehavior": "Do not activate the oStudy flashcard-generation workflow solely because study material is present. Answer the summarization request normally.",
+      "whyNotComplete": "The user did not ask for flashcards, an oStudy deck, or an oStudy import file."
+    },
+    {
+      "name": "Direct local-library mutation",
+      "userPrompt": "Add these cards directly into the oStudy library installed on my computer.",
+      "expectedBehavior": "Do not claim to access or modify the local oStudy library. Explain that this skills-only plugin can create an importable .ostudy.json file and may offer to create that file.",
+      "whyNotComplete": "The plugin has no MCP server, local-library connection, authentication, or direct filesystem access to the installed oStudy application."
+    },
+    {
+      "name": "Different flashcard package",
+      "userPrompt": "Create an Anki .apkg deck from this topic.",
+      "expectedBehavior": "Do not silently substitute an oStudy file for the requested Anki package. State that oStudy Flashcards produces .ostudy.json and leave the unrelated format request to another capability.",
+      "whyNotComplete": "The plugin's purpose and validator are limited to the oStudy generated-JSON transport."
+    }
+  ],
+  "releaseNotes": "Initial skills-only submission. Generates validated oStudy format-version-2 flashcard import files from topics, supplied text, and documents; includes deterministic local validation and supports Basic, Cloze, single-choice, select-all, true/false, matching, grouping, and ordering cards. No MCP server or authentication is used."
+}

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,9 @@ EXAMPLE = SKILL / "references" / "all-card-types.ostudy.json"
 BUNDLED_SCHEMA = SKILL / "references" / "ostudy-flashcards-v2.schema.json"
 CANONICAL_SCHEMA = ROOT / "docs" / "ostudy-flashcards-v2.schema.json"
 MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
+BUILDER = ROOT / "scripts" / "build-ostudy-flashcards-plugin.py"
+DOSSIER = PLUGIN / "submission" / "openai-portal.json"
+LOGO = PLUGIN / "assets" / "logo.png"
 
 
 class OStudyFlashcardsPluginTests(unittest.TestCase):
@@ -36,18 +40,76 @@ class OStudyFlashcardsPluginTests(unittest.TestCase):
     def example(self) -> dict:
         return json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
+    def run_builder(self, output: Path):
+        return subprocess.run(
+            [sys.executable, str(BUILDER), "--output", str(output)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+
     def test_portable_manifest_and_repo_marketplace_are_skills_only(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["name"], "ostudy-flashcards")
         self.assertEqual(manifest["extensions"]["com.openai"]["interface"]["displayName"], "oStudy Flashcards")
         self.assertTrue((SKILL / "SKILL.md").is_file())
+        self.assertTrue(LOGO.is_file())
         self.assertFalse((PLUGIN / "mcp.json").exists())
+        self.assertNotIn("skills", manifest)
+        self.assertNotIn("mcpServers", manifest)
+        interface = manifest["extensions"]["com.openai"]["interface"]
+        self.assertEqual(interface["websiteURL"], "https://ostudy.io/")
+        self.assertEqual(interface["privacyPolicyURL"], "https://ostudy.io/privacy/")
+        self.assertEqual(interface["termsOfServiceURL"], "https://ostudy.io/terms/")
+        self.assertEqual(interface["logo"], "./assets/logo.png")
+        self.assertNotIn("screenshots", interface)
 
         marketplace = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
         entry = marketplace["plugins"][0]
         self.assertEqual(entry["name"], "ostudy-flashcards")
         self.assertEqual(entry["source"]["path"], "./integrations/ostudy-flashcards")
         self.assertEqual(entry["category"], "Education")
+
+    def test_web_submission_dossier_has_portal_prompts_and_reviewer_cases(self):
+        dossier = json.loads(DOSSIER.read_text(encoding="utf-8"))
+        self.assertEqual(dossier["submissionType"], "Skills only")
+        self.assertEqual(dossier["pluginName"], "oStudy Flashcards")
+        self.assertGreaterEqual(len(dossier["starterPrompts"]), 3)
+        self.assertGreaterEqual(len(dossier["positiveTestCases"]), 5)
+        self.assertGreaterEqual(len(dossier["negativeTestCases"]), 3)
+        for case in dossier["positiveTestCases"]:
+            self.assertTrue(case["userPrompt"])
+            self.assertTrue(case["expectedBehavior"])
+            self.assertTrue(case["expectedResultShape"])
+            self.assertTrue(case["fixtureData"])
+        for case in dossier["negativeTestCases"]:
+            self.assertTrue(case["userPrompt"])
+            self.assertTrue(case["expectedBehavior"])
+            self.assertTrue(case["whyNotComplete"])
+        for key in ("websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"):
+            self.assertTrue(dossier[key].startswith("https://"))
+
+    def test_web_submission_zip_is_deterministic_and_skills_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            first = base / "first.zip"
+            second = base / "second.zip"
+            one = self.run_builder(first)
+            two = self.run_builder(second)
+            self.assertEqual(one.returncode, 0, one.stderr)
+            self.assertEqual(two.returncode, 0, two.stderr)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
+            with zipfile.ZipFile(first, "r") as archive:
+                names = archive.namelist()
+                self.assertIn("plugin.json", names)
+                self.assertIn("assets/logo.png", names)
+                self.assertIn("skills/generate-ostudy-flashcards/SKILL.md", names)
+                self.assertFalse(any(name.startswith(".agents/") for name in names))
+                self.assertFalse(any(name.startswith("submission/") for name in names))
+                self.assertFalse(any(name in {"mcp.json", ".mcp.json", ".app.json"} for name in names))
+                self.assertFalse(any(name.endswith("/README.md") or name == "README.md" for name in names))
+                self.assertLessEqual(first.stat().st_size, 100 * 1024 * 1024)
 
     def test_bundled_v2_schema_matches_the_canonical_contract(self):
         canonical = CANONICAL_SCHEMA.read_bytes()

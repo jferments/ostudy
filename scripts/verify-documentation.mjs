@@ -108,15 +108,26 @@ for (const path of [
   ".agents/plugins/marketplace.json",
   "integrations/ostudy-flashcards/plugin.json",
   "integrations/ostudy-flashcards/README.md",
+  "integrations/ostudy-flashcards/assets/logo.png",
+  "integrations/ostudy-flashcards/submission/openai-portal.json",
   "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/SKILL.md",
   "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/references/ostudy-flashcards-v2.schema.json",
   "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/references/all-card-types.ostudy.json",
   "integrations/ostudy-flashcards/skills/generate-ostudy-flashcards/scripts/write_ostudy.py",
+  "scripts/build-ostudy-flashcards-plugin.py",
 ]) {
   if (!tracked.has(path)) failures.push(`Required oStudy ChatGPT plugin source is missing: ${path}`);
 }
 if (tracked.has("integrations/ostudy-flashcards/mcp.json")) {
   failures.push("The oStudy Flashcards ChatGPT plugin is intentionally skills-only and must not add mcp.json");
+}
+for (const path of [
+  "integrations/ostudy-flashcards/.mcp.json",
+  "integrations/ostudy-flashcards/.app.json",
+]) {
+  if (tracked.has(path)) {
+    failures.push(`The oStudy Flashcards ChatGPT plugin is skills-only and must not add ${path.split("/").at(-1)}`);
+  }
 }
 
 const allowedDocsEntries = new Set([
