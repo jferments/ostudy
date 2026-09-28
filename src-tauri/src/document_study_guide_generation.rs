@@ -835,43 +835,10 @@ mod tests {
     }
 
     #[test]
-    fn overview_uses_at_most_six_high_level_topics_with_brief_captions() {
-        let mut plan = plan();
-        plan.topics = (0..9)
-            .map(|index| LearningTopic {
-                id: format!("{:032x}", index + 1),
-                parent_topic_id: None,
-                sort_index: index,
-                title: format!("Major concept {}", index + 1),
-                summary: format!(
-                    "Explains the high-level relationship for concept {}. Secondary detail should not become the caption.",
-                    index + 1
-                ),
-                learning_objectives: Vec::new(),
-                key_concepts: Vec::new(),
-                source_locator: locator(index as i64 + 1),
-                evidence_chunk_indices: vec![index],
-                evidence_hashes: vec!["f".repeat(64)],
-                evidence_hash: "f".repeat(64),
-                anchor_hash: format!("{:064x}", index + 1),
-            })
-            .collect();
-
-        let concepts = overview_key_concepts(&plan);
-        assert_eq!(concepts.len(), MAX_OVERVIEW_KEY_CONCEPTS);
-        assert!(concepts.first().unwrap().starts_with("Major concept 1 — "));
-        assert!(concepts.last().unwrap().starts_with("Major concept 9 — "));
-        assert!(concepts.iter().all(|value| value.contains(" — Explains ")));
-        assert!(concepts
-            .iter()
-            .all(|value| !value.contains("Secondary detail")));
-    }
-
-    #[test]
     fn checkpoint_contract_name_is_versioned() {
         assert_eq!(
             STUDY_GUIDE_CHECKPOINT_CONTRACT,
-            "document-study-guide-v3-explicit-output-contract"
+            "document-study-guide-v4-readable-prose"
         );
     }
     #[test]

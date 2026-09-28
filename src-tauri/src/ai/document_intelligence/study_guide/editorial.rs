@@ -160,7 +160,7 @@ fn schema(topic_count: usize) -> Value {
             "chapters": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": topic_count.min(MAX_EDITORIAL_CHAPTERS).max(1),
+                "maxItems": topic_count.clamp(1, MAX_EDITORIAL_CHAPTERS),
                 "items": {
                     "type": "object",
                     "additionalProperties": false,

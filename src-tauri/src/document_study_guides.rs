@@ -307,6 +307,7 @@ pub(crate) struct SaveStudyGuideOverlayInput {
 /// leaves the prior active guide untouched. Learner notes remain document/topic
 /// overlays; content-bound edits move forward only when the topic and exact base
 /// content are unchanged, otherwise they become explicit conflicts.
+#[cfg(test)]
 pub(crate) fn publish_document_study_guide(
     database: &Database,
     document_id: &str,
