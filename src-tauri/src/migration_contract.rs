@@ -120,7 +120,8 @@ fn contract() -> DatabaseContract {
             version: release.version,
             name: release.name,
             checksum: release.checksum,
-            migrations: release.migrations
+            migrations: release
+                .migrations
                 .into_iter()
                 .map(|(version, name, checksum)| ReleaseMigrationContract {
                     version,
