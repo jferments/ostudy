@@ -86,8 +86,13 @@ requireText("studydeck v2 reader", studydeck, 'const CORE_PACKAGE_VERSION: i64 =
 requireText("studydeck v1 reader", studydeck, 'const LEGACY_PACKAGE_VERSION: i64 = 1;');
 requireText("sync writer", syncPackage, 'const PACKAGE_VERSION: i64 = 3;');
 requireText("sync legacy reader", syncPackage, 'const LEGACY_PACKAGE_VERSION: i64 = 2;');
-requireText("generated import base version", generatedImport, 'const GENERATED_IMPORT_VERSION: i64 = 1;');
-requireText("generated import v2 reader", generatedPrepare, '![GENERATED_IMPORT_VERSION, 2].contains(&parsed.format_version)');
+requireText("generated import legacy v1 reader", generatedImport, 'const LEGACY_GENERATED_IMPORT_VERSION: i64 = 1;');
+requireText("generated import current v2 writer", generatedImport, 'const GENERATED_IMPORT_VERSION: i64 = 2;');
+requireText(
+  "generated import explicit v1/v2 readers",
+  generatedPrepare,
+  '![LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION]',
+);
 requireText("rich schema 3 admission", richContent, 'if !(1..=3).contains(&version)');
 requireText("rich schema 3 projection", richContent, 'if version == 3');
 requireText("UI checkpoint writer", checkpoint, 'const CHECKPOINT_SCHEMA_VERSION: i64 = 2;');
