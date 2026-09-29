@@ -102,16 +102,17 @@ requireText(
   generatedPrepare,
   "is_supported_generated_import_identity",
 );
-requireText(
-  "streaming generated JSON staging recognizes importer-owned file family",
-  externalFileStreaming,
-  "is_generated_import_envelope(&value)",
-);
-requireText(
-  "Android generated JSON staging recognizes importer-owned file family",
-  externalFileCommands,
-  "is_generated_import_envelope(&value)",
-);
+// rustfmt can wrap the qualified call and add a trailing argument comma.
+// Require the same owner, helper, and argument without prescribing whitespace.
+const generatedEnvelopeCall = /crate::authoring::card_types_and_templates::generated_import::\s*is_generated_import_envelope\s*\(\s*&value\s*,?\s*\)/;
+for (const [label, source] of [
+  ["streaming generated JSON staging", externalFileStreaming],
+  ["Android generated JSON staging", externalFileCommands],
+]) {
+  if (!generatedEnvelopeCall.test(source)) {
+    failures.push(`${label} must call the importer-owned envelope helper with &value`);
+  }
+}
 requireText("rich schema 3 admission", richContent, 'if !(1..=3).contains(&version)');
 requireText("rich schema 3 projection", richContent, 'if version == 3');
 requireText("UI checkpoint writer", checkpoint, 'const CHECKPOINT_SCHEMA_VERSION: i64 = 2;');

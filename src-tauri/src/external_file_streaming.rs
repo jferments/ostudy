@@ -655,9 +655,9 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
             "Select an ostudy deck, an Anki .apkg deck, or valid generated JSON.",
         )
     })?;
-    if crate::authoring::card_types_and_templates::generated_import::
-        is_generated_import_envelope(&value)
-    {
+    if crate::authoring::card_types_and_templates::generated_import::is_generated_import_envelope(
+        &value,
+    ) {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
         Err(CommandError::new(
@@ -946,8 +946,9 @@ mod tests {
         let paths = AppPaths::new(root.clone()).unwrap();
         let database = Database::open_in_memory().unwrap();
         let operation_id = "a".repeat(32);
-        let partial_path =
-            paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(&operation_id));
+        let partial_path = paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(
+            &operation_id,
+        ));
         create_parent(&partial_path).unwrap();
         fs::write(&partial_path, MIXED_V2_EXAMPLE.as_bytes()).unwrap();
 
