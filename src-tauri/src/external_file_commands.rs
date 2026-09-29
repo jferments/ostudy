@@ -589,7 +589,7 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
         )
     })?;
     if crate::authoring::card_types_and_templates::generated_import::
-        is_supported_generated_import_envelope(&value)
+        is_generated_import_envelope(&value)
     {
         Ok(ExternalFileKind::GeneratedJson)
     } else {

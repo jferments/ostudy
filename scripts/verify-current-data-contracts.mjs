@@ -103,14 +103,14 @@ requireText(
   "is_supported_generated_import_identity",
 );
 requireText(
-  "streaming generated JSON detection uses importer envelope policy",
+  "streaming generated JSON staging recognizes importer-owned file family",
   externalFileStreaming,
-  "is_supported_generated_import_envelope(&value)",
+  "is_generated_import_envelope(&value)",
 );
 requireText(
-  "Android generated JSON detection uses importer envelope policy",
+  "Android generated JSON staging recognizes importer-owned file family",
   externalFileCommands,
-  "is_supported_generated_import_envelope(&value)",
+  "is_generated_import_envelope(&value)",
 );
 requireText("rich schema 3 admission", richContent, 'if !(1..=3).contains(&version)');
 requireText("rich schema 3 projection", richContent, 'if version == 3');

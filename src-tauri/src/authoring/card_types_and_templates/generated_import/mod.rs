@@ -14,17 +14,8 @@ pub(crate) fn is_supported_generated_import_identity(format: &str, version: i64)
     format == GENERATED_IMPORT_FORMAT && SUPPORTED_GENERATED_IMPORT_VERSIONS.contains(&version)
 }
 
-pub(crate) fn is_supported_generated_import_envelope(value: &serde_json::Value) -> bool {
-    let Some(format) = value.get("format").and_then(serde_json::Value::as_str) else {
-        return false;
-    };
-    let Some(version) = value
-        .get("formatVersion")
-        .and_then(serde_json::Value::as_i64)
-    else {
-        return false;
-    };
-    is_supported_generated_import_identity(format, version)
+pub(crate) fn is_generated_import_envelope(value: &serde_json::Value) -> bool {
+    value.get("format").and_then(serde_json::Value::as_str) == Some(GENERATED_IMPORT_FORMAT)
 }
 
 const MAX_GENERATED_IMPORT_BYTES: usize = 16 * 1024 * 1024;
