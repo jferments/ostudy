@@ -1,12 +1,10 @@
-//! A guide request reserves both attempts before dispatch. Hidden reasoning is
-//! budgeted by the provider capability owner, separately from visible JSON.
-//! Recovery is not an identical replay: it gets more headroom and a lean schema.
-
+//! Plan visible output from this topic's evidence, then reserve recovery against
+//! the provider's actual context budget. No page-count or style admission cap.
 use serde_json::Value;
 
 use super::{
     ensure_context_budget, protocol, AuthoringEvidence, CommandError, DocumentTaskContext,
-    JsonTaskRequest,
+    JsonTaskRequest, WritingBudget,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -15,8 +13,6 @@ pub(super) struct StudyGuideCompletionPlan {
     pub(super) repair_visible_tokens: usize,
 }
 
-// A document section has the same rich wire contract as a collection section;
-// it must not receive half the first-pass allowance merely because of its owner.
 pub(super) const DOCUMENT_GUIDE_COMPLETION_PLAN: StudyGuideCompletionPlan =
     StudyGuideCompletionPlan {
         initial_visible_tokens: 4_096,
@@ -40,16 +36,28 @@ pub(super) const COLLECTION_GUIDE_COMPLETION_PLANS: [StudyGuideCompletionPlan; 4
 ];
 
 impl StudyGuideCompletionPlan {
+    fn for_writing_budget(budget: WritingBudget) -> Self {
+        let estimated = budget.target_chars.div_ceil(2).saturating_add(768);
+        let initial_visible_tokens = [2_048, 3_072, 4_096, 6_144]
+            .into_iter()
+            .find(|tokens| *tokens >= estimated)
+            .unwrap_or(6_144);
+        Self {
+            initial_visible_tokens,
+            repair_visible_tokens: initial_visible_tokens + 2_048,
+        }
+    }
+
     pub(super) fn instructions(self) -> String {
         format!(
-            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional richness. Target at most 7,500 human-readable characters for this request, including all categories. Start with one to three short paragraphs of coherent narrative overview. keyPoints are optional and should be empty unless a short list adds distinct scanning value after the prose. Teach central concepts, causal relationships, useful comparisons and decision-relevant exceptions before isolated details. Add only optional study aids that contribute distinct teaching value; unused arrays must be []. Do not fill every category or restate the same fact in several fields. Preserve entire conditions, uncertainty, numerical signs, units, and exceptions; never cut a qualification to meet an editorial target. This writing target is not permission to claim exhaustive coverage or invent source support.",
+            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional richness. keyPoints are optional; unused arrays must be []. Teach supported mechanisms, relationships and necessary exceptions without repeating facts across categories. Use the accompanying source-aware writing target as guidance, never a reason to remove a condition. Never cut a qualification, numerical sign, unit or exception to meet an editorial target.",
             self.initial_visible_tokens
         )
     }
 
     pub(super) fn recovery_instructions(self) -> String {
         format!(
-            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Keep the same supported core concepts and all necessary qualifications in one to three short narrative paragraphs. keyPoints remain optional; use only a few if they add information structure that the prose does not. Keep essential defined importantTerms when useful. The other study-aid arrays must be empty in this recovery; do not repeat the same idea in multiple categories. Keep total human-readable content under 7,500 characters. Select only the supplied knowledge aliases actually explained. Do not add an explanation of this retry or try to mention every supplied unit.",
+            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Preserve the supported core concepts and their complete qualifications in coherent prose. Use only study aids that carry distinct necessary meaning, including supplied visual evidence when needed; do not fill every optional category. Select only supplied knowledge aliases actually explained. Do not add commentary about this retry or invent support.",
             self.repair_visible_tokens
         )
     }
@@ -62,12 +70,13 @@ pub(super) fn fit_guide_completion_plan(
     evidence: AuthoringEvidence<'_>,
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
     let schema = protocol::schema(evidence.knowledge, !evidence.images.is_empty());
-    choose_plan(evidence.knowledge.units.len(), |plan| {
-        // Reserve the exact truncation-recovery suffix and the larger output
-        // before assigning partitions. The ordinary request uses less of both.
+    let writing = WritingBudget::for_knowledge(evidence.knowledge);
+    let preferred = StudyGuideCompletionPlan::for_writing_budget(writing);
+    choose_plan(preferred, evidence.knowledge.units.len(), |plan| {
         let planned_user = format!(
-            "{user}\n\n{}\n\n{}",
+            "{user}\n\n{}\n\n{}\n\n{}",
             plan.instructions(),
+            writing.fit_output(plan.initial_visible_tokens).instructions(),
             plan.recovery_instructions()
         );
         ensure_context_budget(
@@ -84,17 +93,18 @@ pub(super) fn fit_guide_completion_plan(
 }
 
 fn choose_plan(
+    preferred: StudyGuideCompletionPlan,
     unit_count: usize,
     mut preflight: impl FnMut(StudyGuideCompletionPlan) -> Result<(), CommandError>,
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
-    // Split multi-unit work before reducing its reserved output. Smaller-context
-    // models can still author one indivisible unit using a compatible allowance.
-    let choices = if unit_count > 1 {
-        1
-    } else {
-        COLLECTION_GUIDE_COMPLETION_PLANS.len()
-    };
-    for plan in COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().take(choices) {
+    // Split multi-unit input rather than starving output to force it into a
+    // smaller context. The caller retains every unit and its evidence.
+    let choices = std::iter::once(preferred).chain(
+        COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().filter(|plan| {
+            unit_count <= 1 && plan.repair_visible_tokens < preferred.repair_visible_tokens
+        }),
+    );
+    for plan in choices {
         match preflight(plan) {
             Ok(()) => return Ok(plan),
             Err(error) if error.code == "ai_document_context_budget" => continue,
@@ -107,8 +117,8 @@ fn choose_plan(
     ))
 }
 
-/// A stricter request schema for a truncated attempt, not a weaker reader.
-/// Already-valid field repairs use the original schema and retain their siblings.
+/// Reduce optional breadth after truncation, not evidence or field capacity.
+/// A necessary visual/mechanism explanation must remain representable.
 pub(super) fn compact_recovery_schema(schema: &Value) -> Value {
     let mut compact = schema.clone();
     for field in [
@@ -122,7 +132,10 @@ pub(super) fn compact_recovery_schema(schema: &Value) -> Value {
         "retrievalChecks",
         "visualExplanations",
     ] {
-        compact["properties"]["content"]["properties"][field]["maxItems"] = Value::from(0);
+        let bound = &mut compact["properties"]["content"]["properties"][field]["maxItems"];
+        if let Some(current) = bound.as_u64() {
+            *bound = Value::from(current.min(2));
+        }
     }
     compact
 }
@@ -133,17 +146,15 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn guide_recovery_has_real_preflighted_headroom_instead_of_identical_replay() {
-        let mut observed = Vec::new();
-        let plan = choose_plan(13, |plan| {
-            observed.push(plan);
-            Ok(())
-        })
-        .unwrap();
-        assert_eq!(plan, DOCUMENT_GUIDE_COMPLETION_PLAN);
-        assert_eq!(observed, vec![plan]);
-        for plan in COLLECTION_GUIDE_COMPLETION_PLANS {
+    fn output_plan_scales_with_evidence_and_reserves_recovery() {
+        let small =
+            StudyGuideCompletionPlan::for_writing_budget(WritingBudget::from_signals(1, 120));
+        let dense =
+            StudyGuideCompletionPlan::for_writing_budget(WritingBudget::from_signals(13, 24_000));
+        assert!(dense.initial_visible_tokens > small.initial_visible_tokens);
+        for plan in [small, dense, DOCUMENT_GUIDE_COMPLETION_PLAN] {
             assert!(plan.repair_visible_tokens > plan.initial_visible_tokens);
+            assert!(plan.repair_visible_tokens <= 8_192);
         }
     }
 
@@ -156,16 +167,22 @@ mod tests {
                 Err(CommandError::new("ai_document_context_budget", "split"))
             }
         };
-        assert_eq!(choose_plan(1, fits).unwrap().repair_visible_tokens, 3_072);
         assert_eq!(
-            choose_plan(2, fits).unwrap_err().code,
+            choose_plan(DOCUMENT_GUIDE_COMPLETION_PLAN, 1, fits)
+                .unwrap()
+                .repair_visible_tokens,
+            3_072
+        );
+        assert_eq!(
+            choose_plan(DOCUMENT_GUIDE_COMPLETION_PLAN, 2, fits)
+                .unwrap_err()
+                .code,
             "ai_document_context_budget"
         );
         assert_eq!(
-            choose_plan(1, |_| Err(CommandError::new(
-                "ai_profile_changed",
-                "changed"
-            )))
+            choose_plan(DOCUMENT_GUIDE_COMPLETION_PLAN, 1, |_| {
+                Err(CommandError::new("ai_profile_changed", "changed"))
+            })
             .unwrap_err()
             .code,
             "ai_profile_changed"
@@ -173,25 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn guide_first_pass_explains_joint_budget_and_preserves_qualifications() {
-        let instruction = DOCUMENT_GUIDE_COMPLETION_PLAN.instructions();
-        for required in [
-            "4096 tokens",
-            "7,500 human-readable characters",
-            "including all categories",
-            "keyPoints are optional",
-            "unused arrays must be []",
-            "never cut a qualification",
-        ] {
-            assert!(instruction.contains(required), "{required}");
-        }
-        assert!(DOCUMENT_GUIDE_COMPLETION_PLAN
-            .recovery_instructions()
-            .contains("6144"));
-    }
-
-    #[test]
-    fn compact_recovery_keeps_required_content_and_support_but_bounds_optional_expansion() {
+    fn compact_recovery_keeps_required_content_and_support_and_visual_capacity() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();
         let schema = protocol::schema(&catalog, true);
         let compact = compact_recovery_schema(&schema);
@@ -202,16 +201,20 @@ mod tests {
         );
         let fields = &compact["properties"]["content"]["properties"];
         assert!(fields["keyPoints"].get("minItems").is_none());
-        assert_eq!(fields["keyPoints"]["maxItems"], 5);
-        assert_eq!(fields["tables"]["maxItems"], 0);
-        assert_eq!(fields["visualExplanations"]["maxItems"], 0);
+        assert_eq!(fields["tables"]["maxItems"], 2);
+        assert_eq!(fields["visualExplanations"]["maxItems"], 2);
         assert_eq!(
             compact["properties"]["content"]["additionalProperties"],
             json!(false)
         );
         assert_eq!(
-            schema["properties"]["content"]["properties"]["tables"]["maxItems"],
-            3
+            compact_recovery_schema(&protocol::schema(&catalog, false))["properties"]["content"]
+                ["properties"]["visualExplanations"]["maxItems"],
+            0
+        );
+        assert_eq!(
+            fields["overview"]["maxLength"],
+            schema["properties"]["content"]["properties"]["overview"]["maxLength"]
         );
     }
 }

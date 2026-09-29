@@ -122,17 +122,18 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
     )
     .unwrap();
     assert!(user.contains("Complete the required JSON object"));
-    assert!(user.contains("under 4,200 characters"));
+    assert!(user.contains("source-aware output plan"));
+    assert!(!user.contains("under 4,200 characters"));
     assert!(user.contains("use [] for optional categories"));
     assert!(
-        validate_collection_section_quality(&StudyGuideSectionContent {
+        validate_generated_writing_style(&StudyGuideSectionContent {
             overview: "Review preload.".to_string(),
             key_points: vec!["Review preload.".to_string()],
             ..Default::default()
         })
         .is_err()
     );
-    assert!(validate_collection_section_quality(&StudyGuideSectionContent {
+    assert!(validate_generated_writing_style(&StudyGuideSectionContent {
         overview: "Preload describes ventricular filling before systole and helps connect venous return to subsequent stroke volume within the supported physiologic context.".to_string(),
         key_points: vec![
             "Venous return contributes to ventricular filling.".to_string(),
@@ -217,7 +218,8 @@ fn soft_style_target_does_not_reject_or_truncate_valid_content() {
         25
     ]
     .join(" ");
-    assert!(overview.chars().count() > MAX_OVERVIEW_CHARS);
+    assert!(overview.chars().count() > WritingBudget::from_signals(1, 0).overview_chars);
+    assert!(overview.chars().count() < MAX_OVERVIEW_CHARS);
     let result = parse_study_guide_section(json!({
         "overview": overview,
         "keyPoints": ["Preload reflects ventricular filling before systole."],

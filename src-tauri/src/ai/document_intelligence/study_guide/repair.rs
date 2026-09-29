@@ -28,7 +28,7 @@ const FIELDS: [&str; 12] = [
     "retrievalChecks",
     "visualExplanations",
 ];
-const MAX_CANDIDATE_BYTES: usize = 32_000;
+use super::policy::MAX_CANDIDATE_BYTES;
 
 pub(super) struct GuideRepair {
     candidate: Value,
