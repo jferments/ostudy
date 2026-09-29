@@ -25,10 +25,9 @@ use crate::{
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide_with_editorial, DocumentStudyGuide,
-        GroundedStudyGuideSection, StudyGuideSectionContent,
-        StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION,
-        STUDY_GUIDE_SCHEMA_VERSION,
+        publish_document_study_guide_with_editorial, DocumentStudyGuide, GroundedStudyGuideSection,
+        StudyGuideSectionContent, StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION,
+        STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
     knowledge::{
@@ -951,5 +950,4 @@ mod tests {
         assert_eq!(merged.knowledge_support.len(), 1);
         assert_eq!(merged.catalog_fingerprint, catalog.fingerprint().unwrap());
     }
-
 }

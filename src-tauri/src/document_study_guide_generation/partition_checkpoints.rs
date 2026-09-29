@@ -114,7 +114,8 @@ mod tests {
         let topic = topic();
         let section = GroundedStudyGuideSection {
             content: StudyGuideSectionContent {
-                overview: "The first paid partition remains intact after a later part fails.".into(),
+                overview: "The first paid partition remains intact after a later part fails."
+                    .into(),
                 ..Default::default()
             },
             knowledge_support: catalog.select(&["a".repeat(32)], 64).unwrap(),
@@ -125,7 +126,14 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO document_study_guide_checkpoints VALUES (?1,?2,?3,?4,?5,?6)",
-                rusqlite::params!["document", key, topic.id, topic.evidence_hash, json, hash_text(&json)],
+                rusqlite::params![
+                    "document",
+                    key,
+                    topic.id,
+                    topic.evidence_hash,
+                    json,
+                    hash_text(&json)
+                ],
             )
             .unwrap();
         let loaded = load_connection(&connection, "document", &key, &topic, &catalog)
@@ -152,17 +160,21 @@ mod tests {
         .is_none());
         let mut changed = topic.clone();
         changed.evidence_hash = "0".repeat(64);
-        assert!(load_connection(&connection, "document", &key, &changed, &catalog)
-            .unwrap()
-            .is_none());
+        assert!(
+            load_connection(&connection, "document", &key, &changed, &catalog)
+                .unwrap()
+                .is_none()
+        );
         connection
             .execute(
                 "UPDATE document_study_guide_checkpoints SET section_json = '{}'",
                 [],
             )
             .unwrap();
-        assert!(load_connection(&connection, "document", &key, &topic, &catalog)
-            .unwrap()
-            .is_none());
+        assert!(
+            load_connection(&connection, "document", &key, &topic, &catalog)
+                .unwrap()
+                .is_none()
+        );
     }
 }
