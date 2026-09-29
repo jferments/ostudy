@@ -174,11 +174,19 @@ pub(super) fn validate_generated_safety(
     }
     require_count_limit("explanations", section.explanations.len(), MAX_EXPLANATIONS)?;
     for item in &section.explanations {
-        require_char_limit("explanations.heading", &item.heading, MAX_EXPLANATION_HEADING_CHARS)?;
+        require_char_limit(
+            "explanations.heading",
+            &item.heading,
+            MAX_EXPLANATION_HEADING_CHARS,
+        )?;
         require_char_limit("explanations.body", &item.body, MAX_EXPLANATION_BODY_CHARS)?;
         require_nonempty(&[&item.heading, &item.body])?;
     }
-    require_count_limit("importantTerms", section.important_terms.len(), MAX_IMPORTANT_TERMS)?;
+    require_count_limit(
+        "importantTerms",
+        section.important_terms.len(),
+        MAX_IMPORTANT_TERMS,
+    )?;
     for item in &section.important_terms {
         require_char_limit("importantTerms.term", &item.term, MAX_TERM_CHARS)?;
         require_char_limit(
@@ -190,8 +198,16 @@ pub(super) fn validate_generated_safety(
     }
     require_count_limit("comparisons", section.comparisons.len(), MAX_COMPARISONS)?;
     for item in &section.comparisons {
-        require_char_limit("comparisons.subjectA", &item.subject_a, MAX_COMPARISON_SUBJECT_CHARS)?;
-        require_char_limit("comparisons.subjectB", &item.subject_b, MAX_COMPARISON_SUBJECT_CHARS)?;
+        require_char_limit(
+            "comparisons.subjectA",
+            &item.subject_a,
+            MAX_COMPARISON_SUBJECT_CHARS,
+        )?;
+        require_char_limit(
+            "comparisons.subjectB",
+            &item.subject_b,
+            MAX_COMPARISON_SUBJECT_CHARS,
+        )?;
         require_char_limit(
             "comparisons.relationship",
             &item.relationship,
@@ -221,34 +237,66 @@ pub(super) fn validate_generated_safety(
         require_count_limit("tables.columns", table.columns.len(), MAX_TABLE_COLUMNS)?;
         require_count_limit("tables.rows", table.rows.len(), MAX_TABLE_ROWS)?;
         require_char_limit("tables.title", &table.title, MAX_CALLOUT_TITLE_CHARS)?;
-        require_char_limit("tables.caption", &table.caption, MAX_COMPARISON_RELATIONSHIP_CHARS)?;
+        require_char_limit(
+            "tables.caption",
+            &table.caption,
+            MAX_COMPARISON_RELATIONSHIP_CHARS,
+        )?;
         require_nonempty(&[&table.title])?;
         for cell in table.columns.iter().chain(table.rows.iter().flatten()) {
             require_char_limit("tables.cell", cell, MAX_TABLE_CELL_CHARS)?;
             require_nonempty(&[cell])?;
         }
     }
-    require_count_limit("workedExamples", section.worked_examples.len(), MAX_WORKED_EXAMPLES)?;
+    require_count_limit(
+        "workedExamples",
+        section.worked_examples.len(),
+        MAX_WORKED_EXAMPLES,
+    )?;
     for item in &section.worked_examples {
         require_char_limit("workedExamples.title", &item.title, MAX_CALLOUT_TITLE_CHARS)?;
-        require_char_limit("workedExamples.prompt", &item.prompt, MAX_EXPLANATION_BODY_CHARS)?;
+        require_char_limit(
+            "workedExamples.prompt",
+            &item.prompt,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
         require_list_limits(
             "workedExamples.steps",
             &item.steps,
             MAX_WORKED_EXAMPLE_STEPS,
             MAX_PROCESS_STEP_CHARS,
         )?;
-        require_char_limit("workedExamples.answer", &item.answer, MAX_EXPLANATION_BODY_CHARS)?;
-        require_char_limit("workedExamples.takeaway", &item.takeaway, MAX_EXPLANATION_BODY_CHARS)?;
+        require_char_limit(
+            "workedExamples.answer",
+            &item.answer,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
+        require_char_limit(
+            "workedExamples.takeaway",
+            &item.takeaway,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
         require_nonempty(&[&item.title, &item.prompt, &item.answer])?;
         if item.steps.is_empty() {
             return Err(output_error("A worked example is incomplete."));
         }
     }
-    require_count_limit("retrievalChecks", section.retrieval_checks.len(), MAX_RETRIEVAL_CHECKS)?;
+    require_count_limit(
+        "retrievalChecks",
+        section.retrieval_checks.len(),
+        MAX_RETRIEVAL_CHECKS,
+    )?;
     for item in &section.retrieval_checks {
-        require_char_limit("retrievalChecks.prompt", &item.prompt, MAX_MISCONCEPTION_CHARS)?;
-        require_char_limit("retrievalChecks.answer", &item.answer, MAX_EXPLANATION_BODY_CHARS)?;
+        require_char_limit(
+            "retrievalChecks.prompt",
+            &item.prompt,
+            MAX_MISCONCEPTION_CHARS,
+        )?;
+        require_char_limit(
+            "retrievalChecks.answer",
+            &item.answer,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
         require_nonempty(&[&item.prompt, &item.answer])?;
     }
     require_count_limit(
@@ -257,7 +305,11 @@ pub(super) fn validate_generated_safety(
         MAX_VISUAL_EXPLANATIONS,
     )?;
     for item in &section.visual_explanations {
-        require_char_limit("visualExplanations.title", &item.title, MAX_VISUAL_TITLE_CHARS)?;
+        require_char_limit(
+            "visualExplanations.title",
+            &item.title,
+            MAX_VISUAL_TITLE_CHARS,
+        )?;
         require_char_limit(
             "visualExplanations.explanation",
             &item.explanation,
@@ -286,9 +338,9 @@ pub(super) fn inventory_like_prose(value: &str) -> bool {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>();
     (nonempty_lines.len() > 1
-        && nonempty_lines.iter().all(|line| {
-            line.starts_with("- ") || line.starts_with("* ") || line.starts_with("• ")
-        }))
+        && nonempty_lines
+            .iter()
+            .all(|line| line.starts_with("- ") || line.starts_with("* ") || line.starts_with("• ")))
         || (!has_sentence_ending
             && clean.split_whitespace().count() < 32
             && (clean.contains(" / ")

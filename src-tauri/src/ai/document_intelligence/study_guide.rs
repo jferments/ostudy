@@ -358,7 +358,9 @@ fn guide_retryable(error: &CommandError) -> bool {
     retryable_contract_error(error)
         || matches!(
             error.code.as_str(),
-            "ai_document_output_truncated" | "ai_document_output_style" | "ai_document_output_resource"
+            "ai_document_output_truncated"
+                | "ai_document_output_style"
+                | "ai_document_output_resource"
         )
 }
 

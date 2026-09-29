@@ -76,7 +76,9 @@ pub(super) fn fit_guide_completion_plan(
         let planned_user = format!(
             "{user}\n\n{}\n\n{}\n\n{}",
             plan.instructions(),
-            writing.fit_output(plan.initial_visible_tokens).instructions(),
+            writing
+                .fit_output(plan.initial_visible_tokens)
+                .instructions(),
             plan.recovery_instructions()
         );
         ensure_context_budget(
@@ -99,11 +101,10 @@ fn choose_plan(
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
     // Split multi-unit input rather than starving output to force it into a
     // smaller context. The caller retains every unit and its evidence.
-    let choices = std::iter::once(preferred).chain(
-        COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().filter(|plan| {
-            unit_count <= 1 && plan.repair_visible_tokens < preferred.repair_visible_tokens
-        }),
-    );
+    let choices =
+        std::iter::once(preferred).chain(COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().filter(
+            |plan| unit_count <= 1 && plan.repair_visible_tokens < preferred.repair_visible_tokens,
+        ));
     for plan in choices {
         match preflight(plan) {
             Ok(()) => return Ok(plan),

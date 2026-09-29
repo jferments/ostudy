@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
     document_study_guides::{
-        StudyGuideCallout, StudyGuideCalloutKind, StudyGuideExplanation, StudyGuideVisualExplanation,
+        StudyGuideCallout, StudyGuideCalloutKind, StudyGuideExplanation,
+        StudyGuideVisualExplanation,
     },
     knowledge::authoring::tests::catalog_fixture,
 };

@@ -112,10 +112,12 @@ where
         json!({"code":error.code,"targetCount":targeted.as_ref().map(|value| value.target_count()),
             "maximumVisibleOutput":completion_plan.repair_visible_tokens}),
     );
-    let result = request(repair_request).await.and_then(|value| match targeted {
-        Some(repair) => repair.apply(value, knowledge, images_attached),
-        None => parse_section_with_images(value, knowledge, images_attached),
-    });
+    let result = request(repair_request)
+        .await
+        .and_then(|value| match targeted {
+            Some(repair) => repair.apply(value, knowledge, images_attached),
+            None => parse_section_with_images(value, knowledge, images_attached),
+        });
     match result {
         Ok(section) => Ok(section),
         Err(error) => fallback_or_error(
@@ -198,10 +200,7 @@ mod tests {
         let mut invalid = candidate();
         invalid["content"]["keyPoints"] = json!("wrong shape");
         let overview = invalid["content"]["overview"].as_str().unwrap().to_string();
-        let mut responses = VecDeque::from([
-            Ok(invalid),
-            Ok(json!({"fields": {"keyPoints": []}})),
-        ]);
+        let mut responses = VecDeque::from([Ok(invalid), Ok(json!({"fields": {"keyPoints": []}}))]);
         let calls = Cell::new(0);
         let credits = Cell::new(0);
         let result = run(
@@ -253,13 +252,14 @@ mod tests {
 
     #[tokio::test]
     async fn cancellation_and_profile_changes_are_never_hidden_by_style_fallback() {
-        for code in ["ai_request_canceled", "ai_profile_changed", "database_error"] {
+        for code in [
+            "ai_request_canceled",
+            "ai_profile_changed",
+            "database_error",
+        ] {
             let mut value = candidate();
             value["content"]["overview"] = json!("Triangles / sides / vertices");
-            let mut responses = VecDeque::from([
-                Ok(value),
-                Err(CommandError::new(code, "stop")),
-            ]);
+            let mut responses = VecDeque::from([Ok(value), Err(CommandError::new(code, "stop"))]);
             let error = run(
                 initial(),
                 &catalog_fixture(),

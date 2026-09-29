@@ -25,8 +25,8 @@ use crate::{
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide_with_editorial, validate_study_guide_section_content,
-        DocumentStudyGuide, GroundedStudyGuideSection, StudyGuideSectionContent,
+        publish_document_study_guide_with_editorial, DocumentStudyGuide,
+        GroundedStudyGuideSection, StudyGuideSectionContent,
         StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION,
         STUDY_GUIDE_SCHEMA_VERSION,
     },
@@ -40,7 +40,13 @@ use crate::{
     util::unix_time_millis,
 };
 
-const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v4-readable-prose";
+mod partition_checkpoints;
+mod preservation;
+
+// Old topic checkpoints may have replaced partition prose with a short plan
+// summary. Invalidate only derived guide checkpoints, never learner cards or
+// shared source knowledge. Cleanup still waits for successful publication.
+const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v5-lossless-sections";
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideTopicEvidence {
     pub topic_id: String,
@@ -454,6 +460,7 @@ async fn generate_slot(
             }
         }
 
+        let contract_key = study_guide_contract_key(&root_task, execution.plan);
         let mut partials = Vec::with_capacity(partitions.len());
         for (part_index, knowledge) in partitions.iter().enumerate() {
             let mut child_task = root_task.clone();
@@ -462,21 +469,45 @@ async fn generate_slot(
             } else {
                 child_keys[part_index].clone()
             });
-            partials.push(
-                generate_study_guide_topic_section(
-                    execution.runtime,
-                    &child_task,
-                    execution.document_title,
-                    execution.plan,
+            root_task.ensure_current(execution.database)?;
+            let partition_key =
+                partition_checkpoints::contract_key(&contract_key, &child_keys[part_index]);
+            if partitions.len() > 1 {
+                if let Some(section) = partition_checkpoints::load(
+                    execution.database,
+                    execution.document_id,
+                    &partition_key,
                     topic,
-                    &evidence.source_text,
-                    AuthoringEvidence {
-                        images: &evidence.images,
-                        knowledge,
-                    },
-                )
-                .await?,
-            );
+                    knowledge,
+                ) {
+                    partials.push(section);
+                    continue;
+                }
+            }
+            let section = generate_study_guide_topic_section(
+                execution.runtime,
+                &child_task,
+                execution.document_title,
+                execution.plan,
+                topic,
+                &evidence.source_text,
+                AuthoringEvidence {
+                    images: &evidence.images,
+                    knowledge,
+                },
+            )
+            .await?;
+            root_task.ensure_current(execution.database)?;
+            if partitions.len() > 1 {
+                persist_checkpoint_best_effort(
+                    execution.database,
+                    execution.document_id,
+                    &partition_key,
+                    topic,
+                    &section,
+                );
+            }
+            partials.push(section);
         }
         root_task.ensure_current(execution.database)?;
         merge_topic_sections(topic, &catalogs[index], partials)
@@ -509,7 +540,7 @@ async fn generate_slot(
 }
 
 fn merge_topic_sections(
-    topic: &LearningTopic,
+    _topic: &LearningTopic,
     catalog: &KnowledgeCatalog,
     mut partials: Vec<GroundedStudyGuideSection>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
@@ -523,16 +554,15 @@ fn merge_topic_sections(
         ));
     }
 
-    let overview = if topic.summary.trim().is_empty() {
-        partials
-            .iter()
-            .map(|section| section.content.overview.trim())
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else {
-        topic.summary.clone()
-    };
+    // A planning summary is not a substitute for validated teaching prose.
+    // Preserve distinct paragraphs in partition order, including qualifications.
+    let mut seen_overviews = HashSet::new();
+    let overview = partials
+        .iter()
+        .map(|section| section.content.overview.trim())
+        .filter(|value| !value.is_empty() && seen_overviews.insert(*value))
+        .collect::<Vec<_>>()
+        .join("\n\n");
     let mut merged = serde_json::to_value(StudyGuideSectionContent::default())
         .map_err(CommandError::serialization)?;
     merged["overview"] = serde_json::Value::String(overview);
@@ -572,7 +602,7 @@ fn merge_topic_sections(
     }
     let content: StudyGuideSectionContent =
         serde_json::from_value(merged).map_err(CommandError::serialization)?;
-    let content = validate_study_guide_section_content(content)?;
+    let content = preservation::normalize(content)?;
 
     let mut seen_support = HashSet::new();
     let mut knowledge_support = Vec::new();
@@ -685,7 +715,7 @@ fn load_checkpoints(
             {
                 continue;
             }
-            let Ok(content) = validate_study_guide_section_content(section.content) else {
+            let Ok(content) = preservation::normalize(section.content) else {
                 continue;
             };
             resolved[*index] = Some(GroundedStudyGuideSection { content, ..section });
@@ -838,7 +868,7 @@ mod tests {
     fn checkpoint_contract_name_is_versioned() {
         assert_eq!(
             STUDY_GUIDE_CHECKPOINT_CONTRACT,
-            "document-study-guide-v4-readable-prose"
+            "document-study-guide-v5-lossless-sections"
         );
     }
     #[test]
@@ -897,4 +927,29 @@ mod tests {
         assert_eq!(first_failure.unwrap().1.code, "projection_failed");
         assert_eq!(visited, vec!["first", "second"]);
     }
+
+    #[test]
+    fn partition_merge_preserves_prose_instead_of_substituting_plan_summary() {
+        let plan = plan();
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let first = "The first supported mechanism applies only when x ≤ −2.050e1 units.";
+        let second = "The second supported mechanism does not apply outside its stated context.";
+        let sections = [first, second, first]
+            .into_iter()
+            .map(|text| GroundedStudyGuideSection {
+                content: StudyGuideSectionContent {
+                    overview: text.into(),
+                    ..Default::default()
+                },
+                knowledge_support: catalog.select(&["a".repeat(32)], 64).unwrap(),
+                catalog_fingerprint: catalog.fingerprint().unwrap(),
+            })
+            .collect();
+        let merged = merge_topic_sections(&plan.topics[0], &catalog, sections).unwrap();
+        assert_eq!(merged.content.overview, format!("{first}\n\n{second}"));
+        assert_ne!(merged.content.overview, plan.topics[0].summary);
+        assert_eq!(merged.knowledge_support.len(), 1);
+        assert_eq!(merged.catalog_fingerprint, catalog.fingerprint().unwrap());
+    }
+
 }

@@ -125,14 +125,12 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
     assert!(user.contains("source-aware output plan"));
     assert!(!user.contains("under 4,200 characters"));
     assert!(user.contains("use [] for optional categories"));
-    assert!(
-        validate_generated_writing_style(&StudyGuideSectionContent {
-            overview: "Review preload.".to_string(),
-            key_points: vec!["Review preload.".to_string()],
-            ..Default::default()
-        })
-        .is_err()
-    );
+    assert!(validate_generated_writing_style(&StudyGuideSectionContent {
+        overview: "Review preload.".to_string(),
+        key_points: vec!["Review preload.".to_string()],
+        ..Default::default()
+    })
+    .is_err());
     assert!(validate_generated_writing_style(&StudyGuideSectionContent {
         overview: "Preload describes ventricular filling before systole and helps connect venous return to subsequent stroke volume within the supported physiologic context.".to_string(),
         key_points: vec![
