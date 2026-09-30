@@ -15,6 +15,9 @@ use rusqlite::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fs, io::Read};
 
+#[path = "checkpoint_preservation.rs"]
+mod preservation;
+
 const INTENT: &str = "library-upgrade-intent.json";
 const MANIFEST: &str = "checkpoint.json";
 const BUILD: &str = "library-build.json";
@@ -92,14 +95,39 @@ pub(crate) fn has_intent(paths: &AppPaths) -> Result<bool, String> {
 /// Called after journal recovery but before any Database::open. A failed or
 /// interrupted upgrade is a user decision, not a request to run it again.
 pub(crate) fn admit_startup(paths: &AppPaths) -> Result<(), String> {
+    admit_startup_for_schema(
+        paths,
+        crate::database::CURRENT_SCHEMA_LINEAGE,
+        crate::database::CURRENT_SCHEMA_VERSION,
+    )
+}
+
+fn admit_startup_for_schema(paths: &AppPaths, lineage: &str, version: i64) -> Result<(), String> {
     let Some(intent) = read_intent(paths)? else {
         return Ok(());
     };
-    if intent.kind == IntentKind::Upgrade
-        && transaction_committed(paths.app_data_dir(), &intent.operation_id)?
-    {
-        archive_intent(paths, &intent, "completed-intent.json")?;
-        return Ok(());
+    ensure_no_journal(paths.app_data_dir())?;
+    if transaction_committed(paths.app_data_dir(), &intent.operation_id)? {
+        let compatible = if intent.kind == IntentKind::Revert {
+            let transaction = transaction_path(paths, &intent.operation_id)?;
+            let manifest = verify_checkpoint(&transaction)?;
+            let expected = (manifest.source_lineage.clone(), manifest.source_schema);
+            manifest.source_lineage == lineage && manifest.source_schema == version
+                && validate_database(&read_database(paths.database_path())?)? == expected
+        } else {
+            true
+        };
+        if compatible {
+            if let Err(error) = archive_intent(paths, &intent, "completed-intent.json") {
+                crate::logging::warn_target(
+                    "library.upgrade",
+                    "upgrade_receipt_cleanup_pending",
+                    "The activation committed; retained bookkeeping must not undo that decision.",
+                    serde_json::json!({"operationId": intent.operation_id, "error": error}),
+                );
+            }
+            return Ok(());
+        }
     }
     Err(format!("{RECOVERY_REQUIRED}: A previous library update needs an explicit recovery decision. All checkpoint and library files were retained."))
 }
@@ -140,6 +168,9 @@ where
     let root = paths.app_data_dir();
     ensure_no_journal(root)?;
     validate_source_paths(root)?;
+    let source_presence = MANAGED.iter().map(|relative| {
+        root.join(relative).try_exists().map_err(io_error)
+    }).collect::<Result<Vec<_>, _>>()?;
     let source = read_database(paths.database_path())?;
     let identity = validate_database(&source)?;
     if identity.0 != expected_source.0 || identity.1 != expected_source.1 {
@@ -205,6 +236,7 @@ where
     if target != (manifest.target_lineage.clone(), manifest.target_schema) {
         return Err("The private library did not reach the required target schema.".into());
     }
+    preservation::verify(&source, &migrated, &manifest.source_lineage, manifest.source_schema)?;
     drop(migrated);
     // Schema migration may change the database, never source document bytes.
     for relative in MANAGED {
@@ -218,9 +250,10 @@ where
     if data_version(&source)? != source_revision {
         return Err("Another writer changed the source library during checkpoint preparation. The active library was not replaced.".into());
     }
-    for relative in MANAGED {
-        if root.join(relative).exists()
-            && hash_tree(&root.join(relative))? != hash_tree(&checkpoint.join(relative))?
+    for (relative, was_present) in MANAGED.iter().zip(source_presence) {
+        let present = root.join(relative).try_exists().map_err(io_error)?;
+        if present != was_present
+            || (present && hash_tree(&root.join(relative))? != hash_tree(&checkpoint.join(relative))?)
         {
             return Err("Managed files changed during checkpoint preparation. The active library was not replaced.".into());
         }

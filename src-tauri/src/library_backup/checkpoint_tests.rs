@@ -428,3 +428,6 @@ fn upgrade_activation_and_rollback_crashes_recover_from_the_existing_journal() {
         }
     }
 }
+
+#[path = "checkpoint_followup_tests.rs"]
+mod followup;

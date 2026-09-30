@@ -10,6 +10,8 @@ use crate::{
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
+#[path = "startup/progress.rs"]
+mod progress;
 #[path = "startup/upgrade.rs"]
 mod upgrade;
 #[path = "startup/upgrade_dialog.rs"]
@@ -42,6 +44,8 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         present_startup_failure(app.handle(), &error.to_string());
         return Ok(());
     }
+
+    progress::install(app);
 
     // Return control to the native event loop before opening/migrating SQLite
     // or decoding/reconciling managed files. The HTML loading shell can paint
@@ -142,7 +146,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         report_upgrade_progress(app, "Verifying library recovery and startup…");
         library_backup::checkpoint::commit_upgrade(&paths, upgrade)
             .map_err(|error| startup_stage_error("upgrade_commit", error))?;
-        report_upgrade_progress(app, "Library updated; recovery checkpoint retained.");
+        progress::publish(app, "Library updated; recovery checkpoint retained.", true);
     }
     if let Err(error) =
         library_backup::checkpoint::record_current_build(&paths, &app.config().identifier)
@@ -223,7 +227,7 @@ fn report_upgrade_progress(app: &tauri::AppHandle, message: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title(&format!("oStudy — {message}"));
     }
-    let _ = app.emit("ostudy-library-upgrade-progress", message);
+    progress::publish(app, message, false);
     logging::info_target(
         "library.upgrade",
         "library_upgrade_progress",

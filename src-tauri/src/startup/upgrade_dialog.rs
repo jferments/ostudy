@@ -81,7 +81,7 @@ fn recovery_message(details: &checkpoint::RecoveryDetails) -> String {
 fn choose_recovery(app: &tauri::AppHandle, operation: String) {
     let handle = app.clone();
     app.dialog()
-        .message("Restore the verified pre-update checkpoint, or choose a retry on the next launch. Restoring changes the library, not the installed application package.")
+        .message("Verify and restore the pre-update checkpoint, or choose a retry on the next launch. Restoring changes the library, not the installed application package.")
         .title("Choose library recovery")
         .buttons(MessageDialogButtons::OkCancelCustom("Restore checkpoint…".into(), "Retry or close…".into()))
         .show(move |restore| {

@@ -1,6 +1,9 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { getSettings } from "../ipc/settings";
+import { observeLibraryUpgrade, type LibraryUpgradeProgress } from "../ipc/libraryUpgrade";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { Button } from "../ui/primitives/Button";
 import { LibraryRestoreObserver } from "./LibraryRestoreObserver";
 import { BrandMark } from "./Brand";
 
@@ -61,6 +64,20 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 
 export function NativeStartupGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<StartupGateState>("waiting");
+  const [upgrade, setUpgrade] = useState<LibraryUpgradeProgress | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    void observeLibraryUpgrade((progress) => {
+      if (!disposed) setUpgrade(progress);
+    }).then((unsubscribe) => {
+      if (disposed) unsubscribe();
+      else cleanup = unsubscribe;
+    }).catch(() => { /* Advisory progress cannot block durable startup. */ });
+    return () => { disposed = true; cleanup?.(); };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -83,15 +100,24 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (state === "ready") return <><LibraryRestoreObserver />{children}</>;
+  if (state === "ready") return <>
+    {upgrade?.completed && !dismissed && <InlineNotice kind="info">
+      <span role="status">{upgrade.message}</span>
+      <Button type="button" variant="secondary" onClick={() => setDismissed(true)}>Dismiss</Button>
+    </InlineNotice>}
+    <LibraryRestoreObserver />
+    {children}
+  </>;
 
   return (
     <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
       <div className="tw:mx-auto"><BrandMark /></div>
-      <h1 className="tw:m-0">{state === "failed" ? "Library recovery needs attention" : state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
-      <p className="tw:m-0 tw:max-w-xl tw:text-muted-foreground">
+      <h1 className="tw:m-0">{state === "failed" ? "Library recovery needs attention" : upgrade ? "Updating your oStudy library" : state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
+      <p role="status" aria-live="polite" className="tw:m-0 tw:max-w-xl tw:text-muted-foreground">
         {state === "failed"
           ? "The library could not be opened safely. Preserve its backup and recovery files, close oStudy, and reopen it to recover the recorded transaction. Do not reset or delete the library."
+          : upgrade
+          ? upgrade.message
           : state === "slow"
           ? "Preparing this library is taking longer than usual. ostudy will open automatically when native startup finishes."
           : "Preparing your library…"}
