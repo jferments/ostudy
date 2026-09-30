@@ -1,21 +1,34 @@
 use super::*;
 
 #[test]
-fn narrative_overview_rejects_keyword_inventory_and_bare_term_key_points() {
+fn narrative_style_is_repairable_without_becoming_a_hard_source_safety_failure() {
     let mut section = StudyGuideSectionContent {
         overview: "Enteric neurotransmitters / GI hormones / intrinsic nervous system".into(),
         key_points: vec!["Gastrin".into()],
         ..StudyGuideSectionContent::default()
     };
-    let error = validate_generated_safety(&section).expect_err("inventory must fail");
-    assert_eq!(error.code, "ai_document_output_invalid");
+    assert!(validate_generated_safety(&section).is_ok());
+    let error =
+        validate_generated_writing_style(&section).expect_err("inventory should request repair");
+    assert_eq!(error.code, "ai_document_output_style");
 
     section.overview =
-        "Gastrointestinal function is coordinated by neural and hormonal signaling. Enteric and extrinsic pathways integrate motility, secretion, and feedback across the gut.".into();
-    section.key_points = vec!["Gastrin promotes gastric acid secretion.".into()];
+        "Gastrointestinal function is coordinated by neural and hormonal signaling. Enteric and extrinsic pathways integrate motility, secretion, and feedback across the gut.\n\nThese pathways work together rather than as a disconnected inventory of mediators.".into();
+    section.key_points.clear();
     assert!(validate_generated_safety(&section).is_ok());
+    assert!(validate_generated_writing_style(&section).is_ok());
     assert!(inventory_like_prose("A / B / C"));
     assert!(!inventory_like_prose(&section.overview));
+    assert!(!inventory_like_prose(
+        "Metabolic syndrome links central adiposity; insulin resistance; dyslipidemia; and hypertension. These abnormalities reinforce cardiovascular risk."
+    ));
+
+    section.key_points = vec!["Gastrin".into()];
+    assert!(validate_generated_safety(&section).is_ok());
+    assert!(validate_generated_writing_style(&section).is_err());
+
+    section.overview.clear();
+    assert!(validate_generated_safety(&section).is_err());
 }
 
 #[test]
@@ -78,8 +91,8 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
     assert_eq!(
         DOCUMENT_GUIDE_COMPLETION_PLAN,
         StudyGuideCompletionPlan {
-            initial_visible_tokens: 6_144,
-            repair_visible_tokens: 12_288,
+            initial_visible_tokens: 4_096,
+            repair_visible_tokens: 6_144,
         }
     );
     assert_eq!(
@@ -88,7 +101,7 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
     );
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .iter()
-        .all(|plan| plan.repair_visible_tokens == plan.initial_visible_tokens * 2));
+        .all(|plan| plan.repair_visible_tokens > plan.initial_visible_tokens));
     assert!(COLLECTION_GUIDE_COMPLETION_PLANS
         .windows(2)
         .all(|pair| pair[0].repair_visible_tokens > pair[1].repair_visible_tokens));
@@ -109,17 +122,16 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
     )
     .unwrap();
     assert!(user.contains("Complete the required JSON object"));
-    assert!(user.contains("under 4,200 characters"));
+    assert!(user.contains("source-aware output plan"));
+    assert!(!user.contains("under 4,200 characters"));
     assert!(user.contains("use [] for optional categories"));
-    assert!(
-        validate_collection_section_quality(&StudyGuideSectionContent {
-            overview: "Review preload.".to_string(),
-            key_points: vec!["Review preload.".to_string()],
-            ..Default::default()
-        })
-        .is_err()
-    );
-    assert!(validate_collection_section_quality(&StudyGuideSectionContent {
+    assert!(validate_generated_writing_style(&StudyGuideSectionContent {
+        overview: "Review preload.".to_string(),
+        key_points: vec!["Review preload.".to_string()],
+        ..Default::default()
+    })
+    .is_err());
+    assert!(validate_generated_writing_style(&StudyGuideSectionContent {
         overview: "Preload describes ventricular filling before systole and helps connect venous return to subsequent stroke volume within the supported physiologic context.".to_string(),
         key_points: vec![
             "Venous return contributes to ventricular filling.".to_string(),
@@ -134,13 +146,13 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
 }
 
 #[test]
-fn prompt_requires_outline_style_and_prioritized_key_points() {
+fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
     let prompt = study_guide_system_prompt();
     assert!(!prompt.contains("PDF"));
     assert!(prompt.contains("canonical"));
-    assert!(prompt.contains("study guide"));
-    assert!(prompt.contains("narrative sentences"));
-    assert!(prompt.contains("keyPoints are concise supported factual propositions"));
+    assert!(prompt.to_ascii_lowercase().contains("study-guide author"));
+    assert!(prompt.contains("coherent teaching prose"));
+    assert!(prompt.contains("keyPoints are optional"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
@@ -150,7 +162,7 @@ fn prompt_requires_outline_style_and_prioritized_key_points() {
 }
 
 #[test]
-fn concise_generated_outline_passes_native_style_validation() {
+fn concise_generated_section_passes_native_style_validation() {
     let parsed = parse_study_guide_section(json!({
         "overview": "Preload is ventricular filling/stretch before systole and influences stroke volume.",
         "keyPoints": [
@@ -176,13 +188,36 @@ fn concise_generated_outline_passes_native_style_validation() {
 }
 
 #[test]
+fn narrative_only_section_is_valid_and_schema_does_not_require_bullets() {
+    let parsed = parse_study_guide_section(json!({
+        "overview": "ACE inhibitors reduce angiotensin II formation and therefore decrease vasoconstriction and aldosterone-mediated sodium retention.\n\nTheir clinical value and adverse effects follow from the same renin–angiotensin–aldosterone pathway, so monitoring and contraindications should be understood as part of the mechanism.",
+        "keyPoints": [],
+        "explanations": [],
+        "importantTerms": [],
+        "processSteps": [],
+        "comparisons": [],
+        "commonMisconceptions": [],
+        "visualExplanations": []
+    }))
+    .unwrap();
+    assert!(parsed.key_points.is_empty());
+    let schema = study_guide_section_schema();
+    assert!(schema["properties"]["keyPoints"].get("minItems").is_none());
+    assert_eq!(
+        schema["properties"]["overview"]["maxLength"],
+        MAX_OVERVIEW_CHARS
+    );
+}
+
+#[test]
 fn soft_style_target_does_not_reject_or_truncate_valid_content() {
     let overview = [
         "Preload reflects ventricular filling before systole and helps explain changes in stroke volume.";
-        5
+        25
     ]
     .join(" ");
-    assert!(overview.chars().count() > MAX_OVERVIEW_CHARS);
+    assert!(overview.chars().count() > WritingBudget::from_signals(1, 0).overview_chars);
+    assert!(overview.chars().count() < MAX_OVERVIEW_CHARS);
     let result = parse_study_guide_section(json!({
         "overview": overview,
         "keyPoints": ["Preload reflects ventricular filling before systole."],

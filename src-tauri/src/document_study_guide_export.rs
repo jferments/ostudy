@@ -28,8 +28,9 @@ use crate::{
     document_domain::SourceLocator,
     document_store,
     document_study_guides::{
-        load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
-        StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState, StudyGuideSectionContent,
+        editorial::StudyGuideEditorial, load_active_document_study_guide, DocumentStudyGuide,
+        DocumentStudyGuideSection, StudyGuideOverlay, StudyGuideOverlayKind,
+        StudyGuideOverlayState, StudyGuideSectionContent,
     },
     document_visual_evidence,
     error::CommandError,
@@ -102,8 +103,16 @@ struct EffectiveGuideExport {
     learning_objectives: Vec<String>,
     key_concepts: Vec<String>,
     guide_notes: Vec<String>,
+    chapters: Vec<EffectiveExportChapter>,
     sections: Vec<EffectiveExportSection>,
     annotation_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct EffectiveExportChapter {
+    title: String,
+    introduction: String,
+    section_indices: Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -449,10 +458,15 @@ fn compose_effective_export(
         }
     }
 
+    let editorial_titles = editorial_topic_titles(guide.editorial.as_ref());
     let mut sections = Vec::with_capacity(guide.sections.len());
     let mut annotation_count = guide_notes.len();
     for section in &guide.sections {
-        let mut title = section.title.clone();
+        let mut title = editorial_titles
+            .get(section.topic_id.as_str())
+            .copied()
+            .unwrap_or(section.title.as_str())
+            .to_string();
         let mut body_override = None::<String>;
         let mut notes = Vec::new();
         for overlay in overlays_by_topic
@@ -500,14 +514,51 @@ fn compose_effective_export(
         });
     }
 
+    let chapters = if let Some(editorial) = guide.editorial.as_ref() {
+        editorial
+            .chapters
+            .iter()
+            .map(|chapter| {
+                let section_indices = chapter
+                    .topics
+                    .iter()
+                    .map(|topic| {
+                        guide
+                            .sections
+                            .iter()
+                            .position(|section| section.topic_id == topic.topic_id)
+                            .ok_or_else(|| {
+                                CommandError::new(
+                                    "document_study_guide_invalid",
+                                    "The study-guide editorial organization no longer matches its source-grounded sections.",
+                                )
+                            })
+                    })
+                    .collect::<Result<Vec<_>, CommandError>>()?;
+                Ok(EffectiveExportChapter {
+                    title: chapter.title.clone(),
+                    introduction: chapter.introduction.clone(),
+                    section_indices,
+                })
+            })
+            .collect::<Result<Vec<_>, CommandError>>()?
+    } else {
+        Vec::new()
+    };
+    let guide_title = guide
+        .editorial
+        .as_ref()
+        .map(|editorial| editorial.title.clone())
+        .unwrap_or(document_title);
     let export = EffectiveGuideExport {
-        document_title,
+        document_title: guide_title,
         source_filename,
         guide_revision: guide.revision,
         overview: guide.overview.summary,
         learning_objectives: guide.overview.learning_objectives,
         key_concepts: guide.overview.key_concepts,
         guide_notes,
+        chapters,
         sections,
         annotation_count,
     };
@@ -519,6 +570,15 @@ fn compose_effective_export(
         ));
     }
     Ok(export)
+}
+
+fn editorial_topic_titles(editorial: Option<&StudyGuideEditorial>) -> HashMap<&str, &str> {
+    editorial
+        .into_iter()
+        .flat_map(|editorial| editorial.chapters.iter())
+        .flat_map(|chapter| chapter.topics.iter())
+        .map(|topic| (topic.topic_id.as_str(), topic.title.as_str()))
+        .collect()
 }
 
 fn compose_effective_collection_export(
@@ -610,6 +670,7 @@ fn compose_effective_collection_export(
         learning_objectives: guide.content.overview.learning_objectives,
         key_concepts: guide.content.overview.key_concepts,
         guide_notes,
+        chapters: Vec::new(),
         sections,
         annotation_count,
     };
@@ -795,13 +856,23 @@ fn render_study_guide_pdf(
     )?;
     writer.spacer(5.0)?;
     writer.toc_entry("Overview", None, "overview")?;
-    for (index, section) in export.sections.iter().enumerate() {
-        let destination = format!("section-{}", index + 1);
-        writer.toc_entry(
-            &format!("{}. {}", index + 1, section.title),
-            section.source_locator.as_ref(),
-            &destination,
-        )?;
+    if export.chapters.is_empty() {
+        for (index, section) in export.sections.iter().enumerate() {
+            let destination = format!("section-{}", index + 1);
+            writer.toc_entry(
+                &format!("{}. {}", index + 1, section.title),
+                section.source_locator.as_ref(),
+                &destination,
+            )?;
+        }
+    } else {
+        for (index, chapter) in export.chapters.iter().enumerate() {
+            writer.toc_entry(
+                &format!("{}. {}", index + 1, chapter.title),
+                None,
+                &format!("chapter-{}", index + 1),
+            )?;
+        }
     }
     writer.spacer(12.0)?;
     writer.rule()?;
@@ -828,29 +899,77 @@ fn render_study_guide_pdf(
     }
     writer.page_break()?;
 
-    for (index, section) in export.sections.iter().enumerate() {
-        writer.ensure_space(90.0)?;
-        let heading = format!("{}. {}", index + 1, section.title);
-        writer.register_navigation(&format!("section-{}", index + 1), &heading);
-        writer.heading(&heading, 18.0, 23.0)?;
-        if let Some(locator) = section.source_locator.as_ref() {
-            writer.muted_paragraph(&source_label(locator), 9.25, 12.5)?;
+    if export.chapters.is_empty() {
+        for (index, section) in export.sections.iter().enumerate() {
+            let heading = format!("{}. {}", index + 1, section.title);
+            render_export_section(
+                &mut writer,
+                section,
+                &heading,
+                18.0,
+                23.0,
+                Some(&format!("section-{}", index + 1)),
+            )?;
         }
-        writer.spacer(5.0)?;
-        for block in &section.body_lines {
-            writer.block(block)?;
+    } else {
+        for (chapter_index, chapter) in export.chapters.iter().enumerate() {
+            writer.ensure_space(100.0)?;
+            let chapter_heading = format!("{}. {}", chapter_index + 1, chapter.title);
+            writer.register_navigation(&format!("chapter-{}", chapter_index + 1), &chapter_heading);
+            writer.heading(&chapter_heading, 19.0, 24.0)?;
+            writer.paragraph(&chapter.introduction, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
+            writer.spacer(8.0)?;
+            for (section_position, section_index) in chapter.section_indices.iter().enumerate() {
+                let section = export.sections.get(*section_index).ok_or_else(|| {
+                    CommandError::new(
+                        "document_study_guide_invalid",
+                        "The study-guide chapter references a missing section.",
+                    )
+                })?;
+                let heading = format!(
+                    "{}.{}. {}",
+                    chapter_index + 1,
+                    section_position + 1,
+                    section.title
+                );
+                render_export_section(&mut writer, section, &heading, 14.5, 19.5, None)?;
+            }
+            writer.spacer(10.0)?;
         }
-        for figure in &section.figures {
-            writer.figure(figure)?;
-        }
-        if !section.notes.is_empty() {
-            writer.heading("My notes", 13.0, 18.0)?;
-            writer.bullets(&section.notes, false)?;
-        }
-        writer.spacer(12.0)?;
     }
 
     writer.finish(destination)
+}
+
+fn render_export_section(
+    writer: &mut PdfFlowWriter,
+    section: &EffectiveExportSection,
+    heading: &str,
+    heading_size: f64,
+    heading_line_height: f64,
+    navigation: Option<&str>,
+) -> Result<(), CommandError> {
+    writer.ensure_space(90.0)?;
+    if let Some(destination) = navigation {
+        writer.register_navigation(destination, heading);
+    }
+    writer.heading(heading, heading_size, heading_line_height)?;
+    if let Some(locator) = section.source_locator.as_ref() {
+        writer.muted_paragraph(&source_label(locator), 9.25, 12.5)?;
+    }
+    writer.spacer(5.0)?;
+    for block in &section.body_lines {
+        writer.block(block)?;
+    }
+    for figure in &section.figures {
+        writer.figure(figure)?;
+    }
+    if !section.notes.is_empty() {
+        writer.heading("My notes", 13.0, 18.0)?;
+        writer.bullets(&section.notes, false)?;
+    }
+    writer.spacer(12.0)?;
+    Ok(())
 }
 
 struct PdfFlowWriter {
@@ -1859,6 +1978,10 @@ fn effective_text(export: &EffectiveGuideExport) -> String {
     text.push_str(&export.learning_objectives.join("\n"));
     text.push_str(&export.key_concepts.join("\n"));
     text.push_str(&export.guide_notes.join("\n"));
+    for chapter in &export.chapters {
+        text.push_str(&chapter.title);
+        text.push_str(&chapter.introduction);
+    }
     for section in &export.sections {
         text.push_str(&section.title);
         for block in &section.body_lines {
@@ -1893,6 +2016,7 @@ mod tests {
             learning_objectives: vec!["Explain preload.".to_string()],
             key_concepts: vec!["Frank-Starling mechanism".to_string()],
             guide_notes: vec!["Review this before lab.".to_string()],
+            chapters: Vec::new(),
             sections: vec![EffectiveExportSection {
                 title: "Preload".to_string(),
                 source_locator: Some(
@@ -1956,6 +2080,31 @@ mod tests {
         for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] {
             assert!(text.contains(expected));
         }
+    }
+
+    #[test]
+    fn editorial_topic_titles_replace_outline_labels_before_pdf_overrides() {
+        use crate::document_study_guides::editorial::{
+            StudyGuideChapter, StudyGuideEditorial, StudyGuideTopicHeading,
+        };
+        let topic_id = "a".repeat(32);
+        let editorial = StudyGuideEditorial {
+            title: "Cardiovascular drugs".to_string(),
+            chapters: vec![StudyGuideChapter {
+                id: "b".repeat(32),
+                title: "Hemodynamic foundations".to_string(),
+                introduction: "A readable chapter introduction.".to_string(),
+                topics: vec![StudyGuideTopicHeading {
+                    topic_id: topic_id.clone(),
+                    title: "Preload and cardiac output".to_string(),
+                }],
+            }],
+        };
+        let titles = editorial_topic_titles(Some(&editorial));
+        assert_eq!(
+            titles.get(topic_id.as_str()).copied(),
+            Some("Preload and cardiac output")
+        );
     }
 
     #[test]
@@ -2068,6 +2217,51 @@ mod tests {
         assert!(text.contains("Cardiovascular Physiology"));
         assert!(!text.contains("Guide revision"));
         assert!(!text.contains("Revision 2"));
+        fs::remove_file(root).unwrap();
+    }
+
+    #[test]
+    fn editorial_pdf_uses_major_chapters_for_contents_and_nested_section_headings() {
+        let mut export = test_export();
+        export.document_title = "Cardiovascular drugs".to_string();
+        export.overview = "Cardiovascular pharmacology connects mechanisms with treatment goals and clinical safety. The guide moves from hemodynamic foundations into therapeutic pathways.".to_string();
+        export.sections.push(EffectiveExportSection {
+            title: "Renin–angiotensin system".to_string(),
+            source_locator: Some(
+                SourceLocator::new(SourceUnitKind::Page, vec![18, 19], None).unwrap(),
+            ),
+            body_lines: vec![ExportBlock::Paragraph(
+                "Renin–angiotensin signaling links vascular tone with sodium balance.".to_string(),
+            )],
+            notes: Vec::new(),
+            figures: Vec::new(),
+        });
+        export.chapters = vec![EffectiveExportChapter {
+            title: "Hemodynamic foundations".to_string(),
+            introduction: "These sections establish the physiologic relationships needed to understand later cardiovascular therapies.".to_string(),
+            section_indices: vec![0, 1],
+        }];
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-editorial-{}.pdf",
+            std::process::id()
+        ));
+        render_study_guide_pdf(&export, &root).unwrap();
+        let parsed =
+            PdfDocument::new(PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap());
+        assert!(parsed.page_count().unwrap() >= 3);
+        let cover = parsed.extract_text_from_page(0).unwrap().text;
+        let contents = parsed.extract_text_from_page(1).unwrap().text;
+        let all = (0..parsed.page_count().unwrap())
+            .map(|page| parsed.extract_text_from_page(page).unwrap().text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(cover.contains("Cardiovascular drugs"));
+        assert!(contents.contains("1. Hemodynamic foundations"));
+        assert!(!contents.contains("1.1. Preload"));
+        assert!(!contents.contains("1.2. Renin"));
+        assert!(all.contains("These sections establish the physiologic relationships"));
+        assert!(all.contains("1.1. Preload"));
+        assert!(all.contains("1.2. Renin"));
         fs::remove_file(root).unwrap();
     }
 

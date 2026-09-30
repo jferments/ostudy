@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "public": {
+    "lineage": "ostudy-public-v1",
+    "legacyPublicSchemaVersion": 30,
+    "latestSchemaVersion": 30,
+    "migrations": [
+      {
+        "version": 1,
+        "name": "public_baseline",
+        "checksum": "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85",
+        "sqlFile": "0001_public_baseline.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 2,
+        "name": "canonical_documents",
+        "checksum": "dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733",
+        "sqlFile": "0002_canonical_documents.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 3,
+        "name": "anydoc_document_adapters",
+        "checksum": "3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9",
+        "sqlFile": "0003_anydoc_document_adapters.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 4,
+        "name": "study_guides_and_learning_topics",
+        "checksum": "b0ce6fc9cfb1d32954b41526c4c60ab143a4397a9d900de3e34d4da7cf8629dc",
+        "sqlFile": "0004_study_guides_and_learning_topics.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 5,
+        "name": "study_guide_pdf_exports",
+        "checksum": "a8736b2a4e8bd0a8fcf3455b8bb20058d7531653964662496271140d7e716f33",
+        "sqlFile": "0005_study_guide_pdf_exports.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 6,
+        "name": "document_citations",
+        "checksum": "51507730f9b56e34ca6964cbf2bc1b7a0d74232b04d4ba1bcc2252b4998c5685",
+        "sqlFile": "0006_document_citations.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 7,
+        "name": "document_artifact_metadata",
+        "checksum": "285343736d2a69d4351093555485b8e37970901237e88de6cfd96e8843b51616",
+        "sqlFile": "0007_document_artifact_metadata.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 8,
+        "name": "ai_profile_reasoning",
+        "checksum": "2f0f9e010842ab62f1f9896441974f792fd621bf152d38ad11b129aa848ecc9d",
+        "sqlFile": "0008_ai_profile_reasoning.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 9,
+        "name": "anki_apkg_staging",
+        "checksum": "a1dfeff574e2d6da17420e0544d0b363de3e232a7793d393024bb4a3432a1019",
+        "sqlFile": "0009_anki_apkg_staging.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 10,
+        "name": "semantic_tutor",
+        "checksum": "9d91e43de57c9917444fff479c79a6040d9ee80b1a8a48c8687ea538861b7377",
+        "sqlFile": "0010_semantic_tutor.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 11,
+        "name": "semantic_lifecycle",
+        "checksum": "dea76f0b89417bea0dc9d34d4f4780a9edea3690c5b4146b391db83ba408bf73",
+        "sqlFile": "0011_semantic_lifecycle.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 12,
+        "name": "semantic_eviction_queue",
+        "checksum": "b3e26dbd5a7e2e617bc24ae15377dacf046950432256083ba76be8598a52e8fb",
+        "sqlFile": "0012_semantic_eviction_queue.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 13,
+        "name": "provider_multi_model",
+        "checksum": "3c34380a8312f07646f245351e5edcfd41f80e397442c826a275e70e78d059f1",
+        "sqlFile": "0013_provider_multi_model.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 14,
+        "name": "native_knowledge_evidence",
+        "checksum": "0207be07db12537a618c2b2a97652a623c5461c553533e7f3ca173788e3dff95",
+        "sqlFile": "0014_native_knowledge_evidence.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 15,
+        "name": "interactive_questions",
+        "checksum": "9fcdcf5e1ef65a3500ca8f94b695a6c04d36cb33dfaa2f1306dd9d466020ab41",
+        "sqlFile": "0015_interactive_questions.sql",
+        "rebuildsTables": true
+      },
+      {
+        "version": 16,
+        "name": "assessment_generation",
+        "checksum": "73166f0b420473da836c9da00cf4cf7acce7694745bb227fcb4a05e2d81e4329",
+        "sqlFile": "0016_assessment_generation.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 17,
+        "name": "generation_reports",
+        "checksum": "6d474e209e201784f858bf75d64eeb8bef34c3473ed478fa0a577dede88386d3",
+        "sqlFile": "0017_generation_reports.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 18,
+        "name": "canonical_evidence",
+        "checksum": "8793ee5d592dca80ce52a5c5396a780d103dff9b81ecc7080b2cc42a29f3b1ca",
+        "sqlFile": "0018_canonical_evidence.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 19,
+        "name": "image_sets",
+        "checksum": "b1a4d4b0463faf8affdbaa205e29e0ae506b31dd3bf8ea4edf9fd5b5e7d0ca92",
+        "sqlFile": "0019_image_sets.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 20,
+        "name": "image_extraction",
+        "checksum": "0121782267e44e1a78aea403e051d4c2697bed53069af60369c9f833b14d078e",
+        "sqlFile": "0020_image_extraction.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 21,
+        "name": "image_source_edits",
+        "checksum": "0570850c02fb9e2fd5b987625bcfe96440c8cde828804eb5724974e33fb6f6aa",
+        "sqlFile": "0021_image_source_edits.sql",
+        "rebuildsTables": true
+      },
+      {
+        "version": 22,
+        "name": "document_collections",
+        "checksum": "a9fc9753540832187bd11bc074b417f23b9317c167981d52f70f53602b74c0a9",
+        "sqlFile": "0022_document_collections.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 23,
+        "name": "collection_synthesis",
+        "checksum": "e36fbcd4187eb56464fec704cf96dba235c57b3d91907199bd525219fa07de9b",
+        "sqlFile": "0023_collection_synthesis.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 24,
+        "name": "study_targets",
+        "checksum": "fe101eae8a4dc0f1455991c229b6362d2c6a4514ec24e8f239c8576fc7b770bb",
+        "sqlFile": "0024_study_targets.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 25,
+        "name": "tutor_projects",
+        "checksum": "a0c2ca312db766069477190fba79b80d2917f2461e996b2809986e9805c30f6b",
+        "sqlFile": "0025_tutor_projects.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 26,
+        "name": "single_level_document_collections",
+        "checksum": "56358a42e0ca153bffd43e1296675762c91718cfe46bb9d7d22af3723942eddf",
+        "sqlFile": "0026_single_level_document_collections.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 27,
+        "name": "generation_reuse_and_usage",
+        "checksum": "4cc918934276c8628358f9e51f8caf3b32eda8ea9b3909f0ff38f33360bd7ddb",
+        "sqlFile": "0027_generation_reuse_and_usage.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 28,
+        "name": "collection_reduction_request_identity",
+        "checksum": "149d3697a2ab6d2a7daa6724f5a6a0cc6e91bf9a6f40007c411b07445842f25c",
+        "sqlFile": "0028_collection_reduction_request_identity.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 29,
+        "name": "remove_document_collection_archiving",
+        "checksum": "6b8c1d36c82d505a0e754c781fb63bbfb5e402d9bd4ea08dfb5aa2d7a8df57f8",
+        "sqlFile": "0029_remove_document_collection_archiving.sql",
+        "rebuildsTables": false
+      },
+      {
+        "version": 30,
+        "name": "generation_operation_outcomes",
+        "checksum": "c455d1673841bf499375f80f8ce8daeb234cd3ba74eddcc105981a8ec4bdf472",
+        "sqlFile": "0030_generation_operation_outcomes.sql",
+        "rebuildsTables": false
+      }
+    ]
+  },
+  "repairs": [
+    {
+      "version": 1,
+      "name": "canonical_semantic_chunk_hashes",
+      "checksum": "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f",
+      "phase": {
+        "kind": "after_migration",
+        "version": 2
+      }
+    },
+    {
+      "version": 2,
+      "name": "canonical_block_hashes",
+      "checksum": "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085",
+      "phase": {
+        "kind": "after_migration",
+        "version": 2
+      }
+    },
+    {
+      "version": 3,
+      "name": "document_artifact_user_edits",
+      "checksum": "14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031",
+      "phase": {
+        "kind": "after_migration",
+        "version": 7
+      }
+    }
+  ],
+  "release": {
+    "lineage": "ostudy-release-v1",
+    "baselineVersion": 1,
+    "version": 2,
+    "name": "release_baseline",
+    "checksum": "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8",
+    "migrations": [
+      {
+        "version": 1,
+        "name": "release_baseline",
+        "checksum": "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"
+      },
+      {
+        "version": 2,
+        "name": "selection_deck_operations",
+        "checksum": "c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"
+      }
+    ]
+  }
+}

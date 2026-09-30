@@ -1,6 +1,6 @@
 # PR #106 release-readiness cleanup audit
 
-Status: active cleanup ledger for PR #106 / 106-F. This is a deletion **decision record**, not a license to remove anything whose compatibility or recovery consumer is still live.
+Status: completed cleanup ledger for merged PR #106 / 106-F. This is a deletion **decision record**, not a license to remove anything whose compatibility or recovery consumer is still live.
 
 ## Disposition ledger
 
@@ -19,7 +19,7 @@ Status: active cleanup ledger for PR #106 / 106-F. This is a deletion **decision
 
 ## Cleanup rules applied
 
-- Current guides describe the actual post-#104 / active-#106 ownership state.
+- Current guides describe the completed post-#104 / PR #106 ownership state without treating a historical pull-request status as a runtime invariant.
 - Historical stage documents may preserve old schema numbers or implementation facts only when the text clearly identifies the historical checkpoint.
 - Compatibility readers remain because they have named supported inputs and tests.
 - A source path is not “dead” merely because ordinary new data no longer writes that format.

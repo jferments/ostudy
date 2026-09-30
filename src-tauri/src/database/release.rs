@@ -40,6 +40,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[ReleaseMigration {
     sql: include_str!("../../schema/0002_selection_deck_operations.sql"),
 }];
 
+pub(super) fn migration_contract_rows() -> impl Iterator<Item = (i64, &'static str, &'static str)> {
+    RELEASE_MIGRATIONS
+        .iter()
+        .map(|migration| (migration.version, migration.name, migration.checksum))
+}
+
 pub(super) fn initialize_fresh(connection: &mut Connection) -> Result<(), String> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)

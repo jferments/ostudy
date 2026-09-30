@@ -3,6 +3,11 @@ use serde_json::{json, Value};
 use super::*;
 use crate::cards::questions::ValidatedQuestion;
 
+const MIXED_FAMILY_EXAMPLE: &str =
+    include_str!("../../../../../docs/examples/mixed-card-types.ostudy.json");
+const V2_SCHEMA: &str =
+    include_str!("../../../../../docs/reference/ostudy-flashcards-v2.schema.json");
+
 fn questions() -> Vec<Value> {
     vec![
         json!({"kind":"single_choice","prompt":"Which is a prime?",
@@ -48,6 +53,78 @@ fn counts(connection: &Connection) -> (i64, i64, i64, i64) {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .unwrap()
+}
+
+#[test]
+fn documented_v2_schema_and_mixed_family_example_cover_the_runtime_family_set() {
+    let schema: Value = serde_json::from_str(V2_SCHEMA).unwrap();
+    assert_eq!(schema["properties"]["formatVersion"]["const"], 2);
+    assert_eq!(
+        schema["properties"]["cards"]["items"]["oneOf"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3,
+        "Basic, Cloze, and Interactive are the three transport card envelopes"
+    );
+    assert_eq!(
+        schema["$defs"]["interactiveCard"]["properties"]["question"]["oneOf"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6,
+        "the schema must expose every text-native interactive family"
+    );
+
+    let database = Database::open_in_memory().unwrap();
+    let result = database
+        .with_connection(|connection| {
+            import_prepared_flashcards(
+                connection,
+                prepare_flashcard_import_bytes(MIXED_FAMILY_EXAMPLE.as_bytes())?,
+            )
+        })
+        .unwrap();
+    assert_eq!(result.created_note_count, 8);
+    assert_eq!(result.created_card_count, 8);
+    database
+        .with_connection(|connection| {
+            let mut statement = connection
+                .prepare(
+                    "SELECT question_definition
+                     FROM notes
+                     WHERE note_type = 'interactive'
+                     ORDER BY created_at,id",
+                )
+                .unwrap();
+            let definitions = statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let kinds = definitions
+                .iter()
+                .map(|definition| {
+                    ValidatedQuestion::parse(definition)
+                        .unwrap()
+                        .kind()
+                        .as_str()
+                })
+                .collect::<HashSet<_>>();
+            assert_eq!(
+                kinds,
+                HashSet::from([
+                    "single_choice",
+                    "select_all",
+                    "true_false",
+                    "matching",
+                    "grouping",
+                    "ordering",
+                ])
+            );
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]

@@ -5,9 +5,15 @@ import { GenerationDiagnostics } from "./DocumentProgress";
 
 function progress(overrides: Partial<DocumentGenerationProgress> = {}): DocumentGenerationProgress {
   return {
-    startedAt: 1000, phase: "generating", currentWindow: 1, completedWindows: 0,
-    totalWindows: 2, currentPageStart: 1, currentPageEnd: 4, currentPartition: null,
-    reasoningEffort: "low", providerRequestCount: 5, retryCount: 2,
+    startedAt: 1000, phase: "generating", phaseStartedAt: 61000, currentWindow: 1,
+    completedWindows: 0, totalWindows: 2, currentPageStart: 1, currentPageEnd: 4,
+    currentPartition: null, providerKind: "openrouter",
+    modelId: "deepseek/deepseek-v4.1-flash", requestedReasoningEffort: "automatic",
+    reasoningEffort: "none", currentRequestStartedAt: 81000,
+    currentRequestStage: "flashcard_authoring", currentRequestBytes: 65536,
+    currentRequestTextBytes: 16384, currentRequestImageCount: 4,
+    currentRequestEvidenceBytes: 8192, currentRequestMaxOutputTokens: 6144,
+    providerRequestCount: 5, retryCount: 2,
     transientRetryCount: 1, compatibilityRetryCount: 0, contractRepairRetryCount: 1,
     outputCompactionRetryCount: 0, promptTokens: 12000, completionTokens: 3000,
     reasoningTokens: 2000, totalTokens: 15000, cachedPromptTokens: 6000,
@@ -24,9 +30,10 @@ describe("generation cost summary and optional retry details", () => {
     const trigger = screen.getByRole("button", { name: "Generation details" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(stat("Elapsed")).toBe("1m 30s");
+    expect(stat("Stage elapsed")).toBe("30 sec");
     expect(stat("Requests")).toBe("5");
     expect(stat("Retries")).toBe("2");
-    expect(stat("Reasoning")).toBe("low · 2.0k");
+    expect(stat("Reasoning")).toBe("automatic → none · 2.0k");
     expect(stat("Prompt / output")).toBe("12k / 3.0k");
     expect(stat("Prompt cache")).toBe("6.0k (50.0%)");
     expect(screen.getByText("12k / 3.0k").closest('[data-slot="collapsible"]')).toBeNull();
@@ -35,7 +42,18 @@ describe("generation cost summary and optional retry details", () => {
     expect(screen.getByText("Provider compatibility")).toBeTruthy();
     expect(screen.getByText("Response contract repair")).toBeTruthy();
     expect(screen.getByText("Temporary transport failure")).toBeTruthy();
+    expect(stat("Provider")).toBe("openrouter");
+    expect(stat("Model")).toBe("deepseek/deepseek-v4.1-flash");
+    expect(stat("Requested reasoning")).toBe("automatic");
+    expect(stat("Effective reasoning")).toBe("none");
     expect(stat("Cache writes")).toBe("500 tokens");
+    expect(stat("Stage")).toBe("Flashcard Authoring");
+    expect(stat("Request elapsed")).toBe("10 sec");
+    expect(stat("Wire size")).toBe("64 KB");
+    expect(stat("Text/schema")).toBe("16 KB");
+    expect(stat("Evidence payload")).toBe("8.0 KB");
+    expect(stat("Rendered images")).toBe("4");
+    expect(stat("Output ceiling")).toBe("6,144 tokens");
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(stat("Retries")).toBe("2");
@@ -48,7 +66,7 @@ describe("generation cost summary and optional retry details", () => {
     })} now={91000} />);
     expect(stat("Prompt / output")).toBe("Awaiting usage");
     expect(stat("Prompt cache")).toBe("Awaiting usage");
-    expect(stat("Reasoning")).toBe("low · Awaiting usage");
+    expect(stat("Reasoning")).toBe("automatic → none · Awaiting usage");
     expect(screen.queryByText("0 / 0")).toBeNull();
   });
 
@@ -60,9 +78,27 @@ describe("generation cost summary and optional retry details", () => {
     })} now={91000} />);
     expect(stat("Prompt / output")).toBe("0 / 0");
     expect(stat("Prompt cache")).toBe("0");
-    expect(stat("Reasoning")).toBe("low · 0");
+    expect(stat("Reasoning")).toBe("automatic → none · 0");
     expect(screen.getByText(/Usage incomplete: 4 requests/u)).toBeTruthy();
     expect(screen.queryByText(/NaN/u)).toBeNull();
+  });
+
+
+  it("does not invent current request measurements after an attempt finishes", () => {
+    render(<GenerationDiagnostics progress={progress({
+      currentRequestStartedAt: null,
+      currentRequestStage: null,
+      currentRequestBytes: null,
+      currentRequestTextBytes: null,
+      currentRequestImageCount: null,
+      currentRequestEvidenceBytes: null,
+      currentRequestMaxOutputTokens: null,
+    })} now={91000} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generation details" }));
+    expect(screen.queryByText("Current provider request")).toBeNull();
+    expect(stat("Provider")).toBe("openrouter");
+    expect(stat("Requested reasoning")).toBe("automatic");
+    expect(stat("Effective reasoning")).toBe("none");
   });
 
   it("does not invent details for a missing progress snapshot", () => {

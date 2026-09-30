@@ -15,6 +15,7 @@ pub(super) struct Window<'a> {
     pub retry_partial: bool,
     pub diagnostics: Option<&'a crate::ai::generation::Context>,
     pub logical_key: Option<&'a str>,
+    pub initial_visible_completion_tokens: usize,
 }
 
 pub(super) async fn run<F, Fut>(
@@ -66,6 +67,8 @@ where
                                 retry_partial: input.retry_partial,
                                 diagnostics: input.diagnostics,
                                 logical_key: input.logical_key,
+                                initial_visible_completion_tokens: input
+                                    .initial_visible_completion_tokens,
                             },
                             core_call,
                         ))
@@ -108,6 +111,7 @@ mod tests {
             retry_partial: false,
             diagnostics: None,
             logical_key: None,
+            initial_visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
         };
         let signal = CancellationSignal::new();
         let release = tokio::sync::Notify::new();

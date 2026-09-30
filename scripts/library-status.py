@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import re
 import sqlite3
 import sys
 from typing import Any
@@ -20,72 +19,71 @@ PROFILE_IDS = {
 }
 
 
+CONTRACT_PATH = ROOT / "scripts" / "generated" / "database-contract.json"
+
+
+def database_contract() -> dict[str, Any]:
+    value = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    if value.get("schemaVersion") != 1:
+        raise RuntimeError("The generated native database contract has an unsupported schema.")
+    public = value.get("public")
+    release = value.get("release")
+    repairs = value.get("repairs")
+    if not isinstance(public, dict) or not isinstance(release, dict) or not isinstance(repairs, list):
+        raise RuntimeError("The generated native database contract is malformed.")
+    return value
+
+
+def _ledger_rows(rows: Any, label: str) -> list[tuple[int, str, str]]:
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError(f"The generated {label} registry is missing or malformed.")
+    decoded: list[tuple[int, str, str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise RuntimeError(f"The generated {label} registry contains a malformed row.")
+        version = row.get("version")
+        name = row.get("name")
+        checksum = row.get("checksum")
+        if (
+            not isinstance(version, int)
+            or version < 1
+            or not isinstance(name, str)
+            or not name
+            or not isinstance(checksum, str)
+            or len(checksum) != 64
+            or any(character not in "0123456789abcdef" for character in checksum)
+        ):
+            raise RuntimeError(f"The generated {label} registry contains invalid metadata.")
+        decoded.append((version, name, checksum))
+    return decoded
+
+
 def public_registry() -> list[tuple[int, str, str]]:
-    source = (ROOT / "src-tauri/src/database.rs").read_text(encoding="utf-8")
-    registry = source.split("const MIGRATIONS:", 1)[1].split(
-        "pub(crate) const LATEST_SCHEMA_VERSION", 1
-    )[0]
-    rows: list[tuple[int, str, str]] = []
-    for body in re.findall(r"Migration\s*\{([\s\S]*?)\}", registry):
-        version = re.search(r"version:\s*(\d+)", body)
-        name = re.search(r'name:\s*"([^"]+)"', body)
-        checksum = re.search(r'checksum:\s*"([0-9a-f]{64})"', body)
-        if not (version and name and checksum):
-            raise RuntimeError("The public migration registry is malformed.")
-        rows.append((int(version.group(1)), name.group(1), checksum.group(1)))
+    contract = database_contract()
+    rows = _ledger_rows(contract["public"].get("migrations"), "public migration")
+    latest = contract["public"].get("latestSchemaVersion")
+    if [row[0] for row in rows] != list(range(1, len(rows) + 1)) or latest != rows[-1][0]:
+        raise RuntimeError("The generated public migration registry is not contiguous.")
     return rows
 
 
 def repair_registry() -> list[tuple[int, str, str]]:
-    source = (ROOT / "src-tauri/src/data_repairs.rs").read_text(encoding="utf-8")
-    registry = source.split("const REPAIRS:", 1)[1].split(
-        "pub(crate) fn apply_required_repairs", 1
-    )[0]
-    rows: list[tuple[int, str, str]] = []
-    for body in re.findall(r"DataRepair\s*\{([\s\S]*?)\}", registry):
-        version = re.search(r"version:\s*(\d+)", body)
-        name = re.search(r'name:\s*"([^"]+)"', body)
-        checksum = re.search(r'checksum:\s*"([0-9a-f]{64})"', body)
-        if not (version and name and checksum):
-            raise RuntimeError("The public repair registry is malformed.")
-        rows.append((int(version.group(1)), name.group(1), checksum.group(1)))
-    return rows
+    return _ledger_rows(database_contract().get("repairs"), "public repair")
 
 
 def release_contract() -> dict[str, Any]:
-    source = (ROOT / "src-tauri/src/database/release.rs").read_text(encoding="utf-8")
-    patterns = {
-        "lineage": r'pub\(crate\) const SCHEMA_LINEAGE: &str = "([^"]+)";',
-        "baselineVersion": r"pub\(crate\) const BASELINE_VERSION: i64 = (\d+);",
-        "version": r"pub\(crate\) const SCHEMA_VERSION: i64 = (\d+);",
-        "name": r'pub\(crate\) const BASELINE_NAME: &str = "([^"]+)";',
-        "checksum": r'pub\(crate\) const BASELINE_CHECKSUM: &str =\s*"([0-9a-f]{64})";',
-    }
-    values: dict[str, Any] = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, source)
-        if not match:
-            raise RuntimeError(f"The release schema {key} is missing or malformed.")
-        values[key] = int(match.group(1)) if key in {"baselineVersion", "version"} else match.group(1)
-
-    rows = [
-        (values["baselineVersion"], values["name"], values["checksum"])
-    ]
-    registry = source.split("const RELEASE_MIGRATIONS:", 1)[1].split(
-        "/// Read-only admission", 1
-    )[0]
-    for body in re.findall(r"ReleaseMigration\s*\{([\s\S]*?)\}", registry):
-        version = re.search(r"version:\s*(\d+)", body)
-        name = re.search(r'name:\s*"([^"]+)"', body)
-        checksum = re.search(r'checksum:\s*"([0-9a-f]{64})"', body)
-        if not (version and name and checksum):
-            raise RuntimeError("The release migration registry is malformed.")
-        rows.append((int(version.group(1)), name.group(1), checksum.group(1)))
-    rows.sort(key=lambda row: row[0])
-    if [row[0] for row in rows] != list(range(values["baselineVersion"], values["version"] + 1)):
-        raise RuntimeError("The release migration registry is not contiguous.")
-    values["migrations"] = rows
-    return values
+    release = dict(database_contract()["release"])
+    rows = _ledger_rows(release.get("migrations"), "release migration")
+    baseline = release.get("baselineVersion")
+    version = release.get("version")
+    if (
+        not isinstance(baseline, int)
+        or not isinstance(version, int)
+        or [row[0] for row in rows] != list(range(baseline, version + 1))
+    ):
+        raise RuntimeError("The generated release migration registry is not contiguous.")
+    release["migrations"] = rows
+    return release
 
 
 def pre_public_contract() -> dict[str, Any]:
@@ -214,7 +212,7 @@ def classify_database(
                 report["state"] = "release-supported-older"
             else:
                 report["state"] = "release-unsupported-or-damaged"
-        elif lineage == "ostudy-public-v1":
+        elif lineage == database_contract()["public"]["lineage"]:
             prefix = expected_migrations[: len(migration_rows)]
             migrations_valid = bool(migration_rows) and migration_rows == prefix
             repairs_valid = all(

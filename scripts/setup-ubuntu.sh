@@ -55,6 +55,14 @@ LOCAL_OPT="$HOME/.local/opt"
 mkdir -p "$LOCAL_BIN" "$LOCAL_OPT"
 export PATH="$LOCAL_BIN:$HOME/.cargo/bin:$PATH"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/script-linters.bash"
+
+log "Installing pinned ShellCheck, Ruff, and ty correctness tooling"
+ostudy_ensure_script_linters
+ln -sfn "$OSTUDY_RUFF" "$LOCAL_BIN/ruff"
+ln -sfn "$OSTUDY_SHELLCHECK" "$LOCAL_BIN/shellcheck"
+ln -sfn "$OSTUDY_TY" "$LOCAL_BIN/ty"
 
 add_path_to_shell_file() {
   local file="$1"
@@ -138,7 +146,7 @@ else
 fi
 
 log "Verifying the provisioned contributor and native-smoke environment"
-"$SCRIPT_DIR/doctor.sh" --native-smoke
+"$SCRIPT_DIR/doctor.sh" --native-smoke --script-linters
 
 log "Building ostudy once so ordinary startup is fast"
 "$SCRIPT_DIR/build.sh"

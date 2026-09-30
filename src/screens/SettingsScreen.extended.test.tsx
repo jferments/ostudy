@@ -57,6 +57,18 @@ const emptyDefaults: aiIpc.AiTaskDefaults = {
   embeddingsReasoningEffort: null,
 };
 
+const seededOpenRouterDefaults: aiIpc.AiTaskDefaults = {
+  flashcardGenerationProfileId: profileId,
+  flashcardGenerationModelId: "deepseek/deepseek-v4.1-flash",
+  flashcardGenerationReasoningEffort: "none",
+  tutorProfileId: profileId,
+  tutorModelId: "deepseek/deepseek-v4.1-flash",
+  tutorReasoningEffort: "low",
+  embeddingsProfileId: profileId,
+  embeddingsModelId: "qwen/qwen3-embedding-4b",
+  embeddingsReasoningEffort: "none",
+};
+
 function catalog(): aiIpc.AiProviderCatalogEntry[] {
   return [
     {
@@ -170,17 +182,17 @@ beforeEach(() => {
     profileRevision: 2,
     providerKind: "openrouter",
     models: [
-      { id: "deepseek/deepseek-v4-flash", displayName: "DeepSeek V4 Flash", ownedBy: "deepseek" },
+      { id: "deepseek/deepseek-v4.1-flash", displayName: "DeepSeek V4.1 Flash", ownedBy: "deepseek" },
       { id: "anthropic/claude-sonnet", displayName: "Claude Sonnet", ownedBy: "anthropic" },
     ],
     retrievedAt: 2,
   });
   vi.mocked(embeddingIpc.listEmbeddingModels).mockResolvedValue([
-    { id: "qwen/qwen3-embedding", name: "Qwen3 Embedding" },
+    { id: "qwen/qwen3-embedding-4b", name: "Qwen3 Embedding 4B" },
   ]);
   vi.mocked(embeddingIpc.getEmbeddingOptions).mockResolvedValue({
     profileId,
-    modelId: "qwen/qwen3-embedding",
+    modelId: "qwen/qwen3-embedding-4b",
     dimensions: null,
     inputPolicy: "automatic",
     revision: 1,
@@ -189,7 +201,7 @@ beforeEach(() => {
 });
 
 describe("SettingsScreen AI provider/model behavior", () => {
-  it("connects one OpenRouter API key and assigns different models to all three AI tasks", async () => {
+  it("connects the first OpenRouter key and reflects native-seeded task defaults without UI rewrite calls", async () => {
     const created = profile({
       credentialEpoch: 0,
       credentialStatus: {
@@ -202,6 +214,9 @@ describe("SettingsScreen AI provider/model behavior", () => {
       revision: 1,
     });
     const connected = profile();
+    vi.mocked(aiIpc.getAiTaskDefaults)
+      .mockResolvedValueOnce(emptyDefaults)
+      .mockResolvedValue(seededOpenRouterDefaults);
     vi.mocked(aiIpc.createAiProviderProfile).mockResolvedValue(created);
     vi.mocked(aiIpc.setAiProviderCredential).mockResolvedValue(connected);
     vi.mocked(aiIpc.listAiProviderProfiles)
@@ -230,52 +245,45 @@ describe("SettingsScreen AI provider/model behavior", () => {
         "sentinel-secret",
         "secure",
       );
+      expect(aiIpc.getAiTaskDefaults).toHaveBeenCalledTimes(2);
       expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(profileId, 2);
     });
     expect((apiKey as HTMLInputElement).value).toBe("");
     expect(screen.queryByText("sentinel-secret")).toBeNull();
 
-    for (const [label, model] of [
-      ["Flashcard and study-guide generation", "deepseek/deepseek-v4-flash"],
-      ["Interactive tutor", "anthropic/claude-sonnet"],
-    ] as const) {
-      const providerSelect = screen.getByRole("combobox", { name: `${label} provider` });
-      fireEvent.change(providerSelect, { target: { value: profileId } });
-      const modelSelect = screen.getByRole("combobox", { name: `${label} model` });
-      await waitFor(() => expect((modelSelect as HTMLSelectElement).disabled).toBe(false));
-      fireEvent.change(modelSelect, { target: { value: model } });
-    }
-
-    const embeddingProvider = screen.getByRole("combobox", {
-      name: "Semantic embeddings provider",
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Flashcard and study-guide generation provider",
+        }) as HTMLSelectElement).value,
+      ).toBe(profileId);
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Flashcard and study-guide generation model",
+        }) as HTMLSelectElement).value,
+      ).toBe("deepseek/deepseek-v4.1-flash");
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Flashcard and study-guide generation reasoning",
+        }) as HTMLSelectElement).value,
+      ).toBe("none");
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Interactive tutor model",
+        }) as HTMLSelectElement).value,
+      ).toBe("deepseek/deepseek-v4.1-flash");
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Interactive tutor reasoning",
+        }) as HTMLSelectElement).value,
+      ).toBe("low");
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Semantic embeddings model",
+        }) as HTMLSelectElement).value,
+      ).toBe("qwen/qwen3-embedding-4b");
     });
-    fireEvent.change(embeddingProvider, { target: { value: profileId } });
-    const embeddingModel = screen.getByRole("combobox", { name: "Semantic embeddings model" });
-    await waitFor(() => expect((embeddingModel as HTMLSelectElement).disabled).toBe(false));
-    fireEvent.change(embeddingModel, { target: { value: "qwen/qwen3-embedding" } });
-
-    await waitFor(() => expect(taskIpc.setAiTaskDefault).toHaveBeenCalledTimes(3));
-    const assignments = vi.mocked(taskIpc.setAiTaskDefault).mock.calls.map(([input]) => input);
-    expect(assignments).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          taskKind: "flashcard_generation",
-          profileId,
-          modelId: "deepseek/deepseek-v4-flash",
-        }),
-        expect.objectContaining({
-          taskKind: "tutor",
-          profileId,
-          modelId: "anthropic/claude-sonnet",
-        }),
-        expect.objectContaining({
-          taskKind: "embeddings",
-          profileId,
-          modelId: "qwen/qwen3-embedding",
-          reasoningEffort: "none",
-        }),
-      ]),
-    );
+    expect(taskIpc.setAiTaskDefault).not.toHaveBeenCalled();
   });
 
   it("offers another same-provider connection under a unique default name", async () => {

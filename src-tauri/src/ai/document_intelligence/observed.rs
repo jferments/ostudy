@@ -8,7 +8,10 @@ use crate::{
     ai::generation::outcomes::authoring::{observe, Kind},
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_semantics::SemanticWindow,
-    document_study_guides::GroundedStudyGuideSection,
+    document_study_guides::{
+        editorial::StudyGuideEditorial, GroundedStudyGuideSection, StudyGuideOverview,
+        StudyGuideSectionContent,
+    },
     error::CommandError,
     task_cancellation::CancellationSignal,
 };
@@ -65,6 +68,30 @@ pub(crate) fn generate_study_guide_topic_section<'a>(
             topic,
             source_text,
             evidence,
+        ),
+        |_| 1,
+    )
+}
+
+pub(crate) fn generate_document_study_guide_editorial<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    document_title: &'a str,
+    plan: &'a DocumentLearningPlan,
+    sections: &'a [&'a StudyGuideSectionContent],
+    cancellation: &'a CancellationSignal,
+) -> impl Future<Output = Result<(StudyGuideOverview, StudyGuideEditorial), CommandError>> + 'a {
+    observe(
+        task.diagnostics.as_ref(),
+        task.diagnostic_window_key.as_deref(),
+        Kind::GuideEditorial,
+        study_guide::generate_document_study_guide_editorial(
+            runtime,
+            task,
+            document_title,
+            plan,
+            sections,
+            cancellation,
         ),
         |_| 1,
     )

@@ -11,6 +11,7 @@ fn fixture() -> EffectiveGuideExport {
         learning_objectives: vec![],
         key_concepts: vec![],
         guide_notes: vec![],
+        chapters: vec![],
         sections: vec![],
         annotation_count: 0,
     }

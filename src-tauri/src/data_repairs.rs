@@ -65,6 +65,21 @@ const REPAIRS: &[DataRepair] = &[
     },
 ];
 
+pub(crate) fn repair_contract_rows() -> Vec<(i64, &'static str, &'static str, i64)> {
+    REPAIRS
+        .iter()
+        .map(|repair| {
+            let RepairPhase::AfterMigration(migration_version) = repair.phase;
+            (
+                repair.version,
+                repair.name,
+                repair.checksum,
+                migration_version,
+            )
+        })
+        .collect()
+}
+
 pub(crate) fn apply_required_repairs(
     connection: &mut Connection,
     phase: RepairPhase,

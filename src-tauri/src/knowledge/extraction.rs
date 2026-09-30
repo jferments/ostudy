@@ -33,6 +33,10 @@ pub(crate) const EXTRACTION_BATCH_SOURCES: usize = 12;
 pub(crate) const EXTRACTION_BATCH_CHARS: usize = 12000;
 pub(crate) const EXTRACTION_BATCH_COMPLEXITY_UNITS: usize = 16_000;
 pub(crate) const EXTRACTION_COMPLETION_TOKENS: usize = 6000;
+const DENSE_EXTRACTION_COMPLETION_TOKENS: usize = 12_000;
+const MAX_EXTRACTION_RECOVERY_TOKENS: usize = 16_000;
+const DENSE_EXTRACTION_COMPLEXITY_UNITS: usize = 9_000;
+const LARGE_CONTEXT_WINDOW_TOKENS: usize = 64_000;
 const EVIDENCE_SPAN_COMPLEXITY_UNITS: usize = 160;
 const IMAGE_COMPLEXITY_UNITS: usize = 2_500;
 
@@ -42,6 +46,31 @@ pub(crate) fn extraction_complexity_units(text: &str, image_count: usize) -> usi
     characters
         .saturating_add(evidence_spans.saturating_mul(EVIDENCE_SPAN_COMPLEXITY_UNITS))
         .saturating_add(image_count.saturating_mul(IMAGE_COMPLEXITY_UNITS))
+}
+
+fn initial_extraction_completion_tokens(
+    context_window_tokens: Option<usize>,
+    sources: &[SourceRecord],
+) -> usize {
+    let complexity = sources.iter().fold(0usize, |total, source| {
+        total.saturating_add(extraction_complexity_units(
+            &source.text,
+            source.images.len(),
+        ))
+    });
+    if context_window_tokens.is_some_and(|tokens| tokens >= LARGE_CONTEXT_WINDOW_TOKENS)
+        && complexity >= DENSE_EXTRACTION_COMPLEXITY_UNITS
+    {
+        DENSE_EXTRACTION_COMPLETION_TOKENS
+    } else {
+        EXTRACTION_COMPLETION_TOKENS
+    }
+}
+
+fn extraction_recovery_completion_tokens(initial_visible_tokens: usize) -> usize {
+    initial_visible_tokens
+        .saturating_mul(2)
+        .min(MAX_EXTRACTION_RECOVERY_TOKENS)
 }
 pub(crate) fn extraction_contract(task: &DocumentTaskContext) -> Result<String, CommandError> {
     Ok(hash(&format!(
@@ -190,6 +219,8 @@ async fn analyze(
     let mut request_task = task.clone();
     request_task.diagnostic_window_key = Some(analysis_store::window_id(&pending, &contract)?);
     let task = &request_task;
+    let initial_visible_completion_tokens =
+        initial_extraction_completion_tokens(task.context_window_tokens(), &pending);
     let outcome = shared::run(
         shared::Window {
             database,
@@ -200,6 +231,7 @@ async fn analyze(
             retry_partial,
             diagnostics: task.diagnostics.as_ref(),
             logical_key: task.diagnostic_window_key.as_deref(),
+            initial_visible_completion_tokens,
         },
         cancellation,
         |call| {
@@ -383,6 +415,7 @@ pub(super) struct WindowRunContext<'a> {
     pub retry_partial: bool,
     pub diagnostics: Option<&'a crate::ai::generation::Context>,
     pub logical_key: Option<&'a str>,
+    pub initial_visible_completion_tokens: usize,
 }
 
 /// Tests inject only the provider boundary; they exercise the real decoder,
@@ -411,6 +444,7 @@ where
             retry_partial,
             diagnostics: None,
             logical_key: None,
+            initial_visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
         },
         call,
     )
@@ -434,6 +468,7 @@ where
         retry_partial,
         diagnostics,
         logical_key,
+        initial_visible_completion_tokens,
     } = input;
     let mut checkpoint = analysis_store::Checkpoint::open(database, sources, contract)?;
     let mut previous = checkpoint.load()?;
@@ -486,7 +521,7 @@ where
             user: initial_prompt.clone(),
             schema: schema::initial(catalog, sources),
             cancellation: cancellation.clone(),
-            visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
+            visible_completion_tokens: initial_visible_completion_tokens,
         })
         .await
         .and_then(|value| decode::initial(value, catalog, sources));
@@ -511,9 +546,9 @@ where
                 already_retried = true;
                 check_canceled(cancellation)?;
                 let retry_visible_tokens = if truncated {
-                    EXTRACTION_COMPLETION_TOKENS.saturating_mul(2)
+                    extraction_recovery_completion_tokens(initial_visible_completion_tokens)
                 } else {
-                    EXTRACTION_COMPLETION_TOKENS
+                    initial_visible_completion_tokens
                 };
                 let retry_instruction = if truncated {
                     "The prior response reached its completion ceiling. Return a complete, concise instance of the same schema. Prioritize distinct high-value knowledge and explicit source dispositions; do not add commentary or duplicate units."

@@ -79,6 +79,7 @@ mod library_session;
 mod logging;
 mod media;
 mod media_assets;
+pub mod migration_contract;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;

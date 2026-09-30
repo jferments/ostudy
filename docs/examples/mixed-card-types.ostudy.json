@@ -1,0 +1,93 @@
+{
+  "format": "ostudy-flashcards",
+  "formatVersion": 2,
+  "deck": {
+    "mode": "create",
+    "name": "Mixed Card Types",
+    "description": "Executable example covering every generated JSON card family."
+  },
+  "defaultTags": ["mixed-import-example"],
+  "cards": [
+    {
+      "type": "basic",
+      "front": "What is cardiac output?",
+      "back": "Heart rate × stroke volume."
+    },
+    {
+      "type": "cloze",
+      "text": "The {{c1::sinoatrial node}} is the normal cardiac pacemaker."
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "single_choice",
+        "prompt": "Which drug is an ACE inhibitor?",
+        "options": [
+          {"id": "lisinopril", "content": "Lisinopril"},
+          {"id": "losartan", "content": "Losartan"}
+        ],
+        "correctOptionId": "lisinopril"
+      }
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "select_all",
+        "prompt": "Which findings can occur with ACE inhibitors?",
+        "options": [
+          {"id": "cough", "content": "Cough"},
+          {"id": "hyperkalemia", "content": "Hyperkalemia"},
+          {"id": "hypokalemia", "content": "Hypokalemia"}
+        ],
+        "correctOptionIds": ["cough", "hyperkalemia"]
+      }
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "true_false",
+        "statement": "ACE inhibitors and ARBs should routinely be combined.",
+        "correct": false,
+        "correctedStatement": "ACE inhibitors and ARBs are generally not combined because adverse effects increase without routine added benefit."
+      }
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "matching",
+        "prompt": "Match the drug class with an example.",
+        "pairs": [
+          {"id": "ace", "left": "ACE inhibitor", "right": "Lisinopril"},
+          {"id": "arb", "left": "ARB", "right": "Losartan"}
+        ]
+      }
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "grouping",
+        "prompt": "Group each medication by class.",
+        "categories": [
+          {"id": "ace", "content": "ACE inhibitor"},
+          {"id": "arb", "content": "ARB"}
+        ],
+        "items": [
+          {"id": "lisinopril", "content": "Lisinopril", "categoryId": "ace"},
+          {"id": "losartan", "content": "Losartan", "categoryId": "arb"}
+        ]
+      }
+    },
+    {
+      "type": "interactive",
+      "question": {
+        "kind": "ordering",
+        "prompt": "Order the simplified RAAS sequence.",
+        "items": [
+          {"id": "renin", "content": "Renin release"},
+          {"id": "angiotensin1", "content": "Angiotensin I formation"},
+          {"id": "angiotensin2", "content": "Angiotensin II formation"}
+        ]
+      }
+    }
+  ]
+}

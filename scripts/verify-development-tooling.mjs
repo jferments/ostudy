@@ -56,7 +56,35 @@ for (const [label, command, target] of [
 requireText("developer CLI help", developerCli, "doctor          Verify core local build requirements");
 requireText("doctor core mode", doctor, "CHECK_NATIVE_SMOKE=0");
 requireText("doctor native-smoke mode", doctor, "--native-smoke) CHECK_NATIVE_SMOKE=1");
+requireText("doctor script-linter mode", doctor, "--script-linters) CHECK_SCRIPT_LINTERS=1");
 requireText("doctor native-smoke tools", doctor, "WebKitWebDriver tauri-driver");
+requireText("doctor script-linter tools", doctor, "for command_name in ruff shellcheck ty");
+const coreToolsStart = doctor.indexOf("for command_name in \\\n  git");
+const coreToolsEnd = doctor.indexOf("if (( CHECK_SCRIPT_LINTERS == 1 )); then");
+if (coreToolsStart < 0 || coreToolsEnd <= coreToolsStart) {
+  failures.push("doctor core build tool list could not be isolated");
+} else {
+  rejectText(
+    "doctor core build tool list",
+    doctor.slice(coreToolsStart, coreToolsEnd),
+    "shellcheck",
+  );
+  rejectText(
+    "doctor core build tool list",
+    doctor.slice(coreToolsStart, coreToolsEnd),
+    "ruff",
+  );
+  rejectText(
+    "doctor core build tool list",
+    doctor.slice(coreToolsStart, coreToolsEnd),
+    "ty",
+  );
+}
+requireText("setup pins script linters", setup, "ostudy_ensure_script_linters");
+requireText("static check owns pinned script linters", staticCheck, "ostudy_ensure_script_linters");
+requireText("full check owns pinned script linters", fullCheck, "ostudy_ensure_script_linters");
+requireText("static check runs script correctness lint", staticCheck, 'lint-scripts.sh');
+requireText("setup links ty", setup, 'ln -sfn "$OSTUDY_TY" "$LOCAL_BIN/ty"');
 requireText("static check owns local doctor", staticCheck, '"$SCRIPT_DIR/doctor.sh"');
 requireText("fast check reuses static contract", fastCheck, 'check-static.sh');
 requireText("full check owns native dependencies", fullCheck, 'install-native-deps.sh');
@@ -80,7 +108,11 @@ for (const [label, source] of [
 requireText("CI-only runner identity", ciPreflight, "RUNNER_NAME");
 requireText("CI-only workspace isolation", ciPreflight, "GITHUB_WORKSPACE");
 requireText("runner-only resource sizing", guestPreflight, "OSTUDY_VM_RAM_GIB");
-requireText("setup self-verifies native smoke", setup, '"$SCRIPT_DIR/doctor.sh" --native-smoke');
+requireText(
+  "setup self-verifies native smoke and script linters",
+  setup,
+  '"$SCRIPT_DIR/doctor.sh" --native-smoke --script-linters',
+);
 requireText("Actions uses local static wrapper", checkWorkflow, "bash ./scripts/check-static.sh");
 requireText("Actions uses local fast wrapper", checkWorkflow, "bash ./scripts/check-fast.sh");
 requireText("Actions uses local full wrapper", checkWorkflow, "bash ./scripts/check.sh");

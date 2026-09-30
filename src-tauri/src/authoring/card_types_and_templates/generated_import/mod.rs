@@ -5,7 +5,19 @@ use super::*;
 // maintaining a parallel card-storage path.
 
 const GENERATED_IMPORT_FORMAT: &str = "ostudy-flashcards";
-const GENERATED_IMPORT_VERSION: i64 = 1;
+const LEGACY_GENERATED_IMPORT_VERSION: i64 = 1;
+const GENERATED_IMPORT_VERSION: i64 = 2;
+const SUPPORTED_GENERATED_IMPORT_VERSIONS: [i64; 2] =
+    [LEGACY_GENERATED_IMPORT_VERSION, GENERATED_IMPORT_VERSION];
+
+pub(crate) fn is_supported_generated_import_identity(format: &str, version: i64) -> bool {
+    format == GENERATED_IMPORT_FORMAT && SUPPORTED_GENERATED_IMPORT_VERSIONS.contains(&version)
+}
+
+pub(crate) fn is_generated_import_envelope(value: &serde_json::Value) -> bool {
+    value.get("format").and_then(serde_json::Value::as_str) == Some(GENERATED_IMPORT_FORMAT)
+}
+
 const MAX_GENERATED_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_GENERATED_IMPORT_CARDS: usize = 10_000;
 const MAX_GENERATED_IMPORT_ERROR_EXAMPLES: usize = 20;

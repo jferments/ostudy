@@ -113,6 +113,61 @@ function guide(): DocumentStudyGuide {
   };
 }
 
+const secondTopicId = "7".repeat(32);
+
+function editorialGuide(): DocumentStudyGuide {
+  const value = guide();
+  const first = required(value.sections[0], "first editorial section");
+  const second = {
+    ...first,
+    topicId: secondTopicId,
+    sortIndex: 1,
+    title: "raas / sodium balance / vascular tone",
+    topicSummary: "RAAS signaling coordinates vascular tone and sodium balance.",
+    content: {
+      ...first.content,
+      overview: "Renin–angiotensin signaling links vascular resistance with aldosterone-mediated sodium balance. Drug classes that interrupt this pathway share mechanistic benefits while differing in contraindications and monitoring.",
+      keyPoints: [],
+      explanations: [],
+      importantTerms: [],
+    },
+    contentText: "Renin–angiotensin signaling links vascular resistance with sodium balance.",
+    contentHash: "8".repeat(64),
+    sourceLocator: {
+      unitKind: "page",
+      unitNumbers: [18, 19],
+      assetIds: [],
+    },
+  };
+  first.title = "preload / cardiac output / venous return";
+  first.content.keyPoints = [];
+  value.schemaVersion = 3;
+  value.promptVersion = 7;
+  value.assemblyVersion = 4;
+  value.overview = {
+    summary: "Cardiovascular pharmacology connects drug mechanisms with hemodynamic treatment goals and safety.\n\nThe guide begins with physiologic foundations, then relates major therapeutic pathways to clinical monitoring and decision making.",
+    learningObjectives: [
+      "Explain how major cardiovascular drug classes alter physiology and treatment goals.",
+      "Compare indications, contraindications, and monitoring priorities across therapies.",
+    ],
+    keyConcepts: [],
+  };
+  value.editorial = {
+    title: "Cardiovascular drugs",
+    chapters: [{
+      id: "6".repeat(32),
+      title: "Hemodynamic foundations",
+      introduction: "These sections establish the physiologic relationships needed to understand how cardiovascular drugs change preload, vascular tone, and downstream treatment decisions.",
+      topics: [
+        { topicId, title: "Preload and cardiac output" },
+        { topicId: secondTopicId, title: "Renin–angiotensin system" },
+      ],
+    }],
+  };
+  value.sections = [first, second];
+  return value;
+}
+
 function topicNote(): StudyGuideOverlay {
   return {
     id: "9".repeat(32),
@@ -260,7 +315,9 @@ describe("StudyGuideDialog", () => {
     expect(workspace.getAttribute("data-inline-workspace")).toBe("true");
     expect(screen.queryByRole("dialog", { name: "Study guide · Physiology" })).toBeNull();
     expect(workspace.getAttribute("aria-modal")).toBeNull();
-    expect(screen.getByRole("navigation", { name: "Study guide contents" })).toBeTruthy();
+    const contents = screen.getByRole("navigation", { name: "Study guide contents" });
+    expect(contents).toBeTruthy();
+    expect(within(contents).getByRole("link", { name: "Preload" })).toBeTruthy();
     expect(screen.getByRole("article")).toBeTruthy();
     expect(screen.getByText("Page 2–3")).toBeTruthy();
     expect(screen.getByText("1 section")).toBeTruthy();
@@ -273,6 +330,29 @@ describe("StudyGuideDialog", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(close);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("renders editorial guides as readable major chapters instead of a flat subsection contents wall", async () => {
+    mockedGetGuide.mockResolvedValue(editorialGuide());
+    renderGuide();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Cardiovascular drugs" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Study guide · Cardiovascular drugs" })).toBeTruthy();
+    expect(screen.getByText("1 chapter · 2 sections")).toBeTruthy();
+    const contents = screen.getByRole("navigation", { name: "Study guide contents" });
+    expect(within(contents).getByRole("link", { name: "Overview" })).toBeTruthy();
+    expect(within(contents).getByRole("link", { name: "Hemodynamic foundations" })).toBeTruthy();
+    expect(within(contents).queryByRole("link", { name: "Preload and cardiac output" })).toBeNull();
+    expect(within(contents).queryByRole("link", { name: "Renin–angiotensin system" })).toBeNull();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Hemodynamic foundations" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Preload and cardiac output" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: "Renin–angiotensin system" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /preload \/ cardiac output/iu })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /raas \/ sodium balance/iu })).toBeNull();
+    expect(screen.getByText(/physiologic relationships needed to understand/iu)).toBeTruthy();
+    expect(screen.getByText(/Cardiovascular pharmacology connects drug mechanisms/iu)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Key points" })).toBeNull();
   });
 
   it("exports through native prepared files without exposing an internal revision", async () => {

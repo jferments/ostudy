@@ -23,8 +23,6 @@ PR #104 is merged with LK-05–LK-09 delivered. PR #105 is intentionally deferre
 
 Successor activation follows the accepted scope, not a permanent numeric dependency chain: PR #106 was activated while PR #105 remained deferred. Future work starts from the then-current merged baseline, not the historical #103 or #106 branches.
 
-Historical activation wording retained for the existing cleanup verifier: “PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche”. That sentence records the earlier activation decision, **not current status or an instruction to resume #106**. The merged status above and exact GitHub evidence supersede it; the verifier's literal-status assertion is recorded for later tooling repair.
-
 ## PR #103 architecture boundary
 
 ```text

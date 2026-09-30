@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
@@ -305,8 +305,13 @@ fn load_tags_for_notes(
     connection: &Connection,
     note_ids: &[String],
 ) -> Result<HashMap<String, Vec<TagSnapshot>>, CommandError> {
+    // One note can own multiple scheduled presentations. Deduplicate before
+    // query chunking so a note that straddles ID_CHUNK_SIZE boundaries cannot
+    // append the same tag twice to every presentation snapshot.
+    let unique_note_ids = note_ids.iter().collect::<BTreeSet<_>>();
+    let unique_note_ids = unique_note_ids.into_iter().cloned().collect::<Vec<_>>();
     let mut result = HashMap::<String, Vec<TagSnapshot>>::new();
-    for chunk in chunks(note_ids) {
+    for chunk in chunks(&unique_note_ids) {
         let mut values = Vec::<SqlValue>::new();
         let placeholders = chunk
             .iter()
@@ -802,4 +807,47 @@ fn insert_current_fallback_attribution(
         )
         .map_err(CommandError::database)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tag_projection_deduplicates_notes_before_cross_chunk_queries() {
+        let connection = Connection::open_in_memory().expect("test database should open");
+        connection
+            .execute_batch(
+                "CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE note_tags (
+                     note_id TEXT NOT NULL,
+                     tag_id TEXT NOT NULL,
+                     PRIMARY KEY(note_id, tag_id)
+                 );",
+            )
+            .expect("minimal tag schema should initialize");
+        let note_id = "n".repeat(32);
+        let tag_id = "t".repeat(32);
+        connection
+            .execute(
+                "INSERT INTO tags (id, name) VALUES (?1, 'Generated')
+                 ",
+                [&tag_id],
+            )
+            .expect("tag should insert");
+        connection
+            .execute(
+                "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                params![note_id, tag_id],
+            )
+            .expect("note tag should insert");
+
+        let note_ids = vec![note_id.clone(); crate::projections::scope::ID_CHUNK_SIZE + 1];
+        let loaded = load_tags_for_notes(&connection, &note_ids).expect("tags should load");
+        let tags = loaded.get(&note_id).expect("note should retain its tag");
+
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].id, tag_id);
+        assert_eq!(tags[0].name, "Generated");
+    }
 }

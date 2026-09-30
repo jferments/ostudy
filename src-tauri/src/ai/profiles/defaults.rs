@@ -19,6 +19,78 @@ struct TaskAssignment {
     reasoning_effort: String,
 }
 
+pub(super) const OPENROUTER_DEFAULT_GENERATION_MODEL: &str = "deepseek/deepseek-v4.1-flash";
+pub(super) const OPENROUTER_DEFAULT_EMBEDDING_MODEL: &str = "qwen/qwen3-embedding-4b";
+
+pub(super) fn default_reasoning_effort(task: AiTaskKind) -> &'static str {
+    match task {
+        AiTaskKind::FlashcardGeneration | AiTaskKind::Embeddings => "none",
+        AiTaskKind::Tutor => "low",
+    }
+}
+
+/// Seed only the first credentialed OpenRouter connection, and only into tasks
+/// the learner has not already assigned. This runs in the same SQLite
+/// transaction as the credential epoch so replay cannot observe a half-seeded
+/// default set. It does not probe or claim support for either model.
+pub(super) fn seed_first_openrouter_defaults(
+    transaction: &Transaction<'_>,
+    profile_id: &str,
+    now: i64,
+) -> Result<(), CommandError> {
+    let another_credentialed: i64 = transaction
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM ai_provider_profiles
+                 WHERE id <> ?1
+                   AND provider_kind = 'openrouter'
+                   AND deleted_at IS NULL
+                   AND credential_storage <> 'none'
+             )",
+            [profile_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if another_credentialed != 0 {
+        return Ok(());
+    }
+
+    for (task, model, reasoning) in [
+        (
+            AiTaskKind::FlashcardGeneration,
+            OPENROUTER_DEFAULT_GENERATION_MODEL,
+            default_reasoning_effort(AiTaskKind::FlashcardGeneration),
+        ),
+        (
+            AiTaskKind::Tutor,
+            OPENROUTER_DEFAULT_GENERATION_MODEL,
+            default_reasoning_effort(AiTaskKind::Tutor),
+        ),
+        (
+            AiTaskKind::Embeddings,
+            OPENROUTER_DEFAULT_EMBEDDING_MODEL,
+            default_reasoning_effort(AiTaskKind::Embeddings),
+        ),
+    ] {
+        transaction
+            .execute(
+                "INSERT INTO ai_task_defaults (
+                     task_kind, profile_id, model_id, reasoning_effort, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(task_kind) DO UPDATE SET
+                     profile_id = excluded.profile_id,
+                     model_id = excluded.model_id,
+                     reasoning_effort = excluded.reasoning_effort,
+                     updated_at = excluded.updated_at
+                 WHERE ai_task_defaults.profile_id IS NULL
+                   AND length(trim(ai_task_defaults.model_id)) = 0",
+                params![task.as_str(), profile_id, model, reasoning, now],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
 pub(super) fn load_task_defaults(
     connection: &mut Connection,
 ) -> Result<AiTaskDefaultsDto, CommandError> {
@@ -213,7 +285,10 @@ fn normalize_input(
     let requested_reasoning = if input.task_kind == AiTaskKind::Embeddings {
         "none"
     } else {
-        input.reasoning_effort.as_deref().unwrap_or("automatic")
+        input
+            .reasoning_effort
+            .as_deref()
+            .unwrap_or_else(|| default_reasoning_effort(input.task_kind))
     };
     let reasoning_effort = validate_reasoning_effort(requested_reasoning)?;
     Ok(Some(TaskAssignment {

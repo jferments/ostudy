@@ -180,7 +180,7 @@ async fn request_curation_with_retry(
 
     match first {
         Ok(indices) => Ok(indices),
-        Err(error) if retryable_contract_error(&error) => {
+        Err(error) if curation_repairable(&error) => {
             if !crate::ai::generation::reserve_recovery(
                 task.diagnostics.as_ref(),
                 "flashcard_curation",
@@ -212,6 +212,13 @@ async fn request_curation_with_retry(
         }
         Err(error) => Err(error),
     }
+}
+
+fn curation_repairable(error: &CommandError) -> bool {
+    // Curation is selection-only and fail-open: the caller retains validated
+    // candidates when this optional pass fails. Reissuing a whole 32-card batch
+    // after finish_reason=length is costly and cannot recover source content.
+    error.code != "ai_document_output_truncated" && retryable_contract_error(error)
 }
 
 fn compact_card_summary(index: usize, card: &Value) -> String {
@@ -288,6 +295,18 @@ fn normalize_identity_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncation_does_not_trigger_a_second_optional_curation_request() {
+        assert!(!curation_repairable(&CommandError::new(
+            "ai_document_output_truncated",
+            "completion limit",
+        )));
+        assert!(curation_repairable(&CommandError::new(
+            "ai_document_output_invalid",
+            "invalid selection envelope",
+        )));
+    }
 
     #[test]
     fn curation_prompt_version_advances_with_source_quiz_quality_gate() {

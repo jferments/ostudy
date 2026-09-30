@@ -52,6 +52,19 @@ export function guideProgress(job: DocumentArtifactJob | null, starting: boolean
   return { value, status, complete: false, failed: false };
 }
 
+export function guideUsageDetail(job: DocumentArtifactJob): string {
+  if (job.apiTokenCount === null) {
+    return isActiveArtifactJob(job)
+      ? "Study Guide usage · Awaiting provider usage"
+      : "Study Guide usage · Provider usage not reported";
+  }
+  const tokens = job.apiTokenCount.toLocaleString();
+  if (isActiveArtifactJob(job)) return `Study Guide usage · ${tokens} reported tokens so far`;
+  return job.apiTokenUsageComplete
+    ? `Study Guide usage · ${tokens} tokens`
+    : `Study Guide usage · ${tokens}+ reported tokens`;
+}
+
 function ArtifactRow({ label, progress }: { label: string; progress: ArtifactProgress }) {
   return <div className="tw:grid tw:min-w-0 tw:gap-2">
     <div className={progressStyles.heading}>
@@ -78,6 +91,7 @@ export function LearningArtifactProgressPanel({ document, progress, guideJob, gu
   return <div className={progressStyles.panel} aria-live="polite">
     <ArtifactRow label="Flashcards" progress={flashcardProgress(document, progress)} />
     <ArtifactRow label="Study Guide" progress={guideProgress(guideJob, guideStarting)} />
+    {guideJob ? <div className={progressStyles.detail}>{guideUsageDetail(guideJob)}</div> : null}
     {activeWindows ? <div className={progressStyles.detail}>{activeWindows}</div> : null}
     {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
     {guideJob?.safeErrorMessage ? <div className="tw:text-sm tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}

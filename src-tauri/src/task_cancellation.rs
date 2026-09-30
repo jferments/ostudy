@@ -70,6 +70,7 @@ impl CancellationSignal {
 pub(crate) struct DocumentTaskProgress {
     pub started_at: i64,
     pub phase: String,
+    pub phase_started_at: i64,
     pub current_window: Option<usize>,
     pub current_window_end: Option<usize>,
     pub completed_windows: usize,
@@ -77,7 +78,17 @@ pub(crate) struct DocumentTaskProgress {
     pub current_page_start: Option<i64>,
     pub current_page_end: Option<i64>,
     pub current_partition: Option<usize>,
+    pub provider_kind: Option<String>,
+    pub model_id: Option<String>,
+    pub requested_reasoning_effort: Option<String>,
     pub reasoning_effort: String,
+    pub current_request_started_at: Option<i64>,
+    pub current_request_stage: Option<String>,
+    pub current_request_bytes: Option<usize>,
+    pub current_request_text_bytes: Option<usize>,
+    pub current_request_image_count: Option<usize>,
+    pub current_request_evidence_bytes: Option<usize>,
+    pub current_request_max_output_tokens: Option<usize>,
     pub provider_request_count: u64,
     pub retry_count: u64,
     pub transient_retry_count: u64,
@@ -102,6 +113,7 @@ impl DocumentTaskProgress {
         Self {
             started_at,
             phase: "preparing".to_string(),
+            phase_started_at: started_at,
             current_window: None,
             current_window_end: None,
             completed_windows: 0,
@@ -109,7 +121,17 @@ impl DocumentTaskProgress {
             current_page_start: None,
             current_page_end: None,
             current_partition: None,
-            reasoning_effort: "low".to_string(),
+            provider_kind: None,
+            model_id: None,
+            requested_reasoning_effort: None,
+            reasoning_effort: "none".to_string(),
+            current_request_started_at: None,
+            current_request_stage: None,
+            current_request_bytes: None,
+            current_request_text_bytes: None,
+            current_request_image_count: None,
+            current_request_evidence_bytes: None,
+            current_request_max_output_tokens: None,
             provider_request_count: 0,
             retry_count: 0,
             transient_retry_count: 0,
@@ -394,10 +416,18 @@ pub(crate) fn document_task_progress(document_id: &str) -> Option<DocumentTaskPr
     ACTIVE_DOCUMENT_TASKS.progress(document_id)
 }
 
-pub(crate) fn set_current_reasoning_effort(effort: &str) {
+pub(crate) fn set_current_reasoning_context(
+    provider: &str,
+    model: &str,
+    requested_effort: &str,
+    effective_effort: &str,
+) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
-            progress.reasoning_effort = effort.chars().take(16).collect();
+            progress.provider_kind = Some(provider.chars().take(40).collect());
+            progress.model_id = Some(model.chars().take(160).collect());
+            progress.requested_reasoning_effort = Some(requested_effort.chars().take(16).collect());
+            progress.reasoning_effort = effective_effort.chars().take(16).collect();
         }
     });
 }
@@ -434,7 +464,11 @@ pub(crate) fn set_current_task_phase_range(
     let (current_window, current_window_end) = current_windows;
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
-            progress.phase = phase.chars().take(80).collect();
+            let next_phase = phase.chars().take(80).collect::<String>();
+            if progress.phase != next_phase {
+                progress.phase = next_phase;
+                progress.phase_started_at = unix_time_millis().unwrap_or(progress.phase_started_at);
+            }
             progress.current_window = current_window;
             progress.current_window_end = current_window_end;
             progress.completed_windows = completed_windows;
@@ -474,6 +508,44 @@ pub(crate) fn record_current_provider_request() {
     });
 }
 
+pub(crate) struct CurrentRequestDiagnostics<'a> {
+    pub(crate) stage: &'a str,
+    pub(crate) provider: &'a str,
+    pub(crate) model: &'a str,
+    pub(crate) request_bytes: usize,
+    pub(crate) text_bytes: usize,
+    pub(crate) image_count: usize,
+    pub(crate) evidence_bytes: usize,
+    pub(crate) max_output_tokens: usize,
+}
+
+pub(crate) fn record_current_request_diagnostics(diagnostics: CurrentRequestDiagnostics<'_>) {
+    let now = unix_time_millis().unwrap_or_default();
+    let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
+        if let Ok(mut progress) = task.progress.lock() {
+            progress.current_request_started_at = Some(now);
+            progress.current_request_stage = Some(diagnostics.stage.chars().take(80).collect());
+            progress.provider_kind = Some(diagnostics.provider.chars().take(40).collect());
+            progress.model_id = Some(diagnostics.model.chars().take(160).collect());
+            progress.current_request_bytes = Some(diagnostics.request_bytes);
+            progress.current_request_text_bytes = Some(diagnostics.text_bytes);
+            progress.current_request_image_count = Some(diagnostics.image_count);
+            progress.current_request_evidence_bytes = Some(diagnostics.evidence_bytes);
+            progress.current_request_max_output_tokens = Some(diagnostics.max_output_tokens);
+        }
+    });
+}
+
+fn clear_current_request_diagnostics(progress: &mut DocumentTaskProgress) {
+    progress.current_request_started_at = None;
+    progress.current_request_stage = None;
+    progress.current_request_bytes = None;
+    progress.current_request_text_bytes = None;
+    progress.current_request_image_count = None;
+    progress.current_request_evidence_bytes = None;
+    progress.current_request_max_output_tokens = None;
+}
+
 pub(crate) fn record_current_provider_retry(reason: &str) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
@@ -504,6 +576,7 @@ pub(crate) fn record_current_provider_retry(reason: &str) {
 pub(crate) fn record_current_usage(delta: DocumentTaskUsageDelta) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
+            clear_current_request_diagnostics(&mut progress);
             let reported = delta.prompt_tokens.is_some()
                 || delta.completion_tokens.is_some()
                 || delta.reasoning_tokens.is_some()
@@ -702,6 +775,62 @@ mod tests {
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn live_diagnostics_keep_requested_and_effective_reasoning_and_request_shape_separate() {
+        let document_id = "d".repeat(32);
+        let reservation = reserve_document_task(&document_id).unwrap();
+        let observed = run_reserved_document_task(reservation, async {
+            set_current_reasoning_context(
+                "openrouter",
+                "deepseek/deepseek-v4.1-flash",
+                "automatic",
+                "none",
+            );
+            set_current_task_phase("generating", Some(1), 0, 2, Some(4), Some(7), None);
+            record_current_request_diagnostics(CurrentRequestDiagnostics {
+                stage: "flashcard_authoring",
+                provider: "openrouter",
+                model: "deepseek/deepseek-v4.1-flash",
+                request_bytes: 12_345,
+                text_bytes: 4_321,
+                image_count: 4,
+                evidence_bytes: 2_222,
+                max_output_tokens: 6_144,
+            });
+            let progress = document_task_progress(&document_id).unwrap();
+            assert_eq!(progress.provider_kind.as_deref(), Some("openrouter"));
+            assert_eq!(
+                progress.model_id.as_deref(),
+                Some("deepseek/deepseek-v4.1-flash")
+            );
+            assert_eq!(
+                progress.requested_reasoning_effort.as_deref(),
+                Some("automatic")
+            );
+            assert_eq!(progress.reasoning_effort, "none");
+            assert_eq!(
+                progress.current_request_stage.as_deref(),
+                Some("flashcard_authoring")
+            );
+            assert_eq!(progress.current_request_bytes, Some(12_345));
+            assert_eq!(progress.current_request_text_bytes, Some(4_321));
+            assert_eq!(progress.current_request_image_count, Some(4));
+            assert_eq!(progress.current_request_evidence_bytes, Some(2_222));
+            assert_eq!(progress.current_request_max_output_tokens, Some(6_144));
+            assert!(progress.phase_started_at >= progress.started_at);
+            record_current_usage(DocumentTaskUsageDelta {
+                total_tokens: Some(0),
+                ..DocumentTaskUsageDelta::default()
+            });
+            let after = document_task_progress(&document_id).unwrap();
+            assert!(after.current_request_started_at.is_none());
+            assert!(after.current_request_stage.is_none());
+            Ok::<(), CommandError>(())
+        })
+        .await;
+        observed.unwrap();
+    }
+
     #[test]
     fn document_task_wrapper_boxes_large_child_future_before_polling() {
         const LARGE_CHILD_BYTES: usize = 256 * 1024;
@@ -779,7 +908,12 @@ mod tests {
             .expect("task should register");
         CURRENT_DOCUMENT_TASK
             .scope(task, async {
-                set_current_reasoning_effort("minimal");
+                set_current_reasoning_context(
+                    "openrouter",
+                    "fixture/model",
+                    "automatic",
+                    "minimal",
+                );
                 set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
                 record_current_provider_retry("contract_repair");

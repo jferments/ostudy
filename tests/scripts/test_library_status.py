@@ -69,6 +69,18 @@ class LibraryStatusTests(unittest.TestCase):
             legacy=self.legacy,
         )
 
+    def test_registry_contract_is_generated_and_not_scraped_from_rust_sources(self):
+        contract = status.database_contract()
+        self.assertEqual(contract["schemaVersion"], 1)
+        self.assertEqual(contract["public"]["lineage"], "ostudy-public-v1")
+        self.assertEqual(contract["release"]["lineage"], "ostudy-release-v1")
+        self.assertEqual(len(contract["repairs"]), len(self.repairs))
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("src-tauri/src/database.rs", source)
+        self.assertNotIn("src-tauri/src/data_repairs.rs", source)
+        self.assertNotIn("src-tauri/src/database/release.rs", source)
+        self.assertNotIn("re.findall", source)
+
     def test_absent_library_is_not_an_error(self):
         with tempfile.TemporaryDirectory() as root:
             report = self.classify(Path(root) / "missing.sqlite3")

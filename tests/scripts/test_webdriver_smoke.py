@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+LEGACY_SITECUSTOMIZE_PATH = ROOT / "tests" / "webdriver" / "sitecustomize.py"
 DURABLE_LIBRARY_SMOKE_PATH = ROOT / "tests" / "webdriver" / "durable_library_smoke.py"
 UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
 NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
@@ -33,6 +34,42 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.smoke = load_smoke_module()
+
+    def test_transport_has_no_implicit_sitecustomize_monkeypatch(self) -> None:
+        self.assertFalse(
+            LEGACY_SITECUSTOMIZE_PATH.exists(),
+            "WebDriver retry ownership must stay explicit in smoke.py operations",
+        )
+
+    def test_raw_request_never_replays_mutating_execute_sync_after_disconnect(self) -> None:
+        payload = {
+            "script": """
+                document.body.dataset.retrySentinel = "mutated";
+                return document.readyState;
+            """,
+            "args": [],
+        }
+        disconnect = self.smoke.http.client.RemoteDisconnected("lost mutation response")
+        with patch.object(
+            self.smoke.urllib.request,
+            "urlopen",
+            side_effect=disconnect,
+        ) as urlopen:
+            with self.assertRaisesRegex(
+                self.smoke.http.client.RemoteDisconnected,
+                "lost mutation response",
+            ):
+                self.smoke.request(
+                    "POST",
+                    "/session/session-1/execute/sync",
+                    payload,
+                )
+        urlopen.assert_called_once()
+        sent = urlopen.call_args.args[0]
+        self.assertEqual(sent.get_method(), "POST")
+        self.assertTrue(sent.full_url.endswith("/session/session-1/execute/sync"))
+        self.assertIn(b"retrySentinel", sent.data)
+        self.assertIn(b"document.readyState", sent.data)
 
     def test_protocol_error_decodes_http_error_payload(self) -> None:
         error = self.smoke._protocol_error({"value": {"error": "no such element", "message": "missing"}}, 404)

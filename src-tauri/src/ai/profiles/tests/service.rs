@@ -64,6 +64,124 @@ fn session_credential_updates_epoch_without_exposing_value() {
     assert_eq!(saved.revision, 2);
     let serialized = serde_json::to_string(&saved).unwrap();
     assert!(!serialized.contains("credential-sentinel"));
+
+    let defaults = service::get_task_defaults(&database).unwrap();
+    assert_eq!(
+        defaults.flashcard_generation_model_id.as_deref(),
+        Some("deepseek/deepseek-v4.1-flash")
+    );
+    assert_eq!(
+        defaults.flashcard_generation_reasoning_effort.as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        defaults.tutor_model_id.as_deref(),
+        Some("deepseek/deepseek-v4.1-flash")
+    );
+    assert_eq!(defaults.tutor_reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(
+        defaults.embeddings_model_id.as_deref(),
+        Some("qwen/qwen3-embedding-4b")
+    );
+    assert_eq!(
+        defaults.embeddings_reasoning_effort.as_deref(),
+        Some("none")
+    );
+}
+
+#[test]
+fn first_openrouter_key_seeds_only_unassigned_defaults_and_later_keys_do_not_replace_them() {
+    let database = Database::open_in_memory().expect("database should open");
+    let runtime = runtime();
+
+    let mut local_input = default_input(ProviderKind::LlamaCpp);
+    local_input.operation_id = "12121212121212121212121212121212".to_string();
+    local_input.display_name = "Local generation".to_string();
+    local_input.model_id = "local/model".to_string();
+    let local = service::create_profile(&database, &runtime, local_input).unwrap();
+    service::set_task_default(
+        &database,
+        &runtime,
+        SetAiTaskDefaultInput {
+            operation_id: "13131313131313131313131313131313".to_string(),
+            task_kind: AiTaskKind::FlashcardGeneration,
+            profile_id: Some(local.id.clone()),
+            model_id: Some("local/model".to_string()),
+            reasoning_effort: None,
+        },
+    )
+    .unwrap();
+
+    let mut first_input = default_input(ProviderKind::Openrouter);
+    first_input.operation_id = "14141414141414141414141414141414".to_string();
+    first_input.display_name = "OpenRouter first".to_string();
+    first_input.model_id = String::new();
+    let first = service::create_profile(&database, &runtime, first_input).unwrap();
+    service::set_credential(
+        &database,
+        &runtime,
+        SetAiProviderCredentialInput {
+            operation_id: "15151515151515151515151515151515".to_string(),
+            profile_id: first.id.clone(),
+            revision: first.revision,
+            credential: "first-openrouter-key".to_string(),
+            persistence: CredentialPersistence::Session,
+        },
+    )
+    .unwrap();
+
+    let seeded = service::get_task_defaults(&database).unwrap();
+    assert_eq!(
+        seeded.flashcard_generation_profile_id.as_deref(),
+        Some(local.id.as_str()),
+        "a deliberate existing generation assignment must not be replaced"
+    );
+    assert_eq!(
+        seeded.flashcard_generation_model_id.as_deref(),
+        Some("local/model")
+    );
+    assert_eq!(
+        seeded.flashcard_generation_reasoning_effort.as_deref(),
+        Some("none"),
+        "new generation assignments default to reasoning off"
+    );
+    assert_eq!(seeded.tutor_profile_id.as_deref(), Some(first.id.as_str()));
+    assert_eq!(
+        seeded.tutor_model_id.as_deref(),
+        Some("deepseek/deepseek-v4.1-flash")
+    );
+    assert_eq!(seeded.tutor_reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(
+        seeded.embeddings_model_id.as_deref(),
+        Some("qwen/qwen3-embedding-4b")
+    );
+
+    let mut second_input = default_input(ProviderKind::Openrouter);
+    second_input.operation_id = "16161616161616161616161616161616".to_string();
+    second_input.display_name = "OpenRouter second".to_string();
+    second_input.model_id = String::new();
+    let second = service::create_profile(&database, &runtime, second_input).unwrap();
+    service::set_credential(
+        &database,
+        &runtime,
+        SetAiProviderCredentialInput {
+            operation_id: "18181818181818181818181818181818".to_string(),
+            profile_id: second.id,
+            revision: second.revision,
+            credential: "second-openrouter-key".to_string(),
+            persistence: CredentialPersistence::Session,
+        },
+    )
+    .unwrap();
+
+    let after_second = service::get_task_defaults(&database).unwrap();
+    assert_eq!(after_second.tutor_profile_id, seeded.tutor_profile_id);
+    assert_eq!(after_second.tutor_model_id, seeded.tutor_model_id);
+    assert_eq!(
+        after_second.embeddings_profile_id,
+        seeded.embeddings_profile_id
+    );
+    assert_eq!(after_second.embeddings_model_id, seeded.embeddings_model_id);
 }
 
 #[test]

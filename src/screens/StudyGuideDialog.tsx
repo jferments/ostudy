@@ -65,6 +65,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     return () => { active = false; };
   }, [documentId, guide]);
   const guideNote = useMemo(() => guide?.overlays.find((overlay) => overlay.overlayKind === "guide_note") ?? null, [guide]);
+  const guideTitle = guide?.editorial?.title ?? documentTitle;
 
   async function generate(): Promise<void> {
     if (guide || isGenerating || isSaving || isExporting) return;
@@ -166,17 +167,21 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     setEditing({ topicId: section.topicId, mode: "override", value: overlay?.plainText ?? section.contentText });
   }
 
-  return <InlineWorkspace title={`Study guide · ${documentTitle}`}
+  return <InlineWorkspace title={`Study guide · ${guideTitle}`}
     description="Source-grounded sections, learner notes, and topic-linked flashcards."
     onClose={onClose} closeLabel="Close study guide" className={styles.workspace}
     dismissible={!isGenerating && !isSaving && !isExporting} busy={isSaving || isExporting}>
     <header className={styles.header}>
       <div><p className={styles.eyebrow}>Document learning artifact</p>
-        <strong>{guide ? `${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}` : "Not generated yet"}</strong>
+        <strong>{guide
+          ? guide.editorial
+            ? `${guide.editorial.chapters.length} chapter${guide.editorial.chapters.length === 1 ? "" : "s"} · ${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}`
+            : `${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}`
+          : "Not generated yet"}</strong>
       </div>
       <div className={styles.headerActions}>
         {guide ? <TutorEntryButton disabled={isGenerating || isSaving || isExporting || editing !== null}
-          target={{ title: documentTitle, scope: { kind: "guide", id: documentId },
+          target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
             focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} /> : null}
         {guide ? <label className={styles.annotationToggle}><Checkbox checked={includeAnnotations} disabled={isExporting} onCheckedChange={setIncludeAnnotations} />Include my notes in PDF</label> : null}
         {guide ? <Button variant="secondary" disabled={isExporting || isGenerating || isSaving} onClick={() => void exportPdf()}>{isExporting ? "Exporting…" : "Export PDF"}</Button> : null}
@@ -193,9 +198,12 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     {isLoading ? <LoadingState label="Loading study guide…" /> : !guide ? <EmptyState title="No study guide yet" description="Create a structured guide from the document’s shared learning plan. The same stable topic identities organize generated flashcards and future learning tools." /> : (
       <div className={styles.layout}>
         <nav className={styles.contents} aria-label="Study guide contents"><strong>Contents</strong><a href="#guide-overview">Overview</a>
-          {guide.sections.map((section) => <a key={section.topicId} href={`#topic-${section.topicId}`}>{section.title}</a>)}
+          {guide.editorial
+            ? guide.editorial.chapters.map((chapter) => <a key={chapter.id} href={`#chapter-${chapter.id}`}>{chapter.title}</a>)
+            : guide.sections.map((section) => <a key={section.topicId} href={`#topic-${section.topicId}`}>{section.title}</a>)}
         </nav>
         <article className={styles.guide}>
+          {guide.editorial ? <h1 className={styles.guideTitle}><StudyMarkdown text={guide.editorial.title} inline /></h1> : null}
           <section id="guide-overview" className={styles.overview}>
             <h2>Overview</h2><StudyMarkdown text={guide.overview.summary} />
             <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
@@ -206,7 +214,25 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
               {guideNote ? <Button variant="secondary" disabled={isSaving} onClick={() => void discardOverlay(guideNote, "Guide note removed.")}>Remove guide note</Button> : null}
             </div>
           </section>
-          {guide.sections.map((section) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
+          {guide.editorial ? guide.editorial.chapters.map((chapter) => {
+            const chapterSections = chapter.topics.flatMap((topic) => {
+              const section = guide.sections.find((candidate) => candidate.topicId === topic.topicId);
+              return section ? [{ section, editorialTitle: topic.title }] : [];
+            });
+            return <section key={chapter.id} id={`chapter-${chapter.id}`} className={styles.chapter}>
+              <header className={styles.chapterHeader}>
+                <h2><StudyMarkdown text={chapter.title} inline /></h2>
+                <div className={styles.chapterIntro}><StudyMarkdown text={chapter.introduction} /></div>
+              </header>
+              <div className={styles.chapterSections}>
+                {chapterSections.map(({ section, editorialTitle }) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
+                  guideId={guide.id} documentId={documentId} projection={topicCards[section.topicId]} actionsDisabled={isSaving || editing !== null}
+                  headingLevel={3} displayTitle={editorialTitle} onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
+                  onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
+                  onStudy={() => void studyTopic(section)} onOpenSource={() => void openSource()} />)}
+              </div>
+            </section>;
+          }) : guide.sections.map((section) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
             guideId={guide.id} documentId={documentId} projection={topicCards[section.topicId]} actionsDisabled={isSaving || editing !== null}
             onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
             onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
@@ -230,15 +256,18 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
 }
 interface StudyGuideSectionViewProps {
   section: DocumentStudyGuideSection; overlays: StudyGuideOverlay[]; guideId: string; documentId: string;
-  projection?: TopicCardProjection; actionsDisabled: boolean; onEditNote: () => void; onEditSection: () => void;
+  projection?: TopicCardProjection; actionsDisabled: boolean; headingLevel?: 2 | 3; displayTitle?: string; onEditNote: () => void; onEditSection: () => void;
   onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void; onStudy: () => void; onOpenSource: () => void;
 }
-function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
+function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, headingLevel = 2, displayTitle, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
   const tutor = useOptionalTutor();
   const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
   const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
+  const titleOverride = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "title_override"
+    && overlay.state === "active" && overlay.guideId === guideId && overlay.plainText.trim() !== "");
   const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
-  const tutorTarget: TutorTarget = { title: section.title, scope: { kind: "guide", id: documentId },
+  const effectiveTitle = titleOverride?.plainText.trim() || displayTitle || section.title;
+  const tutorTarget: TutorTarget = { title: effectiveTitle, scope: { kind: "guide", id: documentId },
     focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" };
   const menuItems: OverflowMenuItem[] = [
     { id: "study", label: `Study linked cards${projection ? ` (${projection.cardCount})` : ""}`, disabled: !projection || projection.cardCount === 0, onSelect: onStudy },
@@ -252,14 +281,16 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
     ...(override ? [{ id: "reset-section", label: "Reset section edit", destructive: true, disabled: actionsDisabled,
       onSelect: () => onDiscardOverlay(override, "Section edit reset.") }] : []),
   ];
+  const Heading: "h2" | "h3" = headingLevel === 3 ? "h3" : "h2";
   return <section id={`topic-${section.topicId}`} className={styles.section}>
     <header className={styles.sectionHeader}>
-      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
-      <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
+      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><Heading><StudyMarkdown text={effectiveTitle} inline /></Heading></div>
+      <OverflowMenu label={`Section actions for ${effectiveTitle}`} items={menuItems} className={styles.sectionMenu} />
     </header>
     {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent
           content={section.content}
           figureSource={{ documentId, locator: section.sourceLocator }}
+          headingLevel={headingLevel === 3 ? 4 : 3}
         />}
     {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
     {conflict ? <InlineNotice kind="warning">
@@ -273,24 +304,28 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
 export function StudyGuideStructuredContent({
   content,
   figureSource = null,
+  headingLevel = 3,
 }: {
   content: StudyGuideSectionContent;
   figureSource?: { documentId: string; locator: import("../ipc/studyGuides").SourceLocator } | null;
+  headingLevel?: 3 | 4;
 }) {
+  const Heading: "h3" | "h4" = headingLevel === 4 ? "h4" : "h3";
+  const Subheading: "h4" | "h5" = headingLevel === 4 ? "h5" : "h4";
   return <div className={styles.structuredSection}>
-    <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
+    <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} headingLevel={headingLevel} />
     {content.callouts.length > 0 ? <div className={styles.callouts}>
       {content.callouts.map((callout) => <aside key={`${callout.kind}-${callout.title}`} className={styles.callout} data-kind={callout.kind}>
         <strong><StudyMarkdown text={callout.title} inline /></strong><StudyMarkdown text={callout.body} />
       </aside>)}
     </div> : null}
-    {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><h3><StudyMarkdown text={explanation.heading} inline /></h3><StudyMarkdown text={explanation.body} /></section>)}
-    {content.importantTerms.length > 0 ? <section><h3>Important terms</h3><dl className={styles.terms}>
+    {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><Heading><StudyMarkdown text={explanation.heading} inline /></Heading><StudyMarkdown text={explanation.body} /></section>)}
+    {content.importantTerms.length > 0 ? <section><Heading>Important terms</Heading><dl className={styles.terms}>
       {content.importantTerms.map((term) => <div key={term.term}><dt><StudyMarkdown text={term.term} inline /></dt><dd><StudyMarkdown text={term.explanation} /></dd></div>)}
     </dl></section> : null}
-    <GuideList title="Process" values={content.processSteps} ordered />
+    <GuideList title="Process" values={content.processSteps} ordered headingLevel={headingLevel} />
     {content.tables.map((table) => <section key={`${table.title}-${table.columns.join("|")}`} className={styles.tableSection}>
-      <h3><StudyMarkdown text={table.title} inline /></h3>
+      <Heading><StudyMarkdown text={table.title} inline /></Heading>
       <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr>{table.columns.map((column) => <th key={column} scope="col"><StudyMarkdown text={column} inline /></th>)}</tr></thead>
         <tbody>{table.rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join("|")}`}>
@@ -299,24 +334,24 @@ export function StudyGuideStructuredContent({
       </table></div>
       {table.caption ? <p className={styles.tableCaption}><StudyMarkdown text={table.caption} inline /></p> : null}
     </section>)}
-    {content.comparisons.length > 0 ? <section><h3>Comparisons and relationships</h3><div className={styles.comparisons}>
+    {content.comparisons.length > 0 ? <section><Heading>Comparisons and relationships</Heading><div className={styles.comparisons}>
       {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong><StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline /></strong><StudyMarkdown text={comparison.relationship} /></article>)}
     </div></section> : null}
-    {content.workedExamples.length > 0 ? <section><h3>Worked examples</h3><div className={styles.workedExamples}>
+    {content.workedExamples.length > 0 ? <section><Heading>Worked examples</Heading><div className={styles.workedExamples}>
       {content.workedExamples.map((example) => <article key={example.title} className={styles.workedExample}>
-        <h4><StudyMarkdown text={example.title} inline /></h4><StudyMarkdown text={example.prompt} />
-        <GuideList title="Reasoning" values={example.steps} ordered />
+        <Subheading><StudyMarkdown text={example.title} inline /></Subheading><StudyMarkdown text={example.prompt} />
+        <GuideList title="Reasoning" values={example.steps} ordered headingLevel={headingLevel === 4 ? 4 : 3} />
         <div className={styles.exampleAnswer}><strong>Answer</strong><StudyMarkdown text={example.answer} /></div>
         {example.takeaway ? <div className={styles.exampleTakeaway}><strong>Takeaway</strong><StudyMarkdown text={example.takeaway} /></div> : null}
       </article>)}
     </div></section> : null}
-    <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
+    <GuideList title="Common misconceptions" values={content.commonMisconceptions} headingLevel={headingLevel} />
     <StudyGuideSourceFigures
       documentId={figureSource?.documentId ?? null}
       locator={figureSource?.locator ?? null}
       explanations={content.visualExplanations}
     />
-    {content.retrievalChecks.length > 0 ? <section><h3>Check yourself</h3><div className={styles.retrievalChecks}>
+    {content.retrievalChecks.length > 0 ? <section><Heading>Check yourself</Heading><div className={styles.retrievalChecks}>
       {content.retrievalChecks.map((check) => <Disclosure key={check.prompt} className={styles.retrievalCheck}
         title={<StudyMarkdown text={check.prompt} inline />}>
         <div className={styles.retrievalAnswer}><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
@@ -341,10 +376,13 @@ function splitOverviewConcept(value: string): [string, string] {
   if (separator < 0) return [value, ""];
   return [value.slice(0, separator).trim(), value.slice(separator + 3).trim()];
 }
-function GuideList({ title, values, ordered = false }: { title: string; values: string[]; ordered?: boolean }) {
+function GuideList({ title, values, ordered = false, headingLevel = 3 }: {
+  title: string; values: string[]; ordered?: boolean; headingLevel?: 3 | 4;
+}) {
   if (values.length === 0) return null;
   const List = ordered ? "ol" : "ul";
-  return <section><h3>{title}</h3><List>{values.map((value) => <li key={value}><StudyMarkdown text={value} /></li>)}</List></section>;
+  const Heading: "h3" | "h4" = headingLevel === 4 ? "h4" : "h3";
+  return <section><Heading>{title}</Heading><List>{values.map((value) => <li key={value}><StudyMarkdown text={value} /></li>)}</List></section>;
 }
 function findEditingOverlay(overlays: StudyGuideOverlay[], topicId: string | null, mode: EditingMode, guideId?: string): StudyGuideOverlay | null {
   const kind = mode === "override" ? "body_override" : topicId ? "topic_note" : "guide_note";

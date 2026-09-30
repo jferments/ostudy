@@ -1,4 +1,5 @@
-//! Native guide admission and provider schema. Editorial targets never truncate claims.
+//! Native admission and provider schema share defensive capacities. Writing
+//! guidance is request-local and may never reject or truncate valid content.
 use super::*;
 
 pub(super) fn parse_section_with_images(
@@ -6,7 +7,27 @@ pub(super) fn parse_section_with_images(
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    let mut value = value;
+    parse_section_with_images_mode(value, knowledge, images_attached, true)
+}
+
+pub(super) fn parse_section_with_images_style_advisory(
+    value: Value,
+    knowledge: &KnowledgeCatalog,
+    images_attached: bool,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    parse_section_with_images_mode(value, knowledge, images_attached, false)
+}
+
+fn parse_section_with_images_mode(
+    mut value: Value,
+    knowledge: &KnowledgeCatalog,
+    images_attached: bool,
+    require_writing_style: bool,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    let bytes = value.to_string().len();
+    if bytes > MAX_CANDIDATE_BYTES {
+        return Err(resource_error("response bytes", bytes, MAX_CANDIDATE_BYTES));
+    }
     if !images_attached {
         if let Some(content) = value.get_mut("content").and_then(Value::as_object_mut) {
             let discarded = content.get("visualExplanations").is_some_and(|items| {
@@ -16,12 +37,11 @@ pub(super) fn parse_section_with_images(
                 crate::logging::debug_target("ai.document.study_guide", "study_guide_unavailable_visuals_omitted",
                     "Omitted an unsupported optional visual category; the remaining text and evidence still require validation.", json!({"imagesAttached":false}));
             }
-            // Never publish invented visual claims. This optional category has
-            // no authority to invalidate independent supported text sections.
+            // No authority to invent visual claims when no image was supplied.
             content.insert("visualExplanations".into(), json!([]));
         }
     }
-    parse_grounded_section_with_images(value, knowledge, images_attached)
+    parse_grounded_section_with_images(value, knowledge, images_attached, require_writing_style)
 }
 
 #[cfg(test)]
@@ -29,13 +49,14 @@ pub(super) fn parse_grounded_section(
     value: Value,
     knowledge: &KnowledgeCatalog,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    parse_grounded_section_with_images(value, knowledge, true)
+    parse_section_with_images_mode(value, knowledge, true, true)
 }
 
 fn parse_grounded_section_with_images(
     value: Value,
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
+    require_writing_style: bool,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let schema = protocol::schema(knowledge, images_attached);
     crate::ai::structured_output::log_shape(&value, &schema, "study_guide_envelope");
@@ -58,15 +79,35 @@ fn parse_grounded_section_with_images(
             ))
         })?;
     let ids = protocol::resolve(&ids, knowledge)?;
+    let content = parse_study_guide_section_mode(content.clone(), require_writing_style)?;
+    let budget = WritingBudget::for_knowledge(knowledge);
+    if budget.exceeded_by(&content) {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_size_advisory",
+            "Retained intact content beyond a flexible writing target; no size-only repair was requested.",
+            json!({"characters":generated_section_char_count(&content),
+                "overviewCharacters":content.overview.chars().count(),
+                "targetCharacters":budget.target_chars,"knowledgeUnits":knowledge.units.len()}),
+        );
+    }
     Ok(GroundedStudyGuideSection {
-        content: parse_study_guide_section(content.clone())?,
+        content,
         knowledge_support: knowledge.select(&ids, 64)?,
         catalog_fingerprint: knowledge.fingerprint()?,
     })
 }
 
+#[cfg(test)]
 pub(super) fn parse_study_guide_section(
     value: Value,
+) -> Result<StudyGuideSectionContent, CommandError> {
+    parse_study_guide_section_mode(value, true)
+}
+
+fn parse_study_guide_section_mode(
+    value: Value,
+    require_writing_style: bool,
 ) -> Result<StudyGuideSectionContent, CommandError> {
     let value = protocol::normalize_content(value);
     let section: StudyGuideSectionContent =
@@ -76,15 +117,18 @@ pub(super) fn parse_study_guide_section(
                 crate::ai::structured_output::shape_detail(&value, &study_guide_section_schema())
             ))
         })?;
-    // Validate BEFORE the shared authored-content normalizer can truncate an
-    // oversized field. Never cut a qualification to meet an editorial target.
+    // All resource checks precede the legacy normalizer. Each capacity is below
+    // that normalizer's truncation boundary, including table column labels.
     validate_generated_safety(&section)?;
-    if let Err(error) = validate_generated_outline_style(section.clone()) {
-        crate::logging::debug_target(
+    if let Err(error) = validate_generated_writing_style(&section) {
+        if require_writing_style {
+            return Err(error);
+        }
+        crate::logging::warn_target(
             "ai.document.study_guide",
-            "study_guide_style_advisory",
-            "Accepted intact supported content exceeding a soft outline-style target.",
-            json!({"characters":generated_section_char_count(&section),"code":error.code}),
+            "study_guide_style_repair_fallback",
+            "Retained structurally valid content with admitted support after bounded style repair; content is not logged.",
+            json!({"code":error.code}),
         );
     }
     validate_study_guide_section_content(section).map_err(|_| {
@@ -92,18 +136,225 @@ pub(super) fn parse_study_guide_section(
     })
 }
 
-/// Separate hard resource bounds from concise-writing targets. These are below
-/// the storage normalizer's limits; no provider claim is truncated on admission.
 pub(super) fn validate_generated_safety(
     section: &StudyGuideSectionContent,
 ) -> Result<(), CommandError> {
-    if section.overview.trim().is_empty() || section.key_points.is_empty() {
+    if section.overview.trim().is_empty() {
         return Err(output_error(
-            "A guide requires an overview and supported key points.",
+            "A guide requires a source-supported narrative overview.",
         ));
     }
-    if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
+    require_count_limit(
+        "section characters",
+        generated_section_char_count(section),
+        MAX_GENERATED_SECTION_CHARS,
+    )?;
+    require_char_limit("overview", &section.overview, MAX_OVERVIEW_CHARS)?;
+    for (field, values, count, chars) in [
+        (
+            "keyPoints",
+            &section.key_points,
+            MAX_KEY_POINTS,
+            MAX_KEY_POINT_CHARS,
+        ),
+        (
+            "processSteps",
+            &section.process_steps,
+            MAX_PROCESS_STEPS,
+            MAX_PROCESS_STEP_CHARS,
+        ),
+        (
+            "commonMisconceptions",
+            &section.common_misconceptions,
+            MAX_MISCONCEPTIONS,
+            MAX_MISCONCEPTION_CHARS,
+        ),
+    ] {
+        require_list_limits(field, values, count, chars)?;
+    }
+    require_count_limit("explanations", section.explanations.len(), MAX_EXPLANATIONS)?;
+    for item in &section.explanations {
+        require_char_limit(
+            "explanations.heading",
+            &item.heading,
+            MAX_EXPLANATION_HEADING_CHARS,
+        )?;
+        require_char_limit("explanations.body", &item.body, MAX_EXPLANATION_BODY_CHARS)?;
+        require_nonempty(&[&item.heading, &item.body])?;
+    }
+    require_count_limit(
+        "importantTerms",
+        section.important_terms.len(),
+        MAX_IMPORTANT_TERMS,
+    )?;
+    for item in &section.important_terms {
+        require_char_limit("importantTerms.term", &item.term, MAX_TERM_CHARS)?;
+        require_char_limit(
+            "importantTerms.explanation",
+            &item.explanation,
+            MAX_TERM_EXPLANATION_CHARS,
+        )?;
+        require_nonempty(&[&item.term, &item.explanation])?;
+    }
+    require_count_limit("comparisons", section.comparisons.len(), MAX_COMPARISONS)?;
+    for item in &section.comparisons {
+        require_char_limit(
+            "comparisons.subjectA",
+            &item.subject_a,
+            MAX_COMPARISON_SUBJECT_CHARS,
+        )?;
+        require_char_limit(
+            "comparisons.subjectB",
+            &item.subject_b,
+            MAX_COMPARISON_SUBJECT_CHARS,
+        )?;
+        require_char_limit(
+            "comparisons.relationship",
+            &item.relationship,
+            MAX_COMPARISON_RELATIONSHIP_CHARS,
+        )?;
+        require_nonempty(&[&item.subject_a, &item.subject_b, &item.relationship])?;
+    }
+    require_count_limit("callouts", section.callouts.len(), MAX_CALLOUTS)?;
+    for item in &section.callouts {
+        require_char_limit("callouts.title", &item.title, MAX_CALLOUT_TITLE_CHARS)?;
+        require_char_limit("callouts.body", &item.body, MAX_CALLOUT_BODY_CHARS)?;
+        require_nonempty(&[&item.title, &item.body])?;
+    }
+    require_count_limit("tables", section.tables.len(), MAX_TABLES)?;
+    for table in &section.tables {
+        if table.columns.len() < 2
+            || table.rows.is_empty()
+            || table
+                .rows
+                .iter()
+                .any(|row| row.len() != table.columns.len())
+        {
+            return Err(output_error(
+                "A guide table has an invalid rectangular shape.",
+            ));
+        }
+        require_count_limit("tables.columns", table.columns.len(), MAX_TABLE_COLUMNS)?;
+        require_count_limit("tables.rows", table.rows.len(), MAX_TABLE_ROWS)?;
+        require_char_limit("tables.title", &table.title, MAX_CALLOUT_TITLE_CHARS)?;
+        require_char_limit(
+            "tables.caption",
+            &table.caption,
+            MAX_COMPARISON_RELATIONSHIP_CHARS,
+        )?;
+        require_nonempty(&[&table.title])?;
+        for cell in table.columns.iter().chain(table.rows.iter().flatten()) {
+            require_char_limit("tables.cell", cell, MAX_TABLE_CELL_CHARS)?;
+            require_nonempty(&[cell])?;
+        }
+    }
+    require_count_limit(
+        "workedExamples",
+        section.worked_examples.len(),
+        MAX_WORKED_EXAMPLES,
+    )?;
+    for item in &section.worked_examples {
+        require_char_limit("workedExamples.title", &item.title, MAX_CALLOUT_TITLE_CHARS)?;
+        require_char_limit(
+            "workedExamples.prompt",
+            &item.prompt,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
+        require_list_limits(
+            "workedExamples.steps",
+            &item.steps,
+            MAX_WORKED_EXAMPLE_STEPS,
+            MAX_PROCESS_STEP_CHARS,
+        )?;
+        require_char_limit(
+            "workedExamples.answer",
+            &item.answer,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
+        require_char_limit(
+            "workedExamples.takeaway",
+            &item.takeaway,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
+        require_nonempty(&[&item.title, &item.prompt, &item.answer])?;
+        if item.steps.is_empty() {
+            return Err(output_error("A worked example is incomplete."));
+        }
+    }
+    require_count_limit(
+        "retrievalChecks",
+        section.retrieval_checks.len(),
+        MAX_RETRIEVAL_CHECKS,
+    )?;
+    for item in &section.retrieval_checks {
+        require_char_limit(
+            "retrievalChecks.prompt",
+            &item.prompt,
+            MAX_MISCONCEPTION_CHARS,
+        )?;
+        require_char_limit(
+            "retrievalChecks.answer",
+            &item.answer,
+            MAX_EXPLANATION_BODY_CHARS,
+        )?;
+        require_nonempty(&[&item.prompt, &item.answer])?;
+    }
+    require_count_limit(
+        "visualExplanations",
+        section.visual_explanations.len(),
+        MAX_VISUAL_EXPLANATIONS,
+    )?;
+    for item in &section.visual_explanations {
+        require_char_limit(
+            "visualExplanations.title",
+            &item.title,
+            MAX_VISUAL_TITLE_CHARS,
+        )?;
+        require_char_limit(
+            "visualExplanations.explanation",
+            &item.explanation,
+            MAX_VISUAL_EXPLANATION_CHARS,
+        )?;
+        require_nonempty(&[&item.title, &item.explanation])?;
+    }
+    Ok(())
+}
+
+fn require_nonempty(values: &[&str]) -> Result<(), CommandError> {
+    if values.iter().any(|value| value.trim().is_empty()) {
         return Err(output_error(
+            "A guide contains an empty required field or item.",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn inventory_like_prose(value: &str) -> bool {
+    let clean = value.trim();
+    let has_sentence_ending = clean.contains('.') || clean.contains('!') || clean.contains('?');
+    let nonempty_lines = clean
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    (nonempty_lines.len() > 1
+        && nonempty_lines
+            .iter()
+            .all(|line| line.starts_with("- ") || line.starts_with("* ") || line.starts_with("• ")))
+        || (!has_sentence_ending
+            && clean.split_whitespace().count() < 32
+            && (clean.contains(" / ")
+                || clean.contains(" | ")
+                || clean.matches("; ").count() >= 3
+                || clean.matches(',').count() >= 4))
+}
+
+pub(super) fn validate_generated_writing_style(
+    section: &StudyGuideSectionContent,
+) -> Result<(), CommandError> {
+    if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
+        return Err(CommandError::new(
+            "ai_document_output_style",
             "A guide overview must be narrative prose rather than a topic inventory.",
         ));
     }
@@ -114,261 +365,12 @@ pub(super) fn validate_generated_safety(
             && !value.contains('=')
             && !value.chars().any(|character| character.is_ascii_digit())
     }) {
-        return Err(output_error(
+        return Err(CommandError::new(
+            "ai_document_output_style",
             "Guide key points must be factual propositions; bare vocabulary belongs in importantTerms.",
         ));
     }
-    if generated_section_char_count(section) > 24_000 {
-        return Err(output_error(
-            "The guide section exceeds its hard 24000-character limit.",
-        ));
-    }
-    require_char_limit("overview", &section.overview, 4_000)?;
-    for (field, values) in [
-        ("keyPoints", &section.key_points),
-        ("processSteps", &section.process_steps),
-        ("commonMisconceptions", &section.common_misconceptions),
-    ] {
-        require_list_limits(field, values, 32, 2_000)?;
-        if values.iter().any(|value| value.trim().is_empty()) {
-            return Err(output_error("A guide contains an empty item."));
-        }
-    }
-    require_count_limit("explanations", section.explanations.len(), 16)?;
-    for item in &section.explanations {
-        require_char_limit("explanations.heading", &item.heading, 500)?;
-        require_char_limit("explanations.body", &item.body, 4_000)?;
-        if item.heading.trim().is_empty() || item.body.trim().is_empty() {
-            return Err(output_error("A guide explanation is empty."));
-        }
-    }
-    require_count_limit("importantTerms", section.important_terms.len(), 32)?;
-    for item in &section.important_terms {
-        require_char_limit("importantTerms.term", &item.term, 500)?;
-        require_char_limit("importantTerms.explanation", &item.explanation, 2_000)?;
-        if item.term.trim().is_empty() || item.explanation.trim().is_empty() {
-            return Err(output_error("A guide term is empty."));
-        }
-    }
-    require_count_limit("comparisons", section.comparisons.len(), 16)?;
-    for item in &section.comparisons {
-        require_char_limit("comparisons.subjectA", &item.subject_a, 500)?;
-        require_char_limit("comparisons.subjectB", &item.subject_b, 500)?;
-        require_char_limit("comparisons.relationship", &item.relationship, 2_000)?;
-        if item.subject_a.trim().is_empty()
-            || item.subject_b.trim().is_empty()
-            || item.relationship.trim().is_empty()
-        {
-            return Err(output_error("A guide comparison is empty."));
-        }
-    }
-    require_count_limit("callouts", section.callouts.len(), 16)?;
-    for item in &section.callouts {
-        require_char_limit("callouts.title", &item.title, 500)?;
-        require_char_limit("callouts.body", &item.body, 4_000)?;
-        if item.title.trim().is_empty() || item.body.trim().is_empty() {
-            return Err(output_error("A guide callout is empty."));
-        }
-    }
-    require_count_limit("tables", section.tables.len(), 8)?;
-    for table in &section.tables {
-        if table.title.trim().is_empty()
-            || table.columns.len() < 2
-            || table.columns.len() > 8
-            || table.rows.is_empty()
-            || table.rows.len() > 32
-            || table
-                .rows
-                .iter()
-                .any(|row| row.len() != table.columns.len())
-        {
-            return Err(output_error(
-                "A guide table has an invalid rectangular shape.",
-            ));
-        }
-        require_char_limit("tables.title", &table.title, 500)?;
-        require_char_limit("tables.caption", &table.caption, 2_000)?;
-        for cell in table.columns.iter().chain(table.rows.iter().flatten()) {
-            require_char_limit("tables.cell", cell, 2_000)?;
-            if cell.trim().is_empty() {
-                return Err(output_error("A guide table contains an empty cell."));
-            }
-        }
-    }
-    require_count_limit("workedExamples", section.worked_examples.len(), 8)?;
-    for example in &section.worked_examples {
-        require_char_limit("workedExamples.title", &example.title, 500)?;
-        require_char_limit("workedExamples.prompt", &example.prompt, 4_000)?;
-        require_list_limits("workedExamples.steps", &example.steps, 16, 2_000)?;
-        require_char_limit("workedExamples.answer", &example.answer, 4_000)?;
-        require_char_limit("workedExamples.takeaway", &example.takeaway, 2_000)?;
-        if example.title.trim().is_empty()
-            || example.prompt.trim().is_empty()
-            || example.steps.is_empty()
-            || example.answer.trim().is_empty()
-        {
-            return Err(output_error("A worked example is incomplete."));
-        }
-    }
-    require_count_limit("retrievalChecks", section.retrieval_checks.len(), 16)?;
-    for check in &section.retrieval_checks {
-        require_char_limit("retrievalChecks.prompt", &check.prompt, 2_000)?;
-        require_char_limit("retrievalChecks.answer", &check.answer, 3_000)?;
-        if check.prompt.trim().is_empty() || check.answer.trim().is_empty() {
-            return Err(output_error("A retrieval check is incomplete."));
-        }
-    }
-    require_count_limit("visualExplanations", section.visual_explanations.len(), 16)?;
-    for item in &section.visual_explanations {
-        require_char_limit("visualExplanations.title", &item.title, 500)?;
-        require_char_limit("visualExplanations.explanation", &item.explanation, 4_000)?;
-        if item.title.trim().is_empty() || item.explanation.trim().is_empty() {
-            return Err(output_error("A guide visual explanation is empty."));
-        }
-    }
     Ok(())
-}
-
-pub(super) fn inventory_like_prose(value: &str) -> bool {
-    let clean = value.trim();
-    clean.contains(" / ")
-        || clean.contains(" | ")
-        || clean.matches("; ").count() >= 2
-        || clean.lines().count() > 2
-        || (clean.matches(',').count() >= 4
-            && !clean.contains('.')
-            && !clean.contains('!')
-            && !clean.contains('?'))
-}
-
-pub(super) fn validate_generated_outline_style(
-    section: StudyGuideSectionContent,
-) -> Result<StudyGuideSectionContent, CommandError> {
-    require_char_limit("overview", &section.overview, MAX_OVERVIEW_CHARS)?;
-    if section.key_points.is_empty() {
-        return Err(output_error(
-            "The generated study-guide section did not include any high-yield key points.",
-        ));
-    }
-    require_list_limits(
-        "keyPoints",
-        &section.key_points,
-        MAX_KEY_POINTS,
-        MAX_KEY_POINT_CHARS,
-    )?;
-    require_count_limit("explanations", section.explanations.len(), MAX_EXPLANATIONS)?;
-    for explanation in &section.explanations {
-        require_char_limit(
-            "explanations.heading",
-            &explanation.heading,
-            MAX_EXPLANATION_HEADING_CHARS,
-        )?;
-        require_char_limit(
-            "explanations.body",
-            &explanation.body,
-            MAX_EXPLANATION_BODY_CHARS,
-        )?;
-    }
-    require_count_limit(
-        "importantTerms",
-        section.important_terms.len(),
-        MAX_IMPORTANT_TERMS,
-    )?;
-    for term in &section.important_terms {
-        require_char_limit("importantTerms.term", &term.term, MAX_TERM_CHARS)?;
-        require_char_limit(
-            "importantTerms.explanation",
-            &term.explanation,
-            MAX_TERM_EXPLANATION_CHARS,
-        )?;
-    }
-    require_list_limits(
-        "processSteps",
-        &section.process_steps,
-        MAX_PROCESS_STEPS,
-        MAX_PROCESS_STEP_CHARS,
-    )?;
-    require_count_limit("comparisons", section.comparisons.len(), MAX_COMPARISONS)?;
-    for comparison in &section.comparisons {
-        require_char_limit(
-            "comparisons.subjectA",
-            &comparison.subject_a,
-            MAX_COMPARISON_SUBJECT_CHARS,
-        )?;
-        require_char_limit(
-            "comparisons.subjectB",
-            &comparison.subject_b,
-            MAX_COMPARISON_SUBJECT_CHARS,
-        )?;
-        require_char_limit(
-            "comparisons.relationship",
-            &comparison.relationship,
-            MAX_COMPARISON_RELATIONSHIP_CHARS,
-        )?;
-    }
-    require_list_limits(
-        "commonMisconceptions",
-        &section.common_misconceptions,
-        MAX_MISCONCEPTIONS,
-        MAX_MISCONCEPTION_CHARS,
-    )?;
-    require_count_limit("callouts", section.callouts.len(), MAX_CALLOUTS)?;
-    for callout in &section.callouts {
-        require_char_limit("callouts.title", &callout.title, MAX_CALLOUT_TITLE_CHARS)?;
-        require_char_limit("callouts.body", &callout.body, MAX_CALLOUT_BODY_CHARS)?;
-    }
-    require_count_limit("tables", section.tables.len(), MAX_TABLES)?;
-    for table in &section.tables {
-        if table.columns.len() > MAX_TABLE_COLUMNS || table.rows.len() > MAX_TABLE_ROWS {
-            return Err(output_error(
-                "A guide table exceeded the concise table target.",
-            ));
-        }
-        for cell in table.columns.iter().chain(table.rows.iter().flatten()) {
-            require_char_limit("tables.cell", cell, MAX_TABLE_CELL_CHARS)?;
-        }
-    }
-    require_count_limit(
-        "workedExamples",
-        section.worked_examples.len(),
-        MAX_WORKED_EXAMPLES,
-    )?;
-    for example in &section.worked_examples {
-        require_count_limit(
-            "workedExamples.steps",
-            example.steps.len(),
-            MAX_WORKED_EXAMPLE_STEPS,
-        )?;
-    }
-    require_count_limit(
-        "retrievalChecks",
-        section.retrieval_checks.len(),
-        MAX_RETRIEVAL_CHECKS,
-    )?;
-    require_count_limit(
-        "visualExplanations",
-        section.visual_explanations.len(),
-        MAX_VISUAL_EXPLANATIONS,
-    )?;
-    for visual in &section.visual_explanations {
-        require_char_limit(
-            "visualExplanations.title",
-            &visual.title,
-            MAX_VISUAL_TITLE_CHARS,
-        )?;
-        require_char_limit(
-            "visualExplanations.explanation",
-            &visual.explanation,
-            MAX_VISUAL_EXPLANATION_CHARS,
-        )?;
-    }
-    let total = generated_section_char_count(&section);
-    if total > MAX_GENERATED_SECTION_CHARS {
-        return Err(output_error(format!(
-            "The generated study-guide section was too verbose ({total} characters; maximum {MAX_GENERATED_SECTION_CHARS}). Condense it to prioritized outline points and omit secondary detail."
-        )));
-    }
-    Ok(section)
 }
 
 fn require_list_limits(
@@ -380,30 +382,32 @@ fn require_list_limits(
     require_count_limit(field, values.len(), maximum_items)?;
     for value in values {
         require_char_limit(field, value, maximum_chars)?;
+        require_nonempty(&[value])?;
     }
     Ok(())
 }
 
 fn require_count_limit(field: &str, count: usize, maximum: usize) -> Result<(), CommandError> {
     if count > maximum {
-        return Err(output_error(format!(
-            "The generated study-guide field {field} contained {count} items; maximum {maximum}. Keep only the highest-yield items."
-        )));
+        return Err(resource_error(field, count, maximum));
     }
     Ok(())
 }
 
 fn require_char_limit(field: &str, value: &str, maximum: usize) -> Result<(), CommandError> {
-    let count = value.chars().count();
-    if count > maximum {
-        return Err(output_error(format!(
-            "The generated study-guide field {field} was too wordy ({count} characters; maximum {maximum}). Rewrite it as concise outline material."
-        )));
-    }
-    Ok(())
+    require_count_limit(field, value.chars().count(), maximum)
 }
 
-fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
+fn resource_error(field: &str, count: usize, maximum: usize) -> CommandError {
+    CommandError::new(
+        "ai_document_output_resource",
+        format!(
+            "The generated study-guide {field} exceeds a defensive resource capacity ({count}; capacity {maximum}). No text was truncated. Preserve complete qualifications in any repair."
+        ),
+    )
+}
+
+pub(super) fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
     let mut total = section.overview.chars().count();
     total += section
         .key_points
@@ -445,12 +449,7 @@ fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
                 + value
                     .columns
                     .iter()
-                    .map(|cell| cell.chars().count())
-                    .sum::<usize>()
-                + value
-                    .rows
-                    .iter()
-                    .flatten()
+                    .chain(value.rows.iter().flatten())
                     .map(|cell| cell.chars().count())
                     .sum::<usize>()
         })
@@ -483,158 +482,64 @@ fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
     total
 }
 
-/// Provider-neutral study-guide schema.
-///
-/// This must remain a bare JSON Schema object. Provider-specific `name`,
-/// `strict`, `response_format`, and function-tool wrappers belong exclusively to
-/// transport. Double-wrapping this schema weakens OpenRouter enforcement and is
-/// rejected by DeepSeek strict function calling.
+/// Bare provider-neutral JSON Schema; capacities mirror native safety checks.
 pub(super) fn study_guide_section_schema() -> Value {
     json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-            "overview",
-            "keyPoints",
-            "explanations",
-            "importantTerms",
-            "processSteps",
-            "comparisons",
-            "commonMisconceptions",
-            "callouts",
-            "tables",
-            "workedExamples",
-            "retrievalChecks",
-            "visualExplanations"
-        ],
+        "type": "object", "additionalProperties": false,
+        "required": ["overview", "keyPoints", "explanations", "importantTerms", "processSteps", "comparisons", "commonMisconceptions", "callouts", "tables", "workedExamples", "retrievalChecks", "visualExplanations"],
         "properties": {
-            "overview": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": MAX_OVERVIEW_CHARS
-            },
-            "keyPoints": {
-                "type": "array", "minItems": 1, "maxItems": MAX_KEY_POINTS,
-                "items": {"type": "string", "minLength": 1, "maxLength": MAX_KEY_POINT_CHARS}
-            },
-            "explanations": {
-                "type": "array",
-                "maxItems": MAX_EXPLANATIONS,
-                "items": object_schema(
-                    &["heading", "body"],
-                    json!({
-                        "heading": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_HEADING_CHARS},
-                        "body": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS}
-                    })
-                )
-            },
-            "importantTerms": {
-                "type": "array",
-                "maxItems": MAX_IMPORTANT_TERMS,
-                "items": object_schema(
-                    &["term", "explanation"],
-                    json!({
-                        "term": {"type": "string", "minLength": 1, "maxLength": MAX_TERM_CHARS},
-                        "explanation": {"type": "string", "minLength": 1, "maxLength": MAX_TERM_EXPLANATION_CHARS}
-                    })
-                )
-            },
+            "overview": {"type": "string", "minLength": 1, "maxLength": MAX_OVERVIEW_CHARS},
+            "keyPoints": string_array_schema(MAX_KEY_POINTS, MAX_KEY_POINT_CHARS),
+            "explanations": {"type": "array", "maxItems": MAX_EXPLANATIONS, "items": object_schema(&["heading", "body"], json!({
+                "heading": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_HEADING_CHARS},
+                "body": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS}
+            }))},
+            "importantTerms": {"type": "array", "maxItems": MAX_IMPORTANT_TERMS, "items": object_schema(&["term", "explanation"], json!({
+                "term": {"type": "string", "minLength": 1, "maxLength": MAX_TERM_CHARS},
+                "explanation": {"type": "string", "minLength": 1, "maxLength": MAX_TERM_EXPLANATION_CHARS}
+            }))},
             "processSteps": string_array_schema(MAX_PROCESS_STEPS, MAX_PROCESS_STEP_CHARS),
-            "comparisons": {
-                "type": "array",
-                "maxItems": MAX_COMPARISONS,
-                "items": object_schema(
-                    &["subjectA", "subjectB", "relationship"],
-                    json!({
-                        "subjectA": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_SUBJECT_CHARS},
-                        "subjectB": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_SUBJECT_CHARS},
-                        "relationship": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_RELATIONSHIP_CHARS}
-                    })
-                )
-            },
+            "comparisons": {"type": "array", "maxItems": MAX_COMPARISONS, "items": object_schema(&["subjectA", "subjectB", "relationship"], json!({
+                "subjectA": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_SUBJECT_CHARS},
+                "subjectB": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_SUBJECT_CHARS},
+                "relationship": {"type": "string", "minLength": 1, "maxLength": MAX_COMPARISON_RELATIONSHIP_CHARS}
+            }))},
             "commonMisconceptions": string_array_schema(MAX_MISCONCEPTIONS, MAX_MISCONCEPTION_CHARS),
-            "callouts": {
-                "type": "array",
-                "maxItems": MAX_CALLOUTS,
-                "items": object_schema(
-                    &["kind", "title", "body"],
-                    json!({
-                        "kind": {"type": "string", "enum": ["key_idea", "warning", "tip", "note"]},
-                        "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
-                        "body": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_BODY_CHARS}
-                    })
-                )
-            },
-            "tables": {
-                "type": "array",
-                "maxItems": MAX_TABLES,
-                "items": object_schema(
-                    &["title", "columns", "rows", "caption"],
-                    json!({
-                        "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
-                        "columns": {"type": "array", "minItems": 2, "maxItems": MAX_TABLE_COLUMNS, "items": {"type": "string", "minLength": 1, "maxLength": MAX_TABLE_CELL_CHARS}},
-                        "rows": {"type": "array", "minItems": 1, "maxItems": MAX_TABLE_ROWS, "items": {"type": "array", "minItems": 2, "maxItems": MAX_TABLE_COLUMNS, "items": {"type": "string", "minLength": 1, "maxLength": MAX_TABLE_CELL_CHARS}}},
-                        "caption": {"type": "string", "maxLength": MAX_COMPARISON_RELATIONSHIP_CHARS}
-                    })
-                )
-            },
-            "workedExamples": {
-                "type": "array",
-                "maxItems": MAX_WORKED_EXAMPLES,
-                "items": object_schema(
-                    &["title", "prompt", "steps", "answer", "takeaway"],
-                    json!({
-                        "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
-                        "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS},
-                        "steps": string_array_schema(MAX_WORKED_EXAMPLE_STEPS, MAX_PROCESS_STEP_CHARS),
-                        "answer": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS},
-                        "takeaway": {"type": "string", "maxLength": MAX_EXPLANATION_BODY_CHARS}
-                    })
-                )
-            },
-            "retrievalChecks": {
-                "type": "array",
-                "maxItems": MAX_RETRIEVAL_CHECKS,
-                "items": object_schema(
-                    &["prompt", "answer"],
-                    json!({
-                        "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_MISCONCEPTION_CHARS},
-                        "answer": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS}
-                    })
-                )
-            },
-            "visualExplanations": {
-                "type": "array",
-                "maxItems": MAX_VISUAL_EXPLANATIONS,
-                "items": object_schema(
-                    &["title", "explanation"],
-                    json!({
-                        "title": {"type": "string", "minLength": 1, "maxLength": MAX_VISUAL_TITLE_CHARS},
-                        "explanation": {"type": "string", "minLength": 1, "maxLength": MAX_VISUAL_EXPLANATION_CHARS}
-                    })
-                )
-            }
+            "callouts": {"type": "array", "maxItems": MAX_CALLOUTS, "items": object_schema(&["kind", "title", "body"], json!({
+                "kind": {"type": "string", "enum": ["key_idea", "warning", "tip", "note"]},
+                "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
+                "body": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_BODY_CHARS}
+            }))},
+            "tables": {"type": "array", "maxItems": MAX_TABLES, "items": object_schema(&["title", "columns", "rows", "caption"], json!({
+                "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
+                "columns": {"type": "array", "minItems": 2, "maxItems": MAX_TABLE_COLUMNS, "items": {"type": "string", "minLength": 1, "maxLength": MAX_TABLE_CELL_CHARS}},
+                "rows": {"type": "array", "minItems": 1, "maxItems": MAX_TABLE_ROWS, "items": {"type": "array", "minItems": 2, "maxItems": MAX_TABLE_COLUMNS, "items": {"type": "string", "minLength": 1, "maxLength": MAX_TABLE_CELL_CHARS}}},
+                "caption": {"type": "string", "maxLength": MAX_COMPARISON_RELATIONSHIP_CHARS}
+            }))},
+            "workedExamples": {"type": "array", "maxItems": MAX_WORKED_EXAMPLES, "items": object_schema(&["title", "prompt", "steps", "answer", "takeaway"], json!({
+                "title": {"type": "string", "minLength": 1, "maxLength": MAX_CALLOUT_TITLE_CHARS},
+                "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS},
+                "steps": {"minItems": 1, "type": "array", "maxItems": MAX_WORKED_EXAMPLE_STEPS, "items": {"type": "string", "minLength": 1, "maxLength": MAX_PROCESS_STEP_CHARS}},
+                "answer": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS},
+                "takeaway": {"type": "string", "maxLength": MAX_EXPLANATION_BODY_CHARS}
+            }))},
+            "retrievalChecks": {"type": "array", "maxItems": MAX_RETRIEVAL_CHECKS, "items": object_schema(&["prompt", "answer"], json!({
+                "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_MISCONCEPTION_CHARS},
+                "answer": {"type": "string", "minLength": 1, "maxLength": MAX_EXPLANATION_BODY_CHARS}
+            }))},
+            "visualExplanations": {"type": "array", "maxItems": MAX_VISUAL_EXPLANATIONS, "items": object_schema(&["title", "explanation"], json!({
+                "title": {"type": "string", "minLength": 1, "maxLength": MAX_VISUAL_TITLE_CHARS},
+                "explanation": {"type": "string", "minLength": 1, "maxLength": MAX_VISUAL_EXPLANATION_CHARS}
+            }))}
         }
     })
 }
 
 fn string_array_schema(maximum_items: usize, maximum_length: usize) -> Value {
-    json!({
-        "type": "array",
-        "maxItems": maximum_items,
-        "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": maximum_length
-        }
-    })
+    json!({"type": "array", "maxItems": maximum_items,
+        "items": {"type": "string", "minLength": 1, "maxLength": maximum_length}})
 }
 
 fn object_schema(required: &[&str], properties: Value) -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": required,
-        "properties": properties
-    })
+    json!({"type": "object", "additionalProperties": false, "required": required, "properties": properties})
 }

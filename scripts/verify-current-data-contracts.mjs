@@ -16,6 +16,8 @@ const [
   syncPackage,
   generatedImport,
   generatedPrepare,
+  externalFileStreaming,
+  externalFileCommands,
   richContent,
   checkpoint,
   attempts,
@@ -34,6 +36,8 @@ const [
   read("src-tauri/src/device_sync/package.rs"),
   read("src-tauri/src/authoring/card_types_and_templates/generated_import/mod.rs"),
   read("src-tauri/src/authoring/card_types_and_templates/generated_import/prepare.rs"),
+  read("src-tauri/src/external_file_streaming.rs"),
+  read("src-tauri/src/external_file_commands.rs"),
   read("src-tauri/src/cards/rich_content.rs"),
   read("src-tauri/src/ui_checkpoint.rs"),
   read("src-tauri/src/cards/questions/attempt.rs"),
@@ -86,8 +90,29 @@ requireText("studydeck v2 reader", studydeck, 'const CORE_PACKAGE_VERSION: i64 =
 requireText("studydeck v1 reader", studydeck, 'const LEGACY_PACKAGE_VERSION: i64 = 1;');
 requireText("sync writer", syncPackage, 'const PACKAGE_VERSION: i64 = 3;');
 requireText("sync legacy reader", syncPackage, 'const LEGACY_PACKAGE_VERSION: i64 = 2;');
-requireText("generated import base version", generatedImport, 'const GENERATED_IMPORT_VERSION: i64 = 1;');
-requireText("generated import v2 reader", generatedPrepare, '![GENERATED_IMPORT_VERSION, 2].contains(&parsed.format_version)');
+requireText("generated import legacy v1 reader", generatedImport, 'const LEGACY_GENERATED_IMPORT_VERSION: i64 = 1;');
+requireText("generated import current v2 writer", generatedImport, 'const GENERATED_IMPORT_VERSION: i64 = 2;');
+requireText(
+  "generated import explicit v1/v2 readers",
+  generatedImport,
+  "SUPPORTED_GENERATED_IMPORT_VERSIONS",
+);
+requireText(
+  "generated importer uses shared identity policy",
+  generatedPrepare,
+  "is_supported_generated_import_identity",
+);
+// rustfmt can wrap the qualified call and add a trailing argument comma.
+// Require the same owner, helper, and argument without prescribing whitespace.
+const generatedEnvelopeCall = /crate::authoring::card_types_and_templates::generated_import::\s*is_generated_import_envelope\s*\(\s*&value\s*,?\s*\)/;
+for (const [label, source] of [
+  ["streaming generated JSON staging", externalFileStreaming],
+  ["Android generated JSON staging", externalFileCommands],
+]) {
+  if (!generatedEnvelopeCall.test(source)) {
+    failures.push(`${label} must call the importer-owned envelope helper with &value`);
+  }
+}
 requireText("rich schema 3 admission", richContent, 'if !(1..=3).contains(&version)');
 requireText("rich schema 3 projection", richContent, 'if version == 3');
 requireText("UI checkpoint writer", checkpoint, 'const CHECKPOINT_SCHEMA_VERSION: i64 = 2;');

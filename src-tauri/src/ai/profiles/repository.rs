@@ -337,6 +337,7 @@ pub(super) fn commit_credential_epoch(
     operation_id: &str,
     operation_kind: &str,
     storage: CredentialStorage,
+    seed_openrouter_defaults: bool,
 ) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let transaction = connection
@@ -357,6 +358,9 @@ pub(super) fn commit_credential_epoch(
         return Err(profile_changed());
     }
     invalidate_probe_result(&transaction, profile_id)?;
+    if seed_openrouter_defaults {
+        super::defaults::seed_first_openrouter_defaults(&transaction, profile_id, now)?;
+    }
     record_operation(
         &transaction,
         operation_id,
