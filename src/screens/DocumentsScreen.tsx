@@ -59,7 +59,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     documents, generationProgress, learningPlans, clockNow, isLoading, isUploading, busyDocumentIds,
     cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,
     cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
-    stopStudyGuide, stopGeneration, openSource, deleteDocument,
+    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
   const artifactProgress = useDocumentArtifactProgress(
     isUploading || documents.some((document) => document.lifecycleState === "processing")
@@ -195,6 +195,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
               destructive: true,
               onSelect: () => void stopGeneration(document),
               disabled: canceling,
+            });
+            if (!guideGenerating && document.lifecycleState !== "processing") actions.push({
+              id: "study-guide",
+              label: guideJob === null ? "Generate study guide" : "Regenerate study guide",
+              placement: "overflow-only",
+              onSelect: () => void generateStudyGuide(document),
+              disabled: busy,
             });
             if (guideGenerating && document.lifecycleState !== "processing") actions.push({
               id: "stop-guide",

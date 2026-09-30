@@ -67,7 +67,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const selectingFile = useRef(false);
   const stopping = useRef(new Set<string>());
   const backgroundFlashcardIds = useRef(new Set<string>());
-  const automaticGuideIds = useRef(new Set<string>());
+  const guideRequestIds = useRef(new Set<string>());
   const latestDocuments = useRef(documents);
   latestDocuments.current = documents;
   const refreshLane = useRequestLane();
@@ -218,35 +218,61 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }
 
-  async function ensureAutomaticStudyGuide(document: DocumentSummary): Promise<void> {
-    if (automaticGuideIds.current.has(document.id)
+  async function runStudyGuideGeneration(
+    document: DocumentSummary,
+    mode: "automatic" | "manual",
+  ): Promise<void> {
+    if (document.lifecycleState === "processing"
+      || guideRequestIds.current.has(document.id)
+      || busyDocumentIds.has(document.id)
       || guideGeneratingDocumentIds.has(document.id)) return;
-    automaticGuideIds.current.add(document.id);
+    guideRequestIds.current.add(document.id);
     updateIdSet(setGuideGeneratingDocumentIds, document.id, true);
     updateIdSet(setCancelingGuideDocumentIds, document.id, false);
+    setErrorMessage(null);
     try {
       const guide = await generateDocumentStudyGuide(document.id);
       await reconcileSaved();
       showToast(
         "success",
-        `Study guide revision ${guide.revision} created automatically. Open it from Study Guides.`,
+        mode === "automatic"
+          ? `Study guide revision ${guide.revision} created automatically. Open it from Study Guides.`
+          : `Study guide revision ${guide.revision} generated. Open it from Study Guides.`,
       );
     } catch (error: unknown) {
       const code = getErrorCode(error);
       if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
-        showToast("info", "Automatic study-guide generation stopped. Saved topic progress can be reused.");
+        showToast(
+          "info",
+          mode === "automatic"
+            ? "Automatic study-guide generation stopped. Saved topic progress can be reused."
+            : "Study-guide generation stopped. Saved topic progress can be reused.",
+        );
       } else {
         const message = getErrorMessage(error);
-        setErrorMessage(`Flashcards were saved, but automatic Study Guide generation failed: ${message}`);
-        showToast("error", `Flashcards were saved, but the Study Guide failed: ${message}`);
+        if (mode === "automatic") {
+          setErrorMessage(`Flashcards were saved, but automatic Study Guide generation failed: ${message}`);
+          showToast("error", `Flashcards were saved, but the Study Guide failed: ${message}`);
+        } else {
+          setErrorMessage(`Study Guide generation failed: ${message}`);
+          showToast("error", `Study Guide generation failed: ${message}`);
+        }
       }
       await refreshDocuments().catch(() => undefined);
     } finally {
-      automaticGuideIds.current.delete(document.id);
+      guideRequestIds.current.delete(document.id);
       stopping.current.delete(`guide:${document.id}`);
       updateIdSet(setGuideGeneratingDocumentIds, document.id, false);
       updateIdSet(setCancelingGuideDocumentIds, document.id, false);
     }
+  }
+
+  async function ensureAutomaticStudyGuide(document: DocumentSummary): Promise<void> {
+    await runStudyGuideGeneration(document, "automatic");
+  }
+
+  async function generateStudyGuide(document: DocumentSummary): Promise<void> {
+    await runStudyGuideGeneration(document, "manual");
   }
 
   async function reconcileSaved(): Promise<void> {
@@ -461,6 +487,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     uploadDocument,
     retry,
     generateMore,
+    generateStudyGuide,
     stopStudyGuide,
     stopGeneration,
     openSource,

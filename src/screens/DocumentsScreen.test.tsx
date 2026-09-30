@@ -167,6 +167,9 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
     vi.mocked(documentIpc.cancelDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
+    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockResolvedValue({
+      revision: 2,
+    } as studyGuideIpc.DocumentStudyGuide);
     vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue(null);
     vi.mocked(studyGuideIpc.getDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
   });
@@ -518,7 +521,7 @@ describe("DocumentsScreen", () => {
     await openDocumentActions();
     const menu = await screen.findByRole("menu", { name: "More actions for Cardiac physiology" });
     expect(within(menu).getByRole("menuitem", { name: "Retry generation" })).toBeTruthy();
-    expect(within(menu).queryByText("Generate study guide")).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "Generate study guide" })).toBeTruthy();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
     expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
@@ -537,7 +540,44 @@ describe("DocumentsScreen", () => {
     await openDocumentActions();
     expect(await screen.findByText("Generation info")).toBeTruthy();
     expect(screen.getByText("Generate more cards")).toBeTruthy();
-    expect(screen.queryByText("Generate study guide")).toBeNull();
+    expect(screen.getByText("Generate study guide")).toBeTruthy();
+  });
+
+  it("regenerates a prior study guide without regenerating flashcards", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([{
+      id: "c".repeat(32),
+      documentId,
+      planId: "d".repeat(32),
+      artifactKind: "study_guide",
+      state: "failed",
+      totalUnits: 14,
+      completedUnits: 0,
+      safeErrorCode: "ai_document_output_invalid",
+      safeErrorMessage: "The previous guide attempt failed validation.",
+      apiTokenCount: null,
+      apiTokenUsageComplete: false,
+      createdAt: 1,
+      startedAt: 2,
+      updatedAt: 3,
+      completedAt: 4,
+    }]);
+    const { showToast } = renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(await screen.findByText("Needs attention")).toBeTruthy();
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Regenerate study guide"));
+
+    await waitFor(() => {
+      expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId);
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "Study guide revision 2 generated. Open it from Study Guides.",
+      );
+    });
+    expect(documentIpc.startDocumentFlashcardGeneration).not.toHaveBeenCalled();
+    expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
   it("exposes ready document content as a folder drag source without making row actions the drag handle", async () => {
