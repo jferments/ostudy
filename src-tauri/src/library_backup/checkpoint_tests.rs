@@ -19,9 +19,16 @@ impl Fixture {
         let connection = Connection::open(paths.database_path()).expect("baseline");
         let sql = include_str!("../../schema/0001_release_baseline.sql");
         connection.execute_batch(sql).expect("immutable baseline");
-        connection.execute("INSERT INTO schema_metadata(key, value) VALUES ('schema_lineage', ?1)", [crate::database::CURRENT_SCHEMA_LINEAGE]).expect("lineage");
+        connection
+            .execute(
+                "INSERT INTO schema_metadata(key, value) VALUES ('schema_lineage', ?1)",
+                [crate::database::CURRENT_SCHEMA_LINEAGE],
+            )
+            .expect("lineage");
         connection.execute("INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (1, 'release_baseline', ?1, 0)", [format!("{:x}", Sha256::digest(sql.as_bytes()))]).expect("ledger");
-        connection.pragma_update(None, "user_version", 1).expect("schema 1");
+        connection
+            .pragma_update(None, "user_version", 1)
+            .expect("schema 1");
         drop(connection);
         for relative in MANAGED {
             fs::create_dir_all(paths.app_data_dir().join(relative)).expect("managed directory");
@@ -89,17 +96,35 @@ impl Drop for Fixture {
 fn checkpoint_is_verified_before_the_first_private_migration_write() {
     let fixture = Fixture::new();
     let original = fs::read(fixture.0.database_path()).expect("original");
-    let result = prepare_upgrade_with(&fixture.0, APPLICATION, (crate::database::CURRENT_SCHEMA_LINEAGE, 1), &mut |_| {}, None, |candidate| {
-        let transaction = fixture.transaction();
-        let manifest = verify_checkpoint(&transaction)?;
-        assert_eq!(manifest.source_schema, 1);
-        assert_eq!(manifest.target_schema, crate::database::CURRENT_SCHEMA_VERSION);
-        assert!(manifest.from_build.is_none(), "historic build is not guessed");
-        // Simulate an early migration committing, followed by a later failure.
-        let connection = Connection::open(candidate).expect("candidate");
-        connection.execute("UPDATE app_settings SET value_json = '31' WHERE key = 'dailyNewLimit'", []).expect("private committed write");
-        Err("injected subsequent migration failure".into())
-    });
+    let result = prepare_upgrade_with(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
+        &mut |_| {},
+        None,
+        |candidate| {
+            let transaction = fixture.transaction();
+            let manifest = verify_checkpoint(&transaction)?;
+            assert_eq!(manifest.source_schema, 1);
+            assert_eq!(
+                manifest.target_schema,
+                crate::database::CURRENT_SCHEMA_VERSION
+            );
+            assert!(
+                manifest.from_build.is_none(),
+                "historic build is not guessed"
+            );
+            // Simulate an early migration committing, followed by a later failure.
+            let connection = Connection::open(candidate).expect("candidate");
+            connection
+                .execute(
+                    "UPDATE app_settings SET value_json = '31' WHERE key = 'dailyNewLimit'",
+                    [],
+                )
+                .expect("private committed write");
+            Err("injected subsequent migration failure".into())
+        },
+    );
     assert!(result.expect_err("failed migration").contains("injected"));
     assert_eq!(
         fs::read(fixture.0.database_path()).expect("live bytes"),
@@ -107,7 +132,10 @@ fn checkpoint_is_verified_before_the_first_private_migration_write() {
     );
     assert_eq!(fixture.version(), 1);
     fixture.original_managed_files_are_present();
-    assert!(fixture.transaction().join("candidate/library.sqlite3").exists());
+    assert!(fixture
+        .transaction()
+        .join("candidate/library.sqlite3")
+        .exists());
     assert!(admit_startup(&fixture.0)
         .expect_err("explicit retry required")
         .starts_with(RECOVERY_REQUIRED));
@@ -146,7 +174,12 @@ fn a_sqlite_backup_includes_committed_wal_rows_without_copying_only_the_main_fil
     source
         .execute_batch("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;")
         .expect("WAL");
-    source.execute("UPDATE app_settings SET value_json = '27' WHERE key = 'dailyNewLimit'", []).expect("committed WAL write");
+    source
+        .execute(
+            "UPDATE app_settings SET value_json = '27' WHERE key = 'dailyNewLimit'",
+            [],
+        )
+        .expect("committed WAL write");
     let prepared = fixture.prepare();
     let snapshot =
         read_database(&prepared.transaction.join("checkpoint/library.sqlite3")).expect("snapshot");
@@ -175,7 +208,10 @@ fn tampered_candidate_or_checkpoint_is_rejected_before_journaling() {
             "candidate"
         };
         fs::write(
-            prepared.transaction.join(tree).join("documents/retained.bin"),
+            prepared
+                .transaction
+                .join(tree)
+                .join("documents/retained.bin"),
             b"tampered",
         )
         .expect("tamper fixture");
@@ -224,8 +260,7 @@ fn successful_activation_keeps_checkpoint_and_previous_library_without_repeating
     assert!(!has_intent(&fixture.0).expect("intent finalized"));
     admit_startup(&fixture.0).expect("normal startup");
     verify_checkpoint(&transaction).expect("checkpoint preserved");
-    let previous =
-        read_database(&transaction.join("previous/library.sqlite3")).expect("previous");
+    let previous = read_database(&transaction.join("previous/library.sqlite3")).expect("previous");
     assert_eq!(validate_database(&previous).expect("previous schema").1, 1);
     fixture.original_managed_files_are_present();
 }
@@ -260,8 +295,7 @@ fn explicit_restore_reinstates_old_schema_without_reverse_sql_and_preserves_new_
         admit_startup(&fixture.0).is_err(),
         "new executable must not immediately re-upgrade the restored library"
     );
-    allow_retry(&fixture.0, &fixture.operation())
-        .expect("explicit later retry authorization");
+    allow_retry(&fixture.0, &fixture.operation()).expect("explicit later retry authorization");
     admit_startup(&fixture.0).expect("retry allowed only by user decision");
 }
 
@@ -356,7 +390,12 @@ fn upgrade_activation_and_rollback_crashes_recover_from_the_existing_journal() {
     ] {
         let fixture = Fixture::new();
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
-            .args(["--exact", "library_backup::activation::checkpoint::tests::upgrade_crash_child", "--nocapture", "--test-threads=1"])
+            .args([
+                "--exact",
+                "library_backup::activation::checkpoint::tests::upgrade_crash_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
             .env("OSTUDY_UPGRADE_CHILD_ROOT", fixture.0.app_data_dir())
             .env("OSTUDY_RESTORE_CRASH_ROOT", fixture.0.app_data_dir())
             .env("OSTUDY_RESTORE_CRASH_PHASE", phase)

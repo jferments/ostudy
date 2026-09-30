@@ -24,12 +24,20 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
             let message = recovery_message(&details);
             let handle = app.clone();
             if details.checkpoint_available && !details.previous_restored {
-                app.dialog().message(message).title("Library update needs attention")
+                app.dialog()
+                    .message(message)
+                    .title("Library update needs attention")
                     .kind(MessageDialogKind::Warning)
-                    .buttons(MessageDialogButtons::OkCancelCustom("Recovery options".into(), "Close oStudy".into()))
+                    .buttons(MessageDialogButtons::OkCancelCustom(
+                        "Recovery options".into(),
+                        "Close oStudy".into(),
+                    ))
                     .show(move |open| {
-                        if open { choose_recovery(&handle, details.operation_id); }
-                        else { handle.exit(STARTUP_CONFIGURATION_EXIT_CODE); }
+                        if open {
+                            choose_recovery(&handle, details.operation_id);
+                        } else {
+                            handle.exit(STARTUP_CONFIGURATION_EXIT_CODE);
+                        }
                     });
             } else {
                 prompt_retry(&handle, details.operation_id, message);
@@ -97,12 +105,20 @@ fn confirm_restore(app: &tauri::AppHandle, operation: String) {
 
 fn prompt_retry(app: &tauri::AppHandle, operation: String, message: String) {
     let handle = app.clone();
-    app.dialog().message(message).title("Library update recovery")
+    app.dialog()
+        .message(message)
+        .title("Library update recovery")
         .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Allow retry on next launch".into(), "Close oStudy".into()))
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Allow retry on next launch".into(),
+            "Close oStudy".into(),
+        ))
         .show(move |confirmed| {
-            if confirmed { run_recovery(&handle, operation, false); }
-            else { handle.exit(STARTUP_CONFIGURATION_EXIT_CODE); }
+            if confirmed {
+                run_recovery(&handle, operation, false);
+            } else {
+                handle.exit(STARTUP_CONFIGURATION_EXIT_CODE);
+            }
         });
 }
 

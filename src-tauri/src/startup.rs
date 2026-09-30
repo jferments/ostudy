@@ -121,10 +121,8 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     platform::install_global(platform_runtime.clone()).map_err(|error| {
         startup_stage_error(stage("platform_runtime", "upgrade_platform_runtime"), error)
     })?;
-    let ai_runtime =
-        AiRuntimeState::new(platform_runtime.secure_secret_store()).map_err(|error| {
-            startup_stage_error(stage("ai_runtime", "upgrade_ai_runtime"), error)
-        })?;
+    let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
+        .map_err(|error| startup_stage_error(stage("ai_runtime", "upgrade_ai_runtime"), error))?;
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
         .map_err(|error| startup_stage_error(stage("pdf_runtime", "upgrade_pdf_runtime"), error))?;
 
