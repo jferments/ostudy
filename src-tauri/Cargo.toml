@@ -1,5 +1,6 @@
 [package]
 name = "ostudy"
+default-run = "ostudy"
 version = "0.1.0"
 description = "Local-first flashcards and study tools"
 authors = ["jferments"]

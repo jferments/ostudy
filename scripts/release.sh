@@ -53,7 +53,7 @@ APPIMAGE_FILES=("$BUNDLE_ROOT"/appimage/*.AppImage)
 (( ${#DEB_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one Debian bundle.\n' >&2; exit 1; }
 (( ${#APPIMAGE_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one AppImage bundle.\n' >&2; exit 1; }
 
-"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"
+"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
 
 cp "${DEB_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
 cp "${APPIMAGE_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
