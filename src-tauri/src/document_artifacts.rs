@@ -234,8 +234,16 @@ pub(crate) fn transition_document_artifact_job(
     expected: DocumentArtifactJobState,
     next: DocumentArtifactJobState,
     completed_units: usize,
+    api_token_count: Option<i64>,
+    api_token_usage_complete: bool,
 ) -> Result<DocumentArtifactJob, CommandError> {
     validate_entity_id(job_id, "artifact job")?;
+    if api_token_count.is_some_and(|tokens| tokens < 0) {
+        return Err(CommandError::new(
+            "invalid_document_artifact_usage",
+            "Document artifact token usage cannot be negative.",
+        ));
+    }
     if !valid_transition(expected, next) {
         return Err(CommandError::new(
             "invalid_document_artifact_job_transition",
@@ -249,17 +257,21 @@ pub(crate) fn transition_document_artifact_job(
                 "UPDATE document_artifact_jobs
                  SET state = ?1,
                      completed_units = ?2,
+                     api_token_count = ?3,
+                     api_token_usage_complete = ?4,
                      started_at = CASE
                          WHEN started_at IS NULL AND ?1 IN ('preparing', 'generating', 'committing')
-                         THEN ?3 ELSE started_at END,
+                         THEN ?5 ELSE started_at END,
                      completed_at = CASE
                          WHEN ?1 IN ('succeeded', 'failed', 'interrupted', 'canceled')
-                         THEN ?3 ELSE NULL END,
-                     updated_at = ?3
-                 WHERE id = ?4 AND state = ?5 AND ?2 <= total_units",
+                         THEN ?5 ELSE NULL END,
+                     updated_at = ?5
+                 WHERE id = ?6 AND state = ?7 AND ?2 <= total_units",
                 params![
                     next.as_db(),
                     to_i64(completed_units),
+                    api_token_count,
+                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
                     now,
                     job_id,
                     expected.as_db(),
@@ -635,6 +647,47 @@ mod tests {
             DocumentArtifactJobState::Generating,
             DocumentArtifactJobState::Committing
         ));
+    }
+
+    #[test]
+    fn active_artifact_progress_persists_provider_reported_tokens() {
+        let database = Database::open_in_memory().unwrap();
+        let document_id = "d".repeat(32);
+        let job_id = "c".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch("PRAGMA foreign_keys = OFF;")
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_artifact_jobs (
+                             id, document_id, artifact_kind, provider_kind, model_id,
+                             profile_revision, credential_epoch, network_scope, state,
+                             total_units, completed_units, safe_error_code,
+                             safe_error_message, created_at, updated_at
+                         ) VALUES (?1, ?2, 'study_guide', 'openai', 'fixture',
+                                   1, 0, 'cloud', 'generating', 14, 1, '', '', 1, 1)",
+                        params![job_id, document_id],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let updated = transition_document_artifact_job(
+            &database,
+            &job_id,
+            DocumentArtifactJobState::Generating,
+            DocumentArtifactJobState::Generating,
+            2,
+            Some(12_345),
+            false,
+        )
+        .unwrap();
+        assert_eq!(updated.completed_units, 2);
+        assert_eq!(updated.api_token_count, Some(12_345));
+        assert!(!updated.api_token_usage_complete);
     }
 
     #[test]

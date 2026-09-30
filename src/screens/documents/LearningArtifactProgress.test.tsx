@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { DocumentSummary } from "../../ipc/documents";
 import type { DocumentArtifactJob } from "../../ipc/studyGuides";
-import { flashcardProgress, guideProgress, LearningArtifactProgressPanel } from "./LearningArtifactProgress";
+import {
+  flashcardProgress, guideProgress, guideUsageDetail, LearningArtifactProgressPanel,
+} from "./LearningArtifactProgress";
 
 const document = {
   lifecycleState: "ready", generatedDeckId: "b".repeat(32),
@@ -26,6 +28,24 @@ describe("durable learning-artifact progress", () => {
     expect(cards.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getAllByText("Complete")).toHaveLength(1);
     expect(screen.getByText("4 / 10 sections")).toBeTruthy();
+  });
+
+  it("shows provider-reported study-guide token usage while generation is active", () => {
+    const reporting = { ...job, apiTokenCount: 12_345 };
+    render(<LearningArtifactProgressPanel document={document} progress={null} guideJob={reporting}
+      guideStarting={true} readFailed={false} now={10} />);
+    expect(screen.getByText("Study Guide usage · 12,345 reported tokens so far")).toBeTruthy();
+    expect(guideUsageDetail({ ...job, apiTokenCount: null }))
+      .toBe("Study Guide usage · Awaiting provider usage");
+  });
+
+  it("distinguishes complete from partial terminal provider usage", () => {
+    expect(guideUsageDetail({
+      ...job, state: "succeeded", apiTokenCount: 20_000, apiTokenUsageComplete: true,
+    })).toBe("Study Guide usage · 20,000 tokens");
+    expect(guideUsageDetail({
+      ...job, state: "failed", apiTokenCount: 15_000, apiTokenUsageComplete: false,
+    })).toBe("Study Guide usage · 15,000+ reported tokens");
   });
 
   it("does not call a completed request count a published artifact", () => {

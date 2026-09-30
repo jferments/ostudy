@@ -75,6 +75,8 @@ pub(crate) async fn execute_study_guide_generation(
         DocumentArtifactJobState::Queued,
         DocumentArtifactJobState::Preparing,
         0,
+        None,
+        false,
     )?;
     let knowledge = async {
         let indices = execution
@@ -123,12 +125,15 @@ pub(crate) async fn execute_study_guide_generation(
         Ok(catalogs) => catalogs,
         Err(error) => {
             if error.code == "ai_request_canceled" {
+                let (usage, complete) = execution.task.usage_summary();
                 let _ = transition_document_artifact_job(
                     execution.database,
                     execution.job_id,
                     DocumentArtifactJobState::Preparing,
                     DocumentArtifactJobState::Canceled,
                     0,
+                    usage,
+                    complete,
                 );
             } else {
                 let (usage, complete) = execution.task.usage_summary();
@@ -152,12 +157,15 @@ pub(crate) async fn execute_study_guide_generation(
         &catalogs,
     );
     let cached = resolved.iter().filter(|section| section.is_some()).count();
+    let (usage, _) = execution.task.usage_summary();
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
         DocumentArtifactJobState::Preparing,
         DocumentArtifactJobState::Generating,
         cached,
+        usage,
+        false,
     )?;
 
     let missing = resolved
@@ -197,12 +205,15 @@ pub(crate) async fn execute_study_guide_generation(
     if let Err(error) = generation {
         let completed = resolved.iter().filter(|section| section.is_some()).count();
         if error.code == "ai_request_canceled" {
+            let (usage, complete) = execution.task.usage_summary();
             let _ = transition_document_artifact_job(
                 execution.database,
                 execution.job_id,
                 DocumentArtifactJobState::Generating,
                 DocumentArtifactJobState::Canceled,
                 completed,
+                usage,
+                complete,
             );
         } else {
             let (usage, complete) = execution.task.usage_summary();
@@ -263,12 +274,15 @@ pub(crate) async fn execute_study_guide_generation(
         }
         Err(error) => {
             if error.code == "ai_request_canceled" {
+                let (usage, complete) = execution.task.usage_summary();
                 let _ = transition_document_artifact_job(
                     execution.database,
                     execution.job_id,
                     DocumentArtifactJobState::Generating,
                     DocumentArtifactJobState::Canceled,
                     execution.plan.topics.len(),
+                    usage,
+                    complete,
                 );
             } else {
                 let (usage, complete) = execution.task.usage_summary();
@@ -284,12 +298,15 @@ pub(crate) async fn execute_study_guide_generation(
         }
     };
 
+    let (usage, _) = execution.task.usage_summary();
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
         DocumentArtifactJobState::Generating,
         DocumentArtifactJobState::Committing,
         execution.plan.topics.len(),
+        usage,
+        false,
     )?;
     let guide = match publish_document_study_guide_with_editorial(
         execution.database,
@@ -372,12 +389,15 @@ async fn generate_missing_topics(
                     );
                     resolved[index] = Some(section);
                     completed = completed.saturating_add(1);
+                    let (usage, _) = execution.task.usage_summary();
                     transition_document_artifact_job(
                         execution.database,
                         execution.job_id,
                         DocumentArtifactJobState::Generating,
                         DocumentArtifactJobState::Generating,
                         completed,
+                        usage,
+                        false,
                     )
                     .map(|_| ())
                 });
