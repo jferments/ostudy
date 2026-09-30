@@ -274,6 +274,19 @@ pub(crate) fn commit_upgrade(
     paths: &AppPaths,
     guard: &mut PendingRestoreGuard,
 ) -> Result<(), String> {
+    // Reconciliation can mutate the newly activated database. Validate its
+    // final state before deciding commit, not only the pre-activation candidate.
+    let active = read_database(paths.database_path())?;
+    let identity = validate_database(&active)?;
+    if identity
+        != (
+            crate::database::CURRENT_SCHEMA_LINEAGE.into(),
+            crate::database::CURRENT_SCHEMA_VERSION,
+        )
+    {
+        return Err("The reconciled library did not retain the target schema.".into());
+    }
+    drop(active);
     guard.try_commit()?;
     // The activation decision is already committed. Bookkeeping failure must
     // not misreport a rollback or invite another migration of committed data.
@@ -749,3 +762,7 @@ fn write_build(root: &Path, application: &str, identity: &(String, i64)) -> Resu
 #[cfg(test)]
 #[path = "checkpoint_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "checkpoint_commit_tests.rs"]
+mod commit_tests;
