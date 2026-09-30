@@ -10,6 +10,9 @@ use crate::{
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
+#[path = "startup/upgrade.rs"]
+mod upgrade;
+
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 const STARTUP_STAGE_PREFIX: &str = "OSTUDY_STARTUP_STAGE:";
 
@@ -83,6 +86,16 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     apply_main_window_icon(app);
     let mut pending_restore = library_backup::apply_pending_restore(&paths)
         .map_err(|error| startup_stage_error("restore_recovery", error))?;
+    if let Some(plan) = upgrade::inspect(paths.database_path())
+        .map_err(|error| startup_stage_error("upgrade_preflight", error))?
+    {
+        logging::info_target(
+            "app.startup",
+            "library_upgrade_required",
+            "Read-only admission identified a supported library upgrade.",
+            serde_json::json!(plan),
+        );
+    }
     let database = database::Database::open(paths.database_path())
         .map_err(|error| startup_stage_error("database_open", error))?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
