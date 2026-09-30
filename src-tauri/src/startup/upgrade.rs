@@ -28,7 +28,9 @@ pub(super) fn inspect(path: &Path) -> Result<Option<UpgradePlan>, String> {
         name.push(suffix);
         match fs::symlink_metadata(Path::new(&name)) {
             Ok(metadata) if metadata.file_type().is_file() => has_sidecar = true,
-            Ok(_) => return Err("Library journals must be regular files, not symbolic links.".into()),
+            Ok(_) => {
+                return Err("Library journals must be regular files, not symbolic links.".into())
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(format!("Could not inspect library journals: {error}")),
         }

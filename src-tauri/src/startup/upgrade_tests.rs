@@ -73,7 +73,10 @@ fn supported_baseline_produces_a_plan_without_changing_any_database_bytes() {
     assert_eq!(plan.source_version, 1);
     assert_eq!(plan.target_lineage, CURRENT_SCHEMA_LINEAGE);
     assert_eq!(plan.target_version, CURRENT_SCHEMA_VERSION);
-    assert_eq!(fs::read(fixture.database()).expect("retained bytes"), before);
+    assert_eq!(
+        fs::read(fixture.database()).expect("retained bytes"),
+        before
+    );
 }
 
 #[test]
@@ -103,7 +106,10 @@ fn future_schema_and_forged_ledger_are_rejected_without_relabelling() {
         drop(connection);
         let before = fs::read(fixture.database()).expect("original bytes");
         assert!(inspect(&fixture.database()).is_err());
-        assert_eq!(fs::read(fixture.database()).expect("retained bytes"), before);
+        assert_eq!(
+            fs::read(fixture.database()).expect("retained bytes"),
+            before
+        );
     }
 }
 
@@ -120,13 +126,15 @@ fn committed_wal_rows_participate_in_read_only_admission() {
             params!["0".repeat(64)],
         )
         .expect("committed WAL change");
-    assert!(fixture
-        .0
-        .join("library.sqlite3-wal")
-        .metadata()
-        .expect("WAL")
-        .len()
-        > 0);
+    assert!(
+        fixture
+            .0
+            .join("library.sqlite3-wal")
+            .metadata()
+            .expect("WAL")
+            .len()
+            > 0
+    );
     assert!(
         inspect(&fixture.database()).is_err(),
         "the read must not ignore the WAL ledger change"
@@ -163,6 +171,8 @@ fn a_database_symlink_cannot_redirect_upgrade_inspection() {
 fn orphaned_journals_never_create_a_replacement_empty_library() {
     let fixture = Fixture::new();
     fs::write(fixture.0.join("library.sqlite3-wal"), b"retained WAL").expect("journal");
-    assert!(inspect(&fixture.database()).expect_err("orphan").contains("missing"));
+    assert!(inspect(&fixture.database())
+        .expect_err("orphan")
+        .contains("missing"));
     assert!(!fixture.database().exists());
 }
