@@ -67,7 +67,10 @@ impl Layout {
         match version {
             1 => Ok(Self::Package),
             2 => Ok(Self::Checkpoint),
-            _ => Err("The library activation journal is unsupported. Recovery files were preserved.".into()),
+            _ => Err(
+                "The library activation journal is unsupported. Recovery files were preserved."
+                    .into(),
+            ),
         }
     }
 
@@ -480,7 +483,8 @@ pub(super) fn install_prepared_restore(
     if layout == Layout::Checkpoint {
         checkpoint::verify_checkpoint(&transaction)?;
     }
-    let original = layout.entries()
+    let original = layout
+        .entries()
         .iter()
         .map(|relative| {
             check_path(root, Path::new(relative))?;

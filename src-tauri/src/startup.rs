@@ -102,27 +102,38 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             "Read-only admission identified a supported library upgrade.",
             serde_json::json!(plan),
         );
-        pending_upgrade = Some(library_backup::checkpoint::begin_upgrade(
-            &paths,
-            &app.config().identifier,
-            (&plan.source_lineage, plan.source_version),
-            &mut |message| report_upgrade_progress(app, message),
-        ).map_err(|error| startup_stage_error("upgrade_candidate", error))?);
+        pending_upgrade = Some(
+            library_backup::checkpoint::begin_upgrade(
+                &paths,
+                &app.config().identifier,
+                (&plan.source_lineage, plan.source_version),
+                &mut |message| report_upgrade_progress(app, message),
+            )
+            .map_err(|error| startup_stage_error("upgrade_candidate", error))?,
+        );
     }
     let upgrading = pending_upgrade.is_some();
     let stage = |normal, during_upgrade| if upgrading { during_upgrade } else { normal };
-    let database = database::Database::open(paths.database_path())
-        .map_err(|error| startup_stage_error(stage("database_open", "upgrade_database_open"), error))?;
+    let database = database::Database::open(paths.database_path()).map_err(|error| {
+        startup_stage_error(stage("database_open", "upgrade_database_open"), error)
+    })?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
-    platform::install_global(platform_runtime.clone())
-        .map_err(|error| startup_stage_error(stage("platform_runtime", "upgrade_platform_runtime"), error))?;
-    let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
-        .map_err(|error| startup_stage_error(stage("ai_runtime", "upgrade_ai_runtime"), error))?;
+    platform::install_global(platform_runtime.clone()).map_err(|error| {
+        startup_stage_error(stage("platform_runtime", "upgrade_platform_runtime"), error)
+    })?;
+    let ai_runtime =
+        AiRuntimeState::new(platform_runtime.secure_secret_store()).map_err(|error| {
+            startup_stage_error(stage("ai_runtime", "upgrade_ai_runtime"), error)
+        })?;
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
         .map_err(|error| startup_stage_error(stage("pdf_runtime", "upgrade_pdf_runtime"), error))?;
 
-    reconcile_library(&database, &paths)
-        .map_err(|error| startup_stage_error(stage("reconciliation", "upgrade_reconciliation"), error.message))?;
+    reconcile_library(&database, &paths).map_err(|error| {
+        startup_stage_error(
+            stage("reconciliation", "upgrade_reconciliation"),
+            error.message,
+        )
+    })?;
     if let Some(restore) = pending_restore.as_mut() {
         restore
             .try_commit()
@@ -135,10 +146,15 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             .map_err(|error| startup_stage_error("upgrade_commit", error))?;
         report_upgrade_progress(app, "Library updated; recovery checkpoint retained.");
     }
-    if let Err(error) = library_backup::checkpoint::record_current_build(&paths, &app.config().identifier) {
-        logging::warn_target("library.upgrade", "library_build_receipt_unavailable",
+    if let Err(error) =
+        library_backup::checkpoint::record_current_build(&paths, &app.config().identifier)
+    {
+        logging::warn_target(
+            "library.upgrade",
+            "library_build_receipt_unavailable",
             "The library opened, but its nonsecret build receipt could not be recorded.",
-            serde_json::json!({"error": error}));
+            serde_json::json!({"error": error}),
+        );
     }
     #[cfg(desktop)]
     apply_main_window_profile(app, desktop_profile);
@@ -210,7 +226,12 @@ fn report_upgrade_progress(app: &tauri::AppHandle, message: &str) {
         let _ = window.set_title(&format!("oStudy — {message}"));
     }
     let _ = app.emit("ostudy-library-upgrade-progress", message);
-    logging::info_target("library.upgrade", "library_upgrade_progress", message, serde_json::json!({}));
+    logging::info_target(
+        "library.upgrade",
+        "library_upgrade_progress",
+        message,
+        serde_json::json!({}),
+    );
 }
 
 fn startup_stage_error(stage: &'static str, error: impl std::fmt::Display) -> io::Error {
@@ -322,9 +343,12 @@ fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
     if let Some(stage) = startup_stage.filter(|stage| {
         stage.starts_with("upgrade_") && !cause.starts_with(database::PRE_PUBLIC_RESET_PREFIX)
     }) {
-        logging::error_target("library.upgrade", "library_upgrade_blocked",
+        logging::error_target(
+            "library.upgrade",
+            "library_upgrade_blocked",
             "The library upgrade or recovery stopped before ordinary commands were admitted.",
-            serde_json::json!({"startupStage": stage}));
+            serde_json::json!({"startupStage": stage}),
+        );
         eprintln!("oStudy library update blocked: {error}");
         let _ = logging::flush(Duration::from_millis(500));
         // These stages are reached only after this process acquired the library

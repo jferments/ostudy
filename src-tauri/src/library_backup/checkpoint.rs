@@ -8,7 +8,10 @@ use super::{
     new_transaction, sync, sync_tree, transaction_committed, write_new_file, AppPaths, Database,
     Layout, Path, PathBuf, PendingRestoreGuard, PreparedRestore, JOURNAL, TRANSACTIONS,
 };
-use rusqlite::{backup::{Backup, StepResult}, Connection, OpenFlags};
+use rusqlite::{
+    backup::{Backup, StepResult},
+    Connection, OpenFlags,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{fs, io::Read};
 
@@ -32,7 +35,9 @@ impl BuildIdentity {
             version: env!("CARGO_PKG_VERSION").into(),
             commit: option_env!("QUALIFIED_SHA")
                 .or(option_env!("OSTUDY_BUILD_SHA"))
-                .filter(|value| value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .filter(|value| {
+                    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
                 .map(str::to_string),
         }
     }
@@ -87,7 +92,9 @@ pub(crate) fn has_intent(paths: &AppPaths) -> Result<bool, String> {
 /// Called after journal recovery but before any Database::open. A failed or
 /// interrupted upgrade is a user decision, not a request to run it again.
 pub(crate) fn admit_startup(paths: &AppPaths) -> Result<(), String> {
-    let Some(intent) = read_intent(paths)? else { return Ok(()); };
+    let Some(intent) = read_intent(paths)? else {
+        return Ok(());
+    };
     if intent.kind == IntentKind::Upgrade
         && transaction_committed(paths.app_data_dir(), &intent.operation_id)?
     {
@@ -103,10 +110,17 @@ pub(crate) fn begin_upgrade(
     expected_source: (&str, i64),
     progress: &mut dyn FnMut(&str),
 ) -> Result<PendingRestoreGuard, String> {
-    let prepared = prepare_upgrade_with(paths, application, expected_source, progress, None, |path| {
-        let database = Database::open(path)?;
-        settle_candidate(&database)
-    })?;
+    let prepared = prepare_upgrade_with(
+        paths,
+        application,
+        expected_source,
+        progress,
+        None,
+        |path| {
+            let database = Database::open(path)?;
+            settle_candidate(&database)
+        },
+    )?;
     progress("Activating the verified library update…");
     install_prepared_restore(paths, prepared)
 }
@@ -119,7 +133,9 @@ fn prepare_upgrade_with<F>(
     page_limit: Option<i64>,
     migrate: F,
 ) -> Result<PreparedRestore, String>
-where F: FnOnce(&Path) -> Result<(), String> {
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
     admit_startup(paths)?;
     let root = paths.app_data_dir();
     ensure_no_journal(root)?;
@@ -127,12 +143,23 @@ where F: FnOnce(&Path) -> Result<(), String> {
     let source = read_database(paths.database_path())?;
     let identity = validate_database(&source)?;
     if identity.0 != expected_source.0 || identity.1 != expected_source.1 {
-        return Err("The library changed after upgrade planning. No migration was attempted.".into());
+        return Err(
+            "The library changed after upgrade planning. No migration was attempted.".into(),
+        );
     }
     let source_revision = data_version(&source)?;
     let transaction = new_transaction(root)?;
     let operation_id = operation_id(&transaction)?;
-    write_intent(paths, &transaction, &Intent { version: 1, operation_id: operation_id.clone(), kind: IntentKind::Upgrade }, false)?;
+    write_intent(
+        paths,
+        &transaction,
+        &Intent {
+            version: 1,
+            operation_id: operation_id.clone(),
+            kind: IntentKind::Upgrade,
+        },
+        false,
+    )?;
 
     progress("Creating a recovery checkpoint…");
     let checkpoint = transaction.join("checkpoint");
@@ -202,7 +229,10 @@ where F: FnOnce(&Path) -> Result<(), String> {
     prepared_checkpoint(root, transaction)
 }
 
-pub(crate) fn commit_upgrade(paths: &AppPaths, guard: &mut PendingRestoreGuard) -> Result<(), String> {
+pub(crate) fn commit_upgrade(
+    paths: &AppPaths,
+    guard: &mut PendingRestoreGuard,
+) -> Result<(), String> {
     guard.try_commit()?;
     // The activation decision is already committed. Bookkeeping failure must
     // not misreport a rollback or invite another migration of committed data.
@@ -211,7 +241,9 @@ pub(crate) fn commit_upgrade(paths: &AppPaths, guard: &mut PendingRestoreGuard) 
             return Ok(());
         };
         if intent.operation_id != guard.operation_id() {
-            return Err("The committed library update has a different recovery intent.".to_string());
+            return Err(
+                "The committed library update has a different recovery intent.".to_string(),
+            );
         }
         archive_intent(paths, &intent, "completed-intent.json")
     })();
@@ -230,7 +262,8 @@ pub(crate) fn commit_upgrade(paths: &AppPaths, guard: &mut PendingRestoreGuard) 
 /// keeping the old attempt and all checkpoint/candidate bytes for inspection.
 pub(crate) fn allow_retry(paths: &AppPaths, expected_operation: &str) -> Result<(), String> {
     ensure_no_journal(paths.app_data_dir())?;
-    let intent = read_intent(paths)?.ok_or_else(|| "No pending library update exists.".to_string())?;
+    let intent =
+        read_intent(paths)?.ok_or_else(|| "No pending library update exists.".to_string())?;
     if intent.operation_id != expected_operation {
         return Err("The recovery operation changed. No library was replaced.".into());
     }
@@ -240,9 +273,14 @@ pub(crate) fn allow_retry(paths: &AppPaths, expected_operation: &str) -> Result<
 /// Restore old bytes, not reverse SQL. The existing activation owner retains
 /// the replaced current library too. The Revert intent deliberately survives
 /// success so this new executable cannot immediately migrate the old copy again.
-pub(crate) fn restore_checkpoint(paths: &AppPaths, expected_operation: &str, progress: &mut dyn FnMut(&str)) -> Result<(), String> {
+pub(crate) fn restore_checkpoint(
+    paths: &AppPaths,
+    expected_operation: &str,
+    progress: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     ensure_no_journal(paths.app_data_dir())?;
-    let intent = read_intent(paths)?.ok_or_else(|| "No pending library update exists.".to_string())?;
+    let intent =
+        read_intent(paths)?.ok_or_else(|| "No pending library update exists.".to_string())?;
     if intent.operation_id != expected_operation {
         return Err("The recovery operation changed. No library was replaced.".into());
     }
@@ -264,12 +302,24 @@ pub(crate) fn restore_checkpoint(paths: &AppPaths, expected_operation: &str, pro
     copy_tree(&checkpoint, &transaction.join("candidate"))?;
     sync_tree(&transaction)?;
     let prepared = prepared_checkpoint(paths.app_data_dir(), transaction.clone())?;
-    write_intent(paths, &transaction, &Intent { version: 1, operation_id, kind: IntentKind::Revert }, true)?;
+    write_intent(
+        paths,
+        &transaction,
+        &Intent {
+            version: 1,
+            operation_id,
+            kind: IntentKind::Revert,
+        },
+        true,
+    )?;
     progress("Restoring the previous library…");
     let mut guard = install_prepared_restore(paths, prepared)?;
     let restored = read_database(paths.database_path())?;
     if validate_database(&restored)? != (manifest.source_lineage, manifest.source_schema) {
-        return Err("The restored checkpoint failed schema validation. Recovery files were preserved.".into());
+        return Err(
+            "The restored checkpoint failed schema validation. Recovery files were preserved."
+                .into(),
+        );
     }
     drop(restored);
     guard.try_commit()?;
@@ -279,7 +329,14 @@ pub(crate) fn restore_checkpoint(paths: &AppPaths, expected_operation: &str, pro
 /// Only nonsecret build evidence. A missing or malformed old receipt is unknown,
 /// never inferred from the version of the binary that is opening it now.
 pub(crate) fn record_current_build(paths: &AppPaths, application: &str) -> Result<(), String> {
-    write_build(paths.app_data_dir(), application, &(crate::database::CURRENT_SCHEMA_LINEAGE.into(), crate::database::CURRENT_SCHEMA_VERSION))
+    write_build(
+        paths.app_data_dir(),
+        application,
+        &(
+            crate::database::CURRENT_SCHEMA_LINEAGE.into(),
+            crate::database::CURRENT_SCHEMA_VERSION,
+        ),
+    )
 }
 
 pub(crate) struct RecoveryDetails {
@@ -290,7 +347,9 @@ pub(crate) struct RecoveryDetails {
 }
 
 pub(crate) fn recovery_details(paths: &AppPaths) -> Result<Option<RecoveryDetails>, String> {
-    let Some(intent) = read_intent(paths)? else { return Ok(None); };
+    let Some(intent) = read_intent(paths)? else {
+        return Ok(None);
+    };
     let transaction = transaction_path(paths, &intent.operation_id)?;
     check_path(&transaction, Path::new(MANIFEST))?;
     check_path(paths.app_data_dir(), Path::new(JOURNAL))?;
@@ -318,10 +377,13 @@ pub(super) fn verify_checkpoint(transaction: &Path) -> Result<Manifest, String> 
     check_path(transaction, Path::new(MANIFEST))?;
     check_path(transaction, Path::new("checkpoint"))?;
     let manifest: Manifest = read_json(&transaction.join(MANIFEST))?;
-    if manifest.version != 1 || manifest.operation_id != operation_id(transaction)?
+    if manifest.version != 1
+        || manifest.operation_id != operation_id(transaction)?
         || manifest.checkpoint_sha256 != hash_tree(&transaction.join("checkpoint"))?
     {
-        return Err("The recovery checkpoint changed or is unsupported. All copies were preserved.".into());
+        return Err(
+            "The recovery checkpoint changed or is unsupported. All copies were preserved.".into(),
+        );
     }
     let database = read_database(&transaction.join("checkpoint/library.sqlite3"))?;
     if validate_database(&database)? != (manifest.source_lineage.clone(), manifest.source_schema) {
@@ -330,75 +392,135 @@ pub(super) fn verify_checkpoint(transaction: &Path) -> Result<Manifest, String> 
     Ok(manifest)
 }
 
-fn snapshot_database(source: &Connection, destination: &Path, page_limit: Option<i64>) -> Result<(), String> {
+fn snapshot_database(
+    source: &Connection,
+    destination: &Path,
+    page_limit: Option<i64>,
+) -> Result<(), String> {
     let mut target = Connection::open(destination).map_err(|error| error.to_string())?;
     target.execute_batch("PRAGMA journal_mode = DELETE; PRAGMA synchronous = FULL; PRAGMA cache_size = -16384; PRAGMA temp_store = FILE; PRAGMA mmap_size = 0;")
         .map_err(|error| error.to_string())?;
     if let Some(limit) = page_limit {
-        target.pragma_update(None, "max_page_count", limit).map_err(|error| error.to_string())?;
+        target
+            .pragma_update(None, "max_page_count", limit)
+            .map_err(|error| error.to_string())?;
     }
     {
         let revision = data_version(source)?;
         let backup = Backup::new(source, &mut target).map_err(|error| error.to_string())?;
         loop {
             if data_version(source)? != revision {
-                return Err("Another writer changed the library during its checkpoint copy.".into());
+                return Err(
+                    "Another writer changed the library during its checkpoint copy.".into(),
+                );
             }
-            match backup.step(128).map_err(|error| format!("Could not create the recovery checkpoint: {error}"))? {
+            match backup
+                .step(128)
+                .map_err(|error| format!("Could not create the recovery checkpoint: {error}"))?
+            {
                 StepResult::Done => break,
                 StepResult::More => {}
-                _ => return Err("The library is busy. Close other library users before retrying the update.".into()),
+                _ => return Err(
+                    "The library is busy. Close other library users before retrying the update."
+                        .into(),
+                ),
             }
         }
     }
-    let (busy, _, _): (i64, i64, i64) = target.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+    let (busy, _, _): (i64, i64, i64) = target
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
         .map_err(|error| error.to_string())?;
-    let mode: String = target.query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0)).map_err(|error| error.to_string())?;
-    if busy != 0 || mode != "delete" { return Err("The recovery snapshot could not settle its SQLite journal.".into()); }
+    let mode: String = target
+        .query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if busy != 0 || mode != "delete" {
+        return Err("The recovery snapshot could not settle its SQLite journal.".into());
+    }
     target.close().map_err(|(_, error)| error.to_string())?;
-    fs::File::open(destination).and_then(|file| file.sync_all()).map_err(io_error)
+    fs::File::open(destination)
+        .and_then(|file| file.sync_all())
+        .map_err(io_error)
 }
 
 fn settle_candidate(database: &Database) -> Result<(), String> {
-    database.with_connection(|connection| {
-        let (busy, _, _): (i64, i64, i64) = connection.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-            .map_err(crate::error::CommandError::database)?;
-        if busy != 0 {
-            return Err(crate::error::CommandError::new("upgrade_candidate_busy", "The private migration candidate could not be checkpointed."));
-        }
-        let mode: String = connection.query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0))
-            .map_err(crate::error::CommandError::database)?;
-        if mode != "delete" {
-            return Err(crate::error::CommandError::new("upgrade_candidate_journal", "The private candidate still requires a journal."));
-        }
-        Ok(())
-    }).map_err(|error| error.message)
+    database
+        .with_connection(|connection| {
+            let (busy, _, _): (i64, i64, i64) = connection
+                .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .map_err(crate::error::CommandError::database)?;
+            if busy != 0 {
+                return Err(crate::error::CommandError::new(
+                    "upgrade_candidate_busy",
+                    "The private migration candidate could not be checkpointed.",
+                ));
+            }
+            let mode: String = connection
+                .query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0))
+                .map_err(crate::error::CommandError::database)?;
+            if mode != "delete" {
+                return Err(crate::error::CommandError::new(
+                    "upgrade_candidate_journal",
+                    "The private candidate still requires a journal.",
+                ));
+            }
+            Ok(())
+        })
+        .map_err(|error| error.message)
 }
 
 fn validate_database(connection: &Connection) -> Result<(String, i64), String> {
     let identity = crate::database::schema_identity(connection).map_err(|error| error.message)?;
-    let integrity: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0)).map_err(|error| error.to_string())?;
-    let broken: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)", [], |row| row.get(0)).map_err(|error| error.to_string())?;
-    if integrity != "ok" || broken { return Err("The library failed integrity or relationship validation.".into()); }
+    let integrity: String = connection
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let broken: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if integrity != "ok" || broken {
+        return Err("The library failed integrity or relationship validation.".into());
+    }
     Ok(identity)
 }
 
 fn read_database(path: &Path) -> Result<Connection, String> {
-    if !fs::symlink_metadata(path).map_err(io_error)?.file_type().is_file() {
+    if !fs::symlink_metadata(path)
+        .map_err(io_error)?
+        .file_type()
+        .is_file()
+    {
         return Err("A checkpoint database must be a regular file.".into());
     }
-    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|error| error.to_string())
+    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())
 }
 
 fn data_version(connection: &Connection) -> Result<i64, String> {
-    connection.query_row("PRAGMA data_version", [], |row| row.get(0)).map_err(|error| error.to_string())
+    connection
+        .query_row("PRAGMA data_version", [], |row| row.get(0))
+        .map_err(|error| error.to_string())
 }
 
 fn validate_source_paths(root: &Path) -> Result<(), String> {
-    for relative in super::UPGRADE_ENTRIES { check_path(root, Path::new(relative))?; }
-    for legacy in ["library.sqlite3.pre-restore", "assets.pre-restore", "documents.pre-restore"] {
+    for relative in super::UPGRADE_ENTRIES {
+        check_path(root, Path::new(relative))?;
+    }
+    for legacy in [
+        "library.sqlite3.pre-restore",
+        "assets.pre-restore",
+        "documents.pre-restore",
+    ] {
         if fs::symlink_metadata(root.join(legacy)).is_ok() {
-            return Err("A previous unjournaled recovery needs attention. Its files were preserved.".into());
+            return Err(
+                "A previous unjournaled recovery needs attention. Its files were preserved.".into(),
+            );
         }
     }
     Ok(())
@@ -406,50 +528,85 @@ fn validate_source_paths(root: &Path) -> Result<(), String> {
 
 fn copy_managed_directory(source: &Path, destination: &Path, relative: &str) -> Result<(), String> {
     let source = source.join(relative);
-    if source.exists() { copy_tree(&source, &destination.join(relative)) }
-    else { fs::create_dir(destination.join(relative)).map_err(io_error) }
+    if source.exists() {
+        copy_tree(&source, &destination.join(relative))
+    } else {
+        fs::create_dir(destination.join(relative)).map_err(io_error)
+    }
 }
 
 fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
-    if !fs::symlink_metadata(source).map_err(io_error)?.file_type().is_dir() {
+    if !fs::symlink_metadata(source)
+        .map_err(io_error)?
+        .file_type()
+        .is_dir()
+    {
         return Err("Checkpoint trees must be directories, not symbolic links.".into());
     }
     fs::create_dir(destination).map_err(io_error)?;
     for entry in fs::read_dir(source).map_err(io_error)? {
         let entry = entry.map_err(io_error)?;
         let kind = entry.file_type().map_err(io_error)?;
-        if kind.is_dir() { copy_tree(&entry.path(), &destination.join(entry.file_name()))?; }
-        else if kind.is_file() { copy_verified_file(&entry.path(), &destination.join(entry.file_name()))?; }
-        else { return Err("Recovery checkpoints refuse symbolic links and special files.".into()); }
+        if kind.is_dir() {
+            copy_tree(&entry.path(), &destination.join(entry.file_name()))?;
+        } else if kind.is_file() {
+            copy_verified_file(&entry.path(), &destination.join(entry.file_name()))?;
+        } else {
+            return Err("Recovery checkpoints refuse symbolic links and special files.".into());
+        }
     }
     sync(destination)?;
-    if hash_tree(source)? != hash_tree(destination)? { return Err("Checkpoint copy verification failed.".into()); }
+    if hash_tree(source)? != hash_tree(destination)? {
+        return Err("Checkpoint copy verification failed.".into());
+    }
     Ok(())
 }
 
 fn copy_verified_file(source: &Path, destination: &Path) -> Result<(), String> {
-    if !fs::symlink_metadata(source).map_err(io_error)?.file_type().is_file() {
+    if !fs::symlink_metadata(source)
+        .map_err(io_error)?
+        .file_type()
+        .is_file()
+    {
         return Err("Recovery checkpoints copy only regular files.".into());
     }
     super::copy_and_sync(source, destination).map_err(|error| error.message)?;
-    if hash_file(source)? != hash_file(destination)? { return Err("Checkpoint file verification failed.".into()); }
+    if hash_file(source)? != hash_file(destination)? {
+        return Err("Checkpoint file verification failed.".into());
+    }
     Ok(())
 }
 
 fn read_intent(paths: &AppPaths) -> Result<Option<Intent>, String> {
-    if !has_intent(paths)? { return Ok(None); }
+    if !has_intent(paths)? {
+        return Ok(None);
+    }
     let intent: Intent = read_json(&paths.app_data_dir().join(INTENT))?;
-    if intent.version != 1 { return Err("The library upgrade intent is unsupported. Preserve its recovery files.".into()); }
+    if intent.version != 1 {
+        return Err(
+            "The library upgrade intent is unsupported. Preserve its recovery files.".into(),
+        );
+    }
     transaction_path(paths, &intent.operation_id)?;
     Ok(Some(intent))
 }
 
-fn write_intent(paths: &AppPaths, transaction: &Path, intent: &Intent, replace: bool) -> Result<(), String> {
-    if has_intent(paths)? && !replace { return Err("A library update already needs recovery.".into()); }
+fn write_intent(
+    paths: &AppPaths,
+    transaction: &Path,
+    intent: &Intent,
+    replace: bool,
+) -> Result<(), String> {
+    if has_intent(paths)? && !replace {
+        return Err("A library update already needs recovery.".into());
+    }
     // Retain an immutable copy before publishing/replacing the startup intent.
     write_json(&transaction.join("intent.json"), intent)?;
     write_json(&transaction.join("intent.pending.json"), intent)?;
-    move_synced(&transaction.join("intent.pending.json"), &paths.app_data_dir().join(INTENT))
+    move_synced(
+        &transaction.join("intent.pending.json"),
+        &paths.app_data_dir().join(INTENT),
+    )
 }
 
 fn archive_intent(paths: &AppPaths, intent: &Intent, name: &str) -> Result<(), String> {
@@ -460,29 +617,40 @@ fn archive_intent(paths: &AppPaths, intent: &Intent, name: &str) -> Result<(), S
         if hash_file(&destination)? != hash_file(&paths.app_data_dir().join(INTENT))? {
             return Err("Conflicting library update intents were retained.".into());
         }
-        fs::File::open(&destination).and_then(|file| file.sync_all()).map_err(io_error)?;
+        fs::File::open(&destination)
+            .and_then(|file| file.sync_all())
+            .map_err(io_error)?;
         sync(&transaction)?;
         fs::remove_file(paths.app_data_dir().join(INTENT)).map_err(io_error)?;
         sync(paths.app_data_dir())
-    } else { move_synced(&paths.app_data_dir().join(INTENT), &destination) }
+    } else {
+        move_synced(&paths.app_data_dir().join(INTENT), &destination)
+    }
 }
 
 fn transaction_path(paths: &AppPaths, operation: &str) -> Result<PathBuf, String> {
-    crate::util::validate_entity_id(operation, "upgrade operation").map_err(|error| error.message)?;
+    crate::util::validate_entity_id(operation, "upgrade operation")
+        .map_err(|error| error.message)?;
     let relative = Path::new(TRANSACTIONS).join(operation);
     check_path(paths.app_data_dir(), &relative)?;
     Ok(paths.app_data_dir().join(relative))
 }
 
 fn operation_id(transaction: &Path) -> Result<String, String> {
-    let value = transaction.file_name().and_then(|value| value.to_str()).ok_or_else(|| "Invalid checkpoint operation directory.".to_string())?;
-    crate::util::validate_entity_id(value, "checkpoint operation").map_err(|error| error.message)?;
+    let value = transaction
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Invalid checkpoint operation directory.".to_string())?;
+    crate::util::validate_entity_id(value, "checkpoint operation")
+        .map_err(|error| error.message)?;
     Ok(value.into())
 }
 
 fn ensure_no_journal(root: &Path) -> Result<(), String> {
     check_path(root, Path::new(JOURNAL))?;
-    if root.join(JOURNAL).exists() { return Err("Recover the interrupted library activation before another operation.".into()); }
+    if root.join(JOURNAL).exists() {
+        return Err("Recover the interrupted library activation before another operation.".into());
+    }
     Ok(())
 }
 
@@ -492,9 +660,16 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
         return Err("Checkpoint metadata is not a bounded regular file.".into());
     }
     let mut bytes = Vec::new();
-    fs::File::open(path).map_err(io_error)?.take(MAX_METADATA_BYTES + 1).read_to_end(&mut bytes).map_err(io_error)?;
-    if bytes.len() as u64 > MAX_METADATA_BYTES { return Err("Checkpoint metadata exceeded its safe size.".into()); }
-    serde_json::from_slice(&bytes).map_err(|_| "Checkpoint metadata is invalid. Preserve recovery files.".into())
+    fs::File::open(path)
+        .map_err(io_error)?
+        .take(MAX_METADATA_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(io_error)?;
+    if bytes.len() as u64 > MAX_METADATA_BYTES {
+        return Err("Checkpoint metadata exceeded its safe size.".into());
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|_| "Checkpoint metadata is invalid. Preserve recovery files.".into())
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -504,13 +679,25 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
 
 fn read_build(root: &Path, application: &str, identity: &(String, i64)) -> Option<BuildIdentity> {
     let record: BuildRecord = read_json(&root.join(BUILD)).ok()?;
-    (record.version == 1 && record.application == application && record.lineage == identity.0 && record.schema == identity.1).then_some(record.build)
+    (record.version == 1
+        && record.application == application
+        && record.lineage == identity.0
+        && record.schema == identity.1)
+        .then_some(record.build)
 }
 
 fn write_build(root: &Path, application: &str, identity: &(String, i64)) -> Result<(), String> {
     check_path(root, Path::new(BUILD))?;
-    let record = BuildRecord { version: 1, application: application.into(), lineage: identity.0.clone(), schema: identity.1, build: BuildIdentity::current() };
-    if read_json::<BuildRecord>(&root.join(BUILD)).ok().as_ref() == Some(&record) { return Ok(()); }
+    let record = BuildRecord {
+        version: 1,
+        application: application.into(),
+        lineage: identity.0.clone(),
+        schema: identity.1,
+        build: BuildIdentity::current(),
+    };
+    if read_json::<BuildRecord>(&root.join(BUILD)).ok().as_ref() == Some(&record) {
+        return Ok(());
+    }
     let temporary = root.join("library-build.pending.json");
     check_path(root, Path::new("library-build.pending.json"))?;
     // Unknown remnants are evidence; never overwrite them to hide interrupted IO.

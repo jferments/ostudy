@@ -13,7 +13,9 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
     }
-    let details = app.path().app_data_dir()
+    let details = app
+        .path()
+        .app_data_dir()
         .map_err(|error| error.to_string())
         .and_then(|root| AppPaths::new(root).map_err(|error| error.to_string()))
         .and_then(|paths| checkpoint::recovery_details(&paths));
@@ -33,7 +35,11 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
                 prompt_retry(&handle, details.operation_id, message);
             }
         }
-        Ok(Some(details)) => close_message(app, "Library recovery is incomplete", recovery_message(&details)),
+        Ok(Some(details)) => close_message(
+            app,
+            "Library recovery is incomplete",
+            recovery_message(&details),
+        ),
         Ok(None) => {
             let message = if stage == "upgrade_preflight" {
                 "The installed version could not safely admit this library. No library migration was attempted. Use a compatible oStudy version and preserve the library and its journals. Local diagnostics contain the failed stage."
@@ -43,8 +49,12 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
             close_message(app, "Library update could not start", message.into());
         }
         Err(error) => {
-            crate::logging::error_target("library.upgrade", "upgrade_recovery_metadata_invalid",
-                "The library recovery UI could not validate its operation metadata.", serde_json::json!({"error": error}));
+            crate::logging::error_target(
+                "library.upgrade",
+                "upgrade_recovery_metadata_invalid",
+                "The library recovery UI could not validate its operation metadata.",
+                serde_json::json!({"error": error}),
+            );
             close_message(app, "Library recovery needs inspection", "Recovery metadata could not be verified. All files were preserved. Do not delete journals or reset the library. Inspect local diagnostics before retrying.".into());
         }
     }
@@ -101,15 +111,23 @@ fn run_recovery(app: &tauri::AppHandle, operation: String, restore: bool) {
     let worker = app.clone();
     tauri::async_runtime::spawn(async move {
         let result = tauri::async_runtime::spawn_blocking(move || {
-            let root = worker.path().app_data_dir().map_err(|error| error.to_string())?;
+            let root = worker
+                .path()
+                .app_data_dir()
+                .map_err(|error| error.to_string())?;
             let paths = AppPaths::new(root).map_err(|error| error.to_string())?;
             if restore {
-                if let Some(window) = worker.get_webview_window("main") { let _ = window.show(); }
-                checkpoint::restore_checkpoint(&paths, &operation, &mut |message| super::report_upgrade_progress(&worker, message))
+                if let Some(window) = worker.get_webview_window("main") {
+                    let _ = window.show();
+                }
+                checkpoint::restore_checkpoint(&paths, &operation, &mut |message| {
+                    super::report_upgrade_progress(&worker, message)
+                })
             } else {
                 checkpoint::allow_retry(&paths, &operation)
             }
-        }).await;
+        })
+        .await;
         match result {
             Ok(Ok(())) if restore => close_message(&handle, "Previous library restored", "The pre-update library was restored and the replaced library was preserved. oStudy will close now. Install the compatible previous application package before using this library; this new executable will not silently re-upgrade it.".into()),
             Ok(Ok(())) => close_message(&handle, "Retry allowed", "The failed attempt and checkpoint were retained. Close this dialog, then reopen oStudy when you are ready for a new upgrade attempt.".into()),
@@ -129,8 +147,12 @@ fn run_recovery(app: &tauri::AppHandle, operation: String, restore: bool) {
 
 fn close_message(app: &tauri::AppHandle, title: &str, message: String) {
     let handle = app.clone();
-    app.dialog().message(message).title(title).kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::Ok).show(move |_| handle.exit(STARTUP_CONFIGURATION_EXIT_CODE));
+    app.dialog()
+        .message(message)
+        .title(title)
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::Ok)
+        .show(move |_| handle.exit(STARTUP_CONFIGURATION_EXIT_CODE));
 }
 
 #[cfg(test)]
@@ -139,7 +161,12 @@ mod tests {
 
     #[test]
     fn unresolved_activation_never_claims_that_the_original_is_already_restored() {
-        let details = checkpoint::RecoveryDetails { operation_id: "a".repeat(32), checkpoint_available: true, previous_restored: false, activation_unresolved: true };
+        let details = checkpoint::RecoveryDetails {
+            operation_id: "a".repeat(32),
+            checkpoint_available: true,
+            previous_restored: false,
+            activation_unresolved: true,
+        };
         let message = recovery_message(&details);
         assert!(message.contains("journal recovery"));
         assert!(message.contains("Do not install an older binary"));
@@ -148,7 +175,12 @@ mod tests {
 
     #[test]
     fn restored_checkpoint_copy_distinguishes_library_and_executable_downgrade() {
-        let details = checkpoint::RecoveryDetails { operation_id: "b".repeat(32), checkpoint_available: true, previous_restored: true, activation_unresolved: false };
+        let details = checkpoint::RecoveryDetails {
+            operation_id: "b".repeat(32),
+            checkpoint_available: true,
+            previous_restored: true,
+            activation_unresolved: false,
+        };
         let message = recovery_message(&details);
         assert!(message.contains("has been restored"));
         assert!(message.contains("compatible previous application package"));
