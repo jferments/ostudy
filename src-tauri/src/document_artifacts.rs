@@ -271,7 +271,11 @@ pub(crate) fn transition_document_artifact_job(
                     next.as_db(),
                     to_i64(completed_units),
                     api_token_count,
-                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
+                    if api_token_usage_complete {
+                        1_i64
+                    } else {
+                        0_i64
+                    },
                     now,
                     job_id,
                     expected.as_db(),
