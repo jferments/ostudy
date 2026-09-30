@@ -112,7 +112,8 @@ fn admit_startup_for_schema(paths: &AppPaths, lineage: &str, version: i64) -> Re
             let transaction = transaction_path(paths, &intent.operation_id)?;
             let manifest = verify_checkpoint(&transaction)?;
             let expected = (manifest.source_lineage.clone(), manifest.source_schema);
-            manifest.source_lineage == lineage && manifest.source_schema == version
+            manifest.source_lineage == lineage
+                && manifest.source_schema == version
                 && validate_database(&read_database(paths.database_path())?)? == expected
         } else {
             true
@@ -168,9 +169,10 @@ where
     let root = paths.app_data_dir();
     ensure_no_journal(root)?;
     validate_source_paths(root)?;
-    let source_presence = MANAGED.iter().map(|relative| {
-        root.join(relative).try_exists().map_err(io_error)
-    }).collect::<Result<Vec<_>, _>>()?;
+    let source_presence = MANAGED
+        .iter()
+        .map(|relative| root.join(relative).try_exists().map_err(io_error))
+        .collect::<Result<Vec<_>, _>>()?;
     let source = read_database(paths.database_path())?;
     let identity = validate_database(&source)?;
     if identity.0 != expected_source.0 || identity.1 != expected_source.1 {
@@ -236,7 +238,12 @@ where
     if target != (manifest.target_lineage.clone(), manifest.target_schema) {
         return Err("The private library did not reach the required target schema.".into());
     }
-    preservation::verify(&source, &migrated, &manifest.source_lineage, manifest.source_schema)?;
+    preservation::verify(
+        &source,
+        &migrated,
+        &manifest.source_lineage,
+        manifest.source_schema,
+    )?;
     drop(migrated);
     // Schema migration may change the database, never source document bytes.
     for relative in MANAGED {
@@ -253,7 +260,8 @@ where
     for (relative, was_present) in MANAGED.iter().zip(source_presence) {
         let present = root.join(relative).try_exists().map_err(io_error)?;
         if present != was_present
-            || (present && hash_tree(&root.join(relative))? != hash_tree(&checkpoint.join(relative))?)
+            || (present
+                && hash_tree(&root.join(relative))? != hash_tree(&checkpoint.join(relative))?)
         {
             return Err("Managed files changed during checkpoint preparation. The active library was not replaced.".into());
         }

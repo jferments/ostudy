@@ -10,7 +10,8 @@ fn seed_history(fixture: &Fixture) {
             name: "Upgrade preservation fixture".into(),
             description: Some("Synthetic retained study history".into()),
         },
-    ).unwrap();
+    )
+    .unwrap();
     let note = "1".repeat(32);
     let card = "2".repeat(32);
     let session = "3".repeat(32);
@@ -21,35 +22,51 @@ fn seed_history(fixture: &Fixture) {
         String::new(),
         String::new(),
     ).unwrap();
-    connection.execute(
-        "INSERT INTO notes (id, deck_id, note_type, content_format, content_schema_version,
+    connection
+        .execute(
+            "INSERT INTO notes (id, deck_id, note_type, content_format, content_schema_version,
          front_doc, back_doc, front_text, back_text, created_at, updated_at, revision)
          VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, 10, 10, 1)",
-        params![note, deck.id, content.front_doc_json, content.back_doc_json, content.front_text, content.back_text],
-    ).unwrap();
+            params![
+                note,
+                deck.id,
+                content.front_doc_json,
+                content.back_doc_json,
+                content.front_text,
+                content.back_text
+            ],
+        )
+        .unwrap();
     connection.execute(
         "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
          VALUES (?1, ?2, ?3, 'forward', 0, 10, 10)",
         params![card, note, deck.id],
     ).unwrap();
     crate::scheduler::insert_new_schedule(&connection, &card, 10).unwrap();
-    connection.execute(
-        "UPDATE card_schedules SET state = 2, due_at = 5000, reps = 7,
-         stability = 3.0, difficulty = 4.5, revision = 4 WHERE card_id = ?1", [&card],
-    ).unwrap();
-    connection.execute(
-        "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count,
+    connection
+        .execute(
+            "UPDATE card_schedules SET state = 2, due_at = 5000, reps = 7,
+         stability = 3.0, difficulty = 4.5, revision = 4 WHERE card_id = ?1",
+            [&card],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count,
          viewed_count, revealed_count, started_at, completed_at, rated_count, correct_count,
          mode, selected_tag_ids_json)
          VALUES (?1, ?2, 0, 1, 1, 1, 20, 30, 1, 1, 'scheduled', '[]')",
-        params![session, json!([deck.id.clone()]).to_string()],
-    ).unwrap();
-    connection.execute(
-        "INSERT INTO practice_session_cards (session_id, card_id, position, viewed_at,
+            params![session, json!([deck.id.clone()]).to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO practice_session_cards (session_id, card_id, position, viewed_at,
          revealed_at, rated_at, rating, response_time_ms, presentation_variant)
          VALUES (?1, ?2, 0, 21, 22, 23, 3, 1200, 'forward')",
-        params![session, card],
-    ).unwrap();
+            params![session, card],
+        )
+        .unwrap();
     connection.execute(
         "INSERT INTO practice_session_card_snapshots (session_id, card_id, note_id, note_revision,
          owner_deck_id_at_capture, captured_deck_name, direction, card_type, card_label,
@@ -59,8 +76,9 @@ fn seed_history(fixture: &Fixture) {
          'forward', ?5, ?6, 'Question', 'Learner-edited answer', 'Question', ?7, 0, 20)",
         params![session, card, note, deck.id, content.front_doc_json, content.back_doc_json, "a".repeat(64)],
     ).unwrap();
-    connection.execute(
-        "INSERT INTO review_events (id, submission_id, session_id, card_id, reviewed_at,
+    connection
+        .execute(
+            "INSERT INTO review_events (id, submission_id, session_id, card_id, reviewed_at,
          rating, answer_correct, confidence, response_time_ms, state_before, state_after,
          due_before, due_after, stability_before, stability_after, difficulty_before,
          difficulty_after, scheduled_days_before, scheduled_days_after, scheduler_name,
@@ -68,8 +86,9 @@ fn seed_history(fixture: &Fixture) {
          result_rated_count, result_correct_count)
          VALUES (?1, ?2, ?3, ?4, 23, 3, 1, 'somewhat_confident', 1200, 0, 2, 10, 5000,
          0.0, 3.0, 0.0, 4.5, 0, 5, 'fsrs', 'test', 23, ?5, 1, 1, 1)",
-        params![review, "5".repeat(32), session, card, "f".repeat(64)],
-    ).unwrap();
+            params![review, "5".repeat(32), session, card, "f".repeat(64)],
+        )
+        .unwrap();
     connection.execute(
         "INSERT INTO review_event_attributions (review_event_id, reviewed_at, review_local_date,
          time_zone_id, utc_offset_minutes, card_id, note_id, note_revision,
@@ -101,7 +120,11 @@ fn populated_upgrade_preserves_learner_edits_schedules_and_review_evidence() {
     let mut guard = install_prepared_restore(&fixture.0, prepared).unwrap();
     let active = read_database(fixture.0.database_path()).unwrap();
     let mut after = preservation::rows(&active).unwrap();
-    assert!(after.remove("selection_deck_operations").unwrap().1.is_empty());
+    assert!(after
+        .remove("selection_deck_operations")
+        .unwrap()
+        .1
+        .is_empty());
     assert_eq!(before, after);
     drop(active);
     commit_upgrade(&fixture.0, &mut guard).unwrap();
@@ -114,18 +137,25 @@ fn a_valid_but_lossy_private_migration_is_rejected_even_when_row_counts_match() 
     seed_history(&fixture);
     let original = fs::read(fixture.0.database_path()).unwrap();
     let error = prepare_upgrade_with(
-        &fixture.0, APPLICATION, (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
-        &mut |_| {}, None,
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
+        &mut |_| {},
+        None,
         |path| {
             let database = Database::open(path)?;
-            database.with_connection(|connection| {
-                connection.execute("UPDATE card_schedules SET due_at = 6000", [])
-                    .map_err(crate::error::CommandError::database)?;
-                Ok(())
-            }).map_err(|error| error.message)?;
+            database
+                .with_connection(|connection| {
+                    connection
+                        .execute("UPDATE card_schedules SET due_at = 6000", [])
+                        .map_err(crate::error::CommandError::database)?;
+                    Ok(())
+                })
+                .map_err(|error| error.message)?;
             settle_candidate(&database)
         },
-    ).expect_err("equal-count value loss must fail preservation");
+    )
+    .expect_err("equal-count value loss must fail preservation");
     assert!(error.contains("changed retained library values"), "{error}");
     assert_eq!(fixture.version(), 1);
     assert_eq!(fs::read(fixture.0.database_path()).unwrap(), original);
@@ -142,8 +172,11 @@ fn removed_or_new_managed_roots_are_not_mistaken_for_an_unchanged_source() {
             fs::rename(&source, &retained).unwrap();
         }
         let error = prepare_upgrade_with(
-            &fixture.0, APPLICATION, (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
-            &mut |_| {}, None,
+            &fixture.0,
+            APPLICATION,
+            (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
+            &mut |_| {},
+            None,
             |path| {
                 let database = Database::open(path)?;
                 settle_candidate(&database)?;
@@ -154,10 +187,14 @@ fn removed_or_new_managed_roots_are_not_mistaken_for_an_unchanged_source() {
                 }
                 Ok(())
             },
-        ).expect_err("external filesystem change must block activation");
+        )
+        .expect_err("external filesystem change must block activation");
         assert!(error.contains("Managed files changed"), "{error}");
         assert_eq!(fixture.version(), 1);
-        assert_eq!(fs::read(retained.join("retained.bin")).unwrap(), b"documents");
+        assert_eq!(
+            fs::read(retained.join("retained.bin")).unwrap(),
+            b"documents"
+        );
         assert!(!fixture.0.app_data_dir().join(JOURNAL).exists());
     }
 }
@@ -188,11 +225,18 @@ fn committed_bookkeeping_failure_does_not_undo_or_repeat_a_successful_upgrade() 
     let mut guard = install_prepared_restore(&fixture.0, prepared).unwrap();
     guard.try_commit().unwrap();
     drop(guard);
-    fs::write(transaction.join("completed-intent.json"), b"conflicting evidence").unwrap();
+    fs::write(
+        transaction.join("completed-intent.json"),
+        b"conflicting evidence",
+    )
+    .unwrap();
     admit_startup(&fixture.0).expect("committed library stays usable");
     assert_eq!(fixture.version(), crate::database::CURRENT_SCHEMA_VERSION);
     assert!(has_intent(&fixture.0).unwrap());
-    assert_eq!(fs::read(transaction.join("completed-intent.json")).unwrap(), b"conflicting evidence");
+    assert_eq!(
+        fs::read(transaction.join("completed-intent.json")).unwrap(),
+        b"conflicting evidence"
+    );
     verify_checkpoint(&transaction).unwrap();
 }
 
@@ -211,13 +255,22 @@ fn stale_recovery_choices_cannot_replace_or_acknowledge_another_attempt() {
 
 #[test]
 fn preparation_crash_child() {
-    let Some(root) = std::env::var_os("OSTUDY_UPGRADE_PREPARATION_ROOT") else { return; };
+    let Some(root) = std::env::var_os("OSTUDY_UPGRADE_PREPARATION_ROOT") else {
+        return;
+    };
     let paths = AppPaths::new(PathBuf::from(root)).unwrap();
     let phase = std::env::var("OSTUDY_UPGRADE_PREPARATION_PHASE").unwrap();
     let _guard = begin_upgrade(
-        &paths, APPLICATION, (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
-        &mut |message| { if message == phase { std::process::exit(77); } },
-    ).unwrap();
+        &paths,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
+        &mut |message| {
+            if message == phase {
+                std::process::exit(77);
+            }
+        },
+    )
+    .unwrap();
     panic!("requested preparation cutpoint was not reached");
 }
 
@@ -232,12 +285,19 @@ fn preparation_crashes_preserve_the_original_and_require_an_explicit_retry() {
         seed_history(&fixture);
         let before = fs::read(fixture.0.database_path()).unwrap();
         let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "library_backup::activation::checkpoint::tests::followup::preparation_crash_child", "--test-threads=1"])
+            .args([
+                "--exact",
+                "library_backup::activation::checkpoint::tests::followup::preparation_crash_child",
+                "--test-threads=1",
+            ])
             .env("OSTUDY_UPGRADE_PREPARATION_ROOT", fixture.0.app_data_dir())
             .env("OSTUDY_UPGRADE_PREPARATION_PHASE", phase)
-            .status().unwrap();
+            .status()
+            .unwrap();
         assert_eq!(status.code(), Some(77), "{phase}");
-        assert!(super::super::super::apply_pending_restore(&fixture.0).unwrap().is_none());
+        assert!(super::super::super::apply_pending_restore(&fixture.0)
+            .unwrap()
+            .is_none());
         assert!(admit_startup(&fixture.0).is_err());
         assert_eq!(fs::read(fixture.0.database_path()).unwrap(), before);
         fixture.original_managed_files_are_present();

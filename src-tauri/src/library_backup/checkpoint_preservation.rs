@@ -22,7 +22,10 @@ pub(super) fn verify(
         // the staged typed-row proof at the public-to-release conversion owner.
         return Ok(());
     }
-    if source_lineage != CURRENT_SCHEMA_LINEAGE || source_version != 1 || CURRENT_SCHEMA_VERSION != 2 {
+    if source_lineage != CURRENT_SCHEMA_LINEAGE
+        || source_version != 1
+        || CURRENT_SCHEMA_VERSION != 2
+    {
         return Err("No preservation contract is registered for this release upgrade. The active library was not replaced.".into());
     }
     let before = rows(source)?;
@@ -58,7 +61,11 @@ pub(super) fn rows(connection: &Connection) -> Result<Receipt, String> {
         let mut statement = connection
             .prepare(&format!("SELECT {columns} FROM \"{identifier}\""))
             .map_err(sql_error)?;
-        let names = statement.column_names().into_iter().map(str::to_string).collect();
+        let names = statement
+            .column_names()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
         let width = statement.column_count();
         let mut query = statement.query([]).map_err(sql_error)?;
         let mut hashes = Vec::new();
@@ -108,7 +115,11 @@ mod tests {
     #[test]
     fn equal_counts_do_not_hide_changed_values_types_identities_or_duplicates() {
         let source = Connection::open_in_memory().unwrap();
-        source.execute_batch("CREATE TABLE probe(id, value); INSERT INTO probe VALUES (1, '2'), (1, '2');").unwrap();
+        source
+            .execute_batch(
+                "CREATE TABLE probe(id, value); INSERT INTO probe VALUES (1, '2'), (1, '2');",
+            )
+            .unwrap();
         let before = rows(&source).unwrap();
         for sql in [
             "UPDATE probe SET value = '3'",
@@ -119,7 +130,9 @@ mod tests {
             source.execute_batch("SAVEPOINT test_change").unwrap();
             source.execute_batch(sql).unwrap();
             assert_ne!(rows(&source).unwrap(), before);
-            source.execute_batch("ROLLBACK TO test_change; RELEASE test_change").unwrap();
+            source
+                .execute_batch("ROLLBACK TO test_change; RELEASE test_change")
+                .unwrap();
         }
         assert_eq!(rows(&source).unwrap(), before);
     }
