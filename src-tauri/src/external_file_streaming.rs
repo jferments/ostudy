@@ -655,9 +655,9 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
             "Select an ostudy deck, an Anki .apkg deck, or valid generated JSON.",
         )
     })?;
-    if crate::authoring::card_types_and_templates::generated_import::
-        is_supported_generated_import_envelope(&value)
-    {
+    if crate::authoring::card_types_and_templates::generated_import::is_generated_import_envelope(
+        &value,
+    ) {
         Ok(ExternalFileKind::GeneratedJson)
     } else {
         Err(CommandError::new(
@@ -834,13 +834,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        authoring::card_types_and_templates::generated_import::
-            import_generated_flashcards_bytes_with_commit_context,
+        authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit_context,
         cards::questions::ValidatedQuestion,
     };
 
-    const MIXED_V2_EXAMPLE: &str =
-        include_str!("../../docs/examples/mixed-card-types.ostudy.json");
+    const MIXED_V2_EXAMPLE: &str = include_str!("../../docs/examples/mixed-card-types.ostudy.json");
     static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
     #[test]
@@ -903,19 +901,30 @@ mod tests {
     }
 
     #[test]
-    fn generated_json_detection_rejects_future_unrelated_and_malformed_json() {
-        let future = test_file(
-            &serde_json::to_vec(&serde_json::json!({
-                "format": "ostudy-flashcards",
-                "formatVersion": 3,
-                "deck": {"mode": "create", "name": "Future"},
-                "cards": [{"type": "basic", "front": "Question", "back": "Answer"}]
-            }))
-            .unwrap(),
+    fn generated_json_family_detection_defers_version_admission_to_the_importer() {
+        let future_payload = serde_json::to_vec(&serde_json::json!({
+            "format": "ostudy-flashcards",
+            "formatVersion": 3,
+            "deck": {"mode": "create", "name": "Future"},
+            "cards": [{"type": "basic", "front": "Question", "back": "Answer"}]
+        }))
+        .unwrap();
+        let future = test_file(&future_payload);
+        assert_eq!(
+            detect_study_content(&future).unwrap(),
+            ExternalFileKind::GeneratedJson
         );
-        let future_error =
-            detect_study_content(&future).expect_err("future generated JSON must not be staged");
-        assert_eq!(future_error.code, "unsupported_flashcard_import");
+
+        let database = Database::open_in_memory().unwrap();
+        let before = study_graph_counts(&database);
+        let error = import_generated_flashcards_bytes_with_commit_context(
+            &database,
+            &future_payload,
+            |_, _, _, _| Ok(()),
+        )
+        .expect_err("future generated JSON must be rejected by the authoritative importer");
+        assert_eq!(error.code, "unsupported_flashcard_import");
+        assert_eq!(study_graph_counts(&database), before);
         let _ = fs::remove_file(future);
 
         let unrelated = test_file(br#"{"format":"other","formatVersion":2}"#);
@@ -929,6 +938,59 @@ mod tests {
             detect_study_content(&malformed).expect_err("malformed JSON must not be staged");
         assert_eq!(malformed_error.code, "invalid_flashcard_import_json");
         let _ = fs::remove_file(malformed);
+    }
+
+    #[test]
+    fn canonical_v2_survives_the_real_finalize_staging_boundary_byte_for_byte() {
+        let root = test_root("mixed-v2-staging");
+        let paths = AppPaths::new(root.clone()).unwrap();
+        let database = Database::open_in_memory().unwrap();
+        let operation_id = "a".repeat(32);
+        let partial_path = paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(
+            &operation_id,
+        ));
+        create_parent(&partial_path).unwrap();
+        fs::write(&partial_path, MIXED_V2_EXAMPLE.as_bytes()).unwrap();
+
+        let staged = finalize_acquired_import(
+            &database,
+            &paths,
+            operation_id.clone(),
+            ExternalImportPurpose::StudyContent,
+            partial_path,
+            ExternalAcquireResult {
+                display_name: "mixed-card-types.ostudy.json".to_string(),
+                reported_media_type: Some("application/json".to_string()),
+                copied_bytes: MIXED_V2_EXAMPLE.len() as u64,
+            },
+        )
+        .unwrap();
+        assert_eq!(staged.detected_kind, ExternalFileKind::GeneratedJson);
+
+        let resolved = database
+            .with_connection(|connection| {
+                crate::external_files::resolve_staged_import(
+                    connection,
+                    &paths,
+                    &operation_id,
+                    ExternalImportPurpose::StudyContent,
+                    &[ExternalFileKind::GeneratedJson],
+                )
+            })
+            .unwrap();
+        let staged_bytes = fs::read(&resolved.path).unwrap();
+        assert_eq!(staged_bytes, MIXED_V2_EXAMPLE.as_bytes());
+
+        let result = import_generated_flashcards_bytes_with_commit_context(
+            &database,
+            &staged_bytes,
+            |_, _, _, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(result.created_note_count, 8);
+        assert_eq!(result.created_card_count, 8);
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1142,6 +1204,16 @@ mod tests {
                     .map_err(CommandError::database)
             })
             .unwrap()
+    }
+
+    fn test_root(label: &str) -> PathBuf {
+        let sequence = NEXT_FILE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-external-stream-{}-{label}-{sequence}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        root
     }
 
     fn test_file(bytes: &[u8]) -> PathBuf {
