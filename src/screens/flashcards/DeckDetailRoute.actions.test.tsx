@@ -15,7 +15,10 @@ vi.mock("../../controllers/decksController", () => ({
     deleteDeck = calls.deleteDeck; undo = calls.undo; invalidate = calls.invalidate;
   },
 }));
-vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => calls.confirm }));
+vi.mock("../../ui/overlays/overlayContext", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../ui/overlays/overlayContext")>(),
+  useConfirm: () => calls.confirm,
+}));
 vi.mock("../../components/SourceCitationPanel", () => ({ SourceCitationPanel: () => null }));
 vi.mock("../cards/CardPracticeContext", () => ({ useCardPracticeLauncher: () => vi.fn() }));
 vi.mock("../cards/CardBrowserWorkspace", () => ({
