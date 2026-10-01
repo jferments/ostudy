@@ -17,6 +17,9 @@ use crate::{
     },
 };
 
+pub(crate) mod instructions;
+use instructions::GenerationInstructions;
+
 pub(crate) const MAX_COMPOUND_ITEMS: usize = 16;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,6 +57,10 @@ pub struct GenerationPolicy {
     pub allowed_types: Vec<QuestionFamily>,
     pub weights: BTreeMap<QuestionFamily, u16>,
     pub max_compound_items: usize,
+    /// Captured per run, never saved as a global format preference. Existing
+    /// policy receipts omit this member and deserialize to the unchanged default.
+    #[serde(skip_serializing_if = "GenerationInstructions::is_empty")]
+    pub generation_instructions: GenerationInstructions,
 }
 
 impl Default for GenerationPolicy {
@@ -79,6 +86,7 @@ impl Default for GenerationPolicy {
                 (TrueFalse, 2),
             ]),
             max_compound_items: 8,
+            generation_instructions: GenerationInstructions::default(),
         }
     }
 }
@@ -108,8 +116,9 @@ impl GenerationPolicy {
         self.validate()?;
         let mut canonical = self.clone();
         canonical.allowed_types.sort();
-        // Teaching/selection changes invalidate only derived candidates, never
-        // the retained knowledge, learner-authored cards or schedules.
+        // Teaching/selection/instruction changes invalidate only derived
+        // candidates, never retained knowledge, authored cards or schedules.
+        // Empty instructions are omitted, preserving existing cache identities.
         Ok(hash(&format!(
             "assessment-policy-v2-concept-first|{}",
             serde_json::to_string(&canonical).map_err(CommandError::serialization)?
@@ -118,10 +127,13 @@ impl GenerationPolicy {
 
     pub(crate) fn prompt(&self) -> Result<String, CommandError> {
         self.validate()?;
+        let mut preferences = self.clone();
+        preferences.generation_instructions = GenerationInstructions::default();
         Ok(format!(
-            "{}\nAllowed question families and relative soft mix: {}. Board component limit: {}. Recall includes existing Basic/Cloze. Only use a type supported by the material. Coverage and unambiguous evidence outrank these weights; they are not quotas. Never invent a relationship, false distractor, category, or order to fill the mix. No automatic image occlusion. A board is one scheduled presentation; a bidirectional definition counts as two. Return fewer useful presentations rather than filler.",
+            "{}\nAllowed question families and relative soft mix: {}. Board component limit: {}. Recall includes existing Basic/Cloze. Only use a type supported by the material. Coverage and unambiguous evidence outrank these weights; they are not quotas. Never invent a relationship, false distractor, category, or order to fill the mix. No automatic image occlusion. A board is one scheduled presentation; a bidirectional definition counts as two. Return fewer useful presentations rather than filler.{}",
             teaching_instructions(),
-            serde_json::to_string(&self).map_err(CommandError::serialization)?, self.max_compound_items,
+            serde_json::to_string(&preferences).map_err(CommandError::serialization)?, self.max_compound_items,
+            self.generation_instructions.prompt_suffix()?,
         ))
     }
 }

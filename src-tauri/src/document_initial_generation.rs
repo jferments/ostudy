@@ -26,6 +26,7 @@ use crate::{
     document_semantics::{build_partitioned_semantic_windows, validate_semantic_windows},
     document_store::{self, DocumentAiProgressPlan, GenerationJobIdentity},
     error::CommandError,
+    knowledge::assessment::policy::instructions::GenerationInstructions,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
 };
@@ -86,6 +87,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
     runtime: &'a AiRuntimeState,
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
+    instructions: &'a GenerationInstructions,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -93,6 +95,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
         runtime,
         render_runtime,
         document_id,
+        instructions,
         false,
     ))
 }
@@ -103,6 +106,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
     runtime: &'a AiRuntimeState,
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
+    instructions: &'a GenerationInstructions,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -110,6 +114,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
         runtime,
         render_runtime,
         document_id,
+        instructions,
         true,
     ))
 }
@@ -120,6 +125,7 @@ async fn process_initial_flashcards(
     runtime: &AiRuntimeState,
     render_runtime: PdfRenderRuntime,
     document_id: &str,
+    instructions: &GenerationInstructions,
     processing_reserved: bool,
 ) -> Result<InitialGenerationResult, CommandError> {
     if !processing_reserved {
@@ -229,6 +235,7 @@ async fn process_initial_flashcards(
     }
 
     let mut task = document_intelligence::load_document_task_context(database)?;
+    task.question_policy.generation_instructions = instructions.clone();
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

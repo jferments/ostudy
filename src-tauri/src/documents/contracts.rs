@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+use crate::knowledge::assessment::policy::instructions::GenerationInstructions;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RetryPdfGenerationInput {
     pub document_id: String,
+    #[serde(default)]
+    pub generation_instructions: GenerationInstructions,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -57,4 +61,34 @@ pub struct DocumentGenerationResultDto {
     pub created_note_count: i64,
     pub created_card_count: i64,
     pub skipped_duplicate_count: i64,
+}
+
+#[cfg(test)]
+mod instruction_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn existing_requests_remain_valid_and_instructions_are_captured_before_a_task_is_started() {
+        let id = "a".repeat(32);
+        let existing: RetryPdfGenerationInput =
+            serde_json::from_value(json!({"documentId": id})).unwrap();
+        assert!(existing.generation_instructions.is_empty());
+        let requested: RetryPdfGenerationInput = serde_json::from_value(json!({
+            "documentId": id,
+            "generationInstructions": "  Focus on nursing cranial-nerve assessments.  "
+        }))
+        .unwrap();
+        assert_eq!(requested.document_id, existing.document_id);
+        assert_eq!(
+            requested.generation_instructions,
+            GenerationInstructions::parse(Some("Focus on nursing cranial-nerve assessments.")).unwrap()
+        );
+        assert!(!format!("{requested:?}").contains("cranial-nerve"));
+        assert!(serde_json::from_value::<RetryPdfGenerationInput>(json!({
+            "documentId": id,
+            "generationInstructions": "x".repeat(16 * 1024 + 1)
+        }))
+        .is_err());
+    }
 }
