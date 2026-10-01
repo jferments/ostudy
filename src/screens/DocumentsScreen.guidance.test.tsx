@@ -52,10 +52,11 @@ function renderDocuments() {
   </OverlayProvider>);
 }
 function editInstructions(label: string, value: string, root: HTMLElement = documentBody()): void {
-  const queries = within(root);
-  const summary = queries.getByText(label, { selector: "summary" });
+  const field = within(root).getByLabelText(label);
+  const summary = field.closest("details")?.querySelector("summary");
+  if (!summary) throw new Error(`Missing instruction disclosure for ${label}`);
   if (!summary.parentElement?.hasAttribute("open")) fireEvent.click(summary);
-  fireEvent.change(queries.getByLabelText(label), { target: { value } });
+  fireEvent.change(field, { target: { value } });
 }
 function documentBody(): HTMLElement { return globalThis.document.body; }
 async function selectGenerateMore(title = "Neurological assessments") {
@@ -66,7 +67,7 @@ async function selectGenerateMore(title = "Neurological assessments") {
   });
   const menu = await screen.findByRole("menu", { name: label });
   const action = within(menu).getByRole("menuitem", { name: "Generate more cards" });
-  await waitFor(() => expect(action).not.toHaveAttribute("aria-disabled", "true"));
+  await waitFor(() => expect(action.getAttribute("aria-disabled")).not.toBe("true"));
   await act(async () => { fireEvent.click(action); });
 }
 
@@ -99,8 +100,10 @@ describe("Documents guidance through the application controller", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Upload document" })); });
     await waitFor(() => expect(documentIpc.startDocumentFlashcardGeneration)
       .toHaveBeenCalledWith(documentId, "Nursing cranial nerve assessments"));
-    expect(documentIpc.importDocument).toHaveBeenCalledExactlyOnceWith(stagedId);
-    expect(platformFiles.selectExternalImport).toHaveBeenCalledExactlyOnceWith("document");
+    expect(documentIpc.importDocument).toHaveBeenCalledTimes(1);
+    expect(documentIpc.importDocument).toHaveBeenCalledWith(stagedId);
+    expect(platformFiles.selectExternalImport).toHaveBeenCalledTimes(1);
+    expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
@@ -114,7 +117,7 @@ describe("Documents guidance through the application controller", () => {
     await selectGenerateMore();
     await waitFor(() => expect(documentIpc.generateMoreDocumentFlashcards)
       .toHaveBeenLastCalledWith(documentId, "Ask how each nerve is assessed"));
-    await waitFor(() => expect(within(article).getByLabelText("Flashcard instructions (optional)")).not.toBeDisabled());
+    await waitFor(() => expect((within(article).getByLabelText("Flashcard instructions (optional)") as HTMLTextAreaElement).disabled).toBe(false));
     editInstructions("Flashcard instructions (optional)", "", article);
     await selectGenerateMore();
     await waitFor(() => expect(documentIpc.generateMoreDocumentFlashcards)
@@ -122,15 +125,15 @@ describe("Documents guidance through the application controller", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledTimes(2);
     expect(documentIpc.importDocument).not.toHaveBeenCalled();
     expect(documentIpc.startDocumentFlashcardGeneration).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Instructions for new document flashcards")).toHaveValue("Future uploads only");
+    expect((screen.getByLabelText("Instructions for new document flashcards") as HTMLTextAreaElement).value).toBe("Future uploads only");
   });
 
   it("shows validation before opening a picker or starting any native mutation", async () => {
     renderDocuments();
     await screen.findByRole("heading", { name: "No documents yet" });
     editInstructions("Instructions for new document flashcards", "x".repeat(MAX_GENERATION_INSTRUCTIONS_BYTES + 1));
-    expect(screen.getByLabelText("Instructions for new document flashcards")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByRole("button", { name: "Upload document" })).toBeDisabled();
+    expect(screen.getByLabelText("Instructions for new document flashcards").getAttribute("aria-invalid")).toBe("true");
+    expect((screen.getByRole("button", { name: "Upload document" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Shorten them before starting; they have not been truncated/)).toBeTruthy();
     expect(platformFiles.selectExternalImport).not.toHaveBeenCalled();
     expect(documentIpc.importDocument).not.toHaveBeenCalled();

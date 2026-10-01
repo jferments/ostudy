@@ -215,7 +215,7 @@ describe("DocumentsScreen", () => {
         "Document processing started. You can add more documents while this job runs.",
       );
       expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -337,7 +337,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
   });
@@ -498,7 +498,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(await screen.findByText("Generate more cards"));
 
     await waitFor(() => {
-      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -657,7 +657,6 @@ describe("DocumentsScreen", () => {
       preservedDeckCitationCount: 0,
     });
     const { showToast } = renderDocuments();
-
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {

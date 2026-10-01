@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
+import { generationInstructionsError, generationInstructionsInput } from "../../ipc/generationInstructions";
 import { getImageSet, getImageSetPreview, type ImageSetDetails, type ImageSetPreview } from "../../ipc/imageSets";
 import { dataTransferImageFiles, IMAGE_FILE_ACCEPT } from "../../platform/imageInput";
 import { ImagePasteSession } from "../../platform/imagePaste";
@@ -9,6 +10,7 @@ import { Button } from "../../ui/primitives/Button";
 import { Textarea } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { GenerationInstructionsField } from "./GenerationInstructionsField";
 
 interface ImageSetWorkspaceProps {
   documentId: string | null;
@@ -36,6 +38,17 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
     : draftKey;
   const job = collections?.jobs[key];
   const savedId = job?.documentId ?? documentId;
+  const phase = job?.phase;
+  const nativeDocument = documentJobs?.documents.find((item) => item.id === savedId);
+  const working = phase === "cards" || phase === "guide" || phase === "uploading";
+  const [instructionDraft, setInstructionDraft] = useState(() => job?.generationInstructions
+    ?? nativeDocument?.generationSummary?.requestedPolicy.generationInstructions ?? "");
+  const instructions = working ? job?.generationInstructions ?? instructionDraft : instructionDraft;
+  const instructionError = generationInstructionsError(instructions);
+  const changedInstructions = job && instructionError === null
+    && (generationInstructionsInput(instructions).generationInstructions ?? "") !== (job.generationInstructions ?? "");
+  const instructionsRef = useRef(instructions);
+  instructionsRef.current = instructions;
   const [details, setDetails] = useState<ImageSetDetails | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImageSetPreview | null>(null);
@@ -49,7 +62,6 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const savedIdRef = useRef(savedId);
   savedIdRef.current = savedId;
   const savedCount = job?.items.filter((item) => item.status === "saved").length ?? 0;
-  const phase = job?.phase;
   const addImages = collections?.addImages;
 
   useEffect(() => {
@@ -70,7 +82,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
     pasteSession.current = session;
     // A first upload assigning its document ID must not dispose another screenshot
     // read already in flight. The workspace key, not list refreshes, owns acquisition.
-    const dispose = session.bind((files) => addImages(key, savedIdRef.current, files),
+    const dispose = session.bind((files) => addImages(key, savedIdRef.current, files, instructionsRef.current),
       window, setPasteError, acquisitionArea.current ?? undefined);
     if (window.matchMedia?.("(pointer: fine)").matches) pasteTarget.current?.focus({ preventScroll: true });
     return () => {
@@ -102,8 +114,6 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const pending = job?.items.filter((item) => !details || item.status !== "saved") ?? [];
   const total = (details?.members.length ?? 0) + pending.length;
   const retryable = phase === "failed" || phase === "stopped";
-  const nativeDocument = documentJobs?.documents.find((item) => item.id === savedId);
-  const working = phase === "cards" || phase === "guide" || phase === "uploading";
 
   return (
     <InlineWorkspace title={details?.title ?? "Upload images"}
@@ -119,22 +129,24 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
           if (files.length === 0) return;
           event.preventDefault();
           event.stopPropagation();
-          addImages?.(key, savedId, files);
+          addImages?.(key, savedId, files, instructions);
         }}>
+        <GenerationInstructionsField value={instructions} onChange={setInstructionDraft} disabled={working} />
         <TextField ref={picker} type="file" multiple accept={IMAGE_FILE_ACCEPT}
           aria-label="Choose images" className="tw:sr-only"
           onChange={(event) => {
             const files = Array.from(event.currentTarget.files ?? []);
             event.currentTarget.value = "";
-            addImages?.(key, savedId, files);
+            addImages?.(key, savedId, files, instructions);
           }} />
         <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
           <span className="tw:text-sm tw:text-muted-foreground">{total} image{total === 1 ? "" : "s"}</span>
           <div className="tw:flex tw:items-center tw:gap-2">
-            <Button disabled={!collections} onClick={() => pasteSession.current?.paste()}>Paste images</Button>
+            <Button disabled={!collections || instructionError !== null}
+              onClick={() => pasteSession.current?.paste()}>Paste images</Button>
             <Button variant="primary" size={total > 0 ? "icon" : "medium"}
               aria-label={total > 0 ? "Add more images" : "Select images"}
-              disabled={!collections} onClick={() => picker.current?.click()}>
+              disabled={!collections || instructionError !== null} onClick={() => picker.current?.click()}>
               {total > 0 ? <span aria-hidden="true">+</span> : "Select images"}
             </Button>
           </div>
@@ -177,7 +189,10 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
         {pasteError ? <InlineNotice kind="warning">{pasteError}</InlineNotice> : null}
         {job ? <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
           <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">{phaseLabels[job.phase]}</p>
-          {retryable ? <Button size="small" onClick={() => collections?.retryImages(key)}>Retry processing</Button> : null}
+          {retryable ? <Button size="small" disabled={instructionError !== null}
+            onClick={() => collections?.retryImages(key, instructions)}>
+            {changedInstructions ? "Generate with new instructions" : "Retry processing"}
+          </Button> : null}
           {working && nativeDocument ? <Button size="small" variant="ghost" onClick={() => {
             if (phase === "guide") void documentJobs?.stopStudyGuide(nativeDocument);
             else void documentJobs?.stopGeneration(nativeDocument);
