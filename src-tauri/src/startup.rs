@@ -10,6 +10,13 @@ use crate::{
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
+#[path = "startup/progress.rs"]
+mod progress;
+#[path = "startup/upgrade.rs"]
+mod upgrade;
+#[path = "startup/upgrade_dialog.rs"]
+mod upgrade_dialog;
+
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 const STARTUP_STAGE_PREFIX: &str = "OSTUDY_STARTUP_STAGE:";
 
@@ -37,6 +44,8 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
         present_startup_failure(app.handle(), &error.to_string());
         return Ok(());
     }
+
+    progress::install(app);
 
     // Return control to the native event loop before opening/migrating SQLite
     // or decoding/reconciling managed files. The HTML loading shell can paint
@@ -83,23 +92,74 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     apply_main_window_icon(app);
     let mut pending_restore = library_backup::apply_pending_restore(&paths)
         .map_err(|error| startup_stage_error("restore_recovery", error))?;
-    let database = database::Database::open(paths.database_path())
-        .map_err(|error| startup_stage_error("database_open", error))?;
+    library_backup::checkpoint::admit_startup(&paths)
+        .map_err(|error| startup_stage_error("upgrade_recovery", error))?;
+    // Declare the activation guard before the Database: error unwinding closes
+    // every SQLite connection before restoring the previous library entries.
+    let mut pending_upgrade = None;
+    if let Some(plan) = upgrade::inspect(paths.database_path())
+        .map_err(|error| startup_stage_error("upgrade_preflight", error))?
+    {
+        logging::info_target(
+            "app.startup",
+            "library_upgrade_required",
+            "Read-only admission identified a supported library upgrade.",
+            serde_json::json!(plan),
+        );
+        pending_upgrade = Some(
+            library_backup::checkpoint::begin_upgrade(
+                &paths,
+                &app.config().identifier,
+                (&plan.source_lineage, plan.source_version),
+                &mut |message| report_upgrade_progress(app, message),
+            )
+            .map_err(|error| startup_stage_error("upgrade_candidate", error))?,
+        );
+    }
+    let upgrading = pending_upgrade.is_some();
+    let stage = |normal, during_upgrade| if upgrading { during_upgrade } else { normal };
+    let database = database::Database::open(paths.database_path()).map_err(|error| {
+        startup_stage_error(stage("database_open", "upgrade_database_open"), error)
+    })?;
     let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
-    platform::install_global(platform_runtime.clone())
-        .map_err(|error| startup_stage_error("platform_runtime", error))?;
+    platform::install_global(platform_runtime.clone()).map_err(|error| {
+        startup_stage_error(stage("platform_runtime", "upgrade_platform_runtime"), error)
+    })?;
     let ai_runtime = AiRuntimeState::new(platform_runtime.secure_secret_store())
-        .map_err(|error| startup_stage_error("ai_runtime", error))?;
+        .map_err(|error| startup_stage_error(stage("ai_runtime", "upgrade_ai_runtime"), error))?;
     let pdf_render_runtime = PdfRenderRuntime::new(resource_directory)
-        .map_err(|error| startup_stage_error("pdf_runtime", error))?;
+        .map_err(|error| startup_stage_error(stage("pdf_runtime", "upgrade_pdf_runtime"), error))?;
 
-    reconcile_library(&database, &paths)
-        .map_err(|error| startup_stage_error("reconciliation", error.message))?;
+    reconcile_library(&database, &paths).map_err(|error| {
+        startup_stage_error(
+            stage("reconciliation", "upgrade_reconciliation"),
+            error.message,
+        )
+    })?;
     if let Some(restore) = pending_restore.as_mut() {
         restore
             .try_commit()
             .map_err(|error| startup_stage_error("restore_commit", error))?;
     }
+
+    if let Some(upgrade) = pending_upgrade.as_mut() {
+        report_upgrade_progress(app, "Verifying library recovery and startup…");
+        library_backup::checkpoint::commit_upgrade(&paths, upgrade)
+            .map_err(|error| startup_stage_error("upgrade_commit", error))?;
+        progress::publish(app, "Library updated; recovery checkpoint retained.", true);
+    }
+    if let Err(error) =
+        library_backup::checkpoint::record_current_build(&paths, &app.config().identifier)
+    {
+        logging::warn_target(
+            "library.upgrade",
+            "library_build_receipt_unavailable",
+            "The library opened, but its nonsecret build receipt could not be recorded.",
+            serde_json::json!({"error": error}),
+        );
+    }
+    #[cfg(desktop)]
+    apply_main_window_profile(app, desktop_profile);
 
     if !app.manage(paths.clone()) {
         return Err(startup_stage_error(
@@ -161,6 +221,19 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         .into());
     }
     Ok(())
+}
+
+fn report_upgrade_progress(app: &tauri::AppHandle, message: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_title(&format!("oStudy — {message}"));
+    }
+    progress::publish(app, message, false);
+    logging::info_target(
+        "library.upgrade",
+        "library_upgrade_progress",
+        message,
+        serde_json::json!({}),
+    );
 }
 
 fn startup_stage_error(stage: &'static str, error: impl std::fmt::Display) -> io::Error {
@@ -269,6 +342,22 @@ fn apply_main_window_icon(app: &tauri::AppHandle) {
 
 fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
     let (startup_stage, cause) = split_startup_stage(error);
+    if let Some(stage) = startup_stage.filter(|stage| {
+        stage.starts_with("upgrade_") && !cause.starts_with(database::PRE_PUBLIC_RESET_PREFIX)
+    }) {
+        logging::error_target(
+            "library.upgrade",
+            "library_upgrade_blocked",
+            "The library upgrade or recovery stopped before ordinary commands were admitted.",
+            serde_json::json!({"startupStage": stage}),
+        );
+        eprintln!("oStudy library update blocked: {error}");
+        let _ = logging::flush(Duration::from_millis(500));
+        // These stages are reached only after this process acquired the library
+        // lock. A second process or profile failure must never enter recovery UI.
+        upgrade_dialog::present(app, stage);
+        return;
+    }
     let app_data_directory = app.path().app_data_dir().ok();
     let presentation = startup_failure_presentation(cause, app_data_directory.as_deref());
 

@@ -6,6 +6,8 @@ extraction. `activation` owns private candidate preparation and journaled filesy
 replacement; `live` owns same-process activation and durable completion receipts.
 The asynchronous `library_backup_commands.rs` adapter keeps this work off the native
 event loop. Package preparation is never reported as completed restoration.
+Startup schema upgrades use `activation::checkpoint` and the same activation owner,
+not an independent updater file-swap implementation. See the [library update guide](../user-guide/library-upgrades.md).
 
 ## Runtime admission
 
@@ -73,6 +75,80 @@ after the retained copy is verified and synced. Unknown `.pre-restore` remnants,
 malformed journals and symlinked recovery paths are preserved and refused.
 Rust Drop handles ordinary errors; disk records are the crash-recovery authority.
 
+## Startup library upgrades
+
+`startup/upgrade.rs` performs read-only planning after process ownership and prior
+journal recovery. It rejects missing databases with orphan journals, nonregular
+sources/sidecars, unsupported lineages and invalid migration prefixes. A current
+header avoids redundant planning scans, but `Database::open` still validates the
+current payload before ordinary use. Empty initialization and explicit pre-public
+recovery remain separate. Released SQL and the native migration metadata owner are
+unchanged; the current release lineage is still schema 2.
+
+`library_backup/checkpoint.rs` writes a durable upgrade intent before preparation.
+It creates a private SQLite Backup API snapshot, including committed WAL rows, and
+copies complete assets, documents, transfers and cache trees plus an available
+build receipt. Regular-file/path checks, file/tree hashes, schema admission,
+integrity and foreign-key checks, and filesystem synchronization verify the
+checkpoint before candidate migration starts. Copy errors and low-space failures
+stop the operation; they never authorize unprotected migration. The source SQLite
+data version and managed-root presence/hashes are rechecked before preparation
+returns. These checks supplement, rather than replace, cooperating-process ownership.
+
+All startup migration and lineage-conversion writes operate on the candidate.
+Native `Database::open` retains its existing per-migration transaction, checksum,
+ledger, payload and legacy-converter checks. `checkpoint_preservation.rs` adds a
+version-specific retained-value proof for release schema 1 to 2: typed values,
+column identities, multiplicity and notes rowids remain equal, while the newly
+added receipt table must be empty. A future release upgrade requires an explicit
+preservation contract rather than silently adopting count-only comparisons.
+Historical public migrations/repairs retain their existing database-owner proofs;
+there is no claim that every historical transformation is byte-identical.
+
+The existing activation journal keeps its immutable version-1 path mapping for
+package restores. Version 2 coordinates the entire upgrade-managed trees, build
+receipt and database sidecars. The source digest identifies `checkpoint.json`, and
+the prepared value also binds the candidate tree. Rollback retains replaced
+candidate entries under `failed` instead of discarding them. Prior entries and the
+checkpoint remain available. Paths are fixed by code, not accepted from a writable
+manifest. Hashes detect inconsistent bytes; these local records are not signatures
+or protection against arbitrary hostile same-account filesystem mutation.
+
+Startup holds ordinary IPC readiness closed throughout activation and
+reconciliation. The database is declared after the activation guard so error
+unwinding closes it before filesystem rollback. Upgrade commit validates the
+post-reconciliation database again before recording its decision. A successful
+commit cannot be turned into a rollback by an intent-archival failure.
+
+A failed or abandoned preparation retains its intent and requires an explicit
+recovery choice. No blind startup retries occur. Restoration copies the verified
+checkpoint into a new activation transaction, retains the replaced library and
+records a Revert intent. The newer executable cannot immediately migrate that
+restored older schema again. A compatible executable with the restored target
+schema can admit it after validation; an explicit retry authorizes one new attempt.
+An unresolved activation journal must be recovered before installing an older
+binary that might not understand its layout.
+
+`startup/progress.rs` stores and replays advisory progress snapshots.
+`src/ipc/libraryUpgrade.ts` subscribes before requesting replay, ignores stale or
+malformed messages, and cleans up subscriptions. `NativeStartupGate` renders the
+phase and a dismissible committed-update notice, but only database-backed
+readiness admits product children. Native recovery dialogs are available before
+that product gate and bind confirmations to the outstanding operation identity.
+They distinguish library restoration from installing a compatible application.
+
+`library-build.json` records the last successfully opened build when possible.
+Checkpoint metadata includes available old/new build identity, application profile,
+lineage/schema, operation identity, timestamp and checkpoint digest. Missing old
+build information stays unknown; commit SHAs are recorded only when supplied by
+the build environment. No keys or source text belong in this metadata. Installer
+updates, package versioning and artifact distribution remain separate from this
+library transaction. Same-schema updates do not create migration checkpoints.
+
+There is no automatic pruning of recovery copies, no historical-checkpoint Settings
+browser, and no automatic executable downgrade. Disk usage can grow across failed
+attempts. Internal checkpoints do not replace external portable backups.
+
 ## Completion, UI and credentials
 
 Completion receipts live outside the replaced learner database and are trusted
@@ -80,12 +156,13 @@ only when their transaction has a valid commit marker. A lost acknowledgement ca
 replay its completed receipt without replacing the library a second time. Results
 include deck, card and document counts and distinguish completed from prepared.
 
-Successful activation advances the library generation and emits completion. The
-interface reloads to discard old controllers, selected IDs, drafts and caches;
+Successful live restore activation advances the library generation and emits completion.
+The interface reloads to discard old controllers, selected IDs, drafts and caches;
 the native process does not restart and its XDG environment does not change.
 A completion observer also reads the last durable receipt after the refresh.
 A failed activation that reopened the old library likewise invalidates stale UI
 requests. A failure that cannot prove a coherent connection leaves IPC blocked.
+Startup upgrades take place before product consumers are admitted.
 
 The OS keyring remains untouched. Live replacement clears the native process's
 entire session-only credential map before reopening admission, including orphaned
@@ -105,6 +182,14 @@ and tampered private bytes. Shared activity tests cover both admission orders,
 duplicate registration and cancellation cleanup. Session/transport tests reject
 stale work and verify that preparation alone cannot produce completion. UI tests
 exercise explicit destructive confirmation and same-process completion.
+
+Upgrade-specific tests add low-space snapshot failure, lossy equal-count migration,
+populated schedules and review evidence, managed-root drift, post-reconciliation
+commit refusal, stale recovery choices, compatible-schema recovery and actual
+process termination during preparation/activation/rollback. Progress tests prove
+that advisory completion cannot bypass startup readiness. Follow the [disposable
+upgrade acceptance procedure](../development/library-upgrade-acceptance.md) for
+local checks and remaining native-dialog/package/manual boundaries.
 
 These contracts do not rewrite the immutable public-v1 schema-30 migration bytes or the backup version. Historical backup readers remain. PR #106's release-baseline boundary converts supported public-v1 libraries to the immutable `ostudy-release-v1` schema-1 baseline only after staged schema/value preservation proof; ordinary release migrations then advance that restored library to the current schema. Restore must use that database owner rather than deleting ledgers or manually relabelling a library.
 See [agent restore rules](../agents/LIBRARY-RESTORE.md) and the

@@ -14,6 +14,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+#[path = "checkpoint.rs"]
+pub(crate) mod checkpoint;
+
 const JOURNAL: &str = "library-restore-journal.json";
 const TRANSACTIONS: &str = "restore-transactions";
 // Paths come from code, NEVER from a package or a writable journal.
@@ -30,6 +33,76 @@ const ENTRIES: &[&str] = &[
     "cache/semantic-v1.sqlite3-journal",
 ];
 const INSTALL: &[&str] = &["library.sqlite3", "assets", "documents"];
+// Version 1's path ordering is immutable recovery input. Version 2 covers
+// every library-owned tree which startup reconciliation can mutate, including
+// transfer staging and the semantic cache; paths never come from disk metadata.
+const UPGRADE_ENTRIES: &[&str] = &[
+    "library.sqlite3",
+    "library.sqlite3-wal",
+    "library.sqlite3-shm",
+    "library.sqlite3-journal",
+    "assets",
+    "documents",
+    "transfers",
+    "cache",
+    "library-build.json",
+];
+const UPGRADE_INSTALL: &[&str] = &[
+    "library.sqlite3",
+    "assets",
+    "documents",
+    "transfers",
+    "cache",
+    "library-build.json",
+];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Layout {
+    Package,
+    Checkpoint,
+}
+
+impl Layout {
+    fn from_version(version: u32) -> Result<Self, String> {
+        match version {
+            1 => Ok(Self::Package),
+            2 => Ok(Self::Checkpoint),
+            _ => Err(
+                "The library activation journal is unsupported. Recovery files were preserved."
+                    .into(),
+            ),
+        }
+    }
+
+    fn version(self) -> u32 {
+        match self {
+            Self::Package => 1,
+            Self::Checkpoint => 2,
+        }
+    }
+
+    fn entries(self) -> &'static [&'static str] {
+        match self {
+            Self::Package => ENTRIES,
+            Self::Checkpoint => UPGRADE_ENTRIES,
+        }
+    }
+
+    fn install(self) -> &'static [&'static str] {
+        match self {
+            Self::Package => INSTALL,
+            Self::Checkpoint => UPGRADE_INSTALL,
+        }
+    }
+
+    fn source(self) -> &'static str {
+        match self {
+            Self::Package => "source.ostudybackup",
+            Self::Checkpoint => "checkpoint.json",
+        }
+    }
+}
+
 const COMMITTED: &[u8] = b"ostudy-restore-committed-v1\n";
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -68,7 +141,8 @@ impl PendingRestoreGuard {
     fn install(&mut self) -> Result<(), String> {
         self.cutpoint("journal");
         let transaction = self.transaction();
-        for (index, relative) in ENTRIES.iter().enumerate() {
+        let layout = Layout::from_version(self.journal.version)?;
+        for (index, relative) in layout.entries().iter().enumerate() {
             if self.journal.original[index] {
                 move_synced(
                     &self.root.join(relative),
@@ -77,7 +151,15 @@ impl PendingRestoreGuard {
             }
             self.cutpoint(&format!("previous-{index}"));
         }
-        for (index, relative) in INSTALL.iter().enumerate() {
+        for (index, relative) in layout.install().iter().enumerate() {
+            // Historic libraries have no build receipt. Its absence is an exact
+            // state to restore, not a reason to synthesize a historic version.
+            if layout == Layout::Checkpoint
+                && *relative == "library-build.json"
+                && !transaction.join("candidate").join(relative).exists()
+            {
+                continue;
+            }
             move_synced(
                 &transaction.join("candidate").join(relative),
                 &self.root.join(relative),
@@ -131,14 +213,15 @@ impl PendingRestoreGuard {
 
     pub(crate) fn rollback(&mut self) -> Result<(), String> {
         let transaction = self.transaction();
-        for (index, relative) in ENTRIES.iter().enumerate().rev() {
+        let layout = Layout::from_version(self.journal.version)?;
+        for (index, relative) in layout.entries().iter().enumerate().rev() {
             let active = self.root.join(relative);
             let previous = transaction.join("previous").join(relative);
             check_path(&self.root, Path::new(relative))?;
             check_path(&transaction, &Path::new("previous").join(relative))?;
             if self.journal.original[index] {
                 if previous.exists() {
-                    remove_entry(&active)?;
+                    self.retain_failed_entry(relative)?;
                     move_synced(&previous, &active)?;
                 } else if !active.exists() {
                     return Err(format!(
@@ -148,7 +231,7 @@ impl PendingRestoreGuard {
                 // No previous path means either the old entry was never moved
                 // or this entry has already been rolled back. Both are no-ops.
             } else {
-                remove_entry(&active)?;
+                self.retain_failed_entry(relative)?;
             }
             self.cutpoint(&format!("rollback-{index}"));
         }
@@ -157,6 +240,24 @@ impl PendingRestoreGuard {
         self.finish()?;
         self.finished = true;
         Ok(())
+    }
+
+    fn retain_failed_entry(&self, relative: &str) -> Result<(), String> {
+        let active = self.root.join(relative);
+        if self.journal.version == 1 {
+            return remove_entry(&active);
+        }
+        if !active.exists() {
+            return Ok(());
+        }
+        let transaction = self.transaction();
+        let retained = Path::new("failed").join(relative);
+        check_path(&transaction, &retained)?;
+        let retained = transaction.join(retained);
+        if retained.exists() {
+            return Err("Conflicting failed-library recovery files were preserved. No copy was overwritten.".into());
+        }
+        move_synced(&active, &retained)
     }
 
     fn finish(&self) -> Result<(), String> {
@@ -219,8 +320,8 @@ pub(crate) fn recover(paths: &AppPaths) -> Result<bool, String> {
     })?;
     crate::util::validate_entity_id(&journal.operation_id, "restore operation")
         .map_err(|error| error.message)?;
-    if journal.version != 1
-        || journal.original.len() != ENTRIES.len()
+    let layout = Layout::from_version(journal.version)?;
+    if journal.original.len() != layout.entries().len()
         || journal.source_sha256.len() != 64
         || !journal
             .source_sha256
@@ -258,6 +359,12 @@ pub(crate) fn apply_pending_restore(
         paths.app_data_dir(),
         Path::new("pending-library-restore.ostudybackup"),
     )?;
+    if checkpoint::has_intent(paths)? {
+        // Resolve any activation decision first. The upgrade owner then handles
+        // its durable intent; never apply an unrelated pending package over it.
+        recover(paths)?;
+        return Ok(None);
+    }
     apply_source_restore(paths, &pending_restore_path(paths))
 }
 
@@ -266,6 +373,7 @@ pub(crate) fn apply_pending_restore(
 /// installs or replays an abandoned preparation at startup.
 #[derive(Debug)]
 pub(super) struct PreparedRestore {
+    layout: Layout,
     root: PathBuf,
     transaction: PathBuf,
     source_sha256: String,
@@ -336,6 +444,7 @@ pub(super) fn prepare_source_restore(
     drop(staged);
     sync_tree(&candidate)?;
     Ok(PreparedRestore {
+        layout: Layout::Package,
         root: root.to_path_buf(),
         source_sha256: hash_file(&source)?,
         candidate_sha256: hash_tree(&candidate)?,
@@ -358,19 +467,24 @@ pub(super) fn install_prepared_restore(
     if root.join(JOURNAL).exists() {
         return Err("An interrupted restore must be recovered before activation.".into());
     }
+    let layout = prepared.layout;
     let transaction = prepared.transaction;
     let relative = transaction
         .strip_prefix(root)
         .map_err(|_| "Restore candidate escaped its library directory.".to_string())?;
     check_path(root, relative)?;
-    check_path(&transaction, Path::new("source.ostudybackup"))?;
+    check_path(&transaction, Path::new(layout.source()))?;
     check_path(&transaction, Path::new("candidate"))?;
-    if hash_file(&transaction.join("source.ostudybackup"))? != prepared.source_sha256
+    if hash_file(&transaction.join(layout.source()))? != prepared.source_sha256
         || hash_tree(&transaction.join("candidate"))? != prepared.candidate_sha256
     {
         return Err("The prepared restore candidate changed. The active library was not replaced; recovery files were preserved.".into());
     }
-    let original = ENTRIES
+    if layout == Layout::Checkpoint {
+        checkpoint::verify_checkpoint(&transaction)?;
+    }
+    let original = layout
+        .entries()
         .iter()
         .map(|relative| {
             check_path(root, Path::new(relative))?;
@@ -381,7 +495,7 @@ pub(super) fn install_prepared_restore(
         return Err("The current database is missing but its journal exists. Both the backup and journal were preserved.".into());
     }
     let journal = Journal {
-        version: 1,
+        version: layout.version(),
         operation_id: transaction
             .file_name()
             .and_then(|value| value.to_str())
@@ -392,7 +506,9 @@ pub(super) fn install_prepared_restore(
     };
     let previous = transaction.join("previous");
     fs::create_dir(&previous).map_err(io_error)?;
-    fs::create_dir(previous.join("cache")).map_err(io_error)?;
+    if layout == Layout::Package {
+        fs::create_dir(previous.join("cache")).map_err(io_error)?;
+    }
     sync(&previous)?;
     sync(&transaction)?;
     let bytes = serde_json::to_vec(&journal).map_err(|error| error.to_string())?;
@@ -470,7 +586,15 @@ fn new_transaction(root: &Path) -> Result<PathBuf, String> {
         std::process::id(),
         sequence
     ));
-    fs::create_dir(&transaction).map_err(io_error)?;
+    let builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    let mut builder = builder;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&transaction).map_err(io_error)?;
     sync(&parent)?;
     Ok(transaction)
 }

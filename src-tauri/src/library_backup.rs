@@ -126,7 +126,7 @@ struct BackupSummary {
 mod activation;
 #[path = "library_backup/live.rs"]
 pub(crate) mod live;
-pub(crate) use activation::apply_pending_restore;
+pub(crate) use activation::{apply_pending_restore, checkpoint};
 #[path = "library_backup/package.rs"]
 mod package;
 #[cfg(test)]

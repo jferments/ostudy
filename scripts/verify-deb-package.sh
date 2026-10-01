@@ -5,8 +5,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 DEB="${1:-}"
-[[ -n "$DEB" && -f "$DEB" ]] || {
-  printf 'Usage: ./scripts/verify-deb-package.sh path/to/ostudy.deb\n' >&2
+BUILT_GUI="${2:-}"
+[[ -n "$DEB" && -f "$DEB" && -n "$BUILT_GUI" && -f "$BUILT_GUI" ]] || {
+  printf 'Usage: ./scripts/verify-deb-package.sh path/to/ostudy.deb path/to/built/ostudy\n' >&2
   exit 2
 }
 command -v dpkg-deb >/dev/null 2>&1 || {
@@ -34,6 +35,9 @@ dpkg-deb --contents "$DEB" > "$TMP/contents.txt"
 dpkg-deb --control "$DEB" "$TMP/control"
 mkdir -p "$TMP/data"
 dpkg-deb --extract "$DEB" "$TMP/data"
+
+python3 "$SCRIPT_DIR/verify-packaged-launcher.py" \
+  "$TMP/data" "$BUILT_GUI" "$ROOT_DIR/src-tauri/Cargo.toml"
 
 if grep -Eiq '(^|[[:space:]])\.?/(home|root)/|\.local/share' "$TMP/contents.txt"; then
   printf 'ERROR: Debian package owns a user/home application-data path.\n' >&2

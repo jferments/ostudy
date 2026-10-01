@@ -46,7 +46,7 @@ DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
   printf 'ERROR: expected exactly one Debian bundle under %s/deb.\n' "$BUNDLE_ROOT" >&2
   exit 1
 }
-"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}"
+"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;

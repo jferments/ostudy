@@ -110,7 +110,7 @@ cargo test \
   study_materials::composition::tests::
 
 step "Current-format entry, preservation and native execution contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests::
+bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests:: startup::upgrade:: startup::upgrade_dialog:: library_backup::activation::checkpoint::
 
 step "H-09 disk-backed conversion staging contracts"
 bash "$SCRIPT_DIR/test-native-contracts.sh" \
