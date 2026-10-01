@@ -581,9 +581,7 @@ mod source_title_tests {
                         [&destination],
                     )
                     .map_err(CommandError::database)?;
-                let transaction = connection
-                    .transaction()
-                    .map_err(CommandError::database)?;
+                let transaction = connection.transaction().map_err(CommandError::database)?;
                 assert!(!deck_is_merge_destination(&transaction, &destination)?);
                 transaction
                     .execute(

@@ -229,10 +229,7 @@ pub(crate) fn merge_in_connection(
     // the merge's own optimistic update. Temporarily detach only the affected
     // metadata rows, retarget the document IDs, then restore the exact metadata
     // payload with the destination deck ID inside this same transaction.
-    let metadata_rows = detach_document_artifact_metadata(
-        &transaction,
-        &input.source_deck_id,
-    )?;
+    let metadata_rows = detach_document_artifact_metadata(&transaction, &input.source_deck_id)?;
     let retargeted_documents = transaction
         .execute(
             "UPDATE documents
@@ -241,11 +238,7 @@ pub(crate) fn merge_in_connection(
             params![input.destination_deck_id, now, input.source_deck_id],
         )
         .map_err(CommandError::database)?;
-    restore_document_artifact_metadata(
-        &transaction,
-        &input.destination_deck_id,
-        metadata_rows,
-    )?;
+    restore_document_artifact_metadata(&transaction, &input.destination_deck_id, metadata_rows)?;
     transaction
         .execute(
             "UPDATE document_generation_jobs
