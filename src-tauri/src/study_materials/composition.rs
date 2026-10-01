@@ -2955,6 +2955,7 @@ mod tests {
                     kind: StudyTargetKind::Collection,
                     id: fixture.collection_id.clone(),
                 },
+                generation_instructions: GenerationInstructions::default(),
                 output_policy: super::super::StudyTargetOutputPolicy {
                     flashcards: true,
                     study_guide: true,
@@ -2965,12 +2966,13 @@ mod tests {
         .expect("bundle should begin");
         let claim = claim_batch(&fixture.database, &operation_id).expect("batch should claim");
         assert!(claim.claimed);
-        compose_collection_flashcards(
+        tauri::async_runtime::block_on(compose_collection_flashcards(
             &fixture.database,
+            None,
             &operation_id,
             &claim,
             &CancellationSignal::new(),
-        )
+        ))
         .expect("flashcards should publish");
         record_artifact_failure(
             &fixture.database,
@@ -3038,6 +3040,7 @@ mod tests {
                     kind: StudyTargetKind::Collection,
                     id: fixture.collection_id.clone(),
                 },
+                generation_instructions: GenerationInstructions::default(),
                 output_policy: super::super::StudyTargetOutputPolicy {
                     flashcards: true,
                     study_guide: false,
