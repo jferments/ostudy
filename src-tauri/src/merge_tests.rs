@@ -530,7 +530,7 @@ fn active_generation_practice_and_pending_deletion_block_without_moving_material
     let database = Database::open_in_memory().unwrap();
     database
         .with_connection(|connection| {
-            let (source, destination, note_id, _) = seed(connection)?;
+            let (source, destination, note_id, card_id) = seed(connection)?;
             let document_id = id(910);
             connection
                 .execute(
@@ -575,6 +575,14 @@ fn active_generation_practice_and_pending_deletion_block_without_moving_material
                         practice_id,
                         serde_json::json!([source.id.clone()]).to_string()
                     ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO practice_session_cards(
+                         session_id,card_id,position,presentation_variant
+                     ) VALUES(?1,?2,0,'forward')",
+                    params![practice_id, card_id],
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(

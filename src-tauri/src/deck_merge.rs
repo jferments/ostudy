@@ -602,9 +602,11 @@ fn ensure_no_conflicting_work(
             "SELECT EXISTS(
                  SELECT 1
                  FROM practice_sessions session
-                 JOIN json_each(session.selected_deck_ids_json) selected
-                   ON CAST(selected.value AS TEXT) IN (?1,?2)
+                 JOIN practice_session_cards session_card
+                   ON session_card.session_id=session.id
+                 JOIN cards card ON card.id=session_card.card_id
                  WHERE session.completed_at IS NULL
+                   AND card.deck_id IN (?1,?2)
              )",
             params![input.source_deck_id, input.destination_deck_id],
             |row| row.get(0),
