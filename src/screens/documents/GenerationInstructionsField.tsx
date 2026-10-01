@@ -1,5 +1,5 @@
 import { generationInstructionsError } from "../../ipc/generationInstructions";
-import { Textarea } from "../../ui/primitives/FormControls";
+import { Disclosure, Textarea } from "../../ui/primitives/FormControls";
 import { FormField } from "../../ui/primitives/FormField";
 
 interface GenerationInstructionsFieldProps {
@@ -23,10 +23,9 @@ export function GenerationInstructionsField({
       placeholder="For each cranial nerve in these materials, create concise recall cards about tests nurses use to assess its function."
       onChange={(event) => onChange(event.currentTarget.value)} />
   </FormField>;
-  return compact ? <details className="tw:min-w-0 tw:py-2">
-    <summary className="tw:cursor-pointer tw:text-sm tw:text-muted-foreground">
-      {label}{value.trim() ? " · customized" : ""}
-    </summary>
+  return compact ? <Disclosure
+    title={`${label}${value.trim() ? " · customized" : ""}`}
+    className="tw:border-0 tw:py-2">
     <div className="tw:pt-3">{field}</div>
-  </details> : field;
+  </Disclosure> : field;
 }

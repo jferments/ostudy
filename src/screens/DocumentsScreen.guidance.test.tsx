@@ -52,11 +52,10 @@ function renderDocuments() {
   </OverlayProvider>);
 }
 function editInstructions(label: string, value: string, root: HTMLElement = documentBody()): void {
-  const field = within(root).getByLabelText(label);
-  const summary = field.closest("details")?.querySelector("summary");
-  if (!summary) throw new Error(`Missing instruction disclosure for ${label}`);
-  if (!summary.parentElement?.hasAttribute("open")) fireEvent.click(summary);
-  fireEvent.change(field, { target: { value } });
+  const queries = within(root);
+  const trigger = queries.getByRole("button", { name: (name) => name.startsWith(label) });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  fireEvent.change(queries.getByLabelText(label), { target: { value } });
 }
 function documentBody(): HTMLElement { return globalThis.document.body; }
 async function selectGenerateMore(title = "Neurological assessments") {
