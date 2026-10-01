@@ -618,10 +618,7 @@ mod source_title_tests {
                         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(
-                    values,
-                    ("NURS 112 - Exam 1".to_string(), String::new(), 7)
-                );
+                assert_eq!(values, ("NURS 112 - Exam 1".to_string(), String::new(), 7));
                 transaction.rollback().map_err(CommandError::database)?;
                 Ok(())
             })
