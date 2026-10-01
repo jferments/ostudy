@@ -307,8 +307,8 @@ mod tests {
     fn guidance_survives_curation_without_changing_selection_or_quality_rules() {
         use crate::knowledge::assessment::policy::instructions::GenerationInstructions;
         let baseline = curation_system_prompt(&GenerationInstructions::default()).unwrap();
-        let instructions = GenerationInstructions::parse(Some("Nursing cranial nerve tests"))
-            .unwrap();
+        let instructions =
+            GenerationInstructions::parse(Some("Nursing cranial nerve tests")).unwrap();
         let guided = curation_system_prompt(&instructions).unwrap();
         assert!(guided.starts_with(&baseline));
         assert_eq!(guided.matches("Nursing cranial nerve tests").count(), 1);

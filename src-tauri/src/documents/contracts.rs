@@ -82,7 +82,8 @@ mod instruction_tests {
         assert_eq!(requested.document_id, existing.document_id);
         assert_eq!(
             requested.generation_instructions,
-            GenerationInstructions::parse(Some("Focus on nursing cranial-nerve assessments.")).unwrap()
+            GenerationInstructions::parse(Some("Focus on nursing cranial-nerve assessments."))
+                .unwrap()
         );
         assert!(!format!("{requested:?}").contains("cranial-nerve"));
         assert!(serde_json::from_value::<RetryPdfGenerationInput>(json!({

@@ -124,11 +124,9 @@ async fn retry_pdf_flashcard_generation_inner(
     processing_reserved: bool,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     crate::ai::generation::outcomes::operation::bind_document(database);
-    if let Some(result) = committed_initial_generation(
-        database,
-        &input.document_id,
-        &input.generation_instructions,
-    )? {
+    if let Some(result) =
+        committed_initial_generation(database, &input.document_id, &input.generation_instructions)?
+    {
         let reuse_key = crate::ai::generation::hash(
             format!(
                 "committed-flashcard-publication-v1|{}|{}",
@@ -340,8 +338,7 @@ mod tests {
         assert_eq!(recovered.skipped_duplicate_count, 0);
         assert_eq!(recovered.document.lifecycle_state, "ready");
         let different = GenerationInstructions::parse(Some("Nursing assessments")).unwrap();
-        let error = committed_initial_generation(&database, &document_id, &different)
-            .unwrap_err();
+        let error = committed_initial_generation(&database, &document_id, &different).unwrap_err();
         assert_eq!(error.code, "generation_instructions_changed");
         assert!(!error.message.contains("Nursing assessments"));
         let unchanged = committed_initial_generation(
@@ -376,9 +373,11 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        assert!(committed_initial_generation(&database, &document_id, &Default::default())
-            .unwrap()
-            .is_none());
+        assert!(
+            committed_initial_generation(&database, &document_id, &Default::default())
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             validate_retry_pdf_flashcard_generation(&database, &document_id)
                 .unwrap_err()
