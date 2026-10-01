@@ -440,6 +440,13 @@ fn apply_deck_metadata(
     desired: &DesiredMetadata,
     now: i64,
 ) -> Result<(), CommandError> {
+    // A deck chosen as a merge destination is learner-owned organization.
+    // Document metadata remains attached for provenance/future generation, but
+    // must never reclaim that deck's title/description on a later outline pass.
+    if deck_is_merge_destination(transaction, deck_id)? {
+        return Ok(());
+    }
+
     let deck = transaction
         .query_row(
             "SELECT name, description
@@ -506,6 +513,22 @@ fn apply_deck_metadata(
     Ok(())
 }
 
+fn deck_is_merge_destination(
+    transaction: &Transaction<'_>,
+    deck_id: &str,
+) -> Result<bool, CommandError> {
+    transaction
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM deck_merge_operations
+                 WHERE json_extract(result_json,'$.result.destinationDeckId')=?1
+             )",
+            [deck_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
+}
+
 fn record_applied_values(
     transaction: &Transaction<'_>,
     document_id: &str,
@@ -541,6 +564,51 @@ fn record_applied_values(
 #[cfg(test)]
 mod source_title_tests {
     use super::*;
+    use crate::database::Database;
+    use rusqlite::params;
+
+    #[test]
+    fn merge_destination_receipt_marks_deck_metadata_as_learner_owned() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                let destination = "d".repeat(32);
+                connection
+                    .execute(
+                        "INSERT INTO decks(
+                             id,name,description,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'Exam 1','',0,1,1,1)",
+                        [&destination],
+                    )
+                    .map_err(CommandError::database)?;
+                let transaction = connection
+                    .transaction()
+                    .map_err(CommandError::database)?;
+                assert!(!deck_is_merge_destination(&transaction, &destination)?);
+                transaction
+                    .execute(
+                        "INSERT INTO deck_merge_operations(
+                             operation_id,request_sha256,result_json,created_at
+                         ) VALUES(?1,?2,?3,1)",
+                        params![
+                            "a".repeat(32),
+                            "b".repeat(64),
+                            serde_json::json!({
+                                "kind": "deck_merge_v1",
+                                "result": {
+                                    "destinationDeckId": destination
+                                }
+                            })
+                            .to_string(),
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                assert!(deck_is_merge_destination(&transaction, &destination)?);
+                transaction.rollback().map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+    }
 
     #[test]
     fn chapter_marker_promotes_the_following_heading_to_document_scope() {
