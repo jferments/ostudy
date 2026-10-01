@@ -474,8 +474,12 @@ describe("DocumentsScreen", () => {
       expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
-    await openDocumentActions();
-    expect(await screen.findByText("Stopping…")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "More actions for Cardiac physiology" })).toBeNull();
+    });
+    const stoppingMenu = await openDocumentActions();
+    const stopping = within(stoppingMenu).getByRole("menuitem", { name: "Stopping…" });
+    expect(stopping.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
 
