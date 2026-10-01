@@ -59,7 +59,7 @@ requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e
 requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
 requireText("selection-deck migration checksum", release, '"c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"');
 requireText("deck-merge release migration", release, 'name: "deck_merge_operations"');
-requireText("deck-merge migration checksum", release, '"696295167cef3c20d750f93373b673dca78a829aca43379d7792ce3bd9be3705"');
+requireText("deck-merge migration checksum", release, '"f6b820ff03ba890d4c4b0f0fd434aaa6725d4c6ddf4f43e1a334755bccca2edc"');
 requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
 requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
 requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");

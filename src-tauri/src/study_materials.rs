@@ -25,7 +25,10 @@ use crate::{
     database::Database,
     document_study_guides::{StudyGuideOverview, StudyGuideSectionContent},
     error::CommandError,
-    knowledge::collection_view::CollectionSynthesis,
+    knowledge::{
+        assessment::policy::instructions::GenerationInstructions,
+        collection_view::CollectionSynthesis,
+    },
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -99,6 +102,8 @@ impl Default for StudyTargetOutputPolicy {
 pub(crate) struct BeginStudyTargetBundleInput {
     pub operation_id: String,
     pub target: StudyTargetRef,
+    #[serde(default)]
+    pub generation_instructions: GenerationInstructions,
     #[serde(default)]
     pub output_policy: StudyTargetOutputPolicy,
     #[serde(default)]
@@ -734,6 +739,7 @@ pub(crate) fn sanitize_for_device_transfer(connection: &Connection) -> Result<()
              DELETE FROM collection_guide_manifests;
              DELETE FROM collection_reduction_receipts;
              DELETE FROM study_target_artifact_jobs;
+             DELETE FROM study_target_generation_instructions;
              DELETE FROM study_target_batches;",
         )
         .map_err(CommandError::database)
@@ -844,6 +850,7 @@ fn begin_bundle(
         &serde_json::to_vec(&json!({
             "target": &input.target,
             "snapshotId": &snapshot.snapshot_id,
+            "generationInstructions": &input.generation_instructions,
             "outputPolicy": &input.output_policy,
             "recreateArtifacts": &input.recreate_artifacts,
         }))
@@ -887,8 +894,9 @@ fn begin_bundle(
             .map_err(CommandError::database)?;
         }
 
-        let provider_authorized =
-            input.target.kind == StudyTargetKind::Collection && input.output_policy.study_guide;
+        let provider_authorized = input.target.kind == StudyTargetKind::Collection
+            && (input.output_policy.study_guide
+                || (input.output_policy.flashcards && !input.generation_instructions.is_empty()));
         tx.execute(
             "INSERT INTO study_target_batches(
                  operation_id,target_id,request_sha256,source_snapshot_id,source_snapshot_json,
@@ -906,6 +914,16 @@ fn begin_bundle(
             ],
         )
         .map_err(CommandError::database)?;
+
+        if let Some(generation_instructions) = input.generation_instructions.as_deref() {
+            tx.execute(
+                "INSERT INTO study_target_generation_instructions(
+                     operation_id,generation_instructions,created_at
+                 ) VALUES(?1,?2,?3)",
+                params![input.operation_id, generation_instructions, now],
+            )
+            .map_err(CommandError::database)?;
+        }
 
         for (requested, kind) in [
             (

@@ -37,6 +37,15 @@ pub(super) fn verify(
     if !merge_receipts.1.is_empty() {
         return Err("The release upgrade unexpectedly created deck-merge receipts. The active library was not replaced.".into());
     }
+    let generation_instructions = after
+        .remove("study_target_generation_instructions")
+        .ok_or_else(|| {
+            "The upgraded library is missing its StudyTarget generation-instruction table."
+                .to_string()
+        })?;
+    if !generation_instructions.1.is_empty() {
+        return Err("The release upgrade unexpectedly created StudyTarget generation instructions. The active library was not replaced.".into());
+    }
 
     if source_version == 1 {
         let selection_receipts = after.remove("selection_deck_operations").ok_or_else(|| {

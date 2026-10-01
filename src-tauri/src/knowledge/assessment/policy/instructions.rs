@@ -42,6 +42,10 @@ impl GenerationInstructions {
         self.0.is_none()
     }
 
+    pub(crate) fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+
     pub(crate) fn prompt_suffix(&self) -> Result<String, CommandError> {
         let Some(text) = self.0.as_deref() else {
             return Ok(String::new());

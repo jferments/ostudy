@@ -46,7 +46,7 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     ReleaseMigration {
         version: 3,
         name: "deck_merge_operations",
-        checksum: "696295167cef3c20d750f93373b673dca78a829aca43379d7792ce3bd9be3705",
+        checksum: "f6b820ff03ba890d4c4b0f0fd434aaa6725d4c6ddf4f43e1a334755bccca2edc",
         sql: include_str!("../../schema/0003_deck_merge_operations.sql"),
     },
 ];

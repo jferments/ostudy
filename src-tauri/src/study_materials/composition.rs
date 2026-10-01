@@ -7,7 +7,7 @@
 //! quality authority. Collection synthesis can organize the collection guide,
 //! but it cannot lower or bypass the flashcard quality gate.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -18,8 +18,8 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_collection_study_guide_topic_section, load_document_task_context,
-            CollectionStudyGuideAuthoring,
+            curate_document_cards_required, generate_collection_study_guide_topic_section,
+            load_document_task_context, CollectionStudyGuideAuthoring, DocumentOutline,
         },
         document_provider, generation, AiRuntimeState,
     },
@@ -34,7 +34,9 @@ use crate::{
     },
     error::CommandError,
     knowledge::{
-        assessment::{self, AssessmentRecord},
+        assessment::{
+            self, policy::instructions::GenerationInstructions, AssessmentRecord,
+        },
         collection_view::{self, CollectionViewState},
         contracts::KnowledgeKind,
     },
@@ -51,6 +53,7 @@ use super::{
 mod planning;
 
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
+const COLLECTION_CURATION_SOURCE_NOTE_ID: &str = "_ostudyCollectionSourceNoteId";
 pub(crate) const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 2;
 const MAX_COLLECTION_GUIDE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -96,6 +99,7 @@ struct BatchClaim {
     target_id: String,
     target: StudyTargetRef,
     snapshot: SourceSetSnapshotDto,
+    generation_instructions: GenerationInstructions,
     provider_authorized: bool,
     claimed: bool,
 }
@@ -182,7 +186,14 @@ async fn compose(
                 adopt_document_guide(database, &input.operation_id, &claim)
             }
             (StudyTargetKind::Collection, StudyTargetArtifactKind::Flashcards) => {
-                compose_collection_flashcards(database, &input.operation_id, &claim, &signal)
+                compose_collection_flashcards(
+                    database,
+                    runtime,
+                    &input.operation_id,
+                    &claim,
+                    &signal,
+                )
+                .await
             }
             (StudyTargetKind::Collection, StudyTargetArtifactKind::StudyGuide) => {
                 let runtime = runtime.ok_or_else(|| {
@@ -240,9 +251,12 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
         let row = tx
             .query_row(
                 "SELECT b.target_id,b.state,b.source_snapshot_json,b.provider_authorized,
-                        t.target_kind,t.document_id,t.collection_id
+                        t.target_kind,t.document_id,t.collection_id,
+                        guidance.generation_instructions
                  FROM study_target_batches b
                  JOIN study_targets t ON t.id=b.target_id
+                 LEFT JOIN study_target_generation_instructions guidance
+                   ON guidance.operation_id=b.operation_id
                  WHERE b.operation_id=?1",
                 [operation_id],
                 |row| {
@@ -254,6 +268,7 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
                         row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
                     ))
                 },
             )
@@ -273,6 +288,7 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
             kind,
             document_id,
             collection_id,
+            generation_instructions,
         ) = row;
         let target_kind = match kind.as_str() {
             "document" => StudyTargetKind::Document,
@@ -316,6 +332,9 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                 id: target_source_id,
             },
             snapshot,
+            generation_instructions: GenerationInstructions::parse(
+                generation_instructions.as_deref(),
+            )?,
             provider_authorized: provider_authorized != 0,
             claimed,
         })
@@ -459,7 +478,26 @@ fn adopt_document_guide(
     })
 }
 
-fn compose_collection_flashcards(
+async fn compose_collection_flashcards(
+    database: &Database,
+    runtime: Option<&AiRuntimeState>,
+    operation_id: &str,
+    claim: &BatchClaim,
+    signal: &CancellationSignal,
+) -> Result<(), CommandError> {
+    if claim.generation_instructions.is_empty() {
+        return compose_collection_flashcards_exact(database, operation_id, claim, signal);
+    }
+    let runtime = runtime.ok_or_else(|| {
+        CommandError::new(
+            "study_target_provider_runtime_missing",
+            "Guided collection flashcards require the configured AI runtime.",
+        )
+    })?;
+    compose_collection_flashcards_guided(database, runtime, operation_id, claim, signal).await
+}
+
+fn compose_collection_flashcards_exact(
     database: &Database,
     operation_id: &str,
     claim: &BatchClaim,
@@ -501,28 +539,12 @@ fn compose_collection_flashcards(
                 continue;
             }
             let copied = copy_source_note(&tx, candidate, &source, &deck_id, now)?;
-            tx.execute(
-                "INSERT INTO study_target_card_origins(
-                     target_id,target_note_id,source_document_id,source_note_id,
-                     source_note_revision,source_identity_sha256,created_at
-                 ) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-                params![
-                    claim.target_id,
-                    copied.note_id,
-                    candidate.document_id,
-                    candidate.note_id,
-                    candidate.note_revision,
-                    copied.source_identity_sha256,
-                    now
-                ],
-            )
-            .map_err(CommandError::database)?;
-            attach_target_citation(
+            record_collection_card_origin(
                 &tx,
+                &claim.target_id,
+                candidate,
+                &copied,
                 &deck_id,
-                &copied.note_id,
-                &candidate.document_id,
-                &candidate.locator,
                 now,
             )?;
             completed += 1;
@@ -538,15 +560,300 @@ fn compose_collection_flashcards(
             completed,
             now,
         )?;
-        tx.execute(
-            "UPDATE study_targets
-             SET deck_id=?1,updated_at=?2,revision=revision+1
-             WHERE id=?3",
-            params![deck_id, now, claim.target_id],
-        )
-        .map_err(CommandError::database)?;
+        attach_collection_deck_to_target(&tx, &claim.target_id, &deck_id, now)?;
         tx.commit().map_err(CommandError::database)
     })
+}
+
+async fn compose_collection_flashcards_guided(
+    database: &Database,
+    runtime: &AiRuntimeState,
+    operation_id: &str,
+    claim: &BatchClaim,
+    signal: &CancellationSignal,
+) -> Result<(), CommandError> {
+    ensure_bundle_running(signal)?;
+    if !claim.provider_authorized {
+        return Err(CommandError::new(
+            "study_target_provider_not_authorized",
+            "Guided collection flashcards were not authorized for provider work.",
+        ));
+    }
+
+    let (candidate_count, already_present, candidates_for_curation) =
+        database.with_connection(|connection| {
+            let tx = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(CommandError::database)?;
+            collections::ensure_snapshot_current(&tx, &claim.snapshot)?;
+            let candidates = source_note_candidates(&tx, &claim.snapshot)?;
+            if candidates.is_empty() {
+                return Err(CommandError::new(
+                    "study_target_source_flashcards_missing",
+                    "This collection has no range-authorized, unedited document-generated flashcards to guide. Generate flashcards for its source documents first.",
+                ));
+            }
+            let mut already_present = 0_usize;
+            let mut pending = Vec::new();
+            for candidate in &candidates {
+                if origin_exists(&tx, &claim.target_id, &candidate.note_id)? {
+                    already_present += 1;
+                    continue;
+                }
+                let source = load_source_note(&tx, candidate)?;
+                pending.push(source_note_for_curation(candidate, &source)?);
+            }
+            let now = unix_time_millis()?;
+            set_job_running(
+                &tx,
+                operation_id,
+                StudyTargetArtifactKind::Flashcards,
+                candidates.len(),
+                now,
+            )?;
+            tx.commit().map_err(CommandError::database)?;
+            Ok((candidates.len(), already_present, pending))
+        })?;
+
+    let selected_note_ids = if candidates_for_curation.is_empty() {
+        BTreeSet::new()
+    } else {
+        let native = collection_view::refresh_native(database, &claim.target.id)?;
+        if native.stale || native.synthesis.snapshot_id != claim.snapshot.snapshot_id {
+            return Err(CommandError::new(
+                "source_set_changed",
+                "The collection changed before its guided flashcards could be selected.",
+            ));
+        }
+        let outline = collection_curation_outline(&native.synthesis);
+        let mut task = load_document_task_context(database)?;
+        let capabilities = document_provider::load_document_provider_capabilities(
+            database,
+            &task.profile_id,
+            &task.provider_kind,
+            &task.model_id,
+        )?;
+        task.apply_provider_capabilities(&capabilities);
+        task.question_policy.generation_instructions = claim.generation_instructions.clone();
+        let mut diagnostics = generation::Operation::begin(
+            database,
+            None,
+            None,
+            Some(&claim.target.id),
+            "collection_flashcard_guidance",
+        )?;
+        task.diagnostics = Some(diagnostics.context());
+        ensure_bundle_running(signal)?;
+        let result = curate_document_cards_required(
+            runtime,
+            &task,
+            &outline,
+            candidates_for_curation,
+        )
+        .await;
+        diagnostics.finish_result(&result);
+        ensure_bundle_running(signal)?;
+        let retained = result?;
+        retained_collection_note_ids(&retained)?
+    };
+
+    if selected_note_ids.is_empty() && already_present == 0 {
+        return Err(CommandError::new(
+            "study_target_no_matching_flashcards",
+            "No eligible source flashcards matched the learner's requested focus. Existing source evidence was not replaced with unrelated filler.",
+        ));
+    }
+
+    database.with_connection(|connection| {
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        collections::ensure_snapshot_current(&tx, &claim.snapshot)?;
+        let candidates = source_note_candidates(&tx, &claim.snapshot)?;
+        if candidates.len() != candidate_count {
+            return Err(CommandError::new(
+                "source_set_changed",
+                "The collection's eligible source flashcards changed before guided selection could be committed.",
+            ));
+        }
+        let now = unix_time_millis()?;
+        let deck_id = ensure_collection_target_deck(&tx, &claim.target_id, &claim.target, now)?;
+        let mut processed = 0_usize;
+        for candidate in &candidates {
+            ensure_bundle_running(signal)?;
+            if origin_exists(&tx, &claim.target_id, &candidate.note_id)? {
+                processed += 1;
+                continue;
+            }
+            if !selected_note_ids.contains(&candidate.note_id) {
+                processed += 1;
+                continue;
+            }
+            let source = load_source_note(&tx, candidate)?;
+            if destination_has_exact_note(&tx, &deck_id, &source)? {
+                processed += 1;
+                continue;
+            }
+            let copied = copy_source_note(&tx, candidate, &source, &deck_id, now)?;
+            record_collection_card_origin(
+                &tx,
+                &claim.target_id,
+                candidate,
+                &copied,
+                &deck_id,
+                now,
+            )?;
+            processed += 1;
+        }
+        succeed_job(
+            &tx,
+            operation_id,
+            StudyTargetArtifactKind::Flashcards,
+            &deck_id,
+            candidates.len(),
+            processed,
+            now,
+        )?;
+        attach_collection_deck_to_target(&tx, &claim.target_id, &deck_id, now)?;
+        tx.commit().map_err(CommandError::database)
+    })
+}
+
+fn source_note_for_curation(
+    candidate: &SourceBundleNote,
+    source: &StoredSourceNote,
+) -> Result<serde_json::Value, CommandError> {
+    let mut card = match source.note_type.as_str() {
+        "basic" => serde_json::json!({
+            "type": "basic",
+            "front": source.front_text,
+            "back": source.back_text,
+            "tags": []
+        }),
+        "cloze" => serde_json::json!({
+            "type": "cloze",
+            "text": source.cloze_source,
+            "back": source.back_text,
+            "tags": []
+        }),
+        "interactive" => {
+            let definition = source.question_definition.as_deref().ok_or_else(|| {
+                CommandError::new(
+                    "study_target_source_card_invalid",
+                    "A generated objective question lost its validated definition.",
+                )
+            })?;
+            let question: serde_json::Value =
+                serde_json::from_str(definition).map_err(CommandError::serialization)?;
+            serde_json::json!({
+                "type": "interactive",
+                "question": question,
+                "tags": []
+            })
+        }
+        _ => {
+            return Err(CommandError::new(
+                "study_target_source_card_invalid",
+                "A source document flashcard uses an unsupported generated note type.",
+            ))
+        }
+    };
+    let object = card.as_object_mut().ok_or_else(|| {
+        CommandError::new(
+            "study_target_source_card_invalid",
+            "A source flashcard could not be represented for guided selection.",
+        )
+    })?;
+    object.insert(
+        COLLECTION_CURATION_SOURCE_NOTE_ID.to_string(),
+        serde_json::Value::String(candidate.note_id.clone()),
+    );
+    Ok(card)
+}
+
+fn retained_collection_note_ids(
+    cards: &[serde_json::Value],
+) -> Result<BTreeSet<String>, CommandError> {
+    let mut ids = BTreeSet::new();
+    for card in cards {
+        let note_id = card
+            .get(COLLECTION_CURATION_SOURCE_NOTE_ID)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CommandError::new(
+                    "study_target_guidance_selection_invalid",
+                    "The guided selection lost an internal source-card identity.",
+                )
+            })?;
+        validate_entity_id(note_id, "source note")?;
+        ids.insert(note_id.to_string());
+    }
+    Ok(ids)
+}
+
+fn collection_curation_outline(
+    synthesis: &crate::knowledge::collection_view::CollectionSynthesis,
+) -> DocumentOutline {
+    DocumentOutline {
+        summary: synthesis.summary.clone(),
+        learning_objectives: synthesis.learning_objectives.clone(),
+        key_concepts: synthesis
+            .topics
+            .iter()
+            .map(|topic| topic.title.clone())
+            .collect(),
+        sections: Vec::new(),
+    }
+}
+
+fn record_collection_card_origin(
+    tx: &Transaction<'_>,
+    target_id: &str,
+    candidate: &SourceBundleNote,
+    copied: &CopiedNote,
+    deck_id: &str,
+    now: i64,
+) -> Result<(), CommandError> {
+    tx.execute(
+        "INSERT INTO study_target_card_origins(
+             target_id,target_note_id,source_document_id,source_note_id,
+             source_note_revision,source_identity_sha256,created_at
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+        params![
+            target_id,
+            copied.note_id,
+            candidate.document_id,
+            candidate.note_id,
+            candidate.note_revision,
+            copied.source_identity_sha256,
+            now
+        ],
+    )
+    .map_err(CommandError::database)?;
+    attach_target_citation(
+        tx,
+        deck_id,
+        &copied.note_id,
+        &candidate.document_id,
+        &candidate.locator,
+        now,
+    )
+}
+
+fn attach_collection_deck_to_target(
+    tx: &Transaction<'_>,
+    target_id: &str,
+    deck_id: &str,
+    now: i64,
+) -> Result<(), CommandError> {
+    tx.execute(
+        "UPDATE study_targets
+         SET deck_id=?1,updated_at=?2,revision=revision+1
+         WHERE id=?3",
+        params![deck_id, now, target_id],
+    )
+    .map_err(CommandError::database)?;
+    Ok(())
 }
 
 fn source_note_candidates(
@@ -2306,6 +2613,7 @@ mod tests {
                     kind: StudyTargetKind::Collection,
                     id: fixture.collection_id.clone(),
                 },
+                generation_instructions: GenerationInstructions::default(),
                 output_policy: super::super::StudyTargetOutputPolicy {
                     flashcards: true,
                     study_guide: false,
@@ -2328,6 +2636,105 @@ mod tests {
             },
         ))
         .expect("bundle should compose")
+    }
+
+    #[test]
+    fn collection_guidance_candidate_mapping_never_exposes_or_loses_source_identity() {
+        let candidate = SourceBundleNote {
+            document_id: "d".repeat(32),
+            note_id: "a".repeat(32),
+            note_revision: 1,
+            locator: SourceLocator::new(
+                crate::document_domain::SourceUnitKind::Page,
+                vec![1],
+                None,
+            )
+            .unwrap(),
+        };
+        let source = StoredSourceNote {
+            note_type: "basic".to_string(),
+            content_format: "tiptap-json".to_string(),
+            content_schema_version: 1,
+            front_doc: "{}".to_string(),
+            back_doc: "{}".to_string(),
+            front_text: "How is CN II assessed?".to_string(),
+            back_text: "Test visual acuity and visual fields.".to_string(),
+            duplicate_hash: "hash".to_string(),
+            reverse_enabled: 0,
+            cloze_source: String::new(),
+            cloze_mode: "one_at_a_time".to_string(),
+            question_definition: None,
+            revision: 1,
+        };
+        let represented = source_note_for_curation(&candidate, &source).unwrap();
+        assert_eq!(
+            represented[COLLECTION_CURATION_SOURCE_NOTE_ID],
+            candidate.note_id
+        );
+        assert_eq!(
+            retained_collection_note_ids(&[represented]).unwrap(),
+            BTreeSet::from([candidate.note_id])
+        );
+    }
+
+    #[test]
+    fn guided_collection_batch_persists_normalized_intent_and_replays_equivalent_text() {
+        let fixture = bundle_fixture();
+        let operation_id = test_operation_id(9, 1);
+        let input = |text: &str| super::super::BeginStudyTargetBundleInput {
+            operation_id: operation_id.clone(),
+            target: StudyTargetRef {
+                kind: StudyTargetKind::Collection,
+                id: fixture.collection_id.clone(),
+            },
+            generation_instructions: GenerationInstructions::parse(Some(text)).unwrap(),
+            output_policy: super::super::StudyTargetOutputPolicy {
+                flashcards: true,
+                study_guide: false,
+            },
+            recreate_artifacts: Vec::new(),
+        };
+
+        let first = super::super::begin_bundle(
+            &fixture.database,
+            input("  Focus on nursing cranial nerve assessments.  "),
+        )
+        .unwrap();
+        let replay = super::super::begin_bundle(
+            &fixture.database,
+            input("Focus on nursing cranial nerve assessments.\n"),
+        )
+        .unwrap();
+        assert_eq!(first.latest_operation_id, replay.latest_operation_id);
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                let stored: (String, i64) = connection
+                    .query_row(
+                        "SELECT guidance.generation_instructions,batch.provider_authorized
+                         FROM study_target_batches batch
+                         JOIN study_target_generation_instructions guidance
+                           ON guidance.operation_id=batch.operation_id
+                         WHERE batch.operation_id=?1",
+                        [&operation_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(
+                    stored,
+                    ("Focus on nursing cranial nerve assessments.".to_string(), 1)
+                );
+                Ok(())
+            })
+            .unwrap();
+
+        let changed = super::super::begin_bundle(
+            &fixture.database,
+            input("Focus on cardiovascular pharmacology."),
+        )
+        .unwrap_err();
+        assert_eq!(changed.code, "operation_id_conflict");
     }
 
     #[test]
