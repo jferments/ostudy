@@ -126,7 +126,11 @@ describe("production deck route action contracts", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: `Archive ${deck.name}` }));
     expect(calls.setArchived).toHaveBeenCalledTimes(1);
     expect(calls.setArchived).toHaveBeenCalledWith({ deckId: deck.id, revision: 3, archived: true });
-    expect(screen.getByRole("button", { name: `${deck.name} actions` }).hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const busyMenu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(busyMenu).getByRole("menuitem", { name: `Archive ${deck.name}` }));
+    expect(calls.setArchived).toHaveBeenCalledTimes(1);
 
     await act(async () => { complete({ ...deck, archivedAt: 50, revision: 4 }); });
     await waitFor(() => expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("navigation unavailable")));
