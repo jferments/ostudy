@@ -370,7 +370,9 @@ describe("Document collections workspace", () => {
           "  Create cards for each cranial nerve, emphasizing nursing assessment tests.  ",
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create study materials" }));
+    const create = screen.getByRole("button", { name: "Create study materials" }) as HTMLButtonElement;
+    await waitFor(() => expect(create.disabled).toBe(false));
+    fireEvent.click(create);
 
     await waitFor(() => {
       expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
