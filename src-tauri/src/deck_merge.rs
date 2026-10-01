@@ -118,6 +118,14 @@ pub(crate) fn merge_in_connection(
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
+    let retained_child_card_count: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM cards
+             WHERE note_id IN (SELECT id FROM temp.ostudy_deck_merge_notes)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
     if moved_note_count != input.expected_source_note_count
         || moved_card_count != input.expected_source_card_count
     {
@@ -137,7 +145,7 @@ pub(crate) fn merge_in_connection(
         .query_row(
             "SELECT COUNT(*) FROM cards c
              WHERE c.note_id IN (SELECT id FROM temp.ostudy_deck_merge_notes)
-               AND c.deleted_at IS NULL AND c.deck_id<>?1",
+               AND c.deck_id<>?1",
             [&input.source_deck_id],
             |row| row.get(0),
         )
@@ -167,11 +175,11 @@ pub(crate) fn merge_in_connection(
             "UPDATE cards
              SET deck_id=?1,updated_at=MAX(updated_at,?2)
              WHERE note_id IN (SELECT id FROM temp.ostudy_deck_merge_notes)
-               AND deleted_at IS NULL AND deck_id=?3",
+               AND deck_id=?3",
             params![input.destination_deck_id, now, input.source_deck_id],
         )
         .map_err(CommandError::database)?;
-    if i64::try_from(changed_cards).ok() != Some(moved_card_count) {
+    if i64::try_from(changed_cards).ok() != Some(retained_child_card_count) {
         return Err(deck_changed());
     }
 
@@ -220,6 +228,28 @@ pub(crate) fn merge_in_connection(
              SET generated_deck_id=?1,updated_at=MAX(updated_at,?2),revision=revision+1
              WHERE generated_deck_id=?3 AND lifecycle_state<>'processing'",
             params![input.destination_deck_id, now, input.source_deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE document_generation_jobs
+             SET generated_deck_id=?1,updated_at=MAX(updated_at,?2)
+             WHERE generated_deck_id=?3",
+            params![input.destination_deck_id, now, input.source_deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "INSERT OR IGNORE INTO document_decks(document_id,deck_id,job_id,created_at)
+             SELECT document_id,?1,job_id,created_at
+             FROM document_decks WHERE deck_id=?2",
+            params![input.destination_deck_id, input.source_deck_id],
+        )
+        .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "DELETE FROM document_decks WHERE deck_id=?1",
+            [&input.source_deck_id],
         )
         .map_err(CommandError::database)?;
     let retargeted_targets = transaction
@@ -452,6 +482,11 @@ fn ensure_no_conflicting_work(
                      SELECT 1 FROM documents
                      WHERE generated_deck_id IN (?1,?2)
                        AND lifecycle_state='processing'
+                 )
+                 OR EXISTS(
+                     SELECT 1 FROM document_generation_jobs
+                     WHERE generated_deck_id IN (?1,?2)
+                       AND state IN ('queued','extracting','generating','committing')
                  )
                  OR EXISTS(
                      SELECT 1 FROM study_target_batches batch

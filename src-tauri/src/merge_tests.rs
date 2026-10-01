@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
-    authoring::{insert_organized_card, validate_tags},
     cards::validate_content,
     decks::{create_deck_in_connection, CreateDeckInput},
+    scheduler::insert_new_schedule,
+    util::generate_id,
 };
 use serde_json::{json, Value};
 
@@ -26,23 +27,55 @@ fn create_note(
         label.to_string(),
         format!("Answer {label}"),
     )?;
-    let transaction = connection.transaction().map_err(CommandError::database)?;
-    let note_id = insert_organized_card(
-        &transaction,
-        deck_id,
-        content,
-        &validate_tags(vec!["merge".to_string()])?,
-        &format!("merge-{label}"),
-        at,
-    )?;
-    let card_id: String = transaction
-        .query_row(
-            "SELECT id FROM cards WHERE note_id=?1 AND deleted_at IS NULL",
-            [&note_id],
-            |row| row.get(0),
+    let note_id = generate_id(connection)?;
+    let card_id = generate_id(connection)?;
+    let tag_id = generate_id(connection)?;
+    connection
+        .execute(
+            "INSERT INTO notes (
+                 id,deck_id,note_type,content_format,content_schema_version,
+                 front_doc,back_doc,front_text,back_text,duplicate_hash,
+                 created_at,updated_at,revision
+             ) VALUES (?1,?2,'basic','tiptap-json',1,?3,?4,?5,?6,?7,?8,?8,1)",
+            params![
+                note_id,
+                deck_id,
+                content.front_doc_json,
+                content.back_doc_json,
+                content.front_text,
+                content.back_text,
+                format!("merge-{label}"),
+                at,
+            ],
         )
         .map_err(CommandError::database)?;
-    transaction.commit().map_err(CommandError::database)?;
+    connection
+        .execute(
+            "INSERT INTO cards (
+                 id,note_id,deck_id,direction,template_ordinal,created_at,updated_at
+             ) VALUES (?1,?2,?3,'forward',0,?4,?4)",
+            params![card_id, note_id, deck_id, at],
+        )
+        .map_err(CommandError::database)?;
+    insert_new_schedule(connection, &card_id, at)?;
+    connection
+        .execute(
+            "INSERT INTO tags(id,name,normalized_name,created_at,updated_at)
+             VALUES (?1,?2,?3,?4,?4)",
+            params![
+                tag_id,
+                format!("Merge {label}"),
+                format!("merge {}", label.to_lowercase()),
+                at,
+            ],
+        )
+        .map_err(CommandError::database)?;
+    connection
+        .execute(
+            "INSERT INTO note_tags(note_id,tag_id) VALUES (?1,?2)",
+            params![note_id, tag_id],
+        )
+        .map_err(CommandError::database)?;
     Ok((note_id, card_id))
 }
 
@@ -137,6 +170,16 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
     database
         .with_connection(|connection| {
             let (source, destination, note_id, card_id) = seed(connection)?;
+            let deleted_card_id = id(899);
+            connection
+                .execute(
+                    "INSERT INTO cards(
+                         id,note_id,deck_id,direction,template_ordinal,
+                         created_at,updated_at,deleted_at
+                     ) VALUES(?1,?2,?3,'forward',1,1,77,77)",
+                    params![deleted_card_id, note_id, source.id],
+                )
+                .map_err(CommandError::database)?;
             let document_id = id(900);
             connection
                 .execute(
@@ -147,6 +190,24 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                      ) VALUES(?1,'Merge source','merge.pdf','application/pdf',1,?2,
                          'documents/merge/source.pdf','ready',?3,1,1)",
                     params![document_id, "d".repeat(64), source.id],
+                )
+                .map_err(CommandError::database)?;
+            let generation_job_id = id(902);
+            connection
+                .execute(
+                    "INSERT INTO document_generation_jobs(
+                         id,document_id,provider_kind,model_id,profile_revision,
+                         credential_epoch,network_scope,state,page_count,
+                         generated_deck_id,created_at,updated_at
+                     ) VALUES(?1,?2,'fixture','merge',1,0,'local','succeeded',1,?3,1,1)",
+                    params![generation_job_id, document_id, source.id],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_decks(document_id,deck_id,job_id,created_at)
+                     VALUES(?1,?2,?3,1)",
+                    params![document_id, source.id, generation_job_id],
                 )
                 .map_err(CommandError::database)?;
             let target_id = id(901);
@@ -219,6 +280,37 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                     destination.id.clone(),
                 )
             );
+            let retained_child_owner: String = connection
+                .query_row(
+                    "SELECT deck_id FROM cards WHERE id=?1 AND deleted_at=77",
+                    [&deleted_card_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(retained_child_owner, destination.id);
+            let generated_provenance: (String, String) = connection
+                .query_row(
+                    "SELECT job.generated_deck_id,provenance.deck_id
+                     FROM document_generation_jobs job
+                     JOIN document_decks provenance
+                       ON provenance.document_id=job.document_id
+                     WHERE job.id=?1",
+                    [&generation_job_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                generated_provenance,
+                (destination.id.clone(), destination.id.clone())
+            );
+            let retained_tag_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM note_tags WHERE note_id=?1",
+                    [&note_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(retained_tag_count, 1);
             let lifecycle: (Option<i64>, Option<i64>) = connection
                 .query_row(
                     "SELECT

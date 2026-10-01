@@ -182,6 +182,7 @@ export function DeckLibraryRoot({
           onCreateDeck={controller.createDeck}
           onSaveFolder={controller.saveFolder}
           onMoveSelection={controller.moveSelection}
+          onMergeDeck={controller.mergeDeck}
           onStartPractice={onPracticeSelected}
         />
       </div>

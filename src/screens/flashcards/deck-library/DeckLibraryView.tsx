@@ -119,6 +119,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
                   onToggleCollapsed={() => controller.toggleFolder(folder.id)}
                   onOpenDeck={controller.openDeck}
                   onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+                  onMergeDeck={controller.openDeckMerger}
                   onExportDeck={onExportDeck}
                   onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
                   onRename={() => controller.openFolderRenamer(folder.id)}
@@ -212,6 +213,7 @@ function UnsortedDeckItem({
       reorder={reorder}
       onOpen={() => controller.openDeck(deck.id)}
       onPractice={() => void onPracticeDeck(deck.id)}
+      onMerge={() => controller.openDeckMerger(deck.id)}
       onExport={() => onExportDeck(deck)}
       onDelete={() => void controller.removeDeck(deck.id)}
       onToggleSelected={() => controller.toggleDeckSelected(deck)}

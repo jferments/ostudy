@@ -14,6 +14,7 @@ import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
 const deckControllerMocks = vi.hoisted(() => ({
   create: vi.fn(),
   setArchived: vi.fn(),
+  merge: vi.fn(),
   deleteDeck: vi.fn(),
   undo: vi.fn(),
   invalidate: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("../../controllers/decksController", async (importOriginal) => {
       invalidate = deckControllerMocks.invalidate;
       create = deckControllerMocks.create;
       setArchived = deckControllerMocks.setArchived;
+      merge = deckControllerMocks.merge;
       deleteDeck = deckControllerMocks.deleteDeck;
       undo = deckControllerMocks.undo;
     },
@@ -173,6 +175,23 @@ describe("DeckLibraryWorkspace", () => {
         revision: 2,
       }),
     );
+    deckControllerMocks.merge.mockImplementation(async (input: {
+      operationId: string;
+      sourceDeckId: string;
+      destinationDeckId: string;
+    }) => ({
+      operationId: input.operationId,
+      sourceDeckId: input.sourceDeckId,
+      destinationDeckId: input.destinationDeckId,
+      movedNoteCount: 24,
+      movedCardCount: 24,
+      retargetedDocumentCount: 1,
+      retargetedStudyTargetCount: 0,
+      sourceRevision: 2,
+      destinationRevision: 2,
+      sourceArchivedAt: 50,
+      mergedAt: 50,
+    }));
     deckControllerMocks.deleteDeck.mockResolvedValue({
       affectedCount: 1,
       undoToken: "u".repeat(32),
@@ -188,7 +207,7 @@ describe("DeckLibraryWorkspace", () => {
     vi.mocked(folderIpc.moveDeckFolder).mockResolvedValue(organization);
   });
 
-  it("renders the organized deck library with direct row actions", async () => {
+  it("renders the organized deck library with Practice direct and deck maintenance in menus", async () => {
     renderLibrary();
 
     const folders = await screen.findByRole("heading", { name: "Folders" });
@@ -197,8 +216,10 @@ describe("DeckLibraryWorkspace", () => {
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pharmacology actions" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete Pharmacology" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Anatomy" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
     expect(screen.queryByText("Organize what you study")).toBeNull();
   });
@@ -252,12 +273,13 @@ describe("DeckLibraryWorkspace", () => {
     expect(within(toolbar).queryByRole("button", { name: "More selection actions" })).toBeNull();
   });
 
-  it("keeps direct trash actions in compact rows while preserving the two-item folder menu", async () => {
+  it("keeps Practice direct and the deck menu compact while preserving the folder menu", async () => {
     renderLibrary({ layout: "compact" });
 
-    expect(await screen.findByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Pharmacology actions" })).toBeNull();
+    expect((await screen.findAllByRole("button", { name: "Practice" })).length).toBe(2);
+    expect(screen.getByRole("button", { name: "Pharmacology actions" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete Pharmacology" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Nursing folder actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Nursing folder actions" });
@@ -296,6 +318,38 @@ describe("DeckLibraryWorkspace", () => {
     expect(onOpenDeck).not.toHaveBeenCalled();
   });
 
+  it("opens Merge from the deck menu and submits exact source/destination revisions and counts", async () => {
+    const refreshDecks = vi.fn(async () => [pharmacology, anatomy]);
+    renderLibrary({ refreshDecks });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pharmacology actions" }));
+    const menu = await screen.findByRole("menu", { name: "Pharmacology actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Merge…" }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Merge “Pharmacology”" });
+    const destinationSelect = within(sheet).getByRole(
+      "combobox",
+      { name: "Destination deck" },
+    ) as HTMLSelectElement;
+    expect(destinationSelect.value).toBe(anatomy.id);
+    expect(sheet.textContent).toContain("24 cards will move");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Merge decks" }));
+
+    await waitFor(() => expect(deckControllerMocks.merge).toHaveBeenCalledTimes(1));
+    expect(deckControllerMocks.merge).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sourceDeckId: pharmacology.id,
+      destinationDeckId: anatomy.id,
+      sourceRevision: pharmacology.revision,
+      destinationRevision: anatomy.revision,
+      expectedSourceNoteCount: pharmacology.sourceNoteCount,
+      expectedSourceCardCount: pharmacology.generatedCardCount,
+    });
+    const operationId = deckControllerMocks.merge.mock.calls[0]?.[0].operationId;
+    expect(operationId).toHaveLength(32);
+    await waitFor(() => expect(refreshDecks).toHaveBeenCalledTimes(1));
+  });
+
   it("moves selected decks through the shared revision-checked organization operation", async () => {
     vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue({
       revision: 5,
@@ -329,7 +383,9 @@ describe("DeckLibraryWorkspace", () => {
     const refreshDecks = vi.fn(async () => [anatomy]);
     renderLibrary({ refreshDecks });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete Pharmacology" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pharmacology actions" }));
+    const menu = await screen.findByRole("menu", { name: "Pharmacology actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Pharmacology" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Delete “Pharmacology”?" });
     expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete deck" }));

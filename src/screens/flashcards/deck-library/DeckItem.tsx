@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
-import { IconButton } from "../../../ui/icons/IconButton";
+import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { ResponsiveActionGroup } from "../../../ui/patterns/ResponsiveActionGroup";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import { Surface } from "../../../ui/primitives/Surface";
@@ -17,10 +17,10 @@ interface DeckItemProps {
   deck: DeckSummary; folderId: string | null; index: number; count: number;
   disabled: boolean; archived?: boolean; selected: boolean;
   reorder: DeckLibraryReorderAdapter;
-  onOpen(): void; onPractice(): void; onExport(): void; onDelete(): void; onToggleSelected(): void;
+  onOpen(): void; onPractice(): void; onMerge?(): void; onExport(): void; onDelete(): void; onToggleSelected(): void;
 }
 
-export const DeckItem = memo(function DeckItem({ deck, folderId, index, count, disabled, archived = false, selected, reorder, onOpen, onPractice, onExport, onDelete, onToggleSelected }: DeckItemProps) {
+export const DeckItem = memo(function DeckItem({ deck, folderId, index, count, disabled, archived = false, selected, reorder, onOpen, onPractice, onMerge, onExport, onDelete, onToggleSelected }: DeckItemProps) {
   return <Surface as="article" selected={selected}
     className={cn(styles.row, dragStyles.item, archived && "tw:opacity-75")}
     data-archived={archived ? "true" : undefined}
@@ -49,12 +49,13 @@ export const DeckItem = memo(function DeckItem({ deck, folderId, index, count, d
     <div className={styles.actions} data-library-no-pointer-drag="true">
       {!archived ? <ResponsiveActionGroup label={`${deck.name} actions`} overflowLabel={`${deck.name} actions`} actions={[
         { id: "practice", label: "Practice", placement: "always-visible", variant: "primary", disabled: disabled || deck.generatedCardCount === 0, onSelect: onPractice },
-        { id: "export", label: `Export ${deck.name}`, description: "Save deck to file", placement: "always-visible", presentation: "icon", icon: "save", disabled, onSelect: onExport },
-        { id: "delete", label: `Delete ${deck.name}`, placement: "always-visible", presentation: "icon", icon: "delete", destructive: true, disabled, onSelect: onDelete },
-      ]} /> : <div className={styles.archivedActions}>
-        <IconButton icon="save" label={`Export ${deck.name}`} tooltip="Save deck to file" disabled={disabled} onClick={onExport} />
-        <IconButton icon="delete" label={`Delete ${deck.name}`} tone="danger" disabled={disabled} onClick={onDelete} />
-      </div>}
+        { id: "merge", label: "Merge…", description: "Move this deck into another active deck", placement: "overflow-only", disabled: disabled || deck.sourceNoteCount === 0 || !onMerge, onSelect: () => onMerge?.() },
+        { id: "export", label: `Export ${deck.name}`, description: "Save deck to file", placement: "overflow-only", disabled, onSelect: onExport },
+        { id: "delete", label: `Delete ${deck.name}`, placement: "overflow-only", destructive: true, disabled, onSelect: onDelete },
+      ]} /> : <OverflowMenu label={`${deck.name} actions`} disabled={disabled} items={[
+        { id: "export", label: `Export ${deck.name}`, onSelect: onExport },
+        { id: "delete", label: `Delete ${deck.name}`, destructive: true, onSelect: onDelete },
+      ]} />}
     </div>
     <VisuallyHidden>Deck {index + 1} of {count}.
       {!archived ? <>
