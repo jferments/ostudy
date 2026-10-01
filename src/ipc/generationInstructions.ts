@@ -17,3 +17,12 @@ export function generationInstructionsInput(value?: string | null): GenerationIn
   const generationInstructions = value.replace(/\r\n?/gu, "\n").trim();
   return generationInstructions ? { generationInstructions } : {};
 }
+
+export function generationInstructionsError(value: string): string | null {
+  try {
+    generationInstructionsInput(value);
+    return null;
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : "The generation instructions are invalid.";
+  }
+}

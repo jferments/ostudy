@@ -208,9 +208,10 @@ export async function retryDocumentFlashcardGeneration(
 
 export async function generateMoreDocumentFlashcards(
   documentId: string,
+  generationInstructions?: string,
 ): Promise<AdditionalDocumentGenerationResult> {
   return invoke<AdditionalDocumentGenerationResult>("generate_more_pdf_flashcards", {
-    input: { documentId },
+    input: { documentId, ...generationInstructionsInput(generationInstructions) },
   });
 }
 
