@@ -779,7 +779,11 @@ mod tests {
         let before = preservation_receipt(&connection).unwrap();
         convert_legacy_current(&mut connection).unwrap();
         validate_input(&connection).unwrap();
-        for table in ["selection_deck_operations", "deck_merge_operations"] {
+        for table in [
+            "selection_deck_operations",
+            "deck_merge_operations",
+            "study_target_generation_instructions",
+        ] {
             assert_eq!(
                 connection
                     .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row
@@ -788,12 +792,13 @@ mod tests {
                 0
             );
         }
-        // Both release receipt tables are additive and empty. Compare every
-        // pre-existing typed value after excluding only those new tables.
+        // Release-only operation-intent/receipt tables are additive and empty.
+        // Compare every pre-existing typed value after excluding only them.
         let comparison = connection.transaction().unwrap();
         comparison
             .execute_batch(
-                "DROP TABLE deck_merge_operations;
+                "DROP TABLE study_target_generation_instructions;
+                 DROP TABLE deck_merge_operations;
                  DROP TABLE selection_deck_operations;",
             )
             .unwrap();
