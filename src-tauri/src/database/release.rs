@@ -782,11 +782,8 @@ mod tests {
         for table in ["selection_deck_operations", "deck_merge_operations"] {
             assert_eq!(
                 connection
-                    .query_row(
-                        &format!("SELECT COUNT(*) FROM {table}"),
-                        [],
-                        |row| row.get::<_, i64>(0)
-                    )
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row
+                        .get::<_, i64>(0))
                     .unwrap(),
                 0
             );
@@ -797,7 +794,7 @@ mod tests {
         comparison
             .execute_batch(
                 "DROP TABLE deck_merge_operations;
-                 DROP TABLE selection_deck_operations;"
+                 DROP TABLE selection_deck_operations;",
             )
             .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);

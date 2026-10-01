@@ -412,9 +412,7 @@ pub(crate) fn validate_stored_receipts(connection: &Connection) -> Result<(), St
         let encoded: String = row.get(2).map_err(|error| error.to_string())?;
         let created_at: i64 = row.get(3).map_err(|error| error.to_string())?;
         validate_entity_id(&operation_id, "deck merge receipt").map_err(|error| error.message)?;
-        if fingerprint.len() != 64
-            || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit())
-        {
+        if fingerprint.len() != 64 || !fingerprint.bytes().all(|value| value.is_ascii_hexdigit()) {
             return Err("A deck-merge receipt fingerprint is invalid.".to_string());
         }
         decode_receipt(&operation_id, &fingerprint, &encoded, created_at)

@@ -82,15 +82,22 @@ mod tests {
         assert_eq!(connection.total_changes(), changes);
 
         assert!(apply_migrations(&mut connection).unwrap());
-        assert_eq!(validate_supported_input(&connection).unwrap(), SCHEMA_VERSION);
+        assert_eq!(
+            validate_supported_input(&connection).unwrap(),
+            SCHEMA_VERSION
+        );
         validate_input(&connection).unwrap();
         let rows: i64 = connection
-            .query_row("SELECT COUNT(*) FROM deck_merge_operations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM deck_merge_operations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(rows, 0);
 
         let comparison = connection.transaction().unwrap();
-        comparison.execute_batch("DROP TABLE deck_merge_operations;").unwrap();
+        comparison
+            .execute_batch("DROP TABLE deck_merge_operations;")
+            .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();
     }
@@ -127,7 +134,9 @@ mod tests {
         let mut connection = schema_two();
         {
             let transaction = connection.transaction().unwrap();
-            transaction.execute_batch(RELEASE_MIGRATIONS[1].sql).unwrap();
+            transaction
+                .execute_batch(RELEASE_MIGRATIONS[1].sql)
+                .unwrap();
             let changes = transaction.total_changes();
             assert!(validate_supported_input(&transaction).is_err());
             assert_eq!(transaction.total_changes(), changes);

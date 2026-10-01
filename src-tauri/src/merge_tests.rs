@@ -46,7 +46,17 @@ fn create_note(
     Ok((note_id, card_id))
 }
 
-fn seed(connection: &mut Connection) -> Result<(crate::decks::DeckSummaryDto, crate::decks::DeckSummaryDto, String, String), CommandError> {
+fn seed(
+    connection: &mut Connection,
+) -> Result<
+    (
+        crate::decks::DeckSummaryDto,
+        crate::decks::DeckSummaryDto,
+        String,
+        String,
+    ),
+    CommandError,
+> {
     let source = create_deck_in_connection(
         connection,
         CreateDeckInput {
@@ -266,10 +276,7 @@ fn merge_preserves_duplicate_looking_notes_instead_of_deduplicating() {
         .with_connection(|connection| {
             let (source, destination, _, _) = seed(connection)?;
             create_note(connection, &source.id, "Question", 101)?;
-            let result = merge_in_connection(
-                connection,
-                request(2, &source, &destination, 2, 2),
-            )?;
+            let result = merge_in_connection(connection, request(2, &source, &destination, 2, 2))?;
             assert_eq!(result.moved_note_count, 2);
             assert_eq!(result.moved_card_count, 2);
             let destination_notes: i64 = connection
@@ -303,8 +310,14 @@ fn failed_receipt_insert_rolls_back_every_merge_write() {
             let card_before = dump(connection, "SELECT * FROM cards WHERE id=?1", &card_id);
             let input = request(3, &source, &destination, 1, 1);
             assert!(merge_in_connection(connection, input.clone()).is_err());
-            assert_eq!(note_before, dump(connection, "SELECT * FROM notes WHERE id=?1", &note_id));
-            assert_eq!(card_before, dump(connection, "SELECT * FROM cards WHERE id=?1", &card_id));
+            assert_eq!(
+                note_before,
+                dump(connection, "SELECT * FROM notes WHERE id=?1", &note_id)
+            );
+            assert_eq!(
+                card_before,
+                dump(connection, "SELECT * FROM cards WHERE id=?1", &card_id)
+            );
             let lifecycle: (Option<i64>, Option<i64>) = connection
                 .query_row(
                     "SELECT
@@ -318,10 +331,7 @@ fn failed_receipt_insert_rolls_back_every_merge_write() {
             connection
                 .execute_batch("DROP TRIGGER fail_deck_merge_receipt;")
                 .map_err(CommandError::database)?;
-            assert_eq!(
-                merge_in_connection(connection, input)?.moved_card_count,
-                1
-            );
+            assert_eq!(merge_in_connection(connection, input)?.moved_card_count, 1);
             Ok(())
         })
         .unwrap();
@@ -347,11 +357,15 @@ fn active_generation_and_pending_deletion_block_without_moving_material() {
                 .map_err(CommandError::database)?;
             let input = request(4, &source, &destination, 1, 1);
             assert_eq!(
-                merge_in_connection(connection, input.clone()).unwrap_err().code,
+                merge_in_connection(connection, input.clone())
+                    .unwrap_err()
+                    .code,
                 "deck_merge_generation_active"
             );
             let owner: String = connection
-                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| row.get(0))
+                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(owner, source.id);
 
@@ -361,7 +375,8 @@ fn active_generation_and_pending_deletion_block_without_moving_material() {
                     [&document_id],
                 )
                 .map_err(CommandError::database)?;
-            let (_, destination_card) = create_note(connection, &destination.id, "Destination", 102)?;
+            let (_, destination_card) =
+                create_note(connection, &destination.id, "Destination", 102)?;
             let destination_note: String = connection
                 .query_row(
                     "SELECT note_id FROM cards WHERE id=?1",
@@ -379,7 +394,9 @@ fn active_generation_and_pending_deletion_block_without_moving_material() {
                 "deck_merge_deletion_pending"
             );
             let owner: String = connection
-                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| row.get(0))
+                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(owner, source.id);
             Ok(())
@@ -395,7 +412,9 @@ fn stale_counts_and_same_destination_fail_before_any_move() {
             let (source, destination, note_id, _) = seed(connection)?;
             let mut stale = request(5, &source, &destination, 2, 1);
             assert_eq!(
-                merge_in_connection(connection, stale.clone()).unwrap_err().code,
+                merge_in_connection(connection, stale.clone())
+                    .unwrap_err()
+                    .code,
                 "deck_merge_source_changed"
             );
             stale.destination_deck_id = stale.source_deck_id.clone();
@@ -404,7 +423,9 @@ fn stale_counts_and_same_destination_fail_before_any_move() {
                 "same_destination_deck"
             );
             let owner: String = connection
-                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| row.get(0))
+                .query_row("SELECT deck_id FROM notes WHERE id=?1", [&note_id], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(owner, source.id);
             Ok(())
