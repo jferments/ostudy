@@ -37,9 +37,17 @@ The shared activation journal coordinates the database and its journals with man
 
 Do not reset the library, delete SQLite sidecars, remove `library-owner.lock`, or repeatedly reinstall packages. Preserve the app data and recovery files. Other programs and historical binaries that ignore oStudy's ownership lock must also be closed.
 
-A failed or interrupted preparation does not silently retry at every launch. The native recovery dialog offers closing the app or explicitly allowing a new attempt on the next launch. When checkpoint metadata is available, **Recovery options** also offers **Restore checkpoint…**. The checkpoint is verified again before restoration; its mere presence is not proof that it is usable.
+A failed or interrupted preparation does not silently retry at every launch. The **Library update stopped** dialog explains that saved copies were kept and that closing leaves them as they are. When checkpoint metadata is available, **Recovery options** offers **Restore backup…** or **Try update again…**. Both lead to an explanation and a separate confirmation before any recovery action. The checkpoint is verified again before restoration; its mere presence is not proof that it is usable.
 
 Restoration requires a second destructive confirmation. It reinstates the old library bytes instead of executing reverse SQL. Any work newer than the checkpoint disappears from the active library, but the replaced library is retained separately in the recovery transaction. oStudy then closes. The restoration does **not** install, remove or downgrade an application package.
+
+### After restoring: keep the old library or try the update again
+
+**Your library is restored** means restoration succeeded. It is not another failure. The newer installed oStudy version still needs to update the older library format before it can open your study workspace.
+
+**Keep restored library** closes oStudy without changing that library. Install the retained previous compatible oStudy package separately to use the library as it is.
+
+**Update on next launch** allows the library update to run again when you reopen oStudy. It is not a retry of the restoration, and clicking it does not update anything immediately. This is optional; first address the reason the update failed, such as low disk space or a software defect. Choosing retry does not fix that cause, so an unchanged problem can fail again. The **Library update scheduled** message distinguishes permission to retry from an update actually completing. Existing saved copies remain.
 
 To return to an older release, finish library recovery first, close oStudy and install the retained compatible previous package. The newer executable will not immediately re-upgrade an explicitly restored older library without a new decision. An executable whose target schema matches that restored checkpoint can admit it after checking the recovery state. Never install an older binary while an activation journal is unresolved: that binary might not understand the newer journal format.
 

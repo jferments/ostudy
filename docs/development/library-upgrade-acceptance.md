@@ -182,13 +182,26 @@ The Cargo test target is selected by its stable name `ostudy_lib`, not by a gene
 
 Exit 77 is expected only from this explicitly requested child-process cutpoint.
 Any other exit is a failed setup; do not infer that recovery was exercised.
-The normal app should now show **Library update needs attention**, not silently
+The normal app should now show **Library update stopped**, not silently
 repeat migration. Closing must leave the fixture and recovery files available.
-**Recovery options → Restore checkpoint…** must show a second destructive
+**Recovery options → Restore backup…** must show a second destructive
 confirmation explaining newer-work loss and separate package installation.
 Confirm restoration only for this synthetic fixture; the app then closes.
 Reopening with the same newer executable must not immediately upgrade it again.
-Explicitly allowing retry on a later launch should permit a fresh transaction.
+The **Your library is restored** screen must explain that restoration succeeded,
+why the newer app needs a library update, and that **Keep restored library** closes
+without changing it. **Update on next launch** is an optional new library update,
+not another restoration or a fix for the cause. The **Library update scheduled**
+message must say no update has run yet. Reopening after that decision should permit
+a fresh transaction; existing saved copies remain.
+
+This minimal fixture exercises the dialogs and their decisions, not preservation
+of a populated school library. The automated
+`populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy`
+regression uses notes, cards, schedules, review events, attribution and managed
+bytes. It verifies typed saved values across interruption, restoration and an
+explicit retry, including preservation of newer work in the replaced copy.
+Do not treat empty-library UI success as that data-preservation result.
 
 This demonstrates library recovery, not an installed application downgrade. A
 real previous-package/current-package pair must still be tested in a disposable

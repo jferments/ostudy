@@ -303,3 +303,100 @@ fn preparation_crashes_preserve_the_original_and_require_an_explicit_retry() {
         fixture.original_managed_files_are_present();
     }
 }
+
+#[test]
+fn populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy() {
+    let fixture = Fixture::new();
+    seed_history(&fixture);
+    let source = read_database(fixture.0.database_path()).unwrap();
+    let before = preservation::rows(&source).unwrap();
+    for table in [
+        "notes",
+        "cards",
+        "card_schedules",
+        "practice_session_card_snapshots",
+        "review_events",
+        "review_event_attributions",
+    ] {
+        assert_eq!(before[table].1.len(), 1, "fixture must contain {table}");
+    }
+    drop(source);
+    let original_bytes = fs::read(fixture.0.database_path()).unwrap();
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "library_backup::activation::checkpoint::tests::followup::preparation_crash_child",
+            "--test-threads=1",
+        ])
+        .env("OSTUDY_UPGRADE_PREPARATION_ROOT", fixture.0.app_data_dir())
+        .env(
+            "OSTUDY_UPGRADE_PREPARATION_PHASE",
+            "Updating a private library copy…",
+        )
+        .status()
+        .unwrap();
+    assert_eq!(status.code(), Some(77));
+    assert!(admit_startup(&fixture.0).is_err());
+    assert_eq!(fs::read(fixture.0.database_path()).unwrap(), original_bytes);
+    let first_attempt = fixture.transaction();
+    verify_checkpoint(&first_attempt).unwrap();
+
+    // Simulate later work to prove the warning about restoring an older backup:
+    // those values leave the active library but remain in the saved newer copy.
+    let later = Connection::open(fixture.0.database_path()).unwrap();
+    later
+        .execute("UPDATE card_schedules SET due_at = 6000", [])
+        .unwrap();
+    let newer_values = preservation::rows(&later).unwrap();
+    assert_ne!(newer_values, before);
+    drop(later);
+    fs::write(
+        fixture.0.app_data_dir().join("documents/retained.bin"),
+        b"newer document bytes",
+    )
+    .unwrap();
+
+    restore_checkpoint(&fixture.0, &fixture.operation(), &mut |_| {}).unwrap();
+    let restored = read_database(fixture.0.database_path()).unwrap();
+    assert_eq!(validate_database(&restored).unwrap().1, 1);
+    assert_eq!(preservation::rows(&restored).unwrap(), before);
+    drop(restored);
+    fixture.original_managed_files_are_present();
+    let restoration = fixture.transaction();
+    let saved_newer = read_database(&restoration.join("previous/library.sqlite3")).unwrap();
+    assert_eq!(preservation::rows(&saved_newer).unwrap(), newer_values);
+    drop(saved_newer);
+    assert_eq!(
+        fs::read(restoration.join("previous/documents/retained.bin")).unwrap(),
+        b"newer document bytes"
+    );
+
+    assert!(admit_startup(&fixture.0).is_err());
+    let restored_bytes = fs::read(fixture.0.database_path()).unwrap();
+    allow_retry(&fixture.0, &fixture.operation()).unwrap();
+    assert_eq!(fs::read(fixture.0.database_path()).unwrap(), restored_bytes);
+    assert_eq!(fixture.version(), 1, "allowing retry is not running it");
+    let mut retry = begin_upgrade(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 1),
+        &mut |_| {},
+    )
+    .unwrap();
+    let retried = read_database(fixture.0.database_path()).unwrap();
+    let mut after = preservation::rows(&retried).unwrap();
+    assert!(after
+        .remove("selection_deck_operations")
+        .unwrap()
+        .1
+        .is_empty());
+    assert_eq!(after, before);
+    drop(retried);
+    commit_upgrade(&fixture.0, &mut retry).unwrap();
+    drop(retry);
+    admit_startup(&fixture.0).unwrap();
+    assert_eq!(fixture.version(), crate::database::CURRENT_SCHEMA_VERSION);
+    fixture.original_managed_files_are_present();
+    verify_checkpoint(&first_attempt).unwrap();
+    verify_checkpoint(&restoration).unwrap();
+}

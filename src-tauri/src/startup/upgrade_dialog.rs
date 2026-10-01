@@ -9,6 +9,9 @@ use crate::{library_backup::checkpoint, paths::AppPaths};
 
 use super::STARTUP_CONFIGURATION_EXIT_CODE;
 
+#[path = "upgrade_dialog_copy.rs"]
+mod copy;
+
 pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -21,16 +24,16 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
         .and_then(|paths| checkpoint::recovery_details(&paths));
     match details {
         Ok(Some(details)) if !details.activation_unresolved => {
-            let message = recovery_message(&details);
+            let text = recovery_copy(&details);
             let handle = app.clone();
             if details.checkpoint_available && !details.previous_restored {
                 app.dialog()
-                    .message(message)
-                    .title("Library update needs attention")
+                    .message(text.message)
+                    .title(text.title)
                     .kind(MessageDialogKind::Warning)
                     .buttons(MessageDialogButtons::OkCancelCustom(
                         "Recovery options".into(),
-                        "Close oStudy".into(),
+                        copy::CLOSE.into(),
                     ))
                     .show(move |open| {
                         if open {
@@ -40,21 +43,17 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
                         }
                     });
             } else {
-                prompt_retry(&handle, details.operation_id, message);
+                prompt_retry(&handle, details.operation_id, text, details.previous_restored);
             }
         }
-        Ok(Some(details)) => close_message(
-            app,
-            "Library recovery is incomplete",
-            recovery_message(&details),
-        ),
+        Ok(Some(details)) => close_message(app, recovery_copy(&details)),
         Ok(None) => {
-            let message = if stage == "upgrade_preflight" {
-                "The installed version could not safely admit this library. No library migration was attempted. Use a compatible oStudy version and preserve the library and its journals. Local diagnostics contain the failed stage."
+            let text = if stage == "upgrade_preflight" {
+                copy::UNSUPPORTED
             } else {
-                "oStudy could not prepare the library update. No library was intentionally reset. Preserve the library, its journals and recovery files; local diagnostics identify the failed stage."
+                copy::PREPARATION_FAILED
             };
-            close_message(app, "Library update could not start", message.into());
+            close_message(app, text);
         }
         Err(error) => {
             crate::logging::error_target(
@@ -63,55 +62,69 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
                 "The library recovery UI could not validate its operation metadata.",
                 serde_json::json!({"error": error}),
             );
-            close_message(app, "Library recovery needs inspection", "Recovery metadata could not be verified. All files were preserved. Do not delete journals or reset the library. Inspect local diagnostics before retrying.".into());
+            close_message(app, copy::INFORMATION_UNREADABLE);
         }
     }
 }
 
-fn recovery_message(details: &checkpoint::RecoveryDetails) -> String {
-    if details.activation_unresolved {
-        "The activation decision could not be completed or recovered safely. Close oStudy and reopen it to run journal recovery. Do not install an older binary while an activation journal is unresolved, and do not delete recovery files.".into()
-    } else if details.previous_restored {
-        "The previous library checkpoint has been restored. To use it without upgrading, close oStudy and install its compatible previous application package. This executable will not automatically upgrade the restored library again. You may explicitly allow another upgrade attempt instead.".into()
-    } else {
-        "The library update did not complete normally. The previous library and available checkpoint/candidate files have been retained. A retry will not happen without your decision. You can inspect diagnostics, keep the existing library, or restore the pre-update checkpoint when available. oStudy does not install or downgrade application packages for you.".into()
-    }
+fn recovery_copy(details: &checkpoint::RecoveryDetails) -> copy::DialogCopy {
+    copy::entry(
+        details.checkpoint_available,
+        details.previous_restored,
+        details.activation_unresolved,
+    )
 }
 
 fn choose_recovery(app: &tauri::AppHandle, operation: String) {
     let handle = app.clone();
     app.dialog()
-        .message("Verify and restore the pre-update checkpoint, or choose a retry on the next launch. Restoring changes the library, not the installed application package.")
-        .title("Choose library recovery")
-        .buttons(MessageDialogButtons::OkCancelCustom("Restore checkpoint…".into(), "Retry or close…".into()))
+        .message(copy::OPTIONS.message)
+        .title(copy::OPTIONS.title)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Restore backup…".into(),
+            "Try update again…".into(),
+        ))
         .show(move |restore| {
-            if restore { confirm_restore(&handle, operation); }
-            else { prompt_retry(&handle, operation, "Allow one new upgrade attempt the next time you open oStudy? The previous attempt and all recovery files will be retained. Nothing is migrated in this dialog.".into()); }
+            if restore {
+                confirm_restore(&handle, operation);
+            } else {
+                prompt_retry(&handle, operation, copy::CONFIRM_RETRY, false);
+            }
         });
 }
 
 fn confirm_restore(app: &tauri::AppHandle, operation: String) {
     let handle = app.clone();
     app.dialog()
-        .message("Restore the pre-update library? Any work made after this checkpoint will no longer be in the active library. The currently active library will also be preserved in the recovery transaction. After restoration, oStudy will close; install a compatible previous application package to use the old library. No reverse SQL migration or application downgrade will run.")
-        .title("Restore previous library")
+        .message(copy::CONFIRM_RESTORE.message)
+        .title(copy::CONFIRM_RESTORE.title)
         .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom("Restore previous library".into(), "Cancel".into()))
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Restore library".into(),
+            "Close without restoring".into(),
+        ))
         .show(move |confirmed| {
-            if confirmed { run_recovery(&handle, operation, true); }
-            else { handle.exit(STARTUP_CONFIGURATION_EXIT_CODE); }
+            if confirmed {
+                run_recovery(&handle, operation, true);
+            } else {
+                handle.exit(STARTUP_CONFIGURATION_EXIT_CODE);
+            }
         });
 }
 
-fn prompt_retry(app: &tauri::AppHandle, operation: String, message: String) {
+fn prompt_retry(app: &tauri::AppHandle, operation: String, text: copy::DialogCopy, restored: bool) {
     let handle = app.clone();
     app.dialog()
-        .message(message)
-        .title("Library update recovery")
-        .kind(MessageDialogKind::Warning)
+        .message(text.message)
+        .title(text.title)
+        .kind(if restored {
+            MessageDialogKind::Info
+        } else {
+            MessageDialogKind::Warning
+        })
         .buttons(MessageDialogButtons::OkCancelCustom(
-            "Allow retry on next launch".into(),
-            "Close oStudy".into(),
+            copy::UPDATE_NEXT_LAUNCH.into(),
+            copy::retry_cancel(restored).into(),
         ))
         .show(move |confirmed| {
             if confirmed {
@@ -145,8 +158,8 @@ fn run_recovery(app: &tauri::AppHandle, operation: String, restore: bool) {
         })
         .await;
         match result {
-            Ok(Ok(())) if restore => close_message(&handle, "Previous library restored", "The pre-update library was restored and the replaced library was preserved. oStudy will close now. Install the compatible previous application package before using this library; this new executable will not silently re-upgrade it.".into()),
-            Ok(Ok(())) => close_message(&handle, "Retry allowed", "The failed attempt and checkpoint were retained. Close this dialog, then reopen oStudy when you are ready for a new upgrade attempt.".into()),
+            Ok(Ok(())) if restore => close_message(&handle, copy::RESTORE_DONE),
+            Ok(Ok(())) => close_message(&handle, copy::RETRY_SCHEDULED),
             result => {
                 let error = match result {
                     Ok(Err(error)) => error,
@@ -155,19 +168,19 @@ fn run_recovery(app: &tauri::AppHandle, operation: String, restore: bool) {
                 };
                 crate::logging::error_target("library.upgrade", "explicit_upgrade_recovery_failed",
                     "The explicit recovery action did not complete.", serde_json::json!({"error": error}));
-                close_message(&handle, "Recovery could not complete", "Recovery did not complete. All recovery files were preserved. Close oStudy and inspect diagnostics; any unresolved activation journal will be recovered on the next launch. Do not delete or reset the library.".into());
+                close_message(&handle, copy::RECOVERY_FAILED);
             }
         }
     });
 }
 
-fn close_message(app: &tauri::AppHandle, title: &str, message: String) {
+fn close_message(app: &tauri::AppHandle, text: copy::DialogCopy) {
     let handle = app.clone();
     app.dialog()
-        .message(message)
-        .title(title)
+        .message(text.message)
+        .title(text.title)
         .kind(MessageDialogKind::Info)
-        .buttons(MessageDialogButtons::Ok)
+        .buttons(MessageDialogButtons::OkCustom(copy::CLOSE.into()))
         .show(move |_| handle.exit(STARTUP_CONFIGURATION_EXIT_CODE));
 }
 
@@ -183,10 +196,11 @@ mod tests {
             previous_restored: false,
             activation_unresolved: true,
         };
-        let message = recovery_message(&details);
-        assert!(message.contains("journal recovery"));
-        assert!(message.contains("Do not install an older binary"));
-        assert!(!message.contains("has been restored"));
+        let text = recovery_copy(&details);
+        assert_eq!(text, copy::UNRESOLVED);
+        assert!(text.message.contains("Close and reopen oStudy"));
+        assert!(text.message.contains("Do not install an older version"));
+        assert!(!text.message.contains("has been restored"));
     }
 
     #[test]
@@ -197,9 +211,11 @@ mod tests {
             previous_restored: true,
             activation_unresolved: false,
         };
-        let message = recovery_message(&details);
-        assert!(message.contains("has been restored"));
-        assert!(message.contains("compatible previous application package"));
-        assert!(message.contains("not automatically upgrade"));
+        let text = recovery_copy(&details);
+        assert_eq!(text, copy::RESTORED);
+        assert!(text.message.contains("has been restored"));
+        assert!(text.message.contains("previous compatible version"));
+        assert!(text.message.contains("close without changing it"));
+        assert!(text.message.contains("This is optional"));
     }
 }
