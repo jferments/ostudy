@@ -8,6 +8,7 @@ import {
   type GeometryCommand, type GeometryHistory,
 } from "../../editor/occlusion/history";
 import type { RegionMutation } from "../../editor/occlusion/gestures";
+import { hasCustomOcclusionContent, withOcclusionDefaults } from "./occlusionQuestionDefaults";
 
 /** Recovery-only import state. Neither this receipt nor editor history enters a saved definition. */
 export interface PendingOcclusionImport {
@@ -50,9 +51,16 @@ export function occlusionDraftFromQuestion(question: Extract<QuestionBody, { kin
   };
 }
 
+/** Undo may retain a default-only question with no rectangle. It is not an
+ * incomplete study card and must not prevent the remaining rectangles saving. */
+export function occlusionStudyQuestions(draft: OcclusionEditorDraft): OcclusionQuestion[] {
+  return draft.questions.filter((question) => question.maskIds.length > 0 || hasCustomOcclusionContent(question));
+}
+
 export function occlusionDraftReady(draft: OcclusionEditorDraft): boolean {
+  const questions = occlusionStudyQuestions(draft);
   if (!draft.imageAssetId || draft.pendingImport || draft.masks.length < 1 || draft.masks.length > 128
-    || draft.questions.length < 1 || draft.questions.length > 64) return false;
+    || questions.length < 1 || questions.length > 64) return false;
   const ids = new Set<string>();
   const acceptId = (id: string): boolean => {
     if (!/^[0-9a-f]{32}$/u.test(id) || ids.has(id)) return false;
@@ -67,23 +75,22 @@ export function occlusionDraftReady(draft: OcclusionEditorDraft): boolean {
     if (mask.rect.x + mask.rect.width > 1 || mask.rect.y + mask.rect.height > 1) return false;
   }
   const masks = new Set(draft.masks.map((mask) => mask.id));
-  return draft.questions.every((question) => acceptId(question.id)
+  return questions.every((question) => acceptId(question.id)
     && question.maskIds.length > 0 && new Set(question.maskIds).size === question.maskIds.length
     && question.maskIds.every((id) => masks.has(id))
-    && (question.mode === "hide_all" || question.mode === "hide_target")
-    && !isDocumentEmpty("", question.prompt) && !isDocumentEmpty("", question.answer));
+    && (question.mode === "hide_all" || question.mode === "hide_target"));
 }
 
 export function occlusionDefinition(draft: OcclusionEditorDraft): QuestionDefinition {
   if (!occlusionDraftReady(draft) || !draft.imageAssetId) {
-    throw new Error("Choose an image and give every question an answer and at least one valid region.");
+    throw new Error("Choose an image and draw at least one valid region. Custom questions must each have a target region.");
   }
   return {
     schemaVersion: 1,
     question: {
       kind: "image_occlusion", imageAssetId: draft.imageAssetId,
       masks: draft.masks.map((mask) => ({ ...mask, rect: { ...mask.rect } })),
-      questions: draft.questions.map((question) => ({ ...question, maskIds: [...question.maskIds] })),
+      questions: occlusionStudyQuestions(draft).map((question) => ({ ...withOcclusionDefaults(question), maskIds: [...question.maskIds] })),
     },
   };
 }
@@ -98,23 +105,34 @@ export function collectOcclusionDraftAssets(draft: OcclusionEditorDraft): string
   return [...ids].sort();
 }
 
-export function newOcclusionQuestion(maskIds: string[]): OcclusionQuestion {
-  return {
-    id: createOperationId(), maskIds: [...maskIds], mode: "hide_all",
-    prompt: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Identify the highlighted region." }] }] },
-    answer: cloneDocument(EMPTY_RICH_DOCUMENT), explanation: null,
-  };
+export function newOcclusionQuestion(maskIds: string[], mode: OcclusionQuestion["mode"] = "hide_target"): OcclusionQuestion {
+  return withOcclusionDefaults({
+    id: createOperationId(), maskIds: [...maskIds], mode,
+    prompt: cloneDocument(EMPTY_RICH_DOCUMENT), answer: cloneDocument(EMPTY_RICH_DOCUMENT), explanation: null,
+  });
 }
 
 export function updateOcclusionQuestion(draft: OcclusionEditorDraft, id: string, update: Partial<Omit<OcclusionQuestion, "id">>): OcclusionEditorDraft {
   return { ...draft, questions: draft.questions.map((question) => question.id === id ? { ...question, ...update } : question) };
 }
 
+export function setOcclusionMode(draft: OcclusionEditorDraft, mode: OcclusionQuestion["mode"]): OcclusionEditorDraft {
+  return { ...draft, questions: draft.questions.map((question) => ({ ...question, mode })) };
+}
+
+export function selectOcclusionRegion(draft: OcclusionEditorDraft, id: string | null): OcclusionEditorDraft {
+  const current = draft.questions.find((question) => question.id === draft.selectedQuestionId);
+  const question = id && !current?.maskIds.includes(id)
+    ? draft.questions.find((candidate) => candidate.maskIds.includes(id)) : current;
+  return { ...draft, selectedMaskId: id, selectedQuestionId: question?.id ?? draft.selectedQuestionId };
+}
+
 export function addOcclusionQuestion(draft: OcclusionEditorDraft): OcclusionEditorDraft {
-  if (draft.questions.length >= 64) return draft;
-  const selected = draft.selectedMaskId && draft.masks.some((mask) => mask.id === draft.selectedMaskId)
-    ? [draft.selectedMaskId] : [];
-  const question = newOcclusionQuestion(selected);
+  if (occlusionStudyQuestions(draft).length >= 64) return draft;
+  const selected = draft.masks.find((mask) => mask.id === draft.selectedMaskId) ?? draft.masks[0];
+  if (!selected) return draft;
+  const mode = draft.questions.find((question) => question.id === draft.selectedQuestionId)?.mode;
+  const question = newOcclusionQuestion([selected.id], mode);
   return { ...draft, questions: [...draft.questions, question], selectedQuestionId: question.id };
 }
 
@@ -126,25 +144,34 @@ export function removeOcclusionQuestion(draft: OcclusionEditorDraft, id: string)
   };
 }
 
+function retainQuestionHistory(draft: OcclusionEditorDraft): OcclusionEditorDraft {
+  const retained = new Set([...draft.history.undo, ...draft.history.redo]
+    .flatMap((command) => command.kind === "insert" ? command.restoreQuestionIds : []));
+  const questions = draft.questions.filter((question) => question.maskIds.length > 0
+    || hasCustomOcclusionContent(question) || retained.has(question.id));
+  return { ...draft, questions, selectedQuestionId: questions.some((question) => question.id === draft.selectedQuestionId)
+    ? draft.selectedQuestionId : questions[0]?.id ?? null };
+}
+
 export function applyOcclusionGeometry(draft: OcclusionEditorDraft, command: GeometryCommand): OcclusionEditorDraft {
   const transition = commitGeometry(draft, draft.history, command);
-  return transition.applied ? { ...draft, ...transition.state, history: transition.history } : draft;
+  return transition.applied ? retainQuestionHistory({ ...draft, ...transition.state, history: transition.history }) : draft;
 }
 
 /** One completed gesture is one geometry history entry; moves never replace question prose. */
-export function mutateOcclusionRegion(draft: OcclusionEditorDraft, mutation: RegionMutation, addToCurrent: boolean): OcclusionEditorDraft {
+export function mutateOcclusionRegion(draft: OcclusionEditorDraft, mutation: RegionMutation, addToCurrent: boolean,
+  mode?: OcclusionQuestion["mode"]): OcclusionEditorDraft {
   if (mutation.kind === "change") return applyOcclusionGeometry(draft, mutation);
   if (draft.masks.length >= 128) return draft;
+  const current = draft.questions.find((question) => question.id === draft.selectedQuestionId);
+  if ((!addToCurrent || !current) && occlusionStudyQuestions(draft).length >= 64) return draft;
   const mask: ImageMask = { id: createOperationId(), rect: mutation.rectangle };
-  let next = applyOcclusionGeometry(draft, { kind: "insert", mask, index: draft.masks.length, restoreQuestionIds: [] });
+  let next = applyOcclusionGeometry(draft, { kind: "insert", mask, index: draft.masks.length,
+    restoreQuestionIds: addToCurrent && current ? [current.id] : [] });
   if (next === draft) return draft;
   next = { ...next, selectedMaskId: mask.id };
-  const current = next.questions.find((question) => question.id === next.selectedQuestionId);
-  if (addToCurrent && current) {
-    return updateOcclusionQuestion(next, current.id, { maskIds: [...current.maskIds, mask.id] });
-  }
-  if (next.questions.length >= 64) return next;
-  const question = newOcclusionQuestion([mask.id]);
+  if (addToCurrent && current) return { ...next, selectedQuestionId: current.id };
+  const question = newOcclusionQuestion([mask.id], mode ?? current?.mode);
   return { ...next, questions: [...next.questions, question], selectedQuestionId: question.id };
 }
 
@@ -152,14 +179,14 @@ export function removeOcclusionRegion(draft: OcclusionEditorDraft, id: string): 
   const mask = draft.masks.find((mask) => mask.id === id);
   if (!mask) return draft;
   const next = applyOcclusionGeometry(draft, { kind: "remove", maskId: id, expected: mask.rect });
-  return { ...next, selectedMaskId: next.masks[0]?.id ?? null };
+  return selectOcclusionRegion(next, next.masks[0]?.id ?? null);
 }
 
 export function undoOcclusionGeometry(draft: OcclusionEditorDraft, direction: "undo" | "redo"): OcclusionEditorDraft {
   const transition = stepGeometryHistory(draft, draft.history, direction);
   const selectedMaskId = transition.state.masks.some((mask) => mask.id === draft.selectedMaskId)
     ? draft.selectedMaskId : transition.state.masks[0]?.id ?? null;
-  return { ...draft, ...transition.state, history: transition.history, selectedMaskId };
+  return retainQuestionHistory({ ...draft, ...transition.state, history: transition.history, selectedMaskId });
 }
 
 export function optionalOcclusionField(document: RichDocument): RichDocument | null {

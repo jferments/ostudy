@@ -127,9 +127,7 @@ fn multi_region_question_has_targets_only_before_reveal() {
     let q = ValidatedQuestion::parse(&definition.to_string()).unwrap();
     let source = source();
     let image = image(&source);
-    let hidden = image
-        .render(&q, &id(4), RenderPhase::Hidden, 100)
-        .unwrap();
+    let hidden = image.render(&q, &id(4), RenderPhase::Hidden, 100).unwrap();
     assert_eq!(hidden.target_rectangles.len(), 2);
     let output = image
         .render(&q, &id(4), RenderPhase::Revealed, 100)
@@ -146,7 +144,9 @@ fn invalid_image_and_target_fail_instead_of_returning_an_original_image() {
     let image = image(&source());
     let q = question("hide_target");
     assert!(image.render(&q, &id(99), RenderPhase::Hidden, 100).is_err());
-    assert!(image.render(&q, &id(99), RenderPhase::Revealed, 100).is_err());
+    assert!(image
+        .render(&q, &id(99), RenderPhase::Revealed, 100)
+        .is_err());
     assert!(image.render(&q, &id(4), RenderPhase::Hidden, 0).is_err());
     assert!(image.render(&q, &id(4), RenderPhase::Hidden, 4097).is_err());
 }
