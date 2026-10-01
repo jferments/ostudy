@@ -127,7 +127,7 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
   const preview = useOcclusionPreview(previewDraft, assetDraftId, true, revealed);
   const question = draft.questions.find((item) => item.id === selectedQuestionId) ?? null;
   const size = draft.imageSize ?? source.size;
-  const targets = draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
+  const targets = revealed ? [] : draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
   useEffect(() => { setRevealed(false); }, [selectedQuestionId, draft.imageAssetId]);
   return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>

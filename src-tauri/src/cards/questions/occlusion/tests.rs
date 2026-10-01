@@ -69,14 +69,13 @@ fn hide_target_covers_only_target_and_reveal_recovers_it() {
 }
 
 #[test]
-fn hide_all_reveals_target_but_preserves_unrelated_occlusions() {
+fn hide_all_covers_every_mask_and_reveal_recovers_the_unobstructed_image() {
     let pixels = source();
     let hidden = render(&pixels, "hide_all", RenderPhase::Hidden);
     assert_eq!(*hidden.get_pixel(20, 20), MASK_PIXEL);
     assert_eq!(*hidden.get_pixel(70, 70), MASK_PIXEL);
     let revealed = render(&pixels, "hide_all", RenderPhase::Revealed);
-    assert_eq!(revealed.get_pixel(20, 20), pixels.get_pixel(20, 20));
-    assert_eq!(*revealed.get_pixel(70, 70), MASK_PIXEL);
+    assert_eq!(revealed, pixels);
 }
 
 #[test]
@@ -108,29 +107,34 @@ fn hidden_pixels_cannot_affect_a_downsampled_derivative() {
 }
 
 #[test]
-fn unrelated_overlapping_mask_keeps_its_pixels_covered_after_reveal() {
+fn overlapping_masks_leave_no_obstruction_after_reveal() {
     let mut definition = serde_json::to_value(question("hide_all").definition()).unwrap();
     definition["question"]["masks"][1]["rect"] = json!({"x":0.2,"y":0.2,"width":0.2,"height":0.2});
     let q = ValidatedQuestion::parse(&definition.to_string()).unwrap();
-    let output = image(&source())
+    let source = source();
+    let output = image(&source)
         .render(&q, &id(4), RenderPhase::Revealed, 100)
         .unwrap();
     let pixels = CanonicalImage::decode(&output.png).unwrap().pixels;
-    assert_eq!(*pixels.get_pixel(15, 15), Rgba([231, 117, 43, 255]));
-    assert_eq!(*pixels.get_pixel(25, 25), MASK_PIXEL);
+    assert_eq!(pixels, source);
+    assert!(output.target_rectangles.is_empty());
 }
 
 #[test]
-fn multi_region_question_reveals_all_its_targets() {
+fn multi_region_question_has_targets_only_before_reveal() {
     let mut definition = serde_json::to_value(question("hide_all").definition()).unwrap();
     definition["question"]["questions"][0]["maskIds"] = json!([id(2), id(3)]);
     let q = ValidatedQuestion::parse(&definition.to_string()).unwrap();
     let source = source();
     let image = image(&source);
+    let hidden = image
+        .render(&q, &id(4), RenderPhase::Hidden, 100)
+        .unwrap();
+    assert_eq!(hidden.target_rectangles.len(), 2);
     let output = image
         .render(&q, &id(4), RenderPhase::Revealed, 100)
         .unwrap();
-    assert_eq!(output.target_rectangles.len(), 2);
+    assert!(output.target_rectangles.is_empty());
     assert_eq!(CanonicalImage::decode(&output.png).unwrap().pixels, source);
 }
 
@@ -142,6 +146,7 @@ fn invalid_image_and_target_fail_instead_of_returning_an_original_image() {
     let image = image(&source());
     let q = question("hide_target");
     assert!(image.render(&q, &id(99), RenderPhase::Hidden, 100).is_err());
+    assert!(image.render(&q, &id(99), RenderPhase::Revealed, 100).is_err());
     assert!(image.render(&q, &id(4), RenderPhase::Hidden, 0).is_err());
     assert!(image.render(&q, &id(4), RenderPhase::Hidden, 4097).is_err());
 }
