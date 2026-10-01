@@ -137,16 +137,17 @@ fn rejected_disk_inputs_preserve_bytes_and_do_not_switch_journal_mode() {
         unix_time_millis().unwrap()
     ));
     std::fs::create_dir_all(&root).unwrap();
+    let future = CURRENT_SCHEMA_VERSION + 1;
     let corruptions = [
-        "UPDATE schema_metadata SET value = 'unknown' WHERE key = 'schema_lineage'",
-        "DELETE FROM schema_migrations WHERE version = 1",
-        "UPDATE schema_migrations SET checksum = 'corrupt' WHERE version = 1",
-        "UPDATE schema_migrations SET name = 'corrupt' WHERE version = 1",
-        "INSERT INTO schema_migrations VALUES (3, 'future', 'future', 1)",
-        "PRAGMA user_version = 3",
-        "INSERT INTO data_repairs VALUES (1, 'unexpected', 'unexpected', 1, 0)",
-        "DROP TABLE schema_migrations",
-        "DROP TABLE data_repairs",
+        "UPDATE schema_metadata SET value = 'unknown' WHERE key = 'schema_lineage'".to_string(),
+        "DELETE FROM schema_migrations WHERE version = 1".to_string(),
+        "UPDATE schema_migrations SET checksum = 'corrupt' WHERE version = 1".to_string(),
+        "UPDATE schema_migrations SET name = 'corrupt' WHERE version = 1".to_string(),
+        format!("INSERT INTO schema_migrations VALUES ({future}, 'future', 'future', 1)"),
+        format!("PRAGMA user_version = {future}"),
+        "INSERT INTO data_repairs VALUES (1, 'unexpected', 'unexpected', 1, 0)".to_string(),
+        "DROP TABLE schema_migrations".to_string(),
+        "DROP TABLE data_repairs".to_string(),
     ];
     for (index, corruption) in corruptions.iter().enumerate() {
         let path = root.join(format!("input-{index}.sqlite3"));
