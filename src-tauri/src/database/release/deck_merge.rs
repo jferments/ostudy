@@ -23,7 +23,9 @@ pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(
         .map_err(|error| error.to_string())?;
     if version < 3 {
         if deck_merge_sql.is_some() || guidance_sql.is_some() {
-            return Err("An unregistered release-v3 study-workflow migration is present.".to_string());
+            return Err(
+                "An unregistered release-v3 study-workflow migration is present.".to_string(),
+            );
         }
         return Ok(());
     }

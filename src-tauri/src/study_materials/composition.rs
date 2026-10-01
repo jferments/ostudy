@@ -34,9 +34,7 @@ use crate::{
     },
     error::CommandError,
     knowledge::{
-        assessment::{
-            self, policy::instructions::GenerationInstructions, AssessmentRecord,
-        },
+        assessment::{self, policy::instructions::GenerationInstructions, AssessmentRecord},
         collection_view::{self, CollectionViewState},
         contracts::KnowledgeKind,
     },
@@ -644,13 +642,8 @@ async fn compose_collection_flashcards_guided(
         )?;
         task.diagnostics = Some(diagnostics.context());
         ensure_bundle_running(signal)?;
-        let result = curate_document_cards_required(
-            runtime,
-            &task,
-            &outline,
-            candidates_for_curation,
-        )
-        .await;
+        let result =
+            curate_document_cards_required(runtime, &task, &outline, candidates_for_curation).await;
         diagnostics.finish_result(&result);
         ensure_bundle_running(signal)?;
         let retained = result?;
