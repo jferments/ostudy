@@ -15,12 +15,15 @@ use crate::util::unix_time_millis;
 
 use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
 
+#[path = "release/deck_merge.rs"]
+mod deck_merge;
+
 #[path = "release/staging.rs"]
 mod staging;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 2;
+pub(crate) const SCHEMA_VERSION: i64 = 3;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -33,12 +36,20 @@ struct ReleaseMigration {
     sql: &'static str,
 }
 
-const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[ReleaseMigration {
-    version: 2,
-    name: "selection_deck_operations",
-    checksum: "c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238",
-    sql: include_str!("../../schema/0002_selection_deck_operations.sql"),
-}];
+const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
+    ReleaseMigration {
+        version: 2,
+        name: "selection_deck_operations",
+        checksum: "c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238",
+        sql: include_str!("../../schema/0002_selection_deck_operations.sql"),
+    },
+    ReleaseMigration {
+        version: 3,
+        name: "deck_merge_operations",
+        checksum: "696295167cef3c20d750f93373b673dca78a829aca43379d7792ce3bd9be3705",
+        sql: include_str!("../../schema/0003_deck_merge_operations.sql"),
+    },
+];
 
 pub(super) fn migration_contract_rows() -> impl Iterator<Item = (i64, &'static str, &'static str)> {
     RELEASE_MIGRATIONS
@@ -173,6 +184,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
         );
     }
     validate_selection_receipt_schema(connection, user_version)?;
+    deck_merge::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
@@ -639,6 +651,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(receipt_table, 1);
+        let merge_receipt_table: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_schema
+                     WHERE type = 'table' AND name = 'deck_merge_operations'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(merge_receipt_table, 1);
     }
 
     #[test]
@@ -756,21 +779,26 @@ mod tests {
         let before = preservation_receipt(&connection).unwrap();
         convert_legacy_current(&mut connection).unwrap();
         validate_input(&connection).unwrap();
-        assert_eq!(
-            connection
-                .query_row(
-                    "SELECT COUNT(*) FROM selection_deck_operations",
-                    [],
-                    |row| row.get::<_, i64>(0)
-                )
-                .unwrap(),
-            0
-        );
-        // The new table is additive and empty. Compare every pre-existing typed
-        // value after excluding only that newly introduced table in a rolled-back test transaction.
+        for table in ["selection_deck_operations", "deck_merge_operations"] {
+            assert_eq!(
+                connection
+                    .query_row(
+                        &format!("SELECT COUNT(*) FROM {table}"),
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                0
+            );
+        }
+        // Both release receipt tables are additive and empty. Compare every
+        // pre-existing typed value after excluding only those new tables.
         let comparison = connection.transaction().unwrap();
         comparison
-            .execute_batch("DROP TABLE selection_deck_operations;")
+            .execute_batch(
+                "DROP TABLE deck_merge_operations;
+                 DROP TABLE selection_deck_operations;"
+            )
             .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();

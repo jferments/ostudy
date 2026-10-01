@@ -23,17 +23,31 @@ pub(super) fn verify(
         return Ok(());
     }
     if source_lineage != CURRENT_SCHEMA_LINEAGE
-        || source_version != 1
-        || CURRENT_SCHEMA_VERSION != 2
+        || !(1..CURRENT_SCHEMA_VERSION).contains(&source_version)
+        || CURRENT_SCHEMA_VERSION != 3
     {
         return Err("No preservation contract is registered for this release upgrade. The active library was not replaced.".into());
     }
     let before = rows(source)?;
     let mut after = rows(target)?;
-    let receipt_table = after.remove("selection_deck_operations").ok_or_else(|| {
-        "The upgraded library is missing its selection-deck receipt table.".to_string()
+
+    let merge_receipts = after.remove("deck_merge_operations").ok_or_else(|| {
+        "The upgraded library is missing its deck-merge receipt table.".to_string()
     })?;
-    if !receipt_table.1.is_empty() || before != after {
+    if !merge_receipts.1.is_empty() {
+        return Err("The release upgrade unexpectedly created deck-merge receipts. The active library was not replaced.".into());
+    }
+
+    if source_version == 1 {
+        let selection_receipts = after.remove("selection_deck_operations").ok_or_else(|| {
+            "The upgraded library is missing its selection-deck receipt table.".to_string()
+        })?;
+        if !selection_receipts.1.is_empty() {
+            return Err("The release upgrade unexpectedly created selection-deck receipts. The active library was not replaced.".into());
+        }
+    }
+
+    if before != after {
         return Err("The private release upgrade changed retained library values. The active library was not replaced.".into());
     }
     Ok(())
