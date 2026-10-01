@@ -66,6 +66,7 @@ function open() {
 function select(files: File[]) {
   fireEvent.change(screen.getByLabelText("Choose images"), { target: { files } });
 }
+function pasteArea() { return screen.getByRole("textbox", { name: "Paste images here" }); }
 async function ready() {
   await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Study materials are ready"));
 }
@@ -141,8 +142,7 @@ describe("automatic image collections", () => {
     expect(screen.queryByText("Content filter")).toBeNull();
     expect(screen.queryByRole("button", { name: /Import image set|Rotate|Retry local OCR|Prepare/ })).toBeNull();
     const list = screen.getByRole("list", { name: "Images in collection" });
-    const drop = screen.getByRole("button", { name: "Drop images here or select files" });
-    expect(list.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(list.compareDocumentPosition(pasteArea()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     const click = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Add more images" }));
     expect(click).toHaveBeenCalledTimes(1);
@@ -151,31 +151,60 @@ describe("automatic image collections", () => {
   it("accepts dropped and pasted images into the same source while ignoring pasted URLs", async () => {
     open();
     const dropped = image("dropped.png");
-    fireEvent.drop(screen.getByRole("button", { name: "Drop images here or select files" }), {
+    fireEvent.drop(pasteArea(), {
       dataTransfer: { files: [], items: [
         { kind: "file", type: "image/png", getAsFile: () => dropped },
       ], dropEffect: "copy" },
     });
     await ready();
-    fireEvent.paste(window, { clipboardData: { files: [image("pasted.png")], items: [] } });
+    fireEvent.paste(pasteArea(), { clipboardData: { files: [image("pasted.png")], items: [] } });
     await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
     await ready();
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
     expect(mocks.more).toHaveBeenCalledWith(id);
     expect(mocks.guide).toHaveBeenCalledTimes(1);
-    fireEvent.paste(window, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
+    fireEvent.paste(pasteArea(), { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
     expect(mocks.stage).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to the browser clipboard reader when Ctrl+V carries no image event payload", async () => {
+  it("reads the clipboard during Ctrl+V when the native event carries no image payload", async () => {
     mocks.clipboardRead.mockResolvedValueOnce([image("clipboard-fallback.png")]);
     open();
-    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
-    await ready();
+    fireEvent.keyDown(pasteArea(), { key: "v", ctrlKey: true });
     expect(mocks.clipboardRead).toHaveBeenCalledTimes(1);
+    await ready();
     expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ name: "clipboard-fallback.png" }), expect.any(String));
     expect(mocks.import).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an in-flight clipboard read when the first upload acquires its durable document ID", async () => {
+    const clipboard = deferred<File[]>();
+    mocks.clipboardRead.mockReturnValueOnce(clipboard.promise);
+    open();
+    select([image("first.png")]);
+    fireEvent.keyDown(pasteArea(), { key: "v", ctrlKey: true });
+    await ready();
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    await act(async () => { clipboard.resolve([image("second.png")]); await clipboard.promise; });
+    await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
+    await ready();
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    expect(mocks.stage.mock.calls.map((call) => call[0].name)).toEqual(["first.png", "second.png"]);
+    expect(mocks.more).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers explicit Paste and exposes a safe acquisition failure instead of silently doing nothing", async () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Paste images" }));
+    expect(mocks.clipboardRead).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/No image was available to paste/)).toBeTruthy();
+    expect(mocks.stage).not.toHaveBeenCalled();
+    mocks.clipboardRead.mockResolvedValueOnce([image("explicit.png")]);
+    fireEvent.click(screen.getByRole("button", { name: "Paste images" }));
+    await ready();
+    expect(screen.queryByText(/No image was available to paste/)).toBeNull();
+    expect(mocks.stage).toHaveBeenCalledTimes(1);
   });
 
   it("keeps staging alive after leaving the image workspace", async () => {
@@ -301,8 +330,7 @@ describe("automatic image collections", () => {
     const preview = await screen.findByAltText("Retained original image");
     expect(preview).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide source-0.png" })).toBeTruthy();
-    const drop = screen.getByRole("button", { name: "Drop images here or select files" });
-    expect(preview.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(preview.compareDocumentPosition(pasteArea()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(mocks.preview).toHaveBeenCalledWith({ documentId: id, memberId: member("", 1).id,
       expectedRevision: 1, viewport: null });
   });

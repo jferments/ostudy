@@ -6,6 +6,7 @@ import { dataTransferImageFiles, IMAGE_FILE_ACCEPT } from "../../platform/imageI
 import { ImagePasteSession } from "../../platform/imagePaste";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
+import { Textarea } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 
@@ -41,7 +42,12 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const acquisitionArea = useRef<HTMLDivElement>(null);
+  const pasteTarget = useRef<HTMLTextAreaElement>(null);
+  const savedIdRef = useRef(savedId);
+  savedIdRef.current = savedId;
   const savedCount = job?.items.filter((item) => item.status === "saved").length ?? 0;
   const phase = job?.phase;
   const addImages = collections?.addImages;
@@ -60,10 +66,18 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const pasteSession = useRef<ImagePasteSession | null>(null);
   useEffect(() => {
     if (!addImages) return;
-    const session = pasteSession.current ?? new ImagePasteSession();
+    const session = new ImagePasteSession();
     pasteSession.current = session;
-    return session.bind((files) => addImages(key, savedId, files));
-  }, [addImages, key, savedId]);
+    // A first upload assigning its document ID must not dispose another screenshot
+    // read already in flight. The workspace key, not list refreshes, owns acquisition.
+    const dispose = session.bind((files) => addImages(key, savedIdRef.current, files),
+      window, setPasteError, acquisitionArea.current ?? undefined);
+    if (window.matchMedia?.("(pointer: fine)").matches) pasteTarget.current?.focus({ preventScroll: true });
+    return () => {
+      dispose();
+      if (pasteSession.current === session) pasteSession.current = null;
+    };
+  }, [addImages, key]);
 
   useEffect(() => {
     let current = true;
@@ -95,7 +109,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
     <InlineWorkspace title={details?.title ?? "Upload images"}
       description="Add screenshots or photos. Flashcards and a study guide are created automatically."
       onClose={onClose} closeLabel="Back to Documents">
-      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4 tw:sm:p-5"
+      <div ref={acquisitionArea} className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4 tw:sm:p-5"
         onDragOverCapture={(event) => {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
@@ -114,13 +128,16 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
             event.currentTarget.value = "";
             addImages?.(key, savedId, files);
           }} />
-        <div className="tw:flex tw:items-center tw:justify-between tw:gap-3">
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
           <span className="tw:text-sm tw:text-muted-foreground">{total} image{total === 1 ? "" : "s"}</span>
-          <Button variant="primary" size={total > 0 ? "icon" : "medium"}
-            aria-label={total > 0 ? "Add more images" : "Select images"}
-            disabled={!collections} onClick={() => picker.current?.click()}>
-            {total > 0 ? <span aria-hidden="true">+</span> : "Select images"}
-          </Button>
+          <div className="tw:flex tw:items-center tw:gap-2">
+            <Button disabled={!collections} onClick={() => pasteSession.current?.paste()}>Paste images</Button>
+            <Button variant="primary" size={total > 0 ? "icon" : "medium"}
+              aria-label={total > 0 ? "Add more images" : "Select images"}
+              disabled={!collections} onClick={() => picker.current?.click()}>
+              {total > 0 ? <span aria-hidden="true">+</span> : "Select images"}
+            </Button>
+          </div>
         </div>
         {total > 0 ? <ul aria-label="Images in collection" className="tw:m-0 tw:grid tw:list-none tw:gap-1 tw:p-0">
           {details?.members.map((member) => {
@@ -152,12 +169,12 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
             {item.error ? <span className="tw:text-sm tw:text-destructive">{item.error}</span> : null}
           </li>)}
         </ul> : null}
-        <Button variant="ghost" aria-label="Drop images here or select files"
-          className="tw:h-auto tw:w-full tw:min-h-32 tw:gap-1 tw:rounded-lg tw:border tw:border-dashed tw:border-border tw:bg-transparent tw:p-5 tw:text-center tw:text-sm tw:text-muted-foreground tw:focus-visible:outline tw:focus-visible:outline-ring"
-          onClick={() => picker.current?.click()}>
-          <span className="tw:grid tw:gap-1"><span>Drop images here</span>
-            <span>or paste images from your clipboard</span></span>
-        </Button>
+        <Textarea ref={pasteTarget} data-image-paste-target="" aria-label="Paste images here"
+          rows={3} inputMode="none" spellCheck={false} value="" onChange={() => {}}
+          onBeforeInput={(event) => event.preventDefault()}
+          placeholder="Drop images here, or click here and paste screenshots with Ctrl+V (Cmd+V on Mac). You can paste more while processing continues."
+          className="tw:min-h-32 tw:resize-none tw:border-dashed tw:p-5 tw:text-center" />
+        {pasteError ? <InlineNotice kind="warning">{pasteError}</InlineNotice> : null}
         {job ? <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
           <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">{phaseLabels[job.phase]}</p>
           {retryable ? <Button size="small" onClick={() => collections?.retryImages(key)}>Retry processing</Button> : null}
