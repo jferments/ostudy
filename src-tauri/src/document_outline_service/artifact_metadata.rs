@@ -550,7 +550,6 @@ fn record_applied_values(
 mod source_title_tests {
     use super::*;
     use crate::database::Database;
-    use rusqlite::params;
 
     fn source_record(deck_id: Option<String>) -> SourceRecord {
         SourceRecord {
