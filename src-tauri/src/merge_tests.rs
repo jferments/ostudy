@@ -264,6 +264,23 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                 .map_err(CommandError::database)?;
             connection
                 .execute(
+                    "INSERT INTO document_artifact_metadata(
+                         document_id,deck_id,source_fingerprint_sha256,metadata_origin,
+                         generator_version,schema_version,prompt_version,
+                         document_title,deck_title,deck_description,
+                         applied_document_title,applied_deck_title,
+                         applied_deck_description,created_at,updated_at
+                     ) VALUES(
+                         ?1,?2,?3,'provider',1,1,1,
+                         'Merge source','Generated source deck',
+                         'Generated source description','Merge source','Source',
+                         'Generated source description',1,1
+                     )",
+                    params![document_id, source.id, "d".repeat(64)],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
                     "INSERT INTO note_source_citations(
                          note_id,citation_id,source_locator_json,created_at,updated_at
                      ) VALUES(?1,?2,'{\"unitKind\":\"page\",\"unitNumbers\":[1],\"sectionLabel\":null,\"assetIds\":[]}',1,1)",
@@ -274,6 +291,15 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
             let note_before = dump(connection, "SELECT id,revision,front_doc,back_doc,question_definition FROM notes WHERE id=?1", &note_id);
             let schedule_before = dump(connection, "SELECT * FROM card_schedules WHERE card_id=?1", &card_id);
             let reviews_before = dump(connection, "SELECT * FROM review_events WHERE card_id=?1", &card_id);
+            let metadata_before = dump(
+                connection,
+                "SELECT source_fingerprint_sha256,metadata_origin,generator_version,
+                        schema_version,prompt_version,document_title,deck_title,
+                        deck_description,applied_document_title,applied_deck_title,
+                        applied_deck_description,created_at,updated_at
+                 FROM document_artifact_metadata WHERE document_id=?1",
+                &document_id,
+            );
             let input = request(1, &source, &destination, 1, 1);
             let result = merge_in_connection(connection, input.clone())?;
 
@@ -337,6 +363,42 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(target_artifact_deck, destination.id);
+            let metadata_deck: String = connection
+                .query_row(
+                    "SELECT deck_id FROM document_artifact_metadata
+                     WHERE document_id=?1",
+                    [&document_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(metadata_deck, destination.id);
+            assert_eq!(
+                metadata_before,
+                dump(
+                    connection,
+                    "SELECT source_fingerprint_sha256,metadata_origin,generator_version,
+                            schema_version,prompt_version,document_title,deck_title,
+                            deck_description,applied_document_title,applied_deck_title,
+                            applied_deck_description,created_at,updated_at
+                     FROM document_artifact_metadata WHERE document_id=?1",
+                    &document_id,
+                )
+            );
+            let destination_after: (String, String, i64) = connection
+                .query_row(
+                    "SELECT name,description,revision FROM decks WHERE id=?1",
+                    [&destination.id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                destination_after,
+                (
+                    "Destination".to_string(),
+                    String::new(),
+                    destination.revision + 1,
+                )
+            );
             let retained_tag_count: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM note_tags WHERE note_id=?1",

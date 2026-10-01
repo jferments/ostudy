@@ -222,6 +222,17 @@ pub(crate) fn merge_in_connection(
         )
         .map_err(CommandError::database)?;
 
+    // `document_artifact_metadata_after_generated_deck_link` normally applies
+    // provider-authored deck metadata when a document first receives a deck.
+    // A merge is not first publication: firing that trigger here could rename
+    // or rewrite the existing destination deck and increment its revision before
+    // the merge's own optimistic update. Temporarily detach only the affected
+    // metadata rows, retarget the document IDs, then restore the exact metadata
+    // payload with the destination deck ID inside this same transaction.
+    let metadata_rows = detach_document_artifact_metadata(
+        &transaction,
+        &input.source_deck_id,
+    )?;
     let retargeted_documents = transaction
         .execute(
             "UPDATE documents
@@ -230,6 +241,11 @@ pub(crate) fn merge_in_connection(
             params![input.destination_deck_id, now, input.source_deck_id],
         )
         .map_err(CommandError::database)?;
+    restore_document_artifact_metadata(
+        &transaction,
+        &input.destination_deck_id,
+        metadata_rows,
+    )?;
     transaction
         .execute(
             "UPDATE document_generation_jobs
@@ -292,7 +308,10 @@ pub(crate) fn merge_in_connection(
     }
 
     transaction
-        .execute_batch("DROP TABLE temp.ostudy_deck_merge_notes;")
+        .execute_batch(
+            "DROP TABLE temp.ostudy_deck_merge_notes;
+             DROP TABLE IF EXISTS temp.ostudy_deck_merge_artifact_metadata;",
+        )
         .map_err(CommandError::database)?;
 
     let result = MergeDecksResultDto {
@@ -311,6 +330,78 @@ pub(crate) fn merge_in_connection(
     store_receipt(&transaction, &input, &fingerprint, &result, now)?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(result)
+}
+
+fn detach_document_artifact_metadata(
+    connection: &Connection,
+    source_deck_id: &str,
+) -> Result<usize, CommandError> {
+    connection
+        .execute_batch(
+            "DROP TABLE IF EXISTS temp.ostudy_deck_merge_artifact_metadata;
+             CREATE TEMP TABLE ostudy_deck_merge_artifact_metadata AS
+             SELECT * FROM document_artifact_metadata WHERE 0;",
+        )
+        .map_err(CommandError::database)?;
+    let captured = connection
+        .execute(
+            "INSERT INTO temp.ostudy_deck_merge_artifact_metadata
+             SELECT metadata.*
+             FROM document_artifact_metadata metadata
+             JOIN documents document ON document.id=metadata.document_id
+             WHERE document.generated_deck_id=?1",
+            [source_deck_id],
+        )
+        .map_err(CommandError::database)?;
+    let removed = connection
+        .execute(
+            "DELETE FROM document_artifact_metadata
+             WHERE document_id IN (
+                 SELECT document_id
+                 FROM temp.ostudy_deck_merge_artifact_metadata
+             )",
+            [],
+        )
+        .map_err(CommandError::database)?;
+    if removed != captured {
+        return Err(CommandError::new(
+            "deck_merge_artifact_metadata_changed",
+            "Generated document metadata changed during the merge. No material was moved.",
+        ));
+    }
+    Ok(captured)
+}
+
+fn restore_document_artifact_metadata(
+    connection: &Connection,
+    destination_deck_id: &str,
+    expected_rows: usize,
+) -> Result<(), CommandError> {
+    let restored = connection
+        .execute(
+            "INSERT INTO document_artifact_metadata(
+                 document_id,deck_id,source_fingerprint_sha256,metadata_origin,
+                 generator_version,schema_version,prompt_version,
+                 document_title,deck_title,deck_description,
+                 applied_document_title,applied_deck_title,applied_deck_description,
+                 created_at,updated_at
+             )
+             SELECT document_id,?1,source_fingerprint_sha256,metadata_origin,
+                    generator_version,schema_version,prompt_version,
+                    document_title,deck_title,deck_description,
+                    applied_document_title,applied_deck_title,applied_deck_description,
+                    created_at,updated_at
+             FROM temp.ostudy_deck_merge_artifact_metadata",
+            [destination_deck_id],
+        )
+        .map_err(CommandError::database)?;
+    if restored != expected_rows {
+        return Err(CommandError::new(
+            "deck_merge_artifact_metadata_changed",
+            "Generated document metadata could not be restored during the merge. No material was moved.",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_request(input: &MergeDecksInput) -> Result<(), CommandError> {
