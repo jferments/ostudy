@@ -219,6 +219,31 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                     params![target_id, document_id, source.id],
                 )
                 .map_err(CommandError::database)?;
+            let target_batch_id = id(903);
+            connection
+                .execute(
+                    "INSERT INTO study_target_batches(
+                         operation_id,target_id,request_sha256,source_snapshot_id,
+                         source_snapshot_json,output_policy_json,provider_authorized,
+                         state,created_at,updated_at,completed_at
+                     ) VALUES(?1,?2,?3,?4,'{}','{}',0,'complete',1,1,1)",
+                    params![
+                        target_batch_id,
+                        target_id,
+                        "a".repeat(64),
+                        "b".repeat(64)
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO study_target_artifact_jobs(
+                         batch_id,artifact_kind,state,artifact_id,total_units,
+                         completed_units,created_at,updated_at,completed_at
+                     ) VALUES(?1,'flashcards','succeeded',?2,1,1,1,1,1)",
+                    params![target_batch_id, source.id],
+                )
+                .map_err(CommandError::database)?;
             connection
                 .execute(
                     "INSERT INTO source_citation_snapshots(
@@ -303,6 +328,15 @@ fn merge_moves_identity_not_history_and_retargets_future_generated_material() {
                 generated_provenance,
                 (destination.id.clone(), destination.id.clone())
             );
+            let target_artifact_deck: String = connection
+                .query_row(
+                    "SELECT artifact_id FROM study_target_artifact_jobs
+                     WHERE batch_id=?1 AND artifact_kind='flashcards'",
+                    [&target_batch_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(target_artifact_deck, destination.id);
             let retained_tag_count: i64 = connection
                 .query_row(
                     "SELECT COUNT(*) FROM note_tags WHERE note_id=?1",

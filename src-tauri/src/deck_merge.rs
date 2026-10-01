@@ -260,6 +260,14 @@ pub(crate) fn merge_in_connection(
             params![input.destination_deck_id, now, input.source_deck_id],
         )
         .map_err(CommandError::database)?;
+    transaction
+        .execute(
+            "UPDATE study_target_artifact_jobs
+             SET artifact_id=?1,updated_at=MAX(updated_at,?2)
+             WHERE artifact_kind='flashcards' AND artifact_id=?3",
+            params![input.destination_deck_id, now, input.source_deck_id],
+        )
+        .map_err(CommandError::database)?;
 
     let changed_source = transaction
         .execute(
