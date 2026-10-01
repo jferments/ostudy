@@ -187,7 +187,9 @@ mod tests {
                 assert_eq!(entry(has_backup, restored, true), UNRESOLVED);
             }
         }
-        assert!(UNRESOLVED.message.contains("Do not install an older version"));
+        assert!(UNRESOLVED
+            .message
+            .contains("Do not install an older version"));
         assert!(!UNRESOLVED.message.contains("has been restored"));
     }
 
@@ -218,18 +220,30 @@ mod tests {
         assert!(CONFIRM_RETRY.message.contains("not the backup restoration"));
         assert!(CONFIRM_RETRY.message.contains("not now"));
         assert!(CONFIRM_RETRY.message.contains("freeing disk space"));
-        assert!(RETRY_SCHEDULED.message.contains("No library update has run yet"));
+        assert!(RETRY_SCHEDULED
+            .message
+            .contains("No library update has run yet"));
         assert!(RETRY_SCHEDULED.message.contains("next time you open"));
-        assert!(RETRY_SCHEDULED.message.contains("does not fix the original problem"));
+        assert!(RETRY_SCHEDULED
+            .message
+            .contains("does not fix the original problem"));
     }
 
     #[test]
     fn restoration_explains_newer_work_and_does_not_promise_application_downgrade() {
-        assert!(CONFIRM_RESTORE.message.contains("study progress added since then"));
+        assert!(CONFIRM_RESTORE
+            .message
+            .contains("study progress added since then"));
         assert!(CONFIRM_RESTORE.message.contains("separate copy"));
-        assert!(CONFIRM_RESTORE.message.contains("install the previous compatible version"));
-        assert!(RESTORE_DONE.message.contains("No application version was changed"));
-        assert!(RESTORE_DONE.message.contains("unless you choose to try again"));
+        assert!(CONFIRM_RESTORE
+            .message
+            .contains("install the previous compatible version"));
+        assert!(RESTORE_DONE
+            .message
+            .contains("No application version was changed"));
+        assert!(RESTORE_DONE
+            .message
+            .contains("unless you choose to try again"));
     }
 
     #[test]
@@ -251,7 +265,14 @@ mod tests {
         ] {
             assert!(copy.message.contains("\n\n"), "{}", copy.title);
             let text = format!("{} {}", copy.title, copy.message).to_lowercase();
-            for jargon in ["checkpoint", "candidate", "executable", "journal", "sql", "schema"] {
+            for jargon in [
+                "checkpoint",
+                "candidate",
+                "executable",
+                "journal",
+                "sql",
+                "schema",
+            ] {
                 assert!(!text.contains(jargon), "{}: {jargon}", copy.title);
             }
         }

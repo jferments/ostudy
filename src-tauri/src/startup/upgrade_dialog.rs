@@ -43,7 +43,12 @@ pub(super) fn present(app: &tauri::AppHandle, stage: &str) {
                         }
                     });
             } else {
-                prompt_retry(&handle, details.operation_id, text, details.previous_restored);
+                prompt_retry(
+                    &handle,
+                    details.operation_id,
+                    text,
+                    details.previous_restored,
+                );
             }
         }
         Ok(Some(details)) => close_message(app, recovery_copy(&details)),
@@ -166,8 +171,12 @@ fn run_recovery(app: &tauri::AppHandle, operation: String, restore: bool) {
                     Err(error) => error.to_string(),
                     Ok(Ok(())) => unreachable!(),
                 };
-                crate::logging::error_target("library.upgrade", "explicit_upgrade_recovery_failed",
-                    "The explicit recovery action did not complete.", serde_json::json!({"error": error}));
+                crate::logging::error_target(
+                    "library.upgrade",
+                    "explicit_upgrade_recovery_failed",
+                    "The explicit recovery action did not complete.",
+                    serde_json::json!({"error": error}),
+                );
                 close_message(&handle, copy::RECOVERY_FAILED);
             }
         }
