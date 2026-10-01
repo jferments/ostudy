@@ -526,7 +526,7 @@ fn failed_receipt_insert_rolls_back_every_merge_write() {
 }
 
 #[test]
-fn active_generation_and_pending_deletion_block_without_moving_material() {
+fn active_generation_practice_and_pending_deletion_block_without_moving_material() {
     let database = Database::open_in_memory().unwrap();
     database
         .with_connection(|connection| {
@@ -563,6 +563,33 @@ fn active_generation_and_pending_deletion_block_without_moving_material() {
                     [&document_id],
                 )
                 .map_err(CommandError::database)?;
+            let practice_id = id(920);
+            connection
+                .execute(
+                    "INSERT INTO practice_sessions(
+                         id,selected_deck_ids_json,shuffle,card_count,viewed_count,
+                         revealed_count,started_at,rated_count,correct_count,mode,
+                         selected_tag_ids_json
+                     ) VALUES(?1,?2,0,1,0,0,1,0,0,'scheduled','[]')",
+                    params![
+                        practice_id,
+                        serde_json::json!([source.id.clone()]).to_string()
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                merge_in_connection(connection, input.clone())
+                    .unwrap_err()
+                    .code,
+                "deck_merge_practice_active"
+            );
+            connection
+                .execute(
+                    "UPDATE practice_sessions SET completed_at=2 WHERE id=?1",
+                    [&practice_id],
+                )
+                .map_err(CommandError::database)?;
+
             let (_, destination_card) =
                 create_note(connection, &destination.id, "Destination", 102)?;
             let destination_note: String = connection

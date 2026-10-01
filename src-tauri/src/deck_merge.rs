@@ -597,6 +597,26 @@ fn ensure_no_conflicting_work(
         ));
     }
 
+    let active_practice: bool = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM practice_sessions session
+                 JOIN json_each(session.selected_deck_ids_json) selected
+                   ON CAST(selected.value AS TEXT) IN (?1,?2)
+                 WHERE session.completed_at IS NULL
+             )",
+            params![input.source_deck_id, input.destination_deck_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if active_practice {
+        return Err(CommandError::new(
+            "deck_merge_practice_active",
+            "End the active Practice session for these decks before merging them.",
+        ));
+    }
+
     let pending_deletion: bool = connection
         .query_row(
             "SELECT EXISTS(
