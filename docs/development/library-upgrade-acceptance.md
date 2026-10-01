@@ -148,15 +148,21 @@ import sys
 from pathlib import Path
 
 executables = set()
+candidates = []
 for line in Path(sys.argv[1]).read_text().splitlines():
     record = json.loads(line)
-    if (record.get("reason") == "compiler-artifact"
-            and record.get("profile", {}).get("test")
-            and "lib" in record.get("target", {}).get("kind", [])
-            and record.get("executable")):
+    if (record.get("reason") != "compiler-artifact"
+            or not record.get("profile", {}).get("test")
+            or not record.get("executable")):
+        continue
+    target = record.get("target", {})
+    candidates.append((target.get("name"), target.get("kind"), record["executable"]))
+    if target.get("name") == "ostudy_lib":
         executables.add(record["executable"])
 if len(executables) != 1:
-    raise SystemExit("Expected exactly one native library test executable.")
+    raise SystemExit(
+        f"Expected exactly one ostudy_lib test executable; candidates={candidates!r}"
+    )
 print(executables.pop())
 PY
 )"
@@ -169,6 +175,10 @@ env OSTUDY_UPGRADE_PREPARATION_ROOT="$TEST_ROOT/data/io.github.jferments.ostudy.
   --test-threads=1 || status=$?
 test "$status" -eq 77 && fixture_env ./run-app.sh
 ```
+
+The Cargo test target is selected by its stable name `ostudy_lib`, not by a generic
+`target.kind == "lib"` assumption: this crate explicitly builds `staticlib`,
+`cdylib` and `rlib` forms.
 
 Exit 77 is expected only from this explicitly requested child-process cutpoint.
 Any other exit is a failed setup; do not infer that recovery was exercised.
