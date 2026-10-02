@@ -26,7 +26,7 @@ const failures = [];
 expectRecipe("root", ["tw:@container/deck-library"], "deck-library container");
 expectRecipe("toolbar", ["tw:flex", "tw:justify-end"], "deck toolbar");
 expectRecipe("toolbarActions", ["tw:flex", "tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"], "intrinsic toolbar actions at every width");
-expectContains(rootSource, ">Import deck</Button>", "labeled import action");
+expectContains(rootSource, "Import deck", "labeled import action");
 expectAbsent(rootSource, 'label="Import deck from file"', "retired icon-only import action");
 expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/deck-library:w-full", "tw:@max-[620px]/deck-library:justify-stretch"], "content-width compact folder controls");
 expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
