@@ -109,10 +109,12 @@ Use formatVersion 2 even when a deck happens to contain only Basic or Cloze card
 7. Use Cloze when sentence context improves retrieval; do not convert every sentence into deletion trivia.
 8. Use single-choice for one best answer with plausible distractors.
 9. Use select-all only when the set itself is worth learning.
-10. Use matching, grouping, and ordering only when the relationship, classification, or sequence is intrinsically useful to study.
-11. Avoid answer leakage through wording, grammar, option length, or category names.
-12. Add concise rationales or explanations when they improve learning rather than merely restating the answer.
-13. Use sparse, reusable topic tags.
+10. Use matching only for a true one-to-one relationship: every visible left item and every visible right item must be unique. If two or more items share the same answer/category, use grouping instead.
+11. Use grouping for many-to-one classification, including cases where several items correctly belong to the same category.
+12. Use ordering only when a total sequence is intrinsically useful to study.
+13. Avoid answer leakage through wording, grammar, option length, or category names.
+14. Add concise rationales or explanations when they improve learning rather than merely restating the answer.
+15. Use sparse, reusable topic tags.
 
 For medical or nursing material, preserve clinically meaningful units, contraindications, conditions, exceptions, timing, routes, monitoring, and distinctions between association, mechanism, diagnosis, and treatment. Do not turn facility-specific conventions into universal rules.
 
@@ -193,7 +195,7 @@ Each option contains:
 - content
 - optional rationale
 
-Option IDs must be unique within the question. correctOptionId must reference exactly one existing option ID.
+Option IDs must be unique within the question. Option content must also be unique within the question after Markdown is parsed. correctOptionId must reference exactly one existing option ID.
 
 ## Select-all questions
 
@@ -216,7 +218,7 @@ Shape:
 
 Use 2 through 32 options and at least one correct option.
 
-Option IDs must be unique. Every entry in correctOptionIds must reference an existing option ID, and correctOptionIds must not contain duplicates.
+Option IDs and visible option content must each be unique within the question. Every entry in correctOptionIds must reference an existing option ID, and correctOptionIds must not contain duplicates.
 
 ## True/false questions
 
@@ -265,7 +267,7 @@ Shape:
       }
     }
 
-Use 2 through 32 pairs.
+Use 2 through 16 pairs.
 
 Each pair contains:
 
@@ -275,6 +277,18 @@ Each pair contains:
 - optional rationale
 
 Pair IDs must be unique within the question.
+
+Matching is bijective/one-to-one. After Markdown parsing:
+- every left-side item must have unique visible content;
+- every right-side item must have unique visible content.
+
+Do not use matching when multiple left-side items share the same right-side answer. Use grouping for that many-to-one relation.
+
+Invalid matching example:
+- Outpatient mental health treatment → 13 or older
+- Outpatient substance abuse treatment → 13 or older
+
+Represent that as grouping with categories such as "13 or older", "14 or older", and "Any age", and put both outpatient services in the "13 or older" category.
 
 ## Grouping questions
 
@@ -296,9 +310,9 @@ Shape:
       }
     }
 
-Use 2 through 32 categories and 2 through 32 items.
+Use 2 through 8 categories and 2 through 32 items.
 
-Category IDs must be unique. Item IDs must be unique. Every categoryId must reference an existing category ID.
+Category IDs and category content must each be unique. Item IDs and item content must each be unique. Every categoryId must reference an existing category ID. Multiple different items may intentionally reference the same categoryId.
 
 A grouped item may also contain an optional rationale.
 
@@ -322,7 +336,7 @@ Shape:
 
 Use 2 through 32 items.
 
-Item IDs must be unique. The authored array order is the correct answer order.
+Item IDs and item content must each be unique. The authored array order is the correct answer order.
 
 ## Exact object-shape rules
 
@@ -463,8 +477,11 @@ Before returning the file, re-open it and verify all of the following:
 - Every required property is present.
 - Every local component ID matches the allowed ASCII identifier syntax.
 - IDs are unique within each option, pair, category, or item collection.
+- Choice option content is unique within each choice question.
+- Matching has 2–16 pairs, with unique visible content independently on the left side and on the right side; any repeated target value is represented as grouping instead.
+- Grouping has 2–8 unique categories and 2–32 unique items; multiple items may reference the same category.
+- Ordering has 2–32 items with unique visible content.
 - Every correctOptionId, correctOptionIds entry, and categoryId resolves to an existing component.
-- Choice, matching, grouping, and ordering arrays satisfy their 2-through-32 component limits.
 - Select-all has at least one correct option.
 - Tags satisfy their count and length limits, have no leading #, and do not contain duplicates.
 - Every Cloze card has at least one valid non-nested marker.

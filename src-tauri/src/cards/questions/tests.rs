@@ -308,7 +308,11 @@ fn matching_and_grouping_definitions_admit_only_their_structural_relations() {
     if let QuestionBody::Matching { pairs, .. } = &mut d.question {
         pairs[1].right.content = pairs[0].right.content.clone();
     }
-    assert_rejected(d);
+    let error = ValidatedQuestion::validate(d).unwrap_err();
+    assert_eq!(
+        error.message,
+        "Matching requires unique content on each side. Use a grouping question when multiple items share the same answer."
+    );
     let mut d = grouping();
     if let QuestionBody::Grouping { items, .. } = &mut d.question {
         items[0].category_id = id(88);

@@ -84,8 +84,8 @@ impl ValidatedQuestion {
                     fields.item(&pair.right)?;
                     fields.optional(&pair.rationale)?;
                 }
-                distinct_content(pairs.iter().map(|pair| &pair.left.content))?;
-                distinct_content(pairs.iter().map(|pair| &pair.right.content))?;
+                distinct_matching_content(pairs.iter().map(|pair| &pair.left.content))?;
+                distinct_matching_content(pairs.iter().map(|pair| &pair.right.content))?;
                 fields.optional(explanation)?;
             }
             QuestionBody::Grouping {
@@ -307,6 +307,21 @@ fn has_meaningful_text(document: &Value) -> bool {
         }
     }
     false
+}
+
+fn distinct_matching_content<'a>(
+    documents: impl Iterator<Item = &'a Value>,
+) -> Result<(), QuestionError> {
+    let mut seen = Vec::new();
+    for document in documents {
+        if seen.contains(&document) {
+            return Err(invalid(
+                "Matching requires unique content on each side. Use a grouping question when multiple items share the same answer.",
+            ));
+        }
+        seen.push(document);
+    }
+    Ok(())
 }
 
 fn distinct_content<'a>(documents: impl Iterator<Item = &'a Value>) -> Result<(), QuestionError> {
