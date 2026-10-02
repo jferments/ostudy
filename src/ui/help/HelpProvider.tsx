@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { IconButton } from "../icons/IconButton";
-import { Sheet } from "../overlays/Dialog";
+import { DialogActions, Sheet } from "../overlays/Dialog";
 import { Button } from "../primitives/Button";
 import { startTutorial } from "../tutorials/TourProvider";
 import { helpRegistry, type HelpTopicId } from "./helpRegistry";
@@ -27,17 +27,17 @@ export function HelpProvider({ children }: { children: ReactNode }) {
   return <HelpContext.Provider value={value}>
     {children}
     {topic ? <Sheet title={topic.title} description={topic.summary} width="small" onClose={close}>
-      <div className="tw:grid tw:min-w-0 tw:gap-5">
+      <div className="tw:grid tw:min-w-0 tw:gap-5 tw:p-4 tw:sm:p-5">
         <p className="tw:m-0 tw:break-words tw:text-label tw:leading-relaxed">{topic.details}</p>
         <code className="tw:block tw:min-w-0 tw:whitespace-normal tw:break-all tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:p-3 tw:text-caption tw:text-muted-foreground">{topic.documentation}</code>
-        <div className="tw:flex tw:flex-wrap tw:justify-end tw:gap-3">
+        <DialogActions>
           {topic.tutorialModuleId ? <Button onClick={() => {
             const moduleId = topic.tutorialModuleId;
             close();
             if (moduleId) window.requestAnimationFrame(() => startTutorial(moduleId));
           }}>Start guided tutorial</Button> : null}
           <Button variant="primary" onClick={close}>Done</Button>
-        </div>
+        </DialogActions>
       </div>
     </Sheet> : null}
   </HelpContext.Provider>;

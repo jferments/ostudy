@@ -42,7 +42,7 @@ The progress track shows studied, remaining, and percentage. Ending early asks f
 
 ## Protect your library
 
-Use the library's **Import deck from file** icon for `.studydeck` or supported generated-card JSON. Export an individual deck or selected decks through contextual export controls. A shared deck has fresh schedules when imported and does not include the sender's personal review history.
+Use the library's **Import deck** button for `.studydeck` or supported generated-card JSON. Export an individual deck or selected decks through contextual export controls. A shared deck has fresh schedules when imported and does not include the sender's personal review history.
 
 Use **Settings → Backup/Sync** for a complete `.ostudybackup` and restoration. A backup contains personal library history and managed files but excludes credentials. Restore validates and replaces the library in the running application, then refreshes the interface; it does not require restarting oStudy and is not an append operation. Keep backups outside the app's data directory and before testing risky changes. [Backups, imports, and sharing](backups-imports-and-sharing.md) explains the formats and [device sync](device-sync.md) explains explicit trusted-device exchange.
 

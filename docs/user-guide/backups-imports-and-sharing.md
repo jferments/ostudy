@@ -16,7 +16,7 @@ A backup is not automatically encrypted just because credentials are excluded. I
 
 ## Import a deck or generated cards
 
-Open **Flashcards → Decks** and use the **Import deck from file** icon. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
+Open **Flashcards → Decks** and choose **Import deck**. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
 
 A new imported deck starts in **Unsorted decks** until you organize it locally. The receiving library owns folder membership and schedules.
 

@@ -215,6 +215,8 @@ describe("DeckLibraryWorkspace", () => {
     expect(folders.compareDocumentPosition(unsorted) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Import deck from file" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Pharmacology actions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../test/factories";
@@ -191,44 +191,15 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("tabpanel").textContent).toContain("Typography");
   });
 
-  it("keeps storage information at the bottom of Backup/Sync", async () => {
+  it("keeps Backup/Sync focused on backup and device synchronization without a storage help tile", async () => {
     renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
-    const detailsButton = await screen.findByRole("button", { name: "View storage details" });
-    expect(screen.queryByText("/tmp/ostudy/data")).toBeNull();
     const panel = screen.getByRole("tabpanel");
-    const dataSafety = screen.getByRole("heading", { name: "Data safety" });
-    const deviceSync = screen.getByRole("heading", { name: "Device synchronization" });
-    const storage = screen.getByRole("heading", { name: "Storage" });
-    expect(panel.contains(storage)).toBe(true);
-    expect(
-      dataSafety.compareDocumentPosition(deviceSync) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      deviceSync.compareDocumentPosition(storage) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    fireEvent.click(detailsButton);
-    const dialog = await screen.findByRole("dialog", { name: "Storage details" });
-    expect(dialog.textContent).toContain("/tmp/ostudy/data");
-    expect(dialog.textContent).toContain("library.sqlite3");
-    expect(dialog.textContent).toContain("Schema");
-    expect(settingsIpc.getAppInfo).toHaveBeenCalledOnce();
-  });
-
-  it("keeps the existing storage loading and error states outside the details dialog", async () => {
-    vi.mocked(settingsIpc.getAppInfo).mockImplementationOnce(
-      () => new Promise<settingsIpc.AppInfo>(() => undefined),
-    );
-    renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
-    expect(await screen.findByText("Reading storage paths…")).toBeTruthy();
-    cleanup();
-
-    vi.mocked(settingsIpc.getAppInfo).mockRejectedValueOnce(new Error("Storage details unavailable."));
-    renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
-    expect(await screen.findByText("Storage details unavailable.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "View storage details" })).toBeNull();
+    expect(within(panel).getByRole("heading", { name: "Data safety" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "Device synchronization" })).toBeTruthy();
+    expect(within(panel).queryByRole("heading", { name: "Storage" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "View storage details" })).toBeNull();
+    expect(settingsIpc.getAppInfo).not.toHaveBeenCalled();
   });
 
   it("previews and saves appearance preferences without touching AI provider state", async () => {

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckSummary } from "../../ipc/decks";
@@ -17,6 +17,8 @@ vi.mock("../../platform/PlatformProvider", () => ({ usePlatformCapabilities: () 
 vi.mock("../../ui/overlays/Dialog", () => ({
   Dialog: ({ title, children }: { title: string; children: ReactNode }) =>
     <section role="dialog" aria-label={title}>{children}</section>,
+  DialogActions: ({ children }: { children: ReactNode }) =>
+    <div data-testid="dialog-actions">{children}</div>,
 }));
 const deck: DeckSummary = {
   id: "a".repeat(32), name: "Study examples", description: "", sourceNoteCount: 2,
@@ -33,10 +35,17 @@ function mount(request: DeckTransferDialogRequest = { kind: "import" }) {
 beforeEach(() => { vi.resetAllMocks(); calls.importFromFile.mockResolvedValue(outcome); });
 
 describe("active deck transfer presentation", () => {
+  it("uses the shared responsive action owner and one explicit import action", () => {
+    mount();
+    const actions = screen.getByTestId("dialog-actions");
+    expect(within(actions).getByRole("button", { name: "Import deck" })).toBeTruthy();
+    expect(within(actions).queryByRole("button", { name: /Choose file/ })).toBeNull();
+    expect(screen.queryByTestId("folder-import-decoration")).toBeNull();
+  });
   it("leaves the library unchanged when the native file chooser is canceled", async () => {
     calls.importFromFile.mockResolvedValue(null);
     const { close, open, refresh, toast } = mount();
-    const choose = screen.getByRole("button", { name: /Choose file/ });
+    const choose = screen.getByRole("button", { name: /Import deck/ });
     fireEvent.click(choose);
     await waitFor(() => expect(choose.hasAttribute("disabled")).toBe(false));
     expect(calls.importFromFile).toHaveBeenCalledOnce();
@@ -46,16 +55,16 @@ describe("active deck transfer presentation", () => {
   it("shows a failed import in the same dialog and allows a deliberate retry", async () => {
     calls.importFromFile.mockRejectedValueOnce(new Error("Unsupported external file."));
     const { close, open } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     expect((await screen.findByRole("alert")).textContent).toContain("Unsupported external file");
     expect(close).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
     expect(calls.importFromFile).toHaveBeenCalledTimes(2);
   });
   it("reports the authoritative import/duplicate outcome and opens its committed identity", async () => {
     const { toast, open, refresh } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
     expect(toast).toHaveBeenCalledWith("success", outcome.message);
     expect(refresh).toHaveBeenCalledOnce();
@@ -65,7 +74,7 @@ describe("active deck transfer presentation", () => {
     const { toast, refresh, open } = mount();
     refresh.mockRejectedValueOnce(new Error("refresh failed"));
     open.mockRejectedValueOnce(new Error("route failed"));
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("route failed")));
     expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("refresh failed"));
     expect(toast.mock.calls.some(([kind]) => kind === "error")).toBe(false);
