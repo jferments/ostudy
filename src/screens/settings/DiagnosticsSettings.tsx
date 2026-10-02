@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
 import { getErrorMessage } from "../../ipc/common";
+import { getAppInfo, type AppInfo } from "../../ipc/settings";
 import {
   flushNativeDiagnostics,
   getDiagnosticConfiguration,
@@ -46,6 +47,7 @@ function formatBytes(bytes: number): string {
 
 export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
   const [configuration, setConfiguration] = useState<DiagnosticConfiguration | null>(null);
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [target, setTarget] = useState<DiagnosticTarget>("database");
   const [level, setLevel] = useState<Extract<DiagnosticLevel, "debug" | "trace">>("debug");
   const [durationSeconds, setDurationSeconds] = useState(15 * 60);
@@ -58,6 +60,13 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
     void getDiagnosticConfiguration()
       .then((next) => {
         if (active) setConfiguration(next);
+      })
+      .catch((error: unknown) => {
+        if (active) setErrorMessage(getErrorMessage(error));
+      });
+    void getAppInfo()
+      .then((next) => {
+        if (active) setAppInfo(next);
       })
       .catch((error: unknown) => {
         if (active) setErrorMessage(getErrorMessage(error));
@@ -149,6 +158,8 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
           <dt>Current log</dt><dd>{configuration?.logPath ?? "Unavailable until application logging initializes"}</dd>
           <dt>Maximum file size</dt><dd>{configuration ? formatBytes(configuration.maximumFileBytes) : "Loading…"}</dd>
           <dt>Dropped queued events</dt><dd>{configuration?.droppedEvents ?? 0}</dd>
+          <dt>Application version</dt><dd>{appInfo?.appVersion ?? "Loading…"}</dd>
+          <dt>Database schema</dt><dd>{appInfo ? String(appInfo.databaseSchemaVersion) : "Loading…"}</dd>
         </dl>
         <Button variant="secondary" disabled={busy || configuration === null} onClick={() => void flushNow()}>Flush diagnostic log</Button>
       </Panel>

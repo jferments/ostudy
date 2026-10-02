@@ -199,7 +199,7 @@ describe("SettingsScreen", () => {
     expect(within(panel).getByRole("heading", { name: "Device synchronization" })).toBeTruthy();
     expect(within(panel).queryByRole("heading", { name: "Storage" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "View storage details" })).toBeNull();
-    expect(settingsIpc.getAppInfo).not.toHaveBeenCalled();
+    expect(settingsIpc.getAppInfo).toHaveBeenCalledOnce();
   });
 
   it("previews and saves appearance preferences without touching AI provider state", async () => {
@@ -292,8 +292,7 @@ describe("SettingsScreen", () => {
   it("backs up provider metadata while explicitly excluding credentials", async () => {
     const { showToast } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
-    await screen.findByRole("button", { name: "View storage details" });
-    fireEvent.click(screen.getByRole("button", { name: "Back up library" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Back up library" }));
     await waitFor(() => {
       expect(backupIpc.prepareLibraryBackup).toHaveBeenCalled();
       expect(platformFiles.publishExport).toHaveBeenCalledWith("2".repeat(32));
@@ -318,8 +317,7 @@ describe("SettingsScreen", () => {
     });
     const { showToast } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
-    await screen.findByRole("button", { name: "View storage details" });
-    fireEvent.click(screen.getByRole("button", { name: "Restore backup" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Restore backup" }));
     expect(
       await screen.findByRole("alertdialog", { name: "Restore this complete library?" }),
     ).toBeTruthy();
