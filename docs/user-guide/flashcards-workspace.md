@@ -12,7 +12,7 @@ Selecting decks is temporary interaction state. Opening a deck and returning can
 
 ## Start from an empty library
 
-When no active or archived decks exist, the library shows one create-deck state. Choose **Create a new deck**, or use the **Import deck from file** icon. There is no empty Unsorted section, empty folder tile, meaningless Select all, or Collapse all.
+When no active or archived decks exist, the library shows one create-deck state. Choose **Create a new deck**, or use the **Import deck** button. There is no empty Unsorted section, empty folder tile, meaningless Select all, or Collapse all.
 
 Once decks exist, **New deck** becomes a toolbar action. Active decks expose optional folder organization. An archived-only library still exposes its archived content and is not presented as a brand-new empty library. See [Organization](flashcards-organization.md) for folders, selection, and keyboard movement.
 
@@ -90,6 +90,6 @@ Current tags shown on recent reviews in Analytics can launch Search by stable ta
 
 ## Importing content
 
-The library's **Import deck from file** action accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
+The library's **Import deck** action accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
 
 Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. A new imported deck appears in Unsorted decks until organized locally. Folder membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.

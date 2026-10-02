@@ -103,7 +103,7 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
 
   const importing = request.kind === "import";
   const activeAnkiProgress = importing && busy === "import" && importProgress?.operationKind === "anki_import" ? importProgress : null;
-  const title = importedOutcome ? "Anki import complete" : importing ? "Import deck from file"
+  const title = importedOutcome ? "Anki import complete" : importing ? "Import deck"
     : exportDecks.length === 1 ? `Export “${exportDecks[0]?.name ?? "deck"}”` : `Export ${exportDecks.length} selected decks`;
   const description = importedOutcome ? "The deck has been saved. Review conversion details before studying."
     : importing ? "Import an ostudy .studydeck file, a compatible Anki .apkg deck, or generated-card JSON."

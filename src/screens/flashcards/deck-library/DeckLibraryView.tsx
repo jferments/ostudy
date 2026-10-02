@@ -43,7 +43,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   if (!hasAnyDecks) {
     return (
       <div ref={libraryRef} className={styles.library} data-deck-library-pointer-surface="true">
-        <EmptyState title="No decks have been created yet." icon={<Icon name="cards" size={30} />} description="Create a new deck of flashcards here, or use Import deck from file above to add an existing flashcard set." actions={<Button variant="primary" onClick={controller.openDeckCreator}><Icon name="plus" size={18} /> Create a new deck</Button>} />
+        <EmptyState title="No decks have been created yet." icon={<Icon name="cards" size={30} />} description="Create a new deck of flashcards here, or use Import deck above to add an existing flashcard set." actions={<Button variant="primary" onClick={controller.openDeckCreator}><Icon name="plus" size={18} /> Create a new deck</Button>} />
       </div>
     );
   }
