@@ -330,6 +330,73 @@ fn default_range() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        cards::validate_content,
+        decks::{create_deck_in_connection, CreateDeckInput},
+        practice::{record_practice_event, submit_review_in_connection, SubmitReviewInput},
+        scheduler::insert_new_schedule,
+        study_calendar::StudyTimeContext,
+        util::generate_id,
+    };
+    use rusqlite::params;
+    use serde_json::json;
+
+    fn paragraph(text: &str) -> serde_json::Value {
+        json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}]
+            }]
+        })
+    }
+
+    fn create_card(
+        connection: &mut rusqlite::Connection,
+        deck_id: &str,
+        label: &str,
+        now: i64,
+    ) -> Result<String, CommandError> {
+        let note_id = generate_id(connection)?;
+        let card_id = generate_id(connection)?;
+        let content = validate_content(
+            paragraph(label),
+            paragraph("Answer"),
+            label.to_string(),
+            "Answer".to_string(),
+        )?;
+        connection
+            .execute(
+                "INSERT INTO notes (
+                     id,deck_id,note_type,content_format,content_schema_version,
+                     front_doc,back_doc,front_text,back_text,duplicate_hash,
+                     created_at,updated_at,revision
+                 ) VALUES(
+                     ?1,?2,'basic','tiptap-json',1,?3,?4,?5,?6,?7,?8,?8,1
+                 )",
+                params![
+                    note_id,
+                    deck_id,
+                    content.front_doc_json,
+                    content.back_doc_json,
+                    content.front_text,
+                    content.back_text,
+                    format!("analytics-{label}"),
+                    now,
+                ],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO cards(
+                     id,note_id,deck_id,direction,template_ordinal,created_at,updated_at
+                 ) VALUES(?1,?2,?3,'forward',0,?4,?4)",
+                params![card_id, note_id, deck_id, now],
+            )
+            .map_err(CommandError::database)?;
+        insert_new_schedule(connection, &card_id, now)?;
+        Ok(card_id)
+    }
 
     #[test]
     fn empty_library_keeps_current_and_historical_domains_separate() {
@@ -352,5 +419,116 @@ mod tests {
         assert_eq!(analytics.current_inventory.generated_card_count, 0);
         assert_eq!(analytics.history.review_count, 0);
         assert_eq!(analytics.timeline.len(), 7);
+    }
+
+    #[test]
+    fn accepted_reviews_from_an_early_ended_session_remain_analytics_evidence() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let now = StudyTimeContext::capture()?.now_utc_millis;
+                let deck_id = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Early stop analytics".to_string(),
+                        description: None,
+                    },
+                )?
+                .id;
+                let first_card = create_card(connection, &deck_id, "First", now)?;
+                let second_card = create_card(connection, &deck_id, "Second", now)?;
+                let session_id = generate_id(connection)?;
+                connection
+                    .execute(
+                        "INSERT INTO practice_sessions(
+                             id,selected_deck_ids_json,selected_tag_ids_json,shuffle,
+                             card_count,mode,started_at
+                         ) VALUES(?1,?2,'[]',1,2,'extra',?3)",
+                        params![
+                            session_id,
+                            serde_json::to_string(&vec![deck_id.clone()])
+                                .map_err(CommandError::serialization)?,
+                            now,
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                for (position, card_id) in [&first_card, &second_card].into_iter().enumerate() {
+                    connection
+                        .execute(
+                            "INSERT INTO practice_session_cards(
+                                 session_id,card_id,position,presentation_variant
+                             ) VALUES(?1,?2,?3,'')",
+                            params![
+                                session_id,
+                                card_id,
+                                i64::try_from(position).unwrap_or(i64::MAX),
+                            ],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+
+                record_practice_event(connection, &session_id, &first_card, true)?;
+                let result = submit_review_in_connection(
+                    connection,
+                    SubmitReviewInput {
+                        session_id: session_id.clone(),
+                        card_id: first_card.clone(),
+                        submission_id: "a".repeat(32),
+                        outcome: "somewhat_confident".to_string(),
+                        response_time_ms: 1_250,
+                        schedule_revision: 1,
+                    },
+                )?;
+                assert_eq!(result.rated_count, 1);
+                assert!(!result.completed);
+
+                // This is the same durable terminal state written by the End
+                // session command. The second card remains unrated.
+                connection
+                    .execute(
+                        "UPDATE practice_sessions SET completed_at=?1 WHERE id=?2",
+                        params![now.saturating_add(2_000), session_id],
+                    )
+                    .map_err(CommandError::database)?;
+
+                let analytics = load_analytics(
+                    connection,
+                    AnalyticsQueryDto {
+                        range: default_range(),
+                        deck_ids: vec![deck_id],
+                        tag_ids: Vec::new(),
+                        custom_start_local_date: None,
+                        custom_end_local_date: None,
+                        highlighted_session_id: Some(session_id.clone()),
+                    },
+                )?;
+                assert_eq!(analytics.history.review_count, 1);
+                assert_eq!(analytics.history.cards_practiced, 1);
+                assert_eq!(analytics.history.session_count, 1);
+                assert_eq!(analytics.current_inventory.generated_card_count, 2);
+                assert_eq!(analytics.recent_reviews.len(), 1);
+                let session = analytics
+                    .recent_sessions
+                    .iter()
+                    .find(|candidate| candidate.id == session_id)
+                    .expect("early-ended reviewed session should remain visible");
+                assert_eq!(session.rated_count, 1);
+                assert!(session.completed_at.is_some());
+                assert!(session.highlighted);
+                assert!(analytics
+                    .timeline
+                    .iter()
+                    .any(|bucket| bucket.review_count == 1 && bucket.contains_highlighted_session));
+                let second_reviews: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM review_events WHERE card_id=?1",
+                        [&second_card],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(second_reviews, 0);
+                Ok(())
+            })
+            .expect("ending early must retain accepted review analytics");
     }
 }

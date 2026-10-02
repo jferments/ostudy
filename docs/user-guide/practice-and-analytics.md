@@ -6,7 +6,7 @@ Practice is a contextual workflow: start from a deck, selected decks, Search res
 
 **Scheduled practice** selects studyable due work within the chosen deck/tag scope and daily new/review limits. The workload display separates available due work from work omitted by those limits.
 
-**Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck Practice action follows the deck-practice scope rather than merely opening an editor. It does not make suspended, buried, archived, or otherwise unavailable cards studyable. Extra practice is not capped at an arbitrary 10,000-card prefix: the whole studyable selected scope can become the session.
+**Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck **Practice** action follows the deck-practice scope rather than merely opening an editor. One-click deck Practice always shuffles cards that have the same scheduling priority while preserving due-date and learning-priority ordering; a new session receives a fresh permutation and avoids immediately repeating the previous first card when an equivalent alternative exists. It does not make suspended, buried, archived, or otherwise unavailable cards studyable. Extra practice is not capped at an arbitrary 10,000-card prefix: the whole studyable selected scope can become the session.
 
 **Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary. If you choose **Save as new deck**, oStudy creates that destination and copies the selected notes in one retry-safe native operation. The originals and their review histories stay where they are; copied presentations receive fresh schedules. If the screen cannot refresh after the native operation commits, the created deck is retained rather than deleted or created a second time.
 
@@ -55,7 +55,7 @@ The completion view summarizes the finished work, confidence distribution, remem
 
 ## Leave or resume a session
 
-Ending early asks for confirmation and returns to the logical launch context, such as the Decks root, a particular deck, Search, or Study Guides. Previously committed reviews remain durable. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
+Ending early asks for confirmation and returns to the logical launch context, such as the Decks root, a particular deck, Search, or Study Guides. Every rating that was already accepted remains a durable review event: it updates that card's schedule and is counted by Analytics even though later cards in the session were never reached. Merely viewing or revealing an unrated card does not invent a review. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
 
 Restart recovery uses a saved hint to ask the native library for an actual resumable session. A saved practice-setup screen without a session is not restored as active practice. If a prior deck was removed, a valid session's return destination can fall back safely to the library.
 
