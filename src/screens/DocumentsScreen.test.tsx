@@ -144,10 +144,9 @@ async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLEl
   const trigger = screen.getByRole("button", { name: label });
   await act(async () => {
     fireEvent.click(trigger);
-    // Base UI publishes controlled dropdown state after the triggering event.
-    // Flush that microtask explicitly instead of making integration assertions
-    // depend on whole-suite scheduler timing.
-    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
   return screen.findByRole("menu", { name: label });
 }
