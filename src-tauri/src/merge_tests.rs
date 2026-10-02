@@ -29,7 +29,7 @@ fn create_note(
     )?;
     let note_id = generate_id(connection)?;
     let card_id = generate_id(connection)?;
-    let tag_id = generate_id(connection)?;
+    let candidate_tag_id = generate_id(connection)?;
     connection
         .execute(
             "INSERT INTO notes (
@@ -58,16 +58,24 @@ fn create_note(
         )
         .map_err(CommandError::database)?;
     insert_new_schedule(connection, &card_id, at)?;
+    let normalized_tag = format!("merge {}", label.to_lowercase());
     connection
         .execute(
-            "INSERT INTO tags(id,name,normalized_name,created_at,updated_at)
+            "INSERT OR IGNORE INTO tags(id,name,normalized_name,created_at,updated_at)
              VALUES (?1,?2,?3,?4,?4)",
             params![
-                tag_id,
+                candidate_tag_id,
                 format!("Merge {label}"),
-                format!("merge {}", label.to_lowercase()),
+                normalized_tag,
                 at,
             ],
+        )
+        .map_err(CommandError::database)?;
+    let tag_id: String = connection
+        .query_row(
+            "SELECT id FROM tags WHERE normalized_name=?1",
+            [&normalized_tag],
+            |row| row.get(0),
         )
         .map_err(CommandError::database)?;
     connection

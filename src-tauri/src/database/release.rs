@@ -694,7 +694,7 @@ mod tests {
         initialize_fresh(&mut connection).unwrap();
         for corruption in [
             "UPDATE schema_migrations SET checksum='bad' WHERE version=2;",
-            "PRAGMA user_version=3;",
+            "PRAGMA user_version=4;",
             "DELETE FROM schema_migrations WHERE version=1;",
             "DROP TABLE selection_deck_operations;",
             "INSERT INTO selection_deck_operations VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{}', 1);",
