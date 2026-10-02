@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { DeckSummary } from "../../ipc/decks";
-import { Sheet } from "../../ui/overlays/Dialog";
+import { DialogActions, Sheet } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
@@ -44,7 +44,7 @@ export function DeckMergeSheet({
       dismissible={!busy}
     >
       <form
-        className="tw:grid tw:gap-4"
+        className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4 tw:sm:p-5"
         onSubmit={(event) => {
           event.preventDefault();
           if (!destinationDeckId) return;
@@ -83,7 +83,7 @@ export function DeckMergeSheet({
           </p>
         ) : null}
 
-        <div className="tw:flex tw:justify-end tw:gap-2">
+        <DialogActions>
           <Button type="button" disabled={busy} onClick={onClose}>Cancel</Button>
           <Button
             type="submit"
@@ -93,7 +93,7 @@ export function DeckMergeSheet({
           >
             {attempted && !busy ? "Retry merge" : "Merge decks"}
           </Button>
-        </div>
+        </DialogActions>
       </form>
     </Sheet>
   );
