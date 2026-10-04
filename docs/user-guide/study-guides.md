@@ -8,17 +8,27 @@ Configure a suitable AI profile in Settings → AI/LLM. For one retained documen
 
 Open **Study Guides** from the main navigation. Its library supports **Search guides** by title, filename, or format; Newest/Oldest/Title sorting; Refresh; and pagination when needed. Library rows show summary information rather than loading every guide body just to list them.
 
-Select a row or **Open** to read its guide. The reader is an inline workspace within the app shell, not a modal covering main navigation. **Close study guide** returns to the library. Selecting the main Study Guides destination also returns to that library rather than leaving you trapped in the current viewer.
+Select a row or **Open** to read its guide. The reader opens as a page within the app shell, not a modal covering main navigation. **Back to Study Guides** at the top of a document guide, or **Close collection study guide** on a collection guide, returns to the library. Selecting the main Study Guides destination also returns to that library rather than leaving you trapped in the current viewer.
 
 The reader deliberately does not display internal revision numbers or a standing Regenerate button. Regeneration belongs to the source document's action in Documents.
 
 ## Read source-grounded sections
 
-Use Contents to move through the overview and topic sections. Source labels identify relevant page or section ranges when available. Section-specific commands live under that section's **…** menu: **Open source**, **Add note**, **Edit section**, and **Study linked cards** when linked cards are available. This keeps the reading surface focused without removing keyboard/touch access to those actions. **Open source** opens the retained original through the operating system; an exact deep-link into an external viewer is not guaranteed.
+A document guide opens on its **Overview**: the guide's title and source, a short summary under **In one minute**, the learning objectives, the key concepts as a short list of terms, the guide's chapters when it has them, your guide note, and **Start reading**. Each section then has a page of its own. The top of a section page shows its position and an approximate reading time at about 200 words a minute, its title, and a **From** chip naming the source document, its file kind and the pages or slides the section comes from; select the chip to open the source. The section's blocks follow in reading order: **In one minute**, explanations, tables, comparisons, process steps, callouts marked as a key idea, tip, warning or note, numbered figures, worked examples, common misconceptions, and **Check yourself**. **Previous** and **Next** at the end of the page name the neighboring sections.
+
+On a wide window the outline sits beside the text. It lists the overview and every section, grouped under the guide's chapters when it has them, and opens the current section to its own headings so you can jump to a block. The margin on the other side holds **Your note**, the section's **Important terms**, its **Source** with **Open source**, and its cards. On narrower windows the outline opens from **Contents** in the top bar, and the margin's blocks follow the end of the section. On a phone, a bar at the bottom of the screen keeps the previous section, **Practice** and the next section within reach.
+
+Section commands live under that section's **…** menu: **Ask Tutor about this section** when the tutor is available, **Add note** or **Edit note**, **Edit or rewrite this section**, and the matching remove and reset commands. Guide commands live in the top bar: the tutor button for the whole guide and the **Study guide actions** menu with **Export as PDF…** and the guide note. **Open source** opens the retained original through the operating system; an exact deep link into an external viewer is not guaranteed.
+
+A collection guide keeps its single scrolling reader with a Contents list, and each section's **…** menu offers **Open source**, **Add note** and **Edit section**.
 
 Generated sections favor a high-yield outline rather than a long restatement of the source and can include semantic key points, explanations, terms, processes, comparisons, misconceptions, callouts, tables, worked examples, retrieval checks, and source-backed visual explanations when those structures add learning value. Machine-like topic inventories such as long slash-separated keyword lists are compacted into human-readable reader titles; this is display-only and does not rewrite the durable learning-topic identity or source evidence. The native pipeline bounds section length and validates structure, but a model can still omit, misunderstand, or poorly prioritize information. Correctness requires learner review.
 
 For current non-PDF ingestion, canonical provenance is expressed as sections even when the parser has richer internal slide or sheet information. Do not infer precise authored pagination from a generic section label. [Documents and AI generation](documents-and-ai-generation.md) explains source limitations.
+
+## Check yourself
+
+Each retrieval check shows its question with **Show answer**. After you reveal an answer, **Did you get it?** offers **Yes** and **Not yet**, and the section counts how many of its checks you have answered. These answers last only while the guide is open: they are not saved, do not change any card schedule, and start fresh the next time you open the guide.
 
 ## Add notes without losing the generated base
 
@@ -30,7 +40,7 @@ The guide keeps learner-owned information separate from generated revisions:
 | Topic note | Belongs to a stable learning topic, not just its current display title |
 | Generated-section edit | A non-destructive override tied to the generated base content it edits |
 
-Use **Add guide note** or a topic's **Add note** to open the editor, then **Save**. Existing notes offer edit/remove actions. Clearing an existing note and saving removes it through the same deliberate ownership boundary. Section edits can be reset without deleting the generated source-grounded base.
+In a document guide, **Add note** under **Your note** opens the note dialog: on the overview for the whole guide, and beside or below a section for that topic. The section menu and the **Study guide actions** menu offer the same commands. Write the note, then **Save**. Existing notes offer **Edit note** and **Remove note**. Clearing an existing note and saving removes it through the same deliberate ownership boundary. **Edit or rewrite this section** opens the section's text in the same kind of dialog; your version replaces the generated text in the reader, and **Reset section edit** returns to the generated section, which is never deleted. In a collection guide, the section menu's **Add note** and **Edit section** open the editor below the guide.
 
 If regenerated content changes enough that an old section override cannot safely apply, the old edit becomes a visible conflict instead of being silently attached to different material. Review the preserved text and discard an older edit only when that is what you intend. Stable guide/topic notes survive ordinary regeneration.
 
@@ -38,7 +48,7 @@ The current reader's note and section-edit entry is plain-text editing backed by
 
 ## Practice linked cards
 
-When a topic has linked studyable cards, **Study linked cards** starts an exact-card session for that topic. The application resolves current native card identities, not a fuzzy search or a temporary tag.
+When a section has linked cards, the end of its page says how many cards come from it and offers **Practice N cards**; the same command sits in the margin on a wide window and in the bottom bar on a phone. It starts an exact-card session for that topic. A section without linked cards says so instead. The application resolves current native card identities, not a fuzzy search or a temporary tag.
 
 A topic can have no cards, or have cards that are currently unavailable because of lifecycle/scheduling state. Those are different from a failed projection request. Card provenance links are distinct from editable tags. Existing manually authored cards are not retroactively assigned to topics by guessing from their wording.
 
@@ -46,7 +56,7 @@ Ending the contextual session returns to the logical Study Guides context. Revie
 
 ## Export a PDF
 
-Use **Export PDF** in the reader. **Include my notes in PDF** controls annotation inclusion. Document and collection guides freeze the same effective semantic meaning used by the reader and render it locally; export does not require another provider request, re-interpret the source, or regenerate the guide.
+In a document guide, choose **Export as PDF…** from the **Study guide actions** menu; **Include my notes** controls annotation inclusion, and **Export PDF** prepares the file. A collection guide keeps its **Export PDF** button with **Include my notes in PDF**. Document and collection guides freeze the same effective semantic meaning used by the reader and render it locally; export does not require another provider request, re-interpret the source, or regenerate the guide.
 
 The native PDF includes a designed cover and section hierarchy, linked table of contents, PDF bookmarks/named destinations, source labels, running headers/footers, semantic callouts/tables/examples/checks, repeated table headers across page breaks, and keep-with-next handling for wrapped headings. Verified canonical source images may be embedded with selectable captions when the generated visual explanation actually used that evidence. Text remains selectable/searchable rather than rasterizing the React view.
 
