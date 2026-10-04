@@ -22,6 +22,8 @@ export const styles = {
   recentReviewTagAction: "tw:h-auto tw:min-h-0 tw:p-0 tw:text-caption tw:font-normal tw:underline tw:underline-offset-4",
   recentReviewMeta: "tw:grid tw:min-w-0 tw:gap-0.5 tw:text-right tw:tabular-nums tw:[&>strong]:text-small tw:[&>span]:text-caption tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
   analyticsFilterPanel: "tw:grid tw:gap-3 tw:p-(--card-gutter)",
+  analyticsRangeRow: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2",
+  analyticsCustomToggle: "tw:min-h-touch tw:aria-pressed:border-primary tw:aria-pressed:bg-accent tw:aria-pressed:text-accent-foreground",
   analyticsCustomRange: "tw:grid tw:min-w-0 tw:gap-3 tw:sm:grid-cols-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
   analyticsScopeDetails: "tw:min-w-0",
   analyticsScopeGrid: "tw:grid tw:min-w-0 tw:gap-3 tw:md:grid-cols-2",

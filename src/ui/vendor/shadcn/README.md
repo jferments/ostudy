@@ -19,6 +19,7 @@ Card exposes title/description/action/content/footer slots instead of requiring 
 - Semantic shadcn roles resolve through oStudy tokens; no parallel palette or `dark` provider exists.
 - Button follows Nova's stock `default`, `outline`, `secondary`, `ghost`, `destructive` and `link` variants. The public oStudy facade keeps application semantic names and loading/write-lock behavior without growing additional vendor variants.
 - Fine-pointer controls use Nova-like compact dimensions. Coarse-pointer variants retain the application touch-target minimum.
+- Segmented control options keep the application touch target at every pointer size: each option's button is the target and the pill it draws sits inside it, so the mockups' proportions stay visual only.
 - NativeSelect deliberately retains the operating-system picker, options/optgroups, multiple selection and numeric listbox semantics.
 - Checkbox, Switch, RadioGroup, Slider, Tabs and Toolbar rely on Base UI interaction behavior rather than custom event imitation.
 - Disclosure content remains mounted when required to preserve drafts. FormField keeps contextual help outside the input label and owns label/description/error association.

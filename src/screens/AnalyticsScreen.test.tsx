@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as analyticsIpc from "../ipc/analytics";
@@ -346,7 +346,7 @@ describe("AnalyticsScreen", () => {
     renderAnalytics();
     await screen.findByText("Cards practiced");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
+    fireEvent.click(screen.getByRole("button", { name: "Custom dates", pressed: false }));
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-07-01" } });
     fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-07-15" } });
 
@@ -358,6 +358,28 @@ describe("AnalyticsScreen", () => {
           customEndLocalDate: "2026-07-15",
         }),
       );
+    });
+  });
+
+  it("offers five range presets and keeps custom dates as a separate toggle", async () => {
+    renderAnalytics();
+    await screen.findByText("Cards practiced");
+    const presets = screen.getByRole("radiogroup", { name: "Time range" });
+    expect(within(presets).getAllByRole("radio").map((radio) => radio.textContent))
+      .toEqual(["7 days", "30 days", "90 days", "1 year", "All time"]);
+
+    fireEvent.click(within(presets).getByRole("radio", { name: "90 days" }));
+    fireEvent.click(screen.getByRole("button", { name: "Custom dates", pressed: false }));
+    expect(screen.getByRole("button", { name: "Custom dates", pressed: true })).toBeTruthy();
+    expect(within(presets).queryByRole("radio", { checked: true })).toBeNull();
+    expect(screen.getByLabelText("Start date")).toBeTruthy();
+
+    // Turning custom dates off returns to the preset chosen before them.
+    fireEvent.click(screen.getByRole("button", { name: "Custom dates", pressed: true }));
+    expect(within(presets).getByRole("radio", { name: "90 days", checked: true })).toBeTruthy();
+    expect(screen.queryByLabelText("Start date")).toBeNull();
+    await waitFor(() => {
+      expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(expect.objectContaining({ range: "90d" }));
     });
   });
 
