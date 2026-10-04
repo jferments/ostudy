@@ -11,7 +11,7 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 | `brand.*` | Responsive ostudy brand and mascot treatments | Original ostudy vector artwork; MIT |
 | `status.*` | Nonessential success and milestone decoration | Original ostudy vector artwork; MIT |
 
-Functional icons are not decorative artwork. They are defined in the app-owned SVG icon registry and remain visible when decorative artwork is disabled.
+Functional icons are not decorative artwork. They come from the app's icon registry (`src/ui/icons/Icon.tsx`, Lucide glyphs under the ISC notice in `public/licenses/LUCIDE-ISC.txt`) and remain visible when decorative artwork is disabled.
 
 User-authored educational images, imported document pages, and images embedded in flashcards are content, not application artwork. The decorative-artwork preference never hides or changes them.
 

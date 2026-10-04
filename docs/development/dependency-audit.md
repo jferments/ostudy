@@ -63,6 +63,15 @@ This audit covers browser UI/card packaging only. IBM Plex faces for the native
 Study Guide PDF renderer, including print-specific styles and embedding, remain
 Stage 9 work.
 
+### Interface icons
+
+Interface icons are Lucide glyphs vendored as SVG path data in
+`src/ui/icons/Icon.tsx`; no icon package is installed or loaded at runtime. The
+glyphs were taken from `lucide-static` `1.52.0` and each case names its Lucide
+source icon. Lucide is ISC licensed, and the icons it derives from Feather carry
+Feather's MIT notice; both ship in `public/licenses/LUCIDE-ISC.txt`, which Vite
+copies into the distribution.
+
 ## Rust and local data
 
 - Tauri `2.11.5` and build helper `2.6.3`

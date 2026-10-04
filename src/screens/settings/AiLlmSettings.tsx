@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type { AiProviderKind } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
@@ -226,7 +227,7 @@ function ProfileSetup({
                   aria-pressed={credentialVisible}
                   onClick={() => setCredentialVisible((current) => !current)}
                 >
-                  <CredentialEye crossed={credentialVisible} />
+                  <Icon name={credentialVisible ? "view-off" : "view"} />
                 </Button>
               </span>
             </div>
@@ -426,14 +427,4 @@ function configurationLabel(
     case "planned":
       return "Planned";
   }
-}
-
-function CredentialEye({ crossed }: { crossed: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2.4 12s3.5-6 9.6-6 9.6 6 9.6 6-3.5 6-9.6 6-9.6-6-9.6-6Z" />
-      <circle cx="12" cy="12" r="2.8" />
-      {crossed ? <path d="M4 4 20 20" /> : null}
-    </svg>
-  );
 }

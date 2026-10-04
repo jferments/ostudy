@@ -96,6 +96,8 @@ The interface scale sets the root font size, so every rem-based size follows it 
 
 Stable oStudy facades wrap owned shadcn source in `src/ui/vendor/shadcn`; only that directory imports Base UI. Feature code may use Tailwind but not vendor types/APIs. Current primitives include forms, tabs, Card composition, Item list objects, ButtonGroup/Toolbar actions, badges/chips, progress, notifications, menus and dialogs. Customized copies need reviewed upstream refreshes; they do not update automatically.
 
+Icons come from one set. `Icon` renders Lucide glyphs vendored as path data on Lucide's 24-unit grid with a 1.9 stroke, behind application names such as `cards`, `study-guide` or `stop`; features pass a name instead of drawing their own inline SVG, and a missing glyph is added to `Icon` from Lucide.
+
 ### Stock-first visual rule
 
 `components.json` selects shadcn's Base UI Nova family. For ordinary presentation, the default is to use the owned Nova component's sizing, spacing, hierarchy and standard variants rather than recreating the pre-PR #96 appearance. oStudy remains the authority for semantic colors, Light/Dark/Console/Synthwave themes, fonts, accessibility capabilities and product meaning.
