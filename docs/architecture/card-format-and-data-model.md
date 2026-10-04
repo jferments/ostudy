@@ -8,7 +8,7 @@ A **note** owns editable content, tags, type/template-origin information where a
 
 Frontend `CardNote` carries editable source. `CardPresentation` carries a rendered scheduled/search identity and relevant asset metadata. A single generic card DTO would confuse edits to shared source with changes to one presentation's learning history.
 
-Decks contain notes/cards. A deck is filed in at most one subject (shown as a folder in Flashcards and as a collection in Documents) through `decks.subject_id`, or in No subject. Subject membership/order does not define another scheduler: studying a subject studies its decks' own cards. Deleting a subject returns its decks to No subject; archiving and deleting a deck have different lifecycle semantics. See [ADR 0054](../decisions/0054-subjects.md).
+Decks contain notes/cards. A deck is filed in at most one subject (shown as a folder in Flashcards and as a collection in Documents) through `decks.subject_id`, or in No subject. Subject membership/order does not define another scheduler: studying a subject studies its decks' own cards. Deleting a subject returns its decks to No subject; archiving and deleting a deck have different lifecycle semantics. See [ADR 0055](../decisions/0055-subjects.md).
 
 ## Two rich-content versions with different purposes
 

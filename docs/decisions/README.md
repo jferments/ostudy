@@ -17,7 +17,7 @@ Existing paths and inbound links are retained. A future renumbering requires a c
 
 ## Important supersessions and current entry points
 
-- [Subjects](0054-subjects.md) replaces deck folders and document collections with one subject per course, folds collection copies back into their original cards and makes studying a collection a live view of its decks. Earlier records that describe folders, several collections per document or copied collection decks explain history.
+- [Subjects](0055-subjects.md) replaces deck folders and document collections with one subject per course, folds collection copies back into their original cards and makes studying a collection a live view of its decks. Earlier records that describe folders, several collections per document or copied collection decks explain history.
 - [Open-source Android imaging](0052-open-source-android-imaging.md) records the current Tesseract4Android/Tesseract and JourneyApps ZXing/ZXing choice. Earlier ML Kit and Google Code Scanner records explain history, not current runtime dependencies.
 - [shadcn/Tailwind presentation architecture](0051-shadcn-tailwind-presentation-architecture.md) supersedes the CSS-Modules-first ordinary presentation rule in [frontend state and style ownership](0048-frontend-state-and-style-ownership.md). The older state-ownership reasoning remains relevant; [UI architecture](../architecture/ui.md) describes the current mixed specialized-CSS and utility ownership.
 - [Versioned UI checkpoint and workflow restoration](0050-versioned-ui-checkpoint-workflow-restoration.md) preserves the distinction between a destination checkpoint and authoritative study-session state.

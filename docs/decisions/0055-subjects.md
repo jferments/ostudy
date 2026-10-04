@@ -1,4 +1,4 @@
-# ADR 0054: Subjects replace deck folders and document collections
+# ADR 0055: Subjects replace deck folders and document collections
 
 - **Status:** Accepted
 - **Date:** 2026-10-04

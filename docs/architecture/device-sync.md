@@ -175,7 +175,7 @@ USB does not broaden credential scope.
 
 The receiver compares local and incoming rows with a stored common base. One-sided edits apply; independent field edits can merge; concurrent edits to the same field and delete-versus-edit cases become explicit conflicts.
 
-A card schedule is one FSRS state, so concurrent schedule changes keep the whole row with the later `last_review_at` (then `updated_at`, `revision` and device order) and record the other as a conflict instead of mixing fields. The merge also adds its own **Check these** entries: a deck or document the two devices filed in different subjects (`sync_filing_conflict`), and a collection copy that one device retired into its original while the other edited it (`sync_edited_retired_copy`). The copy stays retired with the edited text, so the edit can be found. See [ADR 0054](../decisions/0054-subjects.md).
+A card schedule is one FSRS state, so concurrent schedule changes keep the whole row with the later `last_review_at` (then `updated_at`, `revision` and device order) and record the other as a conflict instead of mixing fields. The merge also adds its own **Check these** entries: a deck or document the two devices filed in different subjects (`sync_filing_conflict`), and a collection copy that one device retired into its original while the other edited it (`sync_edited_retired_copy`). The copy stays retired with the edited text, so the edit can be found. See [ADR 0055](../decisions/0055-subjects.md).
 
 Managed-image or managed-document-file identity/integrity disagreement fails rather than silently choosing arbitrary bytes. The final selected relational graph is validated and committed transactionally.
 

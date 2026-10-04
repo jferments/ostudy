@@ -467,8 +467,8 @@ fn merge_atomic_rows(
 }
 
 /// A schedule is one FSRS state, so concurrent changes keep the whole row that
-/// was studied, reset or rescheduled last instead of mixing the fields of two
-/// states. The other row stays available as a conflict.
+/// was studied or reset last (then changed last) instead of mixing the fields
+/// of two states. The other row stays available as a conflict.
 fn merge_schedule_rows(
     base: Option<&RowPayload>,
     left: Option<&RowPayload>,

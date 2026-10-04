@@ -114,7 +114,7 @@ candidate read-only on a private connection and return the rows that break the
 rule. Schema 6 uses all three kinds: folders, collection memberships and ranges
 become subject filing and study ranges, collection copies are retired into
 `card_merges`, and the **Check these** list is filled; see
-[ADR 0054](../decisions/0054-subjects.md).
+[ADR 0055](../decisions/0055-subjects.md).
 Review events with their attributions and scheduler context, question attempts
 and review links, practice-session cards and snapshots, schedule-action events,
 and StudyTargets with their card origins are compared by name before any
