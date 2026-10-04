@@ -8,7 +8,7 @@ A **note** owns editable content, tags, type/template-origin information where a
 
 Frontend `CardNote` carries editable source. `CardPresentation` carries a rendered scheduled/search identity and relevant asset metadata. A single generic card DTO would confuse edits to shared source with changes to one presentation's learning history.
 
-Decks contain notes/cards. Optional folders organize decks; each deck has at most one folder. Folder membership/order does not define another scheduler. Deleting a folder returns its decks to Unsorted; archiving and deleting a deck have different lifecycle semantics.
+Decks contain notes/cards. A deck is filed in at most one subject (shown as a folder in Flashcards and as a collection in Documents) through `decks.subject_id`, or in No subject. Subject membership/order does not define another scheduler: studying a subject studies its decks' own cards. Deleting a subject returns its decks to No subject; archiving and deleting a deck have different lifecycle semantics. See [ADR 0054](../decisions/0054-subjects.md).
 
 ## Two rich-content versions with different purposes
 
@@ -63,6 +63,8 @@ A revision checks freshness, an operation ID identifies a retryable intent, and 
 `card_schedules` is mutable current state. `review_events` is append-only evidence while its owning material is retained. `scheduler.rs` adapts `rs-fsrs`; React displays native previews rather than computing a second authoritative schedule.
 
 A review validates the session/card/submission and previewed schedule revision, records the event, updates the schedule, and advances session progress transactionally. In the same transaction it records what the scheduler knew in `review_event_scheduler_context`: the previous review time, the elapsed days and recall prediction FSRS used, the counts before the review, the retention target, a hash of the other scheduler parameters, and the visible study time the client measured. Reviews recorded before schema 5 have no such row; see [ADR 0053](../decisions/0053-review-scheduler-context-and-active-time.md). Suspend/bury/reset/reschedule are administrative actions; they do not fabricate review outcomes. Resetting current scheduling does not imply erasing retained review history.
+
+Schema 6 folded collection copies back into their original cards. A retired copy keeps its own `review_events`, which are never re-pointed, and `card_merges` maps it to its surviving card. Every reader of review history resolves the merge (`COALESCE(merged.surviving_card_id, r.card_id)`), so a copy's reviews count under its original in analytics, history, search filters, learning signals and practice ordering. Finalized purge of a surviving card also purges the copies retired into it.
 
 Studyability includes lifecycle, availability, scope, calendar, and applicable daily limits—not only due timestamps. Current workload, current inventory, historical review totals, and remembered percentages are different read models and must not be used as substitutes for each other.
 

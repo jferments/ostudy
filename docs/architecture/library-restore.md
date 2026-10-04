@@ -84,8 +84,8 @@ header avoids redundant planning scans, but `Database::open` still validates the
 current payload before ordinary use. Empty initialization and explicit pre-public
 recovery remain separate. Released SQL and the native migration metadata owner are
 unchanged. Later forward migrations (schema 3 deck-merge receipts, schema 4
-StudyTarget generation guidance, schema 5 per-review scheduler context) use this
-same checkpointed upgrade path.
+StudyTarget generation guidance, schema 5 per-review scheduler context, schema 6
+subjects) use this same checkpointed upgrade path.
 
 `library_backup/checkpoint.rs` writes a durable upgrade intent before preparation.
 It creates a private SQLite Backup API snapshot, including committed WAL rows, and
@@ -103,9 +103,18 @@ ledger, payload and legacy-converter checks. `checkpoint_preservation.rs` adds a
 retained-value proof from a registry holding one preservation contract per
 release schema. An upgrade proceeds only when every schema after the source has
 a contract; a release without one is refused rather than compared by counts.
-The proof compares the source with the final candidate directly: each table a
-later release adds must exist and be empty, and every table that no contract
-names keeps its typed values, column identities, multiplicity and notes rowids.
+The proof compares the source with the final candidate directly. A contract
+names each table its release adds, drops or projects. An added table must exist
+and be empty unless the contract proves each row from retained data. A dropped
+table's rows must arrive elsewhere, by the contract's proof. A projected table
+keeps every row by key and every value outside the declared columns, rows and
+proof. Every table that no contract names keeps its typed values, column
+identities, multiplicity and notes rowids. Proofs attach the source and the
+candidate read-only on a private connection and return the rows that break the
+rule. Schema 6 uses all three kinds: folders, collection memberships and ranges
+become subject filing and study ranges, collection copies are retired into
+`card_merges`, and the **Check these** list is filled; see
+[ADR 0054](../decisions/0054-subjects.md).
 Review events with their attributions and scheduler context, question attempts
 and review links, practice-session cards and snapshots, schedule-action events,
 and StudyTargets with their card origins are compared by name before any

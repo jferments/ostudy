@@ -141,11 +141,13 @@ Direct USB does not use the camera scanner.
 
 Synchronization never inherits every SQLite table automatically. The sender creates a package from an explicit, versioned selection of application-owned domains. Package v3 exposes five categories:
 
-- **Flashcards** — deck folders/decks, notes/cards, tags, templates, managed card images, schedules, practice sessions/snapshots, review history, and portable source-citation records.
-- **Documents** — canonical records, managed source/page/source-asset files, source units/blocks/assets, page and semantic/OCR-derived state, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata.
+- **Flashcards** — decks, notes/cards, collection copies retired into their originals (`card_merges`), tags, templates, managed card images, schedules, practice sessions/snapshots, review history, and portable source-citation records.
+- **Documents** — canonical records, study ranges, managed source/page/source-asset files, source units/blocks/assets, page and semantic/OCR-derived state, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata.
 - **Study Guides** — guide revisions, sections, overlays, checkpoints, and guide artifact state. Study Guides require Documents.
 - **API provider settings** — supported provider profile metadata and task defaults.
 - **Saved API keys** — eligible secure-store credential bytes. Keys are separate opt-in data and require API provider settings.
+
+Subjects (`document_collections` and the document filing revision) travel with Flashcards or Documents, so decks and documents keep their `subject_id` with either category alone; only a package with neither removes them. The **Check these** list (`subject_filing_reviews`) is device-local and never travels.
 
 Flashcards, Documents, and Study Guides default on. API provider settings and Saved API keys default off. Native validation rejects empty selections and invalid dependency combinations.
 
@@ -156,6 +158,8 @@ The copied outgoing SQLite snapshot is **sanitized before transmission**. Unsele
 Managed document files reuse the complete-backup document-file ledger: expected managed paths, roles, byte sizes, and SHA-256 hashes are validated before transfer/install. Same-identity/different-byte collisions fail.
 
 Package v3 records the granular selection explicitly while retaining read compatibility for the earlier package-v2 flashcard/API-settings shape.
+
+A package's `schemaVersion` is 30 plus the sender's release schema. Builds before release schema 6 recorded the frozen public number 30 and refuse any higher number with "Update this device first", so they refuse a package from an updated device before opening its snapshot. A receiver migrates a package recording its own number or less with `Database::open` before merging, so an updated device takes packages from older devices.
 
 ## Optional API settings and credentials
 
@@ -170,6 +174,8 @@ USB does not broaden credential scope.
 ## Merge semantics
 
 The receiver compares local and incoming rows with a stored common base. One-sided edits apply; independent field edits can merge; concurrent edits to the same field and delete-versus-edit cases become explicit conflicts.
+
+A card schedule is one FSRS state, so concurrent schedule changes keep the whole row with the later `last_review_at` (then `updated_at`, `revision` and device order) and record the other as a conflict instead of mixing fields. The merge also adds its own **Check these** entries: a deck or document the two devices filed in different subjects (`sync_filing_conflict`), and a collection copy that one device retired into its original while the other edited it (`sync_edited_retired_copy`). The copy stays retired with the edited text, so the edit can be found. See [ADR 0054](../decisions/0054-subjects.md).
 
 Managed-image or managed-document-file identity/integrity disagreement fails rather than silently choosing arbitrary bytes. The final selected relational graph is validated and committed transactionally.
 

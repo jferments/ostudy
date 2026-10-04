@@ -84,7 +84,7 @@ Malformed candidates do not automatically discard independently valid siblings. 
 
 Curation remains selection-only and cannot rewrite the library. A failed optional curation batch does not silently delete its already validated candidates. Final duplicate handling and import use native authoring rules, including stable presentation identities and local schedules. No generated-card approval queue is introduced.
 
-A collection deck copies eligible unedited, range-authorized document-generated notes through StudyTarget orchestration. CollectionSynthesis does not author replacement flashcards through a parallel quality shortcut. Collection guides author semantic sections from retained authorized knowledge using the shared guide contract. Source membership changes do not erase existing learner cards/reviews.
+A collection's flashcards are the decks filed in its subject, studied live; StudyTarget orchestration copies no notes. CollectionSynthesis does not author replacement flashcards through a parallel quality shortcut. Collection guides author semantic sections from retained authorized knowledge using the shared guide contract. Filing changes move decks and documents, never cards or reviews.
 
 ## Multimodal evidence
 

@@ -17,11 +17,13 @@ The transport changes only how the two native processes exchange bytes. Device i
 
 Every outgoing transfer has a **What to synchronize** section. The sender chooses the categories included in that transfer:
 
-- **Flashcards** — decks, folders, Basic/Cloze and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, question-generation evidence, source-citation snapshots, and managed card/question images.
+- **Flashcards** — decks, folders (subjects), Basic/Cloze and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, question-generation evidence, source-citation snapshots, and managed card/question images.
 - **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
 - **Study Guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
 - **API provider settings** — AI provider profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from provider settings.
+
+Subjects, the folders and collections that hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device.
 
 Flashcards, Documents, and Study Guides are selected by default. **API provider settings** and **Saved API keys** are off by default.
 
@@ -141,7 +143,7 @@ Turning Study Guides off while leaving Documents on removes guide rows and guide
 
 ostudy merges compatible edits automatically. When both devices changed the same synchronized field, or one deleted a record while the other edited it, ostudy records an explicit conflict instead of silently discarding one side.
 
-Question attempt/evidence rows are treated atomically when concurrent changes cannot be reconciled field-by-field safely. Open **Conflicts requiring a decision** to inspect the versions and choose the desired result. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
+A card's schedule is also merged as a whole: when both devices studied or changed the same card, the schedule studied last is kept and the other is recorded as a conflict, so one card never mixes two schedules. Question attempt/evidence rows are treated atomically when concurrent changes cannot be reconciled field-by-field safely. Open **Conflicts requiring a decision** to inspect the versions and choose the desired result. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
 
 ## Local-network requirements
 
@@ -162,6 +164,8 @@ On debuggable Android development builds, `adb` can still be used by developers 
 Offers expire after a short period. Create a fresh transfer if one expires or the sending application restarts.
 
 Protocol v3 binds the selected transport into the authenticated pairing transcript. LAN invitations contain a private network endpoint. Direct-USB invitations use the symbolic `usb` endpoint and are delivered only over the accessory stream; pasting a USB invitation into the LAN receive box is rejected.
+
+Both devices need the same library schema to synchronize in both directions. A device whose library predates the subjects update (schema 6) refuses a package from an updated device and asks to be updated first. An updated device accepts a package from a device that has not updated yet and converts its folders and collections to subjects before merging. Where the two devices filed a deck or document differently, the merge keeps one subject for it. Update every device, ideally right after a final sync, to avoid that.
 
 The synchronization package has its own versioned format. Granular-scope packages record the selected categories explicitly while retaining package-level compatibility handling for the earlier flashcard/API-settings package format. Received snapshots are migrated and semantically admitted before merge; an older sender cannot bypass current typed-question validation by supplying a structurally valid SQLite file.
 
