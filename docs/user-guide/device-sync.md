@@ -23,7 +23,7 @@ Every outgoing transfer has a **What to synchronize** section. The sender choose
 - **API provider settings** — AI provider profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from provider settings.
 
-Subjects, the folders and collections that hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device.
+Subjects, the folders and collections that hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device. If one device deletes a subject while the other files a deck or document in it, the deck or document ends up in No subject, the way deleting a subject leaves the decks and documents it held.
 
 Flashcards, Documents, and Study Guides are selected by default. **API provider settings** and **Saved API keys** are off by default.
 

@@ -55,7 +55,7 @@ Typed commands list, create, rename, reorder and delete subjects, move a deck or
 
 ### Synchronization
 
-Subjects travel with either the Flashcards or the Documents category. `card_merges` travels with Flashcards and `document_study_ranges` with Documents. The Check these list never travels; the merge adds its own entries when it settles a filing conflict or receives an edit to a copy this device retired. When both devices changed a card's schedule, the merge keeps the whole row studied last (then changed last) and records the other as a conflict, so a merged original never mixes the fields of two schedules.
+Subjects travel with either the Flashcards or the Documents category. `card_merges` travels with Flashcards and `document_study_ranges` with Documents. The Check these list never travels; the merge adds its own entries when it settles a filing conflict or receives an edit to a copy this device retired. A deck or document filed in a subject that the other device deleted goes to No subject and is listed, rather than stopping the sync on a missing subject. A merge that changes document filing or study ranges advances the document filing revision, so study materials see the change. When both devices changed a card's schedule, the merge keeps the whole row studied last (then changed last) and records the other as a conflict, so a merged original never mixes the fields of two schedules.
 
 Packages now record 30 plus the release schema version as their schema number. Builds before schema 6 refuse a number above 30 with "Update this device first", so they refuse a package from an updated device. An updated device migrates a package from an older device before merging it.
 

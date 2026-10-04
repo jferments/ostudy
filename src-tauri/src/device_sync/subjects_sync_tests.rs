@@ -508,3 +508,159 @@ fn a_deck_the_two_devices_filed_differently_is_listed() {
         serde_json::json!({"subjectIds": [library.c_hist, library.c_unused]})
     );
 }
+
+#[test]
+fn filing_in_a_subject_the_other_device_deleted_lands_in_no_subject() {
+    use crate::{
+        device_sync::merge::{CellValue, RowPayload},
+        subjects::{
+            bump, delete_subject_row, file_deck, file_document, subject_revision, Outcome,
+            Revision,
+        },
+    };
+
+    let scratch = Scratch::new("deleted-subject");
+    let connection = release_library(5);
+    let library = seed(&connection);
+    advance_release_library(&connection, 5, 6);
+    let local_file = scratch.path("local.sqlite3");
+    let remote_file = scratch.path("remote.sqlite3");
+    copy_to(&connection, &local_file);
+    copy_to(&connection, &remote_file);
+    let store = store(&scratch);
+    remember_sent_database(&connection, &store, OTHER_DEVICE, every_category()).unwrap();
+    let other_store = {
+        let paths = AppPaths::new(scratch.path("other")).unwrap();
+        let store = SyncStore::open(&paths).unwrap();
+        store
+            .upsert_peer(THIS_DEVICE, "This device", "public-key", &"a".repeat(64), "")
+            .unwrap();
+        store
+    };
+    remember_sent_database(&connection, &other_store, THIS_DEVICE, every_category()).unwrap();
+    let filing_revision = |connection: &Connection| -> i64 {
+        connection
+            .query_row(
+                "SELECT revision FROM document_collection_organization WHERE singleton_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+    };
+    let agreed_revision = filing_revision(&connection);
+
+    // This device files a deck and a document in Unused while the other device
+    // deletes Unused. Each advances the document filing revision once, as the
+    // subjects API does, so both reach the same number.
+    let mut local = Connection::open(&local_file).unwrap();
+    let mut remote = Connection::open(&remote_file).unwrap();
+    let now = T0 + 30 * DAY;
+    for device in [&local, &remote] {
+        device.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    }
+    let tx = local.transaction().unwrap();
+    assert_eq!(
+        file_deck(&tx, &library.k_acids, Some(&library.c_unused), None, now).unwrap(),
+        Outcome::Done
+    );
+    file_document(&tx, &library.d_unfiled, Some(&library.c_unused), now).unwrap();
+    assert!(bump(&tx, Revision::DocumentFiling, None, now).unwrap());
+    // Both devices also rename the deck, so its row conflicts as well.
+    tx.execute(
+        "UPDATE decks SET name = 'Acids here' WHERE id = ?1",
+        [&library.k_acids],
+    )
+    .unwrap();
+    tx.commit().unwrap();
+    let tx = remote.transaction().unwrap();
+    tx.execute(
+        "UPDATE decks SET name = 'Acids there' WHERE id = ?1",
+        [&library.k_acids],
+    )
+    .unwrap();
+    let revision = subject_revision(&tx, &library.c_unused).unwrap().unwrap();
+    assert_eq!(
+        delete_subject_row(&tx, &library.c_unused, revision, now).unwrap(),
+        Outcome::Done
+    );
+    assert!(bump(&tx, Revision::DocumentFiling, None, now).unwrap());
+    tx.commit().unwrap();
+    assert_eq!(filing_revision(&local), agreed_revision + 1);
+    assert_eq!(filing_revision(&remote), agreed_revision + 1);
+
+    // Each device merges the other's library as it was before either merge.
+    let local_package = scratch.path("local-package.sqlite3");
+    copy_to(&local, &local_package);
+    let local_package = Connection::open(&local_package).unwrap();
+    merge_remote_database(
+        &mut local,
+        &remote,
+        &store,
+        THIS_DEVICE,
+        OTHER_DEVICE,
+        every_category(),
+    )
+    .unwrap();
+    merge_remote_database(
+        &mut remote,
+        &local_package,
+        &other_store,
+        OTHER_DEVICE,
+        THIS_DEVICE,
+        every_category(),
+    )
+    .unwrap();
+
+    for device in [&local, &remote] {
+        // The subject stays deleted, and what was filed in it is in No subject.
+        let subjects = rows(device, SUBJECTS);
+        assert!(subjects.iter().all(|row| row[0] != library.c_unused));
+        let filed: Vec<Vec<String>> = rows(
+            device,
+            &format!(
+                "SELECT id, subject_id FROM decks WHERE id = '{}'
+                 UNION ALL
+                 SELECT id, subject_id FROM documents WHERE id = '{}'",
+                library.k_acids, library.d_unfiled
+            ),
+        );
+        assert_eq!(
+            filed,
+            vec![
+                vec![library.k_acids.clone(), "NULL".to_string()],
+                vec![library.d_unfiled.clone(), "NULL".to_string()],
+            ]
+        );
+        // Both are on the Check these list, naming the deleted subject.
+        let listed = load_filing_reviews(device).unwrap();
+        for (kind, id) in [("deck", &library.k_acids), ("document", &library.d_unfiled)] {
+            let review = listed
+                .iter()
+                .find(|review| review.entity_kind == kind && &review.entity_id == id)
+                .unwrap_or_else(|| panic!("{kind} {id} is not listed"));
+            assert_eq!(review.reason, "sync_filing_conflict");
+            assert_eq!(
+                review.detail,
+                serde_json::json!({ "deletedSubjectId": library.c_unused })
+            );
+        }
+    }
+    // The deck's conflict records the filing the merge kept, not the subject.
+    for store in [&store, &other_store] {
+        let conflict = store
+            .list_conflicts()
+            .unwrap()
+            .into_iter()
+            .find(|conflict| conflict.table_name == "decks" && conflict.row_key.contains(&library.k_acids))
+            .expect("the renamed deck conflicts");
+        let selected: RowPayload =
+            serde_json::from_str(conflict.selected_payload_json.as_deref().unwrap()).unwrap();
+        assert_eq!(selected.get("subject_id"), Some(&CellValue::Null));
+    }
+    // Both devices had advanced the document filing revision to the same
+    // number. Here the merge took the document out of Unused, so study
+    // materials stamped with that number must see a newer one. The other
+    // device's subjects already held what they hold now.
+    assert!(filing_revision(&local) > agreed_revision + 1);
+    assert_eq!(filing_revision(&remote), agreed_revision + 1);
+}

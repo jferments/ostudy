@@ -246,7 +246,10 @@ pub(crate) fn merge_remote_database(
         )?);
     }
 
-    let settled = settled_filings(&plans)?;
+    let refiled = refile_from_deleted_subjects(&mut plans)?;
+    let mut settled = settled_filings(&plans)?;
+    // A deleted subject explains a refiled item better than the conflict does.
+    settled.extend(refiled);
     let changed_row_count = apply_plans(local, &plans, selection.flashcards, &settled)?;
     let mut conflict_ids = Vec::new();
     for plan in &plans {
@@ -615,6 +618,63 @@ fn settled_filings(plans: &[TablePlan]) -> Result<Vec<SettledFiling>, CommandErr
     Ok(settled)
 }
 
+/// A deck or document that one device filed in a subject the other device
+/// deleted would point at a subject that no longer exists. It goes to No
+/// subject, where deleting the subject sent the decks and documents it already
+/// held, and on the "Check these" list. Both devices merge to the same subjects
+/// and filings, so both refile it the same way.
+fn refile_from_deleted_subjects(
+    plans: &mut [TablePlan],
+) -> Result<Vec<SettledFiling>, CommandError> {
+    let Some(subjects) = plans
+        .iter()
+        .find(|plan| plan.spec.name == "document_collections")
+    else {
+        return Ok(Vec::new());
+    };
+    let kept = subjects
+        .merged
+        .iter()
+        .filter(|(_, payload)| payload.is_some())
+        .map(|(key, _)| key_text(key))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    let mut refiled = Vec::new();
+    for plan in plans.iter_mut() {
+        let entity_kind = match plan.spec.name {
+            "decks" => "deck",
+            "documents" => "document",
+            _ => continue,
+        };
+        for (key, payload) in &mut plan.merged {
+            let Some(row) = payload.as_mut() else {
+                continue;
+            };
+            let deleted = match row.get("subject_id") {
+                Some(CellValue::Text(subject_id)) if !kept.contains(subject_id) => {
+                    subject_id.clone()
+                }
+                _ => continue,
+            };
+            row.insert("subject_id".to_string(), CellValue::Null);
+            // A conflict on the same row records what the merge kept.
+            for conflict in plan
+                .conflicts
+                .iter_mut()
+                .filter(|conflict| &conflict.row_key == key)
+            {
+                conflict.selected_payload_json = optional_payload_json(Some(&*row))?;
+            }
+            refiled.push(SettledFiling {
+                entity_kind,
+                entity_id: key_text(key)?,
+                reason: "sync_filing_conflict",
+                detail: json!({ "deletedSubjectId": deleted }),
+            });
+        }
+    }
+    Ok(refiled)
+}
+
 /// The single text value of a one-column row key.
 fn key_text(row_key: &str) -> Result<String, CommandError> {
     match serde_json::from_str::<Vec<CellValue>>(row_key)
@@ -758,12 +818,15 @@ fn apply_plans(
         .execute_batch("PRAGMA defer_foreign_keys = ON;")
         .map_err(CommandError::database)?;
     let mut changed = 0_usize;
+    let mut document_filing_changed = false;
 
     for plan in plans.iter().rev() {
         for (key, payload) in &plan.merged {
             if payload.is_none() && plan.local.contains_key(key) {
                 delete_row(&transaction, plan.spec, key)?;
                 changed = changed.saturating_add(1);
+                document_filing_changed |=
+                    changes_document_filing(plan.spec.name, plan.local.get(key), None);
             }
         }
     }
@@ -773,17 +836,37 @@ fn apply_plans(
                 if plan.local.get(key) != Some(payload) {
                     upsert_row(&transaction, plan.spec, payload)?;
                     changed = changed.saturating_add(1);
+                    document_filing_changed |= changes_document_filing(
+                        plan.spec.name,
+                        plan.local.get(key),
+                        Some(payload),
+                    );
                 }
             }
         }
     }
+    let now = crate::util::unix_time_millis()?;
     if table_exists(&transaction, "library_organization")? && changed > 0 {
         transaction
             .execute(
                 "UPDATE library_organization
                  SET revision = revision + 1, updated_at = ?1
                  WHERE singleton_id = 1",
-                [crate::util::unix_time_millis()?],
+                [now],
+            )
+            .map_err(CommandError::database)?;
+    }
+    // Study materials stamp the document filing revision, so it must move when
+    // the merge changes what a subject holds, even if both devices had already
+    // advanced it to the same number.
+    if document_filing_changed && table_exists(&transaction, "document_collection_organization")?
+    {
+        transaction
+            .execute(
+                "UPDATE document_collection_organization
+                 SET revision = revision + 1, updated_at = ?1
+                 WHERE singleton_id = 1",
+                [now],
             )
             .map_err(CommandError::database)?;
     }
@@ -794,6 +877,26 @@ fn apply_plans(
     }
     transaction.commit().map_err(CommandError::database)?;
     Ok(changed)
+}
+
+/// Whether replacing `before` with `after` in `table` changes what the document
+/// filing revision covers: which documents a subject holds and which of their
+/// parts it studies. Deleting a subject counts, as it does in the subjects API.
+fn changes_document_filing(
+    table: &str,
+    before: Option<&RowPayload>,
+    after: Option<&RowPayload>,
+) -> bool {
+    fn subject(row: Option<&RowPayload>) -> Option<&CellValue> {
+        row.and_then(|row| row.get("subject_id"))
+            .filter(|subject_id| !matches!(subject_id, CellValue::Null))
+    }
+    match table {
+        "documents" => subject(before) != subject(after),
+        "document_study_ranges" => true,
+        "document_collections" => after.is_none(),
+        _ => false,
+    }
 }
 
 fn replace_baselines(
