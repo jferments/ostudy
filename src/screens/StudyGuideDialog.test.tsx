@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../test/factories";
@@ -1001,6 +1001,46 @@ describe("StudyGuideDialog", () => {
     fireEvent.click(within(lastBar).getByRole("button", { name: "Previous section: Preload" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Preload" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Contents" })).toBeTruthy();
+  });
+
+  it("lets the phone bar give way while the end of the section is on screen", async () => {
+    const observers: { callback: IntersectionObserverCallback; targets: Element[]; instance: IntersectionObserver }[] = [];
+    vi.stubGlobal("IntersectionObserver", class implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0];
+      private readonly record: (typeof observers)[number];
+      constructor(callback: IntersectionObserverCallback) {
+        this.record = { callback, targets: [], instance: this };
+        observers.push(this.record);
+      }
+      observe(target: Element): void { this.record.targets.push(target); }
+      unobserve(): void { /* The reader only disconnects. */ }
+      disconnect(): void { this.record.targets = []; }
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+    });
+    try {
+      mockedGetGuide.mockResolvedValue(twoSectionGuide());
+      renderGuide({ layout: "compact" });
+      fireEvent.click(await screen.findByRole("link", { name: "Start reading 1 · Preload" }));
+      await screen.findByRole("heading", { level: 1, name: "Preload" });
+      expect(screen.getByRole("navigation", { name: "Section actions" })).toBeTruthy();
+
+      // The watched end holds the section's own practice and its previous and next links.
+      const watching = required(observers.find((observer) => observer.targets.length > 0), "section end observer");
+      const end = required(watching.targets[0], "section end");
+      expect(within(end as HTMLElement).getByRole("navigation", { name: "Previous and next" })).toBeTruthy();
+      expect(await within(end as HTMLElement).findByRole("button", { name: "Practice 2 cards" })).toBeTruthy();
+      const report = (isIntersecting: boolean) => act(() => watching.callback(
+        [{ target: end, isIntersecting } as IntersectionObserverEntry], watching.instance));
+
+      report(true);
+      expect(screen.queryByRole("navigation", { name: "Section actions" })).toBeNull();
+      report(false);
+      expect(screen.getByRole("navigation", { name: "Section actions" })).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

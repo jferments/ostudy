@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 import { StudyMarkdown } from "../../components/StudyMarkdown";
 import type { DocumentStudyGuide, StudyGuideOverlay, TopicCardProjection } from "../../ipc/studyGuides";
@@ -200,6 +200,10 @@ export function GuideSectionPage({
       onSelect: () => onResetSection(override) }] : []),
   ];
   const cardCount = projection?.cardCount ?? null;
+  // On phones the bottom bar gives way once the section's end, with its own practice and next
+  // links, comes on screen.
+  const endRef = useRef<HTMLDivElement>(null);
+  const endOnScreen = useOnScreen(endRef, layoutMode === "compact");
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={note} disabled={actionsDisabled}
       emptyText="Add your own words, a mnemonic, or a question to come back to."
@@ -242,29 +246,31 @@ export function GuideSectionPage({
           sectionNumber={number} showTerms={false} figureSource={{ documentId: sourceProps.documentId, locator: section.sourceLocator }}
           checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} />
       )}
-      {cardCount === null ? null : cardCount > 0 ? (
-        <Card as="section" aria-labelledby={`${headingId}-cards`} className="tw:font-sans">
-          <CardContent className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-5 tw:gap-y-3">
-            <div className="tw:min-w-0 tw:flex-[1_1_16rem]">
-              <h2 id={`${headingId}-cards`} className="tw:m-0 tw:text-body-large tw:font-semibold tw:tracking-tight">
-                {plural(cardCount, "card")} {cardCount === 1 ? "comes" : "come"} from this section
-              </h2>
-              <p className="tw:mt-0.5 tw:mb-0 tw:text-small tw:text-muted-foreground">They are the same cards as in your decks, not copies.</p>
-            </div>
-            <Button variant="primary" size="large" disabled={actionsDisabled} onClick={onPractice}>
-              <Icon name="practice" size={16} />Practice {plural(cardCount, "card")}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <p className="tw:m-0 tw:font-sans tw:text-small tw:text-muted-foreground">No flashcards come from this section yet.</p>
-      )}
-      {/* Narrower screens have no margin, so its blocks follow the section's end. */}
-      {!wide ? <aside aria-label="About this section" className={cn(railClass, "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-6")}>{aboutBlocks}</aside> : null}
-      <GuidePageNav previous={previous} next={next} onNavigate={onNavigate} />
+      <div ref={endRef} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-7 tw:compact:gap-6">
+        {cardCount === null ? null : cardCount > 0 ? (
+          <Card as="section" aria-labelledby={`${headingId}-cards`} className="tw:font-sans">
+            <CardContent className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-5 tw:gap-y-3">
+              <div className="tw:min-w-0 tw:flex-[1_1_16rem]">
+                <h2 id={`${headingId}-cards`} className="tw:m-0 tw:text-body-large tw:font-semibold tw:tracking-tight">
+                  {plural(cardCount, "card")} {cardCount === 1 ? "comes" : "come"} from this section
+                </h2>
+                <p className="tw:mt-0.5 tw:mb-0 tw:text-small tw:text-muted-foreground">They are the same cards as in your decks, not copies.</p>
+              </div>
+              <Button variant="primary" size="large" disabled={actionsDisabled} onClick={onPractice}>
+                <Icon name="practice" size={16} />Practice {plural(cardCount, "card")}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <p className="tw:m-0 tw:font-sans tw:text-small tw:text-muted-foreground">No flashcards come from this section yet.</p>
+        )}
+        {/* Narrower screens have no margin, so its blocks follow the section's end. */}
+        {!wide ? <aside aria-label="About this section" className={cn(railClass, "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-6")}>{aboutBlocks}</aside> : null}
+        <GuidePageNav previous={previous} next={next} onNavigate={onNavigate} />
+      </div>
       {layoutMode === "compact" ? (
         <GuideBottomBar previous={previous} next={next} cardCount={cardCount} position={`Section ${number} of ${sectionCount}`}
-          disabled={actionsDisabled} onNavigate={onNavigate} onPractice={onPractice} />
+          hidden={endOnScreen} disabled={actionsDisabled} onNavigate={onNavigate} onPractice={onPractice} />
       ) : null}
     </article>
     {wide ? (
@@ -395,19 +401,38 @@ function GuidePageNav({ previous, next, nextLabel = "Next", onNavigate }: {
   );
 }
 
+/** Whether part of an element is on screen. Without an observer it reports false. */
+function useOnScreen(ref: RefObject<Element | null>, enabled: boolean): boolean {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (!enabled || !element || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1];
+      if (latest) setOnScreen(latest.isIntersecting);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, enabled]);
+  return enabled && onScreen;
+}
+
 /** Phones keep the neighbors and the section's practice within thumb reach while reading. */
-function GuideBottomBar({ previous, next, cardCount, position, disabled, onNavigate, onPractice }: {
+function GuideBottomBar({ previous, next, cardCount, position, hidden, disabled, onNavigate, onPractice }: {
   previous: GuidePageLink | null;
   next: GuidePageLink | null;
   cardCount: number | null;
   position: string;
+  /** Hidden bars keep their place, so the page does not jump at its end. */
+  hidden: boolean;
   disabled: boolean;
   onNavigate: (destination: GuideDestination) => void;
   onPractice: () => void;
 }) {
   return (
-    <nav aria-label="Section actions"
-      className="tw:sticky tw:bottom-3 tw:z-(--ostudy-layer-sticky) tw:flex tw:items-center tw:gap-1.5 tw:rounded-full tw:border tw:border-solid tw:border-border tw:bg-card tw:p-1.5 tw:font-sans tw:shadow-md">
+    <nav aria-label="Section actions" aria-hidden={hidden || undefined} inert={hidden || undefined}
+      className={cn("tw:sticky tw:bottom-3 tw:z-(--ostudy-layer-sticky) tw:flex tw:items-center tw:gap-1.5 tw:rounded-full tw:border tw:border-solid tw:border-border tw:bg-card tw:p-1.5 tw:font-sans tw:shadow-md tw:transition-[opacity,visibility] tw:duration-(--ostudy-motion-duration-fast) tw:reduce-motion:transition-none",
+        hidden && "tw:invisible tw:opacity-0")}>
       {previous ? (
         <IconButton icon="chevron-left" tooltip={false} className="tw:size-12 tw:rounded-full"
           label={previous.number === null ? `Previous: ${previous.title}` : `Previous section: ${previous.title}`}

@@ -48,7 +48,7 @@ The current reader's note and section-edit entry is plain-text editing backed by
 
 ## Practice linked cards
 
-When a section has linked cards, the end of its page says how many cards come from it and offers **Practice N cards**; the same command sits in the margin on a wide window and in the bottom bar on a phone. It starts an exact-card session for that topic. A section without linked cards says so instead. The application resolves current native card identities, not a fuzzy search or a temporary tag.
+When a section has linked cards, the end of its page says how many cards come from it and offers **Practice N cards**; the same command sits in the margin on a wide window and, while you read, in the bottom bar on a phone. The bar steps aside once the end of the section is on screen, where the page offers the cards and the next section itself. It starts an exact-card session for that topic. A section without linked cards says so instead. The application resolves current native card identities, not a fuzzy search or a temporary tag.
 
 A topic can have no cards, or have cards that are currently unavailable because of lifecycle/scheduling state. Those are different from a failed projection request. Card provenance links are distinct from editable tags. Existing manually authored cards are not retroactively assigned to topics by guessing from their wording.
 
