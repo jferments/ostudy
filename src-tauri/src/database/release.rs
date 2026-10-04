@@ -32,6 +32,7 @@ pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
 const BASELINE_SQL: &str = include_str!("../../schema/0001_release_baseline.sql");
 
+#[derive(Clone, Copy)]
 struct ReleaseMigration {
     version: i64,
     name: &'static str,
@@ -122,6 +123,17 @@ pub(super) fn migration_contract_rows() -> impl Iterator<Item = (i64, &'static s
 }
 
 pub(super) fn initialize_fresh(connection: &mut Connection) -> Result<(), String> {
+    initialize_fresh_with(connection, RELEASE_MIGRATIONS)
+}
+
+/// Create the baseline and every release migration in one transaction. A first
+/// launch that is interrupted part way must leave an empty library, which the
+/// next launch initializes again, not an older release schema that startup
+/// would treat as a checkpointed upgrade.
+fn initialize_fresh_with(
+    connection: &mut Connection,
+    migrations: &[ReleaseMigration],
+) -> Result<(), String> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not begin release-baseline initialization: {error}"))?;
@@ -130,11 +142,13 @@ pub(super) fn initialize_fresh(connection: &mut Connection) -> Result<(), String
         .map_err(|error| format!("Could not create the oStudy 0.1 release schema: {error}"))?;
     write_release_ledger(&transaction)?;
     validate_baseline_input(&transaction)?;
+    for migration in migrations {
+        apply_migration(&transaction, migration)?;
+    }
+    validate_input(&transaction)?;
     transaction
         .commit()
-        .map_err(|error| format!("Could not commit the oStudy 0.1 release schema: {error}"))?;
-    apply_migrations(connection)?;
-    validate_input(connection)
+        .map_err(|error| format!("Could not commit the oStudy 0.1 release schema: {error}"))
 }
 
 /// Read-only admission for an already-current release-lineage database.
@@ -303,12 +317,6 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
         if migration.version <= current {
             continue;
         }
-        if format!("{:x}", Sha256::digest(migration.sql.as_bytes())) != migration.checksum {
-            return Err(format!(
-                "Bundled release migration {} checksum mismatch.",
-                migration.version
-            ));
-        }
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|error| {
@@ -317,40 +325,7 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
                     migration.version
                 )
             })?;
-        transaction.execute_batch(migration.sql).map_err(|error| {
-            format!(
-                "Could not apply release migration {}: {error}",
-                migration.version
-            )
-        })?;
-        let applied_at = unix_time_millis().map_err(|error| error.message)?;
-        transaction
-            .execute(
-                "INSERT INTO schema_migrations(version, name, checksum, applied_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    migration.version,
-                    migration.name,
-                    migration.checksum,
-                    applied_at
-                ],
-            )
-            .map_err(|error| {
-                format!(
-                    "Could not record release migration {}: {error}",
-                    migration.version
-                )
-            })?;
-        transaction
-            .pragma_update(None, "user_version", migration.version)
-            .map_err(|error| {
-                format!(
-                    "Could not set release SQLite user_version to {}: {error}",
-                    migration.version
-                )
-            })?;
-        validate_supported_input(&transaction)?;
-        verify_integrity(&transaction)?;
+        apply_migration(&transaction, migration)?;
         transaction.commit().map_err(|error| {
             format!(
                 "Could not commit release migration {}: {error}",
@@ -361,6 +336,50 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
     }
     validate_input(connection)?;
     Ok(applied)
+}
+
+/// Apply one bundled migration inside the caller's transaction.
+fn apply_migration(connection: &Connection, migration: &ReleaseMigration) -> Result<(), String> {
+    if format!("{:x}", Sha256::digest(migration.sql.as_bytes())) != migration.checksum {
+        return Err(format!(
+            "Bundled release migration {} checksum mismatch.",
+            migration.version
+        ));
+    }
+    connection.execute_batch(migration.sql).map_err(|error| {
+        format!(
+            "Could not apply release migration {}: {error}",
+            migration.version
+        )
+    })?;
+    let applied_at = unix_time_millis().map_err(|error| error.message)?;
+    connection
+        .execute(
+            "INSERT INTO schema_migrations(version, name, checksum, applied_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                migration.version,
+                migration.name,
+                migration.checksum,
+                applied_at
+            ],
+        )
+        .map_err(|error| {
+            format!(
+                "Could not record release migration {}: {error}",
+                migration.version
+            )
+        })?;
+    connection
+        .pragma_update(None, "user_version", migration.version)
+        .map_err(|error| {
+            format!(
+                "Could not set release SQLite user_version to {}: {error}",
+                migration.version
+            )
+        })?;
+    validate_supported_input(connection)?;
+    verify_integrity(connection)
 }
 
 /// Convert a fully normalized legacy schema-30 connection without rewriting
@@ -738,6 +757,35 @@ mod tests {
             )
             .unwrap();
         assert_eq!(guidance_table, 1);
+    }
+
+    #[test]
+    fn interrupted_fresh_initialization_leaves_an_empty_library() {
+        const BROKEN_SQL: &str = "INSERT INTO missing_release_table VALUES (1);";
+        let checksum: &'static str =
+            Box::leak(format!("{:x}", Sha256::digest(BROKEN_SQL.as_bytes())).into_boxed_str());
+        let migrations = [
+            RELEASE_MIGRATIONS[0],
+            RELEASE_MIGRATIONS[1],
+            ReleaseMigration {
+                version: 4,
+                name: "injected_failure",
+                checksum,
+                sql: BROKEN_SQL,
+            },
+        ];
+        let mut connection = Connection::open_in_memory().unwrap();
+
+        let error = initialize_fresh_with(&mut connection, &migrations).unwrap_err();
+
+        assert!(error.contains("release migration 4"), "{error}");
+        let objects: i64 = connection
+            .query_row("SELECT COUNT(*) FROM sqlite_schema", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(objects, 0);
+        assert_eq!(super::super::entry::user_version(&connection).unwrap(), 0);
+        initialize_fresh(&mut connection).unwrap();
+        validate_input(&connection).unwrap();
     }
 
     #[test]
