@@ -1,12 +1,16 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet, HashMap},
+};
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rusqlite::{
-    params_from_iter,
+    params, params_from_iter,
     types::{Value, ValueRef},
     Connection,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::error::CommandError;
@@ -27,8 +31,11 @@ pub(crate) struct TableSpec {
 /// Dependency order is deliberate: parents appear before children for upserts,
 /// and `apply_plans` walks the list in reverse for deletes.
 pub(crate) const SYNC_TABLES: &[TableSpec] = &[
+    // Subjects hold decks and documents. `SyncSelection` enables them with
+    // either category.
+    TableSpec::new("document_collection_organization", &["singleton_id"]),
+    TableSpec::new("document_collections", &["id"]),
     // Flashcard/study graph.
-    TableSpec::new("deck_folders", &["id"]),
     TableSpec::new("decks", &["id"]),
     TableSpec::new("tags", &["id"]),
     TableSpec::new("card_templates", &["id"]),
@@ -49,6 +56,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("notes", &["id"]),
     TableSpec::new("question_generation_evidence", &["note_id"]),
     TableSpec::new("cards", &["id"]),
+    TableSpec::new("card_merges", &["retired_card_id"]),
     TableSpec::new("card_question_presentations", &["card_id"]),
     TableSpec::new("card_template_rules", &["id"]),
     TableSpec::new("note_tags", &["note_id", "tag_id"]),
@@ -89,10 +97,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("ai_task_defaults", &["task_kind"]),
     // Canonical Documents + durable LLM processing/checkpoint graph.
     TableSpec::new("documents", &["id"]),
-    TableSpec::new("document_collection_organization", &["singleton_id"]),
-    TableSpec::new("document_collections", &["id"]),
-    TableSpec::new("document_collection_memberships", &["id"]),
-    TableSpec::new("document_collection_ranges", &["id"]),
+    TableSpec::new("document_study_ranges", &["id"]),
     TableSpec::new("study_targets", &["id"]),
     TableSpec::new(
         "study_target_suppressions",
@@ -197,6 +202,18 @@ struct TablePlan {
     local: TableRows,
     merged: BTreeMap<String, Option<RowPayload>>,
     conflicts: Vec<PlannedConflict>,
+    /// Notes that one device deleted while the other changed their content.
+    deleted_while_edited: Vec<String>,
+}
+
+/// An entry for the "Check these" list (release schema 6) about a choice the
+/// merge settled on its own.
+#[derive(Debug, PartialEq)]
+struct SettledFiling {
+    entity_kind: &'static str,
+    entity_id: String,
+    reason: &'static str,
+    detail: serde_json::Value,
 }
 
 pub(crate) fn merge_remote_database(
@@ -229,7 +246,8 @@ pub(crate) fn merge_remote_database(
         )?);
     }
 
-    let changed_row_count = apply_plans(local, &plans, selection.flashcards)?;
+    let settled = settled_filings(&plans)?;
+    let changed_row_count = apply_plans(local, &plans, selection.flashcards, &settled)?;
     let mut conflict_ids = Vec::new();
     for plan in &plans {
         for conflict in &plan.conflicts {
@@ -336,6 +354,7 @@ fn plan_three_way_table(
     keys.extend(baselines.keys().cloned());
     let mut merged = BTreeMap::new();
     let mut conflicts = Vec::new();
+    let mut deleted_while_edited = Vec::new();
 
     for key in keys {
         let left = local.get(&key);
@@ -362,8 +381,23 @@ fn plan_three_way_table(
         } else {
             None
         };
+        if spec.name == "notes" {
+            if let (Some(left), Some(right)) = (left, right) {
+                if deleted_on_one_side_and_edited(left, right) {
+                    deleted_while_edited.push(key.clone());
+                }
+            }
+        }
         let (selected, conflicting_fields) = if atomic_question_row(spec.name) {
             merge_atomic_rows(
+                base.as_ref(),
+                left,
+                right,
+                local_device_id,
+                remote_device_id,
+            )
+        } else if spec.name == "card_schedules" {
+            merge_schedule_rows(
                 base.as_ref(),
                 left,
                 right,
@@ -404,6 +438,7 @@ fn plan_three_way_table(
         local,
         merged,
         conflicts,
+        deleted_while_edited,
     })
 }
 
@@ -428,6 +463,42 @@ fn merge_atomic_rows(
     left_device_id: &str,
     right_device_id: &str,
 ) -> (Option<RowPayload>, Vec<String>) {
+    merge_whole_rows(base, left, right, left_device_id <= right_device_id)
+}
+
+/// A schedule is one FSRS state, so concurrent changes keep the whole row that
+/// was studied, reset or rescheduled last instead of mixing the fields of two
+/// states. The other row stays available as a conflict.
+fn merge_schedule_rows(
+    base: Option<&RowPayload>,
+    left: Option<&RowPayload>,
+    right: Option<&RowPayload>,
+    left_device_id: &str,
+    right_device_id: &str,
+) -> (Option<RowPayload>, Vec<String>) {
+    let recency = |row: &RowPayload| {
+        ["last_review_at", "updated_at", "revision"].map(|column| match row.get(column) {
+            Some(CellValue::Integer(value)) => *value,
+            _ => i64::MIN,
+        })
+    };
+    let prefer_left = match (left, right) {
+        (Some(left), Some(right)) => match recency(left).cmp(&recency(right)) {
+            Ordering::Greater => true,
+            Ordering::Less => false,
+            Ordering::Equal => left_device_id <= right_device_id,
+        },
+        _ => left_device_id <= right_device_id,
+    };
+    merge_whole_rows(base, left, right, prefer_left)
+}
+
+fn merge_whole_rows(
+    base: Option<&RowPayload>,
+    left: Option<&RowPayload>,
+    right: Option<&RowPayload>,
+    prefer_left: bool,
+) -> (Option<RowPayload>, Vec<String>) {
     if left == right {
         return (left.cloned(), Vec::new());
     }
@@ -446,7 +517,7 @@ fn merge_atomic_rows(
             (Some(payload.clone()), vec!["$row".to_string()])
         }
         (Some(left), Some(right)) => (
-            Some(if left_device_id <= right_device_id {
+            Some(if prefer_left {
                 left.clone()
             } else {
                 right.clone()
@@ -454,6 +525,136 @@ fn merge_atomic_rows(
             vec!["$row".to_string()],
         ),
     }
+}
+
+/// True when one device deleted a note that the other device still has with
+/// different content. Placement, deletion and revision bookkeeping is not
+/// content: retiring a collection copy changes only those.
+fn deleted_on_one_side_and_edited(left: &RowPayload, right: &RowPayload) -> bool {
+    const BOOKKEEPING: [&str; 4] = ["deck_id", "deleted_at", "revision", "updated_at"];
+    let live = |row: &RowPayload| matches!(row.get("deleted_at"), None | Some(CellValue::Null));
+    live(left) != live(right)
+        && left
+            .keys()
+            .chain(right.keys())
+            .filter(|column| !BOOKKEEPING.contains(&column.as_str()))
+            .any(|column| left.get(column) != right.get(column))
+}
+
+/// The choices a merge settles on its own that the learner should check: a
+/// deck or document the two devices filed in different subjects, and a
+/// collection copy one device edited while the other retired it into its
+/// original. The copy stays retired, with the edited text, so the learner can
+/// find the edit.
+fn settled_filings(plans: &[TablePlan]) -> Result<Vec<SettledFiling>, CommandError> {
+    let mut settled = Vec::new();
+    for plan in plans {
+        let entity_kind = match plan.spec.name {
+            "decks" => "deck",
+            "documents" => "document",
+            _ => continue,
+        };
+        for conflict in &plan.conflicts {
+            if !conflict
+                .conflicting_fields
+                .iter()
+                .any(|field| field == "subject_id")
+            {
+                continue;
+            }
+            let subject = |payload: &Option<String>| -> Result<serde_json::Value, CommandError> {
+                let row = payload
+                    .as_deref()
+                    .map(serde_json::from_str::<RowPayload>)
+                    .transpose()
+                    .map_err(CommandError::serialization)?;
+                Ok(match row.as_ref().and_then(|row| row.get("subject_id")) {
+                    Some(CellValue::Text(subject_id)) => json!(subject_id),
+                    _ => serde_json::Value::Null,
+                })
+            };
+            settled.push(SettledFiling {
+                entity_kind,
+                entity_id: key_text(&conflict.row_key)?,
+                reason: "sync_filing_conflict",
+                detail: json!({
+                    "subjectIds": [
+                        subject(&conflict.left_payload_json)?,
+                        subject(&conflict.right_payload_json)?,
+                    ],
+                }),
+            });
+        }
+    }
+
+    let plan = |name: &str| plans.iter().find(|plan| plan.spec.name == name);
+    if let (Some(notes), Some(merges)) = (plan("notes"), plan("card_merges")) {
+        let originals = merges
+            .merged
+            .values()
+            .flatten()
+            .filter_map(|row| match (row.get("retired_note_id"), row.get("surviving_note_id")) {
+                (Some(CellValue::Text(retired)), Some(CellValue::Text(original))) => {
+                    Some((retired.clone(), original.clone()))
+                }
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        for key in &notes.deleted_while_edited {
+            let note_id = key_text(key)?;
+            if let Some(original) = originals.get(&note_id) {
+                settled.push(SettledFiling {
+                    entity_kind: "note",
+                    entity_id: note_id,
+                    reason: "sync_edited_retired_copy",
+                    detail: json!({ "originalNoteId": original }),
+                });
+            }
+        }
+    }
+    Ok(settled)
+}
+
+/// The single text value of a one-column row key.
+fn key_text(row_key: &str) -> Result<String, CommandError> {
+    match serde_json::from_str::<Vec<CellValue>>(row_key)
+        .map_err(CommandError::serialization)?
+        .as_slice()
+    {
+        [CellValue::Text(value)] => Ok(value.clone()),
+        _ => Err(CommandError::new(
+            "device_sync_row_key_invalid",
+            "A synchronized row key has the wrong number of fields.",
+        )),
+    }
+}
+
+fn record_settled_filings(
+    connection: &Connection,
+    settled: &[SettledFiling],
+) -> Result<(), CommandError> {
+    if settled.is_empty() || !table_exists(connection, "subject_filing_reviews")? {
+        return Ok(());
+    }
+    for filing in settled {
+        connection
+            .execute(
+                "INSERT INTO subject_filing_reviews(entity_kind, entity_id, reason, detail_json)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
+                     reason = excluded.reason,
+                     detail_json = excluded.detail_json,
+                     dismissed_at = NULL",
+                params![
+                    filing.entity_kind,
+                    filing.entity_id,
+                    filing.reason,
+                    filing.detail.to_string()
+                ],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
 }
 
 fn merge_rows(
@@ -550,6 +751,7 @@ fn apply_plans(
     connection: &mut Connection,
     plans: &[TablePlan],
     validate_questions: bool,
+    settled: &[SettledFiling],
 ) -> Result<usize, CommandError> {
     let transaction = connection.transaction().map_err(CommandError::database)?;
     transaction
@@ -585,6 +787,7 @@ fn apply_plans(
             )
             .map_err(CommandError::database)?;
     }
+    record_settled_filings(&transaction, settled)?;
     verify_foreign_keys(&transaction)?;
     if validate_questions {
         scope::validate_question_snapshot(&transaction)?;
