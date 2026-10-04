@@ -4,6 +4,7 @@ use rusqlite::{backup::Backup, params, Connection};
 
 use crate::{database::Database, error::CommandError};
 
+/// Deck folders are subjects, so a snapshot carries a deck's subject and order.
 #[test]
 fn database_snapshot_preserves_folder_membership_and_ordering() {
     let database = Database::open_in_memory().expect("database should open");
@@ -13,7 +14,7 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
             let deck_id = "d".repeat(32);
             source
                 .execute(
-                    "INSERT INTO deck_folders (
+                    "INSERT INTO document_collections (
                          id, name, sort_order, created_at, updated_at, revision
                      ) VALUES (?1, 'Nursing', 1000, 1, 1, 1)",
                     [folder_id.as_str()],
@@ -23,7 +24,7 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
                 .execute(
                     "INSERT INTO decks (
                          id, name, description, sort_order, created_at, updated_at, revision,
-                         folder_id
+                         subject_id
                      ) VALUES (?1, 'Pharmacology', '', 2000, 1, 1, 1, ?2)",
                     params![deck_id, folder_id],
                 )
@@ -39,7 +40,7 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
 
             let restored_folder: (String, i64) = restored
                 .query_row(
-                    "SELECT name, sort_order FROM deck_folders WHERE id = ?1",
+                    "SELECT name, sort_order FROM document_collections WHERE id = ?1",
                     [folder_id.as_str()],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
@@ -48,7 +49,7 @@ fn database_snapshot_preserves_folder_membership_and_ordering() {
 
             let restored_deck: (Option<String>, i64) = restored
                 .query_row(
-                    "SELECT folder_id, sort_order FROM decks WHERE id = ?1",
+                    "SELECT subject_id, sort_order FROM decks WHERE id = ?1",
                     [deck_id.as_str()],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )

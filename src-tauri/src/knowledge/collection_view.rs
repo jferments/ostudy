@@ -1683,7 +1683,6 @@ mod tests {
     fn seed_document(
         database: &Database,
         collection: &str,
-        membership: char,
         document: char,
         title: &str,
         topic: Option<&str>,
@@ -1733,10 +1732,8 @@ mod tests {
                 .map_err(CommandError::database)?;
             connection
                 .execute(
-                    "INSERT INTO document_collection_memberships(
-                         id,collection_id,document_id,sort_order,created_at,updated_at,revision
-                     ) VALUES(?1,?2,?3,1000,1,1,1)",
-                    params![id(membership), collection, document_id],
+                    "UPDATE documents SET subject_id=?1 WHERE id=?2",
+                    params![collection, document_id],
                 )
                 .map_err(CommandError::database)?;
             let mut record = SourceRecord {
@@ -1795,8 +1792,8 @@ mod tests {
             connection
                 .execute(
                     "INSERT INTO document_collections(
-                         id,parent_id,name,sort_order,created_at,updated_at,revision
-                     ) VALUES(?1,NULL,'Week 1',1000,1,1,1)",
+                         id,name,sort_order,created_at,updated_at,revision
+                     ) VALUES(?1,'Week 1',1000,1,1,1)",
                     [&collection],
                 )
                 .map_err(CommandError::database)?;
@@ -1805,7 +1802,6 @@ mod tests {
         let (first, _) = seed_document(
             &database,
             &collection,
-            'm',
             'a',
             "Cardiac output depends on heart rate.",
             Some("Hemodynamics"),
@@ -1813,7 +1809,6 @@ mod tests {
         let (second, second_source) = seed_document(
             &database,
             &collection,
-            'n',
             'b',
             "A rare qualifier remains important.",
             Some("Rare qualifier"),
@@ -2235,8 +2230,8 @@ mod tests {
                 connection
                     .execute(
                         "INSERT INTO document_collections(
-                             id,parent_id,name,sort_order,created_at,updated_at,revision
-                         ) VALUES(?1,NULL,'Week 2',1000,1,1,1)",
+                             id,name,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'Week 2',1000,1,1,1)",
                         [&other_collection],
                     )
                     .map_err(CommandError::database)?;
@@ -2246,7 +2241,6 @@ mod tests {
         let (added_document, added_source) = seed_document(
             &database,
             &other_collection,
-            'p',
             'd',
             "Prepared additional source.",
             Some("Added prepared topic"),
@@ -2295,12 +2289,11 @@ mod tests {
 
         database
             .with_connection(|connection| {
+                // A document is in one subject, so adding it moves it here.
                 connection
                     .execute(
-                        "INSERT INTO document_collection_memberships(
-                             id,collection_id,document_id,sort_order,created_at,updated_at,revision
-                         ) VALUES(?1,?2,?3,1000,2,2,1)",
-                        params![id('q'), collection, added_document],
+                        "UPDATE documents SET subject_id=?1 WHERE id=?2",
+                        params![collection, added_document],
                     )
                     .map_err(CommandError::database)?;
                 connection
@@ -2449,8 +2442,8 @@ mod tests {
             .with_connection(|connection| {
                 connection
                     .execute(
-                        "DELETE FROM document_collection_memberships WHERE id=?1",
-                        [id('n')],
+                        "UPDATE documents SET subject_id=NULL WHERE id=?1",
+                        [id('b')],
                     )
                     .map_err(CommandError::database)?;
                 connection
@@ -2495,8 +2488,8 @@ mod tests {
             .with_connection(|connection| {
                 connection
                     .execute(
-                        "DELETE FROM document_collection_memberships WHERE id=?1",
-                        [id('n')],
+                        "UPDATE documents SET subject_id=NULL WHERE id=?1",
+                        [id('b')],
                     )
                     .map_err(CommandError::database)?;
                 connection

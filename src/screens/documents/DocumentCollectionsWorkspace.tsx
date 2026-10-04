@@ -85,7 +85,7 @@ export function DocumentCollectionsWorkspace({
   async function deleteCurrent(folder: DocumentCollection): Promise<void> {
     const approved = await confirm({
       title: "Delete this document collection?",
-      description: "The collection and its memberships will be removed. Retained source documents and independently created study material are not deleted.",
+      description: "The collection is removed and its documents and decks move to No subject. Retained source documents and independently created study material are not deleted.",
       confirmLabel: "Delete collection",
       destructive: true,
     });
@@ -96,7 +96,7 @@ export function DocumentCollectionsWorkspace({
     const document = documentById.get(membership.documentId);
     const approved = await confirm({
       title: "Remove this source from the collection?",
-      description: `${document?.title ?? "This document"} remains in Documents and in any other collections that reference it.`,
+      description: `${document?.title ?? "This document"} remains in Documents without a collection, and its reading range is cleared.`,
       confirmLabel: "Remove source",
       destructive: true,
     });
@@ -603,6 +603,11 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
             </NativeSelect>
           </label>
           {!choices.length ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
+          {dialog.documentId && organization.memberships.some((entry) => entry.documentId === dialog.documentId) ? (
+            <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+              A document is in one collection at a time, so adding it here moves it with its reading range.
+            </p>
+          ) : null}
           {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
           <DialogActions>
             <Button onClick={close}>Cancel</Button>

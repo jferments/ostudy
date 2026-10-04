@@ -1,4 +1,5 @@
-//! LK-05 collection organization is part of complete-library preservation.
+//! LK-05 collection organization (subjects, document filing and study ranges)
+//! is part of complete-library preservation.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -11,7 +12,6 @@ use crate::{
 pub(super) fn seed(database: &Database) {
     let document = super::id(500);
     let collection = super::id(520);
-    let membership = super::id(521);
     database
         .with_connection(|connection| {
             let source_sha: String = connection
@@ -23,23 +23,22 @@ pub(super) fn seed(database: &Database) {
                 .map_err(CommandError::database)?;
             connection
                 .execute(
-                    "INSERT INTO document_collections(id,parent_id,name,sort_order,created_at,updated_at,revision)
-                     VALUES(?1,NULL,'Week 1',1000,10,10,1)",
+                    "INSERT INTO document_collections(id,name,sort_order,created_at,updated_at,revision)
+                     VALUES(?1,'Week 1',1000,10,10,1)",
                     [&collection],
                 )
                 .map_err(CommandError::database)?;
             connection
                 .execute(
-                    "INSERT INTO document_collection_memberships(id,collection_id,document_id,sort_order,created_at,updated_at,revision)
-                     VALUES(?1,?2,?3,1000,10,10,1)",
-                    params![membership, collection, document],
+                    "UPDATE documents SET subject_id=?1 WHERE id=?2",
+                    params![collection, document],
                 )
                 .map_err(CommandError::database)?;
             connection
                 .execute(
-                    "INSERT INTO document_collection_ranges(id,membership_id,unit_kind,start_unit,end_unit,source_sha256,created_at)
+                    "INSERT INTO document_study_ranges(id,document_id,unit_kind,start_unit,end_unit,source_sha256,created_at)
                      VALUES(?1,?2,'section',1,1,?3,10)",
-                    params![super::id(522), membership, source_sha],
+                    params![super::id(522), document, source_sha],
                 )
                 .map_err(CommandError::database)?;
             connection

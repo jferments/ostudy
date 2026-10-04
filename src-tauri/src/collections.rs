@@ -1,8 +1,13 @@
 //! Document collection organization and permission-safe source-set resolution.
 //!
-//! Collections reference retained documents; they never own or duplicate source
-//! bytes or prepared knowledge. Reading ranges bind to canonical source-unit
-//! identities and to the document SHA that was current when the range was saved.
+//! Since release schema 6 a collection is a subject (see `subjects`). A
+//! document is in at most one subject, so each filed document has exactly one
+//! membership, identified by the document's id with a constant revision; the
+//! organization revision is the document filing revision. Collections
+//! reference retained documents; they never own or duplicate source bytes or
+//! prepared knowledge. Reading ranges are the document's study ranges, bound to
+//! canonical source-unit identities and to the document SHA that was current
+//! when they were saved.
 
 use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 
@@ -14,12 +19,14 @@ use tauri::State;
 use crate::{
     database::Database,
     error::CommandError,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    subjects::{self, Outcome, Revision},
+    util::{unix_time_millis, validate_entity_id},
 };
 
-const MAX_COLLECTION_NAME_CHARS: usize = 120;
-const MAX_COLLECTIONS: usize = 500;
 const MAX_MEMBERSHIPS: usize = 4_096;
+/// Every membership has this revision: a document's filing is guarded by the
+/// organization revision instead.
+const MEMBERSHIP_REVISION: i64 = 1;
 const MAX_SELECTION_COLLECTIONS: usize = 64;
 const MAX_SELECTION_DOCUMENTS: usize = 256;
 const MAX_RANGES_PER_DOCUMENT: usize = 64;
@@ -329,36 +336,26 @@ fn load_organization(
     connection: &Connection,
 ) -> Result<DocumentCollectionOrganizationDto, CommandError> {
     let revision = organization_revision(connection)?;
-    let collections = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id,name,sort_order,created_at,updated_at,revision
-                 FROM document_collections
-                 ORDER BY sort_order,name COLLATE NOCASE,id",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(DocumentCollectionDto {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    sort_order: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    revision: row.get(5)?,
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        rows
-    };
+    let collections = subjects::list_subjects(connection)?
+        .into_iter()
+        .map(|subject| DocumentCollectionDto {
+            id: subject.id,
+            name: subject.name,
+            sort_order: subject.sort_order,
+            created_at: subject.created_at,
+            updated_at: subject.updated_at,
+            revision: subject.revision,
+        })
+        .collect();
     let memberships = {
         let mut statement = connection
             .prepare(
-                "SELECT id,collection_id,document_id,sort_order,created_at,updated_at,revision
-                 FROM document_collection_memberships
-                 ORDER BY collection_id,sort_order,id",
+                "SELECT id,subject_id,created_at,updated_at,
+                        ROW_NUMBER() OVER (PARTITION BY subject_id
+                                           ORDER BY title COLLATE NOCASE,id)
+                 FROM documents
+                 WHERE subject_id IS NOT NULL
+                 ORDER BY subject_id,title COLLATE NOCASE,id",
             )
             .map_err(CommandError::database)?;
         let rows = statement
@@ -366,11 +363,11 @@ fn load_organization(
                 Ok(DocumentCollectionMembershipDto {
                     id: row.get(0)?,
                     collection_id: row.get(1)?,
-                    document_id: row.get(2)?,
-                    sort_order: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    revision: row.get(6)?,
+                    document_id: row.get(0)?,
+                    sort_order: row.get::<_, i64>(4)? * ORDER_STEP,
+                    created_at: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    revision: MEMBERSHIP_REVISION,
                 })
             })
             .map_err(CommandError::database)?
@@ -378,31 +375,23 @@ fn load_organization(
             .map_err(CommandError::database)?;
         rows
     };
-    let ranges = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id,membership_id,unit_kind,start_unit,end_unit,source_sha256,created_at
-                 FROM document_collection_ranges
-                 ORDER BY membership_id,start_unit,end_unit,id",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(DocumentCollectionRangeDto {
-                    id: row.get(0)?,
-                    membership_id: row.get(1)?,
-                    unit_kind: row.get(2)?,
-                    start_unit: row.get(3)?,
-                    end_unit: row.get(4)?,
-                    source_sha256: row.get(5)?,
-                    created_at: row.get(6)?,
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        rows
-    };
+    let filed = memberships
+        .iter()
+        .map(|membership| membership.document_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let ranges = subjects::study_ranges(connection, None)?
+        .into_iter()
+        .filter(|range| filed.contains(range.document_id.as_str()))
+        .map(|range| DocumentCollectionRangeDto {
+            id: range.id,
+            membership_id: range.document_id,
+            unit_kind: range.unit_kind,
+            start_unit: range.start_unit,
+            end_unit: range.end_unit,
+            source_sha256: range.source_sha256,
+            created_at: range.created_at,
+        })
+        .collect();
     Ok(DocumentCollectionOrganizationDto {
         revision,
         collections,
@@ -429,26 +418,10 @@ fn create_collection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
-    let count: i64 = tx
-        .query_row("SELECT COUNT(*) FROM document_collections", [], |row| {
-            row.get(0)
-        })
-        .map_err(CommandError::database)?;
-    if count >= MAX_COLLECTIONS as i64 {
-        return Err(invalid(
-            "The document library contains too many collections.",
-        ));
-    }
-    let id = generate_id(&tx)?;
-    let sort_order = next_collection_order(&tx)?;
-    tx.execute(
-        "INSERT INTO document_collections(
-             id,parent_id,name,sort_order,created_at,updated_at,revision
-         ) VALUES(?1,NULL,?2,?3,?4,?4,1)",
-        params![id, name, sort_order, now],
-    )
-    .map_err(CommandError::database)?;
+    subjects::insert_subject(&tx, &name, now)?;
     bump_organization(&tx, input.expected_organization_revision, now)?;
+    // The deck library lists every subject as a folder.
+    subjects::bump(&tx, Revision::Library, None, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
     tx.commit().map_err(CommandError::database)?;
@@ -474,37 +447,21 @@ fn update_collection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
-    let current: Option<i64> = tx
-        .query_row(
-            "SELECT revision FROM document_collections WHERE id=?1",
-            [&input.collection_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    match current {
-        None => return Err(collection_not_found()),
-        Some(revision) if revision != input.revision => return Err(collection_changed()),
-        Some(_) => {}
-    }
-    let changed = tx
-        .execute(
-            "UPDATE document_collections
-             SET name=?1,updated_at=?2,revision=revision+1
-             WHERE id=?3 AND revision=?4",
-            params![name, now, input.collection_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if changed != 1 {
-        return Err(collection_changed());
+    match subjects::rename_subject_row(&tx, &input.collection_id, &name, input.revision, now)? {
+        Outcome::Done => {}
+        Outcome::Missing => return Err(collection_not_found()),
+        Outcome::Stale | Outcome::OutOfRange => return Err(collection_changed()),
     }
     bump_organization(&tx, input.expected_organization_revision, now)?;
+    subjects::bump(&tx, Revision::Library, None, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
     tx.commit().map_err(CommandError::database)?;
     Ok(result)
 }
 
+/// Deletes a collection's subject: its documents and decks go to No subject,
+/// and its study targets and guide go with it.
 fn delete_collection(
     connection: &mut Connection,
     input: DeleteDocumentCollectionInput,
@@ -523,35 +480,22 @@ fn delete_collection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
-    let current: Option<i64> = tx
-        .query_row(
-            "SELECT revision FROM document_collections WHERE id=?1",
-            [&input.collection_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    match current {
-        None => return Err(collection_not_found()),
-        Some(revision) if revision != input.revision => return Err(collection_changed()),
-        Some(_) => {}
-    }
-    let deleted = tx
-        .execute(
-            "DELETE FROM document_collections WHERE id=?1 AND revision=?2",
-            params![input.collection_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if deleted != 1 {
-        return Err(collection_changed());
+    match subjects::delete_subject_row(&tx, &input.collection_id, input.revision, now)? {
+        Outcome::Done => {}
+        Outcome::Missing => return Err(collection_not_found()),
+        Outcome::Stale | Outcome::OutOfRange => return Err(collection_changed()),
     }
     bump_organization(&tx, input.expected_organization_revision, now)?;
+    subjects::bump(&tx, Revision::Library, None, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
     tx.commit().map_err(CommandError::database)?;
     Ok(result)
 }
 
+/// Files a document in a collection's subject. A document is in at most one
+/// subject, so adding it here moves it out of any other, with its ranges and
+/// its generated deck, which the collection then studies.
 fn add_membership(
     connection: &mut Connection,
     input: AddDocumentCollectionMembershipInput,
@@ -571,40 +515,25 @@ fn add_membership(
     assert_organization_revision(&tx, input.expected_organization_revision)?;
     require_collection(&tx, &input.collection_id)?;
     require_document(&tx, &input.document_id)?;
-    let count: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM document_collection_memberships",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if count >= MAX_MEMBERSHIPS as i64 {
-        return Err(invalid(
-            "The document library contains too many collection memberships.",
-        ));
-    }
-    let duplicate: bool = tx
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM document_collection_memberships
-                 WHERE collection_id=?1 AND document_id=?2
-             )",
-            params![input.collection_id, input.document_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if duplicate {
+    let current = subjects::document_subject(&tx, &input.document_id)?.flatten();
+    if current.as_deref() == Some(input.collection_id.as_str()) {
         return Err(invalid("That document is already in this folder."));
     }
-    let id = generate_id(&tx)?;
-    let sort_order = next_membership_order(&tx, &input.collection_id)?;
-    tx.execute(
-        "INSERT INTO document_collection_memberships(
-             id,collection_id,document_id,sort_order,created_at,updated_at,revision
-         ) VALUES(?1,?2,?3,?4,?5,?5,1)",
-        params![id, input.collection_id, input.document_id, sort_order, now],
-    )
-    .map_err(CommandError::database)?;
+    if current.is_none() {
+        let count: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM documents WHERE subject_id IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        if count >= MAX_MEMBERSHIPS as i64 {
+            return Err(invalid(
+                "The document library contains too many collection memberships.",
+            ));
+        }
+    }
+    subjects::file_document(&tx, &input.document_id, Some(&input.collection_id), now)?;
     bump_organization(&tx, input.expected_organization_revision, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
@@ -631,61 +560,29 @@ fn move_membership(
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
     require_collection(&tx, &input.target_collection_id)?;
-    let row: Option<(String, i64)> = tx
-        .query_row(
-            "SELECT document_id,revision
-             FROM document_collection_memberships WHERE id=?1",
-            [&input.membership_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let Some((document_id, revision)) = row else {
+    let Some(current) = filed_subject(&tx, &input.membership_id)? else {
         return Err(membership_not_found());
     };
-    if revision != input.revision {
+    if input.revision != MEMBERSHIP_REVISION {
         return Err(membership_changed());
     }
-    let duplicate: bool = tx
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM document_collection_memberships
-                 WHERE collection_id=?1 AND document_id=?2 AND id<>?3
-             )",
-            params![input.target_collection_id, document_id, input.membership_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if duplicate {
-        return Err(invalid(
-            "That document is already in the destination folder.",
-        ));
+    if current != input.target_collection_id {
+        subjects::file_document(
+            &tx,
+            &input.membership_id,
+            Some(&input.target_collection_id),
+            now,
+        )?;
+        bump_organization(&tx, input.expected_organization_revision, now)?;
     }
-    let sort_order = next_membership_order(&tx, &input.target_collection_id)?;
-    let changed = tx
-        .execute(
-            "UPDATE document_collection_memberships
-             SET collection_id=?1,sort_order=?2,updated_at=?3,revision=revision+1
-             WHERE id=?4 AND revision=?5",
-            params![
-                input.target_collection_id,
-                sort_order,
-                now,
-                input.membership_id,
-                input.revision
-            ],
-        )
-        .map_err(CommandError::database)?;
-    if changed != 1 {
-        return Err(membership_changed());
-    }
-    bump_organization(&tx, input.expected_organization_revision, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
     tx.commit().map_err(CommandError::database)?;
     Ok(result)
 }
 
+/// Sends a document to No subject, which clears its reading ranges. Its
+/// generated deck leaves with it, so the collection stops studying its cards.
 fn remove_membership(
     connection: &mut Connection,
     input: RemoveDocumentCollectionMembershipInput,
@@ -704,16 +601,11 @@ fn remove_membership(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
-    let deleted = tx
-        .execute(
-            "DELETE FROM document_collection_memberships
-             WHERE id=?1 AND revision=?2",
-            params![input.membership_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if deleted != 1 {
+    if filed_subject(&tx, &input.membership_id)?.is_none() || input.revision != MEMBERSHIP_REVISION
+    {
         return Err(membership_changed());
     }
+    subjects::file_document(&tx, &input.membership_id, None, now)?;
     bump_organization(&tx, input.expected_organization_revision, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
@@ -742,62 +634,26 @@ fn set_membership_ranges(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&tx, input.expected_organization_revision)?;
-    let row: Option<(String, i64)> = tx
-        .query_row(
-            "SELECT document_id,revision
-             FROM document_collection_memberships WHERE id=?1",
-            [&input.membership_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let Some((document_id, revision)) = row else {
+    if filed_subject(&tx, &input.membership_id)?.is_none() {
         return Err(membership_not_found());
-    };
-    if revision != input.revision {
+    }
+    if input.revision != MEMBERSHIP_REVISION {
         return Err(membership_changed());
     }
-    let shape = load_document_shape(&tx, &document_id)?;
-    let normalized = validate_and_normalize_ranges(&tx, &shape, input.ranges.clone())?;
-    tx.execute(
-        "DELETE FROM document_collection_ranges WHERE membership_id=?1",
-        [&input.membership_id],
-    )
-    .map_err(CommandError::database)?;
-    for range in normalized {
-        let range_id = generate_id(&tx)?;
-        tx.execute(
-            "INSERT INTO document_collection_ranges(
-                 id,membership_id,unit_kind,start_unit,end_unit,source_sha256,created_at
-             ) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![
-                range_id,
-                input.membership_id,
-                range.unit_kind,
-                range.start_unit,
-                range.end_unit,
-                shape.sha256,
-                now
-            ],
-        )
-        .map_err(CommandError::database)?;
-    }
-    let changed = tx
-        .execute(
-            "UPDATE document_collection_memberships
-             SET updated_at=?1,revision=revision+1
-             WHERE id=?2 AND revision=?3",
-            params![now, input.membership_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if changed != 1 {
-        return Err(membership_changed());
-    }
+    subjects::replace_study_ranges(&tx, &input.membership_id, input.ranges.clone(), now)?;
     bump_organization(&tx, input.expected_organization_revision, now)?;
     let result = load_organization(&tx)?;
     store_receipt(&tx, &input.operation_id, &request_hash, &result, now)?;
     tx.commit().map_err(CommandError::database)?;
     Ok(result)
+}
+
+/// The subject a membership's document is filed in, if it is filed.
+fn filed_subject(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<Option<String>, CommandError> {
+    Ok(subjects::document_subject(connection, document_id)?.flatten())
 }
 
 pub(crate) fn resolve_selection(
@@ -1071,12 +927,12 @@ fn load_membership_sources(
     let ids = serde_json::to_string(collection_ids).map_err(CommandError::serialization)?;
     let mut statement = connection
         .prepare(
-            "SELECT m.collection_id,m.id,m.revision,m.document_id,
+            "SELECT d.subject_id,d.id,
                     r.id,r.unit_kind,r.start_unit,r.end_unit,r.source_sha256,r.created_at
-             FROM document_collection_memberships m
-             LEFT JOIN document_collection_ranges r ON r.membership_id=m.id
-             WHERE m.collection_id IN (SELECT value FROM json_each(?1))
-             ORDER BY m.collection_id,m.sort_order,m.id,r.start_unit,r.end_unit,r.id",
+             FROM documents d
+             LEFT JOIN document_study_ranges r ON r.document_id=d.id
+             WHERE d.subject_id IN (SELECT value FROM json_each(?1))
+             ORDER BY d.subject_id,d.title COLLATE NOCASE,d.id,r.start_unit,r.end_unit,r.id",
         )
         .map_err(CommandError::database)?;
     let mut rows = statement.query([ids]).map_err(CommandError::database)?;
@@ -1084,28 +940,26 @@ fn load_membership_sources(
 
     while let Some(row) = rows.next().map_err(CommandError::database)? {
         let collection_id: String = row.get(0).map_err(CommandError::database)?;
-        let membership_id: String = row.get(1).map_err(CommandError::database)?;
-        let membership_revision: i64 = row.get(2).map_err(CommandError::database)?;
-        let document_id: String = row.get(3).map_err(CommandError::database)?;
+        let document_id: String = row.get(1).map_err(CommandError::database)?;
         let entry = map
-            .entry(membership_id.clone())
+            .entry(document_id.clone())
             .or_insert_with(|| MembershipSource {
                 collection_id,
-                membership_id: membership_id.clone(),
-                membership_revision,
-                document_id,
+                membership_id: document_id.clone(),
+                membership_revision: MEMBERSHIP_REVISION,
+                document_id: document_id.clone(),
                 ranges: Vec::new(),
             });
-        let range_id: Option<String> = row.get(4).map_err(CommandError::database)?;
+        let range_id: Option<String> = row.get(2).map_err(CommandError::database)?;
         if let Some(range_id) = range_id {
             entry.ranges.push(DocumentCollectionRangeDto {
                 id: range_id,
-                membership_id: membership_id.clone(),
-                unit_kind: row.get(5).map_err(CommandError::database)?,
-                start_unit: row.get(6).map_err(CommandError::database)?,
-                end_unit: row.get(7).map_err(CommandError::database)?,
-                source_sha256: row.get(8).map_err(CommandError::database)?,
-                created_at: row.get(9).map_err(CommandError::database)?,
+                membership_id: document_id,
+                unit_kind: row.get(3).map_err(CommandError::database)?,
+                start_unit: row.get(4).map_err(CommandError::database)?,
+                end_unit: row.get(5).map_err(CommandError::database)?,
+                source_sha256: row.get(6).map_err(CommandError::database)?,
+                created_at: row.get(7).map_err(CommandError::database)?,
             });
         }
     }
@@ -1334,39 +1188,8 @@ fn require_collection(connection: &Connection, collection_id: &str) -> Result<()
     }
 }
 
-fn next_collection_order(connection: &Connection) -> Result<i64, CommandError> {
-    connection
-        .query_row(
-            "SELECT COALESCE(MAX(sort_order),0)+?1 FROM document_collections",
-            [ORDER_STEP],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
-}
-
-fn next_membership_order(
-    connection: &Connection,
-    collection_id: &str,
-) -> Result<i64, CommandError> {
-    connection
-        .query_row(
-            "SELECT COALESCE(MAX(sort_order),0)+?1
-             FROM document_collection_memberships WHERE collection_id=?2",
-            params![ORDER_STEP, collection_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
-}
-
 fn organization_revision(connection: &Connection) -> Result<i64, CommandError> {
-    connection
-        .query_row(
-            "SELECT revision FROM document_collection_organization
-             WHERE singleton_id=1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
+    subjects::revision(connection, Revision::DocumentFiling)
 }
 
 fn assert_organization_revision(
@@ -1381,15 +1204,7 @@ fn assert_organization_revision(
 }
 
 fn bump_organization(tx: &Transaction<'_>, expected: i64, now: i64) -> Result<(), CommandError> {
-    let changed = tx
-        .execute(
-            "UPDATE document_collection_organization
-             SET revision=revision+1,updated_at=?1
-             WHERE singleton_id=1 AND revision=?2",
-            params![now, expected],
-        )
-        .map_err(CommandError::database)?;
-    if changed == 1 {
+    if subjects::bump(tx, Revision::DocumentFiling, Some(expected), now)? {
         Ok(())
     } else {
         Err(organization_changed())
@@ -1457,14 +1272,8 @@ fn validate_operation_id(value: &str) -> Result<(), CommandError> {
 }
 
 fn validate_name(value: String) -> Result<String, CommandError> {
-    let value = value.trim();
-    let count = value.chars().count();
-    if count == 0 || count > MAX_COLLECTION_NAME_CHARS {
-        return Err(invalid(
-            "Document folder names must contain between 1 and 120 characters.",
-        ));
-    }
-    Ok(value.to_string())
+    subjects::trimmed_name(&value)
+        .ok_or_else(|| invalid("Document folder names must contain between 1 and 120 characters."))
 }
 
 fn validate_revision(value: i64, label: &str) -> Result<(), CommandError> {
@@ -1640,15 +1449,19 @@ mod tests {
                 assert_eq!(second.collections[0].sort_order, ORDER_STEP);
                 assert_eq!(second.collections[1].sort_order, ORDER_STEP * 2);
 
-                let trigger_error = connection
-                    .execute(
-                        "UPDATE document_collections SET parent_id=?1 WHERE id=?2",
-                        params![second.collections[0].id, second.collections[1].id],
+                let can_nest: bool = connection
+                    .query_row(
+                        "SELECT EXISTS(
+                             SELECT 1 FROM pragma_table_info('document_collections')
+                             WHERE name='parent_id'
+                         )",
+                        [],
+                        |row| row.get(0),
                     )
-                    .unwrap_err();
-                assert!(trigger_error
-                    .to_string()
-                    .contains("document_collections_parent_must_be_null"));
+                    .map_err(CommandError::database)?;
+                assert!(!can_nest);
+                // Each collection is a subject, so the deck library lists it too.
+                assert_eq!(subjects::revision(connection, Revision::Library)?, 3);
                 Ok(())
             })
             .unwrap();
@@ -1735,7 +1548,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_selected_folders_deduplicate_shared_documents_and_exclude_ranges() {
+    fn a_document_has_one_folder_and_selections_deduplicate_and_exclude_ranges() {
         let database = Database::open_in_memory().unwrap();
         database
             .with_connection(|connection| {
@@ -1768,11 +1581,18 @@ mod tests {
                         expected_organization_revision: with_first.revision,
                     },
                 )?;
+                // A document is in at most one subject, so adding it to Week 2
+                // moved it there.
+                assert_eq!(organization.memberships.len(), 1);
+                assert_eq!(organization.memberships[0].collection_id, second_folder.id);
                 let snapshot = resolve_selection(
                     connection,
                     SourceSelectionInput {
-                        collection_ids: vec![first_folder.id, second_folder.id],
-                        documents: vec![],
+                        collection_ids: vec![first_folder.id, second_folder.id.clone()],
+                        documents: vec![SelectedDocumentInput {
+                            document_id: document.clone(),
+                            ranges: vec![],
+                        }],
                         exclusions: vec![SelectedDocumentInput {
                             document_id: document,
                             ranges: vec![SourceRangeInput {
@@ -1784,7 +1604,11 @@ mod tests {
                     },
                 )?;
                 assert_eq!(snapshot.members.len(), 1);
-                assert_eq!(snapshot.members[0].collection_references.len(), 2);
+                assert_eq!(snapshot.members[0].collection_references.len(), 1);
+                assert_eq!(
+                    snapshot.members[0].collection_references[0].collection_id,
+                    second_folder.id
+                );
                 assert_eq!(
                     snapshot.members[0].ranges,
                     vec![
