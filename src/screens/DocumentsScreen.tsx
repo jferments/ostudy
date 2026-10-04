@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { isActiveArtifactJob, useDocumentArtifactProgress } from "../controllers/useDocumentArtifactProgress";
+import { generationInstructionsError } from "../ipc/generationInstructions";
 import { MetadataDialog, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
 import { ResponsiveActionGroup, type ResponsiveAction } from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
@@ -17,6 +18,7 @@ import {
 } from "./documents/DocumentProgress";
 import { LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
+import { GenerationInstructionsField } from "./documents/GenerationInstructionsField";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
@@ -65,6 +67,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     isUploading || documents.some((document) => document.lifecycleState === "processing")
       || busyDocumentIds.size > 0 || guideGeneratingDocumentIds.size > 0,
   );
+  const [uploadInstructions, setUploadInstructions] = useState("");
+  const [instructionDrafts, setInstructionDrafts] = useState<Record<string, string>>({});
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
@@ -118,13 +122,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             >
               Upload images
             </Button>
-            <Button variant="primary" disabled={isUploading} onClick={() => void uploadDocument()}>
+            <Button variant="primary"
+              disabled={isUploading || generationInstructionsError(uploadInstructions) !== null}
+              onClick={() => void uploadDocument(uploadInstructions)}>
               {isUploading ? "Choose a document…" : "Upload document"}
             </Button>
           </div>
         }
       />
       {props.headerSupplement}
+      <GenerationInstructionsField compact label="Instructions for new document flashcards"
+        value={uploadInstructions} onChange={setUploadInstructions} disabled={isUploading} />
       <DocumentCollectionsWorkspace
         documents={documents}
         refreshDecks={props.refreshDecks}
@@ -151,6 +159,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             const cardBusy = busyDocumentIds.has(document.id);
             const deleting = deletingDocumentIds.has(document.id);
             const busy = cardBusy || deleting || guideGenerating;
+            const instructions = instructionDrafts[document.id] ?? jobs.generationInstructionsFor(document);
+            const invalidInstructions = generationInstructionsError(instructions) !== null;
             const canceling = cancelingDocumentIds.has(document.id);
             const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
             const live = generationProgress[document.id] ?? null;
@@ -215,15 +225,15 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
               id: "retry",
               label: cardBusy ? "Retrying…" : "Retry generation",
               placement: "overflow-only",
-              onSelect: () => void retry(document),
-              disabled: busy,
+              onSelect: () => void retry(document, instructions),
+              disabled: busy || invalidInstructions,
             });
             if (canGenerateMore) actions.push({
               id: "generate-more",
               label: cardBusy ? "Generating…" : "Generate more cards",
               placement: "overflow-only",
-              onSelect: () => void generateMore(document),
-              disabled: busy,
+              onSelect: () => void generateMore(document, instructions),
+              disabled: busy || invalidInstructions,
             });
             return (
               <Surface as="article" key={document.id} className={styles.card}>
@@ -254,6 +264,9 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                     <span className={styles.filename}>{document.originalFilename}</span>
                     <span className={styles.cardCount}>{document.generatedCardCount} card{document.generatedCardCount === 1 ? "" : "s"}</span>
                   </div>
+                  <GenerationInstructionsField compact value={instructions}
+                    disabled={busy || document.lifecycleState === "processing"}
+                    onChange={(value) => setInstructionDrafts((current) => ({ ...current, [document.id]: value }))} />
                   {showArtifacts ? (
                     <LearningArtifactProgressPanel
                       document={document}

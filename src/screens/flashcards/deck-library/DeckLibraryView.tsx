@@ -43,7 +43,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   if (!hasAnyDecks) {
     return (
       <div ref={libraryRef} className={styles.library} data-deck-library-pointer-surface="true">
-        <EmptyState title="No decks have been created yet." icon={<Icon name="cards" size={30} />} description="Create a new deck of flashcards here, or use Import deck from file above to add an existing flashcard set." actions={<Button variant="primary" onClick={controller.openDeckCreator}><Icon name="plus" size={18} /> Create a new deck</Button>} />
+        <EmptyState title="No decks have been created yet." icon={<Icon name="cards" size={30} />} description="Create a new deck of flashcards here, or use Import deck above to add an existing flashcard set." actions={<Button variant="primary" onClick={controller.openDeckCreator}><Icon name="plus" size={18} /> Create a new deck</Button>} />
       </div>
     );
   }
@@ -119,6 +119,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
                   onToggleCollapsed={() => controller.toggleFolder(folder.id)}
                   onOpenDeck={controller.openDeck}
                   onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+                  onMergeDeck={controller.openDeckMerger}
                   onExportDeck={onExportDeck}
                   onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
                   onRename={() => controller.openFolderRenamer(folder.id)}
@@ -212,6 +213,7 @@ function UnsortedDeckItem({
       reorder={reorder}
       onOpen={() => controller.openDeck(deck.id)}
       onPractice={() => void onPracticeDeck(deck.id)}
+      onMerge={() => controller.openDeckMerger(deck.id)}
       onExport={() => onExportDeck(deck)}
       onDelete={() => void controller.removeDeck(deck.id)}
       onToggleSelected={() => controller.toggleDeckSelected(deck)}

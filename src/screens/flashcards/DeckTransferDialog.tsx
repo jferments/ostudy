@@ -6,7 +6,7 @@ import type { DeckSummary } from "../../ipc/decks";
 import type { OperationProgress } from "../../ipc/operationProgress";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { Icon } from "../../ui/icons/Icon";
-import { Dialog } from "../../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { Badge } from "../../ui/primitives/Badge";
 import { Panel } from "../../ui/primitives/Panel";
@@ -103,7 +103,7 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
 
   const importing = request.kind === "import";
   const activeAnkiProgress = importing && busy === "import" && importProgress?.operationKind === "anki_import" ? importProgress : null;
-  const title = importedOutcome ? "Anki import complete" : importing ? "Import deck from file"
+  const title = importedOutcome ? "Anki import complete" : importing ? "Import deck"
     : exportDecks.length === 1 ? `Export “${exportDecks[0]?.name ?? "deck"}”` : `Export ${exportDecks.length} selected decks`;
   const description = importedOutcome ? "The deck has been saved. Review conversion details before studying."
     : importing ? "Import an ostudy .studydeck file, a compatible Anki .apkg deck, or generated-card JSON."
@@ -111,18 +111,15 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
         : "Each selected deck is saved as its own portable .studydeck file.";
 
   return <Dialog title={title} description={description} width="medium" busy={busy !== null} dismissible={busy === null} onClose={onClose}>
-    <div className="tw:grid tw:min-w-0 tw:gap-6">
+    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:p-4 tw:sm:p-5">
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {importedOutcome?.ankiReport ? <AnkiImportReportView report={importedOutcome.ankiReport} message={importedOutcome.message} />
         : activeAnkiProgress ? <AnkiProgressView progress={activeAnkiProgress} />
-          : importing ? <Panel>
-            <div className="tw:flex tw:items-start tw:gap-4">
-              <span className="tw:grid tw:size-12 tw:shrink-0 tw:place-items-center tw:rounded-xl tw:bg-accent tw:text-accent-foreground" aria-hidden="true"><Icon name="folder-open" size={26} /></span>
-              <div className="tw:min-w-0"><strong className="tw:text-section tw:font-semibold">Choose a flashcard file</strong>
-                <p className="tw:mt-2 tw:mb-4 tw:text-label tw:leading-relaxed tw:text-muted-foreground">Import an ostudy deck, compatible Anki .apkg deck, or validated generated-card JSON file. For newer Anki exports, enable “Support older Anki versions” and “Include media” when exporting from Anki.</p>
-                <div className="tw:flex tw:flex-wrap tw:gap-2"><Badge>.studydeck</Badge><Badge>Anki .apkg</Badge><Badge>.ostudy.json</Badge></div>
-              </div>
-            </div>
+          : importing ? <Panel title="Choose a flashcard file">
+            <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground">
+              Import an ostudy deck, compatible Anki .apkg deck, or validated generated-card JSON file. For newer Anki exports, enable “Support older Anki versions” and “Include media” when exporting from Anki.
+            </p>
+            <div className="tw:flex tw:flex-wrap tw:gap-2"><Badge>.studydeck</Badge><Badge>Anki .apkg</Badge><Badge>.ostudy.json</Badge></div>
           </Panel> : <Panel title="Decks to export" aria-label="Decks to export">
             <ul className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
               {exportDecks.map((deck) => <li key={deck.id} className="tw:flex tw:items-center tw:gap-3 tw:rounded-lg tw:bg-muted tw:p-3">
@@ -132,15 +129,15 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
               </li>)}
             </ul>
           </Panel>}
-      <div className="tw:flex tw:flex-wrap tw:justify-end tw:gap-3">
+      <DialogActions>
         <Button variant="ghost" disabled={busy !== null} onClick={onClose}>{importedOutcome ? "Close" : "Cancel"}</Button>
         {importedOutcome ? <Button variant="primary" onClick={() => void openImportedDeck(importedOutcome)}>{onImportedDeck ? "Open imported deck" : "Done"}</Button>
-          : importing ? <Button variant="primary" loading={busy === "import"} onClick={() => void importDeck()}><Icon name="folder-open" size={18} />{busy === "import" ? "Importing…" : "Choose file"}</Button>
+          : importing ? <Button variant="primary" loading={busy === "import"} onClick={() => void importDeck()}>{busy === "import" ? "Importing…" : "Import deck"}</Button>
             : <>
               {canShare ? <Button variant="secondary" loading={busy === "share"} disabled={busy !== null} onClick={() => void shareDeck()}><Icon name="export" size={18} /> Share</Button> : null}
               <Button variant="primary" loading={busy === "export"} disabled={busy !== null || exportDecks.length === 0} onClick={() => void saveDecks()}><Icon name="save" size={18} />{exportDecks.length === 1 ? "Save file" : "Save deck files"}</Button>
             </>}
-      </div>
+      </DialogActions>
     </div>
   </Dialog>;
 }

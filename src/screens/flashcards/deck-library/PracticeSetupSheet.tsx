@@ -7,7 +7,7 @@ import type { PracticeWorkloadOverview, SelectedPracticeRequest } from "../../..
 import type { TagSummary } from "../../../ipc/tags";
 import { PerformanceProfiler } from "../../../testing/PerformanceProfiler";
 import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
-import { Sheet } from "../../../ui/overlays/Dialog";
+import { DialogActions, Sheet } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
 import {
@@ -154,7 +154,7 @@ export function PracticeSetupSheet({
     <PerformanceProfiler id="practice-setup">
       <Sheet title="Practice selected decks" description="Review the selected decks and optional tags before starting scheduled or extra study."
         width="medium" onClose={onClose} busy={isStarting} dismissible={!isStarting}>
-        <div className="tw:grid tw:gap-6" data-layout-mode={layoutMode}>
+        <div className="tw:grid tw:min-w-0 tw:gap-6 tw:p-4 tw:sm:p-5" data-layout-mode={layoutMode}>
           <Panel title="Selected decks" actions={<Badge>{scope.decks.length} {scope.decks.length === 1 ? "deck" : "decks"}</Badge>}>
             <ul className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
               {scope.decks.map((deck) => <li key={deck.id} className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
@@ -211,10 +211,10 @@ export function PracticeSetupSheet({
             </p> : null}
             {startError ? <InlineNotice kind="error">{startError}</InlineNotice> : null}
           </> : null}
-          <div className="tw:flex tw:flex-wrap tw:justify-end tw:gap-3">
+          <DialogActions>
             <Button disabled={isStarting} onClick={onClose}>Cancel</Button>
             <Button variant="primary" loading={isStarting} disabled={!request || isStarting} onClick={() => void start()}>Start practice</Button>
-          </div>
+          </DialogActions>
         </div>
       </Sheet>
     </PerformanceProfiler>

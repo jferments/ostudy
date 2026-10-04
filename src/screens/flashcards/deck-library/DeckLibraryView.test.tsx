@@ -112,7 +112,7 @@ describe("DeckLibraryView", () => {
     renderView(emptyController);
 
     expect(screen.getByRole("heading", { name: "No decks have been created yet." })).toBeTruthy();
-    expect(screen.getByText(/Import deck from file above/u)).toBeTruthy();
+    expect(screen.getByText(/Import deck above/u)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Folders" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Unsorted decks" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Collapse all|Expand all/u })).toBeNull();

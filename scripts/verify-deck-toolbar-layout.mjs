@@ -26,8 +26,8 @@ const failures = [];
 expectRecipe("root", ["tw:@container/deck-library"], "deck-library container");
 expectRecipe("toolbar", ["tw:flex", "tw:justify-end"], "deck toolbar");
 expectRecipe("toolbarActions", ["tw:flex", "tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"], "intrinsic toolbar actions at every width");
-expectRecipe("importAction", ["tw:[&_svg]:stroke-[2.15]"], "prominent import icon");
-expectMatches(rootSource, /icon="folder-open"\s+iconSize=\{24\}/u, "24px contextual import icon");
+expectContains(rootSource, "Import deck", "labeled import action");
+expectAbsent(rootSource, 'label="Import deck from file"', "retired icon-only import action");
 expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/deck-library:w-full", "tw:@max-[620px]/deck-library:justify-stretch"], "content-width compact folder controls");
 expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
 expectContains(folderSource, '<IconButton', "shared folder reorder control");
@@ -73,15 +73,11 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Deck layout, intrinsic compact toolbar actions, prominent import affordance, row pointer surfaces, semantic drag feedback, keyboard reorder controls, and coarse-pointer targets are consistent.",
+  "OK   Deck layout, intrinsic compact toolbar actions, labeled import affordance, row pointer surfaces, semantic drag feedback, keyboard reorder controls, and coarse-pointer targets are consistent.",
 );
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
-}
-
-function expectMatches(source, expected, label) {
-  if (!expected.test(source)) failures.push(`Missing ${label}: ${expected}`);
 }
 
 function expectAbsent(source, forbidden, label) {

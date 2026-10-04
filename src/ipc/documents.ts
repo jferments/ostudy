@@ -1,5 +1,6 @@
 import { invoke } from "./transport";
 
+import { generationInstructionsInput, type GenerationInstructionsInput } from "./generationInstructions";
 import type { QuestionFamily, QuestionGenerationPolicy } from "./questionGeneration";
 import type { SourceLocator } from "./studyGuides";
 
@@ -52,7 +53,7 @@ export interface DocumentGenerationProgress {
 export interface GenerationReport {
   schemaVersion: 1;
   generatedAt: number;
-  requestedPolicy: QuestionGenerationPolicy;
+  requestedPolicy: QuestionGenerationPolicy & GenerationInstructionsInput;
   candidateNoteCount: number;
   selectedNoteCount: number;
   curationRemovedCount: number;
@@ -177,33 +178,40 @@ export async function importDocument(stagedFileId: string): Promise<ImportedDocu
 
 export async function importDocumentAndGenerateFlashcards(
   stagedFileId: string,
+  generationInstructions?: string,
 ): Promise<DocumentGenerationResult> {
+  const guidance = generationInstructionsInput(generationInstructions);
   // Establish a durable document identity before the long-running provider
   // request begins. That lets Documents expose an exact Stop action while the
   // generation command remains in flight.
   const imported = await importDocument(stagedFileId);
-  return retryDocumentFlashcardGeneration(imported.documentId);
+  return retryDocumentFlashcardGeneration(imported.documentId, guidance.generationInstructions);
 }
 
-export async function startDocumentFlashcardGeneration(documentId: string): Promise<void> {
+export async function startDocumentFlashcardGeneration(
+  documentId: string,
+  generationInstructions?: string,
+): Promise<void> {
   await invoke("start_document_flashcard_generation", {
-    input: { documentId },
+    input: { documentId, ...generationInstructionsInput(generationInstructions) },
   });
 }
 
 export async function retryDocumentFlashcardGeneration(
   documentId: string,
+  generationInstructions?: string,
 ): Promise<DocumentGenerationResult> {
   return invoke<DocumentGenerationResult>("run_document_flashcard_generation", {
-    input: { documentId },
+    input: { documentId, ...generationInstructionsInput(generationInstructions) },
   });
 }
 
 export async function generateMoreDocumentFlashcards(
   documentId: string,
+  generationInstructions?: string,
 ): Promise<AdditionalDocumentGenerationResult> {
   return invoke<AdditionalDocumentGenerationResult>("generate_more_pdf_flashcards", {
-    input: { documentId },
+    input: { documentId, ...generationInstructionsInput(generationInstructions) },
   });
 }
 

@@ -18,7 +18,8 @@ import {
   questionDraftReady,
   type QuestionEditorDraft,
 } from "./questionDraft";
-import type { OcclusionEditorDraft } from "./occlusionDraft";
+import { occlusionStudyQuestions, type OcclusionEditorDraft } from "./occlusionDraft";
+import { withOcclusionDefaults } from "./occlusionQuestionDefaults";
 import { useOcclusionSource } from "./useOcclusionImage";
 import { useOcclusionPreview } from "./useOcclusionPreview";
 
@@ -117,17 +118,19 @@ function ObjectiveDraftPreview({ draft, assets, disabled, onError }: QuestionDra
 function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError }: QuestionDraftPreviewProps & {
   draft: OcclusionEditorDraft;
 }) {
+  const questions = occlusionStudyQuestions(draft);
   const [revealed, setRevealed] = useState(false);
-  const [questionId, setQuestionId] = useState(draft.selectedQuestionId ?? draft.questions[0]?.id ?? "");
-  const selectedQuestionId = draft.questions.some((item) => item.id === questionId)
+  const [questionId, setQuestionId] = useState(draft.selectedQuestionId ?? questions[0]?.id ?? "");
+  const selectedQuestionId = questions.some((item) => item.id === questionId)
     ? questionId
-    : draft.selectedQuestionId ?? draft.questions[0]?.id ?? "";
+    : questions.find((item) => item.id === draft.selectedQuestionId)?.id ?? questions[0]?.id ?? "";
   const previewDraft = { ...draft, selectedQuestionId: selectedQuestionId || null };
   const source = useOcclusionSource(draft.imageAssetId);
   const preview = useOcclusionPreview(previewDraft, assetDraftId, true, revealed);
-  const question = draft.questions.find((item) => item.id === selectedQuestionId) ?? null;
+  const selected = questions.find((item) => item.id === selectedQuestionId);
+  const question = selected ? withOcclusionDefaults(selected) : null;
   const size = draft.imageSize ?? source.size;
-  const targets = draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
+  const targets = revealed ? [] : draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
   useEffect(() => { setRevealed(false); }, [selectedQuestionId, draft.imageAssetId]);
   return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>
@@ -135,12 +138,12 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
       <Button variant="primary" size="small" disabled={disabled || !preview.ready}
         onClick={() => setRevealed((value) => !value)}>{revealed ? "Show question" : "Reveal answer"}</Button>
     </div>
-    {draft.questions.length > 1 ? <FormField label="Presentation">
+    {questions.length > 1 ? <FormField label="Presentation">
       <NativeSelect value={selectedQuestionId} onChange={(event) => {
         setQuestionId(event.currentTarget.value);
         setRevealed(false);
       }}>
-        {draft.questions.map((item, index) => <option key={item.id} value={item.id}>Question {index + 1}</option>)}
+        {questions.map((item, index) => <option key={item.id} value={item.id}>Question {index + 1}</option>)}
       </NativeSelect>
     </FormField> : null}
     {question ? <div className="tw:grid tw:gap-4">
@@ -155,6 +158,6 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
         <h3>Answer</h3><RichTextView document={question.answer} assets={assets} onLinkError={onError} />
         {question.explanation ? <RichTextView document={question.explanation} assets={assets} onLinkError={onError} /> : null}
       </section> : null}
-    </div> : <InlineNotice>Choose a question to preview.</InlineNotice>}
+    </div> : <InlineNotice>Draw a region to preview its study card.</InlineNotice>}
   </section>;
 }

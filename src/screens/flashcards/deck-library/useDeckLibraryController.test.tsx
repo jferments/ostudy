@@ -39,6 +39,7 @@ interface Harness {
   moveFolder: ReturnType<typeof vi.fn>;
   createDeck: ReturnType<typeof vi.fn>;
   setArchived: ReturnType<typeof vi.fn>;
+  merge: ReturnType<typeof vi.fn>;
   deleteDeck: ReturnType<typeof vi.fn>;
   undo: ReturnType<typeof vi.fn>;
   invalidate: ReturnType<typeof vi.fn>;
@@ -61,6 +62,19 @@ function createHarness(): Harness {
     archivedAt: archived ? 50 : null,
     revision: 2,
   }));
+  const merge = vi.fn().mockResolvedValue({
+    operationId: "m".repeat(32),
+    sourceDeckId: deckA.id,
+    destinationDeckId: deckB.id,
+    movedNoteCount: 1,
+    movedCardCount: 1,
+    retargetedDocumentCount: 0,
+    retargetedStudyTargetCount: 0,
+    sourceRevision: 2,
+    destinationRevision: 2,
+    sourceArchivedAt: 50,
+    mergedAt: 50,
+  });
   const deleteDeck = vi.fn().mockResolvedValue({
     undoToken: "u".repeat(32),
     undoExpiresAt: 999,
@@ -74,7 +88,9 @@ function createHarness(): Harness {
     deleteFolder,
     moveDeck,
     moveFolder,
-    createDeckController: () => ({ create: createDeck, setArchived, deleteDeck, undo, invalidate }),
+    createDeckController: () => ({
+      create: createDeck, setArchived, merge, deleteDeck, undo, invalidate,
+    }),
   };
   return {
     dependencies,
@@ -86,6 +102,7 @@ function createHarness(): Harness {
     moveFolder,
     createDeck,
     setArchived,
+    merge,
     deleteDeck,
     undo,
     invalidate,
@@ -234,6 +251,57 @@ describe("useDeckLibraryController", () => {
     expect(result.current.collapsedFolderIds.has(folder.id)).toBe(true);
     act(() => result.current.toggleArchived());
     expect(result.current.showArchived).toBe(true);
+  });
+
+  it("reuses one exact merge operation after an ambiguous reply and reconciles only after success", async () => {
+    const committed = {
+      operationId: "ignored-by-fixture",
+      sourceDeckId: deckA.id,
+      destinationDeckId: deckB.id,
+      movedNoteCount: deckA.sourceNoteCount,
+      movedCardCount: deckA.generatedCardCount,
+      retargetedDocumentCount: 1,
+      retargetedStudyTargetCount: 1,
+      sourceRevision: deckA.revision + 1,
+      destinationRevision: deckB.revision + 1,
+      sourceArchivedAt: 50,
+      mergedAt: 50,
+    };
+    harness.merge
+      .mockRejectedValueOnce(new Error("Reply interrupted"))
+      .mockImplementationOnce(async (input) => ({ ...committed, operationId: input.operationId }));
+    const { result } = renderController(harness);
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    act(() => result.current.openDeckMerger(deckA.id));
+    expect(result.current.sheet).toMatchObject({ kind: "merge-deck", source: deckA });
+    const operationId =
+      result.current.sheet?.kind === "merge-deck" ? result.current.sheet.operationId : "";
+
+    await act(async () => result.current.mergeDeck(deckB.id));
+    expect(harness.merge).toHaveBeenCalledTimes(1);
+    const firstRequest = harness.merge.mock.calls[0]?.[0];
+    expect(firstRequest).toEqual({
+      operationId,
+      sourceDeckId: deckA.id,
+      destinationDeckId: deckB.id,
+      sourceRevision: deckA.revision,
+      destinationRevision: deckB.revision,
+      expectedSourceNoteCount: deckA.sourceNoteCount,
+      expectedSourceCardCount: deckA.generatedCardCount,
+    });
+    expect(result.current.sheet?.kind).toBe("merge-deck");
+    expect(harness.refreshDecks).not.toHaveBeenCalled();
+
+    await act(async () => result.current.mergeDeck(deckB.id));
+    expect(harness.merge).toHaveBeenCalledTimes(2);
+    expect(harness.merge.mock.calls[1]?.[0]).toEqual(firstRequest);
+    expect(result.current.sheet).toBeNull();
+    expect(harness.refreshDecks).toHaveBeenCalledTimes(1);
+    expect(harness.showToast).toHaveBeenCalledWith(
+      "success",
+      expect.stringContaining("Merged 1 card from “Pharmacology” into “Anatomy”"),
+    );
   });
 
   it("confirms deck deletion, exposes undo, and refreshes both parent and organization", async () => {

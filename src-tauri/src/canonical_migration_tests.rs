@@ -167,7 +167,7 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         latest_migration,
         (
             CURRENT_SCHEMA_VERSION,
-            "selection_deck_operations".to_string()
+            "study_target_generation_instructions".to_string()
         )
     );
     let migration_count: i64 = connection

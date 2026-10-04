@@ -126,7 +126,7 @@ find "$TEST_ROOT/data/io.github.jferments.ostudy.dev/restore-transactions" \
 fixture_env ./run-app.sh
 ```
 
-The library should now be release-v1 schema 2 with integrity/relationships valid.
+The library should now be at the current release-v1 schema with integrity/relationships valid.
 The verified checkpoint, metadata, commit marker and previous library remain.
 A second normal launch should not create another upgrade transaction. Use this
 same root for restart checks and retain it until acceptance evidence is recorded.

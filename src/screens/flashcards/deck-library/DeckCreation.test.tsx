@@ -17,7 +17,7 @@ it("creates a named deck and opens its committed identity after refreshing the l
     createFolder: vi.fn(), updateFolder: vi.fn(), deleteFolder: vi.fn(),
     moveDeck: vi.fn(), moveFolder: vi.fn(),
     createDeckController: () => ({
-      create, setArchived: vi.fn(), deleteDeck: vi.fn(), undo: vi.fn(), invalidate: vi.fn(),
+      create, setArchived: vi.fn(), merge: vi.fn(), deleteDeck: vi.fn(), undo: vi.fn(), invalidate: vi.fn(),
     }),
   };
   const { result } = renderHook(() => useDeckLibraryController({

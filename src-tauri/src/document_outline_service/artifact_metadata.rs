@@ -454,18 +454,26 @@ fn apply_deck_metadata(
         return Ok(());
     };
 
-    let name_is_generated = existing.and_then(|value| value.applied_deck_title.as_deref())
-        == Some(current_name.as_str())
-        || exact_source_deck_title(
+    // Once metadata exists, only values oStudy recorded as actually applied are
+    // generator-owned. Filename/empty-description heuristics are admission rules
+    // for an untracked legacy/first-time deck, not authority to overwrite later
+    // learner organization. This remains correct after backup/device sync because
+    // applied_* travels with document_artifact_metadata while merge receipts do not.
+    let name_is_generated = match existing {
+        Some(value) => value.applied_deck_title.as_deref() == Some(current_name.as_str()),
+        None => exact_source_deck_title(
             &current_name,
             source_title,
             &source.original_filename,
             &source.source_format,
-        );
-    let description_is_generated = existing
-        .and_then(|value| value.applied_deck_description.as_deref())
-        == Some(current_description.as_str())
-        || exact_generated_description(&current_description, &source.original_filename);
+        ),
+    };
+    let description_is_generated = match existing {
+        Some(value) => {
+            value.applied_deck_description.as_deref() == Some(current_description.as_str())
+        }
+        None => exact_generated_description(&current_description, &source.original_filename),
+    };
 
     let next_name = if name_is_generated {
         desired.deck_title.as_str()
@@ -541,6 +549,131 @@ fn record_applied_values(
 #[cfg(test)]
 mod source_title_tests {
     use super::*;
+    use crate::database::Database;
+
+    fn source_record(deck_id: Option<String>) -> SourceRecord {
+        SourceRecord {
+            current_title: "Source document".to_string(),
+            original_filename: "source.pdf".to_string(),
+            source_format: "pdf".to_string(),
+            source_fingerprint_sha256: "f".repeat(64),
+            generated_deck_id: deck_id,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    fn existing_metadata(deck_id: String) -> ExistingMetadata {
+        ExistingMetadata {
+            deck_id: Some(deck_id),
+            source_fingerprint_sha256: "f".repeat(64),
+            metadata_origin: "provider".to_string(),
+            generator_version: ARTIFACT_METADATA_GENERATOR_VERSION,
+            schema_version: ARTIFACT_METADATA_SCHEMA_VERSION,
+            prompt_version: ARTIFACT_METADATA_PROMPT_VERSION,
+            document_title: "Source document".to_string(),
+            deck_title: "Generated source deck".to_string(),
+            deck_description: "Generated source description".to_string(),
+            applied_document_title: Some("Source document".to_string()),
+            applied_deck_title: Some("Generated source deck".to_string()),
+            applied_deck_description: Some("Generated source description".to_string()),
+        }
+    }
+
+    #[test]
+    fn tracked_metadata_does_not_reclaim_a_learner_selected_destination() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                let destination = "d".repeat(32);
+                connection
+                    .execute(
+                        "INSERT INTO decks(
+                             id,name,description,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'NURS 112 - Exam 1','',0,1,1,7)",
+                        [&destination],
+                    )
+                    .map_err(CommandError::database)?;
+                let transaction = connection.transaction().map_err(CommandError::database)?;
+                let desired = DesiredMetadata {
+                    metadata_origin: "provider",
+                    document_title: "Source document".to_string(),
+                    deck_title: "Generated source deck revised".to_string(),
+                    deck_description: "Generated source description revised".to_string(),
+                };
+                apply_deck_metadata(
+                    &transaction,
+                    &destination,
+                    &source_record(Some(destination.clone())),
+                    "source.pdf",
+                    Some(&existing_metadata(destination.clone())),
+                    &desired,
+                    10,
+                )?;
+                let values: (String, String, i64) = transaction
+                    .query_row(
+                        "SELECT name,description,revision FROM decks WHERE id=?1",
+                        [&destination],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(values, ("NURS 112 - Exam 1".to_string(), String::new(), 7));
+                transaction.rollback().map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn first_time_untracked_generated_metadata_can_still_adopt_legacy_defaults() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                let deck_id = "e".repeat(32);
+                connection
+                    .execute(
+                        "INSERT INTO decks(
+                             id,name,description,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'source.pdf','',0,1,1,1)",
+                        [&deck_id],
+                    )
+                    .map_err(CommandError::database)?;
+                let transaction = connection.transaction().map_err(CommandError::database)?;
+                let desired = DesiredMetadata {
+                    metadata_origin: "provider",
+                    document_title: "Source document".to_string(),
+                    deck_title: "Generated source deck".to_string(),
+                    deck_description: "Generated source description".to_string(),
+                };
+                apply_deck_metadata(
+                    &transaction,
+                    &deck_id,
+                    &source_record(Some(deck_id.clone())),
+                    "source.pdf",
+                    None,
+                    &desired,
+                    10,
+                )?;
+                let values: (String, String, i64) = transaction
+                    .query_row(
+                        "SELECT name,description,revision FROM decks WHERE id=?1",
+                        [&deck_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(
+                    values,
+                    (
+                        "Generated source deck".to_string(),
+                        "Generated source description".to_string(),
+                        2,
+                    )
+                );
+                transaction.rollback().map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+    }
 
     #[test]
     fn chapter_marker_promotes_the_following_heading_to_document_scope() {

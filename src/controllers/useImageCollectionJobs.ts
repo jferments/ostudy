@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
 import { generateMoreDocumentFlashcards, listDocuments, retryDocumentFlashcardGeneration } from "../ipc/documents";
+import { generationInstructionsInput } from "../ipc/generationInstructions";
 import { listLatestDocumentStudyGuideJobs } from "../ipc/documentArtifactProgress";
 import type { StagedExternalFile } from "../ipc/externalFiles";
 import { amendImageSet, getImageSet, importImageSet, prepareImageSet,
@@ -20,6 +21,7 @@ export interface ImageCollectionJob {
   items: CollectionUploadItem[];
   phase: "idle" | "uploading" | "cards" | "guide" | "ready" | "failed" | "stopped";
   error: string | null;
+  generationInstructions?: string;
 }
 interface Selection {
   id: string;
@@ -67,6 +69,7 @@ export function useImageCollectionJobs(services: Services) {
     session.running = true;
     session.stopped = false;
     session.value.error = null;
+    const capturedInstructions = session.value.generationInstructions;
     try {
       while (!session.stopped) {
         while (session.batches.length > 0 && !session.stopped) {
@@ -143,8 +146,8 @@ export function useImageCollectionJobs(services: Services) {
           let count = 0;
           try {
             const result = document.generatedDeckId
-              ? await generateMoreDocumentFlashcards(id)
-              : await retryDocumentFlashcardGeneration(id);
+              ? await generateMoreDocumentFlashcards(id, capturedInstructions)
+              : await retryDocumentFlashcardGeneration(id, capturedInstructions);
             count = result.createdCardCount;
           } catch (error: unknown) {
             if (!document.generatedDeckId || getErrorCode(error) !== "document_no_additional_cards") throw error;
@@ -206,11 +209,25 @@ export function useImageCollectionJobs(services: Services) {
     }
   }, [publish]);
 
-  const addImages = useCallback((key: string, documentId: string | null, files: readonly File[]) => {
+  const addImages = useCallback((
+    key: string, documentId: string | null, files: readonly File[], generationInstructions?: string,
+  ) => {
     if (files.length === 0) return;
+    let captured: string;
+    try {
+      captured = generationInstructionsInput(generationInstructions).generationInstructions ?? "";
+    } catch (error: unknown) {
+      service.current.showToast("error", getErrorMessage(error));
+      return;
+    }
     let session = sessions.current.get(key);
+    if (session?.running && (session.value.generationInstructions ?? "") !== captured) {
+      service.current.showToast("error", "Wait for the current image processing to finish before changing its flashcard instructions. These images have not been added.");
+      return;
+    }
     if (!session) {
-      session = { key, value: { documentId, items: [], phase: "uploading", error: null },
+      session = { key, value: { documentId, items: [], phase: "uploading", error: null,
+        generationInstructions: captured },
         batches: [], running: false, stopped: false, needsCards: false, needsGuide: false, inspectNativeGuide: false };
       sessions.current.set(key, session);
     }
@@ -221,6 +238,7 @@ export function useImageCollectionJobs(services: Services) {
       service.current.showToast("error", "A collection supports up to 128 images and 512 MB. Add a smaller batch.");
       return;
     }
+    session.value.generationInstructions = captured;
     const selections = files.map((file) => ({ id: createOperationId(), file }));
     session.batches.push({ id: createOperationId(), selections });
     session.value.items.push(...selections.map(({ id, file }) => ({
@@ -230,9 +248,23 @@ export function useImageCollectionJobs(services: Services) {
     void drain(session);
   }, [drain, publish]);
 
-  const retryImages = useCallback((key: string) => {
+  const retryImages = useCallback((key: string, generationInstructions?: string) => {
     const session = sessions.current.get(key);
-    if (session) void drain(session);
+    if (!session || session.running) return;
+    try {
+      const captured = generationInstructionsInput(
+        generationInstructions ?? session.value.generationInstructions,
+      ).generationInstructions ?? "";
+      if (captured !== (session.value.generationInstructions ?? "") && session.value.documentId) {
+        // Explicitly changed intent is a new card pass; an unchanged retry must
+        // still only resume unfinished work after a committed card result.
+        session.needsCards = true;
+      }
+      session.value.generationInstructions = captured;
+      void drain(session);
+    } catch (error: unknown) {
+      service.current.showToast("error", getErrorMessage(error));
+    }
   }, [drain]);
 
   const removeFailedImage = useCallback((key: string, id: string) => {

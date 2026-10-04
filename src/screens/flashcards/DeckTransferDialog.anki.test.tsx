@@ -18,6 +18,7 @@ vi.mock("../../ui/overlays/Dialog", () => ({
   Dialog: ({ title, children }: { title: string; children: ReactNode }) => (
     <div role="dialog" aria-label={title}>{children}</div>
   ),
+  DialogActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../ui/primitives/Button", () => ({
   Button: ({ children, onClick, disabled }: {
@@ -60,7 +61,7 @@ describe("Anki import completion", () => {
       },
     );
     mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     const progress = await screen.findByRole("progressbar", { name: "Anki import progress" });
     expect(progress.getAttribute("aria-valuenow")).toBe("250");
     expect(progress.getAttribute("aria-valuemax")).toBe("1000");
@@ -78,7 +79,7 @@ describe("Anki import completion", () => {
       return new Promise<typeof outcome>((resolve) => { resolveImport = resolve; });
     });
     mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     expect((await screen.findByRole("status")).textContent).toContain("Reading Anki package");
     expect(screen.queryByRole("progressbar")).toBeNull();
     resolveImport(outcome);
@@ -87,11 +88,11 @@ describe("Anki import completion", () => {
 
   it("keeps the post-commit report visible until the user opens the imported deck", async () => {
     const { close, open } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
     expect(screen.getByLabelText("Anki import report").textContent).toContain("7 of 8 Anki cards imported");
     expect(screen.getByLabelText("Anki import report").textContent).toContain("complete static question/answer content was retained");
-    expect(screen.queryByRole("button", { name: /Choose file/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Import deck/ })).toBeNull();
     expect(close).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Compatibility details (1)" }));
@@ -107,7 +108,7 @@ describe("Anki import completion", () => {
   it("does not present a refresh failure as an import failure or permit a duplicate submit", async () => {
     const refresh = vi.fn().mockRejectedValue(new Error("refresh unavailable"));
     const { toast } = mount(refresh);
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     await screen.findByRole("dialog", { name: "Anki import complete" });
     expect(screen.getByRole("status").textContent).toContain("refresh unavailable");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -118,7 +119,7 @@ describe("Anki import completion", () => {
   it("reports navigation failure as committed success rather than retryable import failure", async () => {
     const open = vi.fn().mockRejectedValue(new Error("navigation unavailable"));
     const { toast } = mount(undefined, open);
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     await screen.findByRole("dialog", { name: "Anki import complete" });
     fireEvent.click(screen.getByRole("button", { name: "Open imported deck" }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("The deck was imported but could not be opened")));
@@ -128,7 +129,7 @@ describe("Anki import completion", () => {
   it("leaves unsupported-package errors in the existing import dialog", async () => {
     mocks.importFromFile.mockRejectedValue(new Error("Export with Support older Anki versions enabled."));
     const { close } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
     expect((await screen.findByRole("alert")).textContent).toContain("Support older Anki versions");
     expect(close).not.toHaveBeenCalled();
   });

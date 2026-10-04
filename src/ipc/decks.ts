@@ -34,6 +34,30 @@ export interface SetDeckArchivedInput {
   archived: boolean;
 }
 
+export interface MergeDecksInput {
+  operationId: string;
+  sourceDeckId: string;
+  destinationDeckId: string;
+  sourceRevision: number;
+  destinationRevision: number;
+  expectedSourceNoteCount: number;
+  expectedSourceCardCount: number;
+}
+
+export interface MergeDecksResult {
+  operationId: string;
+  sourceDeckId: string;
+  destinationDeckId: string;
+  movedNoteCount: number;
+  movedCardCount: number;
+  retargetedDocumentCount: number;
+  retargetedStudyTargetCount: number;
+  sourceRevision: number;
+  destinationRevision: number;
+  sourceArchivedAt: number;
+  mergedAt: number;
+}
+
 export interface SaveSelectionAsDeckInput {
   operationId: string;
   name: string;
@@ -121,6 +145,10 @@ export async function updateDeck(input: UpdateDeckInput): Promise<DeckSummary> {
 
 export async function setDeckArchived(input: SetDeckArchivedInput): Promise<DeckSummary> {
   return invoke<DeckSummary>("set_deck_archived", { input });
+}
+
+export async function mergeDecks(input: MergeDecksInput): Promise<MergeDecksResult> {
+  return invoke<MergeDecksResult>("merge_decks", { input });
 }
 
 export async function deleteDeck(deckId: string): Promise<DeletionResult> {

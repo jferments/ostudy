@@ -445,7 +445,9 @@ export function useAppController() {
           kind: "selected",
           deckIds: [request.deckId],
           tagIds: [],
-          shuffle: activeSettings.practiceShuffle,
+          // One-click deck Practice always permutes equal-priority cards.
+          // Selected-deck setup remains the explicit place to turn shuffling off.
+          shuffle: true,
           mode: "extra",
         },
         returnTarget,

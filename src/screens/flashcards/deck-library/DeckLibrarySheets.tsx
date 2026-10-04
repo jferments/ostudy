@@ -10,6 +10,7 @@ import { TextField } from "../../../ui/primitives/TextField";
 import { NativeSelect } from "../../../ui/primitives/NativeSelect";
 import { Textarea } from "../../../ui/primitives/FormControls";
 import { PracticeSetupSheet } from "./PracticeSetupSheet";
+import { DeckMergeSheet } from "../DeckMergeSheet";
 import type { LibrarySheetState } from "./types";
 
 interface DeckLibrarySheetsProps {
@@ -22,6 +23,7 @@ interface DeckLibrarySheetsProps {
   onCreateDeck(name: string, description: string): Promise<void>;
   onSaveFolder(name: string): Promise<void>;
   onMoveSelection(targetFolderId: string | null): Promise<void>;
+  onMergeDeck(destinationDeckId: string): Promise<void>;
   onStartPractice(request: SelectedPracticeRequest): void | Promise<void>;
 }
 
@@ -35,6 +37,7 @@ export function DeckLibrarySheets({
   onCreateDeck,
   onSaveFolder,
   onMoveSelection,
+  onMergeDeck,
   onStartPractice,
 }: DeckLibrarySheetsProps) {
   if (!sheet) return null;
@@ -48,6 +51,17 @@ export function DeckLibrarySheets({
         busy={busy}
         onClose={onClose}
         onMove={onMoveSelection}
+      />
+    );
+  }
+  if (sheet.kind === "merge-deck") {
+    return (
+      <DeckMergeSheet
+        source={sheet.source}
+        decks={decks}
+        busy={busy}
+        onClose={onClose}
+        onMerge={onMergeDeck}
       />
     );
   }
@@ -198,7 +212,10 @@ function FolderSheet({
 }: {
   sheet: Exclude<
     LibrarySheetState,
-    { kind: "create-deck" } | { kind: "move-selection" } | { kind: "practice-setup" }
+    | { kind: "create-deck" }
+    | { kind: "move-selection" }
+    | { kind: "merge-deck" }
+    | { kind: "practice-setup" }
   >;
   busy: boolean;
   onClose(): void;

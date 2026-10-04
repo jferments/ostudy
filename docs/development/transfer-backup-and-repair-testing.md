@@ -1,14 +1,16 @@
 # Transfer, backup, and restore local acceptance
 
 This guide maintains the transfer checks originally introduced in Stages 3.4 and
-3.5 and the current same-process restore checks. Historical schema-13 repair fixtures below are not the current schema or instructions for modifying a real library. The current runtime schema is `ostudy-release-v1`, version 2, built from the immutable release baseline at schema 1 plus forward release migrations. The immutable `ostudy-public-v1` chain through schema 30 remains compatibility/recovery input and is converted only through the staged preservation boundary.
+3.5 and the current same-process restore checks. Historical schema-13 repair fixtures below are not the current schema or instructions for modifying a real library. The current runtime schema is `ostudy-release-v1`, version 4, built from the immutable release baseline at schema 1 plus forward release migrations. The immutable `ostudy-public-v1` chain through schema 30 remains compatibility/recovery input and is converted only through the staged preservation boundary.
 
 ## Safety first
 
 Use disposable content. Close every process using a library before making a cold
-copy of its complete application-data directory, including SQLite sidecars. Find
-operational paths under **Settings → Backup/Sync → Storage details**. Never delete
-a WAL, recovery journal, pending backup or ownership lock to bypass a failure.
+copy of its complete application-data directory, including SQLite sidecars. For
+the isolated acceptance flow below, the explicit `TEST_ROOT`/XDG directories are
+the operational storage boundary; do not depend on a product help tile to locate
+test data. Never delete a WAL, recovery journal, pending backup or ownership lock
+to bypass a failure.
 
 Build the maintained development profile, then launch an isolated library:
 

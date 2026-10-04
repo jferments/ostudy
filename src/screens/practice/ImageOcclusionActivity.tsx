@@ -41,7 +41,7 @@ export function ImageOcclusionActivity({ sessionId, cardId, attempt, assets, dis
   }
 
   const imageContent = image.url && image.size ? <OcclusionImageView imageUrl={image.url}
-    imageKey={attempt.instanceId} imageSize={image.size} targets={attempt.question.targetRectangles}
+    imageKey={attempt.instanceId} imageSize={image.size} targets={revealed ? [] : attempt.question.targetRectangles}
     initialViewport={viewport.current} onViewportChange={updateViewport}
     label={revealed ? "Revealed study image" : "Masked study image"} />
     : image.error ? <InlineNotice kind="error">{image.error} <Button disabled={busy} onClick={image.retry}>Retry image</Button></InlineNotice>
@@ -50,7 +50,7 @@ export function ImageOcclusionActivity({ sessionId, cardId, attempt, assets, dis
   return <Surface className="tw:grid tw:min-w-0 tw:gap-5 tw:p-4 tw:md:p-5">
     <RichTextView document={attempt.question.prompt} assets={assets} onLinkError={onError} />
     {imageContent}
-    {image.error && image.url ? <InlineNotice kind="warning">A sharper image could not be prepared. The current masked image remains available. <Button disabled={busy} onClick={image.retry}>Retry</Button></InlineNotice> : null}
+    {image.error && image.url ? <InlineNotice kind="warning">An updated image could not be prepared. The previously loaded image remains visible. <Button disabled={busy} onClick={image.retry}>Retry</Button></InlineNotice> : null}
     {reveal.error ? <InlineNotice kind="error">{reveal.error}
       <Button disabled={busy} onClick={() => void reveal.reload()}>Reload saved answer state</Button>
     </InlineNotice> : null}

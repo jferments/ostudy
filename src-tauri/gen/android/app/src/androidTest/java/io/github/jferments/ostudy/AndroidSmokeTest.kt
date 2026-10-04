@@ -73,8 +73,8 @@ class AndroidSmokeTest {
                     tabs: tabLabels.join('|'),
                     navigation: navigationLabels.join('|'),
                     settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
-                    importAction: Boolean(
-                      document.querySelector('main button[aria-label="Import deck from file"]')
+                    importAction: buttons.some(
+                      (button) => button.textContent?.trim() === 'Import deck'
                     ),
                     createAction: buttons.some(
                       (button) => button.textContent?.trim() === 'Create a new deck'

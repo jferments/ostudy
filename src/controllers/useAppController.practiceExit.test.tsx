@@ -58,6 +58,9 @@ function Harness({ terminate }: { terminate: () => Promise<boolean> }) {
     <div>
       <output aria-label="section">{controller.section}</output>
       <output aria-label="workflow">{controller.activeWorkflow ?? "none"}</output>
+      <output aria-label="practice-shuffle">
+        {controller.practiceWorkflow?.launchRequest?.shuffle === true ? "on" : "off"}
+      </output>
       <button type="button" onClick={() => void controller.practiceDeck("deck-practice")}>
         Go practice
       </button>
@@ -92,6 +95,18 @@ describe("active practice navigation", () => {
     resetPracticeExitGuardForTests();
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+  });
+
+  it("always shuffles one-click deck practice even when an older preference is off", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings({ practiceShuffle: false }));
+    const terminate = vi.fn().mockResolvedValue(true);
+    renderHarness(terminate);
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
+
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    expect(screen.getByLabelText("practice-shuffle").textContent?.trim()).toBe("on");
   });
 
   it("asks before leaving and terminates without navigating when the user says no", async () => {

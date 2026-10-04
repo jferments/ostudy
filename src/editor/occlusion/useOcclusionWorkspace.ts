@@ -14,6 +14,7 @@ export interface OcclusionWorkspaceOptions {
   selectedMaskId: string | null;
   disabled?: boolean;
   navigationOnly?: boolean;
+  initialTool?: OcclusionTool;
   initialViewport?: ImageViewport;
   onViewportChange?: (viewport: ImageViewport) => void;
   onSelect: (id: string | null) => void;
@@ -37,7 +38,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   const frameRef = useRef(frame);
   const [viewport, setViewport] = useState<ImageViewport>(options.initialViewport ?? FIT_VIEWPORT);
   const viewportRef = useRef(viewport);
-  const [tool, setToolState] = useState<OcclusionTool>(options.navigationOnly ? "pan" : "select");
+  const [tool, setToolState] = useState<OcclusionTool>(options.navigationOnly ? "pan" : options.initialTool ?? "select");
   const [interaction, setInteraction] = useState<GestureResult>(gestures.snapshot());
   const [status, setStatus] = useState("");
 
@@ -97,7 +98,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
 
   useEffect(() => {
     changeViewport(latest.current.initialViewport ?? FIT_VIEWPORT);
-    setToolState(latest.current.navigationOnly ? "pan" : "select");
+    setToolState(latest.current.navigationOnly ? "pan" : latest.current.initialTool ?? "select");
     setInteraction(gestures.cancel());
     setStatus("");
     const interrupted = () => { setInteraction(gestures.cancel()); releaseCaptures(); };

@@ -3,8 +3,8 @@ import type { DeckOpenRequest } from "../../App";
 import { SourceCitationPanel } from "../../components/SourceCitationPanel";
 import type { ShowToast } from "../../components/Toast";
 import { DecksController } from "../../controllers/decksController";
-import { getErrorMessage } from "../../ipc/common";
-import type { DeckSummary } from "../../ipc/decks";
+import { createOperationId, getErrorMessage } from "../../ipc/common";
+import type { DeckSummary, MergeDecksInput } from "../../ipc/decks";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { ResponsiveActionGroup } from "../../ui/patterns/ResponsiveActionGroup";
@@ -16,6 +16,7 @@ import { cn } from "../../ui/internal/cn";
 import { CardBrowserWorkspace, type CardBrowserView } from "../cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "../cards/CardPracticeContext";
 import { DeckTransferDialog } from "./DeckTransferDialog";
+import { DeckMergeSheet } from "./DeckMergeSheet";
 
 interface DeckDetailRouteProps {
   decks: DeckSummary[];
@@ -37,8 +38,10 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
   const [browserView, setBrowserView] = useState<CardBrowserView>("list");
   const [isLoading, setIsLoading] = useState(initialDeck === null);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [mergeSheet, setMergeSheet] = useState<{ source: DeckSummary; operationId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const mutation = useRef(false);
+  const mergeRequest = useRef<MergeDecksInput | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
@@ -100,6 +103,54 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
     finally { mutation.current = false; setBusy(false); }
   }
 
+  async function mergeInto(destinationDeckId: string): Promise<void> {
+    if (!mergeSheet || mutation.current) return;
+    const destination = decks.find(
+      (candidate) => candidate.id === destinationDeckId && candidate.archivedAt === null,
+    );
+    if (!destination || destination.id === mergeSheet.source.id) {
+      showToast("info", "Choose another active destination deck.");
+      return;
+    }
+    let request = mergeRequest.current;
+    if (!request) {
+      request = {
+        operationId: mergeSheet.operationId,
+        sourceDeckId: mergeSheet.source.id,
+        destinationDeckId: destination.id,
+        sourceRevision: mergeSheet.source.revision,
+        destinationRevision: destination.revision,
+        expectedSourceNoteCount: mergeSheet.source.sourceNoteCount,
+        expectedSourceCardCount: mergeSheet.source.generatedCardCount,
+      };
+      mergeRequest.current = request;
+    } else if (request.destinationDeckId !== destination.id) {
+      showToast(
+        "info",
+        "The first merge attempt already captured its destination. Close and reopen Merge to choose another deck.",
+      );
+      return;
+    }
+
+    mutation.current = true;
+    setBusy(true);
+    try {
+      const result = await controller.merge(request);
+      const message =
+        `Merged ${result.movedCardCount} ${result.movedCardCount === 1 ? "card" : "cards"} from “${mergeSheet.source.name}” into “${destination.name}”. “${mergeSheet.source.name}” is now archived.`;
+      mergeRequest.current = null;
+      setMergeSheet(null);
+      showToast("success", message);
+      await reconcile("The decks were merged");
+      await returnAfterCommit("The decks were merged");
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
+  }
+
   async function deleteDeck(): Promise<void> {
     if (!deck || mutation.current) return;
     mutation.current = true;
@@ -129,20 +180,36 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
   if (!deck && isLoading) return <LoadingState label="Opening deck…" />;
   if (!deck) return <div className="tw:grid tw:gap-4 tw:p-6"><InlineNotice kind="error">{errorMessage ?? "This deck could not be opened."}</InlineNotice><Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button></div>;
 
+  const canMerge =
+    deck.archivedAt === null &&
+    deck.sourceNoteCount > 0 &&
+    decks.some((candidate) => candidate.id !== deck.id && candidate.archivedAt === null);
+
   // Keep the same wrapper element and browser key in list/editor mode. Swapping
   // layout components here would unmount the browser and lose an unsaved editor.
   return <div className={cn("tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0", browserView === "list" && "tw:max-w-(--ostudy-layout-wide-width) tw:px-page tw:py-8 tw:max-[760px]:px-4 tw:max-[760px]:py-5")}>
     {browserView === "list" ? <>
       <Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button>
       <PageHeader title={deck.name} description={visibleDeckDescription(deck.description)}
-        actions={<ResponsiveActionGroup label={`${deck.name} actions`} actions={[
+        actions={<ResponsiveActionGroup label={`${deck.name} actions`} overflowLabel={`${deck.name} actions`} actions={[
           { id: "practice", label: "Practice", placement: "always-visible", variant: "primary",
             disabled: busy || deck.generatedCardCount === 0 || deck.archivedAt !== null,
             description: deck.archivedAt !== null ? "Unarchive this deck before practicing" : deck.generatedCardCount === 0 ? "Add a flashcard before practicing this deck" : `Practice all ${deck.generatedCardCount} cards in this deck`,
             onSelect: () => void onPracticeDeck(deck.id) },
-          { id: "export", label: `Export ${deck.name}`, description: "Save deck to file", placement: "always-visible", presentation: "icon", icon: "save", disabled: busy, onSelect: () => setShowExportDialog(true) },
-          { id: "delete", label: `Delete ${deck.name}`, description: "Delete deck", placement: "always-visible", presentation: "icon", icon: "delete", destructive: true, disabled: busy, onSelect: () => void deleteDeck() },
-          { id: "archive", label: `${deck.archivedAt === null ? "Archive" : "Restore"} ${deck.name}`, placement: "wide-only", presentation: "icon", icon: "archive", disabled: busy, onSelect: () => void archive() },
+          ...(deck.archivedAt === null ? [{
+            id: "merge",
+            label: "Merge…",
+            description: canMerge ? "Move this deck into another active deck" : "Create or restore another active deck before merging",
+            placement: "overflow-only" as const,
+            disabled: busy || !canMerge,
+            onSelect: () => {
+              mergeRequest.current = null;
+              setMergeSheet({ source: deck, operationId: createOperationId() });
+            },
+          }] : []),
+          { id: "export", label: `Export ${deck.name}`, description: "Save deck to file", placement: "overflow-only", disabled: busy, onSelect: () => setShowExportDialog(true) },
+          { id: "delete", label: `Delete ${deck.name}`, description: "Delete deck", placement: "overflow-only", destructive: true, disabled: busy, onSelect: () => void deleteDeck() },
+          { id: "archive", label: `${deck.archivedAt === null ? "Archive" : "Restore"} ${deck.name}`, placement: "overflow-only", disabled: busy, onSelect: () => void archive() },
         ]} />} />
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
     </> : null}
@@ -151,6 +218,9 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
       onPracticeCards={onPracticeCards} onDirtyChange={onDirtyChange} onViewChange={setBrowserView} showToast={showToast} />
     {browserView === "list" ? <footer className="tw:mt-6"><SourceCitationPanel deckId={deck.id} /></footer> : null}
     {showExportDialog ? <DeckTransferDialog request={{ kind: "export", decks: [deck] }} refreshDecks={refreshDecks} onClose={() => setShowExportDialog(false)} showToast={showToast} /> : null}
+    {mergeSheet ? <DeckMergeSheet source={mergeSheet.source} decks={decks} busy={busy}
+      onClose={() => { if (!busy) { mergeRequest.current = null; setMergeSheet(null); } }}
+      onMerge={mergeInto} /> : null}
   </div>;
 }
 

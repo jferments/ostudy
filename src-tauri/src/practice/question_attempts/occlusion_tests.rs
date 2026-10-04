@@ -54,17 +54,16 @@ fn real_session_capture_retains_independent_targets_without_original_image_metad
 }
 
 #[test]
-fn native_reveal_exposes_only_the_target_and_replays_without_a_second_mutation() {
+fn native_reveal_uncovers_the_image_and_replays_without_a_second_mutation() {
     let fixture = Fixture::new();
     let session = fixture.start(false);
     let target = target(&session, 0);
     let hidden = fixture.image(&target, 1);
     assert_ne!(hidden.get_pixel(4, 4).0, SOURCE_PIXEL);
+    assert_ne!(hidden.get_pixel(14, 14).0, SOURCE_PIXEL);
     let revealed = fixture.reveal(&target);
     let visible = fixture.image(&target, revealed.revision);
-    assert_eq!(visible.get_pixel(4, 4).0, SOURCE_PIXEL);
-    assert_ne!(visible.get_pixel(14, 14).0, SOURCE_PIXEL);
-    assert_eq!(visible.get_pixel(14, 14).0, hidden.get_pixel(14, 14).0);
+    assert!(visible.pixels().all(|pixel| pixel.0 == SOURCE_PIXEL));
     let view = fixture.view(&target);
     assert_eq!(view["attempt"]["progress"]["phase"], "revealed");
     assert!(view["attempt"]["progress"].get("evaluation").is_none());

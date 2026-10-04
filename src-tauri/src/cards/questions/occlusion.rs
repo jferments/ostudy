@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use super::{NormalizedRect, QuestionError, ValidatedQuestion};
 
-pub const RENDER_POLICY_VERSION: u32 = 2;
+pub const RENDER_POLICY_VERSION: u32 = 3;
 pub const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
 pub const MAX_IMAGE_EDGE: u32 = 8192;
 pub const MAX_IMAGE_PIXELS: u64 = 16_000_000;
@@ -44,7 +44,7 @@ pub struct RenderedOcclusion {
     pub width: u32,
     pub height: u32,
     pub cache_key: String,
-    /// Highlight geometry only; no original source image ID or answer text.
+    /// Hidden-side highlight geometry only; revealed images have no overlays.
     pub target_rectangles: Vec<NormalizedRect>,
 }
 
@@ -90,13 +90,13 @@ impl CanonicalImage {
         let target_rectangles = plan
             .hidden_masks
             .iter()
-            .filter(|mask| targets.contains(mask.id.as_str()))
+            .filter(|mask| phase == RenderPhase::Hidden && targets.contains(mask.id.as_str()))
             .map(|mask| mask.rect)
             .collect::<Vec<_>>();
         let mut hidden = plan
             .hidden_masks
             .iter()
-            .filter(|mask| phase == RenderPhase::Hidden || !targets.contains(mask.id.as_str()))
+            .filter(|_| phase == RenderPhase::Hidden)
             .collect::<Vec<_>>();
         hidden.sort_by(|left, right| left.id.cmp(&right.id));
         let (width, height) = self.dimensions();

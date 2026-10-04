@@ -62,6 +62,21 @@ describe("image-occlusion Practice interaction", () => {
     expect(mocks.exposed).toHaveBeenCalledTimes(1);
   });
 
+  it("removes every target outline and badge after native reveal, including on resume", async () => {
+    const view = render(<Harness />);
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual(initial.question.targetRectangles);
+    fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+    await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual([]);
+    const revealed = receipt(required(mocks.reveal.mock.calls[0]?.[0], "reveal input"));
+    view.unmount();
+    render(<ImageOcclusionActivity sessionId={"1".repeat(32)} cardId={"2".repeat(32)}
+      attempt={revealed} assets={[]} disabled={false} onReveal={mocks.reveal}
+      onAttempt={vi.fn()} onRevealed={mocks.exposed} onError={vi.fn()} />);
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual([]);
+    expect(screen.queryByRole("button", { name: "Reveal answer" })).toBeNull();
+  });
+
   it("requests sharper native rasters automatically as the learner zooms and preserves the viewport", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: "Mock zoom 2x" }));
@@ -72,6 +87,7 @@ describe("image-occlusion Practice interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
     await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
     expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport).toEqual({ zoom: 4, center: { x: 0.3, y: 0.4 } });
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual([]);
   });
 
   it("does not expose old enlarge or manual sharpness controls", () => {
@@ -96,7 +112,9 @@ describe("image-occlusion Practice interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
     expect(screen.queryByText(/ANSWER_FROM_NATIVE/)).toBeNull();
     expect(screen.getByRole("button", { name: "Revealing…" })).toHaveProperty("disabled", true);
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual(initial.question.targetRectangles);
     await act(async () => { finish(receipt(required(mocks.reveal.mock.calls[0]?.[0], "reveal input"))); });
     await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
+    expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual([]);
   });
 });
