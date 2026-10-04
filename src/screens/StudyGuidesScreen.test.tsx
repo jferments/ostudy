@@ -36,12 +36,15 @@ vi.mock("./CollectionStudyGuideDialog", () => ({
 vi.mock("./StudyGuideDialog", () => ({
   StudyGuideDialog: ({
     documentTitle,
+    source,
     onClose,
   }: {
     documentTitle: string;
+    source: { filename: string | null; format: string | null; unitKind: string | null; unitCount: number | null } | null;
     onClose: () => void;
   }) => (
     <div role="dialog" aria-label={`Guide ${documentTitle}`}>
+      <p>{source ? `Source ${source.filename} ${source.format} ${source.unitCount} ${source.unitKind}` : "No source details"}</p>
       <button type="button" onClick={onClose}>
         Close guide
       </button>
@@ -157,7 +160,9 @@ describe("StudyGuidesScreen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(screen.getByRole("dialog", { name: "Guide Distributive shock" })).toBeTruthy();
+    const reader = screen.getByRole("dialog", { name: "Guide Distributive shock" });
+    // The reader names the source file from the row instead of loading it again.
+    expect(reader.textContent).toContain("Source shock.pdf pdf 12 page");
   });
 
   it("lists and opens collection study guides from the main Study Guides page", async () => {
@@ -237,7 +242,7 @@ describe("StudyGuidesScreen", () => {
       onOpenRequestConsumed: onConsumed,
     });
 
-    expect(await screen.findByRole("dialog", { name: "Guide Cardiac output" })).toBeTruthy();
+    expect((await screen.findByRole("dialog", { name: "Guide Cardiac output" })).textContent).toContain("No source details");
     expect(onConsumed).toHaveBeenCalledWith(17);
   });
 });

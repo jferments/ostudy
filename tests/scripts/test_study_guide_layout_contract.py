@@ -15,6 +15,12 @@ def recipes(name):
     return json.loads(match.group(1))
 
 
+def class_lists(path):
+    """The source text and every quoted Tailwind class list in one file."""
+    source = (ROOT / path).read_text(encoding="utf-8")
+    return source, [value.split() for value in re.findall(r'"((?:tw:[^"\s]+\s*)+)"', source)]
+
+
 class StudyGuideLayoutContractTests(unittest.TestCase):
     def test_document_actions_do_not_compete_with_the_title_column(self) -> None:
         style = recipes("documentStyles")
@@ -29,24 +35,41 @@ class StudyGuideLayoutContractTests(unittest.TestCase):
         self.assertIn("ResponsiveActionGroup", source)
         self.assertIn("className={styles.actions}", source)
 
-    def test_structured_guide_cards_stay_bounded_and_use_theme_semantics(self) -> None:
-        style = recipes("guideReaderStyles")
-        comparisons = style["comparisons"].split()
-        self.assertIn("tw:grid-cols-1", comparisons)
-        self.assertIn("tw:2xl:grid-cols-2", comparisons)
+    def test_structured_guide_blocks_stay_bounded_and_use_theme_semantics(self) -> None:
+        source, classes = class_lists("src/screens/study-guides/StudyGuideContent.tsx")
+        # Long words, formulas and wide tables stay inside the reading column.
+        root = next(tokens for tokens in classes if "tw:font-(family-name:--card-font-family)" in tokens)
+        for token in ("tw:min-w-0", "tw:break-words", "tw:leading-(--ostudy-font-line-height-reading)"):
+            self.assertIn(token, root)
+        table_wrap = next(tokens for tokens in classes if "tw:overflow-x-auto" in tokens)
+        self.assertIn("tw:max-w-full", table_wrap)
+        comparisons = next(tokens for tokens in classes if "tw:bg-card" in tokens and "tw:px-4" in tokens and "tw:py-3" in tokens)
         self.assertNotIn("tw:md:grid-cols-2", comparisons)
-        self.assertIn("tw:[&>article]:min-w-0", comparisons)
-        self.assertIn("tw:[&>article]:overflow-hidden", comparisons)
-        self.assertIn("tw:[&>article]:break-words", comparisons)
+        # Blocks draw on semantic surfaces, never literal colors or retired variables.
+        used = {token for tokens in classes for token in tokens}
+        for token in ("tw:bg-card", "tw:bg-accent", "tw:bg-success-soft", "tw:bg-warning-soft", "tw:border-border"):
+            self.assertIn(token, used)
+        self.assertNotIn("#", source)
+        for stale in ("--surface-color", "--surface-muted-color", "--border-color", "--muted-text-color"):
+            self.assertNotIn(stale, source)
 
-        self.assertIn("tw:[&_h3]:mt-9", style["structuredSection"].split())
-        self.assertIn("tw:[&_h3]:text-primary", style["structuredSection"].split())
-        self.assertIn("tw:bg-accent/20", style["overview"].split())
-        self.assertIn("tw:ring-primary/10", style["overview"].split())
-        self.assertIn("tw:bg-accent/40", style["retrievalCheck"].split())
-        self.assertIn("tw:ring-primary/20", style["retrievalCheck"].split())
-        self.assertIn("tw:bg-card", style["retrievalAnswer"].split())
-        self.assertNotIn("#", json.dumps(style))
+    def test_document_reader_bars_and_outline_use_opaque_semantic_surfaces(self) -> None:
+        dialog, dialog_classes = class_lists("src/ui/overlays/Dialog.tsx")
+        self.assertIn('data-presentation="page"', dialog)
+        top_bar = next(tokens for tokens in dialog_classes if "tw:sticky" in tokens and "tw:min-h-14" in tokens)
+        for token in ("tw:bg-background", "tw:border-border", "tw:border-b", "tw:border-0", "tw:z-(--ostudy-layer-sticky)"):
+            self.assertIn(token, top_bar)
+        _, outline_classes = class_lists("src/screens/study-guides/GuideOutline.tsx")
+        link = next(tokens for tokens in outline_classes if "tw:min-h-10" in tokens)
+        for token in ("tw:focus-visible:ring-3", "tw:focus-visible:ring-ring/50", "tw:coarse:min-h-touch", "tw:reduce-motion:transition-none"):
+            self.assertIn(token, link)
+        _, page_classes = class_lists("src/screens/study-guides/GuideReaderPages.tsx")
+        bottom_bar = next(tokens for tokens in page_classes if "tw:sticky" in tokens and "tw:bottom-3" in tokens)
+        for token in ("tw:bg-card", "tw:border-border", "tw:z-(--ostudy-layer-sticky)"):
+            self.assertIn(token, bottom_bar)
+        for _, classes in (("dialog", dialog_classes), ("outline", outline_classes), ("pages", page_classes)):
+            for tokens in classes:
+                self.assertNotIn("tw:bg-transparent", tokens)
 
     def test_guide_toolbar_and_contents_use_opaque_semantic_surfaces(self) -> None:
         style = recipes("guideReaderStyles")
