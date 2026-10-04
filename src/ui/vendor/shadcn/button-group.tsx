@@ -29,7 +29,7 @@ export function ButtonGroupText({ className, ...props }: HTMLAttributes<HTMLDivE
   return (
     <div
       data-slot="button-group-text"
-      className={cn("tw:flex tw:items-center tw:gap-2 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-2.5 tw:text-sm tw:font-medium tw:[&_svg]:size-4", className)}
+      className={cn("tw:flex tw:items-center tw:gap-2 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-2.5 tw:text-small tw:font-medium tw:[&_svg]:size-4", className)}
       {...props}
     />
   );

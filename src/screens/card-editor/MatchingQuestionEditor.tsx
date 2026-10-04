@@ -32,7 +32,7 @@ export function MatchingQuestionEditor({
     <Surface className="tw:grid tw:gap-5 tw:p-5">
       <div className="tw:grid tw:gap-1">
         <h2>Matching</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">
+        <p className="tw:text-small tw:text-muted-foreground">
           Author explicit one-to-one pairs. Learners see the two sides shuffled independently.
         </p>
       </div>

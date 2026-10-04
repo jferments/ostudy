@@ -73,13 +73,13 @@ export function ImageOcclusionEditor(props: ImageOcclusionEditorProps) {
     <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
       <div className="tw:grid tw:gap-1">
         <h2>Image occlusion</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">{draft.masks.length} regions · {studyQuestions.length} study cards</p>
+        <p className="tw:text-small tw:text-muted-foreground">{draft.masks.length} regions · {studyQuestions.length} study cards</p>
       </div>
       <Button disabled={disabled || !assetDraftId} onClick={() => void chooseImage()}>
         {draft.imageAssetId ? "Replace image" : "Choose image"}
       </Button>
     </div>
-    <p className="tw:text-sm tw:text-muted-foreground">Draw rectangles over labels or regions. Each rectangle creates a study card automatically; no question or answer text is required. Reveal shows the uncovered image. Use Preview card above to try it.</p>
+    <p className="tw:text-small tw:text-muted-foreground">Draw rectangles over labels or regions. Each rectangle creates a study card automatically; no question or answer text is required. Reveal shows the uncovered image. Use Preview card above to try it.</p>
     {importing.busy ? <InlineProgress>Preparing the image…</InlineProgress> : null}
     {importing.error ? <InlineNotice kind="error">{importing.error}</InlineNotice> : null}
     {draft.pendingImport && !importing.busy ? <div className="tw:flex tw:flex-wrap tw:gap-2">
@@ -110,7 +110,7 @@ export function ImageOcclusionEditor(props: ImageOcclusionEditorProps) {
         <Checkbox checked={addToCurrent} disabled={disabled || !question} onCheckedChange={setAddToCurrent} />
         <span>Group new rectangles with the selected card</span>
       </label>
-      {addToCurrent ? <p className="tw:text-sm tw:text-muted-foreground">Grouped regions are recalled together on one card. “Hide one region” hides that card’s whole group; “Hide all regions” also hides the other cards’ regions.</p> : null}
+      {addToCurrent ? <p className="tw:text-small tw:text-muted-foreground">Grouped regions are recalled together on one card. “Hide one region” hides that card’s whole group; “Hide all regions” also hides the other cards’ regions.</p> : null}
       {studyQuestions.length >= 64 && !addToCurrent ? <InlineNotice>One image supports up to 64 study cards. Group additional regions with an existing card, or start another image.</InlineNotice> : null}
       {incomplete.length > 0 ? <InlineNotice kind="warning">
         {incomplete.length} custom question{incomplete.length === 1 ? " needs" : "s need"} a target region before saving. Your written content is preserved.

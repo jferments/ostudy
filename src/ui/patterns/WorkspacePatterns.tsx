@@ -74,21 +74,21 @@ export function PageHeader({
     >
       <div className="tw:min-w-0">
         {eyebrow ? (
-          <span className="tw:mb-1 tw:block tw:text-xs tw:font-medium tw:tracking-wide tw:text-muted-foreground">{eyebrow}</span>
+          <span className="tw:mb-1 tw:block tw:text-caption tw:font-medium tw:tracking-wide tw:text-muted-foreground">{eyebrow}</span>
         ) : null}
         <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2.5">
           {icon ? <Icon name={icon} size={20} className="tw:shrink-0 tw:text-muted-foreground" /> : null}
           <h1
             className={cn(
               "tw:m-0 tw:min-w-0 tw:font-semibold tw:leading-tight tw:tracking-tight tw:text-foreground",
-              compact ? "tw:text-2xl" : "tw:text-3xl",
+              compact ? "tw:text-section" : "tw:text-title",
             )}
           >
             {title}
           </h1>
         </div>
         {description ? (
-          <p className="tw:mt-1.5 tw:mb-0 tw:max-w-prose tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</p>
+          <p className="tw:mt-1.5 tw:mb-0 tw:max-w-prose tw:text-small tw:leading-relaxed tw:text-muted-foreground">{description}</p>
         ) : null}
         {children}
       </div>

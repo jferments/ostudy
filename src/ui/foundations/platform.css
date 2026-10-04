@@ -30,7 +30,7 @@
 
   @media (max-width: 760px) {
     :root {
-      --touch-target-min: 48px;
+      --touch-target-min: max(48px, 3rem);
     }
 
     body {

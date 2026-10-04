@@ -308,6 +308,14 @@
       "$value": "{radius.pill}"
     }
   },
+  "font": {
+    "family": {
+      "heading": {
+        "$type": "fontFamily",
+        "$value": "var(--ui-font-family)"
+      }
+    }
+  },
   "shadow": {
     "level1": {
       "$type": "shadow",

@@ -41,7 +41,7 @@ export function OcclusionQuestionInspector({ draft, assets, assetDraftId, disabl
       <Button disabled={disabled || draft.masks.length === 0 || occlusionStudyQuestions(draft).length >= 64}
         onClick={() => onUpdate(addOcclusionQuestion)}>Add question</Button>
     </div>
-    <p className="tw:text-sm tw:text-muted-foreground">The uncovered image is the answer. These fields are optional; leaving them empty uses a simple recall prompt and image-based answer. Custom questions keep their own study schedules.</p>
+    <p className="tw:text-small tw:text-muted-foreground">The uncovered image is the answer. These fields are optional; leaving them empty uses a simple recall prompt and image-based answer. Custom questions keep their own study schedules.</p>
     <FormField label="Current question">
       <NativeSelect value={question?.id ?? ""} disabled={disabled || draft.questions.length === 0}
         onChange={(event) => {
@@ -93,8 +93,8 @@ export function OcclusionQuestionInspector({ draft, assets, assetDraftId, disabl
           { value: "hide_target" as const, label: "Hide only this question's targets" },
         ]}
         onValueChange={(mode) => onUpdate((current) => updateOcclusionQuestion(current, question.id, { mode }))} />
-      <p className="tw:text-sm tw:text-muted-foreground">Reveal removes every mask and number badge, including overlapping regions.</p>
+      <p className="tw:text-small tw:text-muted-foreground">Reveal removes every mask and number badge, including overlapping regions.</p>
       <Button variant="danger" disabled={disabled} onClick={() => void remove()}>Remove question</Button>
-    </> : <p className="tw:text-sm tw:text-muted-foreground">Drawing a region creates a card. Add another question to reuse an existing region.</p>}
+    </> : <p className="tw:text-small tw:text-muted-foreground">Drawing a region creates a card. Add another question to reuse an existing region.</p>}
   </section>;
 }

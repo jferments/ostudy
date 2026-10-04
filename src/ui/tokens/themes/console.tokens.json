@@ -308,6 +308,14 @@
       "$value": "{radius.small}"
     }
   },
+  "font": {
+    "family": {
+      "heading": {
+        "$type": "fontFamily",
+        "$value": "'IBM Plex Mono', {font.family.mono}"
+      }
+    }
+  },
   "shadow": {
     "level1": {
       "$type": "shadow",

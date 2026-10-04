@@ -103,11 +103,11 @@ export function ModalView({
           >
             <header className="tw:flex tw:shrink-0 tw:items-start tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-4 tw:py-3.5">
               <div className="tw:min-w-0 tw:space-y-1">
-                <Dialog.Title render={<h2 />} className="tw:m-0 tw:break-words tw:text-base tw:font-medium tw:leading-snug">
+                <Dialog.Title render={<h2 />} className="tw:m-0 tw:break-words tw:text-body tw:font-medium tw:leading-snug">
                   {title}
                 </Dialog.Title>
                 {description ? (
-                  <Dialog.Description className="tw:m-0 tw:break-words tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
+                  <Dialog.Description className="tw:m-0 tw:break-words tw:text-small tw:leading-relaxed tw:text-muted-foreground">
                     {description}
                   </Dialog.Description>
                 ) : null}

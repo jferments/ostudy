@@ -48,7 +48,7 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
   const pointer = usePracticePointerDrop({ disabled: disabled || evaluation !== null, onDrop: assign, scopeRef: root, resetKey: seed });
 
   return <div className="tw:grid tw:gap-3">
-    {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+    {!evaluation ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
       Drag a left tile up or down to line up a pair, or onto its match. You can also select two tiles. Drag a connected tile again to change its match; dropping onto another pair swaps them.
     </p> : null}
     <div ref={root} data-matching-drag-active={pointer.draggingItemId !== null || undefined}
@@ -70,14 +70,14 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
             dropTargetId={target.id} pointer={pointer} disabled={disabled || evaluation !== null} connected={linked} selected={selected === item.id}
             correct={correct} onSelect={() => setSelection((value) => value?.seed === seed && value.itemId === item.id ? null : { seed, itemId: item.id })}>
             <RichTextView document={item.content} assets={assets} onLinkError={onError} />
-            {linked && !evaluation ? <span className="tw:text-xs tw:font-medium tw:text-primary">Connected</span> : null}
-            {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-sm", correct ? "tw:text-success" : "tw:text-destructive")}>
+            {linked && !evaluation ? <span className="tw:text-caption tw:font-medium tw:text-primary">Connected</span> : null}
+            {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-small", correct ? "tw:text-success" : "tw:text-destructive")}>
               <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : result.selectedTargetId ? "Incorrect match" : "Not matched"}
             </div> : null}
-            {result && !correct && expected ? <div className="tw:grid tw:gap-1 tw:text-sm" aria-label="Correct match">
+            {result && !correct && expected ? <div className="tw:grid tw:gap-1 tw:text-small" aria-label="Correct match">
               <span>→ Correct match:</span><RichTextView document={expected.content} assets={assets} onLinkError={onError} />
             </div> : null}
-            {result?.rationale ? <div className="tw:text-sm"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
+            {result?.rationale ? <div className="tw:text-small"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
           </QuestionTile>
           <div className="tw:z-10 tw:flex tw:items-center tw:justify-center">
             {linked && !evaluation ? <Button variant="text" size="small" disabled={disabled}

@@ -27,7 +27,7 @@ function NotificationContent({ id, message, tone, timeout, busy, action, onDismi
     {toasts.map((item) => <Toast.Root key={item.id} toast={item} role={tone === "error" ? "alert" : "status"} data-slot="toast" className={cn("tw:relative tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-popover tw:font-sans tw:text-popover-foreground tw:shadow-overlay tw:outline-none tw:focus-visible:outline-2 tw:focus-visible:outline-ring", tone === "error" && "tw:border-destructive/40")}>
       <Toast.Content className="tw:flex tw:items-start tw:gap-3 tw:p-4">
         <span className={cn("tw:mt-0.5 tw:shrink-0", tone === "error" ? "tw:text-destructive" : tone === "success" ? "tw:text-success" : "tw:text-primary")} aria-hidden="true"><Icon name={tone === "error" ? "warning" : tone === "success" ? "check" : "information"} size={20} /></span>
-        <div className="tw:min-w-0 tw:flex-1 tw:space-y-3"><Toast.Description className="tw:text-sm tw:leading-relaxed tw:break-words" />{action}</div>
+        <div className="tw:min-w-0 tw:flex-1 tw:space-y-3"><Toast.Description className="tw:text-small tw:leading-relaxed tw:break-words" />{action}</div>
         <Toast.Close aria-label="Dismiss notification" aria-hidden={false} render={<Button variant="ghost" size="icon" className="tw:-mr-2 tw:-mt-2" />}><Icon name="close" size={16} /></Toast.Close>
       </Toast.Content>
     </Toast.Root>)}

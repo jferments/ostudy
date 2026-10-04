@@ -38,7 +38,7 @@ export function ChoiceQuestionEditor({
     <Surface className="tw:grid tw:gap-5 tw:p-5">
       <div className="tw:grid tw:gap-1">
         <h2>{title}</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">
+        <p className="tw:text-small tw:text-muted-foreground">
           {draft.kind === "single_choice"
             ? "Write one defensible best answer. Distractors may be plausible, but the key must contain exactly one option."
             : "Learners must choose the exact correct set. Option explanations appear only after Check answer."}
@@ -121,7 +121,7 @@ export function ChoiceQuestionEditor({
         aria-label="Answer key preview">
         <div className="tw:grid tw:gap-1">
           <h3 className="tw:m-0">Answer key preview</h3>
-          <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+          <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
             {draft.kind === "single_choice" ? "Select the correct answer below." : "Select every correct answer below."}
             {" "}This preview uses the same option tiles as Practice.
           </p>

@@ -39,6 +39,9 @@ versions and their `/usr/share/doc/*/copyright` records.
 ### Local font assets
 
 IBM Plex Sans is the default interface and card family for new installations.
+IBM Plex Mono (600 and 700 static faces) is the Console theme's heading and
+wordmark face; it is theme-owned rather than a selectable preset and ships under
+the same IBM Plex OFL notice.
 It is not a package-manager dependency: `scripts/font-sources.mjs` records the
 Google Fonts provisioning source, requested Latin variable face, audited
 `OFL-1.1` metadata, and shipped notice. `scripts/install-local-fonts.mjs`

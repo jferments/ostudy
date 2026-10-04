@@ -44,6 +44,7 @@ const [
   checkFast,
   checkFull,
   licenseNotice,
+  ...themeCss
 ] = await Promise.all([
   read("src/ui/appearance/appearanceTypes.ts"),
   read("src/ui/appearance/AppearanceProvider.tsx"),
@@ -62,12 +63,23 @@ const [
   read("scripts/check-fast.sh"),
   read("scripts/check.sh"),
   plex?.license ? read(plex.license.noticePath) : Promise.resolve(""),
+  ...["light", "dark", "console", "synthwave"].map((theme) => read(`src/ui/tokens/generated/theme-${theme}.css`)),
 ]);
 
 for (const font of localFontSources) {
-  expectContains(appearance, `value: "${font.id}"`, `appearance option ${font.id}`);
-  expectContains(appearance, `'${font.family}'`, `appearance family ${font.family}`);
-  expectContains(rustSettings, `"${font.id}"`, `Rust font preset ${font.id}`);
+  if (font.selectable === false) {
+    // Theme-owned faces are not presets; a generated theme must name them instead.
+    if (!themeCss.some((css) => css.includes(`'${font.family}'`))) {
+      failures.push(`Missing theme token for theme-owned font ${font.family}`);
+    }
+    if (font.license?.noticePath !== plex?.license?.noticePath) {
+      failures.push(`Theme-owned font ${font.family} must ship under the audited IBM Plex notice.`);
+    }
+  } else {
+    expectContains(appearance, `value: "${font.id}"`, `appearance option ${font.id}`);
+    expectContains(appearance, `'${font.family}'`, `appearance family ${font.family}`);
+    expectContains(rustSettings, `"${font.id}"`, `Rust font preset ${font.id}`);
+  }
   expectContains(localCss, `font-family: "${font.family}";`, `@font-face ${font.family}`);
 
   for (const face of font.faces) {

@@ -66,6 +66,7 @@
     --ostudy-color-text-muted: #77997F;
     --ostudy-color-text-primary: #D3F5DC;
     --ostudy-color-text-secondary: #A4CCAF;
+    --ostudy-font-family-heading: 'IBM Plex Mono', var(--ostudy-font-family-mono);
     --ostudy-glow-accent: 0 0 0 1px rgb(92 240 138 / 50%), 0 0 18px rgb(92 240 138 / 20%);
     --ostudy-radius-button: var(--ostudy-radius-small);
     --ostudy-radius-large: 4px;

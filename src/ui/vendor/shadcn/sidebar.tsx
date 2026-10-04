@@ -23,7 +23,7 @@ export function SidebarGroup({ className, ...props }: ComponentProps<"div">) {
 }
 
 export function SidebarGroupLabel({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="sidebar-group-label" className={cn("tw:px-2 tw:py-1.5 tw:text-xs tw:font-medium tw:text-muted-foreground", className)} {...props} />;
+  return <div data-slot="sidebar-group-label" className={cn("tw:px-2 tw:py-1.5 tw:text-caption tw:font-medium tw:text-muted-foreground", className)} {...props} />;
 }
 
 export function SidebarMenu({ className, ...props }: ComponentProps<"ul">) {
@@ -48,7 +48,7 @@ export function SidebarMenuButton({
         type: "button",
         "aria-current": isActive ? "page" : undefined,
         className: cn(
-          "tw:flex tw:h-8 tw:w-full tw:cursor-pointer tw:items-center tw:gap-2 tw:overflow-hidden tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-2 tw:text-start tw:font-sans tw:text-sm tw:font-medium tw:text-muted-foreground tw:outline-none tw:transition-colors tw:reduce-motion:transition-none tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:coarse:min-h-touch tw:coarse:gap-3 tw:coarse:px-3 tw:[&_svg]:shrink-0 tw:[&>span:last-child]:truncate",
+          "tw:flex tw:h-8 tw:w-full tw:cursor-pointer tw:items-center tw:gap-2 tw:overflow-hidden tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-2 tw:text-start tw:font-sans tw:text-small tw:font-medium tw:text-muted-foreground tw:outline-none tw:transition-colors tw:reduce-motion:transition-none tw:hover:bg-sidebar-accent tw:hover:text-sidebar-accent-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:coarse:min-h-touch tw:coarse:gap-3 tw:coarse:px-3 tw:[&_svg]:shrink-0 tw:[&>span:last-child]:truncate",
           isActive && "tw:bg-sidebar-accent tw:text-sidebar-accent-foreground",
           className,
         ),

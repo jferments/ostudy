@@ -141,14 +141,14 @@ export function TourProvider({ enabled, children }: { enabled: boolean; children
         {anchorBox ? <div className={styles.spotlight} style={spotlightStyle(anchorBox)} /> : null}
         <section className={styles.popover} role="dialog" aria-modal="false" aria-labelledby="ostudy-tour-title" aria-describedby="ostudy-tour-body" style={popoverStyle(anchorBox, step.placement ?? "auto")}>
           <header className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
-            <span className="tw:text-xs tw:font-medium tw:tracking-wide tw:text-accent-foreground">{module.title}</span>
+            <span className="tw:text-caption tw:font-medium tw:tracking-wide tw:text-accent-foreground">{module.title}</span>
             <IconButton icon="close" iconSize={16} label="Close tutorial" tooltip={false} onClick={dismiss} />
           </header>
           <div className="tw:flex tw:gap-1.5" aria-label={`Step ${active.stepIndex + 1} of ${module.steps.length}`}>
             {module.steps.map((candidate, index) => <span key={candidate.id} data-current={index === active.stepIndex || undefined} data-complete={index < active.stepIndex || undefined}
               className="tw:h-1 tw:flex-1 tw:rounded-full tw:bg-border tw:data-[current=true]:bg-primary tw:data-[complete=true]:bg-success" />)}
           </div>
-          <h2 id="ostudy-tour-title" className="tw:m-0 tw:text-xl tw:font-semibold tw:leading-tight tw:tracking-tight">{step.title}</h2>
+          <h2 id="ostudy-tour-title" className="tw:m-0 tw:text-title-small tw:font-semibold tw:leading-tight tw:tracking-tight">{step.title}</h2>
           <p id="ostudy-tour-body" className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground">{step.body}</p>
           {!anchorFound ? <p className="tw:m-0 tw:rounded-lg tw:bg-warning-soft tw:p-3 tw:text-caption tw:leading-relaxed tw:text-foreground">This control is not visible in the current layout. Continue to keep the guide moving.</p> : null}
           <footer className="tw:mt-1 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:max-[560px]:grid tw:max-[560px]:grid-cols-2">

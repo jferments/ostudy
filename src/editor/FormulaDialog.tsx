@@ -161,12 +161,12 @@ export function FormulaDialog({ session, onClose }: {
         />
 
         <div className="tw:grid tw:min-w-0 tw:gap-1">
-          <span className="tw:text-xs tw:font-medium tw:text-muted-foreground">Preview</span>
+          <span className="tw:text-caption tw:font-medium tw:text-muted-foreground">Preview</span>
           <FormulaPreview source={source} block={placement === "block"} />
         </div>
         {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
 
-        <label className="tw:grid tw:w-fit tw:gap-1 tw:text-sm">
+        <label className="tw:grid tw:w-fit tw:gap-1 tw:text-small">
           Placement
           <NativeSelect
             aria-label="Formula placement"

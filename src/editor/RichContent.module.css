@@ -21,6 +21,8 @@
   .content h2 { margin: 0.7em 0 0.35em; font-size: 1.6em; line-height: 1.2; }
   .content h3 { margin: 0.7em 0 0.35em; font-size: 1.3em; }
   .content h4 { margin: 0.7em 0 0.35em; font-size: 1.1em; }
+  /* Card headings follow the card font, not the interface heading style. */
+  .content :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; font-weight: bold; letter-spacing: normal; }
 
   .content sub,
   .content sup {

@@ -94,7 +94,7 @@ export function LearningArtifactProgressPanel({ document, progress, guideJob, gu
     {guideJob ? <div className={progressStyles.detail}>{guideUsageDetail(guideJob)}</div> : null}
     {activeWindows ? <div className={progressStyles.detail}>{activeWindows}</div> : null}
     {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
-    {guideJob?.safeErrorMessage ? <div className="tw:text-sm tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}
+    {guideJob?.safeErrorMessage ? <div className="tw:text-small tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}
     {readFailed ? <div className={progressStyles.detail}>Progress unavailable; showing the last saved status.</div> : null}
   </div>;
 }

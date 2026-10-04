@@ -66,6 +66,7 @@
     --ostudy-color-text-muted: #5C6471;
     --ostudy-color-text-primary: #15181D;
     --ostudy-color-text-secondary: #424955;
+    --ostudy-font-family-heading: var(--ui-font-family);
     --ostudy-glow-accent: 0 1px 2px rgb(51 70 211 / 30%);
     --ostudy-radius-button: var(--ostudy-radius-pill);
     --ostudy-radius-large: 20px;

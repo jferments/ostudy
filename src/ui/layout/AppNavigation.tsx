@@ -54,7 +54,7 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         <SidebarGroup>
           <SidebarMenu>{content(items.filter((item) => !item.secondary))}</SidebarMenu>
         </SidebarGroup>
-        <SidebarGroup className={cn("tw:mt-auto tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3", layoutMode === "medium" && "tw:text-sm")}>
+        <SidebarGroup className={cn("tw:mt-auto tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3", layoutMode === "medium" && "tw:text-small")}>
           <SidebarMenu>{content(items.filter((item) => item.secondary))}</SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

@@ -9,6 +9,6 @@ export function DropdownMenuContent({ className, ...props }: Omit<Menu.Popup.Pro
   </Menu.Positioner></Menu.Portal>;
 }
 export function DropdownMenuItem({ className, destructive = false, ...props }: Omit<Menu.Item.Props, "className"> & { className?: string; destructive?: boolean }) {
-  return <Menu.Item {...props} data-slot="dropdown-menu-item" className={cn("tw:flex tw:min-h-10 tw:cursor-default tw:items-center tw:rounded-md tw:px-3 tw:py-2 tw:text-sm tw:font-medium tw:outline-none tw:select-none tw:data-highlighted:bg-accent tw:data-highlighted:text-accent-foreground tw:data-disabled:pointer-events-none tw:data-disabled:opacity-50 tw:coarse:min-h-touch", destructive && "tw:text-destructive tw:data-highlighted:bg-destructive-soft tw:data-highlighted:text-destructive", className)} />;
+  return <Menu.Item {...props} data-slot="dropdown-menu-item" className={cn("tw:flex tw:min-h-10 tw:cursor-default tw:items-center tw:rounded-md tw:px-3 tw:py-2 tw:text-small tw:font-medium tw:outline-none tw:select-none tw:data-highlighted:bg-accent tw:data-highlighted:text-accent-foreground tw:data-disabled:pointer-events-none tw:data-disabled:opacity-50 tw:coarse:min-h-touch", destructive && "tw:text-destructive tw:data-highlighted:bg-destructive-soft tw:data-highlighted:text-destructive", className)} />;
 }
 export function DropdownMenuSeparator() { return <Menu.Separator className="tw:my-1.5 tw:h-px tw:bg-border" />; }

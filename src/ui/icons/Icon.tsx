@@ -1,4 +1,4 @@
-import type { ReactNode, SVGAttributes } from "react";
+import type { CSSProperties, ReactNode, SVGAttributes } from "react";
 
 export const ICON_NAMES = [
   "archive",
@@ -56,11 +56,16 @@ export interface IconProps extends SVGAttributes<SVGSVGElement> {
   label?: string;
 }
 
-export function Icon({ name, size = 20, label, ...props }: IconProps) {
+export function Icon({ name, size = 20, label, style, ...props }: IconProps) {
   const resolvedSize = Number.isFinite(size) ? Math.max(12, Math.min(64, size)) : 20;
+  // The attributes keep the design size; the base icon rule restates it in rem so the
+  // interface scale reaches icons, while size utilities on the svg still win.
+  const scaledStyle = { ...style, "--icon-size": `${resolvedSize / 16}rem` } as CSSProperties;
   return (
     <svg
+      data-icon={name}
       {...props}
+      style={scaledStyle}
       width={resolvedSize}
       height={resolvedSize}
       viewBox="0 0 24 24"

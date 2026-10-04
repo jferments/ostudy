@@ -70,23 +70,23 @@
   "size": {
     "control": {
       "$type": "dimension",
-      "$value": "42px"
+      "$value": "2.625rem"
     },
     "touchTarget": {
       "$type": "dimension",
-      "$value": "44px"
+      "$value": "max(44px, 2.75rem)"
     },
     "iconSmall": {
       "$type": "dimension",
-      "$value": "16px"
+      "$value": "1rem"
     },
     "iconMedium": {
       "$type": "dimension",
-      "$value": "20px"
+      "$value": "1.25rem"
     },
     "iconLarge": {
       "$type": "dimension",
-      "$value": "24px"
+      "$value": "1.5rem"
     },
     "contentReading": {
       "$type": "dimension",
@@ -191,6 +191,10 @@
         "$type": "dimension",
         "$value": "0.8125rem"
       },
+      "small": {
+        "$type": "dimension",
+        "$value": "0.875rem"
+      },
       "body": {
         "$type": "dimension",
         "$value": "1rem"
@@ -199,17 +203,21 @@
         "$type": "dimension",
         "$value": "1.125rem"
       },
+      "titleSmall": {
+        "$type": "dimension",
+        "$value": "1.1875rem"
+      },
       "section": {
         "$type": "dimension",
-        "$value": "1.375rem"
+        "$value": "1.5rem"
       },
       "title": {
         "$type": "dimension",
-        "$value": "clamp(1.75rem, 3vw, 2.5rem)"
+        "$value": "clamp(1.75rem, 1.2rem + 1.6vw, 2.125rem)"
       },
       "display": {
         "$type": "dimension",
-        "$value": "clamp(2.5rem, 6vw, 4.5rem)"
+        "$value": "clamp(2.25rem, 1.5rem + 2.5vw, 2.75rem)"
       }
     },
     "lineHeight": {
@@ -224,6 +232,74 @@
       "reading": {
         "$type": "number",
         "$value": "1.65"
+      },
+      "caption": {
+        "$type": "number",
+        "$value": "calc(1 / 0.75)"
+      },
+      "label": {
+        "$type": "number",
+        "$value": "calc(1.125 / 0.8125)"
+      },
+      "small": {
+        "$type": "number",
+        "$value": "calc(1.25 / 0.875)"
+      },
+      "body": {
+        "$type": "number",
+        "$value": "1.5"
+      },
+      "bodyLarge": {
+        "$type": "number",
+        "$value": "calc(1.75 / 1.125)"
+      },
+      "titleSmall": {
+        "$type": "number",
+        "$value": "1.3"
+      },
+      "section": {
+        "$type": "number",
+        "$value": "calc(2 / 1.5)"
+      },
+      "title": {
+        "$type": "number",
+        "$value": "1.2"
+      },
+      "display": {
+        "$type": "number",
+        "$value": "1.1"
+      }
+    },
+    "weight": {
+      "regular": {
+        "$type": "number",
+        "$value": "400"
+      },
+      "medium": {
+        "$type": "number",
+        "$value": "500"
+      },
+      "semibold": {
+        "$type": "number",
+        "$value": "600"
+      },
+      "bold": {
+        "$type": "number",
+        "$value": "700"
+      }
+    },
+    "letterSpacing": {
+      "normal": {
+        "$type": "dimension",
+        "$value": "0em"
+      },
+      "tight": {
+        "$type": "dimension",
+        "$value": "-0.01em"
+      },
+      "tighter": {
+        "$type": "dimension",
+        "$value": "-0.025em"
       }
     }
   },

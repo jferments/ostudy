@@ -33,7 +33,7 @@ export function MobileAppBar({
   return (
     <CompactAppHeader data-testid="mobile-app-bar">
       <BrandLockup compact />
-      {title ? <strong className="tw:truncate tw:text-sm tw:font-semibold tw:text-foreground">{title}</strong> : <span aria-hidden="true" />}
+      {title ? <strong className="tw:truncate tw:text-small tw:font-semibold tw:text-foreground">{title}</strong> : <span aria-hidden="true" />}
       <div className="tw:flex tw:min-w-0 tw:justify-end">
         <IconButton
           icon="settings"

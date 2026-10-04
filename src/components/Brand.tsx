@@ -25,7 +25,7 @@ export function BrandLockup({ compact = false }: { compact?: boolean }) {
     >
       <BrandMark />
       <span className="tw:grid tw:min-w-0">
-        <strong className={cn("tw:leading-none tw:tracking-tight", compact ? "tw:text-base" : "tw:text-2xl")}>ostudy</strong>
+        <strong className={cn("tw:leading-none tw:tracking-tight", compact ? "tw:text-body" : "tw:text-section")}>ostudy</strong>
       </span>
     </div>
   );

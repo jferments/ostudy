@@ -45,7 +45,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {/* Opacity preserves both layout and the action's accessible name while busy. */}
       <span className={loading ? "tw:opacity-0" : undefined}>{children}</span>
       {loading ? (
-        <span aria-hidden="true" className="tw:absolute tw:inset-0 tw:grid tw:place-items-center tw:text-xs tw:font-medium">
+        <span aria-hidden="true" className="tw:absolute tw:inset-0 tw:grid tw:place-items-center tw:text-caption tw:font-medium">
           Working…
         </span>
       ) : null}
