@@ -78,7 +78,7 @@ Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional 
 
 ## Overlay lifecycle
 
-Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap.
+Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap. Menus, tooltips and toasts float at the overlay shadow level (level 3), above the cards' level 1.
 
 Every Dialog and Sheet, including confirmations and MetadataDialog, shares one structure: a header with the title, optional description and close button; a body that scrolls with standard padding and spacing; and an `actions` footer that stays visible while the body scrolls, with a rule above it while content continues below. `onSubmit` makes the body and actions one form, so a submit action in the footer submits it without navigating. Widths come from four sizes (small, medium, large, workspace). On compact screens a dialog fills the screen, while sheets and confirmations rise from the bottom edge at their content height; both keep safe-area and IME padding.
 
