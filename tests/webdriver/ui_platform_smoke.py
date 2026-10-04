@@ -582,6 +582,48 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
         raise AssertionError(f"Fresh-profile IBM Plex defaults drifted in {label}: {measurement!r}")
 
 
+def assert_utilities_restyle_document_defaults(session_id: str) -> None:
+    # The heading and icon defaults must yield to utilities in the bundled stylesheet,
+    # whichever order it declares the cascade layers in.
+    measurement = execute(
+        session_id,
+        """
+        const host = document.createElement('div');
+        host.setAttribute('aria-hidden', 'true');
+        host.style.cssText = 'position: fixed; left: -10000px; top: 0;';
+        host.innerHTML = `
+          <h2 data-probe="plain">Plain</h2>
+          <h2 data-probe="utility" class="tw:font-medium">Utility</h2>
+          <svg data-probe="icon" data-icon="probe" style="--icon-size: 2rem" width="20" height="20"></svg>
+          <span class="tw:[&_svg:not([class*='size-'])]:size-3.5">
+            <svg data-probe="sized" data-icon="probe" style="--icon-size: 2rem" width="20" height="20"></svg>
+          </span>`;
+        document.body.append(host);
+        const style = (name) => getComputedStyle(host.querySelector(`[data-probe='${name}']`));
+        const result = {
+          rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          plainWeight: style('plain').fontWeight,
+          utilityWeight: style('utility').fontWeight,
+          iconWidth: parseFloat(style('icon').width),
+          sizedWidth: parseFloat(style('sized').width),
+        };
+        host.remove();
+        return result;
+        """,
+    )
+    if not isinstance(measurement, dict):
+        raise AssertionError(f"Could not inspect document defaults: {measurement!r}")
+    root = float(measurement.get("rootFontSize") or 0)
+    if (
+        root <= 0
+        or str(measurement.get("plainWeight")) != "600"
+        or str(measurement.get("utilityWeight")) != "500"
+        or abs(float(measurement.get("iconWidth") or 0) - 2 * root) > 0.5
+        or abs(float(measurement.get("sizedWidth") or 0) - 0.875 * root) > 0.5
+    ):
+        raise AssertionError(f"Utilities no longer restyle the heading and icon defaults: {measurement!r}")
+
+
 def wait_for_window_control(
     session_id: str,
     label: str,
@@ -874,6 +916,7 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "wide layout")
+    assert_utilities_restyle_document_defaults(session_id)
     assert_navigation_labels(
         session_id,
         ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],

@@ -63,25 +63,6 @@
     margin-top: 0;
   }
 
-  /* Interface headings: semibold with slightly tightened tracking. Console swaps in its
-   * IBM Plex Mono display face through the theme-owned heading family. */
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-family: var(--ostudy-font-family-heading);
-    font-weight: var(--ostudy-font-weight-semibold);
-    letter-spacing: var(--ostudy-font-letter-spacing-tight);
-  }
-
-  /* Icon design sizes in rem (see Icon.tsx) so the interface scale reaches them. */
-  svg[data-icon] {
-    width: var(--icon-size);
-    height: var(--icon-size);
-  }
-
   code,
   kbd {
     font-family: "Cascadia Code", "Liberation Mono", monospace;
@@ -159,5 +140,25 @@
     body > *:not(#root) {
       display: none !important;
     }
+  }
+}
+
+/* Defaults that utilities and component styles restyle. They sit in the components layer
+ * with zero specificity, so any class wins whatever order the bundle declares the layers
+ * in (CSS Modules imported by App currently declare `components` before this file). */
+@layer components {
+  /* Interface headings: semibold with slightly tightened tracking. Console swaps in its
+   * IBM Plex Mono display face through the theme-owned heading family. */
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--ostudy-font-family-heading);
+    font-weight: var(--ostudy-font-weight-semibold);
+    letter-spacing: var(--ostudy-font-letter-spacing-tight);
+  }
+
+  /* Icon design sizes in rem (see Icon.tsx) so the interface scale reaches them; a size
+   * utility on the icon or its button still sets the size. */
+  :where(svg[data-icon]) {
+    width: var(--icon-size);
+    height: var(--icon-size);
   }
 }

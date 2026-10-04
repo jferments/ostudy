@@ -72,8 +72,9 @@ export interface IconProps extends SVGAttributes<SVGSVGElement> {
 
 export function Icon({ name, size = 20, label, style, ...props }: IconProps) {
   const resolvedSize = Number.isFinite(size) ? Math.max(12, Math.min(64, size)) : 20;
-  // The attributes keep the design size; the base icon rule restates it in rem so the
-  // interface scale reaches icons, while size utilities on the svg still win.
+  // The attributes keep the design size; the icon default in document.css restates it in
+  // rem so the interface scale reaches icons, while size utilities on the svg or its
+  // button still win.
   const scaledStyle = { ...style, "--icon-size": `${resolvedSize / 16}rem` } as CSSProperties;
   return (
     <svg
