@@ -25,7 +25,7 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         aria-label={compact ? item.label : undefined}
         onClick={item.onSelect}
         className={compact
-          ? "tw:grid tw:h-auto tw:min-h-[3.85rem] tw:overflow-visible tw:justify-items-center tw:gap-0.5 tw:rounded-sm tw:px-0.5 tw:py-1 tw:text-center tw:text-[0.55rem] tw:leading-[1.05] tw:font-medium tw:coarse:min-h-[3.85rem] tw:coarse:gap-0.5 tw:coarse:px-0.5 tw:[&>span:last-child]:max-w-full tw:[&>span:last-child]:overflow-visible tw:[&>span:last-child]:text-clip tw:[&>span:last-child]:whitespace-pre-line"
+          ? "tw:grid tw:h-auto tw:min-h-[3.85rem] tw:overflow-visible tw:justify-items-center tw:gap-0.5 tw:rounded-sm tw:px-0.5 tw:py-1 tw:text-center tw:text-caption tw:leading-[1.05] tw:font-medium tw:coarse:min-h-[3.85rem] tw:coarse:gap-0.5 tw:coarse:px-0.5 tw:[&>span:last-child]:max-w-full tw:[&>span:last-child]:overflow-visible tw:[&>span:last-child]:text-clip tw:[&>span:last-child]:whitespace-pre-line"
           : undefined}
       >
         <Icon name={item.icon} size={compact ? 17 : 20} />
