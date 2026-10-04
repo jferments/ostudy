@@ -100,6 +100,7 @@ mod study_calendar;
 mod study_materials;
 mod studyability;
 mod studydeck;
+mod subjects;
 mod system_resources;
 mod task_activity;
 mod task_cancellation;
@@ -225,6 +226,16 @@ pub fn run() {
             collections::remove_document_collection_membership,
             collections::set_document_collection_ranges,
             collections::resolve_document_source_selection,
+            subjects::get_subject_library,
+            subjects::create_subject,
+            subjects::rename_subject,
+            subjects::move_subject,
+            subjects::delete_subject,
+            subjects::move_deck_to_subject,
+            subjects::move_document_to_subject,
+            subjects::set_document_study_ranges,
+            subjects::get_subject_filing_reviews,
+            subjects::dismiss_subject_filing_review,
             deletion_commands::delete_deck_with_undo,
             deck_cards::list_deck_card_summaries,
             deletion_commands::delete_card_with_undo,

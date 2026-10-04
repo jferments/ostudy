@@ -214,9 +214,9 @@ pub struct SourceSetSnapshotDto {
 }
 
 #[derive(Clone, Debug)]
-struct DocumentShape {
+pub(crate) struct DocumentShape {
     id: String,
-    sha256: String,
+    pub(crate) sha256: String,
     revision: i64,
     source_format: String,
     unit_kind: String,
@@ -1190,7 +1190,7 @@ fn subtract_ranges(
     output
 }
 
-fn validate_and_normalize_ranges(
+pub(crate) fn validate_and_normalize_ranges(
     connection: &Connection,
     shape: &DocumentShape,
     ranges: Vec<SourceRangeInput>,
@@ -1283,7 +1283,7 @@ fn measure_ranges(
     Ok((units, bytes))
 }
 
-fn load_document_shape(
+pub(crate) fn load_document_shape(
     connection: &Connection,
     document_id: &str,
 ) -> Result<DocumentShape, CommandError> {
@@ -1532,15 +1532,16 @@ fn source_set_changed() -> CommandError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::document_domain::{SourceLocator, SourceUnitKind};
+pub(crate) mod test_support {
+    use rusqlite::{params, Connection};
 
-    fn id(byte: char) -> String {
-        byte.to_string().repeat(32)
-    }
+    use crate::{
+        document_domain::{SourceLocator, SourceUnitKind},
+        error::CommandError,
+    };
 
-    fn seed_document(
+    /// A ready PDF document with `units` pages, whose source hash repeats `sha`.
+    pub(crate) fn seed_document(
         connection: &Connection,
         document_id: &str,
         units: i64,
@@ -1555,9 +1556,14 @@ mod tests {
                      source_format,source_unit_kind,source_unit_count,source_media_type
                  ) VALUES(
                      ?1,'Source','source.pdf','application/pdf',100,?2,
-                     'documents/source.pdf','ready',1,1,'pdf','page',?3,'application/pdf'
+                     ?4,'ready',1,1,'pdf','page',?3,'application/pdf'
                  )",
-                params![document_id, sha256, units],
+                params![
+                    document_id,
+                    sha256,
+                    units,
+                    format!("documents/{document_id}/source.pdf")
+                ],
             )
             .map_err(CommandError::database)?;
         connection
@@ -1595,6 +1601,16 @@ mod tests {
                 .map_err(CommandError::database)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::seed_document;
+    use super::*;
+
+    fn id(byte: char) -> String {
+        byte.to_string().repeat(32)
     }
 
     fn create_root(

@@ -12,8 +12,15 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::{
-    decks::DeckSummaryDto, error::CommandError, library_backup::live::LiveRestoreResult,
-    library_session::SessionStatus, settings::AppSettingsDto,
+    decks::DeckSummaryDto,
+    error::CommandError,
+    library_backup::live::LiveRestoreResult,
+    library_session::SessionStatus,
+    settings::AppSettingsDto,
+    subjects::{
+        DocumentStudyRangeDto, SubjectDeckPlacementDto, SubjectDocumentPlacementDto, SubjectDto,
+        SubjectFilingReviewDto, SubjectLibraryDto,
+    },
 };
 
 #[derive(Clone, Copy)]
@@ -232,6 +239,72 @@ const LIBRARY_SESSION_FIELDS: &[FieldContract] = &[
     },
 ];
 
+const fn field(name: &'static str, ty: TypeScriptType) -> FieldContract {
+    FieldContract { name, ty }
+}
+
+const NULLABLE_STRING: TypeScriptType = TypeScriptType::Named("string | null");
+
+const SUBJECT_FIELDS: &[FieldContract] = &[
+    field("id", TypeScriptType::String),
+    field("name", TypeScriptType::String),
+    field("sortOrder", TypeScriptType::Number),
+    field("createdAt", TypeScriptType::Number),
+    field("updatedAt", TypeScriptType::Number),
+    field("revision", TypeScriptType::Number),
+];
+
+const SUBJECT_DECK_PLACEMENT_FIELDS: &[FieldContract] = &[
+    field("deckId", TypeScriptType::String),
+    field("subjectId", NULLABLE_STRING),
+    field("sortOrder", TypeScriptType::Number),
+];
+
+const SUBJECT_DOCUMENT_PLACEMENT_FIELDS: &[FieldContract] = &[
+    field("documentId", TypeScriptType::String),
+    field("subjectId", NULLABLE_STRING),
+];
+
+const DOCUMENT_STUDY_RANGE_FIELDS: &[FieldContract] = &[
+    field("id", TypeScriptType::String),
+    field("documentId", TypeScriptType::String),
+    field("unitKind", TypeScriptType::String),
+    field("startUnit", TypeScriptType::Number),
+    field("endUnit", TypeScriptType::Number),
+    field("sourceSha256", TypeScriptType::String),
+    field("createdAt", TypeScriptType::Number),
+];
+
+const SUBJECT_LIBRARY_FIELDS: &[FieldContract] = &[
+    field("libraryRevision", TypeScriptType::Number),
+    field("documentFilingRevision", TypeScriptType::Number),
+    field("subjects", TypeScriptType::Named("NativeSubject[]")),
+    field(
+        "decks",
+        TypeScriptType::Named("NativeSubjectDeckPlacement[]"),
+    ),
+    field(
+        "documents",
+        TypeScriptType::Named("NativeSubjectDocumentPlacement[]"),
+    ),
+    field(
+        "studyRanges",
+        TypeScriptType::Named("NativeDocumentStudyRange[]"),
+    ),
+    field("checkTheseCount", TypeScriptType::Number),
+];
+
+const SUBJECT_FILING_REVIEW_FIELDS: &[FieldContract] = &[
+    field(
+        "entityKind",
+        TypeScriptType::Named("\"subject\" | \"deck\" | \"document\" | \"note\""),
+    ),
+    field("entityId", TypeScriptType::String),
+    field("reason", TypeScriptType::String),
+    field("detail", TypeScriptType::Named("Record<string, unknown>")),
+    field("label", TypeScriptType::String),
+];
+
 const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeCommandError",
@@ -252,6 +325,30 @@ const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeLibrarySession",
         fields: LIBRARY_SESSION_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubject",
+        fields: SUBJECT_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubjectDeckPlacement",
+        fields: SUBJECT_DECK_PLACEMENT_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubjectDocumentPlacement",
+        fields: SUBJECT_DOCUMENT_PLACEMENT_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeDocumentStudyRange",
+        fields: DOCUMENT_STUDY_RANGE_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubjectLibrary",
+        fields: SUBJECT_LIBRARY_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubjectFilingReview",
+        fields: SUBJECT_FILING_REVIEW_FIELDS,
     },
 ];
 
@@ -340,6 +437,54 @@ pub fn representative_fixtures() -> Value {
             recovery_required: false,
             last_restore: Some(restore),
         },
+        "subjectLibrary": SubjectLibraryDto {
+            library_revision: 9,
+            document_filing_revision: 4,
+            subjects: vec![SubjectDto {
+                id: "33333333333333333333333333333333".to_string(),
+                name: "Pharmacology".to_string(),
+                sort_order: 1000,
+                created_at: 10,
+                updated_at: 20,
+                revision: 2,
+            }],
+            decks: vec![
+                SubjectDeckPlacementDto {
+                    deck_id: "11111111111111111111111111111111".to_string(),
+                    subject_id: Some("33333333333333333333333333333333".to_string()),
+                    sort_order: 1000,
+                },
+                SubjectDeckPlacementDto {
+                    deck_id: "44444444444444444444444444444444".to_string(),
+                    subject_id: None,
+                    sort_order: 1000,
+                },
+            ],
+            documents: vec![SubjectDocumentPlacementDto {
+                document_id: "55555555555555555555555555555555".to_string(),
+                subject_id: Some("33333333333333333333333333333333".to_string()),
+            }],
+            study_ranges: vec![DocumentStudyRangeDto {
+                id: "66666666666666666666666666666666".to_string(),
+                document_id: "55555555555555555555555555555555".to_string(),
+                unit_kind: "page".to_string(),
+                start_unit: 10,
+                end_unit: 40,
+                source_sha256: "7".repeat(64),
+                created_at: 30,
+            }],
+            check_these_count: 1,
+        },
+        "subjectFilingReview": SubjectFilingReviewDto {
+            entity_kind: "deck".to_string(),
+            entity_id: "44444444444444444444444444444444".to_string(),
+            reason: "moved_to_collection_subject".to_string(),
+            detail: json!({
+                "folderSubjectId": null,
+                "subjectIds": ["33333333333333333333333333333333"],
+            }),
+            label: "Pharmacology study bundle".to_string(),
+        },
         "encoding": EncodingFixture::Ready {
             bytes: vec![0, 127, 255],
             optional: None,
@@ -380,14 +525,36 @@ mod tests {
     #[test]
     fn object_contracts_cover_every_representative_product_field() {
         let fixtures = representative_fixtures();
-        for (fixture_name, contract) in [
-            ("commandError", OBJECT_CONTRACTS[0]),
-            ("deckSummary", OBJECT_CONTRACTS[1]),
-            ("appSettings", OBJECT_CONTRACTS[2]),
-            ("completedRestore", OBJECT_CONTRACTS[3]),
-            ("librarySession", OBJECT_CONTRACTS[4]),
-        ] {
-            let object = fixtures[fixture_name].as_object().unwrap();
+        let covered = [
+            ("/commandError", "NativeCommandError"),
+            ("/deckSummary", "NativeDeckSummary"),
+            ("/appSettings", "NativeAppSettings"),
+            ("/completedRestore", "NativeCompletedLibraryRestore"),
+            ("/librarySession", "NativeLibrarySession"),
+            ("/subjectLibrary/subjects/0", "NativeSubject"),
+            ("/subjectLibrary/decks/1", "NativeSubjectDeckPlacement"),
+            (
+                "/subjectLibrary/documents/0",
+                "NativeSubjectDocumentPlacement",
+            ),
+            ("/subjectLibrary/studyRanges/0", "NativeDocumentStudyRange"),
+            ("/subjectLibrary", "NativeSubjectLibrary"),
+            ("/subjectFilingReview", "NativeSubjectFilingReview"),
+        ];
+        let mut named = covered.iter().map(|(_, name)| *name).collect::<Vec<_>>();
+        let mut declared = OBJECT_CONTRACTS
+            .iter()
+            .map(|contract| contract.name)
+            .collect::<Vec<_>>();
+        named.sort_unstable();
+        declared.sort_unstable();
+        assert_eq!(named, declared, "every object contract needs a fixture");
+        for (fixture_name, contract_name) in covered {
+            let contract = OBJECT_CONTRACTS
+                .iter()
+                .find(|contract| contract.name == contract_name)
+                .unwrap();
+            let object = fixtures.pointer(fixture_name).unwrap().as_object().unwrap();
             let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
             let mut expected = contract
                 .fields
