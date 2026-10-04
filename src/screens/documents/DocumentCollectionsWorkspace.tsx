@@ -14,6 +14,7 @@ import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ListRow, ListRowMedia, ListRows } from "../../ui/primitives/ListRow";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
 import { Surface } from "../../ui/primitives/Surface";
@@ -224,7 +225,7 @@ function CollectionPanel({
   const memberships = organization.memberships.filter((entry) => entry.collectionId === folder.id);
 
   return (
-    <Surface as="article" className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
+    <Surface as="article" className="tw:grid tw:min-w-0 tw:gap-4 tw:p-(--card-gutter)">
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
         <div className="tw:grid tw:min-w-0 tw:gap-1">
           <h3 className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{folder.name}</h3>
@@ -514,34 +515,25 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
         <h3 className="tw:m-0 tw:text-body tw:font-semibold">Sources</h3>
         <Button size="small" disabled={disabled} onClick={onAdd}>Add source</Button>
       </div>
-      {memberships.length ? memberships.map((membership) => {
-        const document = documents.get(membership.documentId);
-        return (
-          <Surface key={membership.id} className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-3 tw:p-3">
-            <SourceTile document={document} rangeLabel={rangeLabel(membership, organization, document)} />
-            <div className="tw:ml-auto tw:flex tw:flex-wrap tw:gap-2">
-              <Button size="small" disabled={disabled || !document} onClick={() => onRanges(membership)}>Edit range</Button>
-              <Button size="small" disabled={disabled} onClick={() => onMove(membership)}>Move</Button>
-              <Button size="small" variant="dangerGhost" disabled={disabled} onClick={() => onRemove(membership)}>Remove</Button>
-            </div>
-          </Surface>
-        );
-      }) : <p className="tw:m-0 tw:text-small tw:text-muted-foreground">No sources in this collection yet.</p>}
+      {memberships.length ? (
+        <ListRows>
+          {memberships.map((membership) => {
+            const document = documents.get(membership.documentId);
+            return (
+              <ListRow key={membership.id}
+                leading={<ListRowMedia label={document?.sourceFormat.slice(0, 4) ?? "DOC"} />}
+                title={<span className="tw:wrap-anywhere">{document?.title ?? "Source no longer available"}</span>}
+                meta={<span className="tw:wrap-anywhere">{rangeLabel(membership, organization, document)}</span>}
+                trailing={<>
+                  <Button size="small" disabled={disabled || !document} onClick={() => onRanges(membership)}>Edit range</Button>
+                  <Button size="small" disabled={disabled} onClick={() => onMove(membership)}>Move</Button>
+                  <Button size="small" variant="dangerGhost" disabled={disabled} onClick={() => onRemove(membership)}>Remove</Button>
+                </>} />
+            );
+          })}
+        </ListRows>
+      ) : <p className="tw:m-0 tw:text-small tw:text-muted-foreground">No sources in this collection yet.</p>}
     </section>
-  );
-}
-
-function SourceTile({ document, rangeLabel: label }: { document: DocumentSummary | undefined; rangeLabel: string }) {
-  return (
-    <div className="tw:flex tw:min-w-0 tw:flex-1 tw:items-center tw:gap-3">
-      <div aria-hidden="true" className="tw:grid tw:size-11 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-muted tw:px-1 tw:text-[0.65rem] tw:font-semibold tw:uppercase tw:text-muted-foreground">
-        {document?.sourceFormat.slice(0, 4) ?? "DOC"}
-      </div>
-      <div className="tw:grid tw:min-w-0 tw:gap-0.5">
-        <strong className="tw:wrap-anywhere tw:text-small">{document?.title ?? "Source no longer available"}</strong>
-        <small className="tw:wrap-anywhere tw:text-muted-foreground">{label}</small>
-      </div>
-    </div>
   );
 }
 

@@ -15,6 +15,7 @@ import { StatDelta, StatTile } from "../ui/primitives/StatTile";
 import { Surface } from "../ui/primitives/Surface";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { SectionHeading } from "../ui/primitives/SectionHeading";
+import { ListRow, ListRows } from "../ui/primitives/ListRow";
 import { LoadingState } from "../ui/primitives/EmptyState";
 import { cn } from "../ui/internal/cn";
 import { styles, outcomeColors } from "./analytics/presentation";
@@ -213,32 +214,34 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
           <Surface as="section" className={styles.analyticsPanel}>
             <SectionHeading title="Recent sessions" />
             {analytics.recentSessions.length === 0 ? <p className={styles.mutedCopy}>Complete a practice session to track session time.</p> : (
-              <div className={styles.analyticsSessionList}>{analytics.recentSessions.map((session) => <article key={session.id} className={cn(session.highlighted && styles.highlighted)}>
-                <div><strong>{session.deckNames.join(", ") || "Custom selection"}</strong><span>{session.mode} · {dateTimeFormatter.format(new Date(session.startedAt))}</span></div>
-                <div><strong>{formatStudyTime(session.studyTimeMs)}</strong><span>{session.ratedCount} reviewed · {formatPercent(session.correctRate)}</span><small>{formatStudyTime(session.durationMs)} elapsed</small></div>
-              </article>)}</div>
+              <ListRows>{analytics.recentSessions.map((session) => <ListRow key={session.id} density="dense" className="tw:items-start" selected={session.highlighted}
+                title={session.deckNames.join(", ") || "Custom selection"}
+                meta={`${session.mode} · ${dateTimeFormatter.format(new Date(session.startedAt))}`}
+                trailing={<div className={styles.recentFigures}>
+                  <strong>{formatStudyTime(session.studyTimeMs)}</strong><span>{session.ratedCount} reviewed · {formatPercent(session.correctRate)}</span><small>{formatStudyTime(session.durationMs)} elapsed</small>
+                </div>} />)}</ListRows>
             )}
           </Surface>
         </div>
         <Surface as="section" className={styles.analyticsPanelRecentReviewPanel}>
           <SectionHeading title="Recent reviews" />
           {analytics.recentReviews.length === 0 ? <div className={styles.compactEmptyState}><p>Complete a practice session to begin tracking review results.</p></div> : (
-            <div className={styles.recentReviewList}>{analytics.recentReviews.map((review) => <article key={review.id} className={styles.recentReviewRow}>
-              <span className={cn(styles.reviewDot, outcomeColors[(review.rating - 1) as keyof typeof outcomeColors])} aria-hidden="true" />
-              <div className={styles.recentReviewCopy}>
-                <strong>{summarize(review.questionExcerpt)}</strong><span>{review.deckName} · {outcomeLabel(review.outcome)}</span>
+            <ListRows>{analytics.recentReviews.map((review) => <ListRow key={review.id} density="dense" className="tw:items-start"
+              leading={<span className={cn(styles.reviewDot, outcomeColors[(review.rating - 1) as keyof typeof outcomeColors])} aria-hidden="true" />}
+              title={summarize(review.questionExcerpt)}
+              meta={<>
+                <span>{review.deckName} · {outcomeLabel(review.outcome)}</span>
                 {review.capturedDeckName !== review.deckName ? <small>Reviewed while named “{review.capturedDeckName}”</small> : null}
                 {review.tags.length > 0 ? <small className={styles.recentReviewTags}>{review.tags.map((tag, index) => <span key={tag.tagId}>
                   {index > 0 ? " · " : null}{tag.isCurrent ? <Button variant="text" className={styles.recentReviewTagAction}
                     aria-label={`Search cards tagged ${tag.tagName}`} onClick={() => void onSearchTag(tag.tagId)}>{tag.tagName}</Button> : tag.tagName}
                 </span>)}</small> : null}
-              </div>
-              <div className={styles.recentReviewMeta}>
+              </>}
+              trailing={<div className={styles.recentFigures}>
                 <strong>{formatDuration(review.responseTimeMs)}</strong><span>{dateTimeFormatter.format(new Date(review.reviewedAt))}</span>
                 <small>Next: {formatDueDate(review.dueAfter)}</small>
                 {review.attributionSource === "legacy_current_state_backfill" ? <small>Legacy attribution reconstructed</small> : null}
-              </div>
-            </article>)}</div>
+              </div>} />)}</ListRows>
           )}
         </Surface>
         {analytics.attributionCoverage.legacyBackfilledReviewCount > 0 ? <InlineNotice>
