@@ -115,6 +115,7 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
     "review_events",
     "review_event_attributions",
     "review_event_tag_attributions",
+    "review_event_scheduler_context",
     "question_review_links",
     "question_remediation_attempts",
     "source_citation_snapshots",
@@ -462,6 +463,7 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM card_question_presentations;
                  DELETE FROM review_event_tag_attributions;
                  DELETE FROM review_event_attributions;
+                 DELETE FROM review_event_scheduler_context;
                  DELETE FROM review_events;
                  DELETE FROM practice_session_card_tag_snapshots;
                  DELETE FROM practice_session_card_snapshots;
@@ -589,6 +591,10 @@ mod question_transfer_tests;
 #[cfg(test)]
 #[path = "privacy_tests.rs"]
 mod privacy_tests;
+
+#[cfg(test)]
+#[path = "review_context_sync_tests.rs"]
+mod review_context_sync_tests;
 
 #[cfg(test)]
 mod tests {

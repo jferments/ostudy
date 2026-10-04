@@ -477,6 +477,7 @@ mod tests {
                         outcome: "somewhat_confident".to_string(),
                         response_time_ms: 1_250,
                         schedule_revision: 1,
+                        active_time_ms: None,
                     },
                 )?;
                 assert_eq!(result.rated_count, 1);

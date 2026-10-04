@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PracticeLaunchRequest, PracticeReturnTarget } from "../App";
 import { PracticeController } from "../controllers/practiceController";
 import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
+import { activeTimeForReview, useVisibleStudyTime } from "../controllers/visibleStudyTime";
 import type { AuthoringNote } from "../ipc/authoringNotes";
 import { getCardNote } from "../ipc/cards";
 import {
@@ -134,6 +135,7 @@ export function PracticeScreen({
   const endingRef = useRef(false);
   const managingRef = useRef(false);
   const questionShownAtRef = useRef(Date.now());
+  const visibleStudyTime = useVisibleStudyTime();
   const handledLaunchRequestRef = useRef<number | null>(null);
   const pendingStartRef = useRef<PendingStartOperation | null>(null);
   const pendingReviewRef = useRef<PendingReviewOperation | null>(null);
@@ -151,6 +153,23 @@ export function PracticeScreen({
   const previewRequestRef = useRef(0);
   const confirm = useConfirm();
   const experience = useExperience();
+
+  /** Restart response and visible study time for the card now on screen. */
+  const markCardShown = useCallback((): void => {
+    questionShownAtRef.current = Date.now();
+    visibleStudyTime.restart();
+  }, [visibleStudyTime]);
+
+  const editorDeck = session && editingCard
+    ? activeDecks.find((deck) => deck.id === editingCard.deckId) ?? null
+    : null;
+  const editorOpen = editorDeck !== null;
+  // The card editor replaces the practice view, so editing is not study time.
+  useEffect(() => {
+    if (!editorOpen) return;
+    visibleStudyTime.pause("editor");
+    return () => visibleStudyTime.resume("editor");
+  }, [editorOpen, visibleStudyTime]);
 
   useEffect(() => {
     if (isStarting) return registerPracticeExitHandler(async () => false);
@@ -299,7 +318,7 @@ export function PracticeScreen({
         setPreviewSet(await controller.reveal(restored.session.id, first.presentation.cardId));
       }
       setRecovery(null);
-      questionShownAtRef.current = Date.now();
+      markCardShown();
     } catch (error: unknown) {
       setErrorMessage(`The interrupted practice session could not be restored: ${getErrorMessage(error)}`);
       setSession(null);
@@ -310,7 +329,7 @@ export function PracticeScreen({
       startingRef.current = false;
       setIsStarting(false);
     }
-  }, [controller]);
+  }, [controller, markCardShown]);
 
   useEffect(() => {
     if (!restoreCheckpoint) return;
@@ -334,12 +353,12 @@ export function PracticeScreen({
   useEffect(() => {
     if (!currentSessionId || !currentCardId || completed) return;
     let currentView = true;
-    questionShownAtRef.current = Date.now();
+    markCardShown();
     void controller.markViewed(currentSessionId, currentCardId).catch((error: unknown) => {
       if (currentView) showToast("error", getErrorMessage(error));
     });
     return () => { currentView = false; };
-  }, [completed, controller, currentCardId, currentSessionId, showToast]);
+  }, [completed, controller, currentCardId, currentSessionId, markCardShown, showToast]);
 
   async function revealAnswer(): Promise<void> {
     if (!session || !current || (revealed && previewSet) || revealingRef.current) return;
@@ -463,6 +482,7 @@ export function PracticeScreen({
     const responseTimeMs = progress && progress.phase !== "answering"
       ? progress.responseTimeMs
       : Math.max(0, Math.min(86_400_000, Date.now() - questionShownAtRef.current));
+    // A retry resends the original input, including the active time it measured.
     const input: SubmitReviewInput = pending?.input ?? {
       sessionId: session.id,
       cardId: current.presentation.cardId,
@@ -470,6 +490,7 @@ export function PracticeScreen({
       outcome: outcomeForScore(score),
       responseTimeMs,
       scheduleRevision: previewSet.scheduleRevision,
+      activeTimeMs: activeTimeForReview(visibleStudyTime.elapsedMs()),
     };
     const questionRevision = interactivePresentation?.question.attempt.revision ?? null;
     if (!pending) {
@@ -568,7 +589,7 @@ export function PracticeScreen({
         setErrorMessage(`The card was saved and its captured answer preserved, but review intervals could not refresh: ${getErrorMessage(error)}`);
       }
     }
-    questionShownAtRef.current = Date.now();
+    markCardShown();
     if (refreshed.completed) {
       setCompleted(true);
       experience.emit({ type: "session_completed" });
@@ -611,7 +632,7 @@ export function PracticeScreen({
           setRevealed(false);
           setPreviewSet(null);
         }
-        questionShownAtRef.current = Date.now();
+        markCardShown();
       }
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -668,9 +689,8 @@ export function PracticeScreen({
     }
   }
 
-  if (session && editingCard) {
-    const editorDeck = activeDecks.find((deck) => deck.id === editingCard.deckId);
-    if (editorDeck) return <CardEditorScreen deck={editorDeck} decks={[editorDeck]} card={editingCard}
+  if (editingCard && editorDeck) {
+    return <CardEditorScreen deck={editorDeck} decks={[editorDeck]} card={editingCard}
       onCancel={() => setEditingCard(null)} onSaved={async (saved) => finishCardEdit(saved.noteId)}
       onQuestionSaved={async (noteId) => finishCardEdit(noteId)} onTemplateGenerated={async () => undefined}
       onDirtyChange={() => undefined} onMoveCopy={() => undefined} />;

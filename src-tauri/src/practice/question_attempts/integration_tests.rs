@@ -132,6 +132,7 @@ impl Fixture {
                 outcome: outcome.to_string(),
                 response_time_ms: 234,
                 schedule_revision: load_schedule(connection, &target.card_id)?.revision,
+                active_time_ms: Some(2_345),
             })
         })
     }
@@ -377,6 +378,18 @@ fn check_then_review_records_one_fsrs_transition_and_an_immutable_link() {
             )
             .map_err(CommandError::database)?;
         assert_eq!(correct, (1, 1));
+        // A checked question review records its scheduler context like any review.
+        let scheduler_context: (i64, Option<i64>, Option<i64>) = connection
+            .query_row(
+                "SELECT COUNT(*), MAX(c.active_time_ms), MAX(c.previous_review_at)
+                 FROM review_event_scheduler_context c
+                 JOIN review_events r ON r.id = c.review_event_id
+                 WHERE r.card_id = ?1",
+                [&target.card_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(CommandError::database)?;
+        assert_eq!(scheduler_context, (1, Some(2_345), None));
         Ok(())
     });
     assert_eq!(fixture.counts(), (1, 1, 1));
@@ -526,6 +539,14 @@ fn link_failure_rolls_back_review_schedule_and_counters_but_keeps_the_first_chec
             })
             .map_err(CommandError::database)?;
         assert_eq!(rated, 0);
+        let scheduler_context: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM review_event_scheduler_context",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        assert_eq!(scheduler_context, 0);
         Ok(())
     });
     assert_eq!(fixture.counts(), (0, 0, 0));
