@@ -216,7 +216,8 @@ fn insert_reviewed_card(
             params![
                 seed.review_id,
                 now,
-                time.local_date.to_string(),
+                time.calendar_date_string_for_timestamp(now)
+                    .expect("calendar date should resolve"),
                 time.time_zone_id,
                 time.utc_offset_minutes,
                 seed.card_id,
@@ -238,7 +239,11 @@ struct AdditionalReviewSeed<'a> {
     review_id: &'a str,
     submission_id: &'a str,
     reviewed_at: i64,
+    /// The calendar date, zone and offset in force at `reviewed_at`, as a
+    /// captured attribution stores them.
     review_local_date: &'a str,
+    time_zone_id: &'a str,
+    utc_offset_minutes: i32,
     captured_deck_id: &'a str,
     captured_deck_name: &'a str,
 }
@@ -289,7 +294,7 @@ fn insert_additional_review(
                  attribution_source
              ) VALUES (
                  ?1, ?2, ?3,
-                 'Etc/UTC', 0,
+                 ?9, ?10,
                  ?4, ?5, 1,
                  ?6, ?7,
                  'forward', 'basic', 'Basic', 'forward',
@@ -305,6 +310,8 @@ fn insert_additional_review(
                 seed.captured_deck_id,
                 seed.captured_deck_name,
                 "f".repeat(64),
+                seed.time_zone_id,
+                seed.utc_offset_minutes,
             ],
         )
         .expect("additional review attribution should insert");
@@ -326,7 +333,7 @@ fn moved_card_history_follows_current_owner_and_keeps_review_presentation() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let deck_a = "a".repeat(32);
             let deck_b = "b".repeat(32);
             insert_deck(connection, &deck_a, "Deck A", 0, time.now_utc_millis);
@@ -389,7 +396,7 @@ fn recent_review_tags_preserve_identity_and_match_active_note_currentness() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let review_deck_id = hex_id(1);
             let other_active_deck_id = hex_id(2);
             let archived_deck_id = hex_id(3);
@@ -656,7 +663,7 @@ fn recent_review_limit_precedes_tag_fan_out_and_query_count_is_fixed() {
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let deck_id = hex_id(100);
             insert_deck(connection, &deck_id, "Fan-out deck", 0, time.now_utc_millis);
             let oldest_review_id = hex_id(101);
@@ -695,7 +702,10 @@ fn recent_review_limit_precedes_tag_fan_out_and_query_count_is_fixed() {
                         reviewed_at: time
                             .now_utc_millis
                             .saturating_add(i64::try_from(index).unwrap_or(i64::MAX)),
-                        review_local_date: &time.local_date.to_string(),
+                        review_local_date: &time
+                            .calendar_date_string_for_timestamp(time.now_utc_millis)?,
+                        time_zone_id: &time.time_zone_id,
+                        utc_offset_minutes: time.utc_offset_minutes,
                         captured_deck_id: &deck_id,
                         captured_deck_name: "Fan-out deck",
                     },
@@ -742,7 +752,7 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
     let database = Database::open_in_memory().expect("database should open");
     database
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let deck_a = "1".repeat(32);
             let deck_b = "2".repeat(32);
             insert_deck(connection, &deck_a, "Old owner", 0, time.now_utc_millis);

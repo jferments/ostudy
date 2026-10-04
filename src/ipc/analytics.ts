@@ -27,6 +27,8 @@ export interface AnalyticsScope {
   startAt: number | null;
   endAt: number;
   bucketGranularity: "day" | "week" | "month";
+  /** The current study date, which starts at the "New day starts at" hour. */
+  todayLocalDate: string;
   deckIds: string[];
   tagIds: string[];
   highlightedSessionId: string | null;

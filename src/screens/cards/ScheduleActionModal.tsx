@@ -109,8 +109,8 @@ export function ScheduleActionModal({ cards, action, onClose, onComplete, showTo
             </label>
           ) : null}
           <p className={styles.mutedCopy}>
-            Rust resolves the selected local calendar date to the first valid instant in the
-            system time zone. Rescheduling does not record a successful review or change FSRS
+            A later date becomes due when that day starts, at the “New day starts at”
+            time in Settings. Rescheduling does not record a successful review or change FSRS
             difficulty and stability.
           </p>
         </div>

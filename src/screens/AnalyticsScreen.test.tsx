@@ -51,6 +51,7 @@ function analyticsForRange(
           : range === "all"
             ? "month"
             : "week",
+      todayLocalDate: "2026-08-06",
       deckIds: [],
       tagIds: [],
       highlightedSessionId: null,
@@ -357,6 +358,31 @@ describe("AnalyticsScreen", () => {
         }),
       );
     });
+  });
+
+  it("starts a custom range on the native study date, not this device's calendar date", async () => {
+    // 01:30 on 7 August still belongs to the study date native reports: 6 August.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 7, 1, 30));
+    try {
+      renderAnalytics();
+      await screen.findByText("Cards practiced");
+
+      fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
+
+      await waitFor(() => {
+        expect(analyticsIpc.getAnalytics).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            range: "custom",
+            customStartLocalDate: "2026-07-31",
+            customEndLocalDate: "2026-08-06",
+          }),
+        );
+      });
+      expect(screen.getByLabelText("End date").getAttribute("max")).toBe("2026-08-06");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders the native type breakdown without substituting remembered ratings", async () => {

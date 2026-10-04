@@ -52,6 +52,7 @@ interface CardBrowserWorkspaceProps {
 type SelectionAction = "move_copy" | "add_tags" | "remove_tags" | "delete" | "suspend" | "resume" | "bury" | "unbury" | "reschedule" | "reset";
 interface PendingScheduleMutation { key: string; mutationId: string; }
 const PAGE_SIZE = 100;
+const EMPTY_PAGE: CardSearchPage = { cards: [], totalCount: 0, todayStartAt: 0 };
 
 /**
  * Deck detail and global search share native queries, pagination and exact-card
@@ -76,7 +77,7 @@ export function CardBrowserWorkspace({
   const [tagIds, setTagIds] = useState<Set<string>>(() => new Set(analyticsSearchLaunch?.tagIds ?? []));
   const [searchGate, setSearchGate] = useState<"open" | "pending" | "blocked">(analyticsSearchLaunch ? "pending" : "open");
   const [tags, setTags] = useState<TagSummary[]>([]);
-  const [page, setPage] = useState<CardSearchPage>({ cards: [], totalCount: 0 });
+  const [page, setPage] = useState<CardSearchPage>(EMPTY_PAGE);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSelectingAll, setIsSelectingAll] = useState(false);
@@ -130,13 +131,17 @@ export function CardBrowserWorkspace({
     else {
       setIsLoading(true);
       setIsLoadingMore(false);
-      setPage({ cards: [], totalCount: 0 });
+      setPage(EMPTY_PAGE);
     }
     setErrorMessage(null);
     try {
       const result = await controller.search({ ...searchInput, offset });
       if (!result) return;
-      setPage((current) => ({ totalCount: result.totalCount, cards: append ? [...current.cards, ...result.cards] : result.cards }));
+      setPage((current) => ({
+        totalCount: result.totalCount,
+        todayStartAt: result.todayStartAt,
+        cards: append ? [...current.cards, ...result.cards] : result.cards,
+      }));
     } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
     finally { setIsLoading(false); setIsLoadingMore(false); }
   }, [controller, searchGate, searchInput]);
@@ -440,7 +445,7 @@ export function CardBrowserWorkspace({
         ) : null}
         {page.totalCount > 0 ? (
           <div className={styles.organizedCardList} role="table" aria-label="Matching cards">
-            {page.cards.map((card) => <CardBrowserListRow key={card.cardId} card={card}
+            {page.cards.map((card) => <CardBrowserListRow key={card.cardId} card={card} todayStartAt={page.todayStartAt}
               selected={selectedCards.has(card.cardId)} onToggleSelected={() => toggleSelected(selectionFromRow(card))}
               onOpen={() => void openCard(card.noteId, card.cardType)} />)}
           </div>
@@ -469,8 +474,8 @@ export function CardBrowserWorkspace({
   </div>;
 }
 
-function CardBrowserListRow({ card, selected, onToggleSelected, onOpen }: {
-  card: CardBrowserRow; selected: boolean; onToggleSelected: () => void; onOpen: () => void;
+function CardBrowserListRow({ card, todayStartAt, selected, onToggleSelected, onOpen }: {
+  card: CardBrowserRow; todayStartAt: number; selected: boolean; onToggleSelected: () => void; onOpen: () => void;
 }) {
   const dueLabel = formatDue(card.dueAt);
   return (
@@ -495,7 +500,7 @@ function CardBrowserListRow({ card, selected, onToggleSelected, onOpen }: {
           {card.tags.length === 0 ? <small>No tags</small> : card.tags.map((tag) => <Chip key={tag}>{tag}</Chip>)}
         </span>
       </Button>
-      <div className={styles.organizedCardMeta}>{dueLabel ? <span>{dueLabel}</span> : null}<small>{formatLastStudied(card.lastReviewedAt)}</small></div>
+      <div className={styles.organizedCardMeta}>{dueLabel ? <span>{dueLabel}</span> : null}<small>{formatLastStudied(card.lastReviewedAt, todayStartAt)}</small></div>
     </article>
   );
 }
@@ -520,10 +525,8 @@ function formatDue(value: number): string | null {
   if (value <= Date.now()) return null;
   return `Scheduled ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value))}`;
 }
-function formatLastStudied(value: number | null): string {
+function formatLastStudied(value: number | null, todayStartAt: number): string {
   if (value === null) return "Never studied";
-  const reviewed = new Date(value);
-  const today = new Date();
-  if (reviewed.toDateString() === today.toDateString()) return "Studied today";
-  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(reviewed)}`;
+  if (value >= todayStartAt) return "Studied today";
+  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value))}`;
 }

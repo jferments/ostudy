@@ -95,6 +95,7 @@ const settings: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  newDayStartHour: 4,
 };
 
 interface RenderOptions {

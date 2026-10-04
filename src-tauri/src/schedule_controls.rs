@@ -1,8 +1,10 @@
 //! Transactional manual scheduling actions for exact generated-card IDs.
 //!
-//! Date-only intentions are resolved once in Rust from a captured local-calendar
-//! context. Idempotency fingerprints contain the canonical intent, while the
-//! operation ledger stores both that intent and its originally resolved instant.
+//! Date-only intentions are resolved once in Rust from a captured study-calendar
+//! context: "tomorrow" and burial end when the next study day starts, and a
+//! date resolves to the start of that study day. Idempotency fingerprints
+//! contain the canonical intent, while the operation ledger stores both that
+//! intent and its originally resolved instant.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -183,8 +185,17 @@ fn apply_in_connection(
     connection: &mut Connection,
     input: ScheduleActionInput,
 ) -> Result<ScheduleActionResultDto, CommandError> {
+    let time = StudyTimeContext::capture(connection)?;
+    apply_at(connection, input, &time)
+}
+
+/// One schedule action at an already captured study time.
+pub(crate) fn apply_at(
+    connection: &mut Connection,
+    input: ScheduleActionInput,
+    time: &StudyTimeContext,
+) -> Result<ScheduleActionResultDto, CommandError> {
     let input = validate_input(input)?;
-    let time = StudyTimeContext::capture()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -195,7 +206,7 @@ fn apply_in_connection(
         return Ok(existing.result);
     }
 
-    let resolved_due_at = resolve_due_at(input.reschedule_intent.as_ref(), &time)?;
+    let resolved_due_at = resolve_due_at(input.reschedule_intent.as_ref(), time)?;
     validate_session(&transaction, input.session_id.as_deref())?;
     let stored_cards = load_active_card_states(&transaction, &input.card_ids)?;
     let dismissals = load_session_dismissals(

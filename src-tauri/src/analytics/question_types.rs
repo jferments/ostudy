@@ -36,7 +36,7 @@ pub(super) fn load(
     context: &AnalyticsContext,
 ) -> Result<Vec<QuestionTypeAnalyticsDto>, CommandError> {
     let mut values = Vec::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     // Review/instance links are unique in both directions. Correlating retries
     // avoids multiplying first checks when a learner practices the board again.
     // Deliberately never read checkpoint JSON, authored answers or raw responses.
@@ -104,17 +104,26 @@ mod tests {
     use rusqlite::params;
 
     use super::*;
-    use crate::{analytics::AnalyticsQueryDto, database::Database};
+    use crate::{
+        analytics::AnalyticsQueryDto,
+        database::Database,
+        study_calendar::{StudyTimeContext, DEFAULT_NEW_DAY_START_HOUR},
+        util::unix_time_millis,
+    };
 
     fn context(decks: Vec<String>, tags: Vec<String>) -> AnalyticsContext {
-        AnalyticsContext::from_query(AnalyticsQueryDto {
-            range: "all".to_string(),
-            deck_ids: decks,
-            tag_ids: tags,
-            custom_start_local_date: None,
-            custom_end_local_date: None,
-            highlighted_session_id: None,
-        })
+        AnalyticsContext::from_query(
+            AnalyticsQueryDto {
+                range: "all".to_string(),
+                deck_ids: decks,
+                tag_ids: tags,
+                custom_start_local_date: None,
+                custom_end_local_date: None,
+                highlighted_session_id: None,
+            },
+            StudyTimeContext::capture_at(unix_time_millis().unwrap(), DEFAULT_NEW_DAY_START_HOUR)
+                .unwrap(),
+        )
         .unwrap()
     }
 
@@ -129,7 +138,8 @@ mod tests {
                  CREATE TABLE cards(id TEXT PRIMARY KEY, note_id TEXT, deck_id TEXT, deleted_at INTEGER);
                  CREATE TABLE review_events(id TEXT PRIMARY KEY, card_id TEXT, answer_correct INTEGER);
                  CREATE TABLE review_event_attributions(review_event_id TEXT PRIMARY KEY,
-                     card_type TEXT, review_local_date TEXT);
+                     card_type TEXT, review_local_date TEXT, reviewed_at INTEGER,
+                     utc_offset_minutes INTEGER);
                  CREATE TABLE review_event_tag_attributions(review_event_id TEXT, tag_id TEXT);
                  CREATE TABLE question_attempts(instance_id TEXT PRIMARY KEY, phase TEXT,
                      verdict TEXT, assisted INTEGER);
@@ -158,7 +168,9 @@ mod tests {
             .unwrap();
         connection
             .execute(
-                "INSERT INTO review_event_attributions VALUES(?1, ?2, '2001-01-02')",
+                // Noon UTC on 2 January 2001.
+                "INSERT INTO review_event_attributions
+                     VALUES(?1, ?2, '2001-01-02', 978436800000, 0)",
                 params![id, kind],
             )
             .unwrap();

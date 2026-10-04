@@ -64,10 +64,10 @@ describe("domain controllers ignore obsolete read completions", () => {
 
     const oldResult = controller.search({ ...searchInput, query: "ACE" });
     const newResult = controller.search({ ...searchInput, query: "beta" });
-    const expected = { cards: [], totalCount: 7 };
+    const expected = { cards: [], totalCount: 7, todayStartAt: 0 };
     newer.resolve(expected);
     expect(await newResult).toEqual(expected);
-    older.resolve({ cards: [], totalCount: 99 });
+    older.resolve({ cards: [], totalCount: 99, todayStartAt: 0 });
     expect(await oldResult).toBeUndefined();
   });
 
