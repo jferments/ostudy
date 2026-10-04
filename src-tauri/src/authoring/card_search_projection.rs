@@ -91,11 +91,16 @@ pub(crate) fn search_cards_in_connection(
                 let prompt = question
                     .prompt_text(&presentation_key)
                     .map_err(|error| projection_error(23, &error.message))?;
+                // The stored back text is the private search text (explanations
+                // and rationales), so the list shows the answer key instead.
+                let answer = question
+                    .answer_summary(&presentation_key)
+                    .map_err(|error| projection_error(23, &error.message))?;
                 (
                     question.kind().as_str().to_string(),
                     question.kind().label().to_string(),
                     prompt,
-                    source_back_text.clone(),
+                    answer,
                 )
             } else {
                 let front_doc_json: Option<String> = row.get(15)?;
@@ -207,12 +212,14 @@ mod tests {
                         question_definition, front_text, back_text, duplicate_hash,
                         created_at, updated_at, revision
                      ) VALUES (?1, ?2, 'interactive', 'question-json', 1, ?3, ?4, ?5, '', 1, 1, 1)",
+                        // Stored back text is the private search text: here the
+                        // empty rationale and explanation, never the answer key.
                         params![
                             id(2),
                             id(1),
                             definition.to_string(),
                             "Which ion is extracellular?",
-                            "Sodium"
+                            ""
                         ],
                     )
                     .map_err(CommandError::database)?;
