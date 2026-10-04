@@ -14,6 +14,7 @@ import { Badge } from "../ui/primitives/Badge";
 import { StatDelta, StatTile } from "../ui/primitives/StatTile";
 import { Surface } from "../ui/primitives/Surface";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { SectionHeading } from "../ui/primitives/SectionHeading";
 import { LoadingState } from "../ui/primitives/EmptyState";
 import { cn } from "../ui/internal/cn";
 import { styles, outcomeColors } from "./analytics/presentation";
@@ -140,19 +141,13 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         aria-labelledby="progress-heading"
         aria-busy={isLoading || undefined}
       >
-        <div className={styles.panelHeadingRowAnalyticsChartHeading}>
-          <div>
-            <h2 id="progress-heading">Learning progress</h2>
-            <p className={styles.analyticsPanelNote}>Buckets use the local review dates captured when each answer was submitted.</p>
-          </div>
-          {analytics ? (
-            <div className={styles.analyticsChartActions}>
-              <Button variant="text" aria-expanded={showChartData} disabled={isLoading} onClick={() => setShowChartData((value) => !value)}>
-                {showChartData ? "Hide chart data" : "View chart data"}
-              </Button>
-            </div>
-          ) : null}
-        </div>
+        <SectionHeading id="progress-heading" title="Learning progress"
+          description="Buckets use the local review dates captured when each answer was submitted."
+          actions={analytics ? (
+            <Button variant="text" aria-expanded={showChartData} disabled={isLoading} onClick={() => setShowChartData((value) => !value)}>
+              {showChartData ? "Hide chart data" : "View chart data"}
+            </Button>
+          ) : undefined} />
         {isLoading ? (
           <div className="tw:grid tw:min-h-72 tw:place-items-center">
             <LoadingState label="Analyzing data…" />
@@ -183,9 +178,8 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         </section>
         <QuestionTypeBreakdown rows={analytics.questionTypes} />
         <Surface as="section" className={styles.analyticsPanelTagInsightsPanel}>
-          <div className={styles.panelHeadingRow}><div><h2>Topic insights</h2>
-            <p className={styles.analyticsPanelNote}>Current counts use current tags. Review evidence uses captured tag identity and displays the current tag name after renames.</p>
-          </div></div>
+          <SectionHeading title="Topic insights"
+            description="Current counts use current tags. Review evidence uses captured tag identity and displays the current tag name after renames." />
           {analytics.tagStats.length === 0 ? <p className={styles.mutedCopy}>Add tags and complete reviews to see topic-level patterns.</p> : (
             <div className={styles.analyticsTableWrap}><table className={styles.analyticsTableTopicTable}>
               <thead><tr><th>Topic</th><th>Last practiced</th><th>Practice</th><th>Remembered</th><th>Trend</th><th>Ready</th><th>Needs practice</th><th>Status</th><th /></tr></thead>
@@ -203,7 +197,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         </Surface>
         <div className={styles.analyticsGridAnalyticsDetailGrid}>
           <Surface as="section" className={styles.analyticsPanel}>
-            <div className={styles.panelHeadingRow}><h2>Deck performance</h2></div>
+            <SectionHeading title="Deck performance" />
             {analytics.deckStats.length === 0 ? <p className={styles.mutedCopy}>No current inventory or history in this scope.</p> : (
               <div className={styles.analyticsTableWrap}><table className={styles.analyticsTable}>
                 <thead><tr><th>Deck</th><th>Ready</th><th>Practice</th><th>Remembered</th><th>Time</th></tr></thead>
@@ -217,7 +211,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
             )}
           </Surface>
           <Surface as="section" className={styles.analyticsPanel}>
-            <div className={styles.panelHeadingRow}><h2>Recent sessions</h2></div>
+            <SectionHeading title="Recent sessions" />
             {analytics.recentSessions.length === 0 ? <p className={styles.mutedCopy}>Complete a practice session to track session time.</p> : (
               <div className={styles.analyticsSessionList}>{analytics.recentSessions.map((session) => <article key={session.id} className={cn(session.highlighted && styles.highlighted)}>
                 <div><strong>{session.deckNames.join(", ") || "Custom selection"}</strong><span>{session.mode} · {dateTimeFormatter.format(new Date(session.startedAt))}</span></div>
@@ -227,7 +221,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
           </Surface>
         </div>
         <Surface as="section" className={styles.analyticsPanelRecentReviewPanel}>
-          <div className={styles.panelHeadingRow}><h2>Recent reviews</h2></div>
+          <SectionHeading title="Recent reviews" />
           {analytics.recentReviews.length === 0 ? <div className={styles.compactEmptyState}><p>Complete a practice session to begin tracking review results.</p></div> : (
             <div className={styles.recentReviewList}>{analytics.recentReviews.map((review) => <article key={review.id} className={styles.recentReviewRow}>
               <span className={cn(styles.reviewDot, outcomeColors[(review.rating - 1) as keyof typeof outcomeColors])} aria-hidden="true" />

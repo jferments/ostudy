@@ -48,7 +48,7 @@ interface ModelChoice {
 
 export function DefaultAiModelSettings({ controller }: { controller: AiProfilesController }) {
   return (
-    <Panel title="Default AI models" description="Choose separate models for generation, tutoring, and semantic search.">
+    <Panel headingLevel={2} title="Default AI models" description="Choose separate models for generation, tutoring, and semantic search.">
       <div className="tw:grid tw:min-w-0 tw:gap-4 tw:xl:grid-cols-3">
         <TaskModelRow
           controller={controller}

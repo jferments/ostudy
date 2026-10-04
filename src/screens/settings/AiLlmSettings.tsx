@@ -57,12 +57,9 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
 
       {defaultBlock}
 
-      <Panel className="tw:min-w-0" aria-label="AI providers">
-        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
-          <div>
-            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">AI providers</h2>
-            <p>Manage API keys and local or remote provider connections.</p>
-          </div>
+      <Panel className="tw:min-w-0" aria-label="AI providers" headingLevel={2} title="AI providers"
+        description="Manage API keys and local or remote provider connections."
+        actions={(
           <Button
             type="button"
             variant="secondary"
@@ -76,7 +73,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
           >
             Add provider
           </Button>
-        </div>
+        )}>
 
         {controller.loading ? (
           <InlineProgress>Loading AI providers…</InlineProgress>
@@ -119,10 +116,8 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             onDelete={() => void deleteProfile()}
           />
         ) : (
-          <Panel className="tw:col-span-full">
-            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Add an AI provider</h2>
-            <p>Choose a provider to configure a local server or API connection.</p>
-          </Panel>
+          <Panel className="tw:col-span-full" headingLevel={2} title="Add an AI provider"
+            description="Choose a provider to configure a local server or API connection." />
         )}
       </div>
     </div>
@@ -169,13 +164,9 @@ function ProfileSetup({
 
   return (
     <>
-      <Panel className="tw:min-w-0" aria-busy={controller.mutating}>
-        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
-          <div>
-            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">{profile ? `Configure ${profile.displayName}` : "Add AI provider"}</h2>
-            <p>Configure the provider connection and credential used by one or more AI models.</p>
-          </div>
-        </div>
+      <Panel className="tw:min-w-0" aria-busy={controller.mutating} headingLevel={2}
+        title={profile ? `Configure ${profile.displayName}` : "Add AI provider"}
+        description="Configure the provider connection and credential used by one or more AI models.">
 
         <div className="tw:grid tw:min-w-0 tw:gap-5 tw:lg:grid-cols-2">
           <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">

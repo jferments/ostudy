@@ -28,8 +28,7 @@ export const completionStyles = {
   completionMark: "tw:grid tw:size-9 tw:place-items-center tw:rounded-lg tw:bg-success-soft tw:text-success",
   eyebrow: "tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
   analytics: "tw:grid tw:min-w-0 tw:gap-3",
-  sectionHeading: "tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3 tw:[&_h2]:mt-1 tw:[&_h2]:mb-0 tw:[&_h2]:text-title-small tw:[&_h2]:font-semibold",
-  distributionCard: "tw:grid tw:min-w-0 tw:items-center tw:gap-4 tw:p-4 tw:lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] tw:[&_h3]:m-0 tw:[&_h3]:text-body tw:[&_h3]:font-medium tw:[&_p]:mt-1 tw:[&_p]:mb-0 tw:[&_p]:text-small tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground",
+  distributionCard: "tw:grid tw:min-w-0 tw:items-center tw:gap-4 tw:p-4 tw:lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]",
   actions: "tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-2 tw:max-sm:[&>button]:w-full",
 } as const;
 

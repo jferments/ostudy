@@ -268,7 +268,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     : "Waiting for the Android device to accept the request…";
 
   return (
-    <Panel title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
+    <Panel headingLevel={2} title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
       actions={<Button variant="text" disabled={busyAction !== null} onClick={() => void refresh()}>Refresh</Button>}>
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {!state && busyAction === "refresh" ? <InlineProgress>Opening the device synchronization store…</InlineProgress> : null}

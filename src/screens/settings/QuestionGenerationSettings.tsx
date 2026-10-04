@@ -83,12 +83,9 @@ export function QuestionGenerationSettings({ showToast, onDirtyChange }: Props) 
     }
   }
 
-  return <Panel className="tw:min-w-0" aria-busy={loading || saving} aria-label="Question generation">
-    <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Question generation</h2>
-    <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground">
-      Choose the formats used for new document-generated cards. Existing cards and running tasks are unchanged.
-      Image occlusion remains manually authored.
-    </p>
+  return <Panel className="tw:min-w-0" aria-busy={loading || saving} aria-label="Question generation" headingLevel={2}
+    title="Question generation"
+    description="Choose the formats used for new document-generated cards. Existing cards and running tasks are unchanged. Image occlusion remains manually authored.">
     {loading ? <InlineProgress>Loading question generation preferences…</InlineProgress> : null}
     {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
     {!loading && draft ? <fieldset disabled={saving} className="tw:m-0 tw:grid tw:min-w-0 tw:gap-5 tw:border-0 tw:p-0">

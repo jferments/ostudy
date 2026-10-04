@@ -118,8 +118,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
         <InlineNotice kind="error">{errorMessage}</InlineNotice>
       ) : null}
 
-      <Panel className="tw:min-w-0 tw:self-start">
-        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Data safety</h2>
+      <Panel className="tw:min-w-0 tw:self-start" headingLevel={2} title="Data safety">
         <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Confirm deletions</strong>
