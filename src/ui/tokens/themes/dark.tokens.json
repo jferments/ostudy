@@ -3,232 +3,298 @@
   "color": {
     "canvas": {
       "$type": "color",
-      "$value": "{color.neutral.950}"
+      "$value": "#0C0E12"
     },
     "canvasInset": {
       "$type": "color",
-      "$value": "{color.neutral.975}"
+      "$value": "#0F1115"
     },
     "surface": {
       "base": {
         "$type": "color",
-        "$value": "{color.neutral.900}"
+        "$value": "#14171D"
       },
       "soft": {
         "$type": "color",
-        "$value": "{color.neutral.875}"
+        "$value": "#191D24"
       },
       "raised": {
         "$type": "color",
-        "$value": "{color.neutral.800}"
+        "$value": "{color.surface.base}"
       },
       "chrome": {
         "$type": "color",
-        "$value": "rgb(20 25 34 / 82%)"
+        "$value": "{color.surface.base}"
       },
       "overlay": {
         "$type": "color",
-        "$value": "{color.neutral.800}"
+        "$value": "{color.surface.base}"
       },
       "selected": {
         "$type": "color",
-        "$value": "rgb(109 114 246 / 20%)"
+        "$value": "{color.accent.soft}"
       },
       "inverse": {
         "$type": "color",
-        "$value": "{color.neutral.0}"
+        "$value": "{color.text.primary}"
       },
       "highlight": {
         "$type": "color",
-        "$value": "rgb(255 255 255 / 8%)"
+        "$value": "{color.surface.base}"
       }
     },
     "text": {
       "primary": {
         "$type": "color",
-        "$value": "{color.neutral.50}"
+        "$value": "#ECEEF2"
       },
       "secondary": {
         "$type": "color",
-        "$value": "{color.neutral.200}"
+        "$value": "#BAC0CB"
       },
       "muted": {
         "$type": "color",
-        "$value": "{color.neutral.400}"
+        "$value": "#8E95A2"
       },
       "inverse": {
         "$type": "color",
-        "$value": "{color.neutral.950}"
+        "$value": "{color.accent.on}"
       },
       "accent": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "#AAB4FF"
       }
     },
     "border": {
       "subtle": {
         "$type": "color",
-        "$value": "rgb(183 192 208 / 18%)"
+        "$value": "#252A33"
       },
       "strong": {
         "$type": "color",
-        "$value": "rgb(183 192 208 / 32%)"
+        "$value": "#363C47"
       },
       "accent": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "{color.accent.base}"
       }
     },
     "accent": {
       "base": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "#8E9BFF"
       },
       "strong": {
         "$type": "color",
-        "$value": "{color.indigo.200}"
+        "$value": "{color.text.accent}"
       },
       "soft": {
         "$type": "color",
-        "$value": "rgb(109 114 246 / 18%)"
+        "$value": "rgb(142 155 255 / 15%)"
       },
       "on": {
         "$type": "color",
-        "$value": "{color.neutral.950}"
+        "$value": "#0C0E12"
+      },
+      "secondary": {
+        "$type": "color",
+        "$value": "#4FD1B8"
       }
+    },
+    "highlight": {
+      "$type": "color",
+      "$value": "rgb(240 196 76 / 24%)"
+    },
+    "page": {
+      "$type": "color",
+      "$value": "#E9E8E3"
+    },
+    "pageInk": {
+      "$type": "color",
+      "$value": "#26282C"
     },
     "focus": {
       "ring": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "{color.accent.base}"
       }
     },
     "selection": {
       "background": {
         "$type": "color",
-        "$value": "rgb(109 114 246 / 38%)"
+        "$value": "rgb(142 155 255 / 35%)"
       },
       "foreground": {
         "$type": "color",
-        "$value": "{color.neutral.0}"
+        "$value": "{color.text.primary}"
       }
     },
     "status": {
       "success": {
         "$type": "color",
-        "$value": "{color.green.400}"
+        "$value": "#5BD69A"
       },
       "successSoft": {
         "$type": "color",
-        "$value": "rgb(74 222 128 / 14%)"
+        "$value": "rgb(91 214 154 / 14%)"
       },
       "warning": {
         "$type": "color",
-        "$value": "{color.amber.400}"
+        "$value": "#F0B44C"
       },
       "warningSoft": {
         "$type": "color",
-        "$value": "rgb(251 191 36 / 14%)"
+        "$value": "rgb(240 180 76 / 14%)"
       },
       "danger": {
         "$type": "color",
-        "$value": "{color.red.400}"
+        "$value": "#FF8A7E"
       },
       "dangerSoft": {
         "$type": "color",
-        "$value": "rgb(248 113 113 / 14%)"
+        "$value": "rgb(255 138 126 / 14%)"
       },
       "info": {
         "$type": "color",
-        "$value": "{color.cyan.300}"
+        "$value": "{color.text.accent}"
       },
       "infoSoft": {
         "$type": "color",
-        "$value": "rgb(34 211 238 / 13%)"
+        "$value": "{color.accent.soft}"
       },
       "dangerOn": {
         "$type": "color",
-        "$value": "{color.neutral.950}"
+        "$value": "#0C0E12"
       }
     },
     "confidence": {
       "0": {
         "$type": "color",
-        "$value": "#ff7388"
+        "$value": "{color.status.danger}"
       },
       "1": {
         "$type": "color",
-        "$value": "#ff9b57"
+        "$value": "{color.subject.3}"
       },
       "2": {
         "$type": "color",
-        "$value": "#ffd34d"
+        "$value": "{color.subject.5}"
       },
       "3": {
         "$type": "color",
-        "$value": "#5ee69a"
+        "$value": "{color.status.success}"
       },
       "on": {
         "$type": "color",
-        "$value": "{color.neutral.950}"
+        "$value": "#0C0E12"
+      }
+    },
+    "subject": {
+      "1": {
+        "$type": "color",
+        "$value": "#8E9BFF"
+      },
+      "2": {
+        "$type": "color",
+        "$value": "#4FD1B8"
+      },
+      "3": {
+        "$type": "color",
+        "$value": "#F59563"
+      },
+      "4": {
+        "$type": "color",
+        "$value": "#C79BFF"
+      },
+      "5": {
+        "$type": "color",
+        "$value": "#E8B54A"
+      },
+      "6": {
+        "$type": "color",
+        "$value": "#FF7FA0"
+      },
+      "1Soft": {
+        "$type": "color",
+        "$value": "rgb(142 155 255 / 15%)"
+      },
+      "2Soft": {
+        "$type": "color",
+        "$value": "rgb(79 209 184 / 14%)"
+      },
+      "3Soft": {
+        "$type": "color",
+        "$value": "rgb(245 149 99 / 14%)"
+      },
+      "4Soft": {
+        "$type": "color",
+        "$value": "rgb(199 155 255 / 14%)"
+      },
+      "5Soft": {
+        "$type": "color",
+        "$value": "rgb(232 181 74 / 14%)"
+      },
+      "6Soft": {
+        "$type": "color",
+        "$value": "rgb(255 127 160 / 14%)"
       }
     },
     "chart": {
       "1": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "{color.subject.1}"
       },
       "2": {
         "$type": "color",
-        "$value": "{color.cyan.300}"
+        "$value": "{color.subject.2}"
       },
       "3": {
         "$type": "color",
-        "$value": "{color.green.400}"
+        "$value": "{color.subject.3}"
       },
       "4": {
         "$type": "color",
-        "$value": "{color.amber.400}"
+        "$value": "{color.subject.4}"
       },
       "5": {
         "$type": "color",
-        "$value": "{color.pink.400}"
+        "$value": "{color.subject.5}"
       },
       "6": {
         "$type": "color",
-        "$value": "{color.violet.400}"
+        "$value": "{color.subject.6}"
       },
       "grid": {
         "$type": "color",
-        "$value": "rgb(183 192 208 / 16%)"
+        "$value": "{color.border.subtle}"
       }
     },
     "ambient": {
       "primary": {
         "$type": "color",
-        "$value": "#253060"
+        "$value": "transparent"
       },
       "secondary": {
         "$type": "color",
-        "$value": "#3c1f43"
+        "$value": "transparent"
       },
       "vignette": {
         "$type": "color",
-        "$value": "rgb(0 0 0 / 48%)"
+        "$value": "transparent"
       }
     },
     "noise": {
       "$type": "color",
-      "$value": "{color.neutral.0}"
+      "$value": "transparent"
     },
     "progress": {
       "track": {
         "$type": "color",
-        "$value": "rgb(183 192 208 / 17%)"
+        "$value": "{color.border.subtle}"
       },
       "fill": {
         "$type": "color",
-        "$value": "{color.indigo.400}"
+        "$value": "{color.accent.base}"
       }
     },
     "overlay": {
@@ -236,6 +302,28 @@
         "$type": "color",
         "$value": "rgb(0 0 0 / 70%)"
       }
+    }
+  },
+  "radius": {
+    "small": {
+      "$type": "dimension",
+      "$value": "10px"
+    },
+    "medium": {
+      "$type": "dimension",
+      "$value": "14px"
+    },
+    "large": {
+      "$type": "dimension",
+      "$value": "20px"
+    },
+    "xlarge": {
+      "$type": "dimension",
+      "$value": "28px"
+    },
+    "button": {
+      "$type": "dimension",
+      "$value": "{radius.pill}"
     }
   },
   "material": {
@@ -265,37 +353,33 @@
   "shadow": {
     "level1": {
       "$type": "shadow",
-      "$value": "0 1px 0 rgb(255 255 255 / 4%) inset, 0 8px 24px rgb(0 0 0 / 18%)"
+      "$value": "0 12px 28px rgb(0 0 0 / 40%)"
     },
     "level2": {
       "$type": "shadow",
-      "$value": "0 1px 0 rgb(255 255 255 / 6%) inset, 0 14px 36px rgb(0 0 0 / 25%)"
+      "$value": "0 16px 36px rgb(0 0 0 / 46%)"
     },
     "level3": {
       "$type": "shadow",
-      "$value": "0 1px 0 rgb(255 255 255 / 7%) inset, 0 22px 52px rgb(0 0 0 / 32%)"
+      "$value": "0 20px 44px rgb(0 0 0 / 52%)"
     },
     "level4": {
       "$type": "shadow",
-      "$value": "0 1px 0 rgb(255 255 255 / 8%) inset, 0 30px 72px rgb(0 0 0 / 40%)"
+      "$value": "0 26px 56px rgb(0 0 0 / 58%)"
     },
     "level5": {
       "$type": "shadow",
-      "$value": "0 1px 0 rgb(255 255 255 / 9%) inset, 0 44px 100px rgb(0 0 0 / 48%)"
+      "$value": "0 34px 72px rgb(0 0 0 / 64%)"
     },
     "focus": {
       "$type": "shadow",
-      "$value": "0 0 0 3px rgb(139 145 255 / 40%)"
+      "$value": "0 0 0 3px rgb(142 155 255 / 40%)"
     }
   },
   "glow": {
-    "subtle": {
-      "$type": "shadow",
-      "$value": "0 0 0 1px rgb(255 255 255 / 5%) inset"
-    },
     "accent": {
       "$type": "shadow",
-      "$value": "0 0 24px rgb(139 145 255 / 24%)"
+      "$value": "0 0 0 0 transparent"
     }
   }
 }

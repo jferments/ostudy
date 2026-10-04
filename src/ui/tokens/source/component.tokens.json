@@ -22,10 +22,6 @@
       "$type": "dimension",
       "$value": "{size.control}"
     },
-    "radius": {
-      "$type": "dimension",
-      "$value": "{radius.small}"
-    },
     "pressScaleX": {
       "$type": "number",
       "$value": "0.982"
@@ -136,84 +132,60 @@
     }
   },
   "themePreview": {
-    "dark": {
-      "border": {
-        "$type": "color",
-        "$value": "rgb(255 255 255 / 12%)"
-      },
+    "light": {
       "canvas": {
         "$type": "color",
-        "$value": "#10151d"
+        "$value": "#F3F4F6"
       },
       "sidebar": {
         "$type": "color",
-        "$value": "#1b2430"
-      },
-      "header": {
-        "$type": "color",
-        "$value": "#2d3b4d"
+        "$value": "#E1E4E9"
       },
       "card": {
         "$type": "color",
-        "$value": "#e8eef5"
+        "$value": "#3346D3"
       }
     },
-    "light": {
-      "border": {
-        "$type": "color",
-        "$value": "#c9d1da"
-      },
+    "dark": {
       "canvas": {
         "$type": "color",
-        "$value": "#f5f7fa"
+        "$value": "#0C0E12"
       },
       "sidebar": {
         "$type": "color",
-        "$value": "#e4e9ef"
-      },
-      "header": {
-        "$type": "color",
-        "$value": "#d7dee8"
+        "$value": "#252A33"
       },
       "card": {
         "$type": "color",
-        "$value": "#ffffff"
-      },
-      "cardShadow": {
-        "$type": "shadow",
-        "$value": "0 2px 8px rgb(17 24 39 / 10%)"
+        "$value": "#8E9BFF"
       }
     },
     "console": {
       "canvas": {
         "$type": "color",
-        "$value": "#02150b"
+        "$value": "#050906"
       },
-      "chrome": {
+      "sidebar": {
         "$type": "color",
-        "$value": "#06361b"
+        "$value": "#1A2E21"
       },
       "card": {
         "$type": "color",
-        "$value": "#15e875"
+        "$value": "#5CF08A"
       }
     },
     "synthwave": {
       "canvas": {
         "$type": "color",
-        "$value": "#130524"
+        "$value": "#120A23"
       },
       "sidebar": {
         "$type": "color",
-        "$value": "#32104e"
-      },
-      "header": {
-        "$type": "color",
-        "$value": "#5a1769"
+        "$value": "#33265A"
       },
       "card": {
         "$type": "color",
-        "$value": "#e642c6"
+        "$value": "#FF5FB4"
       }
     }
   }

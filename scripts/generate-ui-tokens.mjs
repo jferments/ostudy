@@ -112,20 +112,57 @@ function validateThemeContract(themeMaps) {
   }
 }
 
+/** Reference primitives are theme-independent. Component tokens may alias any tier because
+ * every tier resolves on :root. Theme tokens may alias primitives and other roles of the same
+ * theme (radius.button -> radius.pill, chart.1 -> subject.1), so shape such as radius can vary
+ * per theme while each theme file stays the single owner of its values. */
 function validateAliases(referenceTokens, componentTokens, themeMaps) {
-  const available = new Set([...referenceTokens.keys(), ...componentTokens.keys()]);
-  const groups = [referenceTokens, componentTokens, ...themeMaps.values()];
-  for (const tokens of groups) {
-    for (const [name, token] of tokens) {
-      if (typeof token.value !== "string") continue;
-      for (const match of token.value.matchAll(/\{([a-zA-Z0-9_.-]+)\}/gu)) {
-        const target = match[1];
-        if (!available.has(target)) {
-          throw new Error(`${name} references unknown token ${target}.`);
-        }
-      }
+  const semanticNames = new Set([...themeMaps.values()][0].keys());
+  for (const name of componentTokens.keys()) {
+    if (referenceTokens.has(name)) throw new Error(`Component token ${name} repeats a reference token name.`);
+  }
+  for (const name of semanticNames) {
+    if (referenceTokens.has(name) || componentTokens.has(name)) {
+      throw new Error(`Theme token ${name} repeats a reference or component token name.`);
     }
   }
+  assertReferences(referenceTokens, (name) => referenceTokens.has(name), "Reference");
+  assertReferences(
+    componentTokens,
+    (name) => referenceTokens.has(name) || componentTokens.has(name) || semanticNames.has(name),
+    "Component",
+  );
+  for (const [theme, tokens] of themeMaps) {
+    assertReferences(tokens, (name) => referenceTokens.has(name) || tokens.has(name), `${theme} theme`);
+    assertAcyclic(new Map([...referenceTokens, ...componentTokens, ...tokens]), theme);
+  }
+}
+
+function tokenReferences(token) {
+  if (typeof token.value !== "string") return [];
+  return [...token.value.matchAll(/\{([a-zA-Z0-9_.-]+)\}/gu)].map((match) => match[1]);
+}
+
+function assertReferences(tokens, isAvailable, scope) {
+  for (const [name, token] of tokens) {
+    for (const target of tokenReferences(token)) {
+      if (!isAvailable(target)) throw new Error(`${scope} token ${name} references unknown token ${target}.`);
+    }
+  }
+}
+
+function assertAcyclic(tokens, theme) {
+  const state = new Map();
+  const visit = (name, path) => {
+    if (state.get(name) === "done") return;
+    if (state.get(name) === "visiting") {
+      throw new Error(`Token aliases form a cycle in the ${theme} theme: ${[...path, name].join(" -> ")}.`);
+    }
+    state.set(name, "visiting");
+    for (const target of tokenReferences(tokens.get(name))) visit(target, [...path, name]);
+    state.set(name, "done");
+  };
+  for (const name of tokens.keys()) visit(name, []);
 }
 
 function renderRootCss(tokens) {

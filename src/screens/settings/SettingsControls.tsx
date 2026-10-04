@@ -11,7 +11,7 @@ export function ThemePreview({ theme }: { theme: AppSettings["theme"] }) {
   const colors = {
     light: ["var(--ostudy-theme-preview-light-canvas)", "var(--ostudy-theme-preview-light-sidebar)", "var(--ostudy-theme-preview-light-card)"],
     dark: ["var(--ostudy-theme-preview-dark-canvas)", "var(--ostudy-theme-preview-dark-sidebar)", "var(--ostudy-theme-preview-dark-card)"],
-    console: ["var(--ostudy-theme-preview-console-canvas)", "var(--ostudy-theme-preview-console-chrome)", "var(--ostudy-theme-preview-console-card)"],
+    console: ["var(--ostudy-theme-preview-console-canvas)", "var(--ostudy-theme-preview-console-sidebar)", "var(--ostudy-theme-preview-console-card)"],
     synthwave: ["var(--ostudy-theme-preview-synthwave-canvas)", "var(--ostudy-theme-preview-synthwave-sidebar)", "var(--ostudy-theme-preview-synthwave-card)"],
   };
   const [canvas, sidebar, card] = colors[theme];

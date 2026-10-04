@@ -32,7 +32,7 @@
     padding: var(--ostudy-space-5);
     background: var(--ostudy-color-surface-overlay);
     color: var(--ostudy-color-text-primary);
-    box-shadow: var(--ostudy-shadow-level-5), var(--ostudy-glow-subtle);
+    box-shadow: var(--ostudy-shadow-level-5);
     pointer-events: auto;
     backdrop-filter: blur(var(--ostudy-material-blur-high));
     animation: tourEnter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter);

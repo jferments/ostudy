@@ -17,6 +17,7 @@
   --color-muted-foreground: var(--ostudy-color-text-muted);
   --color-accent: var(--ostudy-color-accent-soft);
   --color-accent-foreground: var(--ostudy-color-text-accent);
+  --color-accent-secondary: var(--ostudy-color-accent-secondary);
   --color-destructive: var(--ostudy-color-status-danger);
   --color-destructive-foreground: var(--ostudy-color-status-danger-on);
   --color-destructive-soft: var(--ostudy-color-status-danger-soft);
@@ -38,6 +39,21 @@
   --color-warning-soft: var(--ostudy-color-status-warning-soft);
   --color-info: var(--ostudy-color-status-info);
   --color-info-soft: var(--ostudy-color-status-info-soft);
+  --color-highlight: var(--ostudy-color-highlight);
+  --color-page: var(--ostudy-color-page);
+  --color-page-ink: var(--ostudy-color-page-ink);
+  --color-subject-1: var(--ostudy-color-subject-1);
+  --color-subject-2: var(--ostudy-color-subject-2);
+  --color-subject-3: var(--ostudy-color-subject-3);
+  --color-subject-4: var(--ostudy-color-subject-4);
+  --color-subject-5: var(--ostudy-color-subject-5);
+  --color-subject-6: var(--ostudy-color-subject-6);
+  --color-subject-1-soft: var(--ostudy-color-subject-1-soft);
+  --color-subject-2-soft: var(--ostudy-color-subject-2-soft);
+  --color-subject-3-soft: var(--ostudy-color-subject-3-soft);
+  --color-subject-4-soft: var(--ostudy-color-subject-4-soft);
+  --color-subject-5-soft: var(--ostudy-color-subject-5-soft);
+  --color-subject-6-soft: var(--ostudy-color-subject-6-soft);
   --color-chart-1: var(--ostudy-color-chart-1);
   --color-chart-2: var(--ostudy-color-chart-2);
   --color-chart-3: var(--ostudy-color-chart-3);
@@ -51,7 +67,7 @@
   --radius-lg: var(--ostudy-radius-large);
   --radius-xl: var(--ostudy-radius-xlarge);
   --radius-full: var(--ostudy-radius-pill);
-  --radius-button: var(--ostudy-button-radius);
+  --radius-button: var(--ostudy-radius-button);
   --spacing-control: var(--ostudy-button-height);
   --spacing-page: var(--ostudy-layout-page-gutter);
   --text-label: var(--ostudy-font-size-label);
@@ -62,6 +78,7 @@
   --shadow-panel: var(--ostudy-shadow-level-1);
   --shadow-overlay: var(--ostudy-shadow-level-3);
   --shadow-focus: var(--ostudy-shadow-focus);
+  --shadow-glow: var(--ostudy-glow-accent);
   --ease-standard: var(--ostudy-motion-ease-standard);
   --animate-skeleton: ostudy-skeleton var(--ostudy-motion-duration-skeleton) var(--ostudy-motion-ease-standard) infinite;
   @keyframes ostudy-skeleton { 50% { opacity: 0.5; } }

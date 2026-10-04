@@ -4,6 +4,11 @@ import { extendTailwindMerge } from "tailwind-merge";
 const merge = extendTailwindMerge({
   prefix: "tw",
   extend: {
+    // Theme-owned radius and shadow names, so caller overrides replace them instead of stacking.
+    theme: {
+      radius: ["button"],
+      shadow: ["panel", "overlay", "focus", "glow"],
+    },
     classGroups: {
       "font-size": [{ text: ["label", "caption", "body", "section", "title"] }],
     },

@@ -11,4 +11,8 @@ describe("namespaced Tailwind class composition", () => {
     expect(result).toContain("tw:text-body");
     expect(result).not.toContain("tw:text-label");
   });
+  it("lets a caller replace theme-owned radius and shadow utilities", () => {
+    expect(cn("tw:rounded-button tw:shadow-glow", "tw:rounded-lg tw:shadow-none")).toBe("tw:rounded-lg tw:shadow-none");
+    expect(cn("tw:shadow-panel tw:shadow-primary/20", "tw:shadow-overlay")).toBe("tw:shadow-primary/20 tw:shadow-overlay");
+  });
 });
