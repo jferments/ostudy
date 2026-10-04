@@ -144,8 +144,8 @@
 }
 
 /* Defaults that utilities and component styles restyle. They sit in the components layer
- * with zero specificity, so any class wins whatever order the bundle declares the layers
- * in (CSS Modules imported by App currently declare `components` before this file). */
+ * with zero specificity, so any class on the element or its button wins even if a bundle
+ * ever declares the layers out of order (main.tsx imports this foundation first). */
 @layer components {
   /* Interface headings: semibold with slightly tightened tracking. Console swaps in its
    * IBM Plex Mono display face through the theme-owned heading family. */

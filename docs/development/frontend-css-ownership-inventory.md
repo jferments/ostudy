@@ -30,6 +30,8 @@ The cascade remains:
 @layer reset, tokens, theme, base, components, patterns, features, utilities;
 ```
 
+`src/main.tsx` imports the foundation entry before anything else. A layer's first declaration fixes its place in the cascade, and CSS Modules declare `components` as soon as their importers load, so an order statement that arrives later leaves the reset and base rules above every utility (buttons then render in their parent's font whatever their text classes say). `scripts/verify-style-ownership.mjs` checks the import position and that stylesheets use only these layers; the WebDriver platform smoke checks the resulting cascade in the built app.
+
 The foundation imports Tailwind theme and prefixed utilities without Preflight or a second reset. Utilities currently compile into the `components` layer to retain the established override ordering; the presence of an outer layer named `utilities` is not a reason to move them silently. Locally packaged math vendor styles/fonts are separate explicit imports.
 
 There is no `src/styles` tree, `legacy` layer, global feature stylesheet, or temporary style-policy allowance. That zero-legacy claim concerns the retired global stylesheet system, not the absence of all CSS Modules.

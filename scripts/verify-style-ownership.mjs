@@ -114,6 +114,25 @@ if (baseline.mode === "ratchet") {
   if (!foundationSource.includes(expectedLayerOrder)) {
     failures.push(`Zero-legacy foundation must declare the final cascade exactly: ${expectedLayerOrder}`);
   }
+  // A layer's first declaration fixes its place in the cascade, and CSS Modules declare
+  // theirs as their importers load. The foundation entry must be main.tsx's first import
+  // so its order statement comes first, and modules may only use the declared layers.
+  const mainSource = await readFile(join(root, "src/main.tsx"), "utf8").catch(() => "");
+  const firstImport = mainSource.match(/^\s*import\s+(?:[^;]*?\s+from\s+)?["']([^"']+)["']/mu);
+  if (firstImport?.[1] !== "./ui/foundations/index.css") {
+    failures.push(
+      "src/main.tsx must import ./ui/foundations/index.css first so the cascade layer order is declared before any CSS Module layer.",
+    );
+  }
+  const declaredLayers = new Set(expectedLayerOrder.slice("@layer ".length, -1).split(", "));
+  for (const path of cssFiles) {
+    const source = await readFile(path, "utf8");
+    for (const match of source.matchAll(/@layer\s+([\w-]+)\s*\{/gu)) {
+      if (!declaredLayers.has(match[1])) {
+        failures.push(`${display(path)} uses undeclared cascade layer ${match[1]}; use one of: ${[...declaredLayers].join(", ")}.`);
+      }
+    }
+  }
   if (/\blegacy\b/u.test(foundationSource)) {
     failures.push("Zero-legacy mode forbids a legacy cascade layer or legacy import in src/ui/foundations/index.css.");
   }

@@ -583,8 +583,8 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
 
 
 def assert_utilities_restyle_document_defaults(session_id: str) -> None:
-    # The heading and icon defaults must yield to utilities in the bundled stylesheet,
-    # whichever order it declares the cascade layers in.
+    # Utilities must beat the reset and the heading and icon defaults in the bundled
+    # stylesheet: the layer order statement has to load before any CSS Module.
     measurement = execute(
         session_id,
         """
@@ -592,6 +592,7 @@ def assert_utilities_restyle_document_defaults(session_id: str) -> None:
         host.setAttribute('aria-hidden', 'true');
         host.style.cssText = 'position: fixed; left: -10000px; top: 0;';
         host.innerHTML = `
+          <div style="font-size: 20px"><button data-probe="button" class="tw:text-small tw:font-semibold">Probe</button></div>
           <h2 data-probe="plain">Plain</h2>
           <h2 data-probe="utility" class="tw:font-medium">Utility</h2>
           <svg data-probe="icon" data-icon="probe" style="--icon-size: 2rem" width="20" height="20"></svg>
@@ -602,6 +603,8 @@ def assert_utilities_restyle_document_defaults(session_id: str) -> None:
         const style = (name) => getComputedStyle(host.querySelector(`[data-probe='${name}']`));
         const result = {
           rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+          buttonSize: parseFloat(style('button').fontSize),
+          buttonWeight: style('button').fontWeight,
           plainWeight: style('plain').fontWeight,
           utilityWeight: style('utility').fontWeight,
           iconWidth: parseFloat(style('icon').width),
@@ -616,12 +619,14 @@ def assert_utilities_restyle_document_defaults(session_id: str) -> None:
     root = float(measurement.get("rootFontSize") or 0)
     if (
         root <= 0
+        or abs(float(measurement.get("buttonSize") or 0) - 0.875 * root) > 0.5
+        or str(measurement.get("buttonWeight")) != "600"
         or str(measurement.get("plainWeight")) != "600"
         or str(measurement.get("utilityWeight")) != "500"
         or abs(float(measurement.get("iconWidth") or 0) - 2 * root) > 0.5
         or abs(float(measurement.get("sizedWidth") or 0) - 0.875 * root) > 0.5
     ):
-        raise AssertionError(f"Utilities no longer restyle the heading and icon defaults: {measurement!r}")
+        raise AssertionError(f"Utilities no longer win the cascade over the reset and document defaults: {measurement!r}")
 
 
 def wait_for_window_control(
