@@ -30,6 +30,15 @@ export interface DialogProps {
 export interface InlineWorkspaceProps {
   title: string; description?: string; children: ReactNode; onClose: () => void;
   dismissible?: boolean; busy?: boolean; className?: string; closeLabel?: string;
+  /**
+   * "card" frames the workspace on the page with a close button. "page" makes it the page itself:
+   * a top bar that sticks to the top of the scroll area, with a back button, the title over the
+   * description and `actions`. A page draws its own gutters, so render it in a PageScaffold
+   * without the inset.
+   */
+  presentation?: "card" | "page";
+  /** Page presentation: controls at the end of the top bar. */
+  actions?: ReactNode;
 }
 const DepthContext = createContext(0);
 
@@ -72,6 +81,8 @@ export function InlineWorkspace({
   busy = false,
   className = "",
   closeLabel = "Close workspace",
+  presentation = "card",
+  actions,
 }: InlineWorkspaceProps) {
   const reactId = useId().replaceAll(":", "");
   const titleId = `inline-workspace-${reactId}-title`;
@@ -98,6 +109,38 @@ export function InlineWorkspace({
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [busy, dismissible, onClose]);
+
+  if (presentation === "page") return (
+    <section
+      className={cn("tw:flex tw:min-h-full tw:w-full tw:min-w-0 tw:flex-col", className)}
+      role="region"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      aria-busy={busy || undefined}
+      data-inline-workspace="true"
+      data-presentation="page"
+    >
+      {/* The title is not a heading: the page's own h1 leads its outline. */}
+      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-h-14 tw:min-w-0 tw:shrink-0 tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:py-1.5 tw:pr-page tw:pl-[calc(var(--ostudy-layout-page-gutter)-0.625rem)] tw:compact:gap-0.5 tw:compact:pr-1 tw:compact:pl-1 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
+        <IconButton
+          ref={closeRef}
+          icon="back"
+          label={closeLabel}
+          tooltip={false}
+          tone="neutral"
+          className="tw:size-10 tw:compact:size-11 tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[ButtonText] tw:forced-colors:bg-[ButtonFace] tw:forced-colors:text-[ButtonText]"
+          disabled={!dismissible || busy}
+          onClick={onClose}
+        />
+        <div className="tw:grid tw:min-w-0 tw:flex-1">
+          <p id={titleId} className="tw:m-0 tw:truncate tw:text-body tw:font-semibold tw:text-foreground">{title}</p>
+          {description ? <p id={descriptionId} className="tw:m-0 tw:truncate tw:text-label tw:text-muted-foreground">{description}</p> : null}
+        </div>
+        {actions ? <div className="tw:flex tw:shrink-0 tw:items-center tw:gap-1">{actions}</div> : null}
+      </header>
+      <div className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col">{children}</div>
+    </section>
+  );
 
   return (
     <section
