@@ -45,7 +45,7 @@ pub fn load_decks(
          history_stats AS (
              SELECT
                  c.deck_id,
-                 COUNT(DISTINCT r.card_id) AS cards_practiced,
+                 COUNT(DISTINCT c.id) AS cards_practiced,
                  COUNT(*) AS review_count,
                  COALESCE(SUM(r.answer_correct), 0) AS correct_count,
                  AVG(CAST(r.rating - 1 AS REAL)) AS average_confidence,
@@ -54,7 +54,8 @@ pub fn load_decks(
                  MAX(r.reviewed_at) AS last_practiced_at
              FROM review_events r
              JOIN review_event_attributions a ON a.review_event_id = r.id
-             JOIN cards c ON c.id = r.card_id
+             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
              WHERE {history_conditions}
@@ -181,7 +182,7 @@ pub fn load_tags(
              SELECT
                  rta.tag_id,
                  MAX(rta.tag_name) AS captured_name,
-                 COUNT(DISTINCT CASE WHEN {current_predicate} THEN r.card_id END)
+                 COUNT(DISTINCT CASE WHEN {current_predicate} THEN c.id END)
                      AS cards_practiced,
                  COALESCE(SUM(CASE WHEN {current_predicate} THEN 1 ELSE 0 END), 0)
                      AS review_count,
@@ -202,7 +203,8 @@ pub fn load_tags(
                  END), 0) AS previous_correct_count
              FROM review_events r
              JOIN review_event_attributions a ON a.review_event_id = r.id
-             JOIN cards c ON c.id = r.card_id
+             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
              JOIN review_event_tag_attributions rta ON rta.review_event_id = r.id

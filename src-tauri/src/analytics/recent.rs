@@ -23,7 +23,8 @@ pub fn load_reviews(
                  r.id,
                  d.name AS deck_name,
                  a.captured_deck_name,
-                 r.card_id,
+                 -- A merged copy's review is listed under its surviving card.
+                 c.id AS card_id,
                  a.card_label,
                  a.question_excerpt,
                  r.confidence,
@@ -36,7 +37,8 @@ pub fn load_reviews(
                  r.created_at
              FROM review_events r
              JOIN review_event_attributions a ON a.review_event_id = r.id
-             JOIN cards c ON c.id = r.card_id
+             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
              WHERE {conditions}
@@ -169,7 +171,8 @@ pub fn load_sessions(
          FROM practice_sessions ps
          JOIN review_events r ON r.session_id = ps.id
          JOIN review_event_attributions a ON a.review_event_id = r.id
-         JOIN cards c ON c.id = r.card_id
+         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
          JOIN notes n ON n.id = c.note_id
          JOIN decks d ON d.id = c.deck_id
          WHERE {conditions}
@@ -232,11 +235,19 @@ pub fn load_dimension_options(
                            AND c.deleted_at IS NULL AND n.deleted_at IS NULL
                      ),
                      EXISTS(
-                         SELECT 1 FROM review_events r
-                         JOIN cards c ON c.id = r.card_id
+                         SELECT 1 FROM cards c
                          JOIN notes n ON n.id = c.note_id
                          WHERE c.deck_id = d.id
                            AND c.deleted_at IS NULL AND n.deleted_at IS NULL
+                           AND (
+                               EXISTS(SELECT 1 FROM review_events r WHERE r.card_id = c.id)
+                               -- A merged copy's reviews count under its original.
+                               OR EXISTS(
+                                   SELECT 1 FROM card_merges merged
+                                   JOIN review_events r ON r.card_id = merged.retired_card_id
+                                   WHERE merged.surviving_card_id = c.id
+                               )
+                           )
                      )
                  FROM decks d
                  WHERE d.deleted_at IS NULL
@@ -277,7 +288,8 @@ pub fn load_dimension_options(
                      EXISTS(
                          SELECT 1 FROM review_event_tag_attributions rta
                          JOIN review_events r ON r.id = rta.review_event_id
-                         JOIN cards c ON c.id = r.card_id
+                         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+                         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
                          JOIN notes n ON n.id = c.note_id
                          JOIN decks d ON d.id = c.deck_id
                          WHERE rta.tag_id = t.id

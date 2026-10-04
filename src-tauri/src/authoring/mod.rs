@@ -461,10 +461,12 @@ fn build_search_sql(
     }
 
     match input.reviewed_filter.as_str() {
-        "never" => conditions.push(
-            "NOT EXISTS (SELECT 1 FROM review_events reviewed WHERE reviewed.card_id = c.id)"
-                .to_string(),
-        ),
+        "never" => conditions.push(format!(
+            "NOT EXISTS (
+                 SELECT 1 FROM review_events reviewed
+                 WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
+             )"
+        )),
         "today" => {
             let date = push_value(&mut values, time.local_date.to_string());
             conditions.push(review_local_date_exists_sql(&format!("= ?{date}")));
@@ -488,7 +490,7 @@ fn build_search_sql(
                     FROM review_events reviewed
                     JOIN review_event_attributions review_attr
                       ON review_attr.review_event_id = reviewed.id
-                    WHERE reviewed.card_id = c.id
+                    WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
                  ) < ?{date}"
             ));
         }
@@ -513,6 +515,12 @@ fn build_search_sql(
     })
 }
 
+/// The card ids whose reviews count as reviews of card `c`: the card itself
+/// and the collection copies merged into it (release schema 6).
+const REVIEWED_AS_CARD: &str =
+    "SELECT c.id UNION ALL SELECT merged.retired_card_id FROM card_merges merged
+     WHERE merged.surviving_card_id = c.id";
+
 fn review_local_date_exists_sql(predicate: &str) -> String {
     format!(
         "EXISTS (
@@ -520,7 +528,7 @@ fn review_local_date_exists_sql(predicate: &str) -> String {
              FROM review_events reviewed
              JOIN review_event_attributions review_attr
                ON review_attr.review_event_id = reviewed.id
-             WHERE reviewed.card_id = c.id
+             WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
                AND review_attr.review_local_date {predicate}
          )"
     )

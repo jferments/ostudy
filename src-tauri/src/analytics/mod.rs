@@ -12,6 +12,8 @@ mod aggregates;
 mod current_inventory;
 mod daily;
 mod history;
+#[cfg(test)]
+mod merged_history_tests;
 mod question_types;
 mod recent;
 mod scope;
