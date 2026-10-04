@@ -18,12 +18,15 @@ use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
 #[path = "release/deck_merge.rs"]
 mod deck_merge;
 
+#[path = "release/generation_instructions.rs"]
+mod generation_instructions;
+
 #[path = "release/staging.rs"]
 mod staging;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 3;
+pub(crate) const SCHEMA_VERSION: i64 = 4;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -46,10 +49,71 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     ReleaseMigration {
         version: 3,
         name: "deck_merge_operations",
-        checksum: "f6b820ff03ba890d4c4b0f0fd434aaa6725d4c6ddf4f43e1a334755bccca2edc",
+        checksum: "696295167cef3c20d750f93373b673dca78a829aca43379d7792ce3bd9be3705",
         sql: include_str!("../../schema/0003_deck_merge_operations.sql"),
     },
+    ReleaseMigration {
+        version: 4,
+        name: "study_target_generation_instructions",
+        checksum: "4708634c4fc8d757d57561b008861f86d42e9b1974656bd9b5f23f1d87827e1d",
+        sql: include_str!("../../schema/0004_study_target_generation_instructions.sql"),
+    },
 ];
+
+/// The bundled SQL for one forward release migration.
+fn migration_sql(version: i64) -> &'static str {
+    RELEASE_MIGRATIONS
+        .iter()
+        .find(|migration| migration.version == version)
+        .map(|migration| migration.sql)
+        .expect("every validated release migration is bundled")
+}
+
+/// Admission for a table that exactly one forward release migration adds.
+/// Before that migration the table must be absent; from it onward the stored
+/// definition must match the bundled SQL.
+fn validate_additive_table(
+    connection: &Connection,
+    version: i64,
+    introduced_in: i64,
+    table: &str,
+    description: &str,
+) -> Result<(), String> {
+    let actual: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if version < introduced_in {
+        if actual.is_some() {
+            return Err(format!(
+                "An unregistered release-v{introduced_in} {description} table is present."
+            ));
+        }
+        return Ok(());
+    }
+    let actual = actual.ok_or_else(|| format!("The {description} table is missing."))?;
+    let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    expected
+        .execute_batch(migration_sql(introduced_in))
+        .map_err(|error| error.to_string())?;
+    let expected: String = expected
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if normalize_schema_sql(&actual) != normalize_schema_sql(&expected) {
+        return Err(format!(
+            "The {description} schema does not match this build."
+        ));
+    }
+    Ok(())
+}
 
 pub(super) fn migration_contract_rows() -> impl Iterator<Item = (i64, &'static str, &'static str)> {
     RELEASE_MIGRATIONS
@@ -185,6 +249,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     }
     validate_selection_receipt_schema(connection, user_version)?;
     deck_merge::validate_schema(connection, user_version)?;
+    generation_instructions::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
@@ -662,6 +727,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(merge_receipt_table, 1);
+        let guidance_table: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_schema
+                     WHERE type = 'table' AND name = 'study_target_generation_instructions'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(guidance_table, 1);
     }
 
     #[test]
@@ -694,7 +770,7 @@ mod tests {
         initialize_fresh(&mut connection).unwrap();
         for corruption in [
             "UPDATE schema_migrations SET checksum='bad' WHERE version=2;",
-            "PRAGMA user_version=4;",
+            "PRAGMA user_version=5;",
             "DELETE FROM schema_migrations WHERE version=1;",
             "DROP TABLE selection_deck_operations;",
             "INSERT INTO selection_deck_operations VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{}', 1);",

@@ -11,6 +11,17 @@ use crate::database::{CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION};
 
 type Receipt = BTreeMap<String, (Vec<String>, Vec<[u8; 32]>)>;
 
+/// Tables added by forward release migrations, keyed by the migration version.
+const RELEASE_TABLE_ADDITIONS: &[(i64, &str, &str)] = &[
+    (2, "selection_deck_operations", "selection-deck receipt"),
+    (3, "deck_merge_operations", "deck-merge receipt"),
+    (
+        4,
+        "study_target_generation_instructions",
+        "StudyTarget generation-instruction",
+    ),
+];
+
 pub(super) fn verify(
     source: &Connection,
     target: &Connection,
@@ -24,35 +35,27 @@ pub(super) fn verify(
     }
     if source_lineage != CURRENT_SCHEMA_LINEAGE
         || !(1..CURRENT_SCHEMA_VERSION).contains(&source_version)
-        || CURRENT_SCHEMA_VERSION != 3
+        || CURRENT_SCHEMA_VERSION != 4
     {
         return Err("No preservation contract is registered for this release upgrade. The active library was not replaced.".into());
     }
     let before = rows(source)?;
     let mut after = rows(target)?;
 
-    let merge_receipts = after.remove("deck_merge_operations").ok_or_else(|| {
-        "The upgraded library is missing its deck-merge receipt table.".to_string()
-    })?;
-    if !merge_receipts.1.is_empty() {
-        return Err("The release upgrade unexpectedly created deck-merge receipts. The active library was not replaced.".into());
-    }
-    let generation_instructions = after
-        .remove("study_target_generation_instructions")
-        .ok_or_else(|| {
-            "The upgraded library is missing its StudyTarget generation-instruction table."
-                .to_string()
-        })?;
-    if !generation_instructions.1.is_empty() {
-        return Err("The release upgrade unexpectedly created StudyTarget generation instructions. The active library was not replaced.".into());
-    }
-
-    if source_version == 1 {
-        let selection_receipts = after.remove("selection_deck_operations").ok_or_else(|| {
-            "The upgraded library is missing its selection-deck receipt table.".to_string()
-        })?;
-        if !selection_receipts.1.is_empty() {
-            return Err("The release upgrade unexpectedly created selection-deck receipts. The active library was not replaced.".into());
+    // Each forward release migration only adds one empty operation table.
+    // Remove the tables added after the source version, then every retained
+    // learner value must be identical.
+    for (introduced_in, table, description) in RELEASE_TABLE_ADDITIONS {
+        if *introduced_in <= source_version {
+            continue;
+        }
+        let added = after
+            .remove(*table)
+            .ok_or_else(|| format!("The upgraded library is missing its {description} table."))?;
+        if !added.1.is_empty() {
+            return Err(format!(
+                "The release upgrade unexpectedly created {description} rows. The active library was not replaced."
+            ));
         }
     }
 

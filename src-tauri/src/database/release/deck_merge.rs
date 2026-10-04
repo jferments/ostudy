@@ -1,69 +1,17 @@
-//! Additive release-v3 admission for deck-merge receipts and captured StudyTarget guidance.
+//! Additive release-v3 admission for deck-merge receipts.
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
-    let deck_merge_sql: Option<String> = connection
-        .query_row(
-            "SELECT sql FROM sqlite_schema
-             WHERE type='table' AND name='deck_merge_operations'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    let guidance_sql: Option<String> = connection
-        .query_row(
-            "SELECT sql FROM sqlite_schema
-             WHERE type='table' AND name='study_target_generation_instructions'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
+    super::validate_additive_table(
+        connection,
+        version,
+        3,
+        "deck_merge_operations",
+        "deck-merge receipt",
+    )?;
     if version < 3 {
-        if deck_merge_sql.is_some() || guidance_sql.is_some() {
-            return Err(
-                "An unregistered release-v3 study-workflow migration is present.".to_string(),
-            );
-        }
         return Ok(());
-    }
-
-    let deck_merge_sql =
-        deck_merge_sql.ok_or_else(|| "The deck-merge receipt table is missing.".to_string())?;
-    let guidance_sql = guidance_sql
-        .ok_or_else(|| "The StudyTarget generation-instruction table is missing.".to_string())?;
-    let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
-    expected
-        .execute_batch(super::RELEASE_MIGRATIONS[1].sql)
-        .map_err(|error| error.to_string())?;
-    let expected_deck_merge_sql: String = expected
-        .query_row(
-            "SELECT sql FROM sqlite_schema WHERE name='deck_merge_operations'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let expected_guidance_sql: String = expected
-        .query_row(
-            "SELECT sql FROM sqlite_schema
-             WHERE name='study_target_generation_instructions'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    if super::normalize_schema_sql(&deck_merge_sql)
-        != super::normalize_schema_sql(&expected_deck_merge_sql)
-    {
-        return Err("The deck-merge receipt schema does not match this build.".to_string());
-    }
-    if super::normalize_schema_sql(&guidance_sql)
-        != super::normalize_schema_sql(&expected_guidance_sql)
-    {
-        return Err(
-            "The StudyTarget generation-instruction schema does not match this build.".to_string(),
-        );
     }
     crate::deck_merge::validate_stored_receipts(connection)
 }
@@ -105,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_two_backup_upgrades_additively_to_schema_three() {
+    fn schema_two_backup_upgrades_additively_to_current_schema() {
         let mut connection = schema_two();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
@@ -169,7 +117,7 @@ mod tests {
         {
             let transaction = connection.transaction().unwrap();
             transaction
-                .execute_batch(RELEASE_MIGRATIONS[1].sql)
+                .execute_batch(super::super::migration_sql(3))
                 .unwrap();
             let changes = transaction.total_changes();
             assert!(validate_supported_input(&transaction).is_err());
@@ -188,11 +136,6 @@ mod tests {
                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
                  'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
                  '{}',1
-             );",
-            "DROP TABLE study_target_generation_instructions;",
-            "DROP TABLE study_target_generation_instructions;
-             CREATE TABLE study_target_generation_instructions(
-                 operation_id TEXT,generation_instructions TEXT,created_at INTEGER
              );",
         ] {
             let transaction = connection.transaction().unwrap();
