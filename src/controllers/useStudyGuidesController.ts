@@ -25,6 +25,14 @@ export interface StudyGuideSelection {
   title: string;
 }
 
+/** What the library knows about a document guide's source file. */
+export interface StudyGuideSourceSummary {
+  format: string | null;
+  filename: string | null;
+  unitKind: string | null;
+  unitCount: number | null;
+}
+
 export interface StudyGuideDeleteTarget {
   documentId: string;
   documentTitle: string;
