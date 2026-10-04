@@ -325,7 +325,8 @@ describe("StudyGuideDialog", () => {
     expect(screen.queryByRole("button", { name: "Regenerate study guide" })).toBeNull();
 
     const close = screen.getByRole("button", { name: "Close study guide" });
-    expect(close.querySelector("svg")?.getAttribute("width")).toBe("24");
+    // The workspace closes with the dialog header's close button and its icon size.
+    expect(close.querySelector("svg")?.getAttribute("width")).toBe("20");
     fireEvent.focus(close);
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(close);

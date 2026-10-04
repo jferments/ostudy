@@ -15,10 +15,8 @@ vi.mock("../../controllers/deckTransferController", () => ({
 }));
 vi.mock("../../platform/PlatformProvider", () => ({ usePlatformCapabilities: () => ({ native: null }) }));
 vi.mock("../../ui/overlays/Dialog", () => ({
-  Dialog: ({ title, children }: { title: string; children: ReactNode }) =>
-    <section role="dialog" aria-label={title}>{children}</section>,
-  DialogActions: ({ children }: { children: ReactNode }) =>
-    <div data-testid="dialog-actions">{children}</div>,
+  Dialog: ({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) =>
+    <section role="dialog" aria-label={title}>{children}<div data-testid="dialog-actions">{actions}</div></section>,
 }));
 const deck: DeckSummary = {
   id: "a".repeat(32), name: "Study examples", description: "", sourceNoteCount: 2,

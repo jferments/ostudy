@@ -23,7 +23,7 @@ Card exposes title/description/action/content/footer slots instead of requiring 
 - Checkbox, Switch, RadioGroup, Slider, Tabs and Toolbar rely on Base UI interaction behavior rather than custom event imitation.
 - Disclosure content remains mounted when required to preserve drafts. FormField keeps contextual help outside the input label and owns label/description/error association.
 - Sidebar is intentionally non-collapsing. `LayoutModeProvider` owns responsive behavior, so there is no second cookie, mobile detector or vendor navigation hotkey.
-- Modal behavior uses Base UI while oStudy owns application overlay registration, native Back, compact/fullscreen policy, busy dismissal and explicit focus policy. Inline workspaces remain nonmodal.
+- Modal behavior uses Base UI while oStudy owns application overlay registration, native Back, compact/fullscreen policy, busy dismissal and explicit focus policy. The modal composes one header, scrolling body and pinned action footer (optionally one form) for every dialog, sheet and confirmation. Inline workspaces remain nonmodal.
 - Notification rendering does not own durable mutation success, retry identity or Undo expiry.
 - Rich editor/document/Markdown descendants, drag geometry, Practice card transforms, QR quiet zones and other registered specialized CSS owners remain outside generic component styling.
 - No Preflight is imported. Border recipes that require a visible border therefore specify border style explicitly.

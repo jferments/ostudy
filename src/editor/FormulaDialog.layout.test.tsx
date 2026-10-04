@@ -55,20 +55,19 @@ function mountedInput(overrides: Partial<MountedFormulaInput> = {}): MountedForm
   };
 }
 
-it("keeps mount failures and responsive actions inside the padded dialog body", async () => {
+it("keeps mount failures in the dialog body and the actions in the pinned footer", async () => {
   vi.mocked(mountFormulaInput).mockRejectedValue(new Error("Formula editor unavailable"));
   const editSession = session();
   const onClose = vi.fn();
   render(<OverlayProvider><FormulaDialog session={editSession} onClose={onClose} /></OverlayProvider>);
   const alert = await screen.findByRole("alert");
   const save = screen.getByRole("button", { name: "Save formula" }) as HTMLButtonElement;
+  const dialog = screen.getByRole("dialog", { name: "Edit formula" });
+  const body = dialog.querySelector("[data-slot='dialog-body']")!;
   const actions = save.parentElement!;
-  const body = actions.parentElement!;
-  expect(body.classList.contains("tw:p-4")).toBe(true);
-  expect(body.classList.contains("tw:box-border")).toBe(true);
-  expect(body.classList.contains("tw:min-w-0")).toBe(true);
   expect(body.contains(alert)).toBe(true);
-  // The shared dialog action row owns compact stacking and full-width buttons.
+  expect(body.contains(save)).toBe(false);
+  // The shared dialog footer owns compact stacking and full-width buttons.
   expect(actions.getAttribute("data-slot")).toBe("dialog-actions");
   expect(save.disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

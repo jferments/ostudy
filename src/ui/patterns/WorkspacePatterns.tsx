@@ -146,8 +146,8 @@ export function FilterSummary({ filters, onRemove, onClear }: { filters: Readonl
   );
 }
 
-export function AdaptiveSheet({ open, title, description, onClose, children }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode }) {
-  return open ? <Sheet title={title} description={description} width="medium" onClose={onClose}>{children}</Sheet> : null;
+export function AdaptiveSheet({ open, title, description, onClose, actions, children }: { open: boolean; title: string; description?: string; onClose: () => void; actions?: ReactNode; children: ReactNode }) {
+  return open ? <Sheet title={title} description={description} width="medium" onClose={onClose} actions={actions}>{children}</Sheet> : null;
 }
 
 export function StatPill({ icon, label, value }: { icon?: IconName; label: string; value: ReactNode }) {

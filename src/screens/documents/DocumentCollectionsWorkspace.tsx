@@ -9,7 +9,7 @@ import type {
 import type { DocumentSummary } from "../../ipc/documents";
 import { generationInstructionsError } from "../../ipc/generationInstructions";
 import type { StudyTargetArtifactStatus, StudyTargetBundleStatus } from "../../ipc/studyMaterials";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
@@ -565,22 +565,20 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   if (dialog.kind === "create" || dialog.kind === "rename") {
     const title = dialog.kind === "create" ? "Create document collection" : "Rename document collection";
     return (
-      <Dialog title={title} onClose={close} busy={busy} width="small">
-        <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
-            Name
-            <TextField autoFocus value={dialog.name} maxLength={120}
-              onChange={(event) => setDialog({ ...dialog, name: event.target.value })} />
-          </label>
-          {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-          <DialogActions>
-            <Button onClick={close}>Cancel</Button>
-            <Button variant="primary" disabled={!dialog.name.trim()} loading={busy} onClick={() => void (async () => {
-              const ok = dialog.kind === "create" ? await onCreate(dialog.name) : await onUpdate(dialog.folder, { name: dialog.name });
-              if (ok) close();
-            })()}>Save</Button>
-          </DialogActions>
-        </div>
+      <Dialog title={title} onClose={close} busy={busy} width="small"
+        actions={<>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" disabled={!dialog.name.trim()} loading={busy} onClick={() => void (async () => {
+            const ok = dialog.kind === "create" ? await onCreate(dialog.name) : await onUpdate(dialog.folder, { name: dialog.name });
+            if (ok) close();
+          })()}>Save</Button>
+        </>}>
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
+          Name
+          <TextField autoFocus value={dialog.name} maxLength={120}
+            onChange={(event) => setDialog({ ...dialog, name: event.target.value })} />
+        </label>
+        {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       </Dialog>
     );
   }
@@ -593,25 +591,23 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
     );
     const choices = documents.filter((document) => !already.has(document.id));
     return (
-      <Dialog title="Add source to collection" onClose={close} busy={busy} width="small">
-        <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
-            Document
-            <NativeSelect value={dialog.documentId} onChange={(event) => setDialog({ ...dialog, documentId: event.target.value })}>
-              <option value="">Select a document…</option>
-              {choices.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}
-            </NativeSelect>
-          </label>
-          {!choices.length ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
-          {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-          <DialogActions>
-            <Button onClick={close}>Cancel</Button>
-            <Button variant="primary" disabled={!dialog.documentId} loading={busy} onClick={() => void (async () => {
-              const ok = await onAdd(dialog.folderId, dialog.documentId);
-              if (ok) close();
-            })()}>Add source</Button>
-          </DialogActions>
-        </div>
+      <Dialog title="Add source to collection" onClose={close} busy={busy} width="small"
+        actions={<>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" disabled={!dialog.documentId} loading={busy} onClick={() => void (async () => {
+            const ok = await onAdd(dialog.folderId, dialog.documentId);
+            if (ok) close();
+          })()}>Add source</Button>
+        </>}>
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
+          Document
+          <NativeSelect value={dialog.documentId} onChange={(event) => setDialog({ ...dialog, documentId: event.target.value })}>
+            <option value="">Select a document…</option>
+            {choices.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}
+          </NativeSelect>
+        </label>
+        {!choices.length ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
+        {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       </Dialog>
     );
   }
@@ -619,24 +615,22 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   if (dialog.kind === "move-source") {
     const choices = organization.collections.filter((folder) => folder.id !== dialog.membership.collectionId);
     return (
-      <Dialog title="Move source to another collection" onClose={close} busy={busy} width="small">
-        <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
-            Destination
-            <NativeSelect value={dialog.targetCollectionId} onChange={(event) => setDialog({ ...dialog, targetCollectionId: event.target.value })}>
-              <option value="">Select a collection…</option>
-              {choices.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-            </NativeSelect>
-          </label>
-          {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-          <DialogActions>
-            <Button onClick={close}>Cancel</Button>
-            <Button variant="primary" disabled={!dialog.targetCollectionId} loading={busy} onClick={() => void (async () => {
-              const ok = await onMove(dialog.membership, dialog.targetCollectionId);
-              if (ok) close();
-            })()}>Move source</Button>
-          </DialogActions>
-        </div>
+      <Dialog title="Move source to another collection" onClose={close} busy={busy} width="small"
+        actions={<>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" disabled={!dialog.targetCollectionId} loading={busy} onClick={() => void (async () => {
+            const ok = await onMove(dialog.membership, dialog.targetCollectionId);
+            if (ok) close();
+          })()}>Move source</Button>
+        </>}>
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
+          Destination
+          <NativeSelect value={dialog.targetCollectionId} onChange={(event) => setDialog({ ...dialog, targetCollectionId: event.target.value })}>
+            <option value="">Select a collection…</option>
+            {choices.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+          </NativeSelect>
+        </label>
+        {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       </Dialog>
     );
   }
@@ -647,25 +641,23 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   return (
     <Dialog title="Reading range"
       description={`Choose ${unitLabel} from 1 to ${document.sourceUnitCount}. Leave blank to use the whole document.`}
-      onClose={close} busy={busy} width="small">
-      <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
-          {capitalize(unitLabel)}
-          <TextField autoFocus value={dialog.value} placeholder={document.sourceUnitCount > 1 ? "1-3, 7" : "1"}
-            onChange={(event) => { setDialog({ ...dialog, value: event.target.value }); setError(null); }} />
-        </label>
-        {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-        <DialogActions>
-          <Button onClick={close}>Cancel</Button>
-          <Button loading={busy} onClick={() => setDialog({ ...dialog, value: "" })}>Whole document</Button>
-          <Button variant="primary" loading={busy} onClick={() => void (async () => {
-            const parsed = parseRanges(dialog.value, document);
-            if (typeof parsed === "string") { setError(parsed); return; }
-            const ok = await onRanges(dialog.membership, parsed);
-            if (ok) close();
-          })()}>Save range</Button>
-        </DialogActions>
-      </div>
+      onClose={close} busy={busy} width="small"
+      actions={<>
+        <Button onClick={close}>Cancel</Button>
+        <Button loading={busy} onClick={() => setDialog({ ...dialog, value: "" })}>Whole document</Button>
+        <Button variant="primary" loading={busy} onClick={() => void (async () => {
+          const parsed = parseRanges(dialog.value, document);
+          if (typeof parsed === "string") { setError(parsed); return; }
+          const ok = await onRanges(dialog.membership, parsed);
+          if (ok) close();
+        })()}>Save range</Button>
+      </>}>
+      <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
+        {capitalize(unitLabel)}
+        <TextField autoFocus value={dialog.value} placeholder={document.sourceUnitCount > 1 ? "1-3, 7" : "1"}
+          onChange={(event) => { setDialog({ ...dialog, value: event.target.value }); setError(null); }} />
+      </label>
+      {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
     </Dialog>
   );
 }

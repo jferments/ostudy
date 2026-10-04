@@ -1,7 +1,7 @@
-import { createContext, type ReactNode, type RefObject, useContext, useEffect, useId, useLayoutEffect, useRef } from "react";
+import { createContext, type FormEvent, type ReactNode, type RefObject, useContext, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { IconButton } from "../icons/IconButton";
 import { cn } from "../internal/cn";
-import { ModalView } from "../vendor/shadcn/modal";
+import { dialogHeaderTitleClassName, ModalView } from "../vendor/shadcn/modal";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import {
   type OverlayCloseReason,
@@ -11,9 +11,18 @@ import {
 } from "./overlayContext";
 
 export interface DialogProps {
-  title: string; description?: string; children: ReactNode;
+  title: string; description?: string;
+  /** Body content. The body scrolls between the header and the actions, with standard padding and spacing. */
+  children?: ReactNode;
+  /** The dialog's actions, pinned below the body so they stay visible while it scrolls. */
+  actions?: ReactNode;
+  /** Makes body and actions one form: a submit action in `actions` submits it. The page never navigates. */
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** "none" lets a workspace draw edge to edge; everything else keeps the standard padding. */
+  padding?: "standard" | "none";
   onClose: (reason: OverlayCloseReason) => void;
   width?: "small" | "medium" | "large" | "workspace";
+  /** On compact screens a dialog fills the screen and a sheet rises from the bottom edge. */
   presentation?: "dialog" | "sheet" | "fullscreen";
   role?: "dialog" | "alertdialog"; dismissible?: boolean; busy?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>; className?: string;
@@ -25,7 +34,7 @@ export interface InlineWorkspaceProps {
 const DepthContext = createContext(0);
 
 /** Base UI owns browser modality; oStudy owns platform Back and business dismissal. */
-export function Dialog({ title, description, children, onClose, width = "medium", presentation = "dialog", role = "dialog", dismissible = true, busy = false, initialFocusRef, className }: DialogProps) {
+export function Dialog({ title, description, children, actions, onSubmit, padding = "standard", onClose, width = "medium", presentation = "dialog", role = "dialog", dismissible = true, busy = false, initialFocusRef, className }: DialogProps) {
   const id = `overlay-${useId().replaceAll(":", "")}`;
   const parentId = useOverlayParentId();
   const depth = useContext(DepthContext);
@@ -38,11 +47,14 @@ export function Dialog({ title, description, children, onClose, width = "medium"
     if (props.dismissible && !props.busy) props.onClose(reason);
     return true;
   } }), [id, parentId, register]);
+  const nested = (content: ReactNode) => content === undefined || content === null || content === false ? content
+    : <DepthContext.Provider value={depth + 1}><OverlayParentContext.Provider value={id}>{content}</OverlayParentContext.Provider></DepthContext.Provider>;
   return <ModalView title={title} description={description} width={width} presentation={presentation} role={role}
     blocked={!dismissible || busy} busy={busy} initialFocusRef={initialFocusRef} className={className}
-    compact={layoutMode === "compact"} id={id} depth={depth}
+    compact={layoutMode === "compact"} id={id} depth={depth} padding={padding} actions={nested(actions)}
+    onSubmit={onSubmit ? (event) => { event.preventDefault(); onSubmit(event); } : undefined}
     onRequestClose={(reason) => { if (isTop(id) && dismissible && !busy) onClose(reason); }}>
-    <DepthContext.Provider value={depth + 1}><OverlayParentContext.Provider value={id}>{children}</OverlayParentContext.Provider></DepthContext.Provider>
+    {nested(children)}
   </ModalView>;
 }
 
@@ -96,19 +108,18 @@ export function InlineWorkspace({
       aria-busy={busy || undefined}
       data-inline-workspace="true"
     >
-      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-popover tw:p-4 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
-        <div className="tw:min-w-0">
-          <h2 id={titleId} className="tw:m-0 tw:text-body-large tw:font-medium tw:wrap-anywhere">{title}</h2>
-          {description ? <p id={descriptionId} className="tw:mt-1 tw:mb-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
+      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-popover tw:px-5 tw:py-4 tw:compact:px-4 tw:compact:py-3 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
+        <div className="tw:grid tw:min-w-0 tw:gap-1 tw:pt-1 tw:compact:pt-2">
+          <h2 id={titleId} className={cn(dialogHeaderTitleClassName, "tw:wrap-anywhere")}>{title}</h2>
+          {description ? <p id={descriptionId} className="tw:m-0 tw:text-small tw:text-muted-foreground">{description}</p> : null}
         </div>
         <IconButton
           ref={closeRef}
           icon="close"
-          iconSize={24}
           label={closeLabel}
           tooltip={false}
           tone="neutral"
-          className="tw:size-11.5 tw:min-h-11.5 tw:min-w-11.5 tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[ButtonText] tw:forced-colors:bg-[ButtonFace] tw:forced-colors:text-[ButtonText]"
+          className="tw:size-9 tw:text-(--ostudy-color-text-secondary) tw:compact:size-11 tw:compact:bg-(--ostudy-color-canvas-inset) tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[ButtonText] tw:forced-colors:bg-[ButtonFace] tw:forced-colors:text-[ButtonText]"
           disabled={!dismissible || busy}
           onClick={onClose}
         />
@@ -116,16 +127,6 @@ export function InlineWorkspace({
       <div className="tw:min-h-0 tw:min-w-0 tw:flex-1 tw:overflow-auto">{children}</div>
     </section>
   );
-}
-
-export function DialogActions({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return <div data-slot="dialog-actions" className={cn("tw:flex tw:flex-wrap tw:justify-end tw:gap-2 tw:compact:flex-col-reverse tw:compact:[&>button]:w-full", className)}>{children}</div>;
 }
 
 export function Sheet(props: Omit<DialogProps, "presentation">) {

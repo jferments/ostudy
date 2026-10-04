@@ -80,6 +80,8 @@ Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional 
 
 Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap.
 
+Every Dialog and Sheet, including confirmations and MetadataDialog, shares one structure: a header with the title, optional description and close button; a body that scrolls with standard padding and spacing; and an `actions` footer that stays visible while the body scrolls, with a rule above it while content continues below. `onSubmit` makes the body and actions one form, so a submit action in the footer submits it without navigating. Widths come from four sizes (small, medium, large, workspace). On compact screens a dialog fills the screen, while sheets and confirmations rise from the bottom edge at their content height; both keep safe-area and IME padding.
+
 Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Feature workflows import the shared Dialog/Sheet owners directly; the retired compatibility Modal wrapper is not another lifecycle. Features use semantic confirmation/overflow APIs rather than ordinary `window.confirm` or handwritten backdrops.
 
 An inline workspace stays nonmodal. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
