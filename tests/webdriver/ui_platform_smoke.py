@@ -592,13 +592,19 @@ def assert_utilities_restyle_document_defaults(session_id: str) -> None:
         host.setAttribute('aria-hidden', 'true');
         host.style.cssText = 'position: fixed; left: -10000px; top: 0;';
         host.innerHTML = `
-          <div style="font-size: 20px"><button data-probe="button" class="tw:text-small tw:font-semibold">Probe</button></div>
+          <div data-probe="parent"><button data-probe="button" class="tw:text-small tw:font-semibold">Probe</button></div>
           <h2 data-probe="plain">Plain</h2>
           <h2 data-probe="utility" class="tw:font-medium">Utility</h2>
-          <svg data-probe="icon" data-icon="probe" style="--icon-size: 2rem" width="20" height="20"></svg>
+          <svg data-probe="icon" data-icon="probe" width="20" height="20"></svg>
           <span class="tw:[&_svg:not([class*='size-'])]:size-3.5">
-            <svg data-probe="sized" data-icon="probe" style="--icon-size: 2rem" width="20" height="20"></svg>
+            <svg data-probe="sized" data-icon="probe" width="20" height="20"></svg>
           </span>`;
+        // The app's CSP drops style attributes that the HTML parser creates, so set
+        // inline styles through CSSOM, as React does for Icon's --icon-size.
+        host.querySelector("[data-probe='parent']").style.fontSize = '20px';
+        for (const name of ['icon', 'sized']) {
+          host.querySelector(`[data-probe='${name}']`).style.setProperty('--icon-size', '2rem');
+        }
         document.body.append(host);
         const style = (name) => getComputedStyle(host.querySelector(`[data-probe='${name}']`));
         const result = {
