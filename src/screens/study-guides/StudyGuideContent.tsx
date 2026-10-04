@@ -214,14 +214,15 @@ export function GuideTermList({ terms, className }: { terms: StudyGuideSectionCo
   );
 }
 
-// Wider tables scroll sideways on phones instead of squeezing their columns to a word each.
-const tableMinimumWidths = ["", "", "tw:min-w-[18rem]", "tw:min-w-[26rem]", "tw:min-w-[34rem]"] as const;
+// About 6.5rem a column: three columns still fit a phone, and wider tables scroll sideways
+// instead of squeezing their columns to a word each.
+const tableMinimumWidths = ["", "", "tw:min-w-[14rem]", "tw:min-w-[20rem]", "tw:min-w-[27rem]"] as const;
 
 function GuideTable({ table, uiText }: { table: StudyGuideTable; uiText: string }) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-2 tw:font-sans">
       <div className="tw:max-w-full tw:overflow-x-auto tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-card">
-        <table className={cn("tw:w-full tw:border-collapse tw:text-left", uiText, tableMinimumWidths[table.columns.length] ?? "tw:min-w-[42rem]")}>
+        <table className={cn("tw:w-full tw:border-collapse tw:text-left", uiText, tableMinimumWidths[table.columns.length] ?? "tw:min-w-[34rem]")}>
           <caption className="tw:px-4 tw:pt-3 tw:pb-2.5 tw:text-left tw:font-semibold tw:text-foreground">
             <StudyMarkdown text={table.title} inline />
           </caption>

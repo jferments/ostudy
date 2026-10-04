@@ -937,7 +937,10 @@ describe("StudyGuideDialog", () => {
     const openContext = vi.fn();
     renderGuide({ tutor: { busy: false, pending: null, openContext } as unknown as TutorController });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Ask tutor about this material" }));
+    const ask = await screen.findByRole("button", { name: "Ask tutor about this material" });
+    // Wide screens name the action in the top bar, as the mockups do.
+    expect(ask.textContent).toBe("Ask Tutor");
+    fireEvent.click(ask);
     expect(openContext).toHaveBeenCalledWith({
       title: "Physiology",
       scope: { kind: "guide", id: documentId },

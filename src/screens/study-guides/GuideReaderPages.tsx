@@ -108,8 +108,10 @@ export function GuideOverviewPage({
           <dl className="tw:m-0 tw:grid tw:font-sans tw:text-body">
             {concepts.map((concept, index) => {
               const [term, caption] = splitOverviewConcept(concept);
+              // A term without a caption keeps the whole line instead of an empty second column.
               return <div key={`${index}-${concept}`}
-                className="tw:grid tw:min-w-0 tw:gap-0.5 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-3 tw:first:border-t-0 tw:first:pt-0 tw:wide:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] tw:wide:gap-x-6">
+                className={cn("tw:grid tw:min-w-0 tw:gap-0.5 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-3 tw:first:border-t-0 tw:first:pt-0",
+                  caption && "tw:wide:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] tw:wide:gap-x-6")}>
                 <dt className="tw:font-semibold tw:text-foreground"><StudyMarkdown text={term} inline /></dt>
                 {caption ? <dd className="tw:m-0 tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={caption} /></dd> : null}
               </div>;

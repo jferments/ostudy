@@ -236,7 +236,9 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         <Icon name="contents" size={18} />Contents
       </Button>
     ) : null}
-    <TutorEntryButton className="tw:compact:size-11" disabled={isGenerating || busy || editing !== null}
+    {/* Wider bars name the action as the mockups do; a phone's bar keeps to quiet icons. */}
+    <TutorEntryButton showLabel={layoutMode !== "compact"} variant={layoutMode === "compact" ? "ghost" : "secondary"}
+      className={layoutMode === "compact" ? "tw:size-11" : undefined} disabled={isGenerating || busy || editing !== null}
       target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
         focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} />
     <OverflowMenu label="Study guide actions" items={guideMenuItems} className="tw:compact:size-11" />
