@@ -53,10 +53,6 @@
     --radius-large: var(--ostudy-radius-large);
     --on-accent: var(--ostudy-color-accent-on);
     --on-danger: var(--ostudy-color-status-danger-on);
-    --confidence-wrong: var(--ostudy-color-confidence-0);
-    --confidence-hard: var(--ostudy-color-confidence-1);
-    --confidence-medium: var(--ostudy-color-confidence-2);
-    --confidence-easy: var(--ostudy-color-confidence-3);
     --overlay-scrim: var(--ostudy-color-overlay-scrim);
     --elevation-panel: var(--ostudy-shadow-level-2);
     --elevation-overlay: var(--ostudy-shadow-level-4);
@@ -80,13 +76,11 @@
   :root {
     --bg: var(--ostudy-color-canvas);
     --surface: var(--ostudy-color-surface-base);
-    --surface-raised: var(--ostudy-color-surface-raised);
     --surface-soft: var(--ostudy-color-surface-soft);
     --surface-strong: var(--ostudy-color-surface-raised);
     --surface-input: var(--ostudy-color-surface-soft);
     --sidebar: var(--ostudy-color-surface-chrome);
     --text: var(--ostudy-color-text-primary);
-    --text-soft: var(--ostudy-color-text-secondary);
     --muted: var(--ostudy-color-text-muted);
     --border: var(--ostudy-color-border-subtle);
     --border-strong: var(--ostudy-color-border-strong);
