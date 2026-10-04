@@ -10,7 +10,7 @@ export const styles = {
   sources: "tw:mt-2 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-1.5 tw:[&_button]:max-w-full tw:[&_button]:h-auto tw:[&_button]:whitespace-normal tw:[&_button]:break-words tw:[&_button]:text-left",
   historyPane: "tw:min-h-0 tw:min-w-0 tw:overflow-y-auto tw:rounded-lg tw:bg-muted/30 tw:p-1.5",
   history: "tw:flex tw:min-w-0 tw:flex-col tw:gap-0.5",
-  historyItem: "tw:h-auto tw:min-h-8 tw:min-w-0 tw:flex-1 tw:justify-start tw:whitespace-normal tw:break-words tw:border-transparent tw:bg-transparent tw:px-2 tw:py-2 tw:text-left tw:text-small tw:font-normal tw:shadow-none tw:aria-[current=page]:bg-accent tw:aria-[current=page]:text-accent-foreground tw:coarse:min-h-touch tw:[&>span]:min-w-0 tw:[&>span]:flex-1 tw:[&>span]:text-left",
+  historyItem: "tw:h-auto tw:min-h-8 tw:min-w-0 tw:flex-1 tw:flex-col tw:items-stretch tw:justify-center tw:gap-0 tw:whitespace-normal tw:break-words tw:border-transparent tw:bg-transparent tw:px-2 tw:py-2 tw:text-left tw:text-small tw:font-normal tw:shadow-none tw:aria-[current=page]:bg-accent tw:aria-[current=page]:text-accent-foreground tw:coarse:min-h-touch",
   historyGroup: "tw:grid tw:min-w-0 tw:gap-1 tw:rounded-lg tw:bg-background/45 tw:p-1.5",
   historyGroupHeader: "tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-2 tw:px-2 tw:py-1 tw:[&>strong]:min-w-0 tw:[&>strong]:truncate tw:[&>strong]:text-caption tw:[&>strong]:font-semibold tw:[&>strong]:uppercase tw:[&>strong]:tracking-wide tw:[&>strong]:text-muted-foreground",
   historyRow: "tw:flex tw:min-w-0 tw:items-center tw:gap-1",

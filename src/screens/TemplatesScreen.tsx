@@ -257,7 +257,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
       {!isLoading && templates.length === 0 ? <EmptyState title="Create a reusable card template" description="Define the facts you enter once, then design one or more cards that use those fields as rich text, lists, or images." actions={<Button variant="primary" onClick={beginCreate}>Create template</Button>} /> : null}
       {templates.length > 0 ? <section className="tw:grid tw:gap-4 tw:lg:grid-cols-2" aria-label="Card templates">
         {templates.map((template) => <Surface as="article" key={template.id} interactive>
-          <Button variant="ghost" className="tw:grid tw:h-auto tw:w-full tw:justify-items-start tw:gap-3 tw:whitespace-normal tw:p-6 tw:text-left" disabled={isOpening} onClick={() => void beginEdit(template)}>
+          <Button variant="ghost" className="tw:grid tw:h-auto tw:w-full tw:justify-start tw:justify-items-start tw:gap-3 tw:whitespace-normal tw:p-6 tw:text-left" disabled={isOpening} onClick={() => void beginEdit(template)}>
             <strong className="tw:break-words tw:text-section tw:font-semibold">{template.name}</strong>
             {template.description ? <span className="tw:break-words tw:text-label tw:font-normal tw:text-muted-foreground">{template.description}</span> : null}
             <span className="tw:flex tw:flex-wrap tw:gap-2"><Badge>{template.fieldCount} fields</Badge><Badge>{template.generatedCardRuleCount} cards</Badge>{template.imageCount > 0 ? <Badge>{template.imageCount} images</Badge> : null}</span>

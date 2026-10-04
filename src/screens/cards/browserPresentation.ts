@@ -1,7 +1,7 @@
 // Ordinary card-management layout. Domain behavior stays in its controllers.
 const styles = {
   deckCardSearch: "tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:data-[expanded=true]:flex-1 tw:data-[expanded=true]:basis-64 tw:data-[expanded=true]:max-w-md tw:[&_label]:min-w-0 tw:[&_label]:flex-1 tw:max-[560px]:data-[expanded=true]:basis-full",
-  organizedCardMain: "tw:grid tw:min-w-0 tw:h-auto tw:justify-items-start tw:justify-start tw:gap-1.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-3 tw:text-start tw:font-normal tw:whitespace-normal tw:shadow-none tw:hover:bg-transparent",
+  organizedCardMain: "tw:grid tw:min-w-0 tw:h-auto tw:justify-items-start tw:justify-start tw:gap-0 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-3 tw:text-start tw:font-normal tw:whitespace-normal tw:shadow-none tw:hover:bg-transparent",
   cardBrowserHeading: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-4 tw:py-3 tw:[&_h2]:m-0 tw:[&_h2]:text-body tw:[&_h2]:font-medium",
   organizedCardMeta: "tw:grid tw:min-w-0 tw:content-center tw:justify-items-end tw:gap-1 tw:px-3 tw:py-2.5 tw:text-caption tw:text-muted-foreground tw:compact:col-start-2 tw:compact:justify-items-start tw:compact:pt-0",
   cardListingLine: "tw:grid tw:min-w-0 tw:grid-cols-[1.5rem_minmax(0,1fr)] tw:items-baseline tw:gap-2 tw:[&>strong]:truncate tw:[&>strong]:text-small tw:[&>strong]:font-medium",
