@@ -26,6 +26,7 @@ use crate::{
     document_store::{self, GenerationJobIdentity},
     documents,
     error::CommandError,
+    knowledge::assessment::policy::instructions::GenerationInstructions,
     paths::AppPaths,
     task_cancellation::run_document_task,
     util::validate_entity_id,
@@ -41,6 +42,8 @@ const CANCELED_MESSAGE: &str =
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GenerateMorePdfFlashcardsInput {
     pub document_id: String,
+    #[serde(default)]
+    pub generation_instructions: GenerationInstructions,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -130,6 +133,7 @@ async fn generate_more_impl(
         ));
     }
     let mut task = document_intelligence::load_document_task_context(database)?;
+    task.question_policy.generation_instructions = input.generation_instructions;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,
@@ -619,6 +623,23 @@ mod tests {
             key_concepts: vec!["V/Q matching".to_string()],
             sections: Vec::new(),
         }
+    }
+
+    #[test]
+    fn additional_requests_capture_guidance_without_requiring_it_for_existing_clients() {
+        let id = "a".repeat(32);
+        let blank: GenerateMorePdfFlashcardsInput =
+            serde_json::from_value(serde_json::json!({"documentId": id})).unwrap();
+        assert!(blank.generation_instructions.is_empty());
+        let guided: GenerateMorePdfFlashcardsInput = serde_json::from_value(serde_json::json!({
+            "documentId": id, "generationInstructions": "  Nursing assessment tests  "
+        }))
+        .unwrap();
+        assert_eq!(
+            guided.generation_instructions,
+            GenerationInstructions::parse(Some("Nursing assessment tests")).unwrap()
+        );
+        assert!(!format!("{guided:?}").contains("Nursing assessment"));
     }
 
     #[test]

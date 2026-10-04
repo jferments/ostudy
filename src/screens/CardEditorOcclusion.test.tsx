@@ -63,7 +63,12 @@ async function createRegion() {
   fireEvent.change(await screen.findByRole("combobox", { name: "Card template" }), { target: { value: "image_occlusion" } });
   fireEvent.click(await screen.findByRole("button", { name: "Choose image" }));
   fireEvent.click(await screen.findByRole("button", { name: "Add rectangle" }));
-  expect(await screen.findByRole("textbox", { name: "Answer" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Save question" })).toHaveProperty("disabled", false);
+  expect(screen.queryByRole("textbox", { name: "Answer notes (optional)" })).toBeNull();
+}
+async function openDetails() {
+  fireEvent.click(await screen.findByRole("button", { name: "Optional question details" }));
+  return screen.findByRole("textbox", { name: "Answer notes (optional)" });
 }
 function savedDefinition(): QuestionDefinition {
   return JSON.parse(mocks.save.mock.calls.at(-1)?.[0].definitionJson) as QuestionDefinition;
@@ -96,12 +101,11 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
   it("creates a real region, retains the per-type draft and saves only canonical authored content", async () => {
     editor();
     await createRegion();
-    expect(screen.getByRole("button", { name: "Save question" })).toHaveProperty("disabled", true);
-    fireEvent.change(screen.getByRole("textbox", { name: "Answer" }), { target: { value: "A labeled structure" } });
+    fireEvent.change(await openDetails(), { target: { value: "A labeled structure" } });
     const selector = screen.getByRole("combobox", { name: "Card template" });
     fireEvent.change(selector, { target: { value: "basic" } });
     fireEvent.change(selector, { target: { value: "image_occlusion" } });
-    expect(await screen.findByRole("textbox", { name: "Answer" })).toHaveProperty("value", "A labeled structure");
+    expect(await openDetails()).toHaveProperty("value", "A labeled structure");
     expect(screen.getByText("1 regions · 1 study cards")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Save question" }));
     await waitFor(() => expect(mocks.saved).toHaveBeenCalledExactlyOnceWith("e".repeat(32), false));
@@ -132,7 +136,7 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
       } },
     };
     editor(note);
-    expect(await screen.findByRole("textbox", { name: "Answer" })).toHaveProperty("value", "Saved answer");
+    expect(await openDetails()).toHaveProperty("value", "Saved answer");
     expect(screen.getByRole("combobox", { name: "Card template" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Move right" }));
     fireEvent.click(screen.getByRole("button", { name: "Save question" }));
@@ -146,14 +150,17 @@ describe("image occlusion in the shared Create/Edit Card workflow", () => {
     expect(mocks.pick).not.toHaveBeenCalled();
   });
 
-  it("Save + another creates an empty next draft rather than retaining old image targets", async () => {
+  it("Save + another accepts a rectangle-only card and creates an empty next draft", async () => {
     editor();
     await createRegion();
-    fireEvent.change(screen.getByRole("textbox", { name: "Answer" }), { target: { value: "An answer" } });
     fireEvent.click(screen.getByRole("button", { name: "Save + another" }));
     await waitFor(() => expect(mocks.saved).toHaveBeenCalledExactlyOnceWith("e".repeat(32), true));
+    const definition = savedDefinition();
+    if (definition.question.kind !== "image_occlusion") throw new Error("Expected image definition");
+    expect(extractRichDocumentText(required(definition.question.questions[0], "image answer").answer))
+      .toBe("Check your recall against the uncovered image.");
     expect(await screen.findByRole("button", { name: "Choose image" })).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: "Answer" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Answer notes (optional)" })).toBeNull();
     expect(screen.getByText("0 regions · 0 study cards")).toBeTruthy();
     expect(mocks.restart).toHaveBeenCalledTimes(1);
     expect(required(mocks.restart.mock.calls[0]?.[0], "restart input").questionDrafts.image_occlusion).toMatchObject({

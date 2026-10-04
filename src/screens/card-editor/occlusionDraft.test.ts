@@ -4,16 +4,20 @@ import { requiredTestValue as required } from "../../test/factories";
 import type { RichDocument } from "../../ipc/common";
 import {
   addOcclusionQuestion, applyOcclusionGeometry, collectOcclusionDraftAssets, mutateOcclusionRegion,
-  newOcclusionDraft, occlusionDefinition, occlusionDraftFromQuestion, occlusionDraftReady,
-  removeOcclusionQuestion, removeOcclusionRegion, undoOcclusionGeometry, updateOcclusionQuestion,
+  newOcclusionDraft, occlusionDefinition, occlusionDraftFromQuestion, occlusionDraftReady, occlusionStudyQuestions,
+  removeOcclusionQuestion, removeOcclusionRegion, selectOcclusionRegion, setOcclusionMode, undoOcclusionGeometry, updateOcclusionQuestion,
 } from "./occlusionDraft";
 import { definitionFromDraft, draftFromQuestionNote, isQuestionEditorKind, newQuestionDraft } from "./questionDraft";
 
 const imageId = "a".repeat(32);
 const rich = (text: string): RichDocument => ({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
-function fixture() {
+const rectangle = { x: 0.1, y: 0.2, width: 0.2, height: 0.1 };
+function quickFixture() {
   const empty = { ...newOcclusionDraft(), imageAssetId: imageId, imageSize: { width: 1000, height: 800 } };
-  const created = mutateOcclusionRegion(empty, { kind: "create", rectangle: { x: 0.1, y: 0.2, width: 0.2, height: 0.1 } }, false);
+  return mutateOcclusionRegion(empty, { kind: "create", rectangle }, false);
+}
+function fixture() {
+  const created = quickFixture();
   return updateOcclusionQuestion(created, required(created.questions[0], "created question 1").id, { answer: rich("First answer") });
 }
 
@@ -26,15 +30,33 @@ describe("image occlusion authored draft", () => {
     expect(() => definitionFromDraft(newOcclusionDraft())).toThrow();
   });
 
-  it("creates independent stable mask and question identities and requires an answer", () => {
-    const draft = fixture();
+  it("creates independent stable mask and question identities without requiring written prose", () => {
+    const draft = quickFixture();
     expect(draft.masks).toHaveLength(1);
     expect(draft.questions).toHaveLength(1);
     expect(required(draft.questions[0], "draft question 1").id).not.toBe(required(draft.masks[0], "draft mask 1").id);
     expect(required(draft.questions[0], "draft question 1").maskIds).toEqual([required(draft.masks[0], "draft mask 1").id]);
     expect(occlusionDraftReady(draft)).toBe(true);
-    const missing = updateOcclusionQuestion(draft, required(draft.questions[0], "draft question 1").id, { answer: rich("") });
-    expect(occlusionDraftReady(missing)).toBe(false);
+    const blank = updateOcclusionQuestion(draft, required(draft.questions[0], "draft question 1").id, { prompt: rich(""), answer: rich("") });
+    expect(occlusionDraftReady(blank)).toBe(true);
+    expect(occlusionDefinition(blank)).toEqual(occlusionDefinition(draft));
+    expect(draft.questions[0]?.mode).toBe("hide_target");
+  });
+
+  it("draws independent ready-to-study rectangles and switches question-side masks without replacing IDs or prose", () => {
+    const first = fixture();
+    const second = mutateOcclusionRegion(first, { kind: "create", rectangle: { ...rectangle, x: 0.5 } }, false);
+    const before = occlusionDefinition(second);
+    const all = setOcclusionMode(second, "hide_all");
+    const third = mutateOcclusionRegion(all, { kind: "create", rectangle: { ...rectangle, y: 0.6 } }, false);
+    expect(occlusionDraftReady(third)).toBe(true);
+    expect(occlusionStudyQuestions(third)).toHaveLength(3);
+    expect(third.questions.every((question) => question.mode === "hide_all")).toBe(true);
+    expect(third.questions.slice(0, 2).map((question) => question.id)).toEqual(second.questions.map((question) => question.id));
+    expect(third.questions[0]?.answer).toEqual(rich("First answer"));
+    expect(occlusionDefinition(setOcclusionMode(all, "hide_target"))).toEqual(before);
+    const selected = selectOcclusionRegion(third, required(third.masks[0], "first mask").id);
+    expect(selected.selectedQuestionId).toBe(third.questions[0]?.id);
   });
 
   it("supports several questions per region and several regions per question", () => {
@@ -49,6 +71,37 @@ describe("image occlusion authored draft", () => {
     expect(required(multi.questions[0], "multi question 1").maskIds).toHaveLength(1);
     expect(required(multi.questions[1], "multi question 2").maskIds).toHaveLength(2);
     expect(required(multi.questions[0], "multi question 1").answer).toEqual(required(first.questions[0], "first question 1").answer);
+    expect(occlusionDefinition(undoOcclusionGeometry(undoOcclusionGeometry(multi, "undo"), "redo"))).toEqual(occlusionDefinition(multi));
+  });
+
+  it("undoes, deletes, and restores a quick rectangle without blocking remaining cards or changing question identity", () => {
+    const first = quickFixture();
+    const second = mutateOcclusionRegion(first, { kind: "create", rectangle: { ...rectangle, x: 0.5 } }, false);
+    const undone = undoOcclusionGeometry(second, "undo");
+    expect(occlusionDraftReady(undone)).toBe(true);
+    expect(occlusionDefinition(undone)).toEqual(occlusionDefinition(first));
+    expect(occlusionStudyQuestions(undone)).toHaveLength(1);
+    expect(occlusionDefinition(undoOcclusionGeometry(undone, "redo"))).toEqual(occlusionDefinition(second));
+    const removed = removeOcclusionRegion(second, required(second.masks[1], "second mask").id);
+    expect(occlusionDefinition(removed)).toEqual(occlusionDefinition(first));
+    expect(occlusionDefinition(undoOcclusionGeometry(removed, "undo"))).toEqual(occlusionDefinition(second));
+    const redrawn = mutateOcclusionRegion(undone, { kind: "create", rectangle: { ...rectangle, y: 0.5 } }, false);
+    expect(redrawn.questions).toHaveLength(2);
+    expect(redrawn.history.redo).toEqual([]);
+    expect(redrawn.questions.map((question) => question.id)).not.toContain(second.questions[1]?.id);
+  });
+
+  it("does not insert a stray mask at the standalone-card limit but still permits grouped regions", () => {
+    let draft = quickFixture();
+    for (let index = 1; index < 64; index++) draft = mutateOcclusionRegion(draft, { kind: "create", rectangle }, false);
+    expect(occlusionDraftReady(draft)).toBe(true);
+    expect(draft.masks).toHaveLength(64);
+    expect(mutateOcclusionRegion(draft, { kind: "create", rectangle }, false)).toBe(draft);
+    const grouped = mutateOcclusionRegion(draft, { kind: "create", rectangle }, true);
+    expect(grouped.masks).toHaveLength(65);
+    expect(occlusionStudyQuestions(grouped)).toHaveLength(64);
+    expect(occlusionDraftReady(grouped)).toBe(true);
+    expect(addOcclusionQuestion(newOcclusionDraft())).toEqual(newOcclusionDraft());
   });
 
   it("does not reset question identity when geometry is moved and undone", () => {
@@ -65,7 +118,7 @@ describe("image occlusion authored draft", () => {
     expect(undoOcclusionGeometry(restored, "redo").masks).toEqual(moved.masks);
   });
 
-  it("removing a region preserves question text and undo restores its bindings", () => {
+  it("removing a region preserves custom question text and undo restores its bindings", () => {
     const first = fixture();
     const removed = removeOcclusionRegion(first, required(first.masks[0], "first mask 1").id);
     expect(required(removed.questions[0], "removed question 1").answer).toEqual(required(first.questions[0], "first question 1").answer);

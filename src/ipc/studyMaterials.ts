@@ -123,6 +123,7 @@ export interface GetStudyTargetBundleInput {
 export interface BeginStudyTargetBundleInput {
   operationId: string;
   target: StudyTargetRef;
+  generationInstructions?: string;
   outputPolicy?: StudyTargetOutputPolicy;
   recreateArtifacts?: StudyTargetArtifactKind[];
 }

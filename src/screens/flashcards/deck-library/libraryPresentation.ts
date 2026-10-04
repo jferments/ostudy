@@ -3,7 +3,6 @@ export const libraryPresentation = {
   root: "tw:grid tw:min-w-0 tw:gap-5 tw:@container/deck-library",
   toolbar: "tw:flex tw:min-w-0 tw:items-center tw:justify-end tw:gap-3",
   toolbarActions: "tw:flex tw:w-auto tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-2 tw:[&>button]:flex-none tw:[&>button]:whitespace-nowrap",
-  importAction: "tw:[&_svg]:stroke-[2.15]",
   library: "tw:grid tw:min-w-0 tw:gap-8",
   folderArea: "tw:grid tw:min-w-0 tw:gap-4",
   sectionHeading: "tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3 tw:[&_h2]:m-0 tw:[&_h2]:text-base tw:[&_h2]:font-semibold tw:[&_p]:mt-1 tw:[&_p]:mb-0 tw:[&_p]:text-xs tw:[&_p]:text-muted-foreground tw:@max-[620px]/deck-library:flex-wrap",

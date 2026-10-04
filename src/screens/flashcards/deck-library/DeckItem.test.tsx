@@ -63,8 +63,7 @@ describe("DeckItem", () => {
 
       fireEvent.pointerDown(screen.getByRole("checkbox", { name: "Select Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("button", { name: "Practice" }));
-      fireEvent.pointerDown(screen.getByRole("button", { name: "Export Anatomy" }));
-      fireEvent.pointerDown(screen.getByRole("button", { name: "Delete Anatomy" }));
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Anatomy actions" }));
 
       expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
     },
@@ -102,36 +101,64 @@ describe("DeckItem", () => {
     },
   );
 
-  it("orders the save action between Practice and Delete and invokes the export callback", () => {
+  it("keeps Practice direct and puts merge, export, and delete in the deck menu", async () => {
+    const onMerge = vi.fn();
     const onExport = vi.fn();
-    renderDeckItem({ onExport });
+    const onDelete = vi.fn();
+    renderDeckItem({ onMerge, onExport, onDelete });
 
-    const actions = screen.getByRole("group", { name: "Anatomy actions" });
-    expect(
-      within(actions)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label") || button.textContent?.trim()),
-    ).toEqual(["Practice", "Export Anatomy", "Delete Anatomy"]);
+    expect(screen.getByRole("button", { name: "Practice" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Merge…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Export Anatomy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Anatomy" })).toBeNull();
 
-    const save = within(actions).getByRole("button", { name: "Export Anatomy" });
-    expect(save.querySelector("svg")).not.toBeNull();
-    fireEvent.click(save);
-    expect(onExport).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Anatomy actions" }));
+    let menu = await screen.findByRole("menu", { name: "Anatomy actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent?.trim()))
+      .toEqual(["Merge…", "Export Anatomy", "Delete Anatomy"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Merge…" }));
+    expect(onMerge).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Anatomy actions" }));
+    menu = await screen.findByRole("menu", { name: "Anatomy actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Export Anatomy" }));
+    expect(onExport).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Anatomy actions" }));
+    menu = await screen.findByRole("menu", { name: "Anatomy actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete Anatomy" }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps save and trash actions direct in compact layout", () => {
+  it("keeps the same Practice-plus-menu hierarchy in compact layout", async () => {
     setLayoutMode("compact");
-    const onDelete = vi.fn();
-    const onExport = vi.fn();
-    renderDeckItem({ onDelete, onExport });
+    renderDeckItem();
 
-    expect(screen.queryByRole("button", { name: "Anatomy actions" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Export Anatomy" }));
-    const trash = screen.getByRole("button", { name: "Delete Anatomy" });
-    expect(trash.getAttribute("data-tone")).toBe("danger");
-    fireEvent.click(trash);
-    expect(onExport).toHaveBeenCalledOnce();
-    expect(onDelete).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Practice" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Export Anatomy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Anatomy" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Anatomy actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Anatomy actions" });
+    expect(within(sheet).getByRole("button", { name: "Merge…" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Export Anatomy" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
+  });
+
+  it("gives archived decks only an overflow menu, with no exposed Practice action", async () => {
+    renderDeckItem({ archived: true });
+
+    expect(screen.queryByRole("button", { name: "Practice" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Anatomy actions" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Export Anatomy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete Anatomy" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Anatomy actions" }));
+    const menu = await screen.findByRole("menu", { name: "Anatomy actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent?.trim()))
+      .toEqual(["Export Anatomy", "Delete Anatomy"]);
   });
 
   it("opens with Enter and Space while leaving movement prevention to the reorder adapter", () => {
@@ -173,6 +200,7 @@ function renderDeckItem(overrides: Partial<ComponentProps<typeof DeckItem>> = {}
     reorder: makeReorder(),
     onOpen: vi.fn(),
     onPractice: vi.fn(),
+    onMerge: vi.fn(),
     onExport: vi.fn(),
     onDelete: vi.fn(),
     onToggleSelected: vi.fn(),

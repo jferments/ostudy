@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
+import { generationInstructionsInput } from "../ipc/generationInstructions";
 import {
   cancelDocumentFlashcardGeneration,
   deleteDocument,
@@ -65,6 +66,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
 
   const alive = useRef(true);
   const selectingFile = useRef(false);
+  const capturedInstructions = useRef(new Map<string, string | undefined>());
   const stopping = useRef(new Set<string>());
   const backgroundFlashcardIds = useRef(new Set<string>());
   const guideRequestIds = useRef(new Set<string>());
@@ -196,9 +198,24 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }, [documents, refreshDecks, showToast]);
 
-  async function startBackgroundFlashcardGeneration(documentId: string): Promise<void> {
+  function generationInstructionsFor(document: DocumentSummary): string {
+    return capturedInstructions.current.has(document.id)
+      ? capturedInstructions.current.get(document.id) ?? ""
+      : document.generationSummary?.requestedPolicy.generationInstructions ?? "";
+  }
+
+  function captureInstructions(documentId: string, value?: string): string | undefined {
+    const captured = generationInstructionsInput(value).generationInstructions;
+    capturedInstructions.current.set(documentId, captured);
+    return captured;
+  }
+
+  async function startBackgroundFlashcardGeneration(
+    documentId: string, generationInstructions?: string,
+  ): Promise<void> {
+    const captured = captureInstructions(documentId, generationInstructions);
     try {
-      await startDocumentFlashcardGeneration(documentId);
+      await startDocumentFlashcardGeneration(documentId, captured);
     } catch (error) {
       throw error;
     }
@@ -297,13 +314,15 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     showToast,
   });
 
-  async function uploadDocument(): Promise<void> {
+  async function uploadDocument(generationInstructions?: string): Promise<void> {
     if (selectingFile.current) return;
     selectingFile.current = true;
     setIsUploading(true);
     setErrorMessage(null);
     let selected: Awaited<ReturnType<typeof selectExternalImport>>;
+    let captured: string | undefined;
     try {
+      captured = generationInstructionsInput(generationInstructions).generationInstructions;
       selected = await selectExternalImport("document");
     } catch (error: unknown) {
       const message = getErrorMessage(error);
@@ -321,7 +340,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       const imported = await importDocument(selected.id);
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
-      await startBackgroundFlashcardGeneration(documentId);
+      await startBackgroundFlashcardGeneration(documentId, captured);
       showToast(
         "info",
         "Document processing started. You can add more documents while this job runs.",
@@ -333,14 +352,16 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }
 
-  async function retry(document: DocumentSummary): Promise<void> {
+  async function retry(
+    document: DocumentSummary, generationInstructions = generationInstructionsFor(document),
+  ): Promise<void> {
     if (document.lifecycleState === "processing"
       || busyDocumentIds.has(document.id)
       || guideGeneratingDocumentIds.has(document.id)) return;
     updateIdSet(setBusyDocumentIds, document.id, true);
     setErrorMessage(null);
     try {
-      await startBackgroundFlashcardGeneration(document.id);
+      await startBackgroundFlashcardGeneration(document.id, generationInstructions);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -348,14 +369,17 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }
 
-  async function generateMore(document: DocumentSummary): Promise<void> {
+  async function generateMore(
+    document: DocumentSummary, generationInstructions = generationInstructionsFor(document),
+  ): Promise<void> {
     if (!document.generatedDeckId
       || busyDocumentIds.has(document.id)
       || guideGeneratingDocumentIds.has(document.id)) return;
     updateIdSet(setBusyDocumentIds, document.id, true);
     setErrorMessage(null);
     try {
-      const result = await generateMoreDocumentFlashcards(document.id);
+      const captured = captureInstructions(document.id, generationInstructions);
+      const result = await generateMoreDocumentFlashcards(document.id, captured);
       await reconcileSaved();
       void ensureAutomaticStudyGuide(document);
       if (result.createdCardCount === 0) {
@@ -483,6 +507,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     cancelingGuideDocumentIds: cancelingGuideDocumentIds as IdSet,
     errorMessage,
     hasProcessingDocument,
+    generationInstructionsFor,
     refreshDocuments,
     uploadDocument,
     retry,

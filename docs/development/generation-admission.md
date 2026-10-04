@@ -74,7 +74,7 @@ candidate across failed requests. Native diagnostics distinguish those events:
   counts, not the answer, source text or provider-selected identifiers.
 
 Use `./run-app.sh --debug=ai,document` for a reproduction. Read the native log path
-from Settings → Backup/Sync → Storage → Diagnostics. Keep the build SHA and the
+from **Settings → Diagnostics → Current diagnostic state**. Keep the build SHA and the
 last `document_generation_failed` event with request/retry/token counts. Do not
 post API keys, raw provider responses or private source content to a public issue.
 

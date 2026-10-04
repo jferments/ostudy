@@ -158,6 +158,7 @@ export interface NativeCommandGatewayMap {
   "list_tutor_projects": readonly [typeof GatewayModule32.listTutorProjects];
   "mark_practice_card_revealed": readonly [typeof GatewayModule23.markPracticeCardRevealed];
   "mark_practice_card_viewed": readonly [typeof GatewayModule23.markPracticeCardViewed];
+  "merge_decks": readonly [typeof GatewayModule8.mergeDecks];
   "move_deck_folder": readonly [typeof GatewayModule7.moveDeckFolder];
   "move_deck_in_library": readonly [typeof GatewayModule7.moveDeckInLibrary];
   "move_document_collection_membership": readonly [typeof GatewayModule6.moveDocumentCollectionMembership];

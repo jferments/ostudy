@@ -19,6 +19,17 @@ pub struct SaveGenerationPolicyInput {
     pub policy: GenerationPolicy,
 }
 
+fn validate_global_preferences(policy: &GenerationPolicy) -> Result<(), CommandError> {
+    policy.validate()?;
+    if !policy.generation_instructions.is_empty() {
+        return Err(CommandError::new(
+            "invalid_generation_policy",
+            "Custom instructions belong to a document or collection generation request, not global question-format preferences.",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn load(connection: &Connection) -> Result<GenerationPolicySnapshot, CommandError> {
     let stored: Option<(i64, String)> = connection
         .query_row(
@@ -36,7 +47,7 @@ pub(crate) fn load(connection: &Connection) -> Result<GenerationPolicySnapshot, 
         ),
         None => (0, GenerationPolicy::default()),
     };
-    policy.validate()?;
+    validate_global_preferences(&policy)?;
     Ok(GenerationPolicySnapshot { revision, policy })
 }
 
@@ -59,7 +70,7 @@ pub(crate) fn save(
     database: &Database,
     input: SaveGenerationPolicyInput,
 ) -> Result<GenerationPolicySnapshot, CommandError> {
-    input.policy.validate()?;
+    validate_global_preferences(&input.policy)?;
     if input.revision < 0 || input.revision == i64::MAX {
         return Err(CommandError::new(
             "invalid_generation_policy",
@@ -93,4 +104,38 @@ pub(crate) fn save(
             policy: input.policy,
         })
     })
+}
+
+#[cfg(test)]
+mod instruction_scope_tests {
+    use super::super::policy::instructions::GenerationInstructions;
+    use super::*;
+
+    #[test]
+    fn a_job_can_override_its_own_copy_but_cannot_store_the_prompt_globally() {
+        let preferences = GenerationPolicy::default();
+        let first = GenerationPolicy {
+            generation_instructions: GenerationInstructions::parse(Some("Nursing assessments"))
+                .unwrap(),
+            ..preferences.clone()
+        };
+        let second = GenerationPolicy {
+            generation_instructions: GenerationInstructions::parse(Some("Arterial anatomy"))
+                .unwrap(),
+            ..preferences.clone()
+        };
+        assert!(validate_global_preferences(&preferences).is_ok());
+        assert!(preferences.generation_instructions.is_empty());
+        assert_eq!(
+            validate_global_preferences(&first).unwrap_err().code,
+            "invalid_generation_policy"
+        );
+        assert_eq!(
+            validate_global_preferences(&second).unwrap_err().code,
+            "invalid_generation_policy"
+        );
+        assert_ne!(first.fingerprint().unwrap(), second.fingerprint().unwrap());
+        assert!(first.validate().is_ok());
+        assert!(second.validate().is_ok());
+    }
 }

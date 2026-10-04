@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentJobsProvider } from "../../controllers/DocumentJobsProvider";
 import type { DocumentSummary } from "../../ipc/documents";
+import { MAX_GENERATION_INSTRUCTIONS_BYTES } from "../../ipc/generationInstructions";
 import type { AmendImageSetInput, ImageSetDetails, ImportImageSetInput } from "../../ipc/imageSets";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { ImageSetWorkspace } from "./ImageSetWorkspace";
@@ -66,6 +67,11 @@ function open() {
 function select(files: File[]) {
   fireEvent.change(screen.getByLabelText("Choose images"), { target: { files } });
 }
+function pasteArea() { return screen.getByRole("textbox", { name: "Paste images here" }); }
+function instructionField() {
+  return screen.getByRole("textbox", { name: "Flashcard instructions (optional)" }) as HTMLTextAreaElement;
+}
+function guideCards(value: string) { fireEvent.change(instructionField(), { target: { value } }); }
 async function ready() {
   await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Study materials are ready"));
 }
@@ -132,7 +138,7 @@ describe("automatic image collections", () => {
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(required(mocks.import.mock.calls[0]?.[0], "import call argument").members).toHaveLength(2);
     expect(mocks.prepare).toHaveBeenCalledWith(id);
-    expect(mocks.cards).toHaveBeenCalledWith(id);
+    expect(mocks.cards).toHaveBeenCalledWith(id, "");
     expect(mocks.guide).not.toHaveBeenCalled();
     expect(mocks.guideJobs).toHaveBeenCalledTimes(1);
     expect(required(mocks.prepare.mock.invocationCallOrder[0], "prepare invocation order")).toBeLessThan(required(mocks.cards.mock.invocationCallOrder[0], "cards invocation order"));
@@ -141,8 +147,7 @@ describe("automatic image collections", () => {
     expect(screen.queryByText("Content filter")).toBeNull();
     expect(screen.queryByRole("button", { name: /Import image set|Rotate|Retry local OCR|Prepare/ })).toBeNull();
     const list = screen.getByRole("list", { name: "Images in collection" });
-    const drop = screen.getByRole("button", { name: "Drop images here or select files" });
-    expect(list.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(list.compareDocumentPosition(pasteArea()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     const click = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Add more images" }));
     expect(click).toHaveBeenCalledTimes(1);
@@ -151,31 +156,60 @@ describe("automatic image collections", () => {
   it("accepts dropped and pasted images into the same source while ignoring pasted URLs", async () => {
     open();
     const dropped = image("dropped.png");
-    fireEvent.drop(screen.getByRole("button", { name: "Drop images here or select files" }), {
+    fireEvent.drop(pasteArea(), {
       dataTransfer: { files: [], items: [
         { kind: "file", type: "image/png", getAsFile: () => dropped },
       ], dropEffect: "copy" },
     });
     await ready();
-    fireEvent.paste(window, { clipboardData: { files: [image("pasted.png")], items: [] } });
+    fireEvent.paste(pasteArea(), { clipboardData: { files: [image("pasted.png")], items: [] } });
     await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
     await ready();
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
-    expect(mocks.more).toHaveBeenCalledWith(id);
+    expect(mocks.more).toHaveBeenCalledWith(id, "");
     expect(mocks.guide).toHaveBeenCalledTimes(1);
-    fireEvent.paste(window, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
+    fireEvent.paste(pasteArea(), { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
     expect(mocks.stage).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to the browser clipboard reader when Ctrl+V carries no image event payload", async () => {
+  it("reads the clipboard during Ctrl+V when the native event carries no image payload", async () => {
     mocks.clipboardRead.mockResolvedValueOnce([image("clipboard-fallback.png")]);
     open();
-    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
-    await ready();
+    fireEvent.keyDown(pasteArea(), { key: "v", ctrlKey: true });
     expect(mocks.clipboardRead).toHaveBeenCalledTimes(1);
+    await ready();
     expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ name: "clipboard-fallback.png" }), expect.any(String));
     expect(mocks.import).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an in-flight clipboard read when the first upload acquires its durable document ID", async () => {
+    const clipboard = deferred<File[]>();
+    mocks.clipboardRead.mockReturnValueOnce(clipboard.promise);
+    open();
+    select([image("first.png")]);
+    fireEvent.keyDown(pasteArea(), { key: "v", ctrlKey: true });
+    await ready();
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    await act(async () => { clipboard.resolve([image("second.png")]); await clipboard.promise; });
+    await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
+    await ready();
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    expect(mocks.stage.mock.calls.map((call) => call[0].name)).toEqual(["first.png", "second.png"]);
+    expect(mocks.more).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers explicit Paste and exposes a safe acquisition failure instead of silently doing nothing", async () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Paste images" }));
+    expect(mocks.clipboardRead).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/No image was available to paste/)).toBeTruthy();
+    expect(mocks.stage).not.toHaveBeenCalled();
+    mocks.clipboardRead.mockResolvedValueOnce([image("explicit.png")]);
+    fireEvent.click(screen.getByRole("button", { name: "Paste images" }));
+    await ready();
+    expect(screen.queryByText(/No image was available to paste/)).toBeNull();
+    expect(mocks.stage).toHaveBeenCalledTimes(1);
   });
 
   it("keeps staging alive after leaving the image workspace", async () => {
@@ -207,12 +241,15 @@ describe("automatic image collections", () => {
     expect(screen.getByRole("button", { name: "View source-0.png" })).toBeTruthy();
   });
 
-  it("retains additions during generation and completes after leaving the upload page", async () => {
+  it("retains additions and captured guidance during generation after leaving the upload page", async () => {
     const request = deferred<{ createdCardCount: number }>();
     mocks.cards.mockImplementation(async () => { const result = await request.promise; deckId = "b".repeat(32); return result; });
     open();
+    guideCards("Nursing assessment tests");
     select([image()]);
     await waitFor(() => expect(mocks.cards).toHaveBeenCalledTimes(1));
+    expect(mocks.cards).toHaveBeenCalledWith(id, "Nursing assessment tests");
+    expect(instructionField().disabled).toBe(true);
     select([image("later.png")]);
     expect(mocks.amend).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back to Documents" }));
@@ -221,17 +258,20 @@ describe("automatic image collections", () => {
     await waitFor(() => expect(mocks.guide).toHaveBeenCalledTimes(1));
     expect(mocks.amend).toHaveBeenCalledTimes(1);
     expect(mocks.more).toHaveBeenCalledTimes(1);
+    expect(mocks.more).toHaveBeenCalledWith(id, "Nursing assessment tests");
     expect(mocks.cancel).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Open collection" }));
     await ready();
     expect(screen.getAllByRole("button", { name: /^View / })).toHaveLength(2);
+    expect(instructionField().value).toBe("Nursing assessment tests");
   });
 
-  it("retries a failed native guide without importing or generating cards again", async () => {
+  it("retries a failed native guide without importing or generating guided cards again", async () => {
     mocks.guideJobs.mockResolvedValueOnce([{
       documentId: id, state: "failed", safeErrorCode: "ai_provider_unavailable", safeErrorMessage: "Provider unavailable",
     }]);
     open();
+    guideCards("Nursing assessment tests");
     select([image()]);
     await screen.findByRole("button", { name: "Retry processing" });
     expect(mocks.guide).not.toHaveBeenCalled();
@@ -239,6 +279,8 @@ describe("automatic image collections", () => {
     await ready();
     expect(mocks.import).toHaveBeenCalledTimes(1);
     expect(mocks.cards).toHaveBeenCalledTimes(1);
+    expect(mocks.cards).toHaveBeenCalledWith(id, "Nursing assessment tests");
+    expect(mocks.more).not.toHaveBeenCalled();
     expect(mocks.guide).toHaveBeenCalledTimes(1);
   });
 
@@ -301,8 +343,7 @@ describe("automatic image collections", () => {
     const preview = await screen.findByAltText("Retained original image");
     expect(preview).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide source-0.png" })).toBeTruthy();
-    const drop = screen.getByRole("button", { name: "Drop images here or select files" });
-    expect(preview.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(preview.compareDocumentPosition(pasteArea()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(mocks.preview).toHaveBeenCalledWith({ documentId: id, memberId: member("", 1).id,
       expectedRevision: 1, viewport: null });
   });
@@ -315,5 +356,74 @@ describe("automatic image collections", () => {
     fireEvent.click(await screen.findByRole("button", { name: "View source-0.png" }));
     expect(await screen.findByText("Retained preview unavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide source-0.png" })).toBeTruthy();
+  });
+
+  it("applies guidance to chooser, dropped, and explicitly pasted screenshots without changing source requests", async () => {
+    open();
+    guideCards("  Nursing cranial nerve assessments  ");
+    select([image("first.png")]);
+    await ready();
+    expect(mocks.cards).toHaveBeenCalledWith(id, "Nursing cranial nerve assessments");
+    fireEvent.drop(pasteArea(), { dataTransfer: { files: [image("second.png")], items: [], dropEffect: "copy" } });
+    await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(1));
+    await ready();
+    expect(mocks.more).toHaveBeenCalledWith(id, "Nursing cranial nerve assessments");
+    guideCards("Arterial anatomy");
+    mocks.clipboardRead.mockResolvedValueOnce([image("third.png")]);
+    fireEvent.click(screen.getByRole("button", { name: "Paste images" }));
+    await waitFor(() => expect(mocks.amend).toHaveBeenCalledTimes(2));
+    await ready();
+    expect(mocks.more).toHaveBeenLastCalledWith(id, "Arterial anatomy");
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    expect(mocks.stage.mock.calls.map((call) => call[0].name)).toEqual(["first.png", "second.png", "third.png"]);
+    expect(mocks.import.mock.calls[0]?.[0]).not.toHaveProperty("generationInstructions");
+    expect(mocks.amend.mock.calls[1]?.[0]).not.toHaveProperty("generationInstructions");
+  });
+
+  it("distinguishes an explicitly changed prompt from a guide-only retry without reimporting images", async () => {
+    mocks.guideJobs.mockResolvedValueOnce([{
+      documentId: id, state: "failed", safeErrorCode: "ai_provider_unavailable", safeErrorMessage: "Provider unavailable",
+    }]);
+    open();
+    guideCards("Nursing assessment tests");
+    select([image()]);
+    await screen.findByRole("button", { name: "Retry processing" });
+    guideCards("Mechanisms of nerve injury");
+    fireEvent.click(screen.getByRole("button", { name: "Generate with new instructions" }));
+    await ready();
+    expect(mocks.cards).toHaveBeenCalledTimes(1);
+    expect(mocks.more).toHaveBeenCalledTimes(1);
+    expect(mocks.more).toHaveBeenCalledWith(id, "Mechanisms of nerve injury");
+    expect(mocks.import).toHaveBeenCalledTimes(1);
+    expect(mocks.amend).not.toHaveBeenCalled();
+    expect(mocks.guide).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid guidance before staging images even when file input bypasses the disabled picker button", async () => {
+    open();
+    guideCards("x".repeat(MAX_GENERATION_INSTRUCTIONS_BYTES + 1));
+    expect(instructionField().getAttribute("aria-invalid")).toBe("true");
+    expect((screen.getByRole("button", { name: "Select images" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Paste images" }) as HTMLButtonElement).disabled).toBe(true);
+    select([image()]);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("error", expect.stringContaining("16 KiB")));
+    expect(mocks.stage).not.toHaveBeenCalled();
+    expect(mocks.import).not.toHaveBeenCalled();
+    expect(mocks.cards).not.toHaveBeenCalled();
+    expect(mocks.more).not.toHaveBeenCalled();
+  });
+
+  it("leaves ordinary text paste in the guidance textarea to the browser", async () => {
+    open();
+    const field = instructionField();
+    field.focus();
+    fireEvent.keyDown(field, { key: "v", ctrlKey: true });
+    fireEvent.paste(field, { clipboardData: {
+      files: [], items: [{ kind: "string", type: "text/plain" }], getData: () => "Nursing assessments",
+    } });
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.clipboardRead).not.toHaveBeenCalled();
+    expect(mocks.stage).not.toHaveBeenCalled();
+    expect(mocks.import).not.toHaveBeenCalled();
   });
 });

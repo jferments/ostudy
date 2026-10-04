@@ -54,12 +54,11 @@ def library_snapshot(session_id: str) -> dict[str, Any] | None:
           .find((heading) => heading.textContent?.trim() === 'No decks have been created yet.');
         const folderSection = folderHeading?.closest('section');
         const folderButton = buttons.find((button) => button.getAttribute('aria-label') === 'Create a folder');
-        const importButton = buttons.find((button) => button.getAttribute('aria-label') === 'Import deck from file');
+        const importButton = buttons.find((button) => button.textContent?.trim() === 'Import deck');
         const newDeckButton = buttons.find((button) => button.textContent?.trim() === 'New deck');
         const createDeckButton = buttons.find((button) => button.textContent?.trim() === 'Create a new deck');
         const newDeckRect = newDeckButton?.getBoundingClientRect();
-        const importIcon = importButton?.querySelector('svg');
-        const importIconRect = importIcon?.getBoundingClientRect();
+        const importRect = importButton?.getBoundingClientRect();
         const viewportWidth = document.documentElement.clientWidth;
         const visibleButtons = buttons.filter((button) => {
           const style = getComputedStyle(button);
@@ -76,7 +75,10 @@ def library_snapshot(session_id: str) -> dict[str, Any] | None:
           foldersHeading: Boolean(folderHeading),
           unsortedHeading: Boolean(unsortedHeading),
           importAction: Boolean(importButton),
-          importIconWidth: importIconRect?.width ?? null,
+          importWidth: importRect?.width ?? null,
+          importLabelClipped: importButton
+            ? importButton.scrollWidth > importButton.clientWidth + 1
+            : null,
           createDeckAction: Boolean(createDeckButton),
           newDeckAction: Boolean(newDeckButton),
           newDeckWidth: newDeckRect?.width ?? null,
@@ -150,7 +152,7 @@ def assert_common_contract(snapshot: dict[str, Any], width: int) -> None:
         )
     for key, message in (
         ("tabsContained", "Flashcards tabs overflowed their tablist"),
-        ("importAction", "Import deck from file was not directly available"),
+        ("importAction", "The labeled Import deck action was not directly available"),
         ("pointerSurfacePresent", "Deck pointer-session surface was unavailable"),
         ("visibleButtonsContained", "A visible deck-library button escaped the viewport"),
         ("noDocumentOverflow", "The deck library introduced horizontal document overflow"),
@@ -250,15 +252,17 @@ def verify_populated_library(session_id: str, width: int, height: int) -> None:
         )
     if width == 390:
         new_deck_width = float(snapshot.get("newDeckWidth") or 0)
-        import_icon_width = float(snapshot.get("importIconWidth") or 0)
+        import_width = float(snapshot.get("importWidth") or 0)
         if not 0 < new_deck_width <= 220:
             raise AssertionError(
                 f"Compact New deck action expanded too wide ({new_deck_width}px): {snapshot!r}"
             )
-        if import_icon_width < 23:
+        if not 0 < import_width <= 220:
             raise AssertionError(
-                f"Compact import icon was not prominent enough ({import_icon_width}px): {snapshot!r}"
+                f"Compact Import deck action expanded too wide ({import_width}px): {snapshot!r}"
             )
+        if snapshot.get("importLabelClipped") is not False:
+            raise AssertionError(f"Compact Import deck label was clipped: {snapshot!r}")
     ui.assert_no_horizontal_overflow(session_id, f"populated deck library at {width}px")
 
 
@@ -298,7 +302,7 @@ def main() -> int:
             "Native Flashcards layout smoke passed: Flashcards exposes exactly two contained tabs; "
             "the fresh library hides folder/unsorted/selection/collapse chrome while keeping import "
             "and the create-deck CTA; after deck creation the folder plus, Unsorted section, "
-            "Select all, compact intrinsic New deck action, and prominent import icon appear without "
+            "Select all, and compact intrinsic New deck and labeled Import deck actions appear without "
             "horizontal overflow."
         )
         return 0

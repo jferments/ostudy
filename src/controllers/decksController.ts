@@ -12,6 +12,7 @@ import {
   getDeck,
   importDeck,
   listDeckCardSummaries,
+  mergeDecks,
   setDeckArchived,
   updateDeck,
   type CreateDeckInput,
@@ -20,6 +21,8 @@ import {
   type DeckSummary,
   type PreparedDeckExport,
   type ImportResult,
+  type MergeDecksInput,
+  type MergeDecksResult,
   type SetDeckArchivedInput,
   type UpdateDeckInput,
 } from "../ipc/decks";
@@ -113,6 +116,10 @@ export class DecksController {
 
   setArchived(input: SetDeckArchivedInput): Promise<DeckSummary> {
     return setDeckArchived(input);
+  }
+
+  merge(input: MergeDecksInput): Promise<MergeDecksResult> {
+    return mergeDecks(input);
   }
 
   deleteDeck(deckId: string): Promise<DeletionResult> {

@@ -8,6 +8,7 @@ use crate::{
         process_and_generate_initial_flashcards, process_reserved_initial_flashcards,
     },
     error::CommandError,
+    knowledge::assessment::policy::instructions::GenerationInstructions,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
     util::validate_entity_id,
@@ -37,6 +38,7 @@ pub(crate) fn validate_retry_pdf_flashcard_generation(
 fn committed_initial_generation(
     database: &Database,
     document_id: &str,
+    instructions: &GenerationInstructions,
 ) -> Result<Option<DocumentGenerationResultDto>, CommandError> {
     let document = database
         .with_connection(|connection| repository::load_document(connection, document_id))?;
@@ -67,6 +69,12 @@ fn committed_initial_generation(
         let Some(summary) = report::load_for_job(connection, document_id, &job_id)? else {
             return Ok(None);
         };
+        if summary.requested_policy.generation_instructions != *instructions {
+            return Err(CommandError::new(
+                "generation_instructions_changed",
+                "This document already has cards created with different instructions. Use Generate more to add guided cards without replacing existing material.",
+            ));
+        }
         let count = |value: usize| {
             i64::try_from(value).map_err(|_| {
                 CommandError::new(
@@ -116,7 +124,9 @@ async fn retry_pdf_flashcard_generation_inner(
     processing_reserved: bool,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     crate::ai::generation::outcomes::operation::bind_document(database);
-    if let Some(result) = committed_initial_generation(database, &input.document_id)? {
+    if let Some(result) =
+        committed_initial_generation(database, &input.document_id, &input.generation_instructions)?
+    {
         let reuse_key = crate::ai::generation::hash(
             format!(
                 "committed-flashcard-publication-v1|{}|{}",
@@ -149,6 +159,7 @@ async fn retry_pdf_flashcard_generation_inner(
             runtime,
             render_runtime,
             &input.document_id,
+            &input.generation_instructions,
         )
         .await
     } else {
@@ -158,6 +169,7 @@ async fn retry_pdf_flashcard_generation_inner(
             runtime,
             render_runtime,
             &input.document_id,
+            &input.generation_instructions,
         )
         .await
     };
@@ -317,7 +329,7 @@ mod tests {
             })
             .unwrap();
 
-        let recovered = committed_initial_generation(&database, &document_id)
+        let recovered = committed_initial_generation(&database, &document_id, &Default::default())
             .unwrap()
             .unwrap();
         assert_eq!(recovered.deck_id, deck_id);
@@ -325,6 +337,18 @@ mod tests {
         assert_eq!(recovered.created_card_count, 2);
         assert_eq!(recovered.skipped_duplicate_count, 0);
         assert_eq!(recovered.document.lifecycle_state, "ready");
+        let different = GenerationInstructions::parse(Some("Nursing assessments")).unwrap();
+        let error = committed_initial_generation(&database, &document_id, &different).unwrap_err();
+        assert_eq!(error.code, "generation_instructions_changed");
+        assert!(!error.message.contains("Nursing assessments"));
+        let unchanged = committed_initial_generation(
+            &database,
+            &document_id,
+            &GenerationInstructions::parse(Some(" \r\n")).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(unchanged.deck_id, deck_id);
     }
 
     #[test]
@@ -349,9 +373,11 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        assert!(committed_initial_generation(&database, &document_id)
-            .unwrap()
-            .is_none());
+        assert!(
+            committed_initial_generation(&database, &document_id, &Default::default())
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             validate_retry_pdf_flashcard_generation(&database, &document_id)
                 .unwrap_err()

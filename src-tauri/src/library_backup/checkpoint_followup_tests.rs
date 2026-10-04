@@ -2,6 +2,23 @@ use super::*;
 use rusqlite::params;
 use serde_json::json;
 
+fn strip_empty_release_additions(
+    rows: &mut std::collections::BTreeMap<String, (Vec<String>, Vec<[u8; 32]>)>,
+) {
+    for table in [
+        "selection_deck_operations",
+        "deck_merge_operations",
+        "study_target_generation_instructions",
+    ] {
+        if let Some((_, values)) = rows.remove(table) {
+            assert!(
+                values.is_empty(),
+                "{table} must be empty during a release upgrade"
+            );
+        }
+    }
+}
+
 fn seed_history(fixture: &Fixture) {
     let mut connection = Connection::open(fixture.0.database_path()).unwrap();
     let deck = crate::decks::create_deck_in_connection(
@@ -120,11 +137,7 @@ fn populated_upgrade_preserves_learner_edits_schedules_and_review_evidence() {
     let mut guard = install_prepared_restore(&fixture.0, prepared).unwrap();
     let active = read_database(fixture.0.database_path()).unwrap();
     let mut after = preservation::rows(&active).unwrap();
-    assert!(after
-        .remove("selection_deck_operations")
-        .unwrap()
-        .1
-        .is_empty());
+    strip_empty_release_additions(&mut after);
     assert_eq!(before, after);
     drop(active);
     commit_upgrade(&fixture.0, &mut guard).unwrap();
@@ -385,11 +398,7 @@ fn populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy
     .unwrap();
     let retried = read_database(fixture.0.database_path()).unwrap();
     let mut after = preservation::rows(&retried).unwrap();
-    assert!(after
-        .remove("selection_deck_operations")
-        .unwrap()
-        .1
-        .is_empty());
+    strip_empty_release_additions(&mut after);
     assert_eq!(after, before);
     drop(retried);
     commit_upgrade(&fixture.0, &mut retry).unwrap();

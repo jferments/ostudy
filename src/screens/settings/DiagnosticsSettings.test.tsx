@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as diagnostics from "../../ipc/diagnostics";
+import * as settings from "../../ipc/settings";
 import { DiagnosticsSettings } from "./DiagnosticsSettings";
 
 vi.mock("../../ipc/diagnostics", () => ({
@@ -9,6 +10,7 @@ vi.mock("../../ipc/diagnostics", () => ({
   setDiagnosticFilter: vi.fn(),
   flushNativeDiagnostics: vi.fn(),
 }));
+vi.mock("../../ipc/settings", () => ({ getAppInfo: vi.fn() }));
 
 const configuration: diagnostics.DiagnosticConfiguration = {
   filter: "info",
@@ -22,6 +24,14 @@ describe("DiagnosticsSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(diagnostics.getDiagnosticConfiguration).mockResolvedValue(configuration);
+    vi.mocked(settings.getAppInfo).mockResolvedValue({
+      appVersion: "0.1.0",
+      dataDirectory: "/tmp/ostudy/data",
+      databasePath: "/tmp/ostudy/data/library.sqlite3",
+      imageDirectory: "/tmp/ostudy/data/assets/images",
+      diagnosticLogPath: "/tmp/ostudy/diagnostics/ostudy.jsonl",
+      databaseSchemaVersion: 3,
+    });
     vi.mocked(diagnostics.setDiagnosticFilter).mockImplementation(async (filter) => ({
       ...configuration,
       filter,
@@ -33,6 +43,8 @@ describe("DiagnosticsSettings", () => {
     const showToast = vi.fn();
     render(<DiagnosticsSettings showToast={showToast} />);
     expect(await screen.findByText("/tmp/ostudy/diagnostics/ostudy.jsonl")).toBeTruthy();
+    expect(screen.getByText("0.1.0")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Subsystem"), { target: { value: "qr" } });
     fireEvent.change(screen.getByLabelText("Detail level"), { target: { value: "trace" } });

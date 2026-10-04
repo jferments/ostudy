@@ -281,6 +281,19 @@ fn consecutive_shuffled_sessions_avoid_repeating_the_same_equal_priority_first_c
                 true,
                 "extra",
             )?;
+            let first_order = first
+                .first_window
+                .cards
+                .iter()
+                .map(|card| card.presentation.id.as_str())
+                .collect::<Vec<_>>();
+            let second_order = second
+                .first_window
+                .cards
+                .iter()
+                .map(|card| card.presentation.id.as_str())
+                .collect::<Vec<_>>();
+            assert_ne!(first_order, second_order);
             assert_ne!(
                 first.first_window.cards[0].presentation.id,
                 second.first_window.cards[0].presentation.id

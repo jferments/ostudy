@@ -12,6 +12,7 @@ shared harness so every native consumer uses the same accessible-name contract.
 
 from __future__ import annotations
 
+import json
 import time
 
 import ui_platform_smoke as ui
@@ -108,20 +109,28 @@ def verify_current_deck_detail_header(
     deck_name: str,
     deck_description: str,
 ) -> None:
-    """Verify the responsive title/actions layout and independent library-return action."""
-    expected_direct = [
-        "Practice",
+    """Verify the responsive title/actions layout and independent library-return action.
+
+    Practice is the only direct deck action at every width. Merge, Export,
+    Archive and Delete live in the deck's actions overflow: a menu on wide and
+    medium layouts and a sheet on compact layouts. Destructive actions are
+    grouped last.
+    """
+    actions_label = f"{deck_name} actions"
+    expected_direct = ["Practice", actions_label]
+    expected_overflow = [
+        "Merge…",
         f"Export {deck_name}",
-        f"Delete {deck_name}",
         f"Archive {deck_name}",
+        f"Delete {deck_name}",
     ]
     placements = (
-        ("wide", 1440, 900, expected_direct, []),
-        ("medium", 1000, 800, expected_direct, []),
-        ("compact", 390, 700, expected_direct, []),
+        ("wide", 1440, 900, "menu"),
+        ("medium", 1000, 800, "menu"),
+        ("compact", 390, 700, "sheet"),
     )
 
-    for mode, width, height, expected_direct, expected_overflow in placements:
+    for mode, width, height, overflow_surface in placements:
         mode_deadline = webdriver.deadline_after()
         ui.set_window_rect(session_id, width, height)
         snapshot = None
@@ -248,47 +257,63 @@ def verify_current_deck_detail_header(
                 f"Deck detail header failed {mode} current-layout contract: {snapshot!r}"
             )
 
-        if not expected_overflow:
-            more_count = ui.execute(
-                session_id,
-                """
-                return document.querySelectorAll(
-                  "main header button[aria-label='More actions']"
-                ).length;
-                """,
-            )
-            if more_count != 0:
-                raise AssertionError(
-                    f"Deck detail {mode} exposed a one-item More menu instead of promoting its sole overflow action."
-                )
-            continue
-
-        more_actions = webdriver.find_element(
+        trigger = webdriver.find_element(
             session_id,
             "css selector",
-            "main header button[aria-label='More actions']",
+            f"main header button[aria-label={json.dumps(actions_label)}]",
             mode_deadline,
         )
-        webdriver.click(session_id, more_actions)
-        overflow_items = ui.execute(
-            session_id,
-            """
-            return [...document.querySelectorAll(
-              '[role="menu"][aria-label="More actions"] [role="menuitem"]'
-            )].map((item) => (item.textContent || '').trim());
-            """,
-        )
-        if overflow_items != expected_overflow:
+        webdriver.click(session_id, trigger)
+        overflow = None
+        while time.monotonic() < mode_deadline:
+            overflow = read_deck_overflow(session_id, actions_label)
+            if overflow is not None:
+                break
+            time.sleep(0.1)
+        if (
+            not isinstance(overflow, dict)
+            or overflow.get("surface") != overflow_surface
+            or overflow.get("items") != expected_overflow
+        ):
             raise AssertionError(
-                f"Deck detail {mode} overflow actions were incorrect: {overflow_items!r}"
+                f"Deck detail {mode} overflow actions were incorrect: {overflow!r}"
             )
         ui.send_key(session_id, ui.ESCAPE_KEY)
-        ui.wait_for_absent(
-            session_id,
-            "css selector",
-            '[role="menu"][aria-label="More actions"]',
-            mode_deadline,
-        )
+        while time.monotonic() < mode_deadline:
+            if read_deck_overflow(session_id, actions_label) is None:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"Deck detail {mode} overflow did not close on Escape.")
+
+
+def read_deck_overflow(session_id: str, actions_label: str) -> dict | None:
+    """Return the open deck-actions overflow surface and its item labels."""
+    return ui.execute(
+        session_id,
+        """
+        const label = arguments[0];
+        const text = (element) => (element.textContent || '').trim();
+        const menu = [...document.querySelectorAll('[role="menu"]')]
+          .find((candidate) => candidate.getAttribute('aria-label') === label);
+        if (menu) {
+          return {
+            surface: 'menu',
+            items: [...menu.querySelectorAll('[role="menuitem"]')].map(text),
+          };
+        }
+        const sheet = [...document.querySelectorAll('[role="dialog"] [aria-label]')]
+          .find((candidate) => candidate.getAttribute('aria-label') === label);
+        if (sheet) {
+          return {
+            surface: 'sheet',
+            items: [...sheet.querySelectorAll('button')].map(text),
+          };
+        }
+        return null;
+        """,
+        [actions_label],
+    )
 
 
 if __name__ == "__main__":

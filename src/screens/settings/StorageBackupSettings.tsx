@@ -1,6 +1,6 @@
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { Panel } from "../../ui/primitives/Panel";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { restoredLibraryMessage } from "../../components/libraryRestoreResult";
 import { refreshLibraryView } from "../../platform/libraryView";
@@ -8,15 +8,10 @@ import { releaseStagedExternalImport } from "../../ipc/externalFiles";
 import type { ShowToast } from "../../components/Toast";
 import { prepareLibraryBackup, prepareLibraryRestore } from "../../ipc/backup";
 import { createOperationId, getErrorMessage } from "../../ipc/common";
-import { getAppInfo, type AppInfo, type AppSettings } from "../../ipc/settings";
+import type { AppSettings } from "../../ipc/settings";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useConfirm } from "../../ui/overlays/overlayContext";
-import {
-  InfoButton,
-  MetadataItem,
-  MetadataList,
-} from "../../ui/overlays/MetadataDialog";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
@@ -28,7 +23,6 @@ interface StorageBackupSettingsProps {
 }
 
 export function StorageBackupSettings({ draft, update, showToast }: StorageBackupSettingsProps) {
-  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [isTransferringLibrary, setIsTransferringLibrary] = useState(false);
   const transferActive = useRef(false);
   const [transferLabel, setTransferLabel] = useState<string | null>(null);
@@ -36,12 +30,6 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   const confirm = useConfirm();
   const capabilities = usePlatformCapabilities();
   const canShare = capabilities.native?.services.systemShare.state === "available";
-
-  useEffect(() => {
-    void getAppInfo()
-      .then(setAppInfo)
-      .catch((error: unknown) => setErrorMessage(getErrorMessage(error)));
-  }, []);
 
   async function backupLibrary(): Promise<void> {
     if (transferActive.current) return;
@@ -183,39 +171,6 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
       <DeviceSyncSettings showToast={showToast} />
 
-      <Panel>
-        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:justify-between">
-          <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Storage</h2>
-          {appInfo ? (
-            <InfoButton
-              label="View storage details"
-              title="Storage details"
-              description="Operational paths and local application version information."
-            >
-              <MetadataList>
-                <MetadataItem label="Application data" value={appInfo.dataDirectory} />
-                <MetadataItem label="Database" value={appInfo.databasePath} />
-                <MetadataItem label="Images" value={appInfo.imageDirectory} />
-                <MetadataItem
-                  label="Diagnostics"
-                  value={appInfo.diagnosticLogPath ?? "Available after restart"}
-                />
-                <MetadataItem label="Version" value={appInfo.appVersion} />
-                <MetadataItem label="Schema" value={String(appInfo.databaseSchemaVersion)} />
-              </MetadataList>
-            </InfoButton>
-          ) : null}
-        </div>
-        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
-          <strong>Local library</strong>
-          <br />
-          The active study library is stored on this device. Backup and device-sync controls are
-          available above.
-        </p>
-        {!appInfo && !errorMessage ? (
-          <InlineProgress>Reading storage paths…</InlineProgress>
-        ) : null}
-      </Panel>
     </div>
   );
 }

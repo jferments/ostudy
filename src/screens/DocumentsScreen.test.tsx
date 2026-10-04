@@ -144,10 +144,9 @@ async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLEl
   const trigger = screen.getByRole("button", { name: label });
   await act(async () => {
     fireEvent.click(trigger);
-    // Base UI publishes controlled dropdown state after the triggering event.
-    // Flush that microtask explicitly instead of making integration assertions
-    // depend on whole-suite scheduler timing.
-    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
   return screen.findByRole("menu", { name: label });
 }
@@ -215,7 +214,7 @@ describe("DocumentsScreen", () => {
         "Document processing started. You can add more documents while this job runs.",
       );
       expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -337,7 +336,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
   });
@@ -474,8 +473,12 @@ describe("DocumentsScreen", () => {
       expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
-    await openDocumentActions();
-    expect(await screen.findByText("Stopping…")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "More actions for Cardiac physiology" })).toBeNull();
+    });
+    const stoppingMenu = await openDocumentActions();
+    const stopping = within(stoppingMenu).getByRole("menuitem", { name: "Stopping…" });
+    expect(stopping.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
 
@@ -498,7 +501,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(await screen.findByText("Generate more cards"));
 
     await waitFor(() => {
-      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -657,7 +660,6 @@ describe("DocumentsScreen", () => {
       preservedDeckCitationCount: 0,
     });
     const { showToast } = renderDocuments();
-
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {

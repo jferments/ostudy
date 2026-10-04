@@ -6,16 +6,19 @@ import { DeckDetailRoute } from "./DeckDetailRoute";
 
 import { requiredTestValue as required } from "../../test/factories";
 const calls = vi.hoisted(() => ({
-  deck: vi.fn(), setArchived: vi.fn(), deleteDeck: vi.fn(), undo: vi.fn(),
+  deck: vi.fn(), setArchived: vi.fn(), merge: vi.fn(), deleteDeck: vi.fn(), undo: vi.fn(),
   confirm: vi.fn(), invalidate: vi.fn(),
 }));
 vi.mock("../../controllers/decksController", () => ({
   DecksController: class {
-    deck = calls.deck; setArchived = calls.setArchived; deleteDeck = calls.deleteDeck;
-    undo = calls.undo; invalidate = calls.invalidate;
+    deck = calls.deck; setArchived = calls.setArchived; merge = calls.merge;
+    deleteDeck = calls.deleteDeck; undo = calls.undo; invalidate = calls.invalidate;
   },
 }));
-vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => calls.confirm }));
+vi.mock("../../ui/overlays/overlayContext", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../ui/overlays/overlayContext")>(),
+  useConfirm: () => calls.confirm,
+}));
 vi.mock("../../components/SourceCitationPanel", () => ({ SourceCitationPanel: () => null }));
 vi.mock("../cards/CardPracticeContext", () => ({ useCardPracticeLauncher: () => vi.fn() }));
 vi.mock("../cards/CardBrowserWorkspace", () => ({
@@ -32,13 +35,18 @@ const deck: DeckSummary = {
   sourceNoteCount: 2, generatedCardCount: 4, studyableDueCount: 0,
   archivedAt: null, createdAt: 1, updatedAt: 1, revision: 3,
 };
+const destination: DeckSummary = {
+  id: "b".repeat(32), name: "NURS 112 - Exam 1", description: "",
+  sourceNoteCount: 25, generatedCardCount: 25, studyableDueCount: 8,
+  archivedAt: null, createdAt: 1, updatedAt: 1, revision: 7,
+};
 function mount(selected = deck) {
   calls.deck.mockResolvedValue(selected);
-  const refresh = vi.fn().mockResolvedValue([selected]);
+  const refresh = vi.fn().mockResolvedValue([selected, destination]);
   const back = vi.fn().mockResolvedValue(undefined);
   const toast = vi.fn();
   const practice = vi.fn();
-  render(<DeckDetailRoute decks={[selected]} refreshDecks={refresh} onPracticeDeck={practice}
+  render(<DeckDetailRoute decks={[selected, destination]} refreshDecks={refresh} onPracticeDeck={practice}
     openRequest={{ requestId: 1, deckId: selected.id }} onReturnToLibrary={back}
     onDirtyChange={vi.fn()} showToast={toast} />);
   return { refresh, back, toast, practice };
@@ -49,6 +57,23 @@ beforeEach(() => {
   calls.deleteDeck.mockResolvedValue({ undoToken: "undo-token", undoExpiresAt: Date.now() + 60_000 });
   calls.undo.mockResolvedValue({ restoredCount: 4 });
   calls.setArchived.mockResolvedValue({ ...deck, archivedAt: 100, revision: 4 });
+  calls.merge.mockImplementation(async (input: {
+    operationId: string;
+    sourceDeckId: string;
+    destinationDeckId: string;
+  }) => ({
+    operationId: input.operationId,
+    sourceDeckId: input.sourceDeckId,
+    destinationDeckId: input.destinationDeckId,
+    movedNoteCount: 2,
+    movedCardCount: 4,
+    retargetedDocumentCount: 1,
+    retargetedStudyTargetCount: 0,
+    sourceRevision: 4,
+    destinationRevision: 8,
+    sourceArchivedAt: 100,
+    mergedAt: 100,
+  }));
 });
 
 describe("production deck route action contracts", () => {
@@ -68,7 +93,8 @@ describe("production deck route action contracts", () => {
     expect(button.hasAttribute("disabled")).toBe(cardCount === 0);
     fireEvent.click(button);
     expect(practice).toHaveBeenCalledTimes(cardCount === 0 ? 0 : 1);
-    expect(screen.getByRole("button", { name: `Delete ${deck.name}` }).getAttribute("data-tone")).toBe("danger");
+    expect(screen.queryByRole("button", { name: `Delete ${deck.name}` })).toBeNull();
+    expect(screen.getByRole("button", { name: `${deck.name} actions` })).toBeTruthy();
   });
 
   it("disables archived Practice and restores the exact revision", async () => {
@@ -82,20 +108,30 @@ describe("production deck route action contracts", () => {
     expect(button.getAttribute("title")).toBe("Unarchive this deck before practicing");
     fireEvent.click(button);
     expect(practice).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: `Restore ${deck.name}` }));
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Restore ${deck.name}` }));
     await waitFor(() => expect(calls.setArchived).toHaveBeenCalledWith({ deckId: deck.id, revision: 8, archived: false }));
     await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   });
 
-  it("locks duplicate archive actions and preserves committed success on return failure", async () => {
+  it("locks the deck menu during archive mutation and preserves committed success on return failure", async () => {
     let complete!: (value: DeckSummary) => void;
     calls.setArchived.mockReturnValue(new Promise<DeckSummary>((resolve) => { complete = resolve; }));
     const { back, toast } = mount();
     back.mockRejectedValue(new Error("navigation unavailable"));
-    const archive = screen.getByRole("button", { name: `Archive ${deck.name}` });
-    fireEvent.click(archive); fireEvent.click(archive);
+
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Archive ${deck.name}` }));
     expect(calls.setArchived).toHaveBeenCalledTimes(1);
     expect(calls.setArchived).toHaveBeenCalledWith({ deckId: deck.id, revision: 3, archived: true });
+
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const busyMenu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(busyMenu).getByRole("menuitem", { name: `Archive ${deck.name}` }));
+    expect(calls.setArchived).toHaveBeenCalledTimes(1);
+
     await act(async () => { complete({ ...deck, archivedAt: 50, revision: 4 }); });
     await waitFor(() => expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("navigation unavailable")));
     expect(toast.mock.calls.some(([kind]) => kind === "error")).toBe(false);
@@ -104,7 +140,9 @@ describe("production deck route action contracts", () => {
   it("does not delete without confirmation", async () => {
     calls.confirm.mockResolvedValue(false);
     mount();
-    fireEvent.click(screen.getByRole("button", { name: `Delete ${deck.name}` }));
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Delete ${deck.name}` }));
     await waitFor(() => expect(calls.confirm).toHaveBeenCalledWith(expect.objectContaining({ confirmLabel: "Delete deck", destructive: true })));
     expect(calls.deleteDeck).not.toHaveBeenCalled();
   });
@@ -112,7 +150,9 @@ describe("production deck route action contracts", () => {
   it("publishes Undo after deletion and never invites a second restore after refresh failure", async () => {
     const { toast, refresh, back } = mount();
     back.mockRejectedValue(new Error("route unavailable"));
-    fireEvent.click(screen.getByRole("button", { name: `Delete ${deck.name}` }));
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Delete ${deck.name}` }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("success", `Deleted “${deck.name}”.`, expect.objectContaining({ label: "Undo" })));
     expect(calls.deleteDeck).toHaveBeenCalledWith(deck.id);
     const action = toast.mock.calls.find(([, , value]) => value?.label === "Undo")?.[2] as ToastAction;
@@ -125,10 +165,38 @@ describe("production deck route action contracts", () => {
     expect(toast.mock.calls.some(([kind]) => kind === "error")).toBe(false);
   });
 
-  it("opens the shared export workflow with the selected deck, not a separate exporter", () => {
+  it("opens the shared export workflow from the deck menu", async () => {
     mount();
-    const actions = screen.getByRole("group", { name: `${deck.name} actions` });
-    fireEvent.click(within(actions).getByRole("button", { name: `Export ${deck.name}` }));
+    expect(screen.queryByRole("button", { name: `Export ${deck.name}` })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Export ${deck.name}` }));
     expect(screen.getByRole("dialog", { name: "Export selected deck" }).textContent).toBe(deck.name);
+  });
+
+  it("merges into the selected destination with exact revisions and returns to the library", async () => {
+    const { back } = mount();
+
+    fireEvent.click(screen.getByRole("button", { name: `${deck.name} actions` }));
+    const menu = await screen.findByRole("menu", { name: `${deck.name} actions` });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Merge…" }));
+
+    const sheet = await screen.findByRole("dialog", { name: `Merge “${deck.name}”` });
+    const select = within(sheet).getByRole("combobox", { name: "Destination deck" }) as HTMLSelectElement;
+    expect(select.value).toBe(destination.id);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Merge decks" }));
+
+    await waitFor(() => expect(calls.merge).toHaveBeenCalledTimes(1));
+    expect(calls.merge).toHaveBeenCalledWith({
+      operationId: expect.any(String),
+      sourceDeckId: deck.id,
+      destinationDeckId: destination.id,
+      sourceRevision: deck.revision,
+      destinationRevision: destination.revision,
+      expectedSourceNoteCount: deck.sourceNoteCount,
+      expectedSourceCardCount: deck.generatedCardCount,
+    });
+    expect(calls.merge.mock.calls[0]?.[0].operationId).toHaveLength(32);
+    await waitFor(() => expect(back).toHaveBeenCalledTimes(1));
   });
 });

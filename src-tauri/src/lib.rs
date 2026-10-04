@@ -19,6 +19,7 @@ mod data_repairs;
 mod database;
 mod deck_cards;
 mod deck_folders;
+mod deck_merge;
 mod decks;
 mod deletion;
 mod deletion_commands;
@@ -208,6 +209,7 @@ pub fn run() {
             decks::create_deck,
             decks::update_deck,
             decks::set_deck_archived,
+            deck_merge::merge_decks,
             deck_folders::get_deck_library_organization,
             deck_folders::create_deck_folder,
             deck_folders::update_deck_folder,

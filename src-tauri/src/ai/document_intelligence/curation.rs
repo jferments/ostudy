@@ -23,6 +23,28 @@ pub(crate) async fn curate_document_cards(
     outline: &DocumentOutline,
     cards: Vec<Value>,
 ) -> Result<Vec<Value>, CommandError> {
+    curate_cards(runtime, task, outline, cards, false).await
+}
+
+/// Required selection is used only when the learner explicitly supplied a
+/// per-run focus. Silently retaining every candidate after provider failure
+/// would pretend that the learner's instructions were honored.
+pub(crate) async fn curate_document_cards_required(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    outline: &DocumentOutline,
+    cards: Vec<Value>,
+) -> Result<Vec<Value>, CommandError> {
+    curate_cards(runtime, task, outline, cards, true).await
+}
+
+async fn curate_cards(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    outline: &DocumentOutline,
+    cards: Vec<Value>,
+    required: bool,
+) -> Result<Vec<Value>, CommandError> {
     if cards.is_empty() {
         return Ok(cards);
     }
@@ -72,6 +94,9 @@ pub(crate) async fn curate_document_cards(
                         .filter_map(|index| batch.get(index).cloned()),
                 ),
                 Err(error) => {
+                    if required {
+                        return Err(error);
+                    }
                     crate::logging::warn_target(
                         "ai.document.curation",
                         "document_curation_batch_skipped",
@@ -154,15 +179,22 @@ async fn curation_slot(
     ))
 }
 
+fn curation_system_prompt(
+    instructions: &crate::knowledge::assessment::policy::instructions::GenerationInstructions,
+) -> Result<String, CommandError> {
+    let system = format!(
+        "You are the final educational quality editor for ostudy. Select, but never rewrite, generated flashcards. A card is eligible only when its question and answer are mutually coherent, directly matched, complete for what was asked, and supported by the supplied document context. Reject answer headings or topic labels masquerading as answers, unsupported claims, incomplete multi-part answers, ambiguous prompts, reversed direction, copied source-quiz prompts masquerading as recall cards, flattened answer-choice inventories, and other semantic mismatches. Then optimize global learning-objective coverage and remove low-value or redundant material. Prefer dropping a questionable card over preserving a misleading one. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."
+    );
+    Ok(format!("{system}{}", instructions.curation_suffix()?))
+}
+
 async fn request_curation_with_retry(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     user: &str,
     candidate_count: usize,
 ) -> Result<Vec<usize>, CommandError> {
-    let system = format!(
-        "You are the final educational quality editor for ostudy. Select, but never rewrite, generated flashcards. A card is eligible only when its question and answer are mutually coherent, directly matched, complete for what was asked, and supported by the supplied document context. Reject answer headings or topic labels masquerading as answers, unsupported claims, incomplete multi-part answers, ambiguous prompts, reversed direction, copied source-quiz prompts masquerading as recall cards, flattened answer-choice inventories, and other semantic mismatches. Then optimize global learning-objective coverage and remove low-value or redundant material. Prefer dropping a questionable card over preserving a misleading one. Return only the required JSON. Curation prompt version: {CURATION_PROMPT_VERSION}. Curation schema version: {CURATION_SCHEMA_VERSION}."
-    );
+    let system = curation_system_prompt(&task.question_policy.generation_instructions)?;
     let schema = curation_schema(candidate_count);
     let first = request_json(
         runtime,
@@ -295,6 +327,21 @@ fn normalize_identity_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guidance_survives_curation_without_changing_selection_or_quality_rules() {
+        use crate::knowledge::assessment::policy::instructions::GenerationInstructions;
+        let baseline = curation_system_prompt(&GenerationInstructions::default()).unwrap();
+        let instructions =
+            GenerationInstructions::parse(Some("Nursing cranial nerve tests")).unwrap();
+        let guided = curation_system_prompt(&instructions).unwrap();
+        assert!(guided.starts_with(&baseline));
+        assert_eq!(guided.matches("Nursing cranial nerve tests").count(), 1);
+        assert!(guided.contains("Judge relevance within this requested focus"));
+        assert!(guided.contains("Return candidate indices only"));
+        assert!(guided.contains("Still reject unsupported"));
+        assert!(!baseline.contains("LEARNER'S REQUESTED FOCUS"));
+    }
 
     #[test]
     fn truncation_does_not_trigger_a_second_optional_curation_request() {

@@ -81,7 +81,7 @@ describe("application-lifetime document jobs", () => {
     open();
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
-    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id, undefined));
 
     fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
     expect(mocks.cancelGuide).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe("application-lifetime document jobs", () => {
     open();
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
-    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id, undefined));
     expect(mocks.legacyCards).not.toHaveBeenCalled();
     current = [{
       ...retryDocument, lifecycleState: "ready", generatedDeckId: "d".repeat(32),

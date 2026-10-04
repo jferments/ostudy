@@ -100,7 +100,7 @@
             ],
             "assertionFragments": [
               "No decks have been created yet.",
-              "Import deck from file",
+              "button.textContent?.trim() === 'Import deck'",
               "Flashcards|Study\\nGuides|Docs|Tutor|Analytics"
             ]
           }

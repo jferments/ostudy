@@ -12,8 +12,12 @@ import {
   runSequentialDeckMutations,
   type SequentialDeckMutationOutcome,
 } from "../../../controllers/decksController";
-import { getErrorCode, getErrorMessage } from "../../../ipc/common";
-import type { DeckSummary } from "../../../ipc/decks";
+import { createOperationId, getErrorCode, getErrorMessage } from "../../../ipc/common";
+import type {
+  DeckSummary,
+  MergeDecksInput,
+  MergeDecksResult,
+} from "../../../ipc/decks";
 import {
   createDeckFolder,
   deleteDeckFolder,
@@ -63,6 +67,7 @@ interface DeckMutationController {
     revision: number;
     archived: boolean;
   }): Promise<DeckSummary>;
+  merge(input: MergeDecksInput): Promise<MergeDecksResult>;
   deleteDeck(deckId: string): Promise<{
     undoToken: string;
     undoExpiresAt: number;
@@ -132,6 +137,8 @@ export interface DeckLibraryController {
   clearSelection(): void;
   openPracticeSetup(): void;
   openSelectionMover(): void;
+  openDeckMerger(deckId: string): void;
+  mergeDeck(destinationDeckId: string): Promise<void>;
   moveSelection(targetFolderId: string | null): Promise<void>;
   setSelectionArchived(archived: boolean): Promise<void>;
   deleteSelection(): Promise<void>;
@@ -170,6 +177,7 @@ export function useDeckLibraryController({
   const mutationRef = useRef(false);
   const lifecycleSignatureRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const mergeRequestRef = useRef<MergeDecksInput | null>(null);
   const deckControllerRef = useRef<DeckMutationController | null>(null);
   if (deckControllerRef.current === null) {
     deckControllerRef.current = dependencies.createDeckController();
@@ -448,6 +456,79 @@ export function useDeckLibraryController({
     if (scope) setSheet({ kind: "practice-setup", scope });
   }, [currentScopeDecks, decks, selection, showToast]);
 
+  const openDeckMerger = useCallback(
+    (deckId: string): void => {
+      if (mutationRef.current) return;
+      const source = decks.find((deck) => deck.id === deckId);
+      if (!source || source.archivedAt !== null || source.sourceNoteCount <= 0) return;
+      if (!decks.some((deck) => deck.id !== source.id && deck.archivedAt === null)) {
+        showToast("info", "Create or restore another active deck before merging this deck.");
+        return;
+      }
+      mergeRequestRef.current = null;
+      setSheet({ kind: "merge-deck", source, operationId: createOperationId() });
+    },
+    [decks, showToast],
+  );
+
+  const mergeDeck = useCallback(
+    async (destinationDeckId: string): Promise<void> => {
+      const currentSheet = sheet;
+      if (!currentSheet || currentSheet.kind !== "merge-deck" || mutationRef.current) return;
+      const destination = decks.find(
+        (deck) => deck.id === destinationDeckId && deck.archivedAt === null,
+      );
+      if (!destination || destination.id === currentSheet.source.id) {
+        showToast("info", "Choose another active destination deck.");
+        return;
+      }
+
+      let request = mergeRequestRef.current;
+      if (!request) {
+        request = {
+          operationId: currentSheet.operationId,
+          sourceDeckId: currentSheet.source.id,
+          destinationDeckId: destination.id,
+          sourceRevision: currentSheet.source.revision,
+          destinationRevision: destination.revision,
+          expectedSourceNoteCount: currentSheet.source.sourceNoteCount,
+          expectedSourceCardCount: currentSheet.source.generatedCardCount,
+        };
+        mergeRequestRef.current = request;
+      } else if (request.destinationDeckId !== destination.id) {
+        showToast(
+          "info",
+          "The first merge attempt already captured its destination. Close and reopen Merge to choose another deck.",
+        );
+        return;
+      }
+
+      if (!beginMutation()) return;
+      try {
+        const result = await deckController.merge(request);
+        mergeRequestRef.current = null;
+        if (mountedRef.current) {
+          setSheet(null);
+          setSelection((current) => removeDecksFromSelection(current, [result.sourceDeckId]));
+        }
+        const reconciliationError = await reconcileLibrary();
+        const sourceName = currentSheet.source.name;
+        const destinationName = destination.name;
+        const message = appendReconciliationError(
+          `Merged ${result.movedCardCount} ${result.movedCardCount === 1 ? "card" : "cards"} from “${sourceName}” into “${destinationName}”. “${sourceName}” is now archived.`,
+          reconciliationError,
+        );
+        if (mountedRef.current) setAnnouncement(message);
+        showToast(reconciliationError ? "info" : "success", message);
+      } catch (error: unknown) {
+        showToast("error", getErrorMessage(error));
+      } finally {
+        finishMutation();
+      }
+    },
+    [beginMutation, deckController, decks, finishMutation, reconcileLibrary, sheet, showToast],
+  );
+
   const moveSelection = useCallback(
     async (targetFolderId: string | null): Promise<void> => {
       const previous = organizationRef.current;
@@ -717,6 +798,7 @@ export function useDeckLibraryController({
         !currentSheet ||
         currentSheet.kind === "create-deck" ||
         currentSheet.kind === "move-selection" ||
+        currentSheet.kind === "merge-deck" ||
         currentSheet.kind === "practice-setup" ||
         !beginMutation()
       ) {
@@ -907,7 +989,10 @@ export function useDeckLibraryController({
     openDeckCreator: () => setSheet({ kind: "create-deck" }),
     openFolderCreator: () => setSheet({ kind: "create-folder", name: "" }),
     openFolderRenamer,
-    closeSheet: () => setSheet(null),
+    closeSheet: () => {
+      mergeRequestRef.current = null;
+      setSheet(null);
+    },
     createDeck,
     saveFolder,
     toggleDeckSelected: (deck) =>
@@ -919,6 +1004,8 @@ export function useDeckLibraryController({
     clearSelection: () => setSelection(clearDeckSelection()),
     openPracticeSetup,
     openSelectionMover,
+    openDeckMerger,
+    mergeDeck,
     moveSelection,
     setSelectionArchived,
     deleteSelection,

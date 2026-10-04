@@ -28,6 +28,7 @@ interface FolderSectionProps {
   onToggleCollapsed(): void;
   onOpenDeck(deckId: string): void;
   onPracticeDeck(deckId: string): void;
+  onMergeDeck(deckId: string): void;
   onExportDeck(deck: DeckSummary): void;
   onDeleteDeck(deckId: string): void;
   onRename(): void;
@@ -47,6 +48,7 @@ export const FolderSection = memo(function FolderSection({
   onToggleCollapsed,
   onOpenDeck,
   onPracticeDeck,
+  onMergeDeck,
   onExportDeck,
   onDeleteDeck,
   onRename,
@@ -174,6 +176,7 @@ export const FolderSection = memo(function FolderSection({
                 reorder={reorder}
                 onOpen={() => onOpenDeck(deck.id)}
                 onPractice={() => onPracticeDeck(deck.id)}
+                onMerge={() => onMergeDeck(deck.id)}
                 onExport={() => onExportDeck(deck)}
                 onDelete={() => onDeleteDeck(deck.id)}
                 onToggleSelected={() => onToggleDeckSelected(deck)}

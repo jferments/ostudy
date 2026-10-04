@@ -15,6 +15,19 @@ describe("study material IPC", () => {
     vi.mocked(invoke).mockResolvedValue(null);
   });
 
+  it("forwards optional per-run collection flashcard guidance without changing blank callers", async () => {
+    const target = { kind: "collection" as const, id: "c".repeat(32) };
+    const input = {
+      operationId: "g".repeat(32),
+      target,
+      generationInstructions: "Focus on nursing cranial nerve assessments",
+      outputPolicy: { flashcards: true, studyGuide: true },
+      recreateArtifacts: [],
+    };
+    await beginStudyTargetBundle(input);
+    expect(invoke).toHaveBeenLastCalledWith("begin_study_target_bundle", { input });
+  });
+
   it("keeps durable StudyTarget lifecycle behind typed native commands", async () => {
     const target = { kind: "collection" as const, id: "c".repeat(32) };
     await getStudyTargetBundle({ target });

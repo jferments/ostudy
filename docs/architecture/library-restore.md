@@ -83,7 +83,8 @@ sources/sidecars, unsupported lineages and invalid migration prefixes. A current
 header avoids redundant planning scans, but `Database::open` still validates the
 current payload before ordinary use. Empty initialization and explicit pre-public
 recovery remain separate. Released SQL and the native migration metadata owner are
-unchanged; the current release lineage is still schema 2.
+unchanged. Later forward migrations (schema 3 deck-merge receipts, schema 4
+StudyTarget generation guidance) use this same checkpointed upgrade path.
 
 `library_backup/checkpoint.rs` writes a durable upgrade intent before preparation.
 It creates a private SQLite Backup API snapshot, including committed WAL rows, and

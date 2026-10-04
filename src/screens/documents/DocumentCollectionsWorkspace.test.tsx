@@ -357,6 +357,35 @@ describe("Document collections workspace", () => {
     expect(onOpenGuide).toHaveBeenCalledWith(folderId, "Week 1");
   });
 
+  it("captures optional collection flashcard guidance in the durable bundle request", async () => {
+    renderWorkspace();
+
+    await screen.findByRole("heading", { name: "Week 1" });
+    fireEvent.click(screen.getByRole("button", {
+      name: (name) => name.startsWith("Flashcard instructions (optional)"),
+    }));
+    fireEvent.change(screen.getByLabelText("Flashcard instructions (optional)"), {
+      target: {
+        value:
+          "  Create cards for each cranial nerve, emphasizing nursing assessment tests.  ",
+      },
+    });
+    const create = screen.getByRole("button", { name: "Create study materials" }) as HTMLButtonElement;
+    await waitFor(() => expect(create.disabled).toBe(false));
+    fireEvent.click(create);
+
+    await waitFor(() => {
+      expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
+        operationId: "f".repeat(32),
+        target: { kind: "collection", id: folderId },
+        generationInstructions:
+          "Create cards for each cranial nerve, emphasizing nursing assessment tests.",
+        outputPolicy: { flashcards: true, studyGuide: true },
+        recreateArtifacts: [],
+      });
+    });
+  });
+
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {
     renderWorkspace();
     await screen.findByRole("button", { name: "+ New collection" });

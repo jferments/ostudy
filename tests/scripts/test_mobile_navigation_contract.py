@@ -46,14 +46,15 @@ class MobileNavigationContractTests(unittest.TestCase):
         ):
             self.assertIn(utility, recipe.split())
 
-    def test_compact_deck_toolbar_keeps_actions_intrinsic_and_import_prominent(self) -> None:
+    def test_compact_deck_toolbar_keeps_actions_intrinsic_and_import_labeled(self) -> None:
         recipes = (ROOT / "src/screens/flashcards/deck-library/libraryPresentation.ts").read_text()
         root = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx").read_text()
         toolbar = recipes.split('toolbarActions: "', 1)[1].split('"', 1)[0]
         for utility in ("tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"):
             self.assertIn(utility, toolbar.split())
-        self.assertIn('importAction: "tw:[&_svg]:stroke-[2.15]"', recipes)
-        self.assertRegex(root, r'icon="folder-open"\s+iconSize=\{24\}')
+        self.assertNotIn("importAction:", recipes)
+        self.assertIn("Import deck", root)
+        self.assertNotIn('label="Import deck from file"', root)
 
 
 if __name__ == "__main__":

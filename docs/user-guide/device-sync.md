@@ -151,7 +151,7 @@ Outgoing LAN offers listen on TCP **49251–49258**. If a receiver reads the QR 
 
 ## Diagnostics
 
-Native diagnostic events are stored as JSON Lines in the app-private `diagnostics/ostudy.jsonl` file. The exact path appears under **Settings → Backup/Sync → Storage → Diagnostics**. The file rotates at a bounded size.
+Native diagnostic events are stored as JSON Lines in a bounded rotating app-private file. Open **Settings → Diagnostics → Current diagnostic state** to see the current log path.
 
 Device synchronization records major phases such as offer creation, transport connection, authentication, package receipt, typed-graph admission, merge start, and merge completion without logging pairing secrets, credential bytes, answer content, or package contents.
 

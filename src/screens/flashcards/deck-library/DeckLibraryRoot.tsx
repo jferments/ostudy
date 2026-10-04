@@ -3,7 +3,6 @@ import { useMemo, useRef } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import { Icon } from "../../../ui/icons/Icon";
-import { IconButton } from "../../../ui/icons/IconButton";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
@@ -138,15 +137,13 @@ export function DeckLibraryRoot({
       <div className={styles.root}>
         <div className={styles.toolbar} aria-label="Deck library controls">
           <div className={styles.toolbarActions}>
-            <IconButton
-              icon="folder-open"
-              iconSize={24}
-              className={styles.importAction}
-              label="Import deck from file"
-              tooltip="Import deck from file"
+            <Button
+              variant="secondary"
               disabled={controller.isLoading || controller.isMutating}
               onClick={onImportDeck}
-            />
+            >
+              Import deck
+            </Button>
             {hasAnyDecks ? (
               <Button variant="primary" onClick={controller.openDeckCreator}>
                 <Icon name="plus" size={18} /> New deck
@@ -182,6 +179,7 @@ export function DeckLibraryRoot({
           onCreateDeck={controller.createDeck}
           onSaveFolder={controller.saveFolder}
           onMoveSelection={controller.moveSelection}
+          onMergeDeck={controller.mergeDeck}
           onStartPractice={onPracticeSelected}
         />
       </div>
