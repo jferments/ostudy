@@ -101,7 +101,7 @@ export function InlineWorkspace({
 
   return (
     <section
-      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:bg-popover tw:text-popover-foreground tw:ring-1 tw:ring-border tw:compact:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:compact:rounded-lg tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
+      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-lg tw:bg-popover tw:text-popover-foreground tw:ring-1 tw:ring-border tw:compact:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
       role="region"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}

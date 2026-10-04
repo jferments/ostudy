@@ -240,7 +240,7 @@ function TaskModelRow({
   }
 
   return (
-    <div className="tw:grid tw:min-w-0 tw:content-start tw:gap-4 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-5" data-task={task}>
+    <div className="tw:grid tw:min-w-0 tw:content-start tw:gap-4 tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-background tw:p-5" data-task={task}>
       <strong className="tw:text-body tw:font-semibold tw:tracking-tight">{label}</strong>
       <div className="tw:grid tw:min-w-0 tw:gap-4">
         <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">

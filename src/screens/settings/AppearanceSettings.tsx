@@ -3,6 +3,7 @@ import { Badge } from "../../ui/primitives/Badge";
 import { Progress } from "../../ui/primitives/Progress";
 import { Button } from "../../ui/primitives/Button";
 import { Panel } from "../../ui/primitives/Panel";
+import { StatTile } from "../../ui/primitives/StatTile";
 import type { AppSettings, MotionPreference } from "../../ipc/settings";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { FontControl, RangeControl, SelectControl, ThemePreview } from "./SettingsControls";
@@ -111,8 +112,8 @@ function AppearancePreview() {
       </div>
     </Panel>
     <div className="tw:grid tw:gap-4 tw:sm:grid-cols-2 tw:lg:grid-cols-1">
-      <Panel title="Ready now"><strong className="tw:text-title tw:tabular-nums">24</strong></Panel>
-      <Panel title="Studied this week"><strong className="tw:text-title tw:tabular-nums">138</strong></Panel>
+      <StatTile label="Ready now" value={24} />
+      <StatTile label="Studied this week" value={138} delta={{ label: "12 cards", direction: "up", tone: "positive" }} />
     </div>
   </div>;
 }

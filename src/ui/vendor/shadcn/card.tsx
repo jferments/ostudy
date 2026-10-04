@@ -6,6 +6,11 @@ import { cn } from "../../internal/cn";
 export type CardElement = "section" | "article" | "div" | "aside" | "header" | "nav";
 export type CardTitleElement = "h2" | "h3" | "h4" | "div";
 
+/**
+ * The one card surface: the mockups' 20 px radius, a hairline border and the level-1 shadow.
+ * `--card-gutter` is the inner padding (20 px, 16 px on phones, 12 px for small cards); the
+ * slots read it, so a caller's own padding classes replace it cleanly.
+ */
 export function Card({
   as: Element = "div",
   size = "default",
@@ -18,8 +23,11 @@ export function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "tw:group/card tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:overflow-hidden tw:rounded-xl tw:bg-card tw:py-4 tw:text-small tw:text-card-foreground tw:ring-1 tw:ring-border",
-        size === "sm" && "tw:gap-3 tw:rounded-lg tw:py-3",
+        "tw:group/card tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:overflow-hidden tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:py-(--card-gutter) tw:text-small tw:text-card-foreground tw:shadow-sm",
+        "tw:[--card-gutter:var(--ostudy-space-5)] tw:compact:[--card-gutter:var(--ostudy-space-4)]",
+        // Phones, cards inside cards, and cards in dialogs or popovers sit flat, as in the mockups.
+        "tw:compact:shadow-none tw:[[data-slot=card]_&]:shadow-none tw:[[role=dialog]_&]:shadow-none tw:[[role=alertdialog]_&]:shadow-none",
+        size === "sm" && "tw:gap-3 tw:rounded-md tw:[--card-gutter:var(--ostudy-space-3)] tw:compact:[--card-gutter:var(--ostudy-space-3)]",
         className,
       )}
     />
@@ -32,7 +40,7 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
       {...props}
       data-slot="card-header"
       className={cn(
-        "tw:grid tw:grid-cols-[minmax(0,1fr)_auto] tw:items-start tw:gap-x-4 tw:gap-y-1 tw:px-4 tw:group-data-[size=sm]/card:px-3",
+        "tw:grid tw:grid-cols-[minmax(0,1fr)_auto] tw:items-start tw:gap-x-4 tw:gap-y-1 tw:px-(--card-gutter)",
         className,
       )}
     />
@@ -72,7 +80,7 @@ export function CardAction({ className, ...props }: HTMLAttributes<HTMLDivElemen
 }
 
 export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div {...props} data-slot="card-content" className={cn("tw:min-w-0 tw:px-4 tw:group-data-[size=sm]/card:px-3", className)} />;
+  return <div {...props} data-slot="card-content" className={cn("tw:min-w-0 tw:px-(--card-gutter)", className)} />;
 }
 
 export function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -81,7 +89,7 @@ export function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElemen
       {...props}
       data-slot="card-footer"
       className={cn(
-        "tw:-mb-4 tw:mt-auto tw:flex tw:items-center tw:gap-2 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-muted/40 tw:px-4 tw:py-3 tw:group-data-[size=sm]/card:-mb-3 tw:group-data-[size=sm]/card:px-3",
+        "tw:-mb-(--card-gutter) tw:mt-auto tw:flex tw:items-center tw:gap-2 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-muted/40 tw:px-(--card-gutter) tw:py-3",
         className,
       )}
     />

@@ -3,7 +3,8 @@ export const styles = {
   screen: "tw:flex tw:h-full tw:min-h-[30rem] tw:min-w-0 tw:flex-col tw:gap-3",
   workspace: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-1 tw:flex-col tw:h-[min(76dvh,58rem)]",
   withHistory: "tw:grid tw:min-h-0 tw:min-w-0 tw:flex-1 tw:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)] tw:gap-4",
-  chat: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:gap-2 tw:rounded-xl tw:bg-card tw:p-3 tw:ring-1 tw:ring-border tw:sm:p-4",
+  // Applied to the shared Card, which owns the surface; this keeps the chat's own spacing and body text.
+  chat: "tw:min-h-0 tw:gap-2 tw:p-3 tw:text-body tw:sm:p-4",
   chatHeader: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border/70 tw:pb-3",
   heading: "tw:min-w-0 tw:flex-1 tw:[&_h2]:m-0 tw:[&_h2]:break-words tw:[&_h2]:text-body tw:[&_h2]:font-medium tw:[&_span]:mt-0.5 tw:[&_span]:block tw:[&_span]:line-clamp-2",
   toolbar: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-1.5",

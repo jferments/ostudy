@@ -88,7 +88,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
               key={profile.id}
               type="button"
               variant="ghost"
-              className="tw:h-auto tw:min-h-24 tw:items-start tw:justify-start tw:whitespace-normal tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4 tw:text-left tw:font-normal tw:transition-colors tw:hover:border-primary tw:data-[selected=true]:border-primary tw:data-[selected=true]:bg-accent"
+              className="tw:h-auto tw:min-h-24 tw:items-start tw:justify-start tw:whitespace-normal tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4 tw:text-left tw:font-normal tw:transition-colors tw:hover:border-primary tw:data-[selected=true]:border-primary tw:data-[selected=true]:bg-accent"
               data-selected={profile.id === controller.selectedProfileId}
               onClick={() => void changeProfile(profile.id)}
             >

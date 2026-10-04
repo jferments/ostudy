@@ -7,7 +7,8 @@ const styles = {
   cardListingLine: "tw:grid tw:min-w-0 tw:grid-cols-[1.5rem_minmax(0,1fr)] tw:items-baseline tw:gap-2 tw:[&>strong]:truncate tw:[&>strong]:text-small tw:[&>strong]:font-medium",
   cardLibrarySummary: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-muted/25 tw:px-4 tw:py-2.5",
   screenHeader: "tw:flex tw:items-center tw:justify-between tw:gap-4 tw:py-2 tw:[&_h1]:m-0 tw:[&_h1]:text-section tw:[&_h1]:font-semibold",
-  cardLibraryPanel: "tw:min-w-0 tw:overflow-hidden tw:rounded-xl tw:bg-card tw:ring-1 tw:ring-border",
+  // Applied to the shared Card, which owns the surface; the panel keeps its block flow, edge-to-edge rows and body text.
+  cardLibraryPanel: "tw:block tw:py-0 tw:text-body",
   organizedCardDeck: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:text-caption tw:font-medium tw:text-muted-foreground",
   selectionButtons: "tw:ml-auto tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-1.5 tw:max-[560px]:w-full",
   organizedCardTags: "tw:flex tw:flex-wrap tw:gap-1 tw:has-[small]:hidden tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground",

@@ -4,7 +4,7 @@ import { Icon, type IconName } from "../icons/Icon";
 import { cn } from "../internal/cn";
 import { Sheet } from "../overlays/Dialog";
 import { Button } from "../primitives/Button";
-import { Chip, ChipButton } from "../primitives/Chip";
+import { ChipButton } from "../primitives/Chip";
 
 const widths = {
   reading: "tw:max-w-(--ostudy-layout-reading-width)",
@@ -148,14 +148,4 @@ export function FilterSummary({ filters, onRemove, onClear }: { filters: Readonl
 
 export function AdaptiveSheet({ open, title, description, onClose, actions, children }: { open: boolean; title: string; description?: string; onClose: () => void; actions?: ReactNode; children: ReactNode }) {
   return open ? <Sheet title={title} description={description} width="medium" onClose={onClose} actions={actions}>{children}</Sheet> : null;
-}
-
-export function StatPill({ icon, label, value }: { icon?: IconName; label: string; value: ReactNode }) {
-  return (
-    <Chip className="tw:justify-between tw:gap-2">
-      {icon ? <Icon name={icon} size={16} /> : null}
-      <span>{label}</span>
-      <strong className="tw:tabular-nums tw:text-foreground">{value}</strong>
-    </Chip>
-  );
 }

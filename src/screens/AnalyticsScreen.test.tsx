@@ -245,12 +245,14 @@ describe("AnalyticsScreen", () => {
     expect(
       screen.getByRole("radio", { name: "7 days" }).getAttribute("aria-checked"),
     ).toBe("true");
+    expect(screen.getByRole("article", { name: "Cards practiced" }).textContent).toContain("8");
     expect(screen.getByText("8")).toBeTruthy();
     expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2 min").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: "Learning progress chart" })).toBeTruthy();
     expect(screen.getAllByText("Arrhythmias").length).toBeGreaterThan(0);
     expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.getByText("20 pt").textContent).toBe("20 pt down");
     expect(screen.getAllByText(/Shared name/)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Shared name" })).toBeNull();
 

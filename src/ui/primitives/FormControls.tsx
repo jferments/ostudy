@@ -36,7 +36,7 @@ export function RadioGroup<T extends string>({ label, value, options, onValueCha
 }) {
   return <RadioGroupView aria-label={label} value={value} name={name} disabled={disabled} className={cn(presentation === "cards" && "tw:grid tw:grid-cols-2 tw:gap-4 tw:lg:grid-cols-4", className)}
     onValueChange={(next) => { const option = options.find((item) => item.value === next); if (option) onValueChange(option.value); }}>
-    {options.map((option) => <label key={option.value} className={cn("tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:text-body", presentation === "cards" && "tw:flex-col tw:items-start tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4", presentation === "cards" && value === option.value && "tw:border-primary tw:bg-accent", option.className)}>
+    {options.map((option) => <label key={option.value} className={cn("tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:text-body", presentation === "cards" && "tw:flex-col tw:items-start tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4", presentation === "cards" && value === option.value && "tw:border-primary tw:bg-accent", option.className)}>
       <RadioGroupItem aria-label={option.ariaLabel} value={option.value} disabled={option.disabled} />
       <div className="tw:min-w-0 tw:w-full">{option.label}</div>
     </label>)}

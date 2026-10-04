@@ -9,9 +9,9 @@ import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
 import { QuestionTypeBreakdown } from "./analytics/QuestionTypeBreakdown";
 import { PageScaffold, PageHeader } from "../ui/patterns/WorkspacePatterns";
-import { MetricTile } from "../ui/patterns/Metrics";
 import { Button } from "../ui/primitives/Button";
 import { Badge } from "../ui/primitives/Badge";
+import { StatDelta, StatTile } from "../ui/primitives/StatTile";
 import { Surface } from "../ui/primitives/Surface";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { LoadingState } from "../ui/primitives/EmptyState";
@@ -169,12 +169,12 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
 
       {analytics ? <>
         <section className={styles.metricsGridAnalyticsMetrics} aria-label="Learning summary">
-          <MetricTile label="Cards practiced" value={analytics.history.cardsPracticed} detail={`${analytics.history.reviewCount} total reviews`} />
-          <MetricTile label="Remembered" value={formatPercent(analytics.history.correctRate)} detail={`${analytics.history.correctCount} remembered answers`} />
-          <MetricTile label="Focused study" value={formatStudyTime(analytics.history.totalStudyTimeMs)} detail={`${analytics.history.sessionCount} session${analytics.history.sessionCount === 1 ? "" : "s"}`} />
-          <MetricTile label="Average confidence" value={formatConfidence(analytics.history.averageConfidence)} detail="0 Wrong · 3 Easy" />
-          <MetricTile label="Ready now" value={analytics.currentInventory.studyableDueCount} detail={`${analytics.currentInventory.studyableCardCount} studyable generated cards`} />
-          <MetricTile label="Needs more practice" value={analytics.currentInventory.needsMorePracticeCount} detail="Repeatedly missed current cards" />
+          <StatTile label="Cards practiced" value={analytics.history.cardsPracticed} hint={`${analytics.history.reviewCount} total reviews`} />
+          <StatTile label="Remembered" value={formatPercent(analytics.history.correctRate)} hint={`${analytics.history.correctCount} remembered answers`} />
+          <StatTile label="Focused study" value={formatStudyTime(analytics.history.totalStudyTimeMs)} hint={`${analytics.history.sessionCount} session${analytics.history.sessionCount === 1 ? "" : "s"}`} />
+          <StatTile label="Average confidence" value={formatConfidence(analytics.history.averageConfidence)} hint="0 Wrong · 3 Easy" />
+          <StatTile label="Ready now" value={analytics.currentInventory.studyableDueCount} hint={`${analytics.currentInventory.studyableCardCount} studyable generated cards`} />
+          <StatTile label="Needs more practice" value={analytics.currentInventory.needsMorePracticeCount} hint="Repeatedly missed current cards" />
         </section>
         <section className={styles.analyticsWorkloadStrip} aria-label="Today's workload">
           <div><strong>Today</strong><span>{analytics.dailyLimits.reviewsCompleted} / {analytics.dailyLimits.reviewLimit} reviews</span>
@@ -268,11 +268,10 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
 }
 
 function Trend({ value }: { value: number | null }) {
-  if (value === null) return <span className={cn(styles.trend, styles.neutral)}>—</span>;
+  if (value === null) return <span className={styles.neutral}>—</span>;
   const points = Math.round(value * 100);
-  return <span className={cn(styles.trend, points > 0 ? styles.positive : points < 0 ? styles.negative : styles.neutral)}>
-    {points > 0 ? "↑" : points < 0 ? "↓" : "→"} {Math.abs(points)} pt
-  </span>;
+  return <StatDelta label={`${Math.abs(points)} pt`} direction={points > 0 ? "up" : points < 0 ? "down" : "flat"}
+    tone={points > 0 ? "positive" : points < 0 ? "negative" : "neutral"} />;
 }
 
 function StatusBadge({ status }: { status: TagAnalytics["status"] }) {

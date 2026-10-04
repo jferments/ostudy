@@ -8,6 +8,7 @@ import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { Dialog, Sheet } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
+import { Card } from "../../ui/primitives/Card";
 import { Textarea, Disclosure } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { EmptyState } from "../../ui/primitives/EmptyState";
@@ -101,7 +102,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   return (
     <section className={inlineHistory ? styles.withHistory : styles.workspace} aria-label={hintOnly ? "Flashcard hints" : "Tutor conversation"}>
       {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
-      <div className={styles.chat}>
+      <Card className={styles.chat}>
         {!hintOnly ? (
           <header className={styles.chatHeader}>
             <div className={styles.heading}>
@@ -250,7 +251,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           </div>
           <p className={styles.disclosure}>Sending uses your selected AI and embedding services with relevant material. Charges may apply. AI can make mistakes.</p>
         </form>
-      </div>
+      </Card>
       {historyOpen && !hintOnly ? (
         <Sheet title="Conversations" onClose={() => setHistoryOpen(false)}>
           <TutorHistory tutor={tutor} onSelected={() => setHistoryOpen(false)} />

@@ -284,7 +284,7 @@ function FolderDropZone({ folderId, disabled, onDropDocument, children }: {
     <div
       data-document-folder-drop={folderId}
       data-drop-active={active || undefined}
-      className={active ? "tw:rounded-xl tw:ring-2 tw:ring-primary tw:ring-offset-2 tw:ring-offset-background" : ""}
+      className={active ? "tw:rounded-lg tw:ring-2 tw:ring-primary tw:ring-offset-2 tw:ring-offset-background" : ""}
       onDragEnter={(event) => {
         if (disabled || !hasDocumentFolderDrag(event.dataTransfer)) return;
         event.preventDefault();

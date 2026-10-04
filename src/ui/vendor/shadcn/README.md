@@ -11,7 +11,7 @@ This directory is oStudy's owned shadcn implementation boundary. Features import
 
 Owned source includes Button, Badge, Skeleton, Input, NativeSelect, form controls, Tabs, Card, Item, ButtonGroup, Dialog/Sheet, DropdownMenu, Tooltip, Toast/notification, Alert, Progress, Empty, Toolbar and Sidebar composition.
 
-Card exposes title/description/action/content/footer slots instead of requiring feature-local header recipes. Item is the preferred generic list-object presentation. ButtonGroup is the preferred visual grouping for related adjacent controls. Application-specific wrappers should encapsulate semantic intent or platform behavior rather than preserve legacy styling.
+Card exposes title/description/action/content/footer slots instead of requiring feature-local header recipes, and owns the one card surface and its gutter; Panel, Surface and StatTile compose it. Item is the preferred generic list-object presentation. ButtonGroup is the preferred visual grouping for related adjacent controls. Application-specific wrappers should encapsulate semantic intent or platform behavior rather than preserve legacy styling.
 
 ## Deliberate adaptations
 
