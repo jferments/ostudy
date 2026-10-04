@@ -47,14 +47,6 @@ if (!android.includes("Persist Android package on runner")) {
   failures.push("android-package.yml must retain packages on the runner");
 }
 
-const auxiliary = workflows.get("maintain-generated-candidates.yml") ?? "";
-for (const required of [
-  "github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle",
-  "Persist read-only auxiliary inspection bundle on runner",
-]) {
-  if (!auxiliary.includes(required)) failures.push(`maintain-generated-candidates.yml missing runner-local bundle contract: ${required}`);
-}
-
 const release = workflows.get("release.yml") ?? "";
 if (!release.includes("Persist release artifacts on runner")) {
   failures.push("release.yml must retain release output on the runner");

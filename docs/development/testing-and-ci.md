@@ -55,7 +55,7 @@ The current runtime lineage is `ostudy-release-v1`, schema 2. Its immutable sche
 
 ### Exact-tree reuse
 
-Successful tier stamps are keyed by relevant source tree, tracked/untracked inputs, deletions, tool versions, and platform. Force a fresh run only when evidence requires it:
+Successful tier stamps are keyed by relevant source tree, tracked/untracked inputs, deletions, tool versions, and platform. The script linters (ruff, ShellCheck, ty) are pinned with checksums in `versions.env`, so hashing that file covers them; the fingerprint does not probe them on `PATH`, which would make a stamp depend on whether the caller had loaded them. Force a fresh run only when evidence requires it:
 
 ```bash
 OSTUDY_FORCE_CHECK=1 ./scripts/check.sh
@@ -63,7 +63,7 @@ OSTUDY_FORCE_CHECK=1 ./scripts/check.sh
 
 Do not use broad forced reruns instead of diagnosing a focused deterministic failure.
 
-Static and fast results are keyed by the exact source tree. Full Linux and Android results use a product fingerprint that ignores only root-level Markdown and Markdown under `docs/`; the Android fingerprint also covers the Java/Android toolchain. CI may reuse an earlier runner-local full or Android pass only when the current head has passed static, the fingerprint is unchanged, and the workflow sets `OSTUDY_ALLOW_QUALIFICATION_REUSE=1`. The run reports any reuse together with the earlier source that produced it. Source, tests, scripts, workflows, configuration, assets, and lockfiles all invalidate reuse.
+Static and fast results are keyed by the exact source tree. Full Linux and Android results use a product fingerprint that ignores only root-level Markdown and Markdown under `docs/`; the Android fingerprint also covers the Java/Android toolchain. CI may reuse an earlier runner-local full or Android pass only when the current head has passed static, the fingerprint is unchanged, and the workflow sets `OSTUDY_ALLOW_QUALIFICATION_REUSE=1`. Within one CI job, the static step's result is passed to the fast and full steps (`OSTUDY_STATIC_CHECK_PASSED`), so static runs once per job. The run reports any reuse together with the earlier source that produced it. Source, tests, scripts, workflows, configuration, assets, and lockfiles all invalidate reuse.
 
 ## Worktree stability
 
@@ -154,7 +154,7 @@ all-full
 
 Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
 
-For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within one successful exact-SHA `all-full` job, Android compile reuses the shared TypeScript/Vitest/host-Rust coverage already established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge APK/instrumentation package produced by Android compile. Standalone Android gates remain self-contained.
+For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within one successful exact-SHA `all-full` job, Android compile reuses the shared TypeScript/Vitest/host-Rust coverage already established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge APK/instrumentation package produced by Android compile. When Android compile passed by reusing an earlier qualification, the clean checkout has no APKs, so emulator smoke builds them itself. Standalone Android gates remain self-contained.
 
 Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. That evidence is persisted on the self-hosted runner rather than uploaded to GitHub Actions storage. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
 
@@ -168,7 +168,7 @@ The retired Orchestrator PR Ledger, the branch-specific frontend source-checkpoi
 
 Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
 
-GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, failure summaries, logs, Android smoke evidence, failure bundles, Android packages, tagged Linux release output, and manually requested auxiliary inspection bundles are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
+GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, failure summaries, logs, Android smoke evidence, failure bundles, Android packages, and tagged Linux release output are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
 
 `.github/workflows/actions-storage-maintenance.yml` runs hourly on the self-hosted runner and deletes **all** residual GitHub Actions artifacts plus all GitHub-hosted Actions caches for the repository. Cleanup reads the current GitHub REST rate-limit budget, reserves headroom for other repository operations, and checkpoints successfully when the installation token is exhausted so the next scheduled pass resumes instead of failing or idling the runner until reset. This intentionally catches historical objects and artifacts produced from stale branches. `scripts/verify-actions-storage-policy.mjs`, executed by static qualification, rejects GitHub-hosted runners, cloud caches, or any use of `actions/upload-artifact`.
 

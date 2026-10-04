@@ -150,6 +150,30 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
         )
         self.assertIn("OSTUDY_LOG='warn,ostudy.database=debug'", output)
 
+    def test_verifier_eslint_and_pnpm_failures_are_quoted(self) -> None:
+        output = self.run_summary(
+            "\n".join(
+                [
+                    "Documentation and repository organization verification failed:",
+                    "  - docs/README.md:3: broken local link: missing.md",
+                    "",
+                    "/repo/src/screens/Example.tsx",
+                    "  12:5  error  'unused' is assigned a value but never used  no-unused-vars",
+                    "",
+                    " ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with \"frozen-lockfile\"",
+                    "STATIC CHECK FAILED during: React hook correctness (exit 1)",
+                ]
+            ),
+            [],
+            "\n".join(["kind=failure", "step=React hook correctness", "status=1"]),
+        )
+        self.assertIn("  - docs/README.md:3: broken local link: missing.md", output)
+        self.assertIn("/repo/src/screens/Example.tsx", output)
+        self.assertIn("'unused' is assigned a value but never used", output)
+        self.assertIn("ERR_PNPM_OUTDATED_LOCKFILE", output)
+        self.assertIn("pnpm run lint", output)
+        self.assertNotIn("uploaded", output)
+
     def test_headline_names_the_failure_and_its_focused_reproduction(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             directory = Path(raw_directory)

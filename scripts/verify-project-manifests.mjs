@@ -26,7 +26,6 @@ const [
   checkFull,
   checkChanged,
   checkWorkflow,
-  maintenanceWorkflow,
   releaseWorkflow,
   pullRequestTemplate,
 ] = await Promise.all([
@@ -45,7 +44,6 @@ const [
   read("scripts", "check.sh"),
   read("scripts", "check-changed.sh"),
   read(".github", "workflows", "check.yml"),
-  read(".github", "workflows", "maintain-generated-candidates.yml"),
   read(".github", "workflows", "release.yml"),
   read(".github", "pull_request_template.md"),
 ]);
@@ -256,7 +254,6 @@ requireText("read-only check workflow", checkWorkflow, [
   "check-fast.sh",
   "check.sh",
 ]);
-requireText("manual generated-candidate maintenance workflow", maintenanceWorkflow, ["workflow_dispatch:"]);
 requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "ci-runtime-preflight.sh", "./scripts/release.sh"]);
 requireText("pull request template", pullRequestTemplate, [
   "## Summary",
@@ -277,7 +274,6 @@ for (const [name, expected] of [
 }
 
 for (const requiredPath of [
-  ".github/workflows/maintain-generated-candidates.yml",
   "scripts/build.sh",
   "scripts/install-native-deps.sh",
   "scripts/install-native-deps.ps1",

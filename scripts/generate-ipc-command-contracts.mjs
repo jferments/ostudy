@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,25 +45,8 @@ try {
   if (error?.code !== "ENOENT") throw error;
 }
 if (current !== output) {
-  const bytes = Buffer.from(output, "utf8");
-  const gitHash = createHash("sha1")
-    .update(Buffer.from(`blob ${bytes.length}\0`, "utf8"))
-    .update(bytes)
-    .digest("hex");
   console.error("Generated IPC command contracts are stale or missing.");
   console.error("Run: node scripts/generate-ipc-command-contracts.mjs --write");
-  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_GIT_BLOB=${gitHash}`);
-  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BYTES=${bytes.length}`);
-  const encoded = bytes.toString("base64");
-  const chunkSize = 3_000;
-  const chunkCount = Math.ceil(encoded.length / chunkSize);
-  console.log(`IPC_COMMAND_CONTRACT_CANDIDATE_BASE64_CHUNKS=${chunkCount}`);
-  for (let index = 0; index < chunkCount; index += 1) {
-    const label = String(index).padStart(3, "0");
-    console.log(
-      `IPC_COMMAND_CONTRACT_CANDIDATE_BASE64_${label}=${encoded.slice(index * chunkSize, (index + 1) * chunkSize)}`,
-    );
-  }
   process.exit(1);
 }
 console.log(`OK   generated IPC command contracts: ${registered.size} commands.`);
