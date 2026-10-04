@@ -53,22 +53,67 @@ fn review_context_rows(connection: &Connection) -> i64 {
         .unwrap()
 }
 
-fn strip_empty_release_additions(
-    rows: &mut std::collections::BTreeMap<String, (Vec<String>, Vec<[u8; 32]>)>,
-) {
+/// What an upgrade must keep in a library with no folders, collections or
+/// collection copies: every table, with decks compared without their filing
+/// column (`folder_id` before schema 6, `subject_id` after), which is empty.
+/// Tables a release adds empty, and the filing structure release 6 replaces,
+/// are set aside after checking that they hold nothing.
+#[derive(Debug, PartialEq)]
+struct Kept {
+    rows: std::collections::BTreeMap<String, (Vec<String>, Vec<[u8; 32]>)>,
+    decks: Vec<Vec<rusqlite::types::Value>>,
+}
+
+fn kept(connection: &Connection) -> Kept {
+    let mut rows = preservation::rows(connection).unwrap();
     for table in [
         "selection_deck_operations",
         "deck_merge_operations",
         "study_target_generation_instructions",
         "review_event_scheduler_context",
+        "deck_folders",
+        "document_collection_memberships",
+        "document_collection_ranges",
+        "document_collections",
+        "documents",
+        "document_study_ranges",
+        "card_merges",
+        "subject_filing_reviews",
     ] {
         if let Some((_, values)) = rows.remove(table) {
-            assert!(
-                values.is_empty(),
-                "{table} must be empty during a release upgrade"
-            );
+            assert!(values.is_empty(), "{table} must be empty in this library");
         }
     }
+    rows.remove("decks").expect("every schema has decks");
+    let filing: String = connection
+        .query_row(
+            "SELECT name FROM pragma_table_info('decks')
+             WHERE name IN ('folder_id', 'subject_id')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let filed: i64 = connection
+        .query_row(
+            &format!("SELECT COUNT(*) FROM decks WHERE {filing} IS NOT NULL"),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(filed, 0, "decks in this library are unfiled");
+    let mut statement = connection
+        .prepare(
+            "SELECT id, name, description, sort_order, created_at, updated_at,
+                    archived_at, deleted_at, revision
+             FROM decks ORDER BY id",
+        )
+        .unwrap();
+    let decks = statement
+        .query_map([], |row| (0..9).map(|index| row.get(index)).collect())
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    Kept { rows, decks }
 }
 
 fn seed_history(fixture: &Fixture) {
@@ -179,6 +224,7 @@ fn populated_upgrade_preserves_learner_edits_schedules_and_review_evidence() {
     let before = preservation::rows(&source).unwrap();
     assert_eq!(before["notes"].1.len(), 1);
     assert_eq!(before["review_events"].1.len(), 1);
+    let kept_before = kept(&source);
     drop(source);
     let original = fs::read(fixture.0.database_path()).unwrap();
     let prepared = fixture.prepare();
@@ -188,16 +234,14 @@ fn populated_upgrade_preserves_learner_edits_schedules_and_review_evidence() {
     drop(snapshot);
     let mut guard = install_prepared_restore(&fixture.0, prepared).unwrap();
     let active = read_database(fixture.0.database_path()).unwrap();
-    let mut after = preservation::rows(&active).unwrap();
-    strip_empty_release_additions(&mut after);
-    assert_eq!(before, after);
+    assert_eq!(kept(&active), kept_before);
     drop(active);
     commit_upgrade(&fixture.0, &mut guard).unwrap();
     fixture.original_managed_files_are_present();
 }
 
 #[test]
-fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
+fn schema_four_reviews_upgrade_to_current_without_invented_scheduler_context() {
     let fixture = Fixture::new();
     advance_to_schema_four(&fixture);
     seed_history(&fixture);
@@ -206,6 +250,7 @@ fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
     assert_eq!(before["review_events"].1.len(), 1);
     assert_eq!(before["review_event_attributions"].1.len(), 1);
     assert!(!before.contains_key("review_event_scheduler_context"));
+    let kept_before = kept(&source);
     drop(source);
 
     let mut guard = begin_upgrade(
@@ -216,7 +261,10 @@ fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
     )
     .unwrap();
     let manifest = verify_checkpoint(&fixture.transaction()).unwrap();
-    assert_eq!((manifest.source_schema, manifest.target_schema), (4, 5));
+    assert_eq!(
+        (manifest.source_schema, manifest.target_schema),
+        (4, crate::database::CURRENT_SCHEMA_VERSION)
+    );
     let checkpoint =
         read_database(&fixture.transaction().join("checkpoint/library.sqlite3")).unwrap();
     assert_eq!(validate_database(&checkpoint).unwrap().1, 4);
@@ -224,18 +272,20 @@ fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
     drop(checkpoint);
 
     let active = read_database(fixture.0.database_path()).unwrap();
-    assert_eq!(validate_database(&active).unwrap().1, 5);
+    assert_eq!(
+        validate_database(&active).unwrap().1,
+        crate::database::CURRENT_SCHEMA_VERSION
+    );
     assert_eq!(
         review_context_rows(&active),
         0,
         "old reviews get no side row"
     );
-    let mut after = preservation::rows(&active).unwrap();
-    let (_, added) = after
-        .remove("review_event_scheduler_context")
-        .expect("schema 5 adds the review scheduler-context table");
-    assert!(added.is_empty());
-    assert_eq!(after, before, "every retained review value is unchanged");
+    assert_eq!(
+        kept(&active),
+        kept_before,
+        "every retained review value is unchanged"
+    );
     drop(active);
     commit_upgrade(&fixture.0, &mut guard).unwrap();
     drop(guard);
@@ -245,7 +295,7 @@ fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
 }
 
 #[test]
-fn schema_five_upgrade_checkpoint_restores_the_schema_four_library_for_an_older_build() {
+fn upgrade_checkpoint_restores_the_schema_four_library_for_an_older_build() {
     let fixture = Fixture::new();
     advance_to_schema_four(&fixture);
     seed_history(&fixture);
@@ -261,7 +311,7 @@ fn schema_five_upgrade_checkpoint_restores_the_schema_four_library_for_an_older_
     // upgrade, so the learner can choose to restore the schema-4 checkpoint.
     guard.try_commit().unwrap();
     drop(guard);
-    assert_eq!(fixture.version(), 5);
+    assert_eq!(fixture.version(), crate::database::CURRENT_SCHEMA_VERSION);
 
     restore_checkpoint(&fixture.0, &fixture.operation(), &mut |_| {}).unwrap();
     assert_eq!(fixture.version(), 4);
@@ -308,7 +358,7 @@ fn a_valid_but_lossy_private_migration_is_rejected_even_when_row_counts_match() 
 
 /// Prepare an upgrade whose private migration also runs `sql`, as a faulty
 /// release migration would, and return the refusal. The library is untouched.
-fn refused_upgrade(fixture: &Fixture, source_schema: i64, sql: &str) -> String {
+pub(super) fn refused_upgrade(fixture: &Fixture, source_schema: i64, sql: &str) -> String {
     let original = fs::read(fixture.0.database_path()).unwrap();
     let error = prepare_upgrade_with(
         &fixture.0,
@@ -377,8 +427,8 @@ fn an_upgrade_that_rewrites_or_backfills_protected_review_evidence_is_rejected()
 #[test]
 fn an_upgrade_that_changes_a_table_no_contract_lists_is_rejected() {
     for sql in [
-        // A new column changes an existing table's shape.
-        "ALTER TABLE decks ADD COLUMN subject_id TEXT",
+        // A new column changes the shape of a table no release declares.
+        "ALTER TABLE tags ADD COLUMN color TEXT",
         // A table that no release declares, even an empty one.
         "CREATE TABLE subjects (id TEXT PRIMARY KEY)",
     ] {
@@ -540,6 +590,7 @@ fn populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy
     seed_history(&fixture);
     let source = read_database(fixture.0.database_path()).unwrap();
     let before = preservation::rows(&source).unwrap();
+    let kept_before = kept(&source);
     for table in [
         "notes",
         "cards",
@@ -614,9 +665,7 @@ fn populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy
     )
     .unwrap();
     let retried = read_database(fixture.0.database_path()).unwrap();
-    let mut after = preservation::rows(&retried).unwrap();
-    strip_empty_release_additions(&mut after);
-    assert_eq!(after, before);
+    assert_eq!(kept(&retried), kept_before);
     drop(retried);
     commit_upgrade(&fixture.0, &mut retry).unwrap();
     drop(retry);
