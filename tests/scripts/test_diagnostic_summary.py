@@ -129,7 +129,7 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
         output = self.run_summary(
             "\n".join(
                 [
-                    "test database::tests::public_baseline_is_idempotent_and_matches_manifest ... FAILED",
+                    "test database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable ... FAILED",
                     "test result: FAILED. 0 passed; 1 failed",
                     "FULL CHECK FAILED during: Rust unit, integration, and migration-fixture tests (exit 101)",
                 ]
@@ -145,10 +145,86 @@ class DiagnosticFailureSummaryTests(unittest.TestCase):
             ),
         )
         self.assertIn(
-            "'database::tests::public_baseline_is_idempotent_and_matches_manifest' -- --exact --nocapture",
+            "'database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable' -- --exact --nocapture",
             output,
         )
         self.assertIn("OSTUDY_LOG='warn,ostudy.database=debug'", output)
+
+    def test_verifier_eslint_and_pnpm_failures_are_quoted(self) -> None:
+        output = self.run_summary(
+            "\n".join(
+                [
+                    "Documentation and repository organization verification failed:",
+                    "  - docs/README.md:3: broken local link: missing.md",
+                    "",
+                    "/repo/src/screens/Example.tsx",
+                    "  12:5  error  'unused' is assigned a value but never used  no-unused-vars",
+                    "",
+                    " ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with \"frozen-lockfile\"",
+                    "STATIC CHECK FAILED during: React hook correctness (exit 1)",
+                ]
+            ),
+            [],
+            "\n".join(["kind=failure", "step=React hook correctness", "status=1"]),
+        )
+        self.assertIn("  - docs/README.md:3: broken local link: missing.md", output)
+        self.assertIn("/repo/src/screens/Example.tsx", output)
+        self.assertIn("'unused' is assigned a value but never used", output)
+        self.assertIn("ERR_PNPM_OUTDATED_LOCKFILE", output)
+        self.assertIn("pnpm run lint", output)
+        self.assertNotIn("uploaded", output)
+
+    def test_headline_names_the_failure_and_its_focused_reproduction(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            log_path = directory / "gate.log"
+            headline_path = directory / "headline.txt"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        "test database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable ... FAILED",
+                        "FULL CHECK FAILED during: Rust unit, integration, and migration-fixture tests (exit 101)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["node", str(SUMMARY), "--headline", str(headline_path), str(log_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            headline = headline_path.read_text(encoding="utf-8")
+        self.assertEqual(1, headline.count("\n"))
+        self.assertTrue(
+            headline.startswith(
+                "FULL CHECK FAILED during: Rust unit, integration, and migration-fixture tests (exit 101)"
+            )
+        )
+        self.assertIn(
+            "(exit 101). Reproduce with: cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features "
+            "'database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable' -- --exact --nocapture",
+            headline,
+        )
+
+    def test_headline_without_a_recognized_failure_line_names_the_step(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory)
+            log_path = directory / "gate.log"
+            headline_path = directory / "headline.txt"
+            log_path.write_text("error: something unexpected\n", encoding="utf-8")
+            subprocess.run(
+                ["node", str(SUMMARY), "--headline", str(headline_path), str(log_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            headline = headline_path.read_text(encoding="utf-8")
+        self.assertEqual(
+            "Qualification failed before a recognized check reported its failing step. "
+            "Reproduce with: ./scripts/check.sh\n",
+            headline,
+        )
 
     def test_nested_wrapper_noise_does_not_override_precise_failure_context(self) -> None:
         output = self.run_summary(

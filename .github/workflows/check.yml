@@ -35,15 +35,14 @@ concurrency:
 permissions:
   contents: read
 
-# Source-writing maintenance is deliberately isolated in
-# maintain-generated-candidates.yml and is never performed by Check.
-# Pull-request metadata is validated independently by pr-contract.yml so a
-# malformed compatibility ledger can never block source qualification.
-# Draft source updates stay fast. Ready pull requests and explicit manual
-# dispatches are the only paths to terminal full qualification. Static always
-# validates the exact current source. Expensive Linux/Android tiers may reuse
-# a prior runner-local pass only when their product/toolchain fingerprint is
-# unchanged; a manual dispatch can force a fresh execution.
+# Check never writes source. Draft source updates stay fast. Ready pull
+# requests and explicit manual dispatches are the only paths to terminal full
+# qualification. Static always validates the exact current source. Expensive
+# Linux/Android tiers may reuse a prior runner-local pass only when their
+# product/toolchain fingerprint is unchanged; a manual dispatch can force a
+# fresh execution. A failed run ends with its failure summary and an error
+# annotation, so the last lines of the job log say what failed and how to
+# reproduce it.
 
 jobs:
   check:
@@ -129,6 +128,8 @@ jobs:
       - name: Run fast qualification
         id: fast
         if: steps.gate.outputs.gate == 'fast'
+        env:
+          OSTUDY_STATIC_CHECK_PASSED: ${{ steps.static.outcome == 'success' && '1' || '0' }}
         run: |
           bash ./scripts/run-ci-captured.sh \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
@@ -137,6 +138,8 @@ jobs:
       - name: Run authoritative Linux qualification
         id: linux_full
         if: steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full'
+        env:
+          OSTUDY_STATIC_CHECK_PASSED: ${{ steps.static.outcome == 'success' && '1' || '0' }}
         run: |
           bash ./scripts/run-ci-captured.sh \
             "$RUNNER_TEMP/ostudy-full-check.log" \
@@ -215,26 +218,12 @@ jobs:
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Render evidence-derived handoff
-        id: handoff
-        if: always()
-        run: |
-          status=0
-          node ./scripts/render-agent-handoff.mjs \
-            --qualification "$RUNNER_TEMP/ostudy-qualification-result.json" \
-            --repository-root "$GITHUB_WORKSPACE" \
-            --output "$RUNNER_TEMP/ostudy-agent-handoff.md" \
-            || status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          if [[ -f "$RUNNER_TEMP/ostudy-agent-handoff.md" ]]; then
-            cat "$RUNNER_TEMP/ostudy-agent-handoff.md" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
       - name: Summarize qualification failure
         if: failure()
         run: |
           summary="$RUNNER_TEMP/ostudy-failure-summary.md"
           node ./scripts/summarize-check-failure.mjs \
+            --headline "$RUNNER_TEMP/ostudy-failure-headline.txt" \
             --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
             --diagnostics "$RUNNER_TEMP/android-smoke" \
             "$RUNNER_TEMP/ostudy-static-check.log" \
@@ -244,8 +233,8 @@ jobs:
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             > "$summary"
-          cat "$summary"
           cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "Failure summary written; it is printed again as the last step of this job."
 
       - name: Export diagnostics after failure
         if: failure()
@@ -256,7 +245,6 @@ jobs:
         run: |
           bash ./scripts/persist-runner-output.sh qualification \
             "$RUNNER_TEMP/ostudy-qualification-result.json" \
-            "$RUNNER_TEMP/ostudy-agent-handoff.md" \
             "$RUNNER_TEMP/ostudy-failure-summary.md" \
             "$RUNNER_TEMP/ostudy-diagnostics"
 
@@ -281,7 +269,6 @@ jobs:
         env:
           GATE: ${{ steps.gate.outputs.gate || 'unknown' }}
           JOB_STATUS: ${{ job.status }}
-          HANDOFF_STATUS: ${{ steps.handoff.outputs.status || 'unknown' }}
         run: |
           {
             echo '# ostudy qualification'
@@ -290,12 +277,25 @@ jobs:
             echo "- Runner: \`$RUNNER_NAME\`"
             echo "- Gate: \`$GATE\`"
             echo "- Diagnostic baseline: \`$OSTUDY_CI_LOG_FILTER\`"
-            echo "- Handoff evidence status: \`$HANDOFF_STATUS\`"
-            echo "- Status before evidence-integrity enforcement: **$JOB_STATUS**"
+            echo "- Status: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Enforce handoff evidence integrity
-        if: always() && steps.handoff.outputs.status != '0'
+      # Keep this step last. Agents and people read a failed run from the end
+      # of the job log, so the summary and the annotation must close it.
+      - name: Report qualification failure
+        if: failure()
         run: |
-          echo "Evidence-derived qualification handoff integrity failed; see the runner-local evidence path in the step summary." >&2
-          exit 1
+          summary="$RUNNER_TEMP/ostudy-failure-summary.md"
+          headline="$RUNNER_TEMP/ostudy-failure-headline.txt"
+          if [[ -s "$summary" ]]; then
+            # Log excerpts in the summary must not be read as workflow commands.
+            token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+            echo "::stop-commands::$token"
+            cat "$summary"
+            echo "::$token::"
+          fi
+          message="Qualification failed; see the steps above."
+          if [[ -s "$headline" ]]; then
+            message="$(head -n 1 "$headline" | sed 's/%/%25/g')"
+          fi
+          echo "::error title=ostudy qualification failed::$message"

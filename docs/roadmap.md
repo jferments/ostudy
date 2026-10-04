@@ -84,12 +84,12 @@ Android already builds, installs, and runs the shared study/document/sync applic
 
 ### 6. Maintain architecture and development reliability
 
-The project has explicit frontend/native/platform boundaries and a GitHub-direct development path that does not depend on custom developer MCP availability. Keep:
+The project has explicit frontend/native/platform boundaries and one ordinary branch-and-PR workflow for people and coding agents. Keep:
 
 - one writer per task branch;
-- expected-parent non-force publication and remote verification;
+- no force-pushes to shared branches and no direct pushes to `main`;
 - source-read-only Actions;
-- `PR Contract` metadata validation independent from exact-SHA product `Check`;
+- exact-SHA product `Check` results that end with a focused failure summary;
 - focused failure reproduction before broad reruns;
 - completed stage terminology, checkpoint workflows, and temporary orchestration machinery out of current architecture.
 

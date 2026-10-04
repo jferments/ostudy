@@ -47,7 +47,7 @@ Implemented explicit profile/storage/credential boundaries and development guard
 
 ### 106-B — contributor setup, build, doctor, and local test tooling
 
-Implemented repository-owned contributor wrappers. See [the command runbook](../../agents/COMMAND-RUNBOOK.md); do not reproduce private CI registration or caches for ordinary development.
+Implemented repository-owned contributor wrappers. See [the command runbook](../command-runbook.md); do not reproduce private CI registration or caches for ordinary development.
 
 ### 106-C — post-#104 schema and durable-data audit
 

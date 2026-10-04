@@ -136,4 +136,4 @@ Qualification proceeds focused/static/fast first, then a frozen full Linux and A
 
 Use [local testing and handoff](local-testing-and-handoff.md) for exact checkout, safe data isolation and maintained build/install commands. Revert a UI increment normally to roll back; do not revert unrelated PR #94 work or discard user data.
 
-See the completed [migration roadmap](ui-overhaul-roadmap.md), active [visual refresh roadmap](ui-visual-refresh-roadmap.md), [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md), [vendor provenance](../../src/ui/vendor/shadcn/README.md), and [bounded publication loop](../agents/GITHUB-DIRECT-DEVELOPMENT.md).
+See the completed [migration roadmap](ui-overhaul-roadmap.md), active [visual refresh roadmap](ui-visual-refresh-roadmap.md), [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md), [vendor provenance](../../src/ui/vendor/shadcn/README.md), and the [Git and pull-request workflow](workflow.md).

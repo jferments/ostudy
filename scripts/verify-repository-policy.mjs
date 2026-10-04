@@ -65,6 +65,20 @@ for (const entry of await readdir(workflowDirectory, { withFileTypes: true })) {
   if (/runs-on:\s*(?:ubuntu|windows|macos)-/u.test(text)) {
     failures.push(`${entry.name}: GitHub-hosted operating-system runner is forbidden`);
   }
+  // Workflows qualify source; they never write it. YAML comments are stripped
+  // first so notes that describe a forbidden sequence do not count.
+  const executable = text
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/(^|\s)#.*$/u, "$1"))
+    .join("\n");
+  for (const [pattern, reason] of [
+    [/\bpull_request_target\b/u, "pull_request_target is forbidden because it runs pull-request code with repository credentials"],
+    [/\bcontents:\s*write\b|\bwrite-all\b|\bpull-requests:\s*write\b/u, "workflows must not hold source or pull-request write permissions"],
+    [/persist-credentials:\s*true\b/u, "checkout credentials must not persist into later steps"],
+    [/\bgit\s+push\b/u, "workflows must not push source"],
+  ]) {
+    if (pattern.test(executable)) failures.push(`${entry.name}: ${reason}`);
+  }
   for (const [index, line] of text.split(/\r?\n/u).entries()) {
     const match = line.match(/^\s*uses:\s*([^\s#]+)(?:\s+#\s*(.*))?$/u);
     if (!match || match[1].startsWith("./")) continue;

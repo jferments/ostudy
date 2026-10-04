@@ -79,7 +79,17 @@ fi
 export ANDROID_SERIAL="$SERIAL"
 
 "$adb" -s "$SERIAL" logcat -c
-if [[ "${OSTUDY_ANDROID_COMPILE_PASSED:-0}" == "1" ]]; then
+app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
+latest_instrumentation_apk() {
+  {
+    find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
+      -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
+  } | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }'
+}
+test_apk="$(latest_instrumentation_apk)"
+# The compile gate can pass by reusing an earlier qualification of the same
+# tree, and the clean CI checkout then has no APKs, so reuse needs both files.
+if [[ "${OSTUDY_ANDROID_COMPILE_PASSED:-0}" == "1" && -f "$app_apk" && -n "$test_apk" && -f "$test_apk" ]]; then
   printf 'REUSE x86_64 Android smoke APK and instrumentation package from the successful compile/package gate in this exact workflow.\n'
 else
   printf 'Building the x86_64 Android smoke APK and instrumentation package...\n'
@@ -89,13 +99,9 @@ else
   # rustBuild tasks that cannot outlive the parent Tauri process.
   bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
   android_instrumentation_postbuild
+  test_apk="$(latest_instrumentation_apk)"
 fi
 
-app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
-test_apk="$({
-  find src-tauri/gen/android/app/build/outputs/apk/androidTest/universal/debug \
-    -type f -name '*.apk' -printf '%T@ %p\n' 2>/dev/null || true
-} | sort -nr | awk 'NR == 1 { $1=""; sub(/^ /, ""); print }')"
 if [[ ! -f "$app_apk" || -z "$test_apk" || ! -f "$test_apk" ]]; then
   printf 'Could not locate the UniversalDebug Android application and instrumentation APKs.\n' >&2
   exit 1

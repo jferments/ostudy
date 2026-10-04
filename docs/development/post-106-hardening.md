@@ -8,7 +8,7 @@ Merged foundation: PR #106, squash `9ef91e79346b6d0d0ace983da3c1583303f15a43`. S
 
 PR #108 and PR #109 are merged. PR #110 owns H-03, H-04 and H-05 together at the human's explicit request; do not split or duplicate those changes while that PR is active. After #110, H-06 is the next planned hardening boundary. H-05's hook/indexed-access safeguards are established before broader frontend restructuring; preserve the H-02/H-06 lifetime contracts before H-08, and retain H-04's filesystem/staging contract before H-09. Dependencies describe semantics, not permission for competing writers or duplicate full matrices.
 
-Each implementation PR owns its focused regressions, source-derived documentation, compatibility decisions and exact-SHA qualification. Freeze a complete candidate before terminal gates; record fresh versus safely reused execution and unrun human/platform boundaries separately. Use the [GitHub-direct procedure](../agents/GITHUB-DIRECT-DEVELOPMENT.md). No automatic merge, source-writing Actions, alternate publisher, forced history rewrite, new service, or live-library experiment is introduced by this plan.
+Each implementation PR owns its focused regressions, source-derived documentation, compatibility decisions and exact-SHA qualification. Mark a PR ready only when it is complete; record fresh versus safely reused execution and unrun human/platform boundaries separately. Follow the [Git and pull-request workflow](workflow.md). No automatic merge, source-writing Actions, forced history rewrite, new service, or live-library experiment is introduced by this plan.
 
 ## Core PR scopes and acceptance boundaries
 

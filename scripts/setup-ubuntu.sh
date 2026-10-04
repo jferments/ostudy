@@ -9,6 +9,26 @@ source "$ROOT_DIR/versions.env"
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
+BUILD_AFTER_SETUP=1
+for argument in "$@"; do
+  case "$argument" in
+    --no-build) BUILD_AFTER_SETUP=0 ;;
+    -h|--help)
+      cat <<'USAGE'
+Usage: ./scripts/setup-ubuntu.sh [--no-build]
+
+Install the pinned Ubuntu/Debian development environment. It is safe to re-run.
+
+  --no-build  Skip the initial standalone application build, for example in a
+              disposable cloud or CI container. The check and build scripts
+              install JavaScript dependencies and PDFium when they need them.
+USAGE
+      exit 0
+      ;;
+    *) die "Unknown option: $argument" ;;
+  esac
+done
+
 [[ "$(uname -s)" == "Linux" ]] || die "This setup script is for Ubuntu/Debian Linux only."
 command -v apt-get >/dev/null 2>&1 || die "apt-get was not found."
 
@@ -147,6 +167,11 @@ fi
 
 log "Verifying the provisioned contributor and native-smoke environment"
 "$SCRIPT_DIR/doctor.sh" --native-smoke --script-linters
+
+if (( BUILD_AFTER_SETUP == 0 )); then
+  log "Setup is complete; skipped the initial application build (--no-build)"
+  exit 0
+fi
 
 log "Building ostudy once so ordinary startup is fast"
 "$SCRIPT_DIR/build.sh"

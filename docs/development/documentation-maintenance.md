@@ -11,7 +11,7 @@ Documentation is part of the product contract. It must describe the application 
 | How do I install or build for this platform? | `docs/installation/` |
 | Who owns behavior and why was it designed this way? | `docs/architecture/` |
 | How do I contribute, test, package, or diagnose? | `docs/development/` |
-| How must an automated maintainer operate? | `AGENTS.md` and `docs/agents/` |
+| How must an automated maintainer operate? | `AGENTS.md` (and `CLAUDE.md` for Claude Code) |
 | What exact file format must another tool produce? | `docs/reference/` and versioned schemas/examples |
 | Why was a durable cross-module decision made? | `docs/decisions/` |
 | What did a previous stage or dated audit establish? | `docs/history/`, or an explicitly labeled retained historical record |
@@ -32,11 +32,11 @@ Replace outdated canonical paragraphs. Consolidate duplicate guides into one cur
 
 Keep machine-consumed paths, source inventories, migration names/checksums, and compatibility readers intact unless a coordinated change replaces them. A document named after an old stage can still own a live regression procedure. A historical fixture is not stale merely because it exercises old input.
 
-Update `docs/README.md`, relevant architecture links, and agent entry points in the same coherent commit. New canonical files should be reachable through an index rather than discoverable only from a PR comment.
+Update `docs/README.md`, relevant architecture links, and `AGENTS.md` in the same coherent commit. New canonical files should be reachable through an index rather than discoverable only from a PR comment.
 
 ## Classify cleanup candidates before deleting
 
-Use the [cleanup audit](../development/documentation-and-cleanup-audit.md) to record the candidate, evidence, disposition, and remaining validation.
+Use the [cleanup audit](documentation-and-cleanup-audit.md) to record the candidate, evidence, disposition, and remaining validation.
 
 **Obsolete:** no current runtime, compile-time, dynamic import, test, platform, build, or durable compatibility consumer remains. Remove the source and its exclusively owned styles/tests/inventory entries together. Qualify the removal.
 
@@ -48,14 +48,14 @@ Use the [cleanup audit](../development/documentation-and-cleanup-audit.md) to re
 
 Repository search is an aid, not proof by itself. Combine the file tree, exact-source reads, import/caller searches, enforcing manifests, and executable gates. A negative indexed search can miss an unindexed or dynamically constructed reference.
 
-## Preserve the workflow while updating workflow docs
+## Keep workflow docs in step with the workflow
 
-[GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) is the canonical agent procedure. Do not copy an old MCP-first passage into a new guide. No manual workflow exception permits Actions source authoring. Do not reintroduce a dependency between the PR acceptance ledger and product qualification. Review readiness is not a fabricated passing test, and source publication is not qualification.
+[Testing and CI](testing-and-ci.md) owns the gates and what each tier runs; [the command runbook](command-runbook.md) owns the local commands. When a wrapper, gate, or workflow changes, update those two in the same commit rather than adding a new guide. GitHub Actions never write source, and a passing gate is evidence only for the commit it ran on.
 
-Use [the command runbook](COMMAND-RUNBOOK.md) and [local testing handoff](../development/local-testing-and-handoff.md) when supplying commands. Include exact source identity and data-safety warnings without requiring the human to reproduce checks the agent can already inspect in Actions.
+Use [the command runbook](command-runbook.md) and [local testing handoff](local-testing-and-handoff.md) when supplying commands. Include exact source identity and data-safety warnings without asking the maintainer to reproduce checks that already ran in Actions.
 
 ## Validation and evidence
 
-Run `pnpm verify:docs` for required paths, conventional organization, superseded references, and relative links. Run `node ./scripts/verify-agent-workflow-policy.mjs` when workflow guidance or implementation changes. These checks do not verify the truth of every prose claim, internal heading anchors, all external links, or the absence of all dead code. Review those explicitly.
+Run `pnpm verify:docs` for required paths, conventional organization, superseded references, and relative links. These checks do not verify the truth of every prose claim, internal heading anchors, all external links, or the absence of all dead code. Review those explicitly.
 
-Use static/fast/full and applicable platform qualification for the final published SHA according to repository policy. Record which commands actually ran and which source was checked. A source-linked architecture review is not a full runtime/security audit or new physical-device acceptance. Put transient CI results in the PR evidence, not timeless product claims in the README.
+Use static/fast/full and applicable platform qualification for the final published SHA according to repository policy. Record which commands actually ran and which source was checked. A source-linked architecture review is not a full runtime/security audit or new physical-device acceptance. Put transient CI results in the PR description, not timeless product claims in the README.

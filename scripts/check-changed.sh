@@ -54,7 +54,7 @@ document_only=1
 requires_fast=0
 
 for path in "${CHANGED[@]}"; do
-  if [[ ! "$path" =~ ^(docs/|README\.md$|CONTRIBUTING\.md$|AGENTS\.md$|LICENSE$|\.github/ISSUE_TEMPLATE/) ]]; then
+  if [[ ! "$path" =~ ^(docs/|README\.md$|CONTRIBUTING\.md$|AGENTS\.md$|CLAUDE\.md$|LICENSE$|\.github/ISSUE_TEMPLATE/) ]]; then
     is_docs_only=0
   fi
   if [[ ! "$path" =~ ^src/.*\.(ts|tsx|css)$ ]]; then
@@ -77,6 +77,12 @@ if [[ "$is_docs_only" == "1" ]]; then
   exit 0
 fi
 
+# Migrations, scripts and manifests escalate before any narrower path can claim them.
+if [[ "$requires_fast" == "1" ]]; then
+  printf '\nInfrastructure, manifest, or migration change detected; escalating to check-fast.sh.\n'
+  exec bash "$SCRIPT_DIR/check-fast.sh"
+fi
+
 if [[ "$document_only" == "1" ]]; then
   printf '\nDocument-platform-only change detected; running focused cross-layer contracts.\n'
   bash "$SCRIPT_DIR/check-static.sh"
@@ -84,26 +90,12 @@ if [[ "$document_only" == "1" ]]; then
   cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
   cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_
   cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_
-  cargo test \
-    --manifest-path src-tauri/Cargo.toml \
-    --locked \
-    --all-features \
-    --lib \
-    database::tests::migrations_and_repairs_are_idempotent_and_reach_latest_schema \
-    -- --exact
-  cargo test \
-    --manifest-path src-tauri/Cargo.toml \
-    --locked \
-    --all-features \
-    --lib \
-    database::tests::released_schema_upgrades_forward_without_losing_integrity \
-    -- --exact
+  # The contract runner fails when a filter selects no tests, so a renamed test
+  # cannot silently turn this step into a no-op.
+  bash "$SCRIPT_DIR/test-native-contracts.sh" \
+    database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable \
+    database::tests::public_migration_checksum_and_future_version_are_enforced
   exit 0
-fi
-
-if [[ "$requires_fast" == "1" ]]; then
-  printf '\nInfrastructure, manifest, or migration change detected; escalating to check-fast.sh.\n'
-  exec bash "$SCRIPT_DIR/check-fast.sh"
 fi
 
 if [[ "$is_frontend_only" == "1" ]]; then

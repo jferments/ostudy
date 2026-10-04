@@ -78,7 +78,7 @@ ostudy_check_fingerprint() {
 
   (
     cd "$OSTUDY_ROOT_DIR"
-    printf 'fingerprint_schema=2\n'
+    printf 'fingerprint_schema=3\n'
     printf 'scope=%s\n' "$scope"
 
     # Include committed index metadata as well as file bytes. The index record
@@ -109,9 +109,10 @@ ostudy_check_fingerprint() {
     printf 'node='; command -v node >/dev/null 2>&1 && node --version || printf 'missing\n'
     printf 'npm='; command -v npm >/dev/null 2>&1 && npm --version || printf 'missing\n'
     printf 'pnpm='; command -v pnpm >/dev/null 2>&1 && pnpm --version || printf 'missing\n'
-    printf 'ruff='; command -v ruff >/dev/null 2>&1 && ruff --version || printf 'missing\n'
-    printf 'shellcheck='; command -v shellcheck >/dev/null 2>&1 && shellcheck --version || printf 'missing\n'
-    printf 'ty='; command -v ty >/dev/null 2>&1 && ty version || printf 'missing\n'
+    # ruff, shellcheck and ty are not probed here. versions.env pins them with
+    # checksums, and that file is already hashed above. Probing PATH made the
+    # fingerprint depend on whether the caller had prepended the pinned linters,
+    # so a static stamp written by check-static.sh never matched a later reader.
     printf 'rustc='; command -v rustc >/dev/null 2>&1 && rustc -Vv || printf 'missing\n'
     printf 'cargo='; command -v cargo >/dev/null 2>&1 && cargo --version || printf 'missing\n'
     printf 'platform='; uname -srm

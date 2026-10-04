@@ -1,20 +1,20 @@
-# Local testing and agent handoff
+# Local testing and handoff
 
 A useful handoff lets the maintainer obtain the intended source, build the actual native app, test the changed behavior, and distinguish that test-drive from automated merge qualification. It must not bury those steps beneath infrastructure diagnostics.
 
-This guide is shared by human contributors and agents. The [command runbook](../agents/COMMAND-RUNBOOK.md) is the short command reference; [GitHub-direct development](../agents/GITHUB-DIRECT-DEVELOPMENT.md) defines agent publication.
+This guide is shared by human contributors and agents. The [command runbook](command-runbook.md) is the short command reference; the [Git and pull-request workflow](workflow.md) describes branches, pushes and review.
 
 ## What every handoff must state
 
-State the repository, PR number/link and draft/ready state, branch, exact verified head, and base. Summarize what changed and what did not. Name actual checks and their tested SHAs, not merely commands that could be run. Explain any unrun checks, known failures, and manual boundaries. Give the local test-drive path followed by a small acceptance checklist for the task.
+State the repository, PR number/link and draft/ready state, branch, exact head commit, and base. Summarize what changed and what did not. Name actual checks and their tested SHAs, not merely commands that could be run. Explain any unrun checks, known failures, and manual boundaries. Give the local test-drive path followed by a small acceptance checklist for the task.
 
-Also record the last expected publication parent and release of source-writer ownership. In GitHub-only mode say no execution workspace was used. Do not invent a clean worktree, PID, VM state, or claim that no unrelated repository jobs exist. Report only jobs actually inspected.
+Do not invent a clean worktree, PID, VM state, or claim that no unrelated repository jobs exist. Report only jobs actually inspected.
 
-“Published,” “automatically qualified,” “manually accepted,” and “merged” are separate facts. An older green run does not qualify the current PR head. A displayed command is not a test result.
+“Pushed,” “automatically qualified,” “manually accepted,” and “merged” are separate facts. An older green run does not qualify the current PR head. A displayed command is not a test result.
 
 ## Obtain the exact source safely
 
-Use the user's existing authenticated repository checkout and `origin`. Agent repository operations use the Connector; these local Git commands are for the human's machine. Do not ask for `gh` or a new OAuth flow to test an already accessible repository.
+Use the existing authenticated repository checkout and `origin`. Do not ask for `gh` or a new OAuth flow to test an already accessible repository.
 
 Before switching an existing checkout, inspect local work:
 
@@ -26,7 +26,7 @@ git fetch origin --prune
 Do not discard unrelated edits. A detached worktree is a convenient way to inspect a PR without disturbing them. Replace all three values with the concrete values from the handoff:
 
 ```bash
-PR_BRANCH='agent/REPLACE_WITH_BRANCH'
+PR_BRANCH='REPLACE_WITH_BRANCH'
 EXPECTED_SHA='REPLACE_WITH_FULL_40_CHARACTER_HEAD'
 REVIEW_DIR='../ostudy-review-REPLACE_WITH_PR_NUMBER'
 
@@ -122,7 +122,6 @@ Focused documentation checks:
 
 ```bash
 pnpm verify:docs
-node ./scripts/verify-agent-workflow-policy.mjs
 ```
 
 Normal tiers:
@@ -140,13 +139,13 @@ pnpm android:test
 pnpm android:smoke
 ```
 
-Do not require every command merely for a human to look at a UI change. The agent should consume available exact-head Actions evidence and supply the small remaining human checklist. Conversely, “the app launched” does not replace these gates. [Testing and CI](testing-and-ci.md) explains the boundaries and cache/evidence behavior.
+Do not require every command merely for a human to look at a UI change. The agent should read the exact-head `Check` result and supply the small remaining human checklist. Conversely, “the app launched” does not replace these gates. [Testing and CI](testing-and-ci.md) explains the boundaries and cache/evidence behavior.
 
 For UI work, acceptance should identify concrete initial state, action, and expected result. Cover the changed empty/populated/error paths, keyboard/touch interaction, compact width, and navigation/dirty-state behavior. For data work, include restart and appropriate isolated backup/import/restore checks. For a documentation-only revision, reviewing rendered Markdown and checking that commands/labels match the application is the relevant manual boundary; do not claim new physical-device acceptance.
 
 ## Failure reports and privacy
 
-Provide exact SHA, command, OS/device/build mode, the first failing boundary, and minimal reproduction. Prefer the repository's bounded diagnostics over enormous terminal dumps. Distinguish a UI defect, compiler/test failure, missing dependency, runner fault, and Connector problem. Do not ask for passwords, API keys, raw private source documents, or a live library database when a synthetic fixture or redacted log suffices.
+Provide exact SHA, command, OS/device/build mode, the first failing boundary, and minimal reproduction. Prefer the repository's bounded diagnostics over enormous terminal dumps. Distinguish a UI defect, compiler/test failure, missing dependency, runner fault, and GitHub problem. Do not ask for passwords, API keys, raw private source documents, or a live library database when a synthetic fixture or redacted log suffices.
 
 ## Returning to main
 

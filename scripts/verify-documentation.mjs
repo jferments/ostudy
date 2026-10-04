@@ -25,6 +25,7 @@ const allowedRootEntries = new Set([
   ".node-version",
   ".nvmrc",
   "AGENTS.md",
+  "CLAUDE.md",
   "CONTRIBUTING.md",
   "LICENSE",
   "README.md",
@@ -91,7 +92,6 @@ for (const path of [
 
 const allowedDocsEntries = new Set([
   "README.md",
-  "agents",
   "architecture",
   "decisions",
   "development",
@@ -111,7 +111,7 @@ const docsEntries = new Set(
 for (const entry of [...docsEntries].sort()) {
   if (!allowedDocsEntries.has(entry)) {
     failures.push(
-      `docs/${entry}: maintained documentation must be placed in the user, installation, architecture, development, reference, decision, agent, example, or history section`,
+      `docs/${entry}: maintained documentation must be placed in the user, installation, architecture, development, reference, decision, example, or history section`,
     );
   }
 }
@@ -120,6 +120,7 @@ const requiredPaths = [
   "README.md",
   "CONTRIBUTING.md",
   "AGENTS.md",
+  "CLAUDE.md",
   "docs/README.md",
   "docs/roadmap.md",
   "docs/installation/README.md",
@@ -169,6 +170,7 @@ const removedCanonicalPaths = [
   "docs/PHASE-2-ROADMAP.md",
   "docs/STAGE-3-CARD-TYPES-AND-TEMPLATES.md",
   "docs/CODE-REVIEW-2026-08-03.md",
+  "docs/agents/",
 ];
 for (const path of removedCanonicalPaths) {
   if (tracked.has(path)) failures.push(`Stale or superseded canonical path remains tracked: ${path}`);

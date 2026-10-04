@@ -80,8 +80,6 @@ node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
 node "$SCRIPT_DIR/verify-actions-storage-policy.mjs"
 node "$SCRIPT_DIR/verify-route-smoke-contract.mjs"
-node "$SCRIPT_DIR/verify-agent-workflow-policy.mjs"
-node "$SCRIPT_DIR/verify-agent-recovery-policy.mjs"
 node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
 node "$SCRIPT_DIR/verify-ai-infrastructure-boundaries.mjs"
 node "$SCRIPT_DIR/verify-document-ai-boundaries.mjs"
@@ -107,10 +105,7 @@ step "Shell and Python correctness linting"
 bash "$SCRIPT_DIR/lint-scripts.sh"
 
 step "Frozen JavaScript installation and dependency verification"
-if ! pnpm install --frozen-lockfile; then
-  bash "$SCRIPT_DIR/emit-js-lockfile-candidate.sh"
-  exit 1
-fi
+pnpm install --frozen-lockfile
 pnpm run fonts:install
 pnpm run verify:versions
 node "$SCRIPT_DIR/generate-ipc-command-contracts.mjs" --check
@@ -123,7 +118,6 @@ node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
 node "$SCRIPT_DIR/verify-ui-boundaries.mjs"
 node --test \
   tests/scripts/ui-build.node-test.mjs \
-  tests/scripts/pr-contract-update.node-test.mjs \
   tests/scripts/frontend-correctness.node-test.mjs \
   tests/scripts/release-readiness-cleanup.node-test.mjs
 

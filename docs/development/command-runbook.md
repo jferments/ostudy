@@ -1,6 +1,6 @@
-# Canonical build, test, and install runbook
+# Build, test, and install runbook
 
-Read this before giving shell instructions. Commands below are maintained repository entry points, not evidence that they have already run. Execute them from the repository root after checking out the intended source. [Local testing and handoff](../development/local-testing-and-handoff.md) provides safe checkout, SHA verification, isolated data, and acceptance-report guidance.
+Read this before giving shell instructions. Commands below are maintained repository entry points, not evidence that they have already run. Execute them from the repository root after checking out the intended source. [Local testing](local-testing-and-handoff.md) provides safe checkout, SHA verification, isolated data, and acceptance-report guidance.
 
 ## Plain-text developer commands
 
@@ -34,7 +34,7 @@ The equivalent underlying command is:
 ./scripts/setup-ubuntu.sh
 ```
 
-The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. `./scripts/ostudy-dev package-deb` is a separate production-package boundary: it builds `io.github.jferments.ostudy` from the exact current source, verifies the Debian package does not own learner-data paths, and writes the `.deb`, build metadata and checksums under `.artifacts/linux-package/` unless `--output` is supplied. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. In a disposable container (a cloud agent session or CI image), `./scripts/setup-ubuntu.sh --no-build` installs the same toolchain without that first build; the check and build scripts install JavaScript dependencies and PDFium when they need them. `./scripts/ostudy-dev package-deb` is a separate production-package boundary: it builds `io.github.jferments.ostudy` from the exact current source, verifies the Debian package does not own learner-data paths, and writes the `.deb`, build metadata and checksums under `.artifacts/linux-package/` unless `--output` is supplied. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
 
 Verify the ordinary contributor environment without rebuilding:
 
@@ -77,8 +77,6 @@ Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri h
 
 ```bash
 pnpm verify:docs
-node ./scripts/verify-agent-workflow-policy.mjs
-node ./scripts/verify-agent-recovery-policy.mjs
 ./scripts/check-changed.sh
 ./scripts/check-static.sh
 ./scripts/check-fast.sh
@@ -87,7 +85,7 @@ node ./scripts/verify-agent-recovery-policy.mjs
 
 The same maintained check wrappers can be reached through `./scripts/ostudy-dev check-changed`, `check-static`, `check-fast`, and `check`. The wrapper command itself remains the qualification identity in evidence and GitHub Actions.
 
-Choose the smallest relevant command during iteration. The first two are focused documentation/workflow checks; they do not replace broader gates when required. `check-changed` selects by the current diff, so a clean checkout with no relevant diff can do little. Use explicit static/fast/full wrappers when certifying a particular tier.
+Choose the smallest relevant command during iteration. `pnpm verify:docs` is the focused documentation check; it does not replace broader gates when required. `check-changed` selects by the current diff, so a clean checkout with no relevant diff can do little. Use explicit static/fast/full wrappers when certifying a particular tier.
 
 Static qualification provisions checksum-pinned standalone ShellCheck, Ruff, and ty binaries outside the worktree. ShellCheck and Ruff provide check-only correctness linting; ty is deliberately focused on the safety-critical library-status and pre-public restore tools rather than treating the whole Python test harness as fully typed. The gate also runs a disposable negative type control so a misconfigured type checker cannot silently report success.
 
@@ -152,8 +150,8 @@ Use `pnpm android:dev` only when live hot reload is the actual goal. Use the exi
 
 ## Packages and releases
 
-Read [Android build/install](../development/android-build-and-install.md), [Linux installation](../installation/linux.md), and [the development workflow](../development/workflow.md) for release packaging. A debug executable, debug APK, release bundle, signed artifact, and public distribution are distinct deliverables. Do not infer release availability from a script's existence.
+Read [Android build/install](android-build-and-install.md), [Linux installation](../installation/linux.md), and [the development workflow](workflow.md) for release packaging. A debug executable, debug APK, release bundle, signed artifact, and public distribution are distinct deliverables. Do not infer release availability from a script's existence.
 
-## Agent handoff rule
+## Handing a change to the maintainer
 
-Give the exact branch and verified head, checkout commands, the shortest applicable build/run/install path, actual qualification results, and concrete manual observations. Do not require the human to run every tier merely to test-drive the app, and do not claim those tiers passed because the commands were supplied. GitHub-direct publication and read-only Actions qualification remain the normal workflow.
+Give the branch and commit, the shortest applicable build/run/install path, the checks that actually ran, and the concrete behavior to look at. Do not require the maintainer to run every tier merely to test-drive the app, and do not claim those tiers passed because the commands were supplied.

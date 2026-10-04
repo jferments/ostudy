@@ -28,7 +28,7 @@ const [
   read("scripts/runner/guest-preflight.sh"),
   read(".github/workflows/check.yml"),
   read("CONTRIBUTING.md"),
-  read("docs/agents/COMMAND-RUNBOOK.md"),
+  read("docs/development/command-runbook.md"),
 ]);
 
 function requireText(label, source, needle) {

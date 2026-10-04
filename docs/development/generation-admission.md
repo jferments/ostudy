@@ -89,5 +89,5 @@ transactional publication and the unchanged whole-file import contract.
 The existing assessment tests continue to require graded bindings and reject
 fabricated/wrong-role evidence while accepting valid optional context. The normal
 static/fast gate checks these changes before terminal Linux/Android qualification.
-The [canonical runbook](../agents/COMMAND-RUNBOOK.md) defines build and test entry
+The [canonical runbook](command-runbook.md) defines build and test entry
 points; a successful compile is not live-provider or physical-device acceptance.

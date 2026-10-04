@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/gu;
 const TEST_FILE_PATTERN = /(?:^|\s)([A-Za-z0-9_./-]+\.(?:test|spec)\.[cm]?[jt]sx?)(?=\s|$)/gu;
 const VITEST_FAILED_FILE_PATTERN = /^\s*FAIL\s+([A-Za-z0-9_./-]+\.(?:test|spec)\.[cm]?[jt]sx?)(?=\s|$)/gmu;
 const RUST_FAILED_TEST_PATTERN = /^test (.+) \.\.\. FAILED$/gmu;
+const ESLINT_ERROR = /^\s+\d+:\d+\s+error\s/u;
+const VERIFIER_FAILURE = /(?:verification|contract) failed:$/u;
 const diagnosticRoots = [];
 const files = [];
+let headlinePath = null;
 
 for (let index = 2; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -16,6 +19,10 @@ for (let index = 2; index < process.argv.length; index += 1) {
     const root = process.argv[index + 1];
     if (!root) throw new Error("--diagnostics requires a directory");
     diagnosticRoots.push(root);
+    index += 1;
+  } else if (argument === "--headline") {
+    headlinePath = process.argv[index + 1];
+    if (!headlinePath) throw new Error("--headline requires a file path");
     index += 1;
   } else {
     files.push(argument);
@@ -82,7 +89,19 @@ function parseDiagnosticLine(line) {
 
 const allText = logs.map(({ text }) => text).join("\n");
 const failure = findFailure(logs, contexts);
-const reproduction = focusedReproduction(failure.step, allText, contexts);
+const reproduction = focusedReproduction(failure.step, allText, contexts, failure.line);
+
+// One line for the CI annotation that closes a failed run: what failed and the
+// smallest local command that reproduces it.
+if (headlinePath) {
+  const what =
+    failure.line ||
+    (failure.step === "qualification"
+      ? "Qualification failed before a recognized check reported its failing step"
+      : `Qualification failed during ${failure.step}`);
+  const sentence = what.replace(/\s+/gu, " ").replace(/\.$/u, "");
+  await writeFile(headlinePath, `${sentence}. Reproduce with: ${reproduction.command}\n`);
+}
 
 console.log("## ostudy qualification failure");
 console.log();
@@ -176,7 +195,7 @@ function findFailure(logEntries, diagnosticContexts) {
   };
 }
 
-function focusedReproduction(step, text, diagnosticContexts) {
+function focusedReproduction(step, text, diagnosticContexts, failureLine = "") {
   const context = preferredContext(diagnosticContexts, step);
   const lower = step.toLowerCase();
   const filter = context?.replayFilter ?? recommendedFilter(lower);
@@ -212,19 +231,27 @@ function focusedReproduction(step, text, diagnosticContexts) {
     [/external file/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib external_file_ -- --nocapture"],
     [/document domain/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_ -- --nocapture"],
     [/pdf extraction/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_ -- --nocapture"],
-    [/latest-schema/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_baseline_is_idempotent_and_matches_manifest -- --exact --nocapture"],
+    [/latest-schema/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable -- --exact --nocapture"],
     [/migration immutability/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_migration_checksum_and_future_version_are_enforced -- --exact --nocapture"],
     [/frontend production build/u, "pnpm run build"],
     [/standalone tauri/u, "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked"],
     [/webdriver/u, "./scripts/smoke-native.sh"],
     [/android.*smoke/u, "./scripts/android-emulator-smoke.sh"],
     [/android/u, "./scripts/android-test.sh"],
-    [/environment and repository|behavior-test policy|frozen javascript|frontend type|rust formatting/u, "./scripts/check-static.sh"],
+    [/react hook correctness/u, "pnpm run lint"],
+    [/shell and python correctness/u, "bash ./scripts/lint-scripts.sh"],
+    [/environment and repository|behavior-test policy|frozen javascript|frontend type|rust formatting|pinned script|repository script unit tests/u, "./scripts/check-static.sh"],
   ];
   for (const [pattern, command] of mappings) {
     if (pattern.test(lower)) return { filter, command };
   }
-  return { filter, command: context?.replayCommand ?? "./scripts/check.sh" };
+  // Without a captured context, rerun the wrapper whose banner reported the failure.
+  const wrapper = failureLine.startsWith("STATIC CHECK FAILED")
+    ? "./scripts/check-static.sh"
+    : failureLine.startsWith("FAST CHECK FAILED")
+      ? "./scripts/check-fast.sh"
+      : "./scripts/check.sh";
+  return { filter, command: context?.replayCommand ?? wrapper };
 }
 
 function recommendedFilter(lowerStep) {
@@ -358,11 +385,22 @@ function renderLogHighlights(logEntries) {
         /\.\.\. FAILED$/u.test(line) ||
         /test result: FAILED/u.test(line) ||
         /^ERROR:/u.test(line) ||
-        /Android smoke case failed|Native smoke test failed|Traceback \(most recent call last\)/u.test(line);
+        /^FAIL: /u.test(line) ||
+        /Android smoke case failed|Native smoke test failed|Traceback \(most recent call last\)/u.test(line) ||
+        // Repository verifiers, ESLint, pnpm, Gradle/Kotlin, ShellCheck, Ruff and Vite.
+        VERIFIER_FAILURE.test(line) ||
+        ESLINT_ERROR.test(line) ||
+        /\bERR_PNPM_[A-Z_]+/u.test(line) ||
+        /^\* What went wrong:/u.test(line) ||
+        /^e: /u.test(line) ||
+        /^In \S+ line \d+:$/u.test(line) ||
+        /^\S+\.py:\d+:\d+: /u.test(line) ||
+        /^error during build:/u.test(line);
 
       if (!trigger) continue;
-      const before = /^error(?:\[[^\]]+\])?:/u.test(line) ? 1 : 0;
-      const after = /^Diff in /u.test(line) ? 10 : 5;
+      // ESLint prints the file path on the line before its first error.
+      const before = /^error(?:\[[^\]]+\])?:/u.test(line) || ESLINT_ERROR.test(line) ? 1 : 0;
+      const after = /^Diff in /u.test(line) || VERIFIER_FAILURE.test(line) ? 10 : 5;
       for (
         let cursor = Math.max(0, index - before);
         cursor <= Math.min(lines.length - 1, index + after);
@@ -383,7 +421,9 @@ function renderLogHighlights(logEntries) {
 
   if (highlights.length === 0) {
     console.log();
-    console.log("No concise wrapper-log pattern was detected. Inspect the uploaded bounded evidence.");
+    console.log(
+      "No concise wrapper-log pattern was detected. Read the failing step's bounded failure tail above; the full logs are kept on the self-hosted runner.",
+    );
     return;
   }
 
