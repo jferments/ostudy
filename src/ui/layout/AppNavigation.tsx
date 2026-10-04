@@ -40,7 +40,7 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         aria-label="Main navigation"
         data-tour-anchor="app.navigation"
         data-slot="bottom-navigation"
-        className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1.5 tw:pr-[max(0.25rem,var(--safe-right))] tw:pb-[max(0.5rem,var(--safe-bottom))] tw:pl-[max(0.25rem,var(--safe-left))]"
+        className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-(--ostudy-layer-chrome) tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1.5 tw:pr-[max(0.25rem,var(--safe-right))] tw:pb-[max(0.5rem,var(--safe-bottom))] tw:pl-[max(0.25rem,var(--safe-left))]"
       >
         <SidebarMenu className="tw:grid tw:grid-cols-[1.1fr_1fr_0.8fr_0.75fr_1fr] tw:gap-0">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
       </nav>

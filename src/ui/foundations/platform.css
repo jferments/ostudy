@@ -28,16 +28,21 @@
     animation-iteration-count: 1 !important;
   }
 
-  @media (max-width: 760px) {
-    :root {
+  /* Compact layout (see viewport-variants.css). */
+  :root {
+    @variant compact {
       --touch-target-min: max(48px, 3rem);
     }
+  }
 
-    body {
+  body {
+    @variant compact {
       overflow: auto;
     }
+  }
 
-    :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+  :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+    @variant compact {
       visibility: hidden;
       pointer-events: none;
     }

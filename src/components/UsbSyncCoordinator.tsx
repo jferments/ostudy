@@ -173,7 +173,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
       as="aside"
       aria-live="polite"
       title="Receiving USB sync"
-      className="tw:fixed tw:right-4 tw:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+5.5rem)] tw:z-[650] tw:w-[calc(100vw-2rem)] tw:max-w-sm tw:shadow-overlay"
+      className="tw:fixed tw:right-4 tw:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+5.5rem)] tw:z-(--ostudy-layer-floating) tw:w-[calc(100vw-2rem)] tw:max-w-sm tw:shadow-overlay"
     >
       <Progress
         value={progress?.transferredBytes ?? null}

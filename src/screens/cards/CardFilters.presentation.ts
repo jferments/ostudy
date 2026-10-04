@@ -4,7 +4,7 @@ const styles = {
   "primaryBar": "tw:grid tw:min-w-0 tw:gap-3 tw:p-4 tw:items-end tw:lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
   "searchField": "tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium",
   "sortField": "tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium",
-  "searchControl": "tw:relative tw:flex tw:min-w-0 tw:items-center tw:[&>svg]:absolute tw:[&>svg]:left-3 tw:[&>svg]:z-10 tw:[&>svg]:pointer-events-none tw:[&>svg]:text-muted-foreground tw:[&_input]:pl-10",
+  "searchControl": "tw:relative tw:flex tw:min-w-0 tw:items-center tw:[&>svg]:absolute tw:[&>svg]:left-3 tw:[&>svg]:z-(--ostudy-layer-raised) tw:[&>svg]:pointer-events-none tw:[&>svg]:text-muted-foreground tw:[&_input]:pl-10",
   "scopeButton": "tw:justify-start tw:[&_span]:truncate",
   "filterButton": "tw:gap-2",
   "filterCount": "tw:grid tw:size-5 tw:place-items-center tw:rounded-full tw:bg-primary tw:text-caption tw:text-primary-foreground",

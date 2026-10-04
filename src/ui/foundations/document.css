@@ -6,9 +6,12 @@
     --card-font-family: "IBM Plex Sans", var(--ostudy-font-family-system);
   }
 
+  /* The interface scale sets the root size, so every rem-based size follows it. Media
+   * queries resolve rem against the initial font size, so breakpoints do not move. */
   html {
     background: var(--ostudy-color-canvas);
     font-family: var(--ui-font-family);
+    font-size: calc(100% * var(--ui-scale));
   }
 
   body {
@@ -17,7 +20,7 @@
     background: var(--ostudy-color-canvas);
     color: var(--ostudy-color-text-primary);
     font-family: var(--ui-font-family);
-    font-size: calc(16px * var(--ui-scale));
+    font-size: 1rem;
     font-weight: var(--ostudy-font-weight-regular);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;

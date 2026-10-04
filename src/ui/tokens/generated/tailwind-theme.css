@@ -96,6 +96,10 @@
   --tracking-normal: var(--ostudy-font-letter-spacing-normal);
   --tracking-tight: var(--ostudy-font-letter-spacing-tight);
   --tracking-tighter: var(--ostudy-font-letter-spacing-tighter);
+  --shadow-sm: var(--ostudy-shadow-level-1);
+  --shadow-md: var(--ostudy-shadow-level-2);
+  --shadow-lg: var(--ostudy-shadow-level-4);
+  --shadow-xl: var(--ostudy-shadow-level-5);
   --shadow-panel: var(--ostudy-shadow-level-1);
   --shadow-overlay: var(--ostudy-shadow-level-3);
   --shadow-focus: var(--ostudy-shadow-focus);

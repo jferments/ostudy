@@ -7,7 +7,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { cn } from "../../internal/cn";
 
 export function Sidebar({ className, ...props }: ComponentProps<"aside">) {
-  return <aside data-slot="sidebar" className={cn("tw:relative tw:z-10 tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:bg-sidebar tw:text-sidebar-foreground", className)} {...props} />;
+  return <aside data-slot="sidebar" className={cn("tw:relative tw:z-(--ostudy-layer-raised) tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:bg-sidebar tw:text-sidebar-foreground", className)} {...props} />;
 }
 
 export function SidebarHeader({ className, ...props }: ComponentProps<"div">) {

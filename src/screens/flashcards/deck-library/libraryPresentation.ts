@@ -25,5 +25,5 @@ export const libraryPresentation = {
   folderActions: "tw:flex tw:min-w-0 tw:flex-wrap tw:justify-end tw:gap-1 tw:@max-[620px]/deck-library:col-span-full",
   folderEmpty: "tw:grid tw:min-h-24 tw:place-content-center tw:justify-items-center tw:gap-2 tw:rounded-lg tw:border tw:border-dashed tw:border-border tw:p-4 tw:text-small tw:text-muted-foreground tw:[&_p]:m-0 tw:[&_[data-artwork-slot]]:max-w-24",
   form: "tw:grid tw:min-w-0 tw:gap-5 tw:p-6 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-small tw:[&>label]:font-medium tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground",
-  formActions: "tw:flex tw:flex-wrap tw:justify-end tw:gap-3 tw:pt-2 tw:max-[760px]:[&>button]:flex-1",
+  formActions: "tw:flex tw:flex-wrap tw:justify-end tw:gap-3 tw:pt-2 tw:compact:[&>button]:flex-1",
 } as const;

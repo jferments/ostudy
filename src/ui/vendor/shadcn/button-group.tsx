@@ -14,7 +14,7 @@ export function ButtonGroup({
       data-slot="button-group"
       data-orientation={orientation}
       className={cn(
-        "tw:flex tw:w-fit tw:items-stretch tw:[&>*:focus-visible]:relative tw:[&>*:focus-visible]:z-10",
+        "tw:flex tw:w-fit tw:items-stretch tw:[&>*:focus-visible]:relative tw:[&>*:focus-visible]:z-(--ostudy-layer-focus)",
         orientation === "horizontal"
           ? "tw:[&>[data-slot=button]:not(:first-child)]:rounded-l-none tw:[&>[data-slot=button]:not(:last-child)]:rounded-r-none tw:[&>[data-slot=button]+[data-slot=button]]:-ml-px"
           : "tw:flex-col tw:[&>[data-slot=button]:not(:first-child)]:rounded-t-none tw:[&>[data-slot=button]:not(:last-child)]:rounded-b-none tw:[&>[data-slot=button]+[data-slot=button]]:-mt-px",

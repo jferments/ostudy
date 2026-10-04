@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { SelectionToolbar } from "./SelectionToolbar";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 
 const originalMatchMedia = window.matchMedia;
 
@@ -12,11 +13,7 @@ afterEach(() => {
 
 function setLayout(mode: "wide" | "medium" | "compact") {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("760")
-      ? mode === "compact"
-      : query.includes("1180")
-        ? mode !== "wide"
-        : false,
+    matches: matchesLayoutQuery(query, layoutWidths[mode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -84,7 +81,8 @@ describe("SelectionToolbar", () => {
     expect(layer).toBeTruthy();
     expect(layer.className).toContain("tw:h-0");
     expect(layer.className).toContain("tw:overflow-visible");
-    expect(screen.getByRole("region", { name: "Selected deck actions" }).className).toContain("tw:z-30");
+    // The overlay floats on the token layer scale, above other sticky content.
+    expect(screen.getByRole("region", { name: "Selected deck actions" }).className).toMatch(/tw:z-\S*--ostudy-layer-sticky\)\+1/u);
   });
 
   it("renders nothing when no items are selected", () => {

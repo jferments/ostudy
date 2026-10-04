@@ -7,6 +7,7 @@ import * as studyGuideIpc from "../../ipc/studyGuides";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "../DocumentsScreen";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 
 vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../../ipc/documentArtifactProgress", () => ({
@@ -43,7 +44,7 @@ const originalMatchMedia = window.matchMedia;
 
 function setCompactLayout(compact: boolean): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: compact && (query === "(max-width: 760px)" || query === "(max-width: 1180px)"),
+    matches: matchesLayoutQuery(query, layoutWidths[compact ? "compact" : "wide"]),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),

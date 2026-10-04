@@ -304,37 +304,82 @@
     }
   },
   "layer": {
+    "$description": "The one stacking order, lowest first. Layers up to drag apply inside the application frame, which sits on the base layer, so every in-app layer stays below body-level portals (dialog and above). Nested dialogs stack inside the dialog band at +2 per depth.",
+    "behind": {
+      "$type": "number",
+      "$value": "-1",
+      "$description": "Decorative layers behind their own isolated component."
+    },
     "base": {
       "$type": "number",
-      "$value": "0"
+      "$value": "0",
+      "$description": "The application frame and ordinary content."
     },
     "selected": {
       "$type": "number",
-      "$value": "1"
+      "$value": "1",
+      "$description": "A selected item above its siblings."
     },
     "focus": {
       "$type": "number",
-      "$value": "2"
+      "$value": "2",
+      "$description": "A focused item above selected siblings."
+    },
+    "raised": {
+      "$type": "number",
+      "$value": "10",
+      "$description": "Local overlap inside a component: icons over inputs, drawn connectors, drop indicators."
     },
     "sticky": {
       "$type": "number",
-      "$value": "100"
+      "$value": "20",
+      "$description": "Sticky headers and toolbars in a scroll area; +1 floats a toolbar above other sticky content."
     },
-    "popover": {
+    "chrome": {
       "$type": "number",
-      "$value": "500"
+      "$value": "30",
+      "$description": "Fixed app bars and the compact bottom navigation."
+    },
+    "floating": {
+      "$type": "number",
+      "$value": "40",
+      "$description": "Non-modal floating panels such as USB sync."
+    },
+    "drag": {
+      "$type": "number",
+      "$value": "50",
+      "$description": "Pointer drag previews and dragged items."
     },
     "dialog": {
       "$type": "number",
-      "$value": "1000"
+      "$value": "100",
+      "$description": "Modal backdrops and dialogs; nested dialogs add 2 per depth."
+    },
+    "popover": {
+      "$type": "number",
+      "$value": "200",
+      "$description": "Menus, select lists and tooltips, above the dialogs that open them."
     },
     "toast": {
       "$type": "number",
-      "$value": "1200"
+      "$value": "300",
+      "$description": "Notifications."
     },
     "effects": {
       "$type": "number",
-      "$value": "1300"
+      "$value": "400",
+      "$description": "The guided-tour spotlight and celebrations."
+    }
+  },
+  "breakpoint": {
+    "$description": "Viewport widths where the medium and wide layouts begin. Generated into viewport.ts media queries and Tailwind compact/medium/wide variants, not CSS variables.",
+    "medium": {
+      "$type": "dimension",
+      "$value": "760px"
+    },
+    "wide": {
+      "$type": "dimension",
+      "$value": "1180px"
     }
   }
 }

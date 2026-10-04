@@ -79,7 +79,7 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
             </div> : null}
             {result?.rationale ? <div className="tw:text-small"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
           </QuestionTile>
-          <div className="tw:z-10 tw:flex tw:items-center tw:justify-center">
+          <div className="tw:z-(--ostudy-layer-raised) tw:flex tw:items-center tw:justify-center">
             {linked && !evaluation ? <Button variant="text" size="small" disabled={disabled}
               aria-label={`Unlink ${extractRichDocumentText(item.content) || `pair ${index + 1}`}`} title="Unlink pair"
               onClick={() => { setLayout({ seed, order: rows }); onChange(assignments.filter((entry) => entry.itemId !== item.id)); setSelection(null); }}>
@@ -141,7 +141,7 @@ function MatchingCorrections({ root, evaluation }: { root: RefObject<HTMLDivElem
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [root, evaluation]);
-  return <svg className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-10 tw:h-full tw:w-full tw:overflow-visible"
+  return <svg className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-(--ostudy-layer-raised) tw:h-full tw:w-full tw:overflow-visible"
     aria-hidden="true" focusable="false">
     <defs><marker id={marker} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" className="tw:fill-success" />

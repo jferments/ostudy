@@ -3,7 +3,7 @@ const styles = {
   deckCardSearch: "tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:data-[expanded=true]:flex-1 tw:data-[expanded=true]:basis-64 tw:data-[expanded=true]:max-w-md tw:[&_label]:min-w-0 tw:[&_label]:flex-1 tw:max-[560px]:data-[expanded=true]:basis-full",
   organizedCardMain: "tw:grid tw:min-w-0 tw:h-auto tw:justify-items-start tw:justify-start tw:gap-1.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-3 tw:text-start tw:font-normal tw:whitespace-normal tw:shadow-none tw:hover:bg-transparent",
   cardBrowserHeading: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-4 tw:py-3 tw:[&_h2]:m-0 tw:[&_h2]:text-body tw:[&_h2]:font-medium",
-  organizedCardMeta: "tw:grid tw:min-w-0 tw:content-center tw:justify-items-end tw:gap-1 tw:px-3 tw:py-2.5 tw:text-caption tw:text-muted-foreground tw:max-[760px]:col-start-2 tw:max-[760px]:justify-items-start tw:max-[760px]:pt-0",
+  organizedCardMeta: "tw:grid tw:min-w-0 tw:content-center tw:justify-items-end tw:gap-1 tw:px-3 tw:py-2.5 tw:text-caption tw:text-muted-foreground tw:compact:col-start-2 tw:compact:justify-items-start tw:compact:pt-0",
   cardListingLine: "tw:grid tw:min-w-0 tw:grid-cols-[1.5rem_minmax(0,1fr)] tw:items-baseline tw:gap-2 tw:[&>strong]:truncate tw:[&>strong]:text-small tw:[&>strong]:font-medium",
   cardLibrarySummary: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-muted/25 tw:px-4 tw:py-2.5",
   screenHeader: "tw:flex tw:items-center tw:justify-between tw:gap-4 tw:py-2 tw:[&_h1]:m-0 tw:[&_h1]:text-section tw:[&_h1]:font-semibold",
@@ -22,7 +22,7 @@ const styles = {
   loadMoreCards: "tw:mx-auto tw:my-3 tw:flex",
   organizedCardList: "tw:grid tw:min-w-0",
   cardBrowserWorkspace: "tw:min-w-0 tw:[&_[role=row]>div>small]:hidden",
-  bulkEntryHeader: "tw:sticky tw:top-0 tw:z-10 tw:grid tw:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_2.5rem] tw:gap-3 tw:bg-muted/60 tw:p-2.5 tw:text-caption tw:font-medium tw:text-muted-foreground tw:max-[920px]:hidden",
+  bulkEntryHeader: "tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:grid tw:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_2.5rem] tw:gap-3 tw:bg-muted/60 tw:p-2.5 tw:text-caption tw:font-medium tw:text-muted-foreground tw:max-[920px]:hidden",
   bulkEntryRow: "tw:grid tw:min-w-0 tw:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_2.5rem] tw:items-start tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:p-2.5 tw:[&_label]:min-w-0 tw:max-[920px]:grid-cols-[minmax(0,1fr)_2.5rem] tw:max-[920px]:[&_label]:col-start-1 tw:max-[920px]:[&_button]:col-start-2 tw:max-[920px]:[&_button]:row-start-1",
   bulkEntryControls: "tw:grid tw:min-w-0 tw:gap-3 tw:md:grid-cols-2 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small tw:[&_p]:text-small tw:[&_p]:text-muted-foreground",
   bulkEntryTable: "tw:grid tw:min-w-0 tw:max-h-[55vh] tw:overflow-y-auto tw:rounded-lg tw:ring-1 tw:ring-border",
@@ -37,6 +37,6 @@ const styles = {
   practiceResultOption: "tw:grid tw:gap-2 tw:rounded-lg tw:bg-muted/30 tw:p-3 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small tw:[&_p]:m-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground tw:[&_h3]:m-0 tw:[&_h3]:text-small tw:[&_h3]:font-medium tw:[&_button]:justify-self-start",
   scheduleActionOptions: "tw:my-4 tw:grid tw:gap-3 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small",
   mutedCopy: "tw:text-small tw:text-muted-foreground",
-  organizedCardRow: "tw:grid tw:min-w-0 tw:grid-cols-[3rem_minmax(0,1fr)_auto] tw:border-0 tw:border-b tw:border-solid tw:border-border tw:last:border-b-0 tw:hover:bg-muted/30 tw:max-[760px]:grid-cols-[3rem_minmax(0,1fr)]",
+  organizedCardRow: "tw:grid tw:min-w-0 tw:grid-cols-[3rem_minmax(0,1fr)_auto] tw:border-0 tw:border-b tw:border-solid tw:border-border tw:last:border-b-0 tw:hover:bg-muted/30 tw:compact:grid-cols-[3rem_minmax(0,1fr)]",
 } as const;
 export default styles;

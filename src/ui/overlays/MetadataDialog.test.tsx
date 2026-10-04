@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { OverlayProvider } from "./OverlayProvider";
 import { InfoButton, MetadataItem, MetadataList } from "./MetadataDialog";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 
 const originalMatchMedia = window.matchMedia;
 afterEach(() => {
@@ -14,7 +15,7 @@ afterEach(() => {
 
 function renderInfo(mode: "wide" | "compact" = "wide") {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("760") ? mode === "compact" : query.includes("1180") ? mode === "compact" : false,
+    matches: matchesLayoutQuery(query, layoutWidths[mode]),
     media: query,
     addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
   }));

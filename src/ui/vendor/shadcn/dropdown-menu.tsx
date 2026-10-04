@@ -4,7 +4,7 @@ import { cn } from "../../internal/cn";
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
 export function DropdownMenuContent({ className, ...props }: Omit<Menu.Popup.Props, "className"> & { className?: string }) {
-  return <Menu.Portal><Menu.Positioner side="bottom" align="end" sideOffset={6} className="tw:isolate tw:z-[500] tw:outline-none">
+  return <Menu.Portal><Menu.Positioner side="bottom" align="end" sideOffset={6} className="tw:isolate tw:z-(--ostudy-layer-popover) tw:outline-none">
     <Menu.Popup {...props} data-slot="dropdown-menu-content" className={cn("tw:max-h-(--available-height) tw:min-w-52 tw:max-w-[calc(100vw-2rem)] tw:overflow-auto tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-popover tw:p-1.5 tw:font-sans tw:text-popover-foreground tw:shadow-overlay tw:outline-none", className)} />
   </Menu.Positioner></Menu.Portal>;
 }

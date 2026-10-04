@@ -1,3 +1,5 @@
+@reference "../ui/tokens/generated/viewport-variants.css";
+
 @layer components {
   .view {
     min-width: 0;
@@ -186,12 +188,8 @@
 
   .inlinePlaceholder { margin-inline: 0.12rem; vertical-align: baseline; }
 
-  @media (max-width: 760px) {
-    .content table { width: max-content; min-width: 100%; }
-    .content [data-indent="4"],
-    .content [data-indent="5"],
-    .content [data-indent="6"] { margin-left: 3rem; }
-  }
+  .content table { @variant compact { width: max-content; min-width: 100%; } }
+  .content :is([data-indent="4"], [data-indent="5"], [data-indent="6"]) { @variant compact { margin-left: 3rem; } }
 
   @media (forced-colors: active) {
     .content [data-task-item]::before,

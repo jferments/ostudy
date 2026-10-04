@@ -6,7 +6,7 @@ export const practiceStyles = {
   practiceSessionHeader: "tw:mb-3 tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3",
   practiceSessionTitle: "tw:min-w-0 tw:flex-1 tw:[&_h1]:mt-0.5 tw:[&_h1]:mb-0 tw:[&_h1]:break-words tw:[&_h1]:text-section tw:[&_h1]:font-semibold tw:[&_h1]:tracking-tight",
   eyebrow: "tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
-  practiceHeaderActions: "tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-1.5 tw:max-[760px]:w-full tw:max-[760px]:justify-start",
+  practiceHeaderActions: "tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-1.5 tw:compact:w-full tw:compact:justify-start",
   practiceHeaderButton: "tw:whitespace-nowrap",
   practiceProgressTrack: "tw:mb-3 tw:shrink-0",
   practicePrimaryAction: "tw:flex tw:shrink-0 tw:justify-center tw:pt-3 tw:[&>button]:min-w-40",

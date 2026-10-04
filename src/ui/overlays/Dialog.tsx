@@ -89,7 +89,7 @@ export function InlineWorkspace({
 
   return (
     <section
-      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:bg-popover tw:text-popover-foreground tw:ring-1 tw:ring-border tw:max-[760px]:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:max-[760px]:rounded-lg tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
+      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:bg-popover tw:text-popover-foreground tw:ring-1 tw:ring-border tw:compact:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:compact:rounded-lg tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
       role="region"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
@@ -125,7 +125,7 @@ export function DialogActions({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("tw:flex tw:flex-wrap tw:justify-end tw:gap-2 tw:max-[760px]:flex-col-reverse tw:max-[760px]:[&>button]:w-full", className)}>{children}</div>;
+  return <div data-slot="dialog-actions" className={cn("tw:flex tw:flex-wrap tw:justify-end tw:gap-2 tw:compact:flex-col-reverse tw:compact:[&>button]:w-full", className)}>{children}</div>;
 }
 
 export function Sheet(props: Omit<DialogProps, "presentation">) {

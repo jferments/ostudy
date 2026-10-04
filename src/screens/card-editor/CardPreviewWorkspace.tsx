@@ -17,7 +17,7 @@ export function CardPreviewWorkspace({ title, onClose, children }: {
   }, []);
 
   return <PageScaffold width="wide" className="tw:max-w-6xl tw:pt-5" role="region" aria-label="Card preview">
-    <header ref={headerRef} className="tw:sticky tw:top-0 tw:z-20 tw:mb-5 tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-b tw:border-border tw:bg-background tw:py-3">
+    <header ref={headerRef} className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:mb-5 tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-b tw:border-border tw:bg-background tw:py-3">
       <div className="tw:min-w-0">
         <span className="tw:text-caption tw:font-medium tw:tracking-wide tw:text-muted-foreground">CARD PREVIEW</span>
         <h1 className="tw:m-0 tw:break-words tw:text-section tw:font-semibold">{title}</h1>

@@ -142,7 +142,7 @@ export function FormulaDialog({ session, onClose }: {
             tooltip={mobileRuntime ? false : keyboardVisible ? "Hide math keyboard" : "Show math keyboard"}
             disabled={!ready}
             aria-pressed={keyboardVisible}
-            className="tw:absolute tw:top-2 tw:right-2 tw:z-10"
+            className="tw:absolute tw:top-2 tw:right-2 tw:z-(--ostudy-layer-raised)"
             onPointerDown={(event) => event.preventDefault()}
             onClick={toggleMathKeyboard}
           />
