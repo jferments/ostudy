@@ -11,10 +11,6 @@
     "pressedScale": {
       "$type": "number",
       "$value": "0.975"
-    },
-    "specularOpacity": {
-      "$type": "number",
-      "$value": "0.16"
     }
   },
   "button": {
@@ -61,33 +57,9 @@
     "sheetDistance": {
       "$type": "dimension",
       "$value": "24px"
-    },
-    "parallaxBackground": {
-      "$type": "dimension",
-      "$value": "3px"
-    },
-    "parallaxMidground": {
-      "$type": "dimension",
-      "$value": "5px"
     }
   },
   "practiceCard": {
-    "radius": {
-      "$type": "dimension",
-      "$value": "{radius.xlarge}"
-    },
-    "stackOffsetX": {
-      "$type": "dimension",
-      "$value": "7px"
-    },
-    "stackOffsetY": {
-      "$type": "dimension",
-      "$value": "9px"
-    },
-    "stackRotation": {
-      "$type": "number",
-      "$value": "0.55"
-    },
     "progressHeight": {
       "$type": "dimension",
       "$value": "8px"

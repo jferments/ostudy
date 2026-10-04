@@ -34,7 +34,6 @@
   @media (prefers-reduced-motion: reduce) { @slot; }
 }
 @custom-variant no-hover (&:where([data-hover="unavailable"] *));
-@custom-variant simple-material (&:where([data-material="simple"] *));
 @custom-variant forced-contrast (&:where([data-contrast="forced"] *));
 
 @layer tokens {

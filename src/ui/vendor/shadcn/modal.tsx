@@ -70,7 +70,7 @@ export function ModalView({
         <Dialog.Backdrop
           data-slot="dialog-overlay"
           style={{ zIndex: 200 + depth * 10 }}
-          className="tw:fixed tw:inset-0 tw:bg-(--ostudy-color-overlay-scrim) tw:backdrop-blur-xs tw:simple-material:backdrop-blur-none tw:forced-colors:bg-[Canvas]"
+          className="tw:fixed tw:inset-0 tw:bg-(--ostudy-color-overlay-scrim) tw:forced-colors:bg-[Canvas]"
         />
         <div
           style={{ zIndex: 201 + depth * 10 }}

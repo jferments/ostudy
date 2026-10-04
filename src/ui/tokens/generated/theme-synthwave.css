@@ -6,9 +6,6 @@
     --ostudy-color-accent-secondary: #46E0FF;
     --ostudy-color-accent-soft: rgb(255 95 180 / 16%);
     --ostudy-color-accent-strong: var(--ostudy-color-text-accent);
-    --ostudy-color-ambient-primary: transparent;
-    --ostudy-color-ambient-secondary: transparent;
-    --ostudy-color-ambient-vignette: transparent;
     --ostudy-color-border-accent: var(--ostudy-color-accent-base);
     --ostudy-color-border-strong: #4F3B86;
     --ostudy-color-border-subtle: #33265A;
@@ -28,7 +25,6 @@
     --ostudy-color-confidence-on: #1A0820;
     --ostudy-color-focus-ring: var(--ostudy-color-accent-base);
     --ostudy-color-highlight: rgb(70 224 255 / 22%);
-    --ostudy-color-noise: transparent;
     --ostudy-color-overlay-scrim: rgb(5 3 14 / 73%);
     --ostudy-color-page: #EDE6F5;
     --ostudy-color-page-ink: #241A33;
@@ -71,11 +67,6 @@
     --ostudy-color-text-primary: #FCF3FF;
     --ostudy-color-text-secondary: #DDCCF2;
     --ostudy-glow-accent: 0 0 0 1px rgb(255 95 180 / 60%), 0 8px 28px rgb(255 95 180 / 35%);
-    --ostudy-material-blur-high: 28px;
-    --ostudy-material-blur-low: 10px;
-    --ostudy-material-blur-medium: 18px;
-    --ostudy-material-chrome-saturation: 1.18;
-    --ostudy-material-noise-opacity: 0.021;
     --ostudy-radius-button: var(--ostudy-radius-pill);
     --ostudy-radius-large: 20px;
     --ostudy-radius-medium: 14px;

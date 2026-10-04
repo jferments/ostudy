@@ -35,7 +35,7 @@ export function SelectionToolbar({
       aria-label={label}
       data-selection-toolbar="true"
       className={cn(
-        "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:bg-popover/95 tw:p-2 tw:ring-1 tw:ring-primary/30 tw:backdrop-blur-sm tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[Highlight]",
+        "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:bg-popover tw:p-2 tw:ring-1 tw:ring-primary/30 tw:forced-colors:border tw:forced-colors:border-solid tw:forced-colors:border-[Highlight]",
         overlay
           ? "tw:relative tw:z-30 tw:shadow-sm"
           : "tw:sticky tw:top-2 tw:z-20 tw:mb-3 tw:max-[760px]:top-auto tw:max-[760px]:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom))] tw:max-[760px]:items-stretch",

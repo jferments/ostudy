@@ -20,11 +20,11 @@ New installations use **IBM Plex Sans** for both default font choices. Older unt
 
 A custom font-family preference relies on a font installed on the device. It does not copy that font file into the library or make it portable to another device. Restore appearance defaults is not a reset of review history, backup configuration, or AI profiles.
 
-## Motion and materials
+## Motion
 
 Motion choices are **Follow system**, **Full motion**, **Reduced motion**, and **No nonessential motion**. Reduced/disabled motion removes nonessential spatial transitions, flips, parallax, and particle effects while preserving labels, progress, focus, and state changes.
 
-Material effects are independent: **Automatic**, **Rich materials**, and **Simple opaque materials**. Simpler materials reduce translucency/blur and retain hierarchy through borders and surfaces. Operating-system reduced-transparency or forced-colors needs take precedence over optional decoration.
+Every theme uses flat, opaque surfaces without blur, translucency or texture, so there is no separate material-effects setting. Hierarchy comes from borders, surfaces and shadows, which also suits operating-system reduced-transparency and forced-colors preferences.
 
 Do not interpret an animation as the authoritative signal that a review committed. The native result owns that fact; effects follow semantic events and may be disabled or unavailable.
 

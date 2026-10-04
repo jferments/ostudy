@@ -117,7 +117,7 @@ export function CommandBar({
       aria-label={label}
       className={cn(
         "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:rounded-lg tw:bg-muted/40 tw:p-2",
-        sticky && "tw:sticky tw:top-2 tw:z-20 tw:backdrop-blur-sm",
+        sticky && "tw:sticky tw:top-2 tw:z-20 tw:bg-muted",
         className,
       )}
     >

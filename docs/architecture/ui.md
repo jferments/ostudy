@@ -108,7 +108,7 @@ Interface/card font and scale preferences remain independent. Current React appe
 
 Wide/medium use a labeled sidebar and inset content; compact uses five bottom destinations and Settings in the app bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
 
-Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion/material/artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress; simplified materials preserve hierarchy without blur. Educational images and functional status/icons are not decorative artwork.
+Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion and artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress. Surfaces are flat and opaque in every theme, so nothing depends on blur or translucency; the stored material preference is kept for settings compatibility but is no longer shown or styled. Educational images and functional status/icons are not decorative artwork.
 
 ## Help, tutorials and feedback
 

@@ -269,24 +269,6 @@
         "$value": "{color.border.subtle}"
       }
     },
-    "ambient": {
-      "primary": {
-        "$type": "color",
-        "$value": "transparent"
-      },
-      "secondary": {
-        "$type": "color",
-        "$value": "transparent"
-      },
-      "vignette": {
-        "$type": "color",
-        "$value": "transparent"
-      }
-    },
-    "noise": {
-      "$type": "color",
-      "$value": "transparent"
-    },
     "progress": {
       "track": {
         "$type": "color",
@@ -324,30 +306,6 @@
     "button": {
       "$type": "dimension",
       "$value": "{radius.pill}"
-    }
-  },
-  "material": {
-    "blur": {
-      "low": {
-        "$type": "dimension",
-        "$value": "8px"
-      },
-      "medium": {
-        "$type": "dimension",
-        "$value": "16px"
-      },
-      "high": {
-        "$type": "dimension",
-        "$value": "24px"
-      }
-    },
-    "noiseOpacity": {
-      "$type": "number",
-      "$value": "0.018"
-    },
-    "chromeSaturation": {
-      "$type": "number",
-      "$value": "1.08"
     }
   },
   "shadow": {

@@ -96,7 +96,7 @@ export function InlineWorkspace({
       aria-busy={busy || undefined}
       data-inline-workspace="true"
     >
-      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-popover/95 tw:p-4 tw:backdrop-blur-sm tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
+      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-popover tw:p-4 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
         <div className="tw:min-w-0">
           <h2 id={titleId} className="tw:m-0 tw:text-lg tw:font-medium tw:wrap-anywhere">{title}</h2>
           {description ? <p id={descriptionId} className="tw:mt-1 tw:mb-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
