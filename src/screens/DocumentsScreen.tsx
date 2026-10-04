@@ -28,7 +28,8 @@ import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
-  onOpenDeck?: (deckId: string) => void;
+  /** Studies a collection live, as the decks filed in its subject. */
+  onStudyCollection?: (collectionId: string) => void;
   showToast: ShowToast;
   headerSupplement?: ReactNode;
 }
@@ -136,7 +137,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       <DocumentCollectionsWorkspace
         documents={documents}
         refreshDecks={props.refreshDecks}
-        onOpenDeck={props.onOpenDeck}
+        onStudyCollection={props.onStudyCollection}
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
       />

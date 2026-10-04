@@ -7,7 +7,6 @@ import type {
   SourceRangeInput,
 } from "../../ipc/collections";
 import type { DocumentSummary } from "../../ipc/documents";
-import { generationInstructionsError } from "../../ipc/generationInstructions";
 import type { StudyTargetArtifactStatus, StudyTargetBundleStatus } from "../../ipc/studyMaterials";
 import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
@@ -19,7 +18,6 @@ import { Progress } from "../../ui/primitives/Progress";
 import { Surface } from "../../ui/primitives/Surface";
 import { TextField } from "../../ui/primitives/TextField";
 import { hasDocumentFolderDrag, readDocumentFolderDrag } from "./documentFolderDrag";
-import { GenerationInstructionsField } from "./GenerationInstructionsField";
 import { useDocumentCollectionsController } from "./useDocumentCollectionsController";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
@@ -33,13 +31,13 @@ type CollectionDialog =
 export function DocumentCollectionsWorkspace({
   documents,
   refreshDecks,
-  onOpenDeck,
+  onStudyCollection,
   onOpenGuide,
   onContainedDocumentIdsChange,
 }: {
   documents: DocumentSummary[];
   refreshDecks?: () => Promise<unknown>;
-  onOpenDeck?: (deckId: string) => void;
+  onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
   onContainedDocumentIdsChange?: (documentIds: string[]) => void;
 }) {
@@ -143,7 +141,7 @@ export function DocumentCollectionsWorkspace({
           documents={documentById}
           mutationBusy={controller.busy}
           refreshDecks={refreshDecks}
-          onOpenDeck={onOpenDeck}
+          onStudyCollection={onStudyCollection}
           onOpenGuide={onOpenGuide}
           onRename={() => {
             setDialog({ kind: "rename", folder, name: folder.name });
@@ -190,7 +188,7 @@ function CollectionPanel({
   documents,
   mutationBusy,
   refreshDecks,
-  onOpenDeck,
+  onStudyCollection,
   onOpenGuide,
   onRename,
   onDelete,
@@ -205,7 +203,7 @@ function CollectionPanel({
   documents: Map<string, DocumentSummary>;
   mutationBusy: boolean;
   refreshDecks?: () => Promise<unknown>;
-  onOpenDeck?: (deckId: string) => void;
+  onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
   onRename: () => void;
   onDelete: () => void;
@@ -220,7 +218,6 @@ function CollectionPanel({
     changed: refreshDecks,
     refreshKey: organization.revision,
   });
-  const [generationInstructions, setGenerationInstructions] = useState("");
   const memberships = organization.memberships.filter((entry) => entry.collectionId === folder.id);
 
   return (
@@ -245,12 +242,9 @@ function CollectionPanel({
         busy={bundle.busy}
         canceling={bundle.canceling}
         error={bundle.error}
-        generationInstructions={generationInstructions}
-        pendingGenerationInstructions={bundle.pendingGenerationInstructions}
-        onGenerationInstructionsChange={setGenerationInstructions}
-        onRun={() => void bundle.run(generationInstructions)}
+        onRun={() => void bundle.run()}
         onStop={() => void bundle.stop()}
-        onOpenDeck={onOpenDeck}
+        onStudy={onStudyCollection}
         onOpenGuide={onOpenGuide}
       />
       <FolderDropZone
@@ -320,12 +314,9 @@ function CollectionStudyMaterials({
   busy,
   canceling,
   error,
-  generationInstructions,
-  pendingGenerationInstructions,
-  onGenerationInstructionsChange,
   onRun,
   onStop,
-  onOpenDeck,
+  onStudy,
   onOpenGuide,
 }: {
   status: StudyTargetBundleStatus | null;
@@ -333,17 +324,12 @@ function CollectionStudyMaterials({
   busy: boolean;
   canceling: boolean;
   error: string | null;
-  generationInstructions: string;
-  pendingGenerationInstructions: string | null;
-  onGenerationInstructionsChange: (value: string) => void;
   onRun: () => void;
   onStop: () => void;
-  onOpenDeck?: (deckId: string) => void;
+  onStudy?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
 }) {
   const action = bundleActionLabel(status, busy);
-  const guidanceInvalid = generationInstructionsError(generationInstructions) !== null;
-  const guidanceLocked = pendingGenerationInstructions !== null;
   return (
     <Surface as="section" className="tw:grid tw:gap-3 tw:bg-muted/20 tw:p-3" aria-label="Collection study materials">
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
@@ -352,7 +338,7 @@ function CollectionStudyMaterials({
           <span className="tw:text-sm tw:text-muted-foreground">
             {loading ? "Checking saved artifacts…"
               : status?.sourceChanged ? "Sources changed · update available"
-                : "One ordinary flashcard deck and one collection study guide."}
+                : "Flashcards from this collection's decks and one collection study guide."}
           </span>
         </div>
         {busy ? (
@@ -370,35 +356,18 @@ function CollectionStudyMaterials({
           <Button
             size="small"
             variant={status ? "secondary" : "primary"}
-            disabled={loading || guidanceInvalid}
+            disabled={loading}
             onClick={onRun}
           >
             {action}
           </Button>
         )}
       </div>
-      <GenerationInstructionsField
-        value={generationInstructions}
-        onChange={onGenerationInstructionsChange}
-        disabled={busy || guidanceLocked}
-        compact
-        label="Flashcard instructions (optional)"
-      />
-      <p className="tw:m-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">
-        Collection guidance prioritizes eligible, already-grounded source flashcards for this
-        bundle. It never treats the prompt as source evidence and never silently removes existing
-        reviewed collection cards.
-      </p>
-      {guidanceLocked && !busy ? (
-        <InlineNotice kind="info">
-          Retry uses the exact flashcard instructions captured by the interrupted request. Finish
-          or cancel that request before changing its intent.
-        </InlineNotice>
-      ) : null}
       {busy ? <CollectionBundleProgress status={status} /> : null}
       <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-sm" aria-live="polite">
-        <ArtifactStatus label="Flashcards" artifact={status?.flashcards ?? null} openLabel="Open Flashcards deck"
-          onOpen={status?.deckId && onOpenDeck ? () => onOpenDeck(status.deckId as string) : undefined} />
+        <ArtifactStatus label="Flashcards" artifact={status?.flashcards ?? null} openLabel="Study collection flashcards"
+          onOpen={status?.flashcards.state === "succeeded" && status.target.kind === "collection" && onStudy
+            ? () => onStudy(status.target.id) : undefined} />
         <ArtifactStatus label="Study Guide" artifact={status?.studyGuide ?? null} openLabel="Open collection study guide"
           onOpen={status?.guideId && status.target.kind === "collection" && onOpenGuide
             ? () => onOpenGuide(status.target.id, status.title) : undefined} />

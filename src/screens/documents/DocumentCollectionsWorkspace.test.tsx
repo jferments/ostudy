@@ -71,7 +71,8 @@ const bundleStatus: studyMaterials.StudyTargetBundleStatus = {
   revision: 2,
   sourceSnapshotId: "s".repeat(64),
   sourceChanged: false,
-  deckId: "9".repeat(32),
+  // A collection's flashcards are its subject's decks: no single deck.
+  deckId: null,
   guideId: "8".repeat(32),
   guideRevision: 1,
   latestOperationId: "f".repeat(32),
@@ -79,7 +80,7 @@ const bundleStatus: studyMaterials.StudyTargetBundleStatus = {
   flashcards: {
     kind: "flashcards",
     state: "succeeded",
-    artifactId: "9".repeat(32),
+    artifactId: folderId,
     totalUnits: 1,
     completedUnits: 1,
     safeErrorCode: "",
@@ -163,11 +164,11 @@ createdAt: 2, updatedAt: 2, revision: 1,
 
 function renderWorkspace({
   refreshDecks = vi.fn().mockResolvedValue([]),
-  onOpenDeck = vi.fn(),
+  onStudyCollection = vi.fn(),
   onOpenGuide = vi.fn(),
 }: {
   refreshDecks?: () => Promise<unknown>;
-  onOpenDeck?: (deckId: string) => void;
+  onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
 } = {}) {
   render(
@@ -175,12 +176,12 @@ function renderWorkspace({
       <DocumentCollectionsWorkspace
         documents={[document]}
         refreshDecks={refreshDecks}
-        onOpenDeck={onOpenDeck}
+        onStudyCollection={onStudyCollection}
         onOpenGuide={onOpenGuide}
       />
     </OverlayProvider>,
   );
-  return { refreshDecks, onOpenDeck, onOpenGuide };
+  return { refreshDecks, onStudyCollection, onOpenGuide };
 }
 
 describe("Document collections workspace", () => {
@@ -326,11 +327,11 @@ describe("Document collections workspace", () => {
     });
   });
 
-  it("creates one coherent bundle and opens its ordinary flashcard deck from compact status", async () => {
+  it("creates the study materials and studies the collection's decks live from compact status", async () => {
     const refreshDecks = vi.fn().mockResolvedValue([]);
-    const onOpenDeck = vi.fn();
+    const onStudyCollection = vi.fn();
     const onOpenGuide = vi.fn();
-    renderWorkspace({ refreshDecks, onOpenDeck, onOpenGuide });
+    renderWorkspace({ refreshDecks, onStudyCollection, onOpenGuide });
 
     await screen.findByRole("heading", { name: "Week 1" });
     fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
@@ -347,43 +348,23 @@ describe("Document collections workspace", () => {
       });
     });
     expect(refreshDecks).toHaveBeenCalledTimes(1);
-    const open = await screen.findByRole("button", { name: "Open Flashcards deck" });
-    expect(open.textContent).toContain("Ready");
-    fireEvent.click(open);
-    expect(onOpenDeck).toHaveBeenCalledWith("9".repeat(32));
+    const study = await screen.findByRole("button", { name: "Study collection flashcards" });
+    expect(study.textContent).toContain("Ready");
+    fireEvent.click(study);
+    expect(onStudyCollection).toHaveBeenCalledWith(folderId);
     const openGuide = screen.getByRole("button", { name: "Open collection study guide" });
     expect(openGuide.textContent).toContain("Ready");
     fireEvent.click(openGuide);
     expect(onOpenGuide).toHaveBeenCalledWith(folderId, "Week 1");
   });
 
-  it("captures optional collection flashcard guidance in the durable bundle request", async () => {
+  it("offers no flashcard instructions, because a collection's flashcards are its decks", async () => {
     renderWorkspace();
 
     await screen.findByRole("heading", { name: "Week 1" });
-    fireEvent.click(screen.getByRole("button", {
-      name: (name) => name.startsWith("Flashcard instructions (optional)"),
-    }));
-    fireEvent.change(screen.getByLabelText("Flashcard instructions (optional)"), {
-      target: {
-        value:
-          "  Create cards for each cranial nerve, emphasizing nursing assessment tests.  ",
-      },
-    });
-    const create = screen.getByRole("button", { name: "Create study materials" }) as HTMLButtonElement;
-    await waitFor(() => expect(create.disabled).toBe(false));
-    fireEvent.click(create);
-
-    await waitFor(() => {
-      expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
-        operationId: "f".repeat(32),
-        target: { kind: "collection", id: folderId },
-        generationInstructions:
-          "Create cards for each cranial nerve, emphasizing nursing assessment tests.",
-        outputPolicy: { flashcards: true, studyGuide: true },
-        recreateArtifacts: [],
-      });
-    });
+    expect(screen.queryByLabelText("Flashcard instructions (optional)")).toBeNull();
+    expect(screen.getByText("Flashcards from this collection's decks and one collection study guide."))
+      .toBeTruthy();
   });
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {

@@ -23,19 +23,7 @@ pub(crate) async fn curate_document_cards(
     outline: &DocumentOutline,
     cards: Vec<Value>,
 ) -> Result<Vec<Value>, CommandError> {
-    curate_cards(runtime, task, outline, cards, false).await
-}
-
-/// Required selection is used only when the learner explicitly supplied a
-/// per-run focus. Silently retaining every candidate after provider failure
-/// would pretend that the learner's instructions were honored.
-pub(crate) async fn curate_document_cards_required(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    outline: &DocumentOutline,
-    cards: Vec<Value>,
-) -> Result<Vec<Value>, CommandError> {
-    curate_cards(runtime, task, outline, cards, true).await
+    curate_cards(runtime, task, outline, cards).await
 }
 
 async fn curate_cards(
@@ -43,7 +31,6 @@ async fn curate_cards(
     task: &DocumentTaskContext,
     outline: &DocumentOutline,
     cards: Vec<Value>,
-    required: bool,
 ) -> Result<Vec<Value>, CommandError> {
     if cards.is_empty() {
         return Ok(cards);
@@ -94,9 +81,6 @@ async fn curate_cards(
                         .filter_map(|index| batch.get(index).cloned()),
                 ),
                 Err(error) => {
-                    if required {
-                        return Err(error);
-                    }
                     crate::logging::warn_target(
                         "ai.document.curation",
                         "document_curation_batch_skipped",

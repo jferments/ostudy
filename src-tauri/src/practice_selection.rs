@@ -1,5 +1,9 @@
 //! Bounded practice-session selection for scheduled, extra, tag-scoped, and
 //! exact custom study.
+//!
+//! A selected scope may name subjects. A subject is studied live: it expands
+//! to its current live, unarchived decks when the scope is used, so moving a
+//! deck changes what the subject studies and nothing is ever copied.
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
@@ -40,6 +44,7 @@ use crate::{
 };
 
 const MAX_SESSION_DECKS: usize = 100;
+const MAX_SESSION_SUBJECTS: usize = 32;
 const MAX_SESSION_TAGS: usize = 32;
 const MAX_CUSTOM_SESSION_CARDS: usize = 10_000;
 const SESSION_PREPARE_BATCH: usize = 256;
@@ -47,6 +52,8 @@ const SESSION_PREPARE_BATCH: usize = 256;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PracticeWorkloadInput {
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
     #[serde(default)]
     pub deck_ids: Vec<String>,
     #[serde(default)]
@@ -57,6 +64,8 @@ pub struct PracticeWorkloadInput {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct StartPracticeInput {
     pub operation_id: String,
+    #[serde(default)]
+    pub subject_ids: Vec<String>,
     #[serde(default)]
     pub deck_ids: Vec<String>,
     #[serde(default)]
@@ -105,6 +114,28 @@ struct SelectedPracticeRequestIdentity<'a> {
     tag_ids: &'a [String],
     shuffle: bool,
     mode: &'a str,
+    // Omitted when empty, so requests without subjects keep their identity.
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    subject_ids: &'a [String],
+}
+
+/// A selected practice scope as the learner asked for it. Its subjects are
+/// expanded to decks only when the scope is used.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct SelectedScope {
+    pub(crate) subject_ids: Vec<String>,
+    pub(crate) deck_ids: Vec<String>,
+    pub(crate) tag_ids: Vec<String>,
+}
+
+impl SelectedScope {
+    #[cfg(test)]
+    pub(crate) fn decks(deck_ids: Vec<String>) -> Self {
+        Self {
+            deck_ids,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -119,16 +150,17 @@ pub fn get_practice_workload(
     database: State<'_, Database>,
     input: PracticeWorkloadInput,
 ) -> Result<WorkloadOverviewDto, CommandError> {
-    let (deck_ids, tag_ids) = validate_scope(input.deck_ids, input.tag_ids)?;
+    let scope = validate_scope(input.subject_ids, input.deck_ids, input.tag_ids)?;
     database.with_connection(|connection| {
-        validate_current_scope(connection, &deck_ids, &tag_ids)?;
+        let deck_ids = expand_subjects(connection, &scope)?;
+        validate_current_scope(connection, &deck_ids, &scope.tag_ids)?;
         let settings = load_settings(connection)?;
         let time = StudyTimeContext::capture()?;
         workload_overview(
             connection,
             StudyScope {
                 deck_ids: &deck_ids,
-                tag_ids: &tag_ids,
+                tag_ids: &scope.tag_ids,
             },
             &settings,
             &time,
@@ -143,7 +175,7 @@ pub fn start_selected_practice(
     input: StartPracticeInput,
 ) -> Result<PracticeSessionDto, CommandError> {
     validate_entity_id(&input.operation_id, "practice start operation")?;
-    let (deck_ids, tag_ids) = validate_scope(input.deck_ids, input.tag_ids)?;
+    let scope = validate_scope(input.subject_ids, input.deck_ids, input.tag_ids)?;
     if !matches!(input.mode.as_str(), "scheduled" | "extra") {
         return Err(CommandError::new(
             "invalid_practice_mode",
@@ -155,8 +187,7 @@ pub fn start_selected_practice(
             connection,
             &paths,
             input.operation_id,
-            deck_ids,
-            tag_ids,
+            scope,
             input.shuffle,
             &input.mode,
         )
@@ -223,18 +254,18 @@ pub(crate) fn start_selected_practice_in_connection(
     connection: &mut Connection,
     paths: &AppPaths,
     operation_id: String,
-    deck_ids: Vec<String>,
-    tag_ids: Vec<String>,
+    scope: SelectedScope,
     shuffle: bool,
     mode: &str,
 ) -> Result<PracticeSessionDto, CommandError> {
-    let request_fingerprint =
-        selected_practice_request_fingerprint(&deck_ids, &tag_ids, shuffle, mode)?;
+    let request_fingerprint = selected_practice_request_fingerprint(&scope, shuffle, mode)?;
     if let Some(existing) =
         practice_session_for_operation(connection, paths, &operation_id, &request_fingerprint)?
     {
         return Ok(existing);
     }
+    let deck_ids = expand_subjects(connection, &scope)?;
+    let tag_ids = scope.tag_ids;
     validate_current_scope(connection, &deck_ids, &tag_ids)?;
     let time = StudyTimeContext::capture()?;
     let scope = StudyScope {
@@ -305,16 +336,16 @@ pub(crate) fn start_card_practice_in_connection(
 }
 
 fn selected_practice_request_fingerprint(
-    deck_ids: &[String],
-    tag_ids: &[String],
+    scope: &SelectedScope,
     shuffle: bool,
     mode: &str,
 ) -> Result<String, CommandError> {
     let identity = SelectedPracticeRequestIdentity {
-        deck_ids,
-        tag_ids,
+        deck_ids: &scope.deck_ids,
+        tag_ids: &scope.tag_ids,
         shuffle,
         mode,
+        subject_ids: &scope.subject_ids,
     };
     let json = serde_json::to_string(&identity).map_err(CommandError::serialization)?;
     Ok(format!("practice-selected:v2:{json}"))
@@ -897,18 +928,79 @@ fn load_exact_planned_cards(
 }
 
 fn validate_scope(
+    subject_ids: Vec<String>,
     deck_ids: Vec<String>,
     tag_ids: Vec<String>,
-) -> Result<(Vec<String>, Vec<String>), CommandError> {
+) -> Result<SelectedScope, CommandError> {
+    let subject_ids = normalize_entity_ids(subject_ids, "subject", MAX_SESSION_SUBJECTS)?;
     let deck_ids = normalize_entity_ids(deck_ids, "deck", MAX_SESSION_DECKS)?;
     let tag_ids = normalize_entity_ids(tag_ids, "tag", MAX_SESSION_TAGS)?;
-    if deck_ids.is_empty() && tag_ids.is_empty() {
+    if subject_ids.is_empty() && deck_ids.is_empty() && tag_ids.is_empty() {
         return Err(CommandError::new(
             "empty_practice_scope",
             "Select at least one deck or tag for the practice session.",
         ));
     }
-    Ok((deck_ids, tag_ids))
+    Ok(SelectedScope {
+        subject_ids,
+        deck_ids,
+        tag_ids,
+    })
+}
+
+/// The scope's decks: the decks it names plus the live, unarchived decks
+/// currently filed in its subjects, sorted and without duplicates.
+fn expand_subjects(
+    connection: &Connection,
+    scope: &SelectedScope,
+) -> Result<Vec<String>, CommandError> {
+    if scope.subject_ids.is_empty() {
+        return Ok(scope.deck_ids.clone());
+    }
+    validate_id_set_exists(
+        connection,
+        "document_collections",
+        "id",
+        "1 = 1",
+        &scope.subject_ids,
+        "One of the selected subjects no longer exists.",
+    )?;
+    let mut deck_ids = scope.deck_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let mut values = Vec::<SqlValue>::new();
+    let placeholders = scope
+        .subject_ids
+        .iter()
+        .map(|id| format!("?{}", push_value(&mut values, id.clone())))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT id FROM decks
+             WHERE subject_id IN ({placeholders})
+               AND deleted_at IS NULL AND archived_at IS NULL"
+        ))
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(CommandError::database)?;
+    for row in rows {
+        deck_ids.insert(row.map_err(CommandError::database)?);
+    }
+    if deck_ids.len() > MAX_SESSION_DECKS {
+        return Err(CommandError::new(
+            "too_many_ids",
+            format!("Choose at most {MAX_SESSION_DECKS} decks."),
+        ));
+    }
+    if deck_ids.is_empty() && scope.tag_ids.is_empty() {
+        return Err(CommandError::new(
+            "empty_practice_scope",
+            "The selected subject has no decks to study yet.",
+        ));
+    }
+    Ok(deck_ids.into_iter().collect())
 }
 
 fn validate_current_scope(
@@ -945,7 +1037,11 @@ fn validate_id_set_exists(
     if ids.is_empty() {
         return Ok(());
     }
-    let allowed = [("decks", "id"), ("tags", "id")];
+    let allowed = [
+        ("decks", "id"),
+        ("tags", "id"),
+        ("document_collections", "id"),
+    ];
     if !allowed.contains(&(table, column)) {
         return Err(CommandError::new(
             "invalid_scope_table",
