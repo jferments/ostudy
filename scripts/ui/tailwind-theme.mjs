@@ -89,6 +89,7 @@ export const themeAliases = Object.freeze({
   "text-title--line-height": "font.lineHeight.title",
   "text-display": "font.size.display",
   "text-display--line-height": "font.lineHeight.display",
+  "font-heading": "font.family.heading",
   "font-weight-normal": "font.weight.regular",
   "font-weight-medium": "font.weight.medium",
   "font-weight-semibold": "font.weight.semibold",

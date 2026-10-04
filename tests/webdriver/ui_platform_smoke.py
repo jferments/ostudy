@@ -570,7 +570,8 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
         or measurement.get("lockupText") != ["ostudy"]
         or int(measurement.get("visibleMascots", 0)) != 1
         or measurement.get("mascotLoaded") is not True
-        or measurement.get("mascotDimensions") != [[1254, 1254]]
+        # The 64 px raccoon head; a 2x screen loads the 128 px file, reported as 64 once density-corrected.
+        or measurement.get("mascotDimensions") not in ([[64, 64]], [[128, 128]])
         or measurement.get("mottoPresent") is not False
     ):
         raise AssertionError(f"Brand lockup drifted in {label}: {measurement!r}")

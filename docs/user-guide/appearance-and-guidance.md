@@ -30,7 +30,7 @@ Do not interpret an animation as the authoritative signal that a review committe
 
 ## Artwork and completion feedback
 
-**Decorative artwork** controls nonessential mascot and illustrated-state art. Functional icons, notices, controls, and educational images in cards/documents remain visible. **Celebrations** permits brief one-shot completion effects when the motion policy allows them; disabling it does not remove the completion summary or analytics.
+**Decorative artwork** controls nonessential mascot and illustrated-state art. Functional icons, notices, controls, educational images in cards/documents, and the raccoon brand mark beside the ostudy name remain visible. **Celebrations** permits brief one-shot completion effects when the motion policy allows them; disabling it does not remove the completion summary or analytics.
 
 Platform feedback can vary by capability and preference. Unsupported audio/haptic/visual effects must not prevent ordinary studying. There is no separate Comfortable/Compact deck-density preference in the current interface.
 

@@ -89,6 +89,7 @@
   --text-title--line-height: var(--ostudy-font-line-height-title);
   --text-display: var(--ostudy-font-size-display);
   --text-display--line-height: var(--ostudy-font-line-height-display);
+  --font-heading: var(--ostudy-font-family-heading);
   --font-weight-normal: var(--ostudy-font-weight-regular);
   --font-weight-medium: var(--ostudy-font-weight-medium);
   --font-weight-semibold: var(--ostudy-font-weight-semibold);
