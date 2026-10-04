@@ -2,9 +2,11 @@
 
 ## Scope and evidence standard
 
-This audit accompanies the repository-wide documentation refresh after merged PR #86. The original inspected baseline is `2e284a9f084b3bce41c2f7fe40950d1846a61a4b`. Current product descriptions belong in the [architecture](../architecture/overview.md), [user guide index](../README.md), [roadmap](../roadmap.md), and [GitHub-direct workflow](../agents/GITHUB-DIRECT-DEVELOPMENT.md); this file records why stale material was changed, removed, retained, or moved to history.
+This audit accompanies the repository-wide documentation refresh after merged PR #86. The original inspected baseline is `2e284a9f084b3bce41c2f7fe40950d1846a61a4b`. Current product descriptions belong in the [architecture](../architecture/overview.md), [user guide index](../README.md), [roadmap](../roadmap.md), and [Git workflow](workflow.md); this file records why stale material was changed, removed, retained, or moved to history.
 
 The audit used active composition/route code, native command and migration owners, targeted repository searches, current tests, workflow definitions, manifests, and exact-head CI. It is not a proof that no unreachable line exists or a substitute for a security audit. Cleanup claims below identify a concrete owner/caller check rather than relying only on filenames.
+
+**Later change (October 2026):** the GitHub-direct Connector procedure, the `PR Contract` workflow and its PR-description ledger, the agent handoff renderer, and the separate agent process guides were retired. Contributors and agents now share the [Git and pull-request workflow](workflow.md); the product rules from those guides moved to `docs/architecture/` and `docs/development/`. References to those mechanisms below describe the state at the time of this audit.
 
 ## Documentation drift corrected
 
@@ -98,4 +100,4 @@ The refresh is ready for review when:
 - documentation/workflow/static/fast/full/platform gates required by the final exact head pass;
 - remaining manual review is explicitly identified rather than inferred from automation.
 
-This audit intentionally does not claim mathematical proof that no unreachable code remains. [Documentation maintenance](../agents/DOCUMENTATION-MAINTENANCE.md) defines how future reviews continue the evidence-based cleanup without recreating documentation drift.
+This audit intentionally does not claim mathematical proof that no unreachable code remains. [Documentation maintenance](documentation-maintenance.md) defines how future reviews continue the evidence-based cleanup without recreating documentation drift.

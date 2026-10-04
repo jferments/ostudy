@@ -258,7 +258,6 @@ function focusedReproduction(boundary, text, contexts) {
     };
   }
   const mappings = [
-    [/pr-contract|pull-request execution contract/u, "node ./scripts/verify-pr-contract.mjs --event \"$GITHUB_EVENT_PATH\" --strict"],
     [/rust compile/u, "cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features"],
     [/rust warnings|rust lint/u, "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings"],
     [/external file/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib external_file_ -- --nocapture"],

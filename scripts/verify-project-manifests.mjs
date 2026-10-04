@@ -26,7 +26,6 @@ const [
   checkFull,
   checkChanged,
   checkWorkflow,
-  prContractWorkflow,
   maintenanceWorkflow,
   releaseWorkflow,
   pullRequestTemplate,
@@ -46,7 +45,6 @@ const [
   read("scripts", "check.sh"),
   read("scripts", "check-changed.sh"),
   read(".github", "workflows", "check.yml"),
-  read(".github", "workflows", "pr-contract.yml"),
   read(".github", "workflows", "maintain-generated-candidates.yml"),
   read(".github", "workflows", "release.yml"),
   read(".github", "pull_request_template.md"),
@@ -234,8 +232,6 @@ requireText("check-static.sh", checkStatic, [
   "verify-project-manifests.mjs",
   "verify-ipc-contract.mjs",
   "verify-repository-policy.mjs",
-  "verify-agent-workflow-policy.mjs",
-  "verify-agent-recovery-policy.mjs",
   "verify-document-ai-boundaries.mjs",
   "verify-document-processing-boundaries.mjs",
   "verify-xberg-dependency-policy.mjs",
@@ -260,40 +256,11 @@ requireText("read-only check workflow", checkWorkflow, [
   "check-fast.sh",
   "check.sh",
 ]);
-if (checkWorkflow.includes("verify-pr-contract.mjs") || checkWorkflow.includes("ostudy-pr-contract.json")) {
-  failures.push("product Check must not consume pull-request contract validity as source qualification evidence");
-}
-requireText("read-only pull-request contract workflow", prContractWorkflow, [
-  "name: PR Contract",
-  "types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]",
-  "permissions:\n  contents: read",
-  "runs-on: [self-hosted, linux, x64, ostudy-unified]",
-  "persist-credentials: false",
-  "ci-runtime-preflight.sh",
-  "verify-pr-contract.mjs",
-  "Product qualification: **independent; not run by this workflow**",
-]);
-for (const expensiveCommand of [
-  "check-fast.sh",
-  "check.sh",
-  "android-test.sh",
-  "android-emulator-smoke.sh",
-]) {
-  if (prContractWorkflow.includes(expensiveCommand)) {
-    failures.push(`pull-request contract workflow must not run product qualification command ${expensiveCommand}`);
-  }
-}
-requireText("manual generated-candidate maintenance workflow", maintenanceWorkflow, [
-  "workflow_dispatch:",
-  "contents: write",
-  'if [[ "$GITHUB_REF_NAME" == "main" ]]',
-  "git add -- src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs",
-  'git push origin "HEAD:$GITHUB_REF_NAME"',
-]);
+requireText("manual generated-candidate maintenance workflow", maintenanceWorkflow, ["workflow_dispatch:"]);
 requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "ci-runtime-preflight.sh", "./scripts/release.sh"]);
 requireText("pull request template", pullRequestTemplate, [
-  "Acceptance criteria",
-  "<!-- ostudy-agent-state:start -->",
+  "## Summary",
+  "## Testing",
   "./scripts/check-static.sh",
   "./scripts/check-fast.sh",
   "./scripts/check.sh",
@@ -310,7 +277,6 @@ for (const [name, expected] of [
 }
 
 for (const requiredPath of [
-  ".github/workflows/pr-contract.yml",
   ".github/workflows/maintain-generated-candidates.yml",
   "scripts/build.sh",
   "scripts/install-native-deps.sh",
@@ -323,9 +289,6 @@ for (const requiredPath of [
   "scripts/runner/ci-runtime-preflight.sh",
   "scripts/runner/install-service-hardening.sh",
   "scripts/select-check-gate.mjs",
-  "scripts/verify-pr-contract.mjs",
-  "scripts/verify-agent-workflow-policy.mjs",
-  "scripts/verify-agent-recovery-policy.mjs",
   "scripts/write-qualification-result.mjs",
   "scripts/verify-ipc-contract.mjs",
   "scripts/verify-repository-policy.mjs",
@@ -335,15 +298,9 @@ for (const requiredPath of [
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
   "tests/scripts/test_check_gate_selection.py",
-  "tests/scripts/test_pr_contract.py",
-  "tests/scripts/test_agent_workflow_policy.py",
-  "tests/scripts/test_agent_recovery_policy.py",
   "tests/scripts/test_qualification_result.py",
   "tests/scripts/test_document_ai_boundaries.py",
   "tests/scripts/test_document_processing_boundaries.py",
-  "docs/agents/EXECUTION-STATE.md",
-  "docs/agents/FAILURE-TRIAGE.md",
-  "docs/agents/RECOVERY-PROTOCOL.md",
   "src/ipc/diagnostics.ts",
   "src/ipc/diagnostics.test.ts",
   "src/ipc/documents.ts",

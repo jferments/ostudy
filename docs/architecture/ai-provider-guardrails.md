@@ -1,8 +1,11 @@
-# AI provider platform guardrails
+# AI provider guardrails
 
-These rules apply to every future ostudy feature that uses an LLM, embedding
+These rules apply to every ostudy feature that uses an LLM, embedding
 model, reranker, OCR model, speech model, or another remote/local AI endpoint.
-They extend the general architecture, code, UI, and validation guardrails.
+They extend the [architecture guardrails](guardrails.md), the
+[code standards](../development/code-standards.md) and the
+[AI infrastructure](ai-infrastructure.md) design. Provider test procedures live
+in [AI provider contract testing](../development/ai-provider-contract-testing.md).
 
 ## Native trust boundaries
 
@@ -87,7 +90,7 @@ They extend the general architecture, code, UI, and validation guardrails.
   command authority.
 - AI-generated cards must pass the ordinary Rust authoring, safe-content,
   duplicate, tag, cloze, scheduling, and transaction boundaries.
-- Future document content is untrusted data, not system instructions. Document
+- Document content is untrusted data, not system instructions. Document
   text belongs in bounded source/user content blocks and cannot redefine tools or
   application policy.
 - Network requests never run inside a SQLite transaction or while holding a

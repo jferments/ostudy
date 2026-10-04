@@ -1,6 +1,6 @@
-# Architecture guardrails for agents
+# Architecture guardrails
 
-This document translates ostudy's current architecture into concrete implementation constraints. Read the [comprehensive architecture](../architecture/overview.md), relevant focused architecture documents, and accepted ADRs before changing a boundary described here.
+This document translates ostudy's current architecture into concrete implementation constraints for anyone changing the code. Read the [comprehensive architecture](overview.md), relevant focused architecture documents, and accepted ADRs before changing a boundary described here.
 
 ## Trust and ownership boundaries
 

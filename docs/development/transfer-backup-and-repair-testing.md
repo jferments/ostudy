@@ -43,8 +43,8 @@ The complete gate covers frontend tests, TypeScript, production build, rustfmt,
 warning-free Clippy, Rust/migration tests, standalone Tauri build, dependency
 verification and native persistence workflows. Use exact-SHA Actions evidence for
 qualification and report skipped package/Android/manual boundaries separately.
-See [restore architecture](../architecture/library-restore.md) and
-[agent repair rules](../agents/LIBRARY-RESTORE.md).
+See [restore architecture](../architecture/library-restore.md), including its
+[rules for changing backup and restore code](../architecture/library-restore.md#rules-for-changing-backup-and-restore-code).
 
 ## Current `.studydeck` package
 

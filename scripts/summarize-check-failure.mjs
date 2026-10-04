@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/gu;
@@ -9,6 +9,7 @@ const VITEST_FAILED_FILE_PATTERN = /^\s*FAIL\s+([A-Za-z0-9_./-]+\.(?:test|spec)\
 const RUST_FAILED_TEST_PATTERN = /^test (.+) \.\.\. FAILED$/gmu;
 const diagnosticRoots = [];
 const files = [];
+let headlinePath = null;
 
 for (let index = 2; index < process.argv.length; index += 1) {
   const argument = process.argv[index];
@@ -16,6 +17,10 @@ for (let index = 2; index < process.argv.length; index += 1) {
     const root = process.argv[index + 1];
     if (!root) throw new Error("--diagnostics requires a directory");
     diagnosticRoots.push(root);
+    index += 1;
+  } else if (argument === "--headline") {
+    headlinePath = process.argv[index + 1];
+    if (!headlinePath) throw new Error("--headline requires a file path");
     index += 1;
   } else {
     files.push(argument);
@@ -83,6 +88,18 @@ function parseDiagnosticLine(line) {
 const allText = logs.map(({ text }) => text).join("\n");
 const failure = findFailure(logs, contexts);
 const reproduction = focusedReproduction(failure.step, allText, contexts);
+
+// One line for the CI annotation that closes a failed run: what failed and the
+// smallest local command that reproduces it.
+if (headlinePath) {
+  const what =
+    failure.line ||
+    (failure.step === "qualification"
+      ? "Qualification failed before a recognized check reported its failing step"
+      : `Qualification failed during ${failure.step}`);
+  const sentence = what.replace(/\s+/gu, " ").replace(/\.$/u, "");
+  await writeFile(headlinePath, `${sentence}. Reproduce with: ${reproduction.command}\n`);
+}
 
 console.log("## ostudy qualification failure");
 console.log();
@@ -212,7 +229,7 @@ function focusedReproduction(step, text, diagnosticContexts) {
     [/external file/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib external_file_ -- --nocapture"],
     [/document domain/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_ -- --nocapture"],
     [/pdf extraction/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_ -- --nocapture"],
-    [/latest-schema/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_baseline_is_idempotent_and_matches_manifest -- --exact --nocapture"],
+    [/latest-schema/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable -- --exact --nocapture"],
     [/migration immutability/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_migration_checksum_and_future_version_are_enforced -- --exact --nocapture"],
     [/frontend production build/u, "pnpm run build"],
     [/standalone tauri/u, "pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked"],

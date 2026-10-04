@@ -2,7 +2,7 @@
 
 Android runs the same React interface, Rust application/domain logic, SQLite schema, scheduling, analytics, document-learning pipeline, synchronization merge, import formats, and backup format as desktop. Kotlin is limited to Android APIs such as document providers, Sharesheet, lifecycle/system Back/insets, Keystore, native PDF rendering/OCR, QR acquisition, direct USB accessory acquisition, and foreground execution.
 
-Use the [canonical command runbook](../agents/COMMAND-RUNBOOK.md) and maintained wrappers rather than reconstructing Tauri, Gradle, or ADB commands from memory.
+Use the [canonical command runbook](../development/command-runbook.md) and maintained wrappers rather than reconstructing Tauri, Gradle, or ADB commands from memory.
 
 ## Supported development baseline
 
@@ -124,7 +124,7 @@ Linux developers should use the maintained plain-text developer wrapper for desk
 ./scripts/ostudy-dev check-fast
 ```
 
-Use the full `./scripts/ostudy-dev check` only when the change actually warrants complete Linux qualification. For pull requests, the exact GitHub PR head and its `Check` result are authoritative; `PR Contract` is independent metadata validation.
+Use the full `./scripts/ostudy-dev check` only when the change actually warrants complete Linux qualification. For pull requests, the exact GitHub PR head and its `Check` result are authoritative.
 
 The emulator suite covers representative launch/migration/study/persistence/restart, compact navigation/system Back, file-picker/import/export, and affected native integrations. A green emulator cannot qualify a physical USB controller/cable path.
 

@@ -431,7 +431,7 @@ ssh -t -i ~/.ssh/ostudy-ci-unified \
 
 The hardening script refuses to proceed while a `Runner.Worker` job is active, installs `Restart=always` with a five-second restart delay, disables systemd's start-rate cutoff for this service, installs the `needrestart` exclusion, restarts the service, and verifies that it returned active.
 
-Every repository `Check`, `PR Contract`, and release job also runs `scripts/runner/ci-runtime-preflight.sh` immediately after checkout. That preflight rejects the wrong runner name/user/OS/architecture, root execution, workspace escape, host/network filesystem mounts, and host-control sockets. It reports the systemd restart policy as a warning so a not-yet-hardened runner remains diagnosable rather than producing a misleading product failure.
+Every repository `Check` and release job also runs `scripts/runner/ci-runtime-preflight.sh` immediately after checkout. That preflight rejects the wrong runner name/user/OS/architecture, root execution, workspace escape, host/network filesystem mounts, and host-control sockets. It reports the systemd restart policy as a warning so a not-yet-hardened runner remains diagnosable rather than producing a misleading product failure.
 
 GitHub should show `ostudy-ci-unified` as Online/Idle with:
 

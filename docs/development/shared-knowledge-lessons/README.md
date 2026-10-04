@@ -68,4 +68,4 @@ Stage implementation, source publication, static validation, fast qualification,
 
 The final PR body and exact-SHA Actions evidence record qualification; this documentation does not convert an unrun platform or human gate into a pass. See #106's completion record for the distinction between disposable installed-copy acceptance and protected-library cutover.
 
-For publication/recovery follow [GitHub-direct development](../../agents/GITHUB-DIRECT-DEVELOPMENT.md), [the interruption protocol](../../agents/RECOVERY-PROTOCOL.md), and [the command runbook](../../agents/COMMAND-RUNBOOK.md). No automatic merge is authorized.
+Follow the [Git and pull-request workflow](../workflow.md) and [the command runbook](../command-runbook.md). No automatic merge is authorized.

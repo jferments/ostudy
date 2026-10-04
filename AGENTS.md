@@ -1,44 +1,19 @@
 # AGENTS.md
 
-Repository-wide instructions for automated maintainers of **ostudy**. More specific `AGENTS.md` files may add constraints. These instructions do not grant permission to merge, change infrastructure, or expand the human's requested product scope.
+Repository-wide instructions for automated contributors to **ostudy**. More specific `AGENTS.md` files in subdirectories add constraints for their area. Nothing here grants permission to merge, change infrastructure, or widen the requested product scope.
 
-## Start here: the workflow is GitHub-direct
+## How work flows
 
-Read [GitHub-direct development](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md) and [the command runbook](docs/agents/COMMAND-RUNBOOK.md). The authenticated GitHub Connector is the normal reader and **sole normal source publisher**. GitHub is authoritative for source, branches, PRs, reviews, and Actions state. Actions qualify published source and are never source writers.
+- Start every change from current `main` on a short-lived branch and open a **draft** pull request early. Never commit to `main` directly.
+- Work in a real checkout. Build, test, and commit locally, then push the branch. Keep one writer per branch; when resuming, read the branch head, the PR, and the latest `Check` result before editing.
+- Run `./scripts/check-static.sh` before every push and the focused tests for what changed. Run `./scripts/check-fast.sh` before marking a PR ready. CI confirms work; it is not the place to discover formatting or lint errors.
+- Draft PRs run the fast gate. Marking a PR ready for review runs the full Linux and Android gate on the single self-hosted runner, and every later push to a ready PR runs it again. Mark a PR ready only when the change is complete and its fast gate is green; move it back to draft for substantial rework.
+- Keep the PR description current using the [pull request template](.github/pull_request_template.md): what a learner sees before and after, how it works, what was tested and on which commit, and what was not tested.
+- The maintainer reviews and squash-merges. Agents never merge, tag, push to `main`, force-push a branch someone else is using, or delete branches they did not create.
 
-Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP, Secure MCP Tunnel, or any custom developer MCP unless the human explicitly requests it for the current task. Do not infer authorization from an old conversation, available tool, or historical deployment. If an explicitly requested MCP fails or disappears, stop that path, verify GitHub, and continue GitHub-direct rather than debugging plugins.
+When CI fails, read the failure summary at the end of the `check` job log (also shown as annotations and in the job summary), reproduce the smallest failing command locally, fix it, and push once the local check passes.
 
-### Interruption recovery
-
-Read [the recovery protocol](docs/agents/RECOVERY-PROTOCOL.md). **ANCHORLINE RESET** means preserve useful work, verify authoritative GitHub state once, stop optional loops, and continue the existing assignment. It never means Git reset, rollback, discarding changes, restarting the project, or reducing scope. Do not ask the human to repeat instructions that are already present or retrievable.
-
-On a resumed development turn, perform one bounded PR/head/failure/qualification read and then continue from the next unfinished boundary. For a known PR or branch, use its direct GitHub PR/ref endpoint rather than search or commit listing merely to rediscover the tip, and bundle independent bounded reads in one Connector orchestration when practical. Do not repeat repository inventory or Connector capability discovery merely because the prior response was interrupted. Keep a compact publication checkpoint, provide visible progress during substantial work, and finish every completed turn with a substantive evidence-based response.
-
-### Required execution sequence
-
-1. Read the exact current base or PR head through GitHub. Inspect the relevant source and tests at that SHA.
-2. Define stable `AC-##` acceptance criteria and explicit non-goals. Conversation establishes intent, not current implementation or test success.
-3. Use one short-lived `agent/<description>` branch and one draft PR. Publish a meaningful first increment, not an ownership marker or no-op access test.
-4. Keep exactly one source writer per branch. For each publication use `create_blob` → `create_tree` based on the expected parent's tree → `create_commit` naming that parent → immediate remote-head check → non-force `update_ref` → remote-head verification. Keep Connector orchestration batches deliberately small: prefer no more than four concrete GitHub operations in one orchestration, split high-fan-out blob creation across bounded batches, and carry acknowledged path/mode/blob SHAs forward as the publication checkpoint. Tree/commit/ref publication should be a separate bounded step rather than one large fan-out script. If a platform/tool-call ceiling interrupts a batch, do not replay it wholesale: direct-read the affected ref once, preserve every acknowledged Git object, and resume from the first unconfirmed operation. For higher-fan-out or large/critical publication, checkpoint after verified blobs and resume tree/commit/ref publication from that manifest. After a Connector transport/protocol error during mutation, direct-read the affected ref/object once and never blindly replay acknowledged Git writes.
-
-**Large/critical full-file publication safety is mandatory.** Derive replacement bytes from the exact GitHub head or its exact-head CI source archive, never from a truncated tool response or reconstructed excerpt. Independently compute the Git blob SHA and require the connector's `create_blob` acknowledgement to match it before the blob may enter a tree. This extra pre-hash is for the large/critical safety case; do not add client-side SHA work to ordinary small-file publication. Build the candidate commit off-ref and inspect its changed-file list/diff before moving the branch. Do not use the Contents API as a fallback for large or critical maintained source; if exact bytes cannot be transmitted and verified, stop or use an already verified Git object rather than publishing a guessed replacement.
-
-5. Stop on head drift. Inspect the competing commit and reconcile writer ownership; never force or silently replace the tree. A plain ref update is not an atomic compare-and-swap API.
-6. Publish ordinary source and documentation, not task-specific applicators, patch payloads, finalizers, or runner-only product trees. No workflow may author or push source, even when manually dispatched.
-7. Validate the smallest affected boundary while implementation is active. Before terminal qualification, perform the full implementation/documentation/handoff audit, resolve stale maintained prose and cleanup, then freeze that exact candidate.
-8. Run the required terminal repository/platform gates against the frozen candidate. Once terminal qualification starts, do not continue broad audits, opportunistic documentation edits, refactors, formatting, or cleanup while the expensive gates run.
-9. After qualification, reconcile evidence and hand off rather than reopening scope. A non-blocking late finding goes to follow-up work. A blocking Markdown-only correction may use the documented qualification-reuse path; any qualification-bearing change requires the applicable expensive gates again.
-10. Reconcile the PR acceptance snapshot, report publication/qualification/manual acceptance separately, provide local test instructions, and release writer ownership at handoff.
-
-On resumption, read the actual PR, remote head, unresolved review state, and exact-head runs before editing. Do not reconstruct current task state from memory. A snapshot is progress metadata, not a branch lock, job scheduler, or source authority.
-
-After that read, follow the [bounded repair loop and publication checkpoint](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md#bounded-repair-loop-and-publication-checkpoint). Keep the known parent/tree and a small auxiliary path/mode/blob manifest. Fix the concrete failed boundary, complete publication, verify the ref, and qualify that SHA. Truncated output or pending CI is not a reason to repeat the project inventory or connector discovery. Created blobs alone are not published code.
-
-## Authority and required reading
-
-Within repository policy, the current human request and explicit acceptance criteria take precedence over older plans. Accepted ADRs describe durable decisions; maintained architecture describes current ownership; development and agent guides describe execution. Historical documents are evidence, not active instructions. Report a genuine invariant conflict rather than silently reinterpreting it.
-
-Read [the documentation index](docs/README.md), [agent index](docs/agents/README.md), [execution state](docs/agents/EXECUTION-STATE.md), [failure triage](docs/agents/FAILURE-TRIAGE.md), [architecture guardrails](docs/agents/ARCHITECTURE-GUARDRAILS.md), [code standards](docs/agents/CODE-STANDARDS.md), and the current architecture/ADRs relevant to the change. Use [documentation maintenance](docs/agents/DOCUMENTATION-MAINTENANCE.md) for documentation or cleanup work.
+The current request from the maintainer takes precedence over older plans. Accepted ADRs in `docs/decisions/` record durable decisions, `docs/architecture/` describes current ownership, and `docs/development/` describes how to build and test. Historical documents are evidence, not instructions. Report a genuine conflict with an invariant rather than silently reinterpreting it.
 
 ## Product principles
 
@@ -51,6 +26,8 @@ Read [the documentation index](docs/README.md), [agent index](docs/agents/README
 **Calm, capable UI.** Keep common actions shallow and advanced detail contextual. Do not restore empty-state clutter, obsolete navigation tabs, duplicate controls, or implementation diagnostics to ordinary user screens. Simplicity must preserve accessibility and functionality rather than hide necessary actions.
 
 ## Architecture invariants
+
+These are the short form of the [architecture guardrails](docs/architecture/guardrails.md), [AI provider guardrails](docs/architecture/ai-provider-guardrails.md), and [code standards](docs/development/code-standards.md). Read those and the relevant architecture documents before changing a boundary.
 
 - React renders data and intent. Typed native command gateways live under `src/ipc/`; direct `invoke()` elsewhere is forbidden. There is no monolithic `src/ipc.ts` ownership convention.
 - Controllers coordinate reads, mutations, navigation, and reconciliation. Some feature-local controllers are colocated with their workspace; ownership matters more than forcing every hook into one directory.
@@ -79,37 +56,31 @@ A truly empty deck library has one useful create-deck state, not empty folder/un
 
 Do not delete legacy route/checkpoint compatibility simply because its old label disappeared. Trace production callers and durable serialized readers before declaring code dead. See [the current architecture](docs/architecture/overview.md) and [cleanup audit](docs/development/documentation-and-cleanup-audit.md).
 
-## Validation and failure discipline
-
-Use maintained wrappers:
+## Validation
 
 ```bash
-./scripts/check-changed.sh
-./scripts/check-static.sh
-./scripts/check-fast.sh
-./scripts/check.sh
+./scripts/check-changed.sh   # iteration aid: picks focused checks for the current diff
+./scripts/check-static.sh    # formatting, lint, typecheck, repository contracts
+./scripts/check-fast.sh      # static + frontend suite + Rust lint and focused native tests
+./scripts/check.sh           # full Linux gate: Rust suite, builds, native smoke and WebDriver tests
+pnpm android:test            # Android compile and package
+pnpm android:smoke           # Android emulator smoke (needs KVM)
 ```
 
-`check-changed` is an iteration aid, not merge qualification. Static is not native runtime testing. Draft `Check` uses fast qualification; ready PRs or explicit full dispatches run the full required platform gates. `PR Contract` validates metadata independently; it does not block product qualification. Review readiness and merge qualification are distinct states. Follow [Execution state](docs/agents/EXECUTION-STATE.md), not an old claim that pending CI must be marked passed to trigger CI.
+`check-changed` is an aid, not merge qualification, and static checks are not native runtime testing. [Testing and CI](docs/development/testing-and-ci.md) describes each tier, the `Check` workflow, and focused test commands; [the command runbook](docs/development/command-runbook.md) covers setup, builds, and installs.
 
-**Terminal qualification is a freeze boundary.** Finish the broad source/diff review, documentation consistency audit, stale-claim search, and handoff preparation before `all-full` begins. Once the expensive Linux/Android gates are running, stop searching for incidental cleanup. Diagnose failures if they occur; otherwise finish the handoff. Do not invalidate a green candidate for a non-blocking wording, formatting, refactor, or cleanup opportunity that can be handled separately.
+Expensive Linux and Android tiers may reuse an earlier runner-local pass when only root-level Markdown or Markdown under `docs/` changed; any other path invalidates reuse, and `OSTUDY_FORCE_CHECK=1` forces fresh execution. A green run qualifies only the commit it tested. Performance measurements are advisory, not a substitute for correctness gates.
 
-Static and fast qualification remain exact-source checks. Full Linux, Android compile/package, and Android emulator qualification may reuse a previous runner-local pass only when the current exact head has passed static qualification and the conservative product/toolchain fingerprint is unchanged. The neutral set is intentionally tiny: root-level Markdown and Markdown under `docs/` only. Source, tests, scripts, workflows, configuration, assets, lockfiles, and every other path invalidate expensive reuse. The current head still receives its own `Check` run, and any reuse must be reported explicitly with the earlier source that produced the cached pass. `OSTUDY_FORCE_CHECK=1` forces fresh execution.
-
-A green workflow result qualifies the current SHA according to the evidence recorded by that run: either fresh execution or an explicitly reported safe reuse. An older green run by itself remains historical evidence only. Performance measurements are advisory/manual, not a substitute for correctness gates. Do not claim live-provider, physical-device, screenshot, accessibility, or manual acceptance that was not actually exercised.
-
-Classify product, test-contract, runner/environment, Connector, GitHub-incident, and human-only failures separately. One unchanged-head rerun is permitted only with transient-cause evidence. The same fingerprint twice requires a strategy change. No no-op commits, permission expansion, PR-state toggles, timeouts, sleeps, skips, or weakened assertions merely to obtain green CI.
+Fix the cause of a failure. Do not skip, disable, or weaken tests, add sleeps or longer timeouts, push empty commits, or toggle PR state to get a green result. Re-run an unchanged commit at most once, and only with evidence of a transient cause. Do not claim live-provider, physical-device, screenshot, accessibility, or manual acceptance that was not actually exercised.
 
 ## Documentation and cleanup
 
-`README.md` is the human-readable product introduction and short start path, not a PR diary or implementation ledger. Task instructions belong in user/installation guides; ownership and rationale in architecture; contributor commands in development; exact external formats in reference; historical proposals in history or clearly marked records.
+`README.md` is the human-readable product introduction and short start path, not a PR diary or implementation ledger. Task instructions belong in user/installation guides; ownership and rationale in architecture; contributor commands in development; exact external formats in reference; historical proposals in history or clearly marked records. [Documentation maintenance](docs/development/documentation-maintenance.md) has the details.
 
 Update existing canonical sections instead of appending contradictory stage notes. Update indexes and links together. Source-check UI labels, wrappers, provider availability, data formats, and security claims. Preserve valuable historical provenance without presenting it as current behavior. Remove demonstrably dead code with its exclusive styles/tests/contracts; do not remove live compatibility, platform fallbacks, or regression fixtures to make the tree look smaller.
 
-## Safety and final handoff
+## Safety
 
-Never commit secrets, tokens, personal documents, live `library.sqlite3`, managed libraries, build output, provisioned binaries, or `.env` files. Use temporary isolated data for destructive/import/restore tests. Never instruct the human to clear app data or uninstall as routine setup without warning about data loss and backup.
+Never commit secrets, tokens, personal documents, live `library.sqlite3`, managed libraries, build output, provisioned binaries, or `.env` files. Use temporary isolated data for destructive/import/restore tests. Never instruct the maintainer to clear app data or uninstall as routine setup without warning about data loss and backup.
 
-Every handoff includes exact base, branch, remote head, PR state, last expected parent, changed areas, acceptance/non-goals, actual checks and tested SHAs, unrun checks with reasons, manual boundaries, compatibility/rollback risks, and writer release. Report no workspace when none was used; do not invent clean/dirty state or an active process.
-
-Provide copyable local checkout/SHA verification, build/run or Android install instructions, and the concrete behavior to inspect. Read [Local testing and handoff](docs/development/local-testing-and-handoff.md) before composing commands. A published implementation is a proposal until a human reviews and merges it.
+When a change affects stored data, say so in the PR: which migration runs, whether an older build can still open the library, and how to recover from the pre-upgrade checkpoint. Give the maintainer the short commands to build and try the change locally (see [Local testing](docs/development/local-testing-and-handoff.md)) and the concrete behavior to check.

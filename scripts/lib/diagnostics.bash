@@ -224,7 +224,7 @@ ostudy_replay_command_for_step() {
       printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_ -- --nocapture'
       ;;
     "Latest-schema migration contract")
-      printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_baseline_is_idempotent_and_matches_manifest -- --exact --nocapture'
+      printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable -- --exact --nocapture'
       ;;
     "Public migration immutability contract")
       printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib database::tests::public_migration_checksum_and_future_version_are_enforced -- --exact --nocapture'
@@ -247,7 +247,7 @@ ostudy_replay_command_for_step() {
     "Android Emulator smoke qualification"|Android\ *smoke*)
       printf './scripts/android-emulator-smoke.sh'
       ;;
-    "Environment and repository contracts"|"Behavior-test policy and repository script validation"|"Frozen JavaScript installation and dependency verification"|"Frontend type checking"|"Rust formatting")
+    "Environment and repository contracts"|"Behavior-test policy and repository script syntax"|"Frozen JavaScript installation and dependency verification"|"Frontend type checking"|"Rust formatting")
       printf './scripts/check-static.sh'
       ;;
     *)

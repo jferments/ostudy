@@ -6,10 +6,6 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workflow = await readFile(join(root, ".github", "workflows", "check.yml"), "utf8");
-const prContractWorkflow = await readFile(
-  join(root, ".github", "workflows", "pr-contract.yml"),
-  "utf8",
-);
 const unifiedRunnerWorkflow = await readFile(
   join(root, ".github", "workflows", "unified-runner-qualification.yml"),
   "utf8",
@@ -20,7 +16,6 @@ const checkFull = await readFile(join(root, "scripts", "check.sh"), "utf8");
 const diagnostics = await readFile(join(root, "scripts", "lib", "diagnostics.bash"), "utf8");
 const summary = await readFile(join(root, "scripts", "summarize-check-failure.mjs"), "utf8");
 const resultWriter = await readFile(join(root, "scripts", "write-qualification-result.mjs"), "utf8");
-const handoffRenderer = await readFile(join(root, "scripts", "render-agent-handoff.mjs"), "utf8");
 const ciCapture = await readFile(join(root, "scripts", "run-ci-captured.sh"), "utf8");
 const nativeSmoke = await readFile(join(root, "scripts", "smoke-native.sh"), "utf8");
 const androidSmoke = await readFile(join(root, "scripts", "android-emulator-smoke.sh"), "utf8");
@@ -56,10 +51,9 @@ for (const required of [
   "ostudy-failure-summary.md",
   "summarize-check-failure.mjs",
   "write-qualification-result.mjs",
-  "render-agent-handoff.mjs",
   "ostudy-qualification-result.json",
-  "ostudy-agent-handoff.md",
-  "Enforce handoff evidence integrity",
+  "ostudy-failure-headline.txt",
+  "Report qualification failure",
   "export-diagnostics.sh",
   "persist-runner-output.sh",
   "Persist bounded diagnostic evidence on runner",
@@ -68,26 +62,9 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-for (const required of [
-  "name: PR Contract",
-  "types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]",
-  "permissions:\n  contents: read",
-  "verify-pr-contract.mjs",
-  "ostudy-pr-contract.json",
-  "Product qualification: **independent; not run by this workflow**",
-]) {
-  if (!prContractWorkflow.includes(required)) failures.push(`pr-contract.yml missing ${required}`);
-}
-
 if (!workflow.includes("cancel-in-progress: true")) {
   failures.push(
     "check.yml must cancel obsolete work within each qualification lane",
-  );
-}
-
-if (!prContractWorkflow.includes("cancel-in-progress: true")) {
-  failures.push(
-    "pr-contract.yml must cancel obsolete metadata validation for the same pull request",
   );
 }
 
@@ -119,25 +96,13 @@ if (!workflow.includes("if: github.event.action != 'closed'")) {
   );
 }
 
-for (const forbidden of ["verify-pr-contract.mjs", "ostudy-pr-contract.json"]) {
-  if (workflow.includes(forbidden)) {
-    failures.push(
-      `check.yml must keep pull-request metadata validity outside product qualification: ${forbidden}`,
-    );
-  }
-}
-
-for (const forbidden of [
-  "check-fast.sh",
-  "check.sh",
-  "android-test.sh",
-  "android-emulator-smoke.sh",
-]) {
-  if (prContractWorkflow.includes(forbidden)) {
-    failures.push(
-      `pr-contract.yml must not execute product qualification: ${forbidden}`,
-    );
-  }
+// Agents and people read a failed run from the end of the job log, so the
+// failure report must be the last step: nothing may print after it.
+const stepNames = [...workflow.matchAll(/^ {6}- name: (.+)$/gmu)].map((match) => match[1].trim());
+if (stepNames.at(-1) !== "Report qualification failure") {
+  failures.push(
+    `check.yml must end with the "Report qualification failure" step so the failure summary closes the job log; last step is ${JSON.stringify(stepNames.at(-1))}`,
+  );
 }
 
 for (const forbidden of [
@@ -213,6 +178,7 @@ for (const required of [
   "OSTUDY_FORCE_CHECK=1",
   "OSTUDY_KEEP_FAILURE_ARTIFACTS=1",
   "renderStructuredDiagnostics",
+  "--headline",
 ]) {
   if (!summary.includes(required)) failures.push(`failure summarizer missing ${required}`);
 }
@@ -224,16 +190,6 @@ for (const required of [
   "classificationHint",
 ]) {
   if (!resultWriter.includes(required)) failures.push(`qualification result writer missing ${required}`);
-}
-
-for (const required of [
-  "Evidence integrity",
-  "Changed files",
-  "Commands represented by this qualification",
-  "Qualification head",
-  "Requested method",
-]) {
-  if (!handoffRenderer.includes(required)) failures.push(`handoff renderer missing ${required}`);
 }
 
 if (workflow.includes("OSTUDY_LOG: debug")) {
@@ -250,5 +206,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, PR metadata validation is independent from product qualification, exact-head JSON and Markdown handoff evidence are retained on the self-hosted runner, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, exact-head qualification evidence is retained on the self-hosted runner, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and failed runs end with an annotated summary and focused reproduction.",
 );

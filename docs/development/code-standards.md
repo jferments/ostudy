@@ -1,6 +1,6 @@
-# Code standards for agents
+# Code standards
 
-Write explicit, inspectable, testable code with one clear owner for each rule. Follow nearby conventions unless they violate an accepted invariant. Read [architecture guardrails](ARCHITECTURE-GUARDRAILS.md) and the owning architecture/ADR before changing a cross-module contract.
+Write explicit, inspectable, testable code with one clear owner for each rule. Follow nearby conventions unless they violate an accepted invariant. Read [architecture guardrails](../architecture/guardrails.md) and the owning architecture/ADR before changing a cross-module contract.
 
 ## General
 
@@ -50,7 +50,7 @@ Database and filesystem changes need staging/reconciliation rather than a false 
 
 Use Bash with `set -Eeuo pipefail` where appropriate, quote expansions, resolve repository paths explicitly, and fail with actionable messages. Verification must be deterministic and non-interactive. Prefer maintained wrappers over invented Cargo/Tauri/Gradle/ADB alternatives.
 
-GitHub Actions are source-read-only. Formatter/generator verification uses check-only modes; fixes are published by the branch writer. Do not add task-specific applicators, finalizers, encoded source payloads, or source-authoring workflows.
+GitHub Actions never write source: formatter and generator checks run in check-only mode, and fixes are committed on the branch. Do not add task-specific applicators, finalizers, encoded source payloads, or source-authoring workflows.
 
 Prefer existing dependencies and standard libraries. New direct dependencies require a written need, compatible license review, exact pins, platform review, and tests. Do not add paid/hosted services as requirements for core local study.
 
@@ -58,4 +58,4 @@ Prefer existing dependencies and standard libraries. New direct dependencies req
 
 Use **ostudy** for prose and preserve literal compatibility identifiers, including `io.github.jferments.ostudy`, package names, format/schema identifiers, and URI schemes. Update owning architecture/docs when boundaries change; add or supersede an ADR for a durable cross-module decision.
 
-Follow [documentation maintenance](DOCUMENTATION-MAINTENANCE.md), [the command runbook](COMMAND-RUNBOOK.md), and [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md). State what was inspected, published, executed, or manually verified; never convert inference or a supplied command into a passing-test claim.
+Follow [documentation maintenance](documentation-maintenance.md) and [the command runbook](command-runbook.md). State what was inspected, executed, or manually verified; never convert inference or a supplied command into a passing-test claim.

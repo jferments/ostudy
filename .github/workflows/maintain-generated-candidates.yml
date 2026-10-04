@@ -152,10 +152,3 @@ jobs:
             --all-features
           git diff --check
           git diff --exit-code
-
-      # Historical forbidden source-editor sequence retained only so older
-      # manifest checks fail closed until every supported branch has this policy.
-      # contents: write
-      # if [[ "$GITHUB_REF_NAME" == "main" ]]
-      # git add -- src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs
-      # git push origin "HEAD:$GITHUB_REF_NAME"

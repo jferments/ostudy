@@ -2,12 +2,7 @@
 
 ostudy uses tiered local validation and one isolated self-hosted Linux/Android runner for pull-request qualification. The tiers provide fast feedback without pretending a narrow result proves every boundary.
 
-Two pull-request workflows are intentionally separate:
-
-- **PR Contract** validates the machine-readable acceptance snapshot and review-readiness metadata.
-- **Check** validates the exact published product source SHA.
-
-A malformed PR body does not block product qualification. A green metadata check does not mean the application compiled or ran.
+**Check** (`.github/workflows/check.yml`) is the only pull-request workflow. It validates the exact source commit of the PR head; nothing in the PR description affects it.
 
 ## Unified runner
 
@@ -67,6 +62,8 @@ OSTUDY_FORCE_CHECK=1 ./scripts/check.sh
 ```
 
 Do not use broad forced reruns instead of diagnosing a focused deterministic failure.
+
+Static and fast results are keyed by the exact source tree. Full Linux and Android results use a product fingerprint that ignores only root-level Markdown and Markdown under `docs/`; the Android fingerprint also covers the Java/Android toolchain. CI may reuse an earlier runner-local full or Android pass only when the current head has passed static, the fingerprint is unchanged, and the workflow sets `OSTUDY_ALLOW_QUALIFICATION_REUSE=1`. The run reports any reuse together with the earlier source that produced it. Source, tests, scripts, workflows, configuration, assets, and lockfiles all invalidate reuse.
 
 ## Worktree stability
 
@@ -161,27 +158,17 @@ For non-preflight gates, static qualification is the first substantive source bo
 
 Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. That evidence is persisted on the self-hosted runner rather than uploaded to GitHub Actions storage. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
 
-## `PR Contract`: metadata only
-
-`.github/workflows/pr-contract.yml` validates the acceptance snapshot independently on PR open/edit/synchronize/reopen/draft/readiness transitions.
-
-It validates schema/canonical fields/evidence requirements and, for non-draft PRs, base/head/branch identity. It does **not** compile/test product source and does not authorize, suppress, or abort `Check`.
-
-Review readiness can be the transition that triggers full product qualification. Therefore validation entries may honestly be pending at readiness; they must never be marked passed in advance merely to obtain the run.
-
-After full `Check` passes, updating the PR body with exact evidence reruns `PR Contract` only. It does not require a redundant product run because source did not change.
-
 ## Source-read-only Actions
 
-All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, retain runner-local evidence/deliverables, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
+All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, and retain runner-local evidence/deliverables. They must not stage, format-rewrite, create commits/trees, or push refs. `scripts/verify-repository-policy.mjs` rejects `pull_request_target`, write permissions, persisted checkout credentials, and `git push` in workflows.
 
-The retired Orchestrator PR Ledger and branch-specific frontend source-checkpoint workflow are not part of the current development system. Source publication belongs to the branch writer; Actions qualifies published source.
+The retired Orchestrator PR Ledger, the branch-specific frontend source-checkpoint workflow, and the PR Contract description ledger are not part of the current development system. Source changes are committed on the branch; Actions qualifies them.
 
 ## Actions compute and storage policy
 
 Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
 
-GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, handoff Markdown, logs, Android smoke evidence, failure bundles, Android packages, tagged Linux release output, and manually requested auxiliary inspection bundles are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
+GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, failure summaries, logs, Android smoke evidence, failure bundles, Android packages, tagged Linux release output, and manually requested auxiliary inspection bundles are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
 
 `.github/workflows/actions-storage-maintenance.yml` runs hourly on the self-hosted runner and deletes **all** residual GitHub Actions artifacts plus all GitHub-hosted Actions caches for the repository. Cleanup reads the current GitHub REST rate-limit budget, reserves headroom for other repository operations, and checkpoints successfully when the installation token is exhausted so the next scheduled pass resumes instead of failing or idling the runner until reset. This intentionally catches historical objects and artifacts produced from stale branches. `scripts/verify-actions-storage-policy.mjs`, executed by static qualification, rejects GitHub-hosted runners, cloud caches, or any use of `actions/upload-artifact`.
 
@@ -189,18 +176,22 @@ GitHub still retains workflow-run logs and job summaries according to GitHub's w
 
 ## Failure evidence and triage
 
+A failed `Check` ends with a **Report qualification failure** step: it prints the failure summary from `scripts/summarize-check-failure.mjs` and raises an error annotation naming the failing boundary and its focused local reproduction. The last hundred or so lines of the job log are therefore enough to start, and the annotation also appears on the check run. The job's step summary carries the same Markdown.
+
+Qualification commands run through `scripts/run-ci-captured.sh`. The complete stdout/stderr of each tier goes to its `ostudy-*-check.log` file; the live job log receives only a liveness heartbeat (`Qualification still running`, every `OSTUDY_CI_HEARTBEAT_SECONDS`, default 60) and a bounded tail (4 KiB on success, 32 KiB on failure). Zero byte growth in the heartbeat is a clue, not proof of a hang. Do not restore `2>&1 | tee` for qualification in `check.yml`; full raw logs stay in the runner-local evidence.
+
+`scripts/write-qualification-result.mjs` writes `ostudy-qualification-result.json`. Its `qf-…` failure fingerprint excludes commit SHAs, durations, and incidental numbers so the same underlying failure is recognizable across repair commits, and independent failures keep separate records. Its `classificationHint` (`githubControlPlane`, `runnerEnvironment`, `productOrTest`, or `unclassified`) is advisory and never overrides the logs.
+
 On a current-head failure:
 
 1. confirm the run's SHA equals the current PR head;
-2. read the selected gate, failed step, machine-readable result, bounded logs, and runner-local evidence path;
-3. classify product, test-contract, runner/environment, GitHub/Connector, or external/manual cause;
-4. reproduce the smallest failed boundary;
+2. read the failure summary at the end of the log, then the failed step's bounded tail;
+3. classify product, test-contract, runner/environment, GitHub, or external/manual cause;
+4. reproduce the smallest failed boundary locally;
 5. repair every independently actionable finding in one coherent batch;
-6. rerun the narrow boundary before another broad gate.
+6. rerun the narrow boundary before pushing and before another broad gate.
 
 One unchanged-head rerun is acceptable only with evidence of a transient external cause. The same fingerprint twice requires a changed strategy. Do not create no-op commits, toggle draft/ready repeatedly, widen permissions, add sleeps/timeouts blindly, skip/weaken tests, or introduce source-writing CI to manufacture green results.
-
-See [Failure triage](../agents/FAILURE-TRIAGE.md).
 
 ## Native startup/persistence and WebDriver smoke
 

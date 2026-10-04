@@ -1,6 +1,6 @@
 # Build and install ostudy for Android
 
-The Android project is generated/maintained by Tauri under `src-tauri/gen/android`. Use repository wrappers so local and CI builds share the same pinned environment and package checks. The short command authority is [`../agents/COMMAND-RUNBOOK.md`](../agents/COMMAND-RUNBOOK.md).
+The Android project is generated/maintained by Tauri under `src-tauri/gen/android`. Use repository wrappers so local and CI builds share the same pinned environment and package checks. The short command reference is the [command runbook](command-runbook.md).
 
 ## Prerequisites
 
@@ -95,7 +95,7 @@ The shared Linux/Tauri gate is:
 ./scripts/check.sh
 ```
 
-For pull requests, GitHub's exact PR head and `Check` evidence are authoritative. A local APK or pass cannot qualify another SHA. `PR Contract` metadata validation is independent from product qualification.
+For pull requests, GitHub's exact PR head and `Check` evidence are authoritative. A local APK or pass cannot qualify another SHA.
 
 ## Release artifacts
 

@@ -132,7 +132,7 @@ OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST=1 \
   database::tests::regenerate_public_baseline_schema_manifest -- --exact
 
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib \
-  database::tests::public_baseline_is_idempotent_and_matches_manifest -- --exact
+  database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable -- --exact
 ```
 
 After the public baseline ships, do not regenerate it to absorb schema changes. Add immutable forward migrations instead.

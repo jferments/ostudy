@@ -1,6 +1,6 @@
 # Library backup and activation
 
-Follow the repository instructions and [backup/restore agent rules](../../../docs/agents/LIBRARY-RESTORE.md).
+Follow the repository instructions and the [rules for changing backup and restore code](../../../docs/architecture/library-restore.md#rules-for-changing-backup-and-restore-code).
 
 The package, journaled activation and live-runtime owners must remain distinct.
 Never replace a live database without draining its consumers, detach a required

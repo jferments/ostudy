@@ -31,7 +31,7 @@ plugins/ostudy-platform/    narrow native plugin, including Android Kotlin adapt
 scripts/                    setup/build/check/package/diagnostic/policy wrappers
 tests/                      script contracts, native WebDriver, fixtures/baselines
 docs/                       user/install/architecture/development/reference/
-                            agent/decision/history documentation
+                            decision/history documentation
 .github/workflows/          source-read-only qualification and packaging workflows
 ```
 
@@ -41,7 +41,7 @@ A filename left from an earlier implementation is not proof of its current role.
 
 `versions.env` owns pinned tool/direct-dependency versions, mirrored where standard tools need conventional files. `package.json`/pnpm lockfiles own the JavaScript graph; Cargo manifests/lockfiles own Rust; `database.rs` registers migrations/checksums; `lib.rs` registers the Tauri command surface. Current source establishes implementation; maintained architecture and accepted ADRs explain durable intent.
 
-GitHub is authoritative for published source, PRs, reviews, and exact-head Actions evidence. Normal ChatGPT work uses the GitHub Connector as sole source publisher. Custom developer MCPs, Codex, workspaces, observers, and orchestrators require an explicit current-task request and are not prerequisites. See [GitHub-direct development](../agents/GITHUB-DIRECT-DEVELOPMENT.md).
+GitHub is authoritative for pushed source, PRs, reviews, and exact-head Actions evidence. People and coding agents follow the same [Git and pull-request workflow](workflow.md): work in a local checkout, push a branch, and open a draft PR.
 
 ## Setup and local execution
 
@@ -80,7 +80,7 @@ pnpm verify:docs
 
 Use focused tests and the cheapest useful tier while editing, then required final-head qualification. `check-changed` depends on the diff and is not final certification. Exact-tree stamps can reuse valid previous tiers only when their source/tool/platform identity matches; `OSTUDY_FORCE_CHECK=1` is an explicit evidence/diagnostic override, not a substitute for understanding what was tested.
 
-GitHub Actions qualifies published source at an exact SHA. Draft automatic `Check` uses the fast gate. Ready PRs and explicit full dispatches provide full/platform qualification. `PR Contract` validates acceptance metadata separately and is not a prerequisite for product `Check`. Every Actions workflow is source-read-only.
+GitHub Actions qualifies pushed source at an exact SHA. Draft automatic `Check` uses the fast gate. Ready PRs and explicit full dispatches provide full/platform qualification. Every Actions workflow is source-read-only.
 
 When a gate fails, inspect the exact tested SHA, bounded logs/evidence, and smallest failing boundary. Fix that boundary before another broad matrix. Native compilation, frontend mocks, WebDriver persistence, Android package verification, emulator instrumentation, physical-device behavior, and live-provider calls establish different evidence.
 
@@ -122,13 +122,13 @@ Write for the reader:
 - user guides — tasks and concepts;
 - installation — prerequisites and honest qualification/distribution status;
 - architecture — ownership, data flow, trust, invariants, tradeoffs;
-- development/agents — commands, publication, evidence, diagnostics;
+- development — commands, workflow, evidence, diagnostics;
 - reference — exact external/versioned formats;
 - decisions/history — durable rationale and completed/superseded stages.
 
 Update canonical paragraphs instead of appending contradictory PR notes. Keep indexes/links current. Move completed stage/checkpoint records to history or leave only a clear pointer when a stable old path is worth preserving.
 
-Trace production, test, dynamic, platform, and durable-compatibility consumers before deleting code. Remove exclusive styles/tests/scripts when their owner is proven unused, but keep released readers/migrations and real platform fallbacks. See [Documentation maintenance](../agents/DOCUMENTATION-MAINTENANCE.md) and [cleanup audit](documentation-and-cleanup-audit.md).
+Trace production, test, dynamic, platform, and durable-compatibility consumers before deleting code. Remove exclusive styles/tests/scripts when their owner is proven unused, but keep released readers/migrations and real platform fallbacks. See [Documentation maintenance](documentation-maintenance.md) and [cleanup audit](documentation-and-cleanup-audit.md).
 
 ## Dependencies, diagnostics, and release
 
@@ -136,4 +136,4 @@ Direct dependencies are pinned and need demonstrated need, license/trust/platfor
 
 Diagnostics preserve bounded operational context without the learner database, source bytes, raw provider payloads, reasoning, or credentials. Review exported metadata before sharing. See [Diagnostics](diagnostics.md).
 
-A handoff names exact base/branch/head/PR, changed areas, actual checks and tested SHAs, unrun/manual boundaries, known failures, compatibility/rollback risk, and writer release. It supplies a short exact checkout/build/run/Android install path and concrete observations. A normal feature merge does not automatically tag/release/version-bump. See [Git workflow](workflow.md), [Testing and CI](testing-and-ci.md), and [local testing](local-testing-and-handoff.md).
+A handoff names exact base/branch/head/PR, changed areas, actual checks and tested SHAs, unrun/manual boundaries, known failures, and compatibility/rollback risk. It supplies a short exact checkout/build/run/Android install path and concrete observations. A normal feature merge does not automatically tag/release/version-bump. See [Git workflow](workflow.md), [Testing and CI](testing-and-ci.md), and [local testing](local-testing-and-handoff.md).

@@ -114,4 +114,4 @@ The tagged release workflow currently produces Linux artifacts. The Debian relea
 
 ## After installation
 
-Continue with [Getting started](../user-guide/getting-started.md). Contributors should also read the [development guide](../development/guide.md), [Testing and CI](../development/testing-and-ci.md), and [canonical command runbook](../agents/COMMAND-RUNBOOK.md).
+Continue with [Getting started](../user-guide/getting-started.md). Contributors should also read the [development guide](../development/guide.md), [Testing and CI](../development/testing-and-ci.md), and [canonical command runbook](../development/command-runbook.md).

@@ -151,7 +151,7 @@ focused behavior tests
             -> human theme/layout/device acceptance
 ```
 
-The same resource discipline remains current: use maintained wrappers from [the command runbook](../agents/COMMAND-RUNBOOK.md), do not rerun terminal suites for metadata-only updates, and never treat a displayed command or ancestor result as current-head qualification.
+The same resource discipline remains current: use maintained wrappers from [the command runbook](command-runbook.md), do not rerun terminal suites for metadata-only updates, and never treat a displayed command or ancestor result as current-head qualification.
 
 The committed Stage-0 visual evidence predates #96 and remains historical provenance. A later aesthetic redesign should capture a separate exact-head candidate and only establish a new baseline after intentional review.
 

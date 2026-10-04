@@ -438,15 +438,15 @@ Focused reproduction comes before another expensive matrix. A regression test sh
 
 Performance and visual baselines preserve provenance and comparison contracts. A recorded old UI is not the current product specification. Wall-clock performance is advisory/manual; deterministic correctness tests must not pass or fail merely because an arbitrary worker ran slower. Removing stale code must not rewrite historical measurements to manufacture a new baseline.
 
-The canonical agent workflow is **GitHub-direct**. The Connector reads exact source and publishes ordinary files through expected-parent Git-data commits and verified non-force ref updates. Exactly one writer owns a branch. Custom developer MCPs/Codex/orchestrators are not normal prerequisites and require an explicit current-task request. A failed requested MCP must not trap a task in repeated connectivity diagnosis while GitHub still works.
+People and coding agents share one workflow: work in a local checkout, run the local checks, push a short-lived branch, and open a draft PR. Exactly one writer owns a branch.
 
-Actions execute published source and never author it, including manually dispatched maintenance workflows. Draft automatic Check is fast; explicit gates and ready PRs provide full/platform qualification. `PR Contract` checks metadata independently; a malformed or stale acceptance snapshot must not prevent product qualification. Readiness may trigger full testing and is not a reason to claim pending tests passed.
+Actions execute pushed source and never author it, including manually dispatched maintenance workflows. Draft automatic Check is fast; explicit gates and ready PRs provide full/platform qualification. Readiness may trigger full testing and is not a reason to claim pending tests passed.
 
-Qualification belongs to the actual tested SHA, not the branch label. Publication, static/fast/full/platform results, manual acceptance, and human merge are separate states. Failure handling distinguishes product, test contract, environment, Connector, service incident, and human-only boundaries. Same-fingerprint repetition requires a changed strategy, not no-op commits, permission expansion, sleeps, or weaker assertions.
+Qualification belongs to the actual tested SHA, not the branch label. A push, static/fast/full/platform results, manual acceptance, and human merge are separate states. Failure handling distinguishes product, test contract, environment, service incident, and human-only boundaries. Same-fingerprint repetition requires a changed strategy, not no-op commits, permission expansion, sleeps, or weaker assertions.
 
-Local diagnostics record bounded JSON Lines and safe run context. CI preserves machine-readable qualification/failure evidence and bounded logs. The human handoff supplies exact checkout/SHA verification, a short native build/run/install path, concrete acceptance observations, unrun checks, and data/rollback cautions. It does not make the human reconstruct an opaque implementation or rerun a full matrix merely to look at the UI.
+Local diagnostics record bounded JSON Lines and safe run context. CI preserves machine-readable qualification/failure evidence and bounded logs, and a failed run ends with a summary naming the failing step and its focused reproduction. The human handoff supplies exact checkout/SHA verification, a short native build/run/install path, concrete acceptance observations, unrun checks, and data/rollback cautions. It does not make the human reconstruct an opaque implementation or rerun a full matrix merely to look at the UI.
 
-See [Testing and CI](../development/testing-and-ci.md), [Git workflow](../development/workflow.md), [agent procedure](../agents/GITHUB-DIRECT-DEVELOPMENT.md), and [diagnostics](../development/diagnostics.md).
+See [Testing and CI](../development/testing-and-ci.md), [Git workflow](../development/workflow.md), and [diagnostics](../development/diagnostics.md).
 
 ## Tradeoffs, compatibility, and extension rules
 

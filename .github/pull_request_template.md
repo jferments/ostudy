@@ -1,113 +1,26 @@
-## Current state
+## Summary
 
-State what exists in the current published head. Do not describe the target scope as though it is already implemented.
+Before:
 
-- Current phase: planning / scaffolding / implementation / validation / manual acceptance
-- Implemented acceptance criteria: 0/N
-- Latest exact-head qualification: pending
-- Current blocker: none / describe one concrete blocker
+After:
 
-## Goal
+## How
 
-Describe the user-visible or developer-visible result.
+<!-- The approach in a few sentences: the main files touched and why. -->
 
-## Acceptance criteria
+## Testing
 
-Use stable identifiers and keep these synchronized with the compatibility acceptance snapshot.
+<!--
+What ran locally and on which commit, for example ./scripts/check-static.sh,
+./scripts/check-fast.sh, ./scripts/check.sh or focused tests, plus the CI gate
+that passed. Name anything not tested: Android device, live AI provider,
+manual UI pass.
+-->
 
-- **AC-01:** Describe one independently verifiable requirement.
-- **AC-02:** Describe another independently verifiable requirement.
+## Data and compatibility
 
-## Non-goals
+<!-- Migrations, transfer or backup format changes, and whether an older build can still open the library. Write "None" when nothing stored changes. -->
 
-- State behavior deliberately outside this pull request.
+## Try it locally
 
-## Architecture and compatibility surfaces
-
-Describe affected ownership boundaries, migrations, stored data, imports/exports, platforms, privacy, accessibility, dependencies, and rollback concerns. Write `None` only after checking each category.
-
-## Changed files
-
-Group the current changed files by purpose. This section describes the published branch, not planned files.
-
-## Validation
-
-Record exact commands and workflow runs that actually completed. A passed entry must identify the exact commit SHA. Record skipped or unavailable checks explicitly.
-
-Required merge qualification:
-
-- `./scripts/check-static.sh`
-- `./scripts/check-fast.sh`
-- `./scripts/check.sh`
-
-## Manual acceptance
-
-List concrete workflows actually exercised, plus physical-device, live-provider, credential, visual, or other human-only boundaries that remain.
-
-## Known limitations and residual risks
-
-List unresolved defects, compatibility effects, rollback concerns, or `None known` when supported by evidence.
-
-Before updating this snapshot, read the current PR through the connector and save a local `{"pull_request": {...}}` event containing its actual `body`, `draft`, `base.sha`, `head.sha` and `head.ref`. Prepare an explicit JSON progress patch rather than rebuilding the ledger from memory:
-
-```bash
-node scripts/prepare-pr-contract-update.mjs --event /tmp/ostudy-pr-event.json --patch /tmp/ostudy-pr-progress.json --output /tmp/ostudy-pr-body-new.md
-```
-
-The helper preserves omitted fields, validates the complete replacement with `verify-pr-contract.mjs`, and refuses stale identities or ancestor qualification relabeled as current. Missing required arrays are errors, not empty defaults. Review the prepared body, confirm the remote body/head have not changed, and publish that exact body through the connector. On a conflict, reread and reapply the patch; do not overwrite another edit. The helper performs no network or GitHub writes. For a newly created ledger, run `node scripts/verify-pr-contract.mjs --body-file <body.md>` before publication.
-
-The JSON below is a compatibility evidence snapshot. GitHub's remote head and exact-SHA Actions results remain authoritative; editing this snapshot does not trigger or select product qualification.
-
-<!-- ostudy-agent-state:start -->
-```json
-{
-  "schemaVersion": 1,
-  "baseSha": "unrecorded",
-  "headSha": "unqualified",
-  "branch": "agent/replace-with-task-branch",
-  "executionMode": "localCheckout",
-  "currentState": "planning",
-  "nonGoals": [],
-  "compatibilityNotes": [],
-  "rollbackNotes": [],
-  "residualRisks": [],
-  "mergeMethod": "squash",
-  "acceptance": {
-    "AC-01": {
-      "status": "notStarted",
-      "evidence": [],
-      "tests": []
-    },
-    "AC-02": {
-      "status": "notStarted",
-      "evidence": [],
-      "tests": []
-    }
-  },
-  "validation": {
-    "static": {
-      "status": "pending"
-    },
-    "fast": {
-      "status": "pending"
-    },
-    "full": {
-      "status": "pending"
-    },
-    "android": {
-      "status": "pending"
-    }
-  },
-  "manualAcceptance": {
-    "affectedWorkflow": {
-      "status": "pending"
-    }
-  },
-  "knownFailures": []
-}
-```
-<!-- ostudy-agent-state:end -->
-
-## Merge
-
-Requested method: **Squash and merge** after exact-head qualification and human review.
+<!-- Short build/run or Android install commands and the behavior to check. -->
