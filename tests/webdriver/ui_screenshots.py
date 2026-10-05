@@ -640,13 +640,13 @@ def open_document_info(ctx: Context) -> None:
 def open_analytics(ctx: Context) -> None:
     go(ctx, "analytics")
     find(ctx, "//main//section[@aria-label='Learning summary']")
-    find(ctx, "//main//section[@aria-labelledby='progress-heading'][not(@aria-busy='true')]//canvas")
+    find(ctx, "//main//section[@aria-labelledby='progress-heading'][not(@aria-busy='true')]//*[@role='img']")
 
 
 def open_analytics_details(ctx: Context) -> None:
     open_analytics(ctx)
-    find(ctx, "//main//h2[normalize-space(.)='Topic insights']")
-    find(ctx, "//main//h2[normalize-space(.)='Recent reviews']")
+    find(ctx, "//main//h2[normalize-space(.)='Needs attention']")
+    find(ctx, "//main//h2[normalize-space(.)='Every answer']")
 
 
 def scroll_analytics_summary(ctx: Context) -> None:
@@ -654,7 +654,7 @@ def scroll_analytics_summary(ctx: Context) -> None:
 
 
 def scroll_analytics_details(ctx: Context) -> None:
-    scroll_into_view(ctx, "(//main//h2[normalize-space(.)='Topic insights'])[1]/ancestor::section[1]")
+    scroll_into_view(ctx, "(//main//h2[normalize-space(.)='Needs attention'])[1]/ancestor::section[1]")
 
 
 def open_tutor(ctx: Context) -> None:

@@ -430,6 +430,8 @@ pub fn run() {
             analytics::progress::get_progress_subjects,
             analytics::progress::get_progress_question_types,
             analytics::progress::get_progress_sessions,
+            analytics::progress::get_progress_topics,
+            analytics::progress::get_progress_filter_options,
             analytics::progress::get_review_log,
             analytics::get_recent_practice_reviews,
             studydeck::prepare_deck_export,

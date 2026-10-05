@@ -213,8 +213,8 @@ vi.mock("./screens/PracticeScreen", () => ({
   ),
 }));
 
-vi.mock("./screens/AnalyticsScreen", () => ({
-  AnalyticsScreen: ({
+vi.mock("./screens/progress/ProgressScreen", () => ({
+  ProgressScreen: ({
     launchRequest,
     onPracticeScope,
     onSearchTag,
@@ -334,7 +334,7 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
     expect(await screen.findByRole("heading", { name: "Analytics mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Analytics launch").textContent).toBe("7d||");
+    expect(screen.getByLabelText("Analytics launch").textContent).toBe("30d||");
   });
 
   it("changes Flashcards workspaces without creating a top-level section", async () => {

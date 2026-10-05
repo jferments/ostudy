@@ -1,4 +1,3 @@
-import type { Analytics } from "../ipc/analytics";
 import {
   type Asset,
 } from "../ipc/assets";
@@ -175,71 +174,6 @@ export function makePracticeSession(
     startedAt: Date.now(),
     ...overrides,
   };
-}
-
-export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
-  const base: Analytics = {
-    scope: {
-      range: "7d",
-      startLocalDate: "2026-08-01",
-      endLocalDate: "2026-08-06",
-      startAt: 1,
-      endAt: 2,
-      bucketGranularity: "day",
-      todayLocalDate: "2026-08-06",
-      deckIds: [],
-      tagIds: [],
-      highlightedSessionId: null,
-    },
-    currentInventory: {
-      currentDeckCount: 0,
-      sourceNoteCount: 0,
-      generatedCardCount: 0,
-      studyableCardCount: 0,
-      studyableDueCount: 0,
-      needsMorePracticeCount: 0,
-      readyReviewCount: 0,
-      readyNewCount: 0,
-      dueTodayReviewCount: 0,
-    },
-    history: {
-      cardsPracticed: 0,
-      reviewCount: 0,
-      correctCount: 0,
-      correctRate: null,
-      averageConfidence: null,
-      averageResponseTimeMs: null,
-      totalStudyTimeMs: 0,
-      sessionCount: 0,
-      retentionReviewCount: 0,
-      retentionRememberedCount: 0,
-      trueRetention: null,
-    },
-    dailyLimits: {
-      newLimit: 20,
-      reviewLimit: 200,
-      newCompleted: 0,
-      reviewsCompleted: 0,
-      newRemaining: 20,
-      reviewsRemaining: 200,
-    },
-    ratingDistribution: { again: 0, hard: 0, good: 0, easy: 0 },
-    questionTypes: [],
-    timeline: [],
-    deckStats: [],
-    tagStats: [],
-    recentReviews: [],
-    recentSessions: [],
-    attributionCoverage: {
-      capturedReviewCount: 0,
-      legacyBackfilledReviewCount: 0,
-    },
-    dimensionOptions: {
-      decks: [],
-      tags: [],
-    },
-  };
-  return { ...base, ...overrides };
 }
 
 export interface Deferred<T> {

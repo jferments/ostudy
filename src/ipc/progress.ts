@@ -1,11 +1,13 @@
 import { invoke } from "./transport";
 
 import type {
+  AnalyticsDimensionOptions,
   AnalyticsRange,
   AnalyticsScope,
   QuestionTypeAnalytics,
   RecentReview,
   SessionAnalytics,
+  TagAnalytics,
 } from "./analytics";
 
 /** The scope every scoped Progress section shares. Each non-empty filter narrows it further. */
@@ -151,6 +153,15 @@ export async function getProgressQuestionTypes(input: ProgressQuery): Promise<Qu
 
 export async function getProgressSessions(input: ProgressQuery): Promise<SessionAnalytics[]> {
   return invoke<SessionAnalytics[]>("get_progress_sessions", { input });
+}
+
+/** Every tag in scope, the ones that need attention first. */
+export async function getProgressTopics(input: ProgressQuery): Promise<TagAnalytics[]> {
+  return invoke<TagAnalytics[]>("get_progress_topics", { input });
+}
+
+export async function getProgressFilterOptions(): Promise<AnalyticsDimensionOptions> {
+  return invoke<AnalyticsDimensionOptions>("get_progress_filter_options");
 }
 
 export async function getReviewLog(input: ProgressQuery, before: ReviewLogCursor | null = null): Promise<ReviewLogPage> {

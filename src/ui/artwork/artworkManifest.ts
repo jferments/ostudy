@@ -10,6 +10,7 @@ export type ArtworkSlot =
   | "empty.documents"
   | "empty.templates"
   | "practice.complete"
+  | "progress.coach"
   | "tutorial.welcome"
   | "document.processing";
 
@@ -41,6 +42,11 @@ export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> =
   "empty.documents": { slot: "empty.documents", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No documents", category: "empty" },
   "empty.templates": { slot: "empty.templates", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No templates", category: "empty" },
   "practice.complete": { slot: "practice.complete", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Practice complete", category: "completion" },
+  "progress.coach": {
+    slot: "progress.coach", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "The ostudy raccoon", category: "status",
+    // The brand mark's raccoon, here as decoration the mascot-art setting can hide.
+    image: { src: raccoonHead64, srcSet: `${raccoonHead64} 1x, ${raccoonHead128} 2x` },
+  },
   "tutorial.welcome": { slot: "tutorial.welcome", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Welcome to ostudy", category: "tutorial" },
   "document.processing": { slot: "document.processing", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Processing document", category: "status" },
 };
