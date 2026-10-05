@@ -26,12 +26,17 @@ const CHECKPOINT_V1_FILENAME: &str = "ui-checkpoint-v1.json";
 const CHECKPOINT_V2_FILENAME: &str = "ui-checkpoint-v2.json";
 const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer"];
 
+/// A restorable destination. Home and Review joined the released values;
+/// every older value still reads, so a checkpoint saved by an earlier build
+/// opens where it was left.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum CheckpointSection {
+    Home,
     Decks,
     StudyGuides,
     Documents,
+    Review,
     Tutor,
     Analytics,
     Settings,
@@ -468,6 +473,9 @@ mod tests {
             "v2-study-guides-practice-return" => include_bytes!(
                 "../tests/fixtures/ui-checkpoints/v2-study-guides-practice-return.json"
             ),
+            "v2-review-practice-return" => {
+                include_bytes!("../tests/fixtures/ui-checkpoints/v2-review-practice-return.json")
+            }
             _ => panic!("unknown fixture"),
         }
     }
@@ -567,6 +575,62 @@ mod tests {
             serde_json::from_slice::<UiCheckpointDto>(&encoded).expect("decode checkpoint"),
             checkpoint
         );
+    }
+
+    #[test]
+    fn review_and_home_round_trip_beside_every_released_section() {
+        let checkpoint: UiCheckpointDto =
+            serde_json::from_slice(fixture("v2-review-practice-return")).expect("v2 fixture");
+        validate_checkpoint(&checkpoint).expect("valid Review checkpoint");
+        assert_eq!(checkpoint.section, CheckpointSection::Review);
+        let practice = checkpoint.practice.as_ref().expect("resumable session");
+        assert_eq!(practice.return_target.section, CheckpointSection::Review);
+        let encoded = serde_json::to_vec(&checkpoint).expect("encode checkpoint");
+        assert_eq!(
+            serde_json::from_slice::<UiCheckpointDto>(&encoded).expect("decode checkpoint"),
+            checkpoint
+        );
+
+        for (value, section) in [
+            ("home", CheckpointSection::Home),
+            ("decks", CheckpointSection::Decks),
+            ("study-guides", CheckpointSection::StudyGuides),
+            ("documents", CheckpointSection::Documents),
+            ("review", CheckpointSection::Review),
+            ("tutor", CheckpointSection::Tutor),
+            ("analytics", CheckpointSection::Analytics),
+            ("settings", CheckpointSection::Settings),
+        ] {
+            let mut json: serde_json::Value =
+                serde_json::from_slice(fixture("v2-review-practice-return")).expect("fixture JSON");
+            json["section"] = serde_json::Value::String(value.to_string());
+            json["practice"]["returnTarget"]["section"] =
+                serde_json::Value::String(value.to_string());
+            let restored: UiCheckpointDto =
+                serde_json::from_value(json).expect("every section value reads");
+            validate_checkpoint(&restored).expect("every section value validates");
+            assert_eq!(restored.section, section);
+            assert_eq!(restored.practice.unwrap().return_target.section, section);
+        }
+    }
+
+    #[test]
+    fn home_and_review_carry_no_flashcards_route_fields() {
+        for section in [CheckpointSection::Home, CheckpointSection::Review] {
+            assert_eq!(
+                validate_route_fields(section, Some("decks"), None)
+                    .unwrap_err()
+                    .code,
+                "invalid_ui_checkpoint"
+            );
+            assert_eq!(
+                validate_route_fields(section, None, Some(&"d".repeat(32)))
+                    .unwrap_err()
+                    .code,
+                "invalid_ui_checkpoint"
+            );
+            validate_route_fields(section, None, None).expect("a plain destination");
+        }
     }
 
     #[test]
