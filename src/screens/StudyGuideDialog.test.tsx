@@ -361,9 +361,17 @@ async function openSection(title: string): Promise<HTMLElement> {
   return screen.findByRole("heading", { level: 1, name: title });
 }
 
-async function chooseFromMenu(trigger: HTMLElement, label: string): Promise<void> {
+async function openMenu(trigger: HTMLElement): Promise<HTMLElement> {
+  // Base UI hands a menu trigger its click handling and aria-expanded in the same
+  // render, after a passive effect connects the trigger to its root. A click that
+  // lands before that is dropped, so wait for the trigger to report closed first.
+  await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
   fireEvent.click(trigger);
-  const menu = await screen.findByRole("menu", { name: trigger.getAttribute("aria-label") ?? "" });
+  return screen.findByRole("menu", { name: trigger.getAttribute("aria-label") ?? "" });
+}
+
+async function chooseFromMenu(trigger: HTMLElement, label: string): Promise<void> {
+  const menu = await openMenu(trigger);
   fireEvent.click(within(menu).getByRole("menuitem", { name: label }));
 }
 
@@ -438,8 +446,9 @@ describe("StudyGuideDialog", () => {
       "info",
       "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.",
     ));
+    // The toast fires before the reader re-renders, so wait for the button to come back.
+    expect(await screen.findByRole("button", { name: "Generate study guide" })).toBeTruthy();
     expect(screen.queryByText("Canceled.")).toBeNull();
-    expect(screen.getByRole("button", { name: "Generate study guide" })).toBeTruthy();
   });
 
   it("shows a load failure with a retry instead of offering to generate", async () => {
@@ -659,15 +668,13 @@ describe("StudyGuideDialog", () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Study guide actions" }));
-    const guideMenu = await screen.findByRole("menu", { name: "Study guide actions" });
+    const guideMenu = await openMenu(await screen.findByRole("button", { name: "Study guide actions" }));
     expect(within(guideMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Export as PDF…", "Add guide note"]);
     fireEvent.keyDown(guideMenu, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu", { name: "Study guide actions" })).toBeNull());
 
     await openSection("Preload");
-    fireEvent.click(screen.getByRole("button", { name: "Section actions for Preload" }));
-    const sectionMenu = await screen.findByRole("menu", { name: "Section actions for Preload" });
+    const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
     expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Add note", "Edit or rewrite this section"]);
   });
 
@@ -765,7 +772,9 @@ describe("StudyGuideDialog", () => {
       baseContentHash: "f".repeat(64),
       plainText: "In my words: filling stretches the muscle.",
     })));
-    expect(await screen.findByText("In my words: filling stretches the muscle.")).toBeTruthy();
+    // The editor's own text box holds the new words until the saved guide comes back and closes it.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit or rewrite this section" })).toBeNull());
+    expect(screen.getByText("In my words: filling stretches the muscle.")).toBeTruthy();
     expect(screen.getByText("Edited by you")).toBeTruthy();
     expect(screen.queryByText("Sarcomere stretch changes the force of contraction.")).toBeNull();
     const contents = screen.getByRole("navigation", { name: "Study guide contents" });
