@@ -53,9 +53,9 @@ export function OcclusionWorkspace(props: OcclusionWorkspaceProps) {
         <Button disabled={props.disabled || !selected} onClick={() => { if (selected) workspace.focusRegion(selected.rect); }}>Zoom to region</Button>
         <Button disabled={props.disabled || !props.canUndo} onClick={() => { workspace.cancel(); props.onUndo(); }}>Undo region edit</Button>
         <Button disabled={props.disabled || !props.canRedo} onClick={() => { workspace.cancel(); props.onRedo(); }}>Redo region edit</Button>
-        <span className="tw:text-sm tw:text-muted-foreground">{Math.round(workspace.viewport.zoom * 100)}% of Fit</span>
+        <span className="tw:text-small tw:text-muted-foreground">{Math.round(workspace.viewport.zoom * 100)}% of Fit</span>
       </div>
-      <p id={helpId} className="tw:text-sm tw:text-muted-foreground">
+      <p id={helpId} className="tw:text-small tw:text-muted-foreground">
         {workspace.tool === "corners"
           ? interaction.firstCorner ? "Tap the opposite corner to finish the region." : "Tap one corner, then its opposite corner. No dragging is needed."
           : workspace.tool === "rectangle" ? "Drag across the label or region to hide. Two fingers pan and zoom without drawing."
@@ -113,7 +113,7 @@ export function OcclusionWorkspace(props: OcclusionWorkspaceProps) {
             Region {index + 1}
           </Button>
         ))}
-        {props.masks.length === 0 ? <p className="tw:text-sm tw:text-muted-foreground">Add a rectangle, draw a region, or tap two corners.</p> : null}
+        {props.masks.length === 0 ? <p className="tw:text-small tw:text-muted-foreground">Add a rectangle, draw a region, or tap two corners.</p> : null}
       </div>
       {selected ? (
         <div className="tw:grid tw:gap-2" role="group" aria-label="Adjust selected region without dragging">
@@ -132,7 +132,7 @@ export function OcclusionWorkspace(props: OcclusionWorkspaceProps) {
           </div>
         </div>
       ) : null}
-      <p role="status" className="tw:min-h-5 tw:text-sm tw:text-muted-foreground">{workspace.status}</p>
+      <p role="status" className="tw:min-h-5 tw:text-small tw:text-muted-foreground">{workspace.status}</p>
     </section>
   );
 }

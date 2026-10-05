@@ -5,6 +5,7 @@ import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { NavigationSidebar } from "./NavigationSidebar";
+import { matchesLayoutQuery } from "../test/viewport";
 
 const originalMatchMedia = window.matchMedia;
 
@@ -17,8 +18,7 @@ afterEach(() => {
 function setViewport(width: number, coarsePointer = false): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches:
-      (query.includes("max-width: 760px") && width <= 760) ||
-      (query.includes("max-width: 1180px") && width <= 1180) ||
+      matchesLayoutQuery(query, width) ||
       (query.includes("pointer: coarse") && coarsePointer),
     media: query,
     onchange: null,

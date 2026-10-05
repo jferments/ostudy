@@ -11,10 +11,10 @@ export function EmptyMedia({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="empty-icon" className={cn("tw:flex tw:size-14 tw:shrink-0 tw:items-center tw:justify-center tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-muted tw:text-accent-foreground tw:[&_svg]:shrink-0", className)} {...props} />;
 }
 export function EmptyTitle({ className, ...props }: ComponentProps<"h2">) {
-  return <h2 data-slot="empty-title" className={cn("tw:m-0 tw:text-lg tw:font-semibold tw:tracking-tight tw:text-foreground", className)} {...props} />;
+  return <h2 data-slot="empty-title" className={cn("tw:m-0 tw:text-body-large tw:font-semibold tw:tracking-tight tw:text-foreground", className)} {...props} />;
 }
 export function EmptyDescription({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="empty-description" className={cn("tw:text-sm tw:leading-relaxed tw:text-muted-foreground tw:[&_a]:underline", className)} {...props} />;
+  return <div data-slot="empty-description" className={cn("tw:text-small tw:leading-relaxed tw:text-muted-foreground tw:[&_a]:underline", className)} {...props} />;
 }
 export function EmptyContent({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="empty-content" className={cn("tw:flex tw:w-full tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-center tw:gap-3", className)} {...props} />;

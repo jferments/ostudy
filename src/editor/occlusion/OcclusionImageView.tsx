@@ -1,6 +1,7 @@
 import { useId } from "react";
 
 import type { NormalizedRect } from "../../ipc/questions";
+import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { toScreenPoint, type ImageViewport, type Size } from "./geometry";
 import { useOcclusionWorkspace } from "./useOcclusionWorkspace";
@@ -32,15 +33,15 @@ export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, lab
       <div className="tw:flex tw:items-center tw:gap-1" role="group" aria-label="Study image controls">
         <Button variant="ghost" size="icon" disabled={viewport.viewport.zoom <= 1}
           aria-label="Zoom out" title="Zoom out" onClick={() => viewport.zoom(1 / 1.5)}>
-          <ZoomGlyph sign="minus" />
+          <Icon name="zoom-out" />
         </Button>
         <Button variant="ghost" size="icon" disabled={viewport.viewport.zoom >= 32}
           aria-label="Zoom in" title="Zoom in" onClick={() => viewport.zoom(1.5)}>
-          <ZoomGlyph sign="plus" />
+          <Icon name="zoom-in" />
         </Button>
         <Button variant="ghost" size="icon" aria-label="Drag to pan" title="Drag to pan"
           aria-pressed="true" className="tw:bg-accent" onClick={() => viewport.svgRef.current?.focus()}>
-          <PanGlyph />
+          <Icon name="pan" />
         </Button>
       </div>
       <p id={helpId} className="tw:sr-only">
@@ -70,18 +71,4 @@ export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, lab
       </div>
     </section>
   );
-}
-
-function ZoomGlyph({ sign }: { sign: "plus" | "minus" }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    <path d="m15.5 15.5 5 5M7.5 10.5h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    {sign === "plus" ? <path d="M10.5 7.5v6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /> : null}
-  </svg>;
-}
-
-function PanGlyph() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d="M8 11V6a1.5 1.5 0 0 1 3 0v4-6a1.5 1.5 0 0 1 3 0v6-4a1.5 1.5 0 0 1 3 0v5-2a1.5 1.5 0 0 1 3 0v4c0 5-3 8-8 8h-1c-3 0-5-1.3-6.5-3.5L2.5 14a1.7 1.7 0 0 1 2.8-1.9L8 15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>;
 }

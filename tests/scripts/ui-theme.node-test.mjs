@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import { renderTailwindTheme, themeAliases, tokenVariable } from "../../scripts/ui/tailwind-theme.mjs";
 
 const root = new URL("../../src/ui/tokens/", import.meta.url);
+const repository = new URL("../../", import.meta.url);
 function names(value, prefix = "", result = new Set()) {
   for (const [key, child] of Object.entries(value)) {
     if (key.startsWith("$")) continue;
@@ -51,4 +52,30 @@ test("muted and accent utility semantics do not overwrite old short aliases", ()
 test("variable normalization agrees with the existing token generator", () => {
   assert.equal(tokenVariable("shadow.level1"), "--ostudy-shadow-level-1");
   assert.equal(tokenVariable("color.focus.ring"), "--ostudy-color-focus-ring");
+});
+
+async function productionSources(directory, pattern) {
+  const entries = await readdir(new URL(directory, repository), { recursive: true });
+  return entries.filter((path) => pattern.test(path) && !/\.(?:test|spec)\.[jt]sx?$/u.test(path)
+    && !path.includes("tokens/generated/"));
+}
+
+test("layout breakpoints come from one source for JavaScript, Tailwind and CSS Modules", async () => {
+  const queries = await readFile(new URL("generated/viewport.ts", root), "utf8");
+  const variants = await readFile(new URL("generated/viewport-variants.css", root), "utf8");
+  const compact = /compact: "([^"]+)"/u.exec(queries)?.[1];
+  assert.equal(compact, "(width < 760px)");
+  assert.equal(/belowWide: "([^"]+)"/u.exec(queries)?.[1], "(width < 1180px)");
+  assert.ok(variants.includes(`@custom-variant compact {\n  @media ${compact} {`));
+  for (const path of await productionSources("src/", /\.(?:tsx?|css)$/u)) {
+    const source = await readFile(new URL(`src/${path}`, repository), "utf8");
+    assert.doesNotMatch(source, /max-\[760px\]|max-width:\s*760px|max-width:\s*1180px/u, `${path} repeats a layout breakpoint`);
+  }
+});
+
+test("stacking uses the documented layer tokens instead of numeric z-index values", async () => {
+  for (const path of await productionSources("src/", /\.(?:tsx?|css)$/u)) {
+    const source = await readFile(new URL(`src/${path}`, repository), "utf8");
+    assert.doesNotMatch(source, /tw:(?:[^\s"'`]*:)?-?z-(?:\d|\[-?\d)|zIndex:\s*-?\d|z-index:\s*-?\d/u, `${path} uses a numeric z-index`);
+  }
 });

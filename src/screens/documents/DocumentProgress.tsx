@@ -54,7 +54,7 @@ export function GenerationDiagnostics({ progress, now }: {
           <div><dt>Cache writes</dt><dd>{hasUsage ? `${formatTokenCount(progress.cacheWriteTokens)} tokens` : "Awaiting usage"}</dd></div>
         </dl>
         {progress.currentRequestStartedAt !== null ? <section className="tw:grid tw:gap-2">
-          <strong className="tw:text-sm">Current provider request</strong>
+          <strong className="tw:text-small">Current provider request</strong>
           <dl className={progressStyles.stats}>
             <div><dt>Stage</dt><dd>{formatDiagnosticStage(progress.currentRequestStage)}</dd></div>
             <div><dt>Request elapsed</dt><dd>{formatLiveDuration(progress.currentRequestStartedAt, now)}</dd></div>
@@ -65,7 +65,7 @@ export function GenerationDiagnostics({ progress, now }: {
             <div><dt>Output ceiling</dt><dd>{progress.currentRequestMaxOutputTokens === null ? "Unknown" : `${progress.currentRequestMaxOutputTokens.toLocaleString()} tokens`}</dd></div>
           </dl>
         </section> : null}
-        <dl className="tw:m-0 tw:grid tw:gap-2 tw:text-sm">
+        <dl className="tw:m-0 tw:grid tw:gap-2 tw:text-small">
           {retryDetails.map(({ label, count, explanation }) => <div key={label}>
             <dt className="tw:font-medium">{label}</dt>
             <dd className="tw:m-0 tw:text-muted-foreground">{count === undefined ? "Not reported" : `${count.toLocaleString()} retries`}. {explanation}</dd>

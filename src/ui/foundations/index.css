@@ -7,6 +7,7 @@
 @import "tailwindcss/theme.css" layer(theme) prefix(tw);
 @import "tailwindcss/utilities.css" layer(components) source("../..") prefix(tw);
 @import "../tokens/generated/tailwind-theme.css";
+@import "../tokens/generated/viewport-variants.css";
 @import "./local-fonts.css" layer(tokens);
 /* Locally packaged vendor math fonts/styles; no runtime CDN loading. */
 @import "mathlive/fonts.css";
@@ -34,7 +35,6 @@
   @media (prefers-reduced-motion: reduce) { @slot; }
 }
 @custom-variant no-hover (&:where([data-hover="unavailable"] *));
-@custom-variant simple-material (&:where([data-material="simple"] *));
 @custom-variant forced-contrast (&:where([data-contrast="forced"] *));
 
 @layer tokens {

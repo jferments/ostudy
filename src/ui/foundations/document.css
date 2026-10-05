@@ -6,9 +6,12 @@
     --card-font-family: "IBM Plex Sans", var(--ostudy-font-family-system);
   }
 
+  /* The interface scale sets the root size, so every rem-based size follows it. Media
+   * queries resolve rem against the initial font size, so breakpoints do not move. */
   html {
     background: var(--ostudy-color-canvas);
     font-family: var(--ui-font-family);
+    font-size: calc(100% * var(--ui-scale));
   }
 
   body {
@@ -17,7 +20,8 @@
     background: var(--ostudy-color-canvas);
     color: var(--ostudy-color-text-primary);
     font-family: var(--ui-font-family);
-    font-size: calc(16px * var(--ui-scale));
+    font-size: 1rem;
+    font-weight: var(--ostudy-font-weight-regular);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
@@ -136,5 +140,25 @@
     body > *:not(#root) {
       display: none !important;
     }
+  }
+}
+
+/* Defaults that utilities and component styles restyle. They sit in the components layer
+ * with zero specificity, so any class on the element or its button wins even if a bundle
+ * ever declares the layers out of order (main.tsx imports this foundation first). */
+@layer components {
+  /* Interface headings: semibold with slightly tightened tracking. Console swaps in its
+   * IBM Plex Mono display face through the theme-owned heading family. */
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--ostudy-font-family-heading);
+    font-weight: var(--ostudy-font-weight-semibold);
+    letter-spacing: var(--ostudy-font-letter-spacing-tight);
+  }
+
+  /* Icon design sizes in rem (see Icon.tsx) so the interface scale reaches them; a size
+   * utility on the icon or its button still sets the size. */
+  :where(svg[data-icon]) {
+    width: var(--icon-size);
+    height: var(--icon-size);
   }
 }

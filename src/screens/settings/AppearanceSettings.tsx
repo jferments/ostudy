@@ -3,11 +3,7 @@ import { Badge } from "../../ui/primitives/Badge";
 import { Progress } from "../../ui/primitives/Progress";
 import { Button } from "../../ui/primitives/Button";
 import { Panel } from "../../ui/primitives/Panel";
-import type {
-  AppSettings,
-  MaterialPreference,
-  MotionPreference,
-} from "../../ipc/settings";
+import type { AppSettings, MotionPreference } from "../../ipc/settings";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { FontControl, RangeControl, SelectControl, ThemePreview } from "./SettingsControls";
 
@@ -21,12 +17,6 @@ const MOTION_OPTIONS: ReadonlyArray<{ value: MotionPreference; label: string }> 
   { value: "full", label: "Full motion" },
   { value: "reduced", label: "Reduced motion" },
   { value: "none", label: "No nonessential motion" },
-];
-
-const MATERIAL_OPTIONS: ReadonlyArray<{ value: MaterialPreference; label: string }> = [
-  { value: "automatic", label: "Automatic" },
-  { value: "rich", label: "Rich materials" },
-  { value: "simple", label: "Simple opaque materials" },
 ];
 
 export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
@@ -60,11 +50,8 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
 
       <Panel className="tw:min-w-0">
         <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
-          <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Motion and materials</h2>
-          <span>
-            <HelpTrigger topicId="settings.motion" label="Help with motion preferences" />
-            <HelpTrigger topicId="settings.materialEffects" label="Help with material effects" />
-          </span>
+          <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Motion</h2>
+          <HelpTrigger topicId="settings.motion" label="Help with motion preferences" />
         </div>
         <SelectControl
           label="Motion"
@@ -72,13 +59,6 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
           options={MOTION_OPTIONS}
           description="Reduced motion removes spatial transitions, card flips, parallax, reorder interpolation, and particle effects."
           onChange={(motionPreference) => update({ motionPreference })}
-        />
-        <SelectControl
-          label="Material effects"
-          value={draft.materialPreference ?? "automatic"}
-          options={MATERIAL_OPTIONS}
-          description="Automatic uses restrained depth and translucency while respecting operating-system transparency preferences."
-          onChange={(materialPreference) => update({ materialPreference })}
         />
       </Panel>
 

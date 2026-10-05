@@ -14,7 +14,6 @@ export const retainedModules = Object.freeze({
   "src/ui/motion/Motion.module.css": "Shared transition geometry and reduced-motion behavior.",
   "src/ui/feedback/experience.module.css": "Optional celebration particles and keyframes.",
   "src/ui/primitives/Progress.module.css": "Progress text foreground split across the filled and unfilled track.",
-  "src/ui/materials/Materials.module.css": "Optional decorative surface layers and ambient pointer transforms.",
   "src/ui/tutorials/TourProvider.module.css": "Measured spotlight mask and viewport collision geometry.",
 });
 

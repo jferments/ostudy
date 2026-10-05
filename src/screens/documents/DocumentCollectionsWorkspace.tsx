@@ -124,7 +124,7 @@ export function DocumentCollectionsWorkspace({
     <section aria-label="Document collections" className="tw:mb-8 tw:grid tw:gap-4">
       <div className={`tw:flex tw:flex-wrap tw:items-center tw:gap-3 ${folders.length ? "tw:justify-between" : "tw:justify-end"}`}>
         {folders.length ? (
-          <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
+          <h2 className="tw:m-0 tw:text-body-large tw:font-semibold">Document collections</h2>
         ) : null}
         <Button
           size="small"
@@ -227,8 +227,8 @@ function CollectionPanel({
     <Surface as="article" className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
         <div className="tw:grid tw:min-w-0 tw:gap-1">
-          <h3 className="tw:m-0 tw:wrap-anywhere tw:text-base tw:font-semibold">{folder.name}</h3>
-          <span className="tw:text-sm tw:text-muted-foreground">
+          <h3 className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{folder.name}</h3>
+          <span className="tw:text-small tw:text-muted-foreground">
             {memberships.length} source{memberships.length === 1 ? "" : "s"}
           </span>
         </div>
@@ -348,8 +348,8 @@ function CollectionStudyMaterials({
     <Surface as="section" className="tw:grid tw:gap-3 tw:bg-muted/20 tw:p-3" aria-label="Collection study materials">
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
         <div className="tw:grid tw:min-w-0 tw:gap-1">
-          <strong className="tw:text-sm">Study materials</strong>
-          <span className="tw:text-sm tw:text-muted-foreground">
+          <strong className="tw:text-small">Study materials</strong>
+          <span className="tw:text-small tw:text-muted-foreground">
             {loading ? "Checking saved artifacts…"
               : status?.sourceChanged ? "Sources changed · update available"
                 : "One ordinary flashcard deck and one collection study guide."}
@@ -384,7 +384,7 @@ function CollectionStudyMaterials({
         compact
         label="Flashcard instructions (optional)"
       />
-      <p className="tw:m-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">
+      <p className="tw:m-0 tw:text-caption tw:leading-relaxed tw:text-muted-foreground">
         Collection guidance prioritizes eligible, already-grounded source flashcards for this
         bundle. It never treats the prompt as source evidence and never silently removes existing
         reviewed collection cards.
@@ -396,7 +396,7 @@ function CollectionStudyMaterials({
         </InlineNotice>
       ) : null}
       {busy ? <CollectionBundleProgress status={status} /> : null}
-      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-sm" aria-live="polite">
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-small" aria-live="polite">
         <ArtifactStatus label="Flashcards" artifact={status?.flashcards ?? null} openLabel="Open Flashcards deck"
           onOpen={status?.deckId && onOpenDeck ? () => onOpenDeck(status.deckId as string) : undefined} />
         <ArtifactStatus label="Study Guide" artifact={status?.studyGuide ?? null} openLabel="Open collection study guide"
@@ -412,7 +412,7 @@ function CollectionBundleProgress({ status }: { status: StudyTargetBundleStatus 
   const active = bundleProgress(status);
   return (
     <div className="tw:grid tw:gap-2" role="status" aria-live="polite">
-      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-sm">
+      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-small">
         <span>{active.title}</span>
         <span className="tw:text-muted-foreground">{active.label}</span>
       </div>
@@ -511,7 +511,7 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
   return (
     <section className="tw:grid tw:gap-3" aria-label="Collection sources">
       <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-        <h3 className="tw:m-0 tw:text-base tw:font-semibold">Sources</h3>
+        <h3 className="tw:m-0 tw:text-body tw:font-semibold">Sources</h3>
         <Button size="small" disabled={disabled} onClick={onAdd}>Add source</Button>
       </div>
       {memberships.length ? memberships.map((membership) => {
@@ -526,7 +526,7 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
             </div>
           </Surface>
         );
-      }) : <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">No sources in this collection yet.</p>}
+      }) : <p className="tw:m-0 tw:text-small tw:text-muted-foreground">No sources in this collection yet.</p>}
     </section>
   );
 }
@@ -538,7 +538,7 @@ function SourceTile({ document, rangeLabel: label }: { document: DocumentSummary
         {document?.sourceFormat.slice(0, 4) ?? "DOC"}
       </div>
       <div className="tw:grid tw:min-w-0 tw:gap-0.5">
-        <strong className="tw:wrap-anywhere tw:text-sm">{document?.title ?? "Source no longer available"}</strong>
+        <strong className="tw:wrap-anywhere tw:text-small">{document?.title ?? "Source no longer available"}</strong>
         <small className="tw:wrap-anywhere tw:text-muted-foreground">{label}</small>
       </div>
     </div>
@@ -567,7 +567,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
     return (
       <Dialog title={title} onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
             Name
             <TextField autoFocus value={dialog.name} maxLength={120}
               onChange={(event) => setDialog({ ...dialog, name: event.target.value })} />
@@ -595,14 +595,14 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
     return (
       <Dialog title="Add source to collection" onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
             Document
             <NativeSelect value={dialog.documentId} onChange={(event) => setDialog({ ...dialog, documentId: event.target.value })}>
               <option value="">Select a document…</option>
               {choices.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}
             </NativeSelect>
           </label>
-          {!choices.length ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
+          {!choices.length ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
           {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
           <DialogActions>
             <Button onClick={close}>Cancel</Button>
@@ -621,7 +621,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
     return (
       <Dialog title="Move source to another collection" onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
             Destination
             <NativeSelect value={dialog.targetCollectionId} onChange={(event) => setDialog({ ...dialog, targetCollectionId: event.target.value })}>
               <option value="">Select a collection…</option>
@@ -649,7 +649,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
       description={`Choose ${unitLabel} from 1 to ${document.sourceUnitCount}. Leave blank to use the whole document.`}
       onClose={close} busy={busy} width="small">
       <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
-        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-small tw:font-medium">
           {capitalize(unitLabel)}
           <TextField autoFocus value={dialog.value} placeholder={document.sourceUnitCount > 1 ? "1-3, 7" : "1"}
             onChange={(event) => { setDialog({ ...dialog, value: event.target.value }); setError(null); }} />

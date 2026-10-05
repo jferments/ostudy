@@ -58,7 +58,7 @@ Open **Study Guides** to browse generated guides, add learner notes, review sour
 
 ## Adjust the interface
 
-**Settings → Appearance** offers Light, Dark, Console, and Synthwave themes, separate interface/card typography, scale, motion, materials, decorative artwork, celebrations, and optional tutorials. Preview changes, then use **Save preferences** when shown. Provider profiles and template edits have their own save paths.
+**Settings → Appearance** offers Light, Dark, Console, and Synthwave themes, separate interface/card typography, scale, motion, decorative artwork, celebrations, and optional tutorials. Preview changes, then use **Save preferences** when shown. Provider profiles and template edits have their own save paths.
 
 Tutorials default off and never start automatically. Enable them and start one explicitly from related Help when needed. Ordinary help does not require enabling tutorials. Reduced motion and disabled decoration preserve controls and educational content. See [Appearance and guidance](appearance-and-guidance.md).
 

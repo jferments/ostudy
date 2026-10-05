@@ -62,7 +62,7 @@ export function ImageOcclusionActivity({ sessionId, cardId, attempt, assets, dis
       <h3>Answer</h3>
       <RichTextView document={progress.answer} assets={assets} onLinkError={onError} />
       {progress.explanation ? <RichTextView document={progress.explanation} assets={assets} onLinkError={onError} /> : null}
-      <p className="tw:text-sm tw:text-muted-foreground">Compare this answer with your recall, then choose Wrong, Hard, Medium or Easy below. This question is self-assessed.</p>
+      <p className="tw:text-small tw:text-muted-foreground">Compare this answer with your recall, then choose Wrong, Hard, Medium or Easy below. This question is self-assessed.</p>
     </section>}
   </Surface>;
 }

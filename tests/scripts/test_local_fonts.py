@@ -9,6 +9,8 @@ VERIFIER = ROOT / "scripts" / "verify-local-fonts.mjs"
 LICENSE = ROOT / "public" / "licenses" / "IBM-Plex-Sans-OFL-1.1.txt"
 FONT_FILENAMES = (
     "ibm-plex-sans-latin-variable.woff2",
+    "ibm-plex-mono-latin-600.woff2",
+    "ibm-plex-mono-latin-700.woff2",
     "albert-sans-latin-variable.woff2",
     "space-grotesk-latin-variable.woff2",
     "spline-sans-latin-variable.woff2",

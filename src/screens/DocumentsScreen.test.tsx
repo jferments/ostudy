@@ -142,9 +142,16 @@ function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolve
 async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
-  await act(async () => {
-    fireEvent.click(trigger);
-  });
+  // Base UI connects a menu trigger to its root in a passive effect, so a click
+  // that lands after the row renders but before React runs that effect does
+  // nothing, and a busy machine widens the gap. An accepted click opens the menu
+  // before act returns and a dropped one leaves it closed, so clicking until it
+  // reports open never toggles it shut.
+  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+  }
   await waitFor(() => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });

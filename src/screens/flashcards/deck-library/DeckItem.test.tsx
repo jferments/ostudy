@@ -6,6 +6,7 @@ import type { DeckSummary } from "../../../ipc/decks";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { DeckItem } from "./DeckItem";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
+import { matchesLayoutQuery, layoutWidths } from "../../../test/viewport";
 
 const originalMatchMedia = window.matchMedia;
 const deck = makeDeck("a", "Anatomy");
@@ -232,9 +233,7 @@ function keyboardEvent(key: string): globalThis.KeyboardEvent {
 
 function setLayoutMode(layoutMode: "wide" | "medium" | "compact"): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches:
-      (query === "(max-width: 760px)" && layoutMode === "compact") ||
-      (query === "(max-width: 1180px)" && layoutMode !== "wide"),
+    matches: matchesLayoutQuery(query, layoutWidths[layoutMode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),

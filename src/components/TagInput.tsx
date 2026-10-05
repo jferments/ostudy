@@ -37,7 +37,7 @@ export function TagInput({ label = "Tags", tags, suggestions, disabled = false, 
   }
 
   return <div className="tw:grid tw:min-w-0 tw:gap-2">
-    <label htmlFor={id} className="tw:text-sm tw:font-medium">{label}</label>
+    <label htmlFor={id} className="tw:text-small tw:font-medium">{label}</label>
     {tags.length > 0 ? <div className="tw:flex tw:flex-wrap tw:gap-2" aria-label="Selected tags">
       {tags.map((tag) => <ChipButton key={tag.toLocaleLowerCase()} tone="accent" disabled={disabled}
         aria-label={`Remove ${tag} tag`} onClick={() => onChange(tags.filter((value) => value !== tag))}>
@@ -51,6 +51,6 @@ export function TagInput({ label = "Tags", tags, suggestions, disabled = false, 
       {suggestions.filter((suggestion) => !tags.some((tag) => tag.toLocaleLowerCase() === suggestion.name.toLocaleLowerCase()))
         .map((suggestion) => <option key={suggestion.id} value={suggestion.name}>{suggestion.generatedCardCount} generated cards</option>)}
     </datalist>
-    <small id={helpId} className="tw:text-xs tw:text-muted-foreground">Press Enter or comma after each tag.</small>
+    <small id={helpId} className="tw:text-caption tw:text-muted-foreground">Press Enter or comma after each tag.</small>
   </div>;
 }

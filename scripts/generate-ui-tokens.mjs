@@ -19,7 +19,11 @@ for (const theme of themeNames) {
   themes.set(theme, await readJson(join(sourceDirectory, "themes", `${theme}.tokens.json`)));
 }
 
-const referenceTokens = flattenTokens(reference);
+// Viewport breakpoints cannot be CSS variables (media queries do not read them), so they
+// generate the layout media-query strings and the Tailwind layout variants instead.
+const { breakpoint: breakpointSource, ...referenceSource } = reference;
+const breakpoints = readBreakpoints(breakpointSource);
+const referenceTokens = flattenTokens(referenceSource);
 const componentTokens = flattenTokens(component);
 const themeTokens = new Map(
   [...themes.entries()].map(([name, value]) => [name, flattenTokens(value)]),
@@ -41,6 +45,8 @@ const outputs = new Map([
     join(outputDirectory, "tokenNames.ts"),
     renderTypeScript(referenceTokens, componentTokens, themeTokens),
   ],
+  [join(outputDirectory, "viewport.ts"), renderViewportTypeScript(breakpoints)],
+  [join(outputDirectory, "viewport-variants.css"), renderViewportVariants(breakpoints)],
 ]);
 
 if (checkOnly) {
@@ -112,20 +118,111 @@ function validateThemeContract(themeMaps) {
   }
 }
 
+/** Reference primitives are theme-independent. Component tokens may alias any tier because
+ * every tier resolves on :root. Theme tokens may alias primitives and other roles of the same
+ * theme (radius.button -> radius.pill, chart.1 -> subject.1), so shape such as radius can vary
+ * per theme while each theme file stays the single owner of its values. */
 function validateAliases(referenceTokens, componentTokens, themeMaps) {
-  const available = new Set([...referenceTokens.keys(), ...componentTokens.keys()]);
-  const groups = [referenceTokens, componentTokens, ...themeMaps.values()];
-  for (const tokens of groups) {
-    for (const [name, token] of tokens) {
-      if (typeof token.value !== "string") continue;
-      for (const match of token.value.matchAll(/\{([a-zA-Z0-9_.-]+)\}/gu)) {
-        const target = match[1];
-        if (!available.has(target)) {
-          throw new Error(`${name} references unknown token ${target}.`);
-        }
-      }
+  const semanticNames = new Set([...themeMaps.values()][0].keys());
+  for (const name of componentTokens.keys()) {
+    if (referenceTokens.has(name)) throw new Error(`Component token ${name} repeats a reference token name.`);
+  }
+  for (const name of semanticNames) {
+    if (referenceTokens.has(name) || componentTokens.has(name)) {
+      throw new Error(`Theme token ${name} repeats a reference or component token name.`);
     }
   }
+  assertReferences(referenceTokens, (name) => referenceTokens.has(name), "Reference");
+  assertReferences(
+    componentTokens,
+    (name) => referenceTokens.has(name) || componentTokens.has(name) || semanticNames.has(name),
+    "Component",
+  );
+  for (const [theme, tokens] of themeMaps) {
+    assertReferences(tokens, (name) => referenceTokens.has(name) || tokens.has(name), `${theme} theme`);
+    assertAcyclic(new Map([...referenceTokens, ...componentTokens, ...tokens]), theme);
+  }
+}
+
+function tokenReferences(token) {
+  if (typeof token.value !== "string") return [];
+  return [...token.value.matchAll(/\{([a-zA-Z0-9_.-]+)\}/gu)].map((match) => match[1]);
+}
+
+function assertReferences(tokens, isAvailable, scope) {
+  for (const [name, token] of tokens) {
+    for (const target of tokenReferences(token)) {
+      if (!isAvailable(target)) throw new Error(`${scope} token ${name} references unknown token ${target}.`);
+    }
+  }
+}
+
+function assertAcyclic(tokens, theme) {
+  const state = new Map();
+  const visit = (name, path) => {
+    if (state.get(name) === "done") return;
+    if (state.get(name) === "visiting") {
+      throw new Error(`Token aliases form a cycle in the ${theme} theme: ${[...path, name].join(" -> ")}.`);
+    }
+    state.set(name, "visiting");
+    for (const target of tokenReferences(tokens.get(name))) visit(target, [...path, name]);
+    state.set(name, "done");
+  };
+  for (const name of tokens.keys()) visit(name, []);
+}
+
+function readBreakpoints(source) {
+  const tokens = flattenTokens(source ?? {});
+  const widths = {};
+  for (const name of ["medium", "wide"]) {
+    const value = tokens.get(name)?.value;
+    const match = typeof value === "string" ? /^(\d+)px$/u.exec(value) : null;
+    if (!match) throw new Error(`breakpoint.${name} must be a whole pixel width such as 760px.`);
+    widths[name] = Number(match[1]);
+  }
+  if (tokens.size !== 2) throw new Error("Only breakpoint.medium and breakpoint.wide are supported.");
+  if (widths.medium >= widths.wide) throw new Error("breakpoint.medium must be narrower than breakpoint.wide.");
+  return {
+    widths,
+    compact: `(width < ${widths.medium}px)`,
+    medium: `(${widths.medium}px <= width < ${widths.wide}px)`,
+    wide: `(width >= ${widths.wide}px)`,
+    belowWide: `(width < ${widths.wide}px)`,
+  };
+}
+
+function renderViewportTypeScript(breakpoints) {
+  return [
+    "// This file is generated by scripts/generate-ui-tokens.mjs. Do not edit directly.",
+    "/** Viewport widths (CSS px) where the medium and wide layouts begin. */",
+    `export const viewportBreakpoints = { medium: ${breakpoints.widths.medium}, wide: ${breakpoints.widths.wide} } as const;`,
+    "",
+    "/** Layout media queries. Tailwind's compact, medium and wide variants use the same conditions. */",
+    "export const viewportQueries = {",
+    `  compact: ${JSON.stringify(breakpoints.compact)},`,
+    `  belowWide: ${JSON.stringify(breakpoints.belowWide)},`,
+    "} as const;",
+    "",
+  ].join("\n");
+}
+
+function renderViewportVariants(breakpoints) {
+  const variant = (name, query) => [
+    `@custom-variant ${name} {`,
+    `  @media ${query} {`,
+    "    @slot;",
+    "  }",
+    "}",
+  ];
+  return [
+    "/* This file is generated by scripts/generate-ui-tokens.mjs. Do not edit directly.",
+    " * Layout variants share their conditions with viewportQueries in viewport.ts. CSS Modules",
+    " * use them through @reference and a nested @variant. */",
+    ...variant("compact", breakpoints.compact),
+    ...variant("medium", breakpoints.medium),
+    ...variant("wide", breakpoints.wide),
+    "",
+  ].join("\n");
 }
 
 function renderRootCss(tokens) {

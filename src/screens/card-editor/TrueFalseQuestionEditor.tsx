@@ -27,7 +27,7 @@ export function TrueFalseQuestionEditor({
     <Surface className="tw:grid tw:gap-5 tw:p-5">
       <div className="tw:grid tw:gap-1">
         <h2>True / false</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">
+        <p className="tw:text-small tw:text-muted-foreground">
           Keep the statement atomic. Avoid compound claims, hidden qualifiers, and double negatives.
         </p>
       </div>

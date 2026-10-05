@@ -24,10 +24,11 @@ const tones = {
   warning: "tw:bg-warning-soft tw:ring-warning/30",
   danger: "tw:bg-destructive-soft tw:ring-destructive/30",
 };
+// Surfaces are flat and opaque in every theme; "translucent" stays accepted but renders solid.
 const materials = {
   solid: "",
   soft: "tw:bg-muted/40",
-  translucent: "tw:bg-card/85",
+  translucent: "",
   chrome: "tw:bg-sidebar",
   overlay: "tw:bg-popover tw:shadow-lg",
 };
