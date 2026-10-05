@@ -22,29 +22,32 @@ class AndroidSmokeSemanticSelectorTests(unittest.TestCase):
             failures.append(f"{ANDROID_SMOKE.relative_to(ROOT)}:{line} uses presentation-class DOM selector {selector!r}")
         self.assertEqual([], failures, "\n" + "\n".join(failures))
 
-    def test_nested_deck_back_stack_uses_accessible_open_control(self) -> None:
+    def test_nested_deck_back_stack_steps_through_the_workbench(self) -> None:
         source = ANDROID_SMOKE.read_text(encoding="utf-8")
         start = source.index("fun c_nestedDeckAndEditorBackReturnThroughTheStack()")
         end = source.index("\n    @Test\n    fun d_reloadsIntoInterruptedPracticeSession()", start)
         scenario = source[start:end]
-        open_selector = '[role=\\"button\\"][aria-label=\\"Open Android Emulator Smoke Deck\\"]'
-        self.assertNotIn("button.querySelector('strong')", scenario)
-        self.assertNotIn('button[aria-label=\\"Open Android Emulator Smoke Deck\\"]', scenario)
-        self.assertEqual(3, scenario.count(open_selector))
-        self.assertIn("document.querySelector('main " + open_selector + "')?.click(); true", scenario)
+        # The deck opens from the Workbench's tree by its name, not a retired deck row.
+        self.assertNotIn("Open Android Emulator Smoke Deck", scenario)
+        self.assertIn("button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'", scenario)
+        # Back closes the editor, then the card list, then leaves Library for Home.
+        self.assertEqual(3, scenario.count("device.pressBack()"))
+        self.assertLess(scenario.index("=== 'Add card'"), scenario.index("device.pressBack()"))
+        self.assertIn("!document.querySelector('main h1[data-testid=\\\"workbench-title\\\"]')", scenario)
 
-    def test_empty_library_snapshot_waits_for_async_library_not_only_route_heading(self) -> None:
+    def test_empty_library_snapshot_waits_for_the_workbench_tree(self) -> None:
         source = ANDROID_SMOKE.read_text(encoding="utf-8")
         start = source.index("fun a1_freshLibraryUsesQuietNavigation()")
         end = source.index("fun a_seedLibraryPracticeAndAnalytics()", start)
         scenario = source[start:end]
-        ready = scenario.index("data-deck-library-pointer-surface")
+        ready = scenario.index('library-workbench\\"] nav[aria-label=\\"Library\\"]')
         self.assertLess(scenario.index("waitUntil("), ready)
         self.assertLess(ready, scenario.index("val snapshot"))
-        for key in ("settingsGear", "importAction", "createAction", "emptyHeading"):
+        for key in ("libraryCurrent", "settingsGear", "importAction", "documentsView", "studyGuidesView"):
             self.assertIn(f'assertTrue(snapshot.getBoolean("{key}"))', scenario)
-        for key in ("foldersHeading", "unsortedHeading", "staleEmptyCopy", "irrelevantControls"):
+        for key in ("cardList", "irrelevantControls"):
             self.assertIn(f'assertFalse(snapshot.getBoolean("{key}"))', scenario)
+        self.assertIn('assertEquals(1, snapshot.getInt("createActions"))', scenario)
 
 
 if __name__ == "__main__":
