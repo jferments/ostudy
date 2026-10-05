@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PracticeCard, PracticeSession, ReviewPreviewSet } from "../../ipc/practice";
 import { makeCardPresentation, resetTestEntityIds } from "../../test/factories";
+import { layoutWidths, matchesLayoutQuery } from "../../test/viewport";
+import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { ActivePractice } from "./ActivePractice";
 vi.mock("../../editor/RichTextView", () => ({ RichTextView: ({ className = "" }: { className?: string }) => <div className={className}>Rich card content</div> }));
 const previews: ReviewPreviewSet = {
@@ -23,7 +25,7 @@ function renderActive(overrides: Partial<React.ComponentProps<typeof ActivePract
     isRevealing: false, isRating: false, isEnding: false, isManaging: false, errorMessage: null,
     onReveal: vi.fn(), onScore: vi.fn(), onEdit: vi.fn(), onScheduleAction: vi.fn(), onEnd: vi.fn(), onLinkError: vi.fn(), ...overrides,
   };
-  return { props, ...render(<ActivePractice {...props} />) };
+  return { props, ...render(<LayoutModeProvider><ActivePractice {...props} /></LayoutModeProvider>) };
 }
 describe("ActivePractice", () => {
   beforeEach(() => { resetTestEntityIds(); vi.clearAllMocks(); });
@@ -97,7 +99,7 @@ describe("ActivePractice", () => {
     const { props, rerender } = renderActive({ revealed: true, previewSet: previews, isManaging: true });
     const medium = screen.getByRole("button", { name: "2 Medium" }) as HTMLButtonElement;
     expect(medium.disabled).toBe(true); fireEvent.click(medium); expect(props.onScore).not.toHaveBeenCalled();
-    rerender(<ActivePractice {...props} isManaging={false} isEnding />);
+    rerender(<LayoutModeProvider><ActivePractice {...props} isManaging={false} isEnding /></LayoutModeProvider>);
     expect(medium.disabled).toBe(true); fireEvent.keyDown(window, { key: "2" }); expect(props.onScore).not.toHaveBeenCalled();
   });
   it("places the timer-style Schedule control before Edit card", () => {
@@ -120,11 +122,11 @@ describe("ActivePractice", () => {
     renderActive(); const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
     expect(progress.getAttribute("aria-valuenow")).toBe("0"); expect(progress.getAttribute("aria-valuemax")).toBe("1");
     expect(progress.getAttribute("aria-valuetext")).toBe("Card 1 of 1, 0 studied, 1 remaining, 0% complete");
-    expect(screen.getAllByText("0 studied · 1 remaining")).toHaveLength(2); expect(screen.getAllByText("0%")).toHaveLength(2);
+    expect(screen.getByText("Practice · 0 studied · 1 remaining")).toBeTruthy();
   });
   it("renders authoritative session context without a weak-card header badge", () => {
     renderActive({ session: { ...makeSession(), mode: "extra" } });
-    expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy(); expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
+    expect(screen.getByText("Extra practice · 0 studied · 1 remaining")).toBeTruthy(); expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
     expect(screen.queryByText("Needs more practice")).toBeNull(); expect(screen.queryByLabelText("1 of 1 cards, 0 studied, 1 remaining")).toBeNull();
     expect(screen.getByRole("button", { name: "Schedule" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "End session" }).getAttribute("data-practice-action")).toBe("end");
@@ -134,6 +136,38 @@ describe("ActivePractice", () => {
     const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
     expect(progress.getAttribute("aria-valuenow")).toBe("0"); expect(progress.getAttribute("aria-valuemax")).toBe("0");
     expect(progress.getAttribute("aria-valuetext")).toBe("Card 0 of 0, 0 studied, 0 remaining, 0% complete");
-    expect(screen.getAllByText("0 studied · 0 remaining")).toHaveLength(2);
+    expect(screen.getByText("Practice · 0 studied · 0 remaining")).toBeTruthy();
+  });
+});
+describe("ActivePractice on a phone", () => {
+  const originalMatchMedia = window.matchMedia;
+  beforeEach(() => {
+    resetTestEntityIds(); vi.clearAllMocks();
+    window.matchMedia = vi.fn((query: string) => ({
+      matches: matchesLayoutQuery(query, layoutWidths.compact), media: query, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    }) as unknown as MediaQueryList);
+  });
+  afterEach(() => { window.matchMedia = originalMatchMedia; });
+  it("keeps End session in the bar and gathers Edit card and the schedule actions in one menu", () => {
+    const { props } = renderActive({ session: { ...makeSession(), mode: "extra" } });
+    const end = screen.getByRole("button", { name: "End session" });
+    expect(end.textContent).toBe("End session"); expect(end.getAttribute("data-practice-action")).toBe("end");
+    expect(screen.queryByRole("button", { name: "Edit card" })).toBeNull(); expect(screen.queryByRole("button", { name: "Schedule" })).toBeNull();
+    expect(screen.getByText("0 studied · 1 remaining")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
+    const sheet = screen.getByRole("dialog", { name: "Card actions" });
+    // The sheet's own close control is an icon; the actions are the labeled rows.
+    expect(within(sheet).getAllByRole("button").map((button) => button.textContent).filter(Boolean))
+      .toEqual(["Edit card", "Bury until tomorrow", "Suspend card", "Reschedule for tomorrow", "Reset schedule"]);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Edit card" }));
+    expect(props.onEdit).toHaveBeenCalledOnce(); expect(screen.queryByRole("dialog", { name: "Card actions" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Card actions" })).getByRole("button", { name: "Suspend card" }));
+    expect(props.onScheduleAction).toHaveBeenCalledWith("suspend");
+  });
+  it("disables the card actions menu with the other controls while a change is pending", () => {
+    renderActive({ isManaging: true });
+    expect((screen.getByRole("button", { name: "Card actions" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "End session" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

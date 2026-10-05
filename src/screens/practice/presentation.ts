@@ -5,12 +5,22 @@ export const practiceStyles = {
   // A revealed animated card keeps its turn-over button on the label's row, clear of the content.
   practiceSideLabelBesideToggle: "tw:flex tw:min-h-7 tw:items-center tw:coarse:min-h-touch",
   practiceAnswerDivider: "tw:my-5 tw:h-px tw:bg-border",
-  practiceSessionHeader: "tw:mb-3 tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3",
-  practiceSessionTitle: "tw:min-w-0 tw:flex-1 tw:[&_h1]:mt-0.5 tw:[&_h1]:mb-0 tw:[&_h1]:break-words tw:[&_h1]:text-section tw:[&_h1]:font-semibold tw:[&_h1]:tracking-tight",
-  eyebrow: "tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
-  practiceHeaderActions: "tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-1.5 tw:compact:w-full tw:compact:justify-start",
-  practiceHeaderButton: "tw:whitespace-nowrap",
-  practiceProgressTrack: "tw:mb-3 tw:shrink-0",
+  // The page fills the main area as a column: a top bar that stays put, the card, then the actions.
+  page: "tw:flex tw:min-h-full tw:flex-col",
+  // The top bar follows the chapter reader's: the deck as a one-line title over a muted line with
+  // the kind of practice and the counts, quiet actions on the right, and progress as its bottom edge.
+  topBar: "tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:shrink-0 tw:bg-background",
+  topBarRow: "tw:flex tw:min-h-14 tw:min-w-0 tw:items-center tw:gap-2 tw:py-1.5 tw:px-page tw:compact:gap-1 tw:compact:pr-2 tw:compact:pl-4",
+  topBarTitle: "tw:min-w-0 tw:flex-1",
+  title: "tw:m-0 tw:truncate tw:text-body tw:font-semibold",
+  subtitle: "tw:m-0 tw:truncate tw:text-label tw:tabular-nums tw:text-muted-foreground",
+  topBarActions: "tw:flex tw:shrink-0 tw:items-center tw:gap-1",
+  quietIconButton: "tw:border-transparent tw:bg-transparent",
+  endAction: "tw:ml-1 tw:whitespace-nowrap",
+  // The card column: as wide as comfortable reading, centered under the top bar.
+  body: "tw:px-page tw:pt-6 tw:pb-4 tw:compact:px-4 tw:compact:pt-4",
+  column: "tw:mx-auto tw:grid tw:w-full tw:max-w-[45rem] tw:min-w-0 tw:gap-4",
+  actionArea: "tw:px-page tw:pb-6 tw:compact:px-4",
   practicePrimaryAction: "tw:flex tw:shrink-0 tw:justify-center tw:pt-3 tw:[&>button]:min-w-40",
   reviewRatingPanelConfidenceRatingPanel: "tw:mt-3 tw:min-w-0 tw:shrink-0 tw:rounded-lg tw:bg-muted/30 tw:p-3 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
   confidenceRatingHeading: "tw:text-center tw:[&_h2]:m-0 tw:[&_h2]:text-small tw:[&_h2]:font-medium tw:[&_p]:mt-1 tw:[&_p]:mb-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground",
