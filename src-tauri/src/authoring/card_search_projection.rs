@@ -32,11 +32,10 @@ pub(crate) fn search_cards_in_connection(
          SELECT
              c.id, n.id, c.deck_id, d.name,
              COALESCE((
-                 SELECT group_concat(t.name, char(31))
+                 SELECT group_concat(t.name, char(31) ORDER BY t.name COLLATE NOCASE, t.id)
                  FROM note_tags nt
                  JOIN tags t ON t.id = nt.tag_id
                  WHERE nt.note_id = n.id
-                 ORDER BY t.name COLLATE NOCASE, t.id
              ), ''),
              s.due_at,
              CASE WHEN s.reps > 0 THEN s.last_review_at ELSE NULL END,
@@ -250,6 +249,82 @@ mod tests {
                 assert_eq!(page.cards[0].card_label, "Single-best-answer");
                 assert_eq!(page.cards[0].front_text, "Which ion is extracellular?");
                 assert_eq!(page.cards[0].back_text, "Sodium");
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn row_tags_are_listed_by_name_whatever_their_ids() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO decks (id, name, created_at, updated_at) VALUES (?1, 'Renal', 1, 1)",
+                        [id(1)],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO notes (
+                        id, deck_id, note_type, content_format, content_schema_version,
+                        front_doc, back_doc, front_text, back_text, duplicate_hash,
+                        created_at, updated_at, revision
+                     ) VALUES (?1, ?2, 'basic', ?3, ?4, ?5, ?6, ?7, ?8, '', 1, 1, 1)",
+                        params![
+                            id(2),
+                            id(1),
+                            CONTENT_FORMAT,
+                            CONTENT_SCHEMA_VERSION,
+                            rich("Where is ADH made?").to_string(),
+                            rich("Hypothalamus").to_string(),
+                            "Where is ADH made?",
+                            "Hypothalamus"
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, 'forward', 0, 1, 1)",
+                        params![id(3), id(2), id(1)],
+                    )
+                    .map_err(CommandError::database)?;
+                insert_new_schedule(connection, &id(3), 1)?;
+                // Tag IDs run opposite to name order, so storage order alone
+                // would list "zeta" first.
+                for (tag, name) in [(10, "zeta"), (11, "beta"), (12, "Alpha")] {
+                    connection
+                        .execute(
+                            "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+                             VALUES (?1, ?2, lower(?2), 1, 1)",
+                            params![id(tag), name],
+                        )
+                        .map_err(CommandError::database)?;
+                    connection
+                        .execute(
+                            "INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)",
+                            params![id(2), id(tag)],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+                let page = search_cards_in_connection(
+                    connection,
+                    SearchCardsInput {
+                        deck_ids: vec![id(1)],
+                        query: String::new(),
+                        tag_ids: vec![],
+                        availability_filter: "all".to_string(),
+                        status_filter: "active".to_string(),
+                        reviewed_filter: "all".to_string(),
+                        sort: "updated_desc".to_string(),
+                        limit: 20,
+                        offset: 0,
+                    },
+                )?;
+                assert_eq!(page.total_count, 1);
+                assert_eq!(page.cards[0].tags, ["Alpha", "beta", "zeta"]);
                 Ok(())
             })
             .unwrap();
