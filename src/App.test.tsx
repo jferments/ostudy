@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AnalyticsLaunchRequest,
-  DeckOpenRequest,
   PracticeLaunchRequest,
   PracticeReturnTarget,
 } from "./App";
@@ -14,13 +13,8 @@ import type { SelectedPracticeRequest } from "./ipc/practice";
 import * as settingsIpc from "./ipc/settings";
 import * as subjectsIpc from "./ipc/subjects";
 import * as checkpointIpc from "./ipc/uiCheckpoint";
-import type {
-  AnalyticsSearchLaunch,
-  FlashcardsWorkspaceName,
-  SubjectFocusLaunch,
-  TransientDeckSelectionEntry,
-} from "./navigation/flashcardsRoutes";
 import { dispatchPlatformBack } from "./platform/backNavigation";
+import type { WorkbenchLaunch } from "./screens/library/workbench/LibraryWorkbench";
 import {
   makeDeck,
   makeHomeSummary,
@@ -81,105 +75,84 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
   };
 });
 
-vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
-  FlashcardsWorkspace: ({
-    workspace,
+vi.mock("./screens/library/workbench/LibraryWorkbench", () => ({
+  LibraryWorkbench: ({
     decks,
-    onWorkspaceChange,
+    launch,
     onPracticeDeck,
     onPracticeSelected,
     onPracticeCards,
-    restoredSelection,
-    analyticsSearchLaunch,
-    subjectFocus,
-    openDeckRequest,
-    onOpenDeck,
-    onReturnToLibrary,
     onCardDirtyChange,
+    onDeckScopeChange,
+    onOpenDocuments,
+    onOpenStudyGuides,
   }: {
-    workspace: FlashcardsWorkspaceName;
     decks: decksIpc.DeckSummary[];
-    onWorkspaceChange: (workspace: FlashcardsWorkspaceName) => void;
+    launch?: WorkbenchLaunch;
     onPracticeDeck: (deckId: string) => void;
-    onPracticeSelected: (
-      request: SelectedPracticeRequest,
-      selection: readonly TransientDeckSelectionEntry[],
-    ) => void;
+    onPracticeSelected: (request: SelectedPracticeRequest) => void;
     onPracticeCards: (cardIds: string[]) => void;
-    restoredSelection?: readonly TransientDeckSelectionEntry[];
-    analyticsSearchLaunch?: AnalyticsSearchLaunch;
-    subjectFocus?: SubjectFocusLaunch;
-    openDeckRequest: DeckOpenRequest | null;
-    onOpenDeck: (
-      deckId: string,
-      returnDeckSelection?: readonly TransientDeckSelectionEntry[],
-    ) => void;
-    onReturnToLibrary: () => void | Promise<void>;
     onCardDirtyChange: (dirty: boolean) => void;
-  }) => (
-    <section>
-      <h1>Decks mock</h1>
-      <span>{decks.map((deck) => deck.name).join(",")}</span>
-      <output aria-label="Flashcards workspace">{workspace}</output>
-      <output aria-label="Deck open request">{openDeckRequest?.deckId ?? "none"}</output>
-      <output aria-label="Restored deck selection">
-        {restoredSelection?.map((entry) => entry.id).join(",") ?? "none"}
-      </output>
-      <output aria-label="Analytics Search launch">
-        {analyticsSearchLaunch
-          ? `${analyticsSearchLaunch.requestId}|${analyticsSearchLaunch.source}|${analyticsSearchLaunch.tagIds.join(",")}`
-          : "none"}
-      </output>
-      <output aria-label="Subject focus">
-        {subjectFocus ? `${subjectFocus.requestId}|${subjectFocus.subjectId ?? "none"}` : "none"}
-      </output>
-      <button type="button" onClick={() => onCardDirtyChange(true)}>
-        Mark card dirty
-      </button>
-      <button type="button" onClick={() => onWorkspaceChange("search")}>
-        Open Search workspace
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          const deck = decks[0];
-          if (deck) onOpenDeck(deck.id, [{ id: deck.id, revision: deck.revision }]);
-        }}
-      >
-        Open deck detail mock
-      </button>
-      <button type="button" onClick={() => void onReturnToLibrary()}>
-        Return to library mock
-      </button>
-      <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "")}>
-        Practice deck mock
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          const deck = decks[0];
-          if (!deck) return;
-          onPracticeSelected(
-            {
+    onDeckScopeChange?: (deckId: string | null) => void;
+    onOpenDocuments: () => void;
+    onOpenStudyGuides: () => void;
+  }) => {
+    const scope = launch?.scope;
+    const place = !scope
+      ? "none"
+      : scope.kind === "view"
+        ? `view:${scope.view}`
+        : scope.kind === "subject"
+          ? `subject:${scope.subjectId ?? "none"}`
+          : scope.kind === "deck"
+            ? `deck:${scope.deckId}`
+            : `tag:${scope.tagId}`;
+    return (
+      <section>
+        <h1>Decks mock</h1>
+        <nav aria-label="Library">
+          <button type="button" onClick={onOpenDocuments}>Documents</button>
+          <button type="button" onClick={onOpenStudyGuides}>Study guides</button>
+        </nav>
+        <span>{decks.map((deck) => deck.name).join(",")}</span>
+        <output aria-label="Workbench launch">{`${place}${launch?.focusSearch ? "|search" : ""}`}</output>
+        <output aria-label="Workbench request">{launch?.requestId ?? "none"}</output>
+        <button type="button" onClick={() => onCardDirtyChange(true)}>
+          Mark card dirty
+        </button>
+        <button type="button" onClick={() => onDeckScopeChange?.(decks[0]?.id ?? null)}>
+          Open deck mock
+        </button>
+        <button type="button" onClick={() => onDeckScopeChange?.(null)}>
+          Leave deck mock
+        </button>
+        <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "")}>
+          Practice deck mock
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const deck = decks[0];
+            if (!deck) return;
+            onPracticeSelected({
               deckIds: [deck.id],
               tagIds: ["selected-tag"],
               shuffle: false,
               mode: "extra",
-            },
-            [{ id: deck.id, revision: deck.revision }],
-          );
-        }}
-      >
-        Practice selected decks mock
-      </button>
-      <button type="button" onClick={() => onPracticeCards(["search-card"])}>
-        Practice search result mock
-      </button>
-      <button type="button" onClick={() => onPracticeCards(["editor-card"])}>
-        Practice editor card mock
-      </button>
-    </section>
-  ),
+            });
+          }}
+        >
+          Practice selected decks mock
+        </button>
+        <button type="button" onClick={() => onPracticeCards(["search-card"])}>
+          Practice search result mock
+        </button>
+        <button type="button" onClick={() => onPracticeCards(["editor-card"])}>
+          Practice editor card mock
+        </button>
+      </section>
+    );
+  },
 }));
 
 vi.mock("./screens/PracticeScreen", () => ({
@@ -435,21 +408,52 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Analytics launch").textContent).toBe("30d||");
   });
 
-  it("changes Flashcards workspaces without creating a top-level section", async () => {
+  it("records the open deck without asking the Workbench to move again", async () => {
+    const deck = makeDeck({ name: "Pharmacology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
     await openDecks();
-    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
+    const request = screen.getByLabelText("Workbench request").textContent;
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Open deck mock" }));
 
     await waitFor(() =>
-      expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search"),
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe(`deck:${deck.id}`),
     );
+    expect(screen.getByLabelText("Workbench request").textContent).toBe(request);
     expect(currentDestination()).toBe("Library");
-    expect(libraryView("Decks").getAttribute("aria-current")).toBe("page");
+    await waitFor(() =>
+      expect(
+        vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.some(([saved]) => saved.deckId === deck.id),
+      ).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave deck mock" }));
+    await waitFor(() => expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"));
+    expect(screen.getByLabelText("Workbench request").textContent).toBe(request);
   });
 
-  it("routes Progress tags into Search with fresh transient request IDs", async () => {
+  it("reopens the Workbench's deck when coming back to Library", async () => {
+    const deck = makeDeck({ name: "Pharmacology" });
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
+
+    await openDecks();
+    fireEvent.click(screen.getByRole("button", { name: "Open deck mock" }));
+    fireEvent.click(navButton("Home"));
+    await screen.findByRole("heading", { name: "Home mock" });
+    fireEvent.click(navButton("Library"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe(`deck:${deck.id}`),
+    );
+
+    // Choosing Library again from inside it returns to All cards.
+    fireEvent.click(navButton("Library"));
+    await waitFor(() => expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"));
+  });
+
+  it("routes Progress tags into the Workbench with fresh request IDs", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -460,23 +464,21 @@ describe("App shell", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search"),
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe("tag:stable-analytics-tag-id"),
     );
-    const firstLaunch = screen.getByLabelText("Analytics Search launch").textContent;
-    expect(firstLaunch).toMatch(/^\d+\|analytics\|stable-analytics-tag-id$/u);
+    const firstRequest = screen.getByLabelText("Workbench request").textContent;
 
     fireEvent.click(navButton("Progress"));
     fireEvent.click(
       await screen.findByRole("button", { name: "Search current analytics tag mock" }),
     );
-    const secondLaunch = await screen.findByLabelText("Analytics Search launch");
-    expect(secondLaunch.textContent).toMatch(
-      /^\d+\|analytics\|stable-analytics-tag-id$/u,
+    await waitFor(() =>
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe("tag:stable-analytics-tag-id"),
     );
-    expect(secondLaunch.textContent).not.toBe(firstLaunch);
+    expect(screen.getByLabelText("Workbench request").textContent).not.toBe(firstRequest);
   });
 
-  it("clears a Progress Search launch on ordinary workspace navigation", async () => {
+  it("clears a Progress tag launch on ordinary navigation", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -486,12 +488,14 @@ describe("App shell", () => {
       await screen.findByRole("button", { name: "Search current analytics tag mock" }),
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("Analytics Search launch").textContent).not.toBe("none"),
+      expect(screen.getByLabelText("Workbench launch").textContent).not.toBe("none"),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
+    fireEvent.click(navButton("Home"));
+    await screen.findByRole("heading", { name: "Home mock" });
+    fireEvent.click(navButton("Library"));
     await waitFor(() =>
-      expect(screen.getByLabelText("Analytics Search launch").textContent).toBe("none"),
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"),
     );
   });
 
@@ -512,7 +516,7 @@ describe("App shell", () => {
     // A checkpoint from before Home existed still opens where it was saved.
     renderApp();
     await screen.findByRole("heading", { name: "Decks mock" });
-    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe("view:all|search");
     expect(currentDestination()).toBe("Library");
   });
 
@@ -588,13 +592,11 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
     expect(screen.getByLabelText("Practice launch").textContent).toBe("none");
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Deck open request").textContent).toBe("none"),
-    );
-    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("decks");
+    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe("none");
   });
 
-  it("carries selected setup exactly and restores its transient deck selection on return", async () => {
+  it("carries practice options exactly and returns to the Workbench", async () => {
     const deck = makeDeck({ name: "Pharmacology", revision: 7 });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
@@ -606,72 +608,7 @@ describe("App shell", () => {
       `${deck.id}|selected-tag|extra|decks||decks`,
     );
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Restored deck selection").textContent).toBe(deck.id),
-    );
-  });
-
-  it("preserves selected decks through the real detail return route without checkpointing them", async () => {
-    const deck = makeDeck({
-      name: "Pharmacology",
-      revision: 7,
-      generatedCardCount: 0,
-    });
-    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
-
-    await openDecks();
-    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Deck open request").textContent).toBe(deck.id),
-    );
-    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
-    expect(
-      vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.every(
-        ([saved]) => !JSON.stringify(saved).includes("returnDeckSelection"),
-      ),
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Return to library mock" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Restored deck selection").textContent).toBe(deck.id),
-    );
-  });
-
-  it.each([
-    [
-      "revision changes",
-      (candidate: decksIpc.DeckSummary) => ({ ...candidate, revision: 8 }),
-    ],
-    [
-      "the deck is archived",
-      (candidate: decksIpc.DeckSummary) => ({
-        ...candidate,
-        archivedAt: Date.now(),
-      }),
-    ],
-  ] as const)("drops selection when %s before detail returns", async (_label, updateDeck) => {
-    const original = makeDeck({ name: "Pharmacology", revision: 7 });
-    const changed = updateDeck(original);
-    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
-    vi.mocked(decksIpc.listDecks)
-      .mockResolvedValueOnce([original])
-      .mockResolvedValueOnce([original])
-      .mockResolvedValueOnce([changed]);
-
-    await openDecks();
-    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Deck open request").textContent).toBe(original.id),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Return to library mock" }));
-
-    await waitFor(() =>
-      expect(screen.getByLabelText("Restored deck selection").textContent).toBe("none"),
-    );
-    // Startup, opening Library, and the return.
-    expect(decksIpc.listDecks).toHaveBeenCalledTimes(3);
+    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
   });
 
   it("opens Study guides as a Library view without exposing a Practice destination", async () => {
@@ -709,29 +646,30 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Study Guides mock" })).toBeTruthy();
   });
 
-  it("returns an early-ended deck-detail practice session to that exact deck", async () => {
+  it("returns an early-ended practice session to the deck the Workbench had open", async () => {
     const deck = makeDeck({ name: "Respiratory physiology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
 
     await openDecks();
-    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open deck mock" }));
     fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
     await screen.findByRole("heading", { name: "Practice mock" });
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
 
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Deck open request").textContent).toBe(deck.id);
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe(`deck:${deck.id}`);
   });
 
-  it("returns exact-card Search practice to the Search workspace", async () => {
+  it("returns exact-card Search practice to Search", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
-    await openDecks();
-    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
+    renderApp();
+    await screen.findByRole("heading", { name: "Home mock" });
+    fireEvent.click(within(screen.getByTestId("app-header")).getByRole("button", { name: "Search" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search"),
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe("view:all|search"),
     );
     fireEvent.click(screen.getByRole("button", { name: "Practice search result mock" }));
 
@@ -740,7 +678,7 @@ describe("App shell", () => {
       "|search-card|custom|decks||search",
     );
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
-    expect((await screen.findByLabelText("Flashcards workspace")).textContent).toBe("search");
+    expect((await screen.findByLabelText("Workbench launch")).textContent).toBe("view:all|search");
   });
 
   it("returns exact-card Documents practice to Documents", async () => {
@@ -756,18 +694,18 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Documents mock" })).toBeTruthy();
   });
 
-  it("returns an editor exact-card launch to its exact deck detail", async () => {
+  it("returns an editor exact-card launch to its deck", async () => {
     const deck = makeDeck({ name: "Editor origin" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
     await openDecks();
-    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open deck mock" }));
     fireEvent.click(screen.getByRole("button", { name: "Practice editor card mock" }));
     expect((await screen.findByLabelText("Practice launch")).textContent).toBe(
       `|editor-card|custom|decks|${deck.id}|decks`,
     );
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
-    expect((await screen.findByLabelText("Deck open request")).textContent).toBe(deck.id);
+    expect((await screen.findByLabelText("Workbench launch")).textContent).toBe(`deck:${deck.id}`);
   });
 
   it("returns scheduled Progress practice to Progress", async () => {
@@ -821,7 +759,7 @@ describe("App shell", () => {
     );
   });
 
-  it("opens Search/Filter inside Library from the header", async () => {
+  it("opens Library with its search focused from the header", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -830,7 +768,7 @@ describe("App shell", () => {
     fireEvent.click(within(screen.getByTestId("app-header")).getByRole("button", { name: "Search" }));
 
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search");
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe("view:all|search");
     expect(currentDestination()).toBe("Library");
   });
 
@@ -884,10 +822,10 @@ describe("App shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Choose decks mock" }));
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("decks");
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe("none");
   });
 
-  it("opens a subject from Home in the Library view that shows it", async () => {
+  it("opens a subject from Home in the Workbench scoped to it", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -895,7 +833,7 @@ describe("App shell", () => {
     await screen.findByRole("heading", { name: "Home mock" });
     fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Subject focus").textContent).toMatch(/^\d+\|subject-a$/u);
+    expect(screen.getByLabelText("Workbench launch").textContent).toBe("subject:subject-a");
 
     fireEvent.click(navButton("Home"));
     fireEvent.click(await screen.findByRole("button", { name: "Open unfiled documents mock" }));
@@ -904,9 +842,12 @@ describe("App shell", () => {
 
     fireEvent.click(navButton("Home"));
     fireEvent.click(await screen.findByRole("button", { name: "Open subject mock" }));
-    // An ordinary visit to Decks carries no focus request.
-    fireEvent.click(await screen.findByRole("button", { name: "Open Search workspace" }));
-    await waitFor(() => expect(screen.getByLabelText("Subject focus").textContent).toBe("none"));
+    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
+    // An ordinary visit to Library carries no subject.
+    fireEvent.click(navButton("Home"));
+    await screen.findByRole("heading", { name: "Home mock" });
+    fireEvent.click(navButton("Library"));
+    await waitFor(() => expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"));
   });
 
   it("reopens the Library view used last", async () => {

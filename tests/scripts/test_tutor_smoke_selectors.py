@@ -101,6 +101,7 @@ class TutorSmokeSelectorTests(unittest.TestCase):
                 patch.object(tutor, "assert_ordinary_chat"), \
                 patch.object(tutor, "assert_hint_controls_private"), \
                 patch.object(tutor.webdriver, "wait_for_main_heading"), \
+                patch.object(tutor.webdriver, "element_exists", return_value=True), \
                 patch.object(tutor.webdriver, "find_element", return_value="element") as find, \
                 patch.object(tutor.webdriver, "wait_for_enabled_element", return_value="element") as enabled, \
                 patch.object(tutor.webdriver, "click"):

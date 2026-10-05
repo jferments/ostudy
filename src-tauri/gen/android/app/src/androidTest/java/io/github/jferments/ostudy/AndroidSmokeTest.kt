@@ -95,10 +95,9 @@ class AndroidSmokeTest {
             assertFalse(homeSnapshot.getBoolean("todayStrip"))
             assertEquals(0, homeSnapshot.getInt("subjectTiles"))
 
-            // Open Library leads to its Decks view. The route heading precedes the
-            // asynchronous deck-library snapshot. Await that exact ready surface, not
-            // an arbitrary delay, before asserting its create action and absence of
-            // irrelevant populated-library controls.
+            // Open Library leads to the Workbench, which opens on its tree on a
+            // phone. An empty library offers one way to start a deck there and
+            // no controls that only mean something with decks in it.
             evaluateSync(
                 webView,
                 "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'Open Library')?.click(); true"
@@ -107,74 +106,44 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "Boolean(document.querySelector('main [data-deck-library-pointer-surface=\"true\"]'))"
+                    "Boolean(document.querySelector('main [data-testid=\"library-workbench\"] nav[aria-label=\"Library\"]')) && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'New deck')"
                 }
             )
             val snapshot = evaluateJsonObject(
                 webView,
                 """
                 (() => {
-                  const tabLabels = [...document.querySelectorAll(
-                    "main [role='tablist'][aria-label='Flashcards workspaces'] [role='tab']"
-                  )].map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim());
-                  const libraryViews = [...document.querySelectorAll(
-                    "main nav[aria-label='Library'] button"
-                  )];
-                  const mainText = document.querySelector('main')?.textContent || '';
+                  const tree = document.querySelector("main [data-testid='library-workbench'] nav[aria-label='Library']");
+                  const sections = [...(tree?.querySelectorAll('section[aria-label]') ?? [])];
                   const buttons = [...document.querySelectorAll('main button')];
+                  const label = (button) => (button.getAttribute('aria-label') || button.textContent || '').trim();
                   return {
-                    tabs: tabLabels.join('|'),
-                    libraryViews: libraryViews.map((button) => (button.textContent || '').trim()).join('|'),
-                    currentLibraryView: libraryViews
-                      .filter((button) => button.getAttribute('aria-current') === 'page')
-                      .map((button) => button.dataset.testid || '')
-                      .join('|'),
+                    sections: sections.map((section) => section.getAttribute('aria-label')).join('|'),
                     libraryCurrent: document.querySelector('[data-testid="nav-library"]')?.getAttribute('aria-current') === 'page',
                     settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
-                    importAction: buttons.some(
-                      (button) => button.textContent?.trim() === 'Import deck'
-                    ),
-                    createAction: buttons.some(
-                      (button) => button.textContent?.trim() === 'Create a new deck'
-                    ),
-                    emptyHeading: [...document.querySelectorAll('main h2')].some(
-                      (heading) => heading.textContent?.trim() === 'No decks have been created yet.'
-                    ),
-                    foldersHeading: [...document.querySelectorAll('main h2')].some(
-                      (heading) => heading.textContent?.trim() === 'Folders'
-                    ),
-                    unsortedHeading: [...document.querySelectorAll('main h2')].some(
-                      (heading) => heading.textContent?.trim() === 'Unsorted decks'
-                    ),
-                    staleEmptyCopy:
-                      mainText.includes('No folders yet.') ||
-                      mainText.includes('All active decks are in folders.'),
+                    createActions: buttons.filter((button) => button.textContent?.trim() === 'New deck').length,
+                    importAction: buttons.some((button) => button.textContent?.trim() === 'Import deck…'),
+                    documentsView: Boolean(tree?.querySelector('[data-testid="library-view-documents"]')),
+                    studyGuidesView: Boolean(tree?.querySelector('[data-testid="library-view-study-guides"]')),
+                    cardList: Boolean(document.querySelector("main section[aria-label='Cards']")),
                     irrelevantControls: buttons.some((button) => {
-                      const label = (
-                        button.getAttribute('aria-label') ||
-                        button.textContent ||
-                        ''
-                      ).trim();
-                      return label === 'Collapse all' ||
-                        label === 'Expand all' ||
-                        label.startsWith('Select all');
+                      const text = label(button);
+                      return text === 'Collapse all' || text === 'Expand all' ||
+                        text.startsWith('Select all') || text.startsWith('Expand ') || text.startsWith('Collapse ');
                     })
                   };
                 })()
                 """.trimIndent()
             )
-            assertEquals("Decks|Search/Filter", snapshot.getString("tabs"))
-            assertEquals("Decks|Documents|Study guides", snapshot.getString("libraryViews"))
-            assertEquals("library-view-decks", snapshot.getString("currentLibraryView"))
+            assertEquals("Views|Subjects|More", snapshot.getString("sections"))
             assertTrue(snapshot.getBoolean("libraryCurrent"))
             assertTrue(snapshot.getBoolean("settingsGear"))
+            assertEquals(1, snapshot.getInt("createActions"))
             assertTrue(snapshot.getBoolean("importAction"))
-            assertTrue(snapshot.getBoolean("createAction"))
-            assertTrue(snapshot.getBoolean("emptyHeading"))
-            assertFalse(snapshot.getBoolean("foldersHeading"))
-            assertFalse(snapshot.getBoolean("unsortedHeading"))
-            assertFalse(snapshot.getBoolean("staleEmptyCopy"))
+            assertTrue(snapshot.getBoolean("documentsView"))
+            assertTrue(snapshot.getBoolean("studyGuidesView"))
+            assertFalse(snapshot.getBoolean("cardList"))
             assertFalse(snapshot.getBoolean("irrelevantControls"))
         }
     }
@@ -299,39 +268,33 @@ class AndroidSmokeTest {
                 webView,
                 "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
             )
+            // Library reopens the page used last. Step to the Workbench's tree from
+            // another Library page or from a deck's card list, then open the deck.
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]'))"
+                    "(() => { " +
+                        "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'); " +
+                        "if (deck) return true; " +
+                        "const page = document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]'); " +
+                        "if (page) { page.click(); return false; } " +
+                        "document.querySelector('main [data-testid=\"library-workbench\"] button[aria-label=\"Library\"]')?.click(); " +
+                        "return false; " +
+                        "})()"
                 }
             )
-            evaluateSync(
-                webView,
-                "document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]')?.click(); true"
-            )
+            evaluateSync(webView, "Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck')?.click(); true")
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "Boolean(document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]'))"
+                    "document.querySelector('main h1[data-testid=\"workbench-title\"]')?.textContent?.trim() === 'Android Emulator Smoke Deck'"
                 }
             )
             evaluateSync(
                 webView,
-                "document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]')?.click(); true"
-            )
-            waitUntil(
-                webView,
-                predicate = { it == "true" },
-                expression = {
-                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
-                }
-            )
-            evaluateSync(
-                webView,
-                "Array.from(document.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Add flashcard')?.click(); true"
+                "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'New card')?.click(); true"
             )
             waitUntil(
                 webView,
@@ -347,7 +310,7 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck') && " +
+                    "document.querySelector('main h1[data-testid=\"workbench-title\"]')?.textContent?.trim() === 'Android Emulator Smoke Deck' && " +
                         "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add card')"
                 }
             )
@@ -357,10 +320,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks')) && " +
-                        "Boolean(document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]')) && " +
-                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
+                    "Boolean(Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck')) && " +
+                        "!document.querySelector('main h1[data-testid=\"workbench-title\"]')"
                 }
             )
             // With the nested work closed, Back leaves Library for Home.

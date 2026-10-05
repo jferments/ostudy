@@ -125,28 +125,17 @@ MEASUREMENT_SENSITIVE_PATHS = (
     "package.json", "pnpm-lock.yaml", "vite.config.ts", "src/main.tsx",
     "src/testing/uiPerformanceBridge.ts", "src/testing/uiPerformanceInstrumentation.ts",
     "src/testing/PerformanceProfiler.tsx", "src/App.tsx",
-    "src/screens/flashcards/DeckLibraryWorkspace.tsx", "src/screens/PracticeScreen.tsx",
+    "src/screens/library/workbench/LibraryWorkbench.tsx", "src/screens/PracticeScreen.tsx",
     "src/screens/StudyGuideLibrarySection.tsx",
     "src-tauri/src/library_backup/extended_tests.rs",
     "src-tauri/src/library_backup/performance_fixture_tests.rs",
     "scripts/ui-performance-baselines.sh", "tests/webdriver/smoke.py",
     "tests/webdriver/ui_performance_baseline.py",
 )
+# The drag scenarios measured the retired deck library; its drag sources went
+# with it, so only the shared measurement paths remain sensitive.
 CANDIDATE_SENSITIVE_PATHS = (
     *MEASUREMENT_SENSITIVE_PATHS,
-    "src/screens/flashcards/deck-library/dragSessionModel.ts",
-    "src/screens/flashcards/deck-library/pointerDragSession.ts",
-    "src/screens/flashcards/deck-library/useDeckLibraryPointerSession.ts",
-    "src/screens/flashcards/deck-library/useDeckLibraryReorder.ts",
-    "src/screens/flashcards/deck-library/DeckItem.tsx",
-    "src/screens/flashcards/deck-library/FolderSection.tsx",
-    "src/screens/flashcards/deck-library/DeckLibraryView.tsx",
-    "src/screens/flashcards/deck-library/LibraryDragFeedback.tsx",
-    "src/screens/flashcards/deck-library/DeckItem.module.css",
-    "src/screens/flashcards/deck-library/FolderSection.module.css",
-    "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
-    "src/screens/flashcards/deck-library/DeckList.module.css",
-    "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
 )
 
 
