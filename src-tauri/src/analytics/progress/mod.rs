@@ -122,8 +122,19 @@ pub(crate) fn load_overview(
         }
         None => None,
     };
-    let study_day_count = activity::study_day_count(connection, &context)?;
     let timeline = timeline::load(connection, &context, current.earliest_local_date.as_deref())?;
+    // Daily buckets already say which study dates have reviews.
+    let study_day_count = if context.range.step_days() == Some(1) {
+        i64::try_from(
+            timeline
+                .iter()
+                .filter(|bucket| bucket.review_count > 0)
+                .count(),
+        )
+        .unwrap_or(i64::MAX)
+    } else {
+        activity::study_day_count(connection, &context)?
+    };
     Ok(ProgressOverviewDto {
         scope: context.dto(current.earliest_local_date.as_deref()),
         summary: current.summary,

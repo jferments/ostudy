@@ -15,9 +15,11 @@ const WINDOW_MARGIN_MS: i64 = 86_400_000;
 
 /// The log walks `review_events_reviewed_idx` from the newest review and stops
 /// after a page, so a page costs about the same at any depth and for any
-/// range. Rows are the same as every other history query's: a merged copy's
+/// range. Without a bound on `reviewed_at` SQLite preferred scanning a covering
+/// index and sorting every review, so the index is named. Rows are the same as every other history query's: a merged copy's
 /// review is listed under its surviving card.
-pub(in crate::analytics) const REVIEW_LOG_FROM_SQL: &str = "review_events r
+pub(in crate::analytics) const REVIEW_LOG_FROM_SQL: &str =
+    "review_events r INDEXED BY review_events_reviewed_idx
          CROSS JOIN review_event_attributions a ON a.review_event_id = r.id
          LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
          CROSS JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)

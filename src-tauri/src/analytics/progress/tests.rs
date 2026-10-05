@@ -489,3 +489,122 @@ fn weekly_buckets_end_with_a_whole_week_ending_today() {
         Ok(())
     });
 }
+
+static CAPTURED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn capture_statement(event: rusqlite::trace::TraceEvent<'_>) {
+    if let rusqlite::trace::TraceEvent::Stmt(statement, _) = event {
+        if let Some(sql) = statement.expanded_sql() {
+            CAPTURED
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(sql);
+        }
+    }
+}
+
+/// The plans of the reads `run` executes, values bound. Tests that call this
+/// run one at a time through `CAPTURED`'s lock order: each takes the reads it
+/// made on its own connection only.
+fn traced_plans(
+    connection: &mut Connection,
+    run: impl FnOnce(&mut Connection) -> Result<(), CommandError>,
+) -> Vec<(String, Vec<String>)> {
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _serial = SERIAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    CAPTURED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+    connection.trace_v2(
+        rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
+        Some(capture_statement),
+    );
+    let result = run(connection);
+    connection.trace_v2(rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT, None);
+    result.expect("traced reads should run");
+    let reads = std::mem::take(
+        &mut *CAPTURED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    );
+    reads
+        .into_iter()
+        .filter(|sql| sql.starts_with("SELECT") || sql.starts_with("WITH"))
+        .map(|sql| {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap();
+            let plan = statement
+                .query_map([], |row| row.get::<_, String>(3))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            (sql, plan)
+        })
+        .collect()
+}
+
+/// The outermost table loop of a plan.
+fn first_loop(plan: &[String]) -> &str {
+    plan.iter()
+        .find(|step| step.starts_with("SEARCH ") || step.starts_with("SCAN "))
+        .map_or("", String::as_str)
+}
+
+#[test]
+fn review_reads_start_from_an_index_on_review_time_or_study_date() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let card = library.card(connection, 0, 2, now, 5.0);
+        for day in 0..30 {
+            library.review(
+                connection,
+                &card,
+                &DateTime::from_timestamp_millis(now - day * DAY - HOUR)
+                    .unwrap()
+                    .with_timezone(&chrono::FixedOffset::west_opt(8 * 3600).unwrap())
+                    .to_rfc3339(),
+                true,
+            );
+        }
+        // Every page of the log, for every range, walks reviews newest first
+        // by review time and stops after the page; nothing sorts all reviews.
+        for range in ["7d", "all"] {
+            let page = review_log::load_page(connection, &context(range, Vec::new()), None)?;
+            let cursor = page.next.clone();
+            for before in [None, cursor] {
+                let plans = traced_plans(connection, |connection| {
+                    review_log::load_page(connection, &context(range, Vec::new()), before.as_ref())
+                        .map(|_| ())
+                });
+                let (_, plan) = plans
+                    .iter()
+                    .find(|(sql, _)| sql.contains(review_log::REVIEW_LOG_FROM_SQL))
+                    .expect("the log reads reviews");
+                assert!(
+                    first_loop(plan).contains("r USING INDEX review_events_reviewed_idx")
+                        && !plan
+                            .iter()
+                            .any(|step| step == "USE TEMP B-TREE FOR ORDER BY"),
+                    "{range}: {plan:#?}"
+                );
+            }
+        }
+        // The activity calendar reads its 26 weeks through the local-date index.
+        let plans = traced_plans(connection, |connection| {
+            activity::load(connection, &time()).map(|_| ())
+        });
+        let (_, plan) = plans
+            .iter()
+            .find(|(sql, _)| sql.contains("GROUP BY 1"))
+            .expect("the calendar groups reviews by study date");
+        assert!(
+            first_loop(plan).contains("a USING INDEX review_event_attributions_local_date_idx"),
+            "{plan:#?}"
+        );
+        Ok(())
+    });
+}
