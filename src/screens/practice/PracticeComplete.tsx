@@ -122,7 +122,9 @@ export function PracticeComplete({
         <dl className="tw:m-0 tw:grid tw:w-full tw:grid-cols-3 tw:gap-2" aria-label="This session">
           <SessionFact value={formatPercent(rememberedRate)} label="remembered" />
           <SessionFact value={summary ? summary.nowSolidCount.toLocaleString() : null} label={summary?.nowSolidCount === 1 ? "card now solid" : "cards now solid"} />
-          <SessionFact value={summary ? formatStudyTime(summary.studyTimeMs) : null} label="focused time" />
+          {/* "Under 1 min" would wrap in a phone-width tile. */}
+          <SessionFact value={summary ? (summary.studyTimeMs > 0 && summary.studyTimeMs < 60_000 ? "<1 min" : formatStudyTime(summary.studyTimeMs)) : null}
+            label="focused time" />
         </dl>
         {studiedEarlierToday ? (
           <p className="tw:m-0 tw:text-caption tw:text-muted-foreground">
