@@ -83,7 +83,7 @@ Filters, deck/time selectors, section hierarchy and charts now sit inside the sh
 
 ## Phase 12: active Practice
 
-ActivePractice and PracticeComplete use shared actions, inline progress, status, grading surfaces and completion metrics. The inactive 3D card face is inert. Reveal/grading controls are blocked during card management or session-end operations. The card face geometry and reduced-motion transform behavior retain a specialized stylesheet.
+ActivePractice builds its page the way the chapter reader does: a sticky top bar (the deck, the kind of practice and counts, Tutor, the Schedule menu, Edit card and End session, with the session progress as a thin line), a centered card column, and a sticky action area that holds Show answer, a question's own Check answer or Reveal answer (rendered through an action slot) and the four ratings. On phones Edit card and the scheduling actions share one overflow sheet, End session stays visible, and the action area sits above the bottom navigation. The card is readable content: real buttons reveal it and turn an animated card over, and question tiles are real buttons named by their content and described by their status. PracticeComplete uses the shared completion metrics. The inactive 3D card face is inert. Reveal/grading controls are blocked during card management or session-end operations. The card face geometry and reduced-motion transform behavior retain a specialized stylesheet.
 
 Session windows, snapshots, scheduling inputs, answer reveal, confidence semantics and review/retry identity stay application-owned. Contextual Tutor preserves the originating session and its hidden-answer restrictions.
 

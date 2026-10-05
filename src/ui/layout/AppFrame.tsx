@@ -13,8 +13,11 @@ export function AppFrame({ children }: { children: ReactNode }) {
       data-frame-layout={layoutMode}
       className={cn(
         "tw:relative tw:z-(--ostudy-layer-base) tw:grid tw:h-dvh tw:w-full tw:min-w-0 tw:overflow-hidden tw:bg-sidebar tw:font-sans tw:text-foreground",
+        // A phone's content ends where the bottom navigation starts. The space below is the bar's own
+        // height (its 1px top border, 0.375rem top padding, 3.85rem items and the bottom padding that
+        // grows into the safe area, as AppNavigation draws it), so it follows the interface scale.
         layoutMode === "compact"
-          ? "tw:block tw:pt-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:pb-[calc(var(--ostudy-navigation-compact-height)+var(--safe-bottom))] tw:[[data-android-ime-visible=true]_&]:pb-(--android-ime-bottom)"
+          ? "tw:block tw:pt-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:pb-[calc(1px+4.225rem+max(0.5rem,var(--safe-bottom)))] tw:[[data-android-ime-visible=true]_&]:pb-(--android-ime-bottom)"
           : layoutMode === "medium"
             ? "tw:grid-cols-[12rem_minmax(0,1fr)] tw:p-2 tw:pl-0"
             : "tw:grid-cols-[15rem_minmax(0,1fr)] tw:p-2 tw:pl-0",

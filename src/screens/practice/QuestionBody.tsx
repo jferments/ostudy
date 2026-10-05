@@ -8,6 +8,7 @@ import { AnswerChoices } from "./AnswerChoices";
 import { GroupingBoard } from "./GroupingBoard";
 import { MatchingBoard } from "./MatchingBoard";
 import { OrderingBoard } from "./OrderingBoard";
+import { practiceStyles } from "./presentation";
 
 export interface QuestionBodyProps {
   question: PublicQuestion;
@@ -32,7 +33,7 @@ export function QuestionBody({ question, response, evaluation, assets, disabled,
   const booleanFeedback = evaluation?.components.find((part) => part.kind === "boolean");
   const shared = { assets, disabled: locked, evaluation, onError };
   return <Surface data-question-result={evaluation?.verdict ?? "answering"}
-    className={cn("tw:grid tw:min-w-0 tw:gap-4 tw:border tw:border-solid tw:p-4 tw:sm:p-5",
+    className={cn("tw:grid tw:min-w-0 tw:gap-4 tw:border tw:border-solid", practiceStyles.questionCard,
       !evaluation ? "tw:border-border" : evaluation.verdict === "correct"
         ? "tw:border-success/50 tw:bg-success-soft" : "tw:border-destructive/50 tw:bg-destructive-soft")}
     onKeyDown={(event) => {

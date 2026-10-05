@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TutorEntryButton } from "../tutor/TutorEntryButton";
 import {
   isInteractivePracticePresentation,
@@ -16,14 +16,16 @@ import type {
 } from "../../ipc/questionAttempts";
 import type { RescheduleIntent, ScheduleAction } from "../../ipc/scheduling";
 import { useExperience } from "../../ui/feedback/ExperienceProvider";
-import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
+import { Icon } from "../../ui/icons/Icon";
+import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowMenu";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Progress } from "../../ui/primitives/Progress";
 import { cn } from "../../ui/internal/cn";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
-import { practiceStyles as view, scoreColors } from "./presentation";
+import { practiceStyles as view, scoreTones } from "./presentation";
 import styles from "./PracticeCard.module.css";
 import type { ConfidenceScore } from "./confidence";
 import { InteractiveQuestionActivity } from "./InteractiveQuestionActivity";
@@ -83,9 +85,13 @@ export function ActivePractice({
   onQuestionChecked = ignoreAttempt,
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
+  // A question's own action (Check answer, Reveal answer) renders here, beside Show answer's place.
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
   const wasRevealed = useRef(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
+  const { layoutMode } = useLayoutMode();
+  const compact = layoutMode === "compact";
   const experience = useExperience();
   const cardCount = Math.max(0, session.cardCount);
   const studiedCount = Math.min(Math.max(0, ratedCount), cardCount);
@@ -151,77 +157,95 @@ export function ActivePractice({
       onAttempt={onQuestionAttempt}
       onChecked={onQuestionChecked}
       onError={onLinkError}
+      actionSlot={actionSlot}
     />
   ) : recallPresentation ? (
     <RecallCardSurface presentation={recallPresentation} presentationKey={recallPresentation.cardId}
-      revealed={revealed} busy={busy} flipAnimationEnabled={flipAnimationEnabled}
+      revealed={revealed} busy={busy} flipAnimationEnabled={flipAnimationEnabled} sideToggle
       displayQuestionOnAnswer={displayQuestionOnAnswer} onReveal={onReveal} onLinkError={onLinkError} />
   ) : null;
 
-  return <PageScaffold width="wide" className="tw:flex tw:h-full tw:min-h-0 tw:max-w-6xl tw:flex-col tw:overflow-y-auto tw:pt-5 tw:pb-5">
-    <header className={view.practiceSessionHeader}>
-      <div className={view.practiceSessionTitle}>
-        <span className={view.eyebrow}>{session.mode === "extra" ? "EXTRA PRACTICE" : session.mode === "custom" ? "CUSTOM PRACTICE" : "PRACTICE"}</span>
-        <h1>{current.deckName}</h1>
+  const scheduleItems: OverflowMenuItem[] = [
+    { id: "bury", label: "Bury until tomorrow", onSelect: () => onScheduleAction("bury") },
+    { id: "suspend", label: "Suspend card", onSelect: () => onScheduleAction("suspend") },
+    { id: "reschedule-tomorrow", label: "Reschedule for tomorrow", onSelect: () => onScheduleAction("reschedule", { kind: "tomorrow" }) },
+    { id: "reset", label: "Reset schedule", destructive: true, onSelect: () => onScheduleAction("reset") },
+  ];
+  const modeLabel = session.mode === "extra" ? "Extra practice" : session.mode === "custom" ? "Custom practice" : "Practice";
+
+  return <PageScaffold width="full" inset={false} className={view.page}>
+    <header className={view.topBar}>
+      <div className={view.topBarRow}>
+        <div className={view.topBarTitle}>
+          <h1 className={view.title}>{current.deckName}</h1>
+          {/* A phone's app bar already says Practice, so its narrow bar keeps to the counts. */}
+          <p className={view.subtitle}>{compact ? "" : `${modeLabel} · `}{studiedCount} studied · {remainingCount} remaining</p>
+        </div>
+        <div className={view.topBarActions}>
+          <TutorEntryButton disabled={busy} className={view.quietIconButton} target={{
+            title: current.deckName,
+            scope: { kind: "deck", id: current.presentation.deckId },
+            focus: { kind: "card", sessionId: session.id, cardId: current.presentation.cardId, noteRevision: current.presentation.noteRevision },
+            mode: revealed ? "explain" : "hint",
+          }} />
+          {compact ? <OverflowMenu label="Card actions" disabled={busy}
+            items={[{ id: "edit", label: "Edit card", onSelect: onEdit }, ...scheduleItems]} /> : <>
+            <OverflowMenu label="Schedule" triggerIcon="timer" disabled={busy} items={scheduleItems} />
+            <Button variant="ghost" disabled={busy} onClick={onEdit}><Icon name="edit" size={16} />Edit card</Button>
+          </>}
+          <Button variant="danger" data-practice-action="end" className={view.endAction} disabled={busy} onClick={onEnd}>{isEnding ? "Ending…" : "End session"}</Button>
+        </div>
       </div>
-      <div className={view.practiceHeaderActions}>
-        <TutorEntryButton disabled={busy} className={view.practiceHeaderButton} target={{
-          title: current.deckName,
-          scope: { kind: "deck", id: current.presentation.deckId },
-          focus: { kind: "card", sessionId: session.id, cardId: current.presentation.cardId, noteRevision: current.presentation.noteRevision },
-          mode: revealed ? "explain" : "hint",
-        }} />
-        <OverflowMenu label="Schedule" triggerIcon="timer" className={view.practiceHeaderButton} disabled={busy} items={[
-          { id: "bury", label: "Bury until tomorrow", onSelect: () => onScheduleAction("bury") },
-          { id: "suspend", label: "Suspend card", onSelect: () => onScheduleAction("suspend") },
-          { id: "reschedule-tomorrow", label: "Reschedule for tomorrow", onSelect: () => onScheduleAction("reschedule", { kind: "tomorrow" }) },
-          { id: "reset", label: "Reset schedule", destructive: true, onSelect: () => onScheduleAction("reset") },
-        ]} />
-        <Button variant="secondary" className={view.practiceHeaderButton} disabled={busy} onClick={onEdit}>Edit card</Button>
-        <Button variant="danger" data-practice-action="end" className={view.practiceHeaderButton} disabled={busy} onClick={onEnd}>{isEnding ? "Ending…" : "End session"}</Button>
-      </div>
+      <Progress size="small" label="Practice session progress" value={studiedCount} max={cardCount}
+        valueText={`Card ${currentPosition} of ${cardCount}, ${studiedCount} studied, ${remainingCount} remaining, ${percentComplete}% complete`} />
     </header>
-    <Progress className={view.practiceProgressTrack} label="Practice session progress" value={studiedCount} max={cardCount}
-      variant="inline-content" inlineContent={{ start: `${studiedCount} studied · ${remainingCount} remaining`, end: `${percentComplete}%` }}
-      valueText={`Card ${currentPosition} of ${cardCount}, ${studiedCount} studied, ${remainingCount} remaining, ${percentComplete}% complete`} />
-    {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-    <div key={current.presentation.cardId} className={interactive ? "tw:grid tw:gap-5" : styles.stack}
-      data-layers={interactive ? undefined : stackLayers} data-tour-anchor="practice.card">{cardSurface}</div>
-    {!revealed ? interactive ? null : <div className={view.practicePrimaryAction}>
-      <Button variant="primary" size="large" disabled={busy} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Show answer"}</Button>
-    </div> : <section ref={ratingPanelRef} tabIndex={-1} className={view.reviewRatingPanelConfidenceRatingPanel}
-      aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
-      <div className={view.confidenceRatingHeading}>
-        <h2 id="confidence-rating-heading">{objectiveCorrect === false ? "First answer recorded as wrong" : "How difficult was that answer?"}</h2>
-        <p>{objectiveCorrect === false
-          ? "Continue with Wrong. The checked result remains immutable even if you practice the item again."
-          : "Choose the result that best matches your recall."}</p>
+    <div className={view.body}>
+      <div className={view.column}>
+        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+        <div key={current.presentation.cardId} className={interactive ? "tw:grid tw:gap-5" : styles.stack}
+          data-layers={interactive ? undefined : stackLayers} data-tour-anchor="practice.card">{cardSurface}</div>
       </div>
-      {!previewSet ? <div className="tw:mb-3">
-        <Button disabled={busy} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Retry interval preview"}</Button>
-      </div> : null}
-      <div className={view.confidenceScoreActions}>
-        <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
-        <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
-        <ConfidenceButton score={2} label="Medium" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
-        <ConfidenceButton score={3} label="Easy" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
+    </div>
+    <div className={view.actionArea} data-practice-actions="">
+      <div className={view.column}>
+        {!revealed ? interactive ? <div ref={setActionSlot} className={view.actionSlot} /> : <Button variant="primary" size="large"
+          className={view.primaryAction} disabled={busy} onClick={onReveal}>
+          {isRevealing ? "Calculating intervals…" : "Show answer"}
+        </Button> : <section ref={ratingPanelRef} tabIndex={-1} className={view.ratingGroup}
+          aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
+          <h2 id="confidence-rating-heading" className={view.ratingHeading}>
+            {objectiveCorrect === false ? "First answer recorded as wrong" : "How difficult was that answer?"}
+          </h2>
+          {objectiveCorrect === false ? <p className={view.ratingNote}>
+            Continue with Wrong. The checked result remains immutable even if you practice the item again.
+          </p> : null}
+          {!previewSet ? <Button className={view.ratingRetry} disabled={busy} onClick={onReveal}>
+            {isRevealing ? "Calculating intervals…" : "Retry interval preview"}
+          </Button> : null}
+          <div className={view.ratingButtons}>
+            <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
+            <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
+            <ConfidenceButton score={2} label="Medium" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
+            <ConfidenceButton score={3} label="Easy" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
+          </div>
+        </section>}
       </div>
-    </section>}
+    </div>
   </PageScaffold>;
 }
 
+/** Each rating is tinted with its confidence color; the solid key carries the color and the
+ * number that is its keyboard shortcut. */
 function ConfidenceButton({ score, label, disabled, onClick }: {
   score: ConfidenceScore;
   label: string;
   disabled: boolean;
   onClick: () => void;
 }) {
-  return <Button className={cn(view.confidenceButton, scoreColors[score])} disabled={disabled}
+  return <Button className={cn(view.ratingButton, scoreTones[score])} disabled={disabled}
     aria-label={`${score} ${label}`} aria-keyshortcuts={String(score)} onClick={onClick}>
-    <span className={view.confidenceButtonContent}>
-      <span className={view.confidenceScoreNumber} aria-hidden="true">{score}</span>
-      <span className={view.confidenceScoreCopy}><strong>{label}</strong></span>
-    </span>
+    <span className={view.ratingKey} aria-hidden="true">{score}</span>
+    <span className={view.ratingName}>{label}</span>
   </Button>;
 }
 

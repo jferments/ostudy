@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PublicQuestion } from "../../ipc/questionAttempts";
@@ -24,6 +24,11 @@ afterEach(() => {
   else Reflect.deleteProperty(document, "elementsFromPoint");
 });
 
+/** The tile that owns a drag. Its button takes the press; the tile captures the pointer, so the
+ * browser delivers the rest of the gesture to the tile. */
+function owner(handle: HTMLElement): HTMLElement {
+  return required(handle.closest<HTMLElement>("[data-question-item-id], [data-match-target]"), "tile");
+}
 function capture(tile: HTMLElement): void {
   for (const name of ["setPointerCapture", "releasePointerCapture", "hasPointerCapture"]) {
     Object.defineProperty(tile, name, { configurable: true, value: vi.fn(() => true) });
@@ -32,13 +37,13 @@ function capture(tile: HTMLElement): void {
 function hitStack(elements: Element[]): void {
   Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: vi.fn(() => elements) });
 }
-function begin(tile: HTMLElement, pointerType = "touch"): void {
-  capture(tile);
-  fireEvent.pointerDown(tile, { pointerId: 7, pointerType, button: 0, clientX: 1, clientY: 1 });
-  fireEvent.pointerMove(tile, { pointerId: 7, pointerType, clientX: 80, clientY: 80 });
+function begin(handle: HTMLElement, pointerType = "touch"): void {
+  capture(owner(handle));
+  fireEvent.pointerDown(handle, { pointerId: 7, pointerType, button: 0, clientX: 1, clientY: 1 });
+  fireEvent.pointerMove(owner(handle), { pointerId: 7, pointerType, clientX: 80, clientY: 80 });
 }
-function finish(tile: HTMLElement): void {
-  fireEvent.pointerUp(tile, { pointerId: 7, pointerType: "touch", clientX: 80, clientY: 80 });
+function finish(handle: HTMLElement): void {
+  fireEvent.pointerUp(owner(handle), { pointerId: 7, pointerType: "touch", clientX: 80, clientY: 80 });
 }
 function Harness({ disabled = false, currentQuestion = question, onChange = () => undefined }: {
   disabled?: boolean; currentQuestion?: typeof question; onChange?: (value: Placement[]) => void;
@@ -72,8 +77,8 @@ describe("matching gesture stability", () => {
     render(<Harness onChange={changed} />);
     const tile = screen.getByRole("button", { name: "Select A" });
     const target = screen.getByRole("button", { name: "Match with Z" });
-    hitStack([required(tile.firstElementChild, "dragged rich content"), tile,
-      required(target.firstElementChild, "target rich content"), target]);
+    hitStack([within(owner(tile)).getByText("A"), tile, owner(tile),
+      within(owner(target)).getByText("Z"), target]);
     begin(tile, "mouse"); finish(tile);
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledWith([{ itemId: "A", targetId: "Z" }]);
@@ -120,8 +125,8 @@ describe("matching gesture stability", () => {
       const tile = screen.getByRole("button", { name: "Select A" });
       hitStack([screen.getByRole("button", { name: "Match with Z" })]);
       begin(tile);
-      if (interruption === "cancel") fireEvent.pointerCancel(tile, { pointerId: 7 });
-      else if (interruption === "lost-capture") fireEvent.lostPointerCapture(tile, { pointerId: 7 });
+      if (interruption === "cancel") fireEvent.pointerCancel(owner(tile), { pointerId: 7 });
+      else if (interruption === "lost-capture") fireEvent.lostPointerCapture(owner(tile), { pointerId: 7 });
       else if (interruption === "escape") fireEvent.keyDown(window, { key: "Escape" });
       else fireEvent.blur(window);
       finish(tile);
