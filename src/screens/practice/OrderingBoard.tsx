@@ -44,12 +44,15 @@ export function OrderingBoard({ question, orderedItemIds, assets, disabled, eval
         const result = results.get(id);
         const correct = result ? result.selectedPosition === result.expectedPosition : undefined;
         return <li key={id} data-practice-drop-target-id={id} className="tw:grid tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-2">
-          <QuestionTile id={id} label={`Move ${extractRichDocumentText(item.content) || `item ${index + 1}`}`} pointer={pointer}
-            disabled={disabled} correct={correct}>
-            <div className="tw:flex tw:items-start tw:gap-3"><strong>{index + 1}.</strong>
+          <QuestionTile id={id} action="Move" fallbackName={extractRichDocumentText(item.content) ? undefined : `item ${index + 1}`}
+            pointer={pointer} disabled={disabled} locked={evaluation !== null} correct={correct}
+            content={<div className="tw:flex tw:items-start tw:gap-3">
+              <span className="tw:font-sans tw:text-small tw:font-semibold tw:tabular-nums tw:text-muted-foreground" aria-hidden="true">{index + 1}.</span>
               <div className="tw:min-w-0 tw:flex-1"><RichTextView document={item.content} assets={assets} onLinkError={onError} /></div>
-              {result ? <span className={correct ? "tw:text-success" : "tw:text-destructive"}><Icon name={correct ? "check" : "close"} size={20} /></span> : null}
-            </div>
+            </div>}>
+            {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-small", correct ? "tw:text-success" : "tw:text-destructive")}>
+              <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : "Wrong position"}
+            </div> : null}
             {result && !correct ? <small>→ Correct position: {result.expectedPosition + 1}</small> : null}
           </QuestionTile>
           {!evaluation ? <div className="tw:grid tw:gap-1">

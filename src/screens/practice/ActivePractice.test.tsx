@@ -36,8 +36,17 @@ describe("ActivePractice", () => {
     fireEvent.keyDown(input, { key: "Enter" }); fireEvent.keyDown(screen.getByRole("button", { name: "Show answer" }), { key: " " });
     expect(props.onReveal).not.toHaveBeenCalled(); input.remove();
   });
-  it("reveals when the animated card surface is clicked", () => {
-    const { props } = renderActive({ flipAnimationEnabled: true }); fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
+  it("keeps the animated card readable content and reveals through a real button", () => {
+    const { props } = renderActive({ flipAnimationEnabled: true });
+    expect(screen.queryByRole("button", { name: "Reveal answer" })).toBeNull();
+    const question = screen.getByText("Question");
+    expect(question.closest("button, [role='button']")).toBeNull();
+    expect(question.closest("[aria-hidden='true']")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show answer" }));
+    expect(props.onReveal).toHaveBeenCalledOnce();
+  });
+  it("still reveals when the animated card face is clicked, as a pointer convenience", () => {
+    const { props } = renderActive({ flipAnimationEnabled: true }); fireEvent.click(screen.getByText("Question"));
     expect(props.onReveal).toHaveBeenCalledOnce();
   });
   it("flips an already revealed animated card back and forth without changing review state", () => {
@@ -52,7 +61,15 @@ describe("ActivePractice", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show answer" }));
     expect(screen.getByRole("button", { name: "Show question" })).toBeTruthy();
     expect(front?.getAttribute("aria-hidden")).toBe("true"); expect(back?.getAttribute("aria-hidden")).toBe("false");
+    fireEvent.click(screen.getByText("Answer"));
+    expect(screen.getByRole("button", { name: "Show answer" })).toBeTruthy();
+    expect(front?.getAttribute("aria-hidden")).toBe("false");
     expect(props.onReveal).not.toHaveBeenCalled();
+  });
+  it("offers no turn-over button on a static card", () => {
+    renderActive({ flipAnimationEnabled: false, revealed: true, previewSet: previews });
+    expect(screen.queryByRole("button", { name: "Show question" })).toBeNull();
+    expect(screen.getByText("Answer").closest("[aria-hidden='true']")).toBeNull();
   });
   it("shows only the answer after a Basic-style reveal by default", () => {
     renderActive({ flipAnimationEnabled: false, revealed: true, previewSet: previews, displayQuestionOnAnswer: false });

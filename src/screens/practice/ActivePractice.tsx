@@ -154,7 +154,7 @@ export function ActivePractice({
     />
   ) : recallPresentation ? (
     <RecallCardSurface presentation={recallPresentation} presentationKey={recallPresentation.cardId}
-      revealed={revealed} busy={busy} flipAnimationEnabled={flipAnimationEnabled}
+      revealed={revealed} busy={busy} flipAnimationEnabled={flipAnimationEnabled} sideToggle
       displayQuestionOnAnswer={displayQuestionOnAnswer} onReveal={onReveal} onLinkError={onLinkError} />
   ) : null;
 

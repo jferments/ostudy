@@ -1,7 +1,9 @@
 // Practice-specific presentation; review grades remain domain values.
 export const practiceStyles = {
-  practiceSideLabel: "tw:mb-3 tw:block tw:font-sans tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
-  practiceFlipHint: "tw:mt-5 tw:block tw:text-center tw:font-sans tw:text-small tw:text-muted-foreground",
+  practiceSideLabel: "tw:mb-3 tw:block tw:font-sans tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground",
+  practiceAnswerLabel: "tw:text-accent-foreground",
+  // A revealed animated card keeps its turn-over button on the label's row, clear of the content.
+  practiceSideLabelBesideToggle: "tw:flex tw:min-h-7 tw:items-center tw:coarse:min-h-touch",
   practiceAnswerDivider: "tw:my-5 tw:h-px tw:bg-border",
   practiceSessionHeader: "tw:mb-3 tw:flex tw:min-w-0 tw:shrink-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3",
   practiceSessionTitle: "tw:min-w-0 tw:flex-1 tw:[&_h1]:mt-0.5 tw:[&_h1]:mb-0 tw:[&_h1]:break-words tw:[&_h1]:text-section tw:[&_h1]:font-semibold tw:[&_h1]:tracking-tight",
@@ -15,7 +17,12 @@ export const practiceStyles = {
   confidenceScoreActions: "tw:mt-3 tw:grid tw:min-w-0 tw:grid-cols-4 tw:gap-2 tw:max-[600px]:grid-cols-2",
   confidenceScoreNumber: "tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-md tw:bg-foreground/10 tw:text-small tw:font-medium",
   confidenceScoreCopy: "tw:min-w-0 tw:text-small tw:font-medium",
-  cardSurface: "tw:relative tw:min-w-0 tw:flex-1 tw:overflow-auto tw:rounded-xl tw:bg-card tw:p-6 tw:ring-1 tw:ring-border tw:font-(family-name:--card-font-family) tw:text-(length:--card-base-size) tw:sm:p-8 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
+  // The flashcard: the card font, sized to its content above a modest minimum. An animated card
+  // draws its frame on each face so the frame turns over with it.
+  cardSurface: "tw:min-h-40 tw:min-w-0 tw:text-card-foreground tw:font-(family-name:--card-font-family) tw:text-(length:--card-base-size) tw:compact:min-h-32",
+  cardFrame: "tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:shadow-sm tw:compact:shadow-none",
+  cardFace: "tw:px-8 tw:py-7 tw:compact:p-5",
+  cardSideToggle: "tw:absolute tw:top-7 tw:right-5 tw:z-(--ostudy-layer-raised) tw:text-muted-foreground tw:enabled:hover:text-foreground tw:compact:top-5 tw:compact:right-2.5",
   confidenceButton: "tw:h-auto tw:min-h-12 tw:min-w-0 tw:rounded-lg tw:border-transparent tw:px-3 tw:py-2.5 tw:text-(--ostudy-color-confidence-on) tw:enabled:hover:text-(--ostudy-color-confidence-on) tw:enabled:hover:brightness-105 tw:coarse:min-h-touch",
   confidenceButtonContent: "tw:flex tw:w-full tw:items-center tw:justify-center tw:gap-2.5",
 } as const;
