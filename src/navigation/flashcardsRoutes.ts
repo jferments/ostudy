@@ -28,12 +28,23 @@ export interface AnalyticsSearchLaunch {
   tagIds: NonEmptyTagIds;
 }
 
+/**
+ * Process-local intent from Home: bring one subject's decks into view in the
+ * deck library. `subjectId` null names No subject's unsorted decks. Like the
+ * Analytics launch, this must never enter a UI checkpoint.
+ */
+export interface SubjectFocusLaunch {
+  requestId: number;
+  subjectId: string | null;
+}
+
 export interface FlashcardsRootRoute {
   requestId: number;
   workspace: CurrentFlashcardsWorkspaceName;
   view: "root";
   restoreDeckSelection?: TransientDeckSelectionEntry[];
   analyticsSearchLaunch?: AnalyticsSearchLaunch;
+  subjectFocus?: SubjectFocusLaunch;
 }
 
 export interface FlashcardsDeckRoute {
@@ -112,5 +123,17 @@ export function createAnalyticsSearchRoute(
       source: "analytics",
       tagIds: [tagId],
     },
+  };
+}
+
+export function createSubjectFocusRoute(
+  subjectId: string | null,
+  requestId: number,
+): FlashcardsRootRoute {
+  return {
+    requestId,
+    workspace: "decks",
+    view: "root",
+    subjectFocus: { requestId, subjectId },
   };
 }

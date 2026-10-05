@@ -71,6 +71,7 @@ mod external_file_images;
 mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
+mod home_summary;
 pub mod ipc_wire_contract;
 mod knowledge;
 mod learning_metrics;
@@ -404,6 +405,7 @@ pub fn run() {
             document_study_guide_export::prepare_collection_study_guide_pdf,
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
+            home_summary::get_home_summary,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,

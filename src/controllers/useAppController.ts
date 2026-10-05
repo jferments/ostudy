@@ -20,9 +20,15 @@ import {
   type SaveUiCheckpointInput,
 } from "../ipc/uiCheckpoint";
 import {
+  isLibrarySection,
+  type LibraryScope,
+  type LibrarySection,
+} from "../navigation/appDestinations";
+import {
   createAnalyticsSearchRoute,
   createFlashcardsDeckRoute,
   createFlashcardsRootRoute,
+  createSubjectFocusRoute,
   normalizeFlashcardsWorkspace,
   type CurrentFlashcardsWorkspaceName,
   type FlashcardsRoute,
@@ -37,10 +43,17 @@ import {
 } from "./practiceExitGuard";
 import { useRequestLane } from "./requestLane";
 
+/**
+ * Home and Review are destinations of their own. decks, study-guides and
+ * documents are Library's views and analytics is Progress; they keep their
+ * ids so saved checkpoints and launch requests still name them.
+ */
 export type AppSection =
+  | "home"
   | "decks"
   | "study-guides"
   | "documents"
+  | "review"
   | "tutor"
   | "analytics"
   | "settings";
@@ -123,7 +136,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export function useAppController() {
-  const [section, setSection] = useState<AppSection>("decks");
+  const [section, setSection] = useState<AppSection>("home");
   const [flashcardsRoute, setFlashcardsRoute] = useState<FlashcardsRoute>(() =>
     createFlashcardsRootRoute("decks", 0),
   );
@@ -138,11 +151,16 @@ export function useAppController() {
   const [practiceWorkflow, setPracticeWorkflow] = useState<PracticeWorkflowState | null>(null);
   const practiceCursorRef = useRef<PracticeCursorCheckpoint | null>(null);
   const [practiceCursorRevision, setPracticeCursorRevision] = useState(0);
+  // Sessions that reached their summary in this run: their saved reviews changed what is due.
+  const [finishedPracticeSessions, setFinishedPracticeSessions] = useState(0);
   const practiceRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsCheckpointRef = useRef<AnalyticsCheckpoint | null>(null);
   const analyticsRequestSequence = useRef(1);
   const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
+  // Library reopens the view the learner used last in this process.
+  const lastLibrarySectionRef = useRef<LibrarySection>("decks");
+  if (isLibrarySection(section)) lastLibrarySectionRef.current = section;
   const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
@@ -191,6 +209,10 @@ export function useAppController() {
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
   const reportPracticeCheckpoint = useCallback(
     (checkpoint: PracticeCursorCheckpoint | null) => {
+      // A session that had a cursor and reports none has finished: its summary shows.
+      if (checkpoint === null && practiceCursorRef.current !== null) {
+        setFinishedPracticeSessions((current) => current + 1);
+      }
       practiceCursorRef.current = checkpoint;
       setPracticeCursorRevision((current) => current + 1);
     },
@@ -336,11 +358,12 @@ export function useAppController() {
   }, [isLoading]);
 
   useEffect(() => {
-    if (section === "decks" && !practiceWorkflow) return;
+    // Home is the root: Android Back from any other destination returns there.
+    if (section === "home" && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
       void (practiceWorkflow
         ? returnPracticeToOriginRef.current()
-        : navigateRef.current("decks"));
+        : navigateRef.current("home"));
       return true;
     });
   }, [practiceWorkflow, section]);
@@ -395,7 +418,7 @@ export function useAppController() {
     const accepted = await confirm({
       title: "Terminate this practice session?",
       description:
-        "Cards you already reviewed are saved and will keep their updated schedules and review history. Leaving now ends this session without opening post-review analytics.",
+        "Cards you already reviewed are saved and will keep their updated schedules and review history. Leaving now ends this session without showing its summary.",
       confirmLabel: "Yes, terminate",
       destructive: true,
     });
@@ -505,6 +528,8 @@ export function useAppController() {
   }
 
   async function navigate(next: AppSection): Promise<void> {
+    // An active session runs inside Review, so choosing Review keeps it.
+    if (next === "review" && practiceWorkflow !== null) return;
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     const alreadyAtNonFlashcardsRoot = next === section && next !== "decks";
@@ -535,6 +560,70 @@ export function useAppController() {
       );
     }
     setSection(next);
+  }
+
+  /** Search opens Flashcards Search/Filter inside Library from anywhere. */
+  async function openSearch(): Promise<void> {
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    if (leavingPracticeWorkflow) {
+      practiceCursorRef.current = null;
+      setPracticeWorkflow(null);
+    }
+    setSection("decks");
+    setFlashcardsRoute(createFlashcardsRootRoute("search", nextFlashcardsRequestId()));
+    void refreshDecks().catch((error: unknown) =>
+      showToast("error", getErrorMessage(error)),
+    );
+  }
+
+  /**
+   * Opens Library from anywhere. No scope opens the view the learner used
+   * last; `subjectId` puts that subject's decks in view (`null` is No
+   * subject's unsorted decks); `deckId` opens the deck. Today's views serve
+   * it until the Workbench replaces them and reads the scope itself.
+   */
+  async function openLibrary(scope: LibraryScope = {}): Promise<void> {
+    if (scope.deckId === undefined && scope.subjectId === undefined) {
+      await navigate(lastLibrarySectionRef.current);
+      return;
+    }
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    if (leavingPracticeWorkflow) {
+      practiceCursorRef.current = null;
+      setPracticeWorkflow(null);
+    }
+    if (scope.deckId !== undefined) {
+      openFlashcardsDeck(scope.deckId);
+      return;
+    }
+    setSection("decks");
+    setFlashcardsRoute(
+      createSubjectFocusRoute(scope.subjectId ?? null, nextFlashcardsRequestId()),
+    );
+    void refreshDecks().catch((error: unknown) =>
+      showToast("error", getErrorMessage(error)),
+    );
+  }
+
+  /**
+   * Opens a subject from Home in the Library view that shows it best: Decks
+   * with the subject's folder in view (`null` is No subject's unsorted decks),
+   * or Documents for a subject that has documents and no decks yet. One call,
+   * so the subject page can take its place later.
+   */
+  async function openSubject(
+    subjectId: string | null,
+    view: "decks" | "documents" = "decks",
+  ): Promise<void> {
+    if (view === "documents") {
+      await navigate("documents");
+      return;
+    }
+    await openLibrary({ subjectId });
   }
 
   async function navigateFlashcardsWorkspace(
@@ -663,9 +752,7 @@ export function useAppController() {
     const target = practiceWorkflow?.returnTarget;
     if (!practiceWorkflow || !(await confirmPracticeTermination())) return;
     if (!(await canLeaveCurrentSection())) return;
-    await returnFromPractice(
-      target ?? { section: "decks", flashcardsWorkspace: "decks" },
-    );
+    await returnFromPractice(target ?? { section: "home" });
   }
 
 
@@ -727,8 +814,15 @@ export function useAppController() {
     consumePracticeLaunch,
     consumePracticeRestore,
     reportPracticeCheckpoint,
+    /** Counts the practice sessions that reached their summary in this run. */
+    finishedPracticeSessions,
     consumeAnalyticsLaunch,
     navigate,
+    /** The Library view the Library destination opens: the last one used. */
+    librarySection: lastLibrarySectionRef.current,
+    openSearch,
+    openLibrary,
+    openSubject,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
     openAnalyticsTagSearch,

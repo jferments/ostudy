@@ -1,6 +1,6 @@
 # Documents and AI-generated learning material
 
-The **Documents** workspace keeps a managed local source and turns it into reusable flashcards or study guides. The two learning artifacts can be generated independently from the same retained source and shared learning plan. Generated cards remain ordinary editable study cards; generated guide content remains separate from learner-owned notes and edits.
+Library's **Documents** view keeps a managed local source and turns it into reusable flashcards or study guides. The two learning artifacts can be generated independently from the same retained source and shared learning plan. Generated cards remain ordinary editable study cards; generated guide content remains separate from learner-owned notes and edits.
 
 ## Before you begin
 
@@ -28,7 +28,7 @@ You can keep adding images while processing is running. They wait for the curren
 
 Use **View collection** on an existing image source to add more images or optionally inspect a retained original. Inspection is not required for generation. Previously saved source/filter state remains compatible with complete-library backup and restore; removing the old preparation controls does not alter original image bytes.
 
-Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
+Open generated cards from **Library → Decks** and generated guides from **Library → Study guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
 Document flashcard generation can create Basic/Fill in the blank recall plus single-best-answer, select-all, true/false, matching, grouping, and ordering questions when retained source evidence supports the required relationship. Image occlusion remains manually authored; document generation does not invent masks. The type mix is a soft planning target, not a quota: allowed types, evidence fit, topic/component coverage and compound-workload limits outrank percentages. If the source does not support a requested interaction, oStudy uses another supported opportunity or returns fewer cards instead of manufacturing filler.
 
@@ -36,7 +36,7 @@ Review source-grounded output for factual errors, weak questions, duplicated con
 
 ### Document collections and coherent study materials
 
-A document collection is a **subject**: one grouping for a course's documents, guides and decks. The folders in **Flashcards → Decks** are the same subjects, so a folder you create there also appears here as a collection, and the other way round. Collections are a single level. Create a collection for a week, unit, exam, or other study set, then add existing documents with **Add source** or drag a document card onto the collection. Open a collection to see its sources and reading ranges.
+A document collection is a **subject**: one grouping for a course's documents, guides and decks. The folders in **Library → Decks** are the same subjects, so a folder you create there also appears here as a collection, and the other way round. Collections are a single level. Create a collection for a week, unit, exam, or other study set, then add existing documents with **Add source** or drag a document card onto the collection. Open a collection to see its sources and reading ranges.
 
 A document is in at most one collection. Adding it to another collection moves it there with its reading ranges and its generated flashcard deck. Removing it from a collection returns the document and its generated deck to no collection and clears its reading ranges. A generated deck that you filed in a different folder yourself stays where you put it.
 

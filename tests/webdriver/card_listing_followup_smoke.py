@@ -19,7 +19,7 @@ import tutor_smoke
 
 MEDIUM_WIDTH = 928
 MEDIUM_HEIGHT = 900
-EXPECTED_NAVIGATION = ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"]
+EXPECTED_NAVIGATION = ["Home", "Library", "Review", "Tutor", "Progress"]
 
 
 def assert_medium_navigation(session_id: str, deadline: float) -> None:
@@ -28,11 +28,15 @@ def assert_medium_navigation(session_id: str, deadline: float) -> None:
     measurement = ui.execute(
         session_id,
         """
-        const sidebar = document.querySelector("nav[aria-label='Main navigation']")?.closest("aside");
-        const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] button span:last-child")]
+        const header = document.querySelector("header[data-slot='app-header']");
+        const navigation = document.querySelector("nav[aria-label='Main navigation']");
+        const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] [data-slot='nav-label']")]
           .filter((label) => label instanceof HTMLElement);
+        const headerActions = [...(header?.querySelectorAll("button[data-testid^='app-']") ?? [])];
         return {
-          sidebarWidth: sidebar instanceof HTMLElement ? sidebar.getBoundingClientRect().width : 0,
+          inHeader: Boolean(header && navigation && header.contains(navigation)),
+          headerActions: headerActions.map((button) => button.dataset.testid),
+          headerFits: header instanceof HTMLElement && header.scrollWidth <= header.clientWidth + 1,
           labels: labels.map((label) => (label.textContent || '').trim()),
           clipped: labels
             .filter((label) => label.scrollWidth > label.clientWidth + 1)
@@ -46,8 +50,10 @@ def assert_medium_navigation(session_id: str, deadline: float) -> None:
     )
     if not isinstance(measurement, dict):
         raise AssertionError(f"Could not measure medium navigation: {measurement!r}")
-    if float(measurement.get("sidebarWidth", 0)) < 170:
-        raise AssertionError(f"Medium navigation collapsed below its labeled width: {measurement!r}")
+    if measurement.get("inHeader") is not True or measurement.get("headerFits") is not True:
+        raise AssertionError(f"Medium navigation left the labeled header bar: {measurement!r}")
+    if measurement.get("headerActions") != ["app-search", "app-settings"]:
+        raise AssertionError(f"Medium header lost Search or the Settings gear: {measurement!r}")
     if measurement.get("labels") != EXPECTED_NAVIGATION:
         raise AssertionError(f"Medium navigation did not expose complete labels: {measurement!r}")
     if measurement.get("clipped"):
@@ -302,12 +308,13 @@ def main() -> int:
         webdriver.verify_shell(session_id, webdriver.deadline_after())
         deadline = webdriver.deadline_after(60)
         assert_medium_navigation(session_id, deadline)
+        webdriver.open_library_view(session_id, "decks", deadline)
         deck_name, question, answer = create_card(session_id, deadline)
         deck_measurement = assert_deck_browser(session_id, question, answer, deadline)
         assert_search_browser(session_id, question, answer, deck_measurement, deadline)
         tutor_smoke.verify_tutor_and_contextual_return(session_id, deck_name)
         print(
-            "Native shared card-browser smoke passed: 928px navigation labels fit; Deck hides "
+            "Native shared card-browser smoke passed: 928px header navigation labels fit; Deck hides "
             "advanced filters; Deck and Search share literal two-line Q:/A: rows; Search uses one "
             "icon/input surface."
         )

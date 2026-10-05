@@ -1,18 +1,22 @@
 # Getting started
 
-ostudy keeps your study library on your device. You can create cards, organize decks, practice, search, and inspect analytics without an account or AI provider. Document generation is optional and uses only the provider you configure.
+ostudy keeps your study library on your device. You can create cards, organize decks, practice, search, and follow your progress without an account or AI provider. Document generation is optional and uses only the provider you configure.
 
 ## Find your way around
 
-The main destinations are **Flashcards**, **Study Guides**, **Documents**, **Tutor**, **Analytics**, and **Settings**. On a wide or medium window they appear in the labeled sidebar. On a compact phone layout, Flashcards, Study Guides, Documents, Tutor, and Analytics are directly available in the bottom navigation; the upper-right gear opens Settings. There is no separate mobile More menu.
+The main navigation has five destinations: **Home**, **Library**, **Review**, **Tutor**, and **Progress**. On a wide or medium window they sit in the header beside **Search** and the **Settings** gear. On a phone they are in the bottom bar, and the top bar keeps Search and Settings. There is no separate mobile More menu.
 
-Flashcards has two tabs: **Decks** and **Search/Filter** (shown as Search in compact presentation). Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup/Sync**.
+**Home** opens first. It shows how many cards are due today with **Start review**, then your subjects: each subject's tile shows what is due, its sources and cards, and opens its decks in Library. **Library** has three views: **Decks**, **Documents**, and **Study guides**. **Review** lists what is due today by subject, with a **Start** for each and **Choose decks** for a custom practice. **Progress** shows your study activity, review outcomes, and workload.
 
-Selecting Flashcards opens the Decks library root. Selecting Decks while a deck is open returns to the library, subject to unsaved-change protection. Selecting Study Guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action, not a standing navigation tab.
+Library's Decks view has two tabs: **Decks** and **Search/Filter** (shown as Search in compact presentation), and the header's **Search** opens Search/Filter. Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup/Sync**.
+
+Choosing **Library** opens the view you used last. Choosing Decks while a deck is open returns to the deck list, subject to unsaved-change protection, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Review; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination.
 
 ## Create your first deck
 
-Open **Flashcards → Decks**. A new library shows “No decks have been created yet” and **Create a new deck**. The import icon above it is another way to begin. Empty folder and unsorted tiles, selection controls, and collapse controls are intentionally absent when there are no decks.
+A new library opens on Home's welcome, **Your library is empty**, with **Create a subject**, **Import a document**, and **Open Library**. A subject keeps one course's documents, study guides, and decks together; you can also start with a deck and file it later.
+
+Open **Library → Decks**. A new library shows “No decks have been created yet” and **Create a new deck**. The import icon above it is another way to begin. Empty folder and unsorted tiles, selection controls, and collapse controls are intentionally absent when there are no decks.
 
 Give the deck a name, open it, and choose **Add flashcard**. Use a Basic question and answer for a first card. Reverse presentations are useful when both directions are worth recalling. Fill in the blank cards hide marked parts of a statement. Choose a reusable template when many cards have the same structure.
 
@@ -52,9 +56,9 @@ In **Settings → AI/LLM**, choose Add model, select an implemented provider, en
 
 Current adapters are llama.cpp / Unsloth GGUF, DeepSeek, and OpenRouter. Other catalog entries or future integrations are not current adapters. A local provider never silently falls back to cloud. See [AI providers](ai-providers.md).
 
-In **Documents**, **Upload document** starts flashcard generation from a supported source. Expand the optional flashcard-instructions field first when you want a specific focus or style; the prompt guides flashcard authoring but is never treated as factual source evidence. For screenshots or photos, choose **Upload images**, select several files, and let ostudy create the flashcards and study guide automatically. Add more through **+**, drag files into the area below the file list, press **Ctrl+V** in the paste area, or choose **Paste images**. No ordering, cropping, region labeling or preparation step is required. Original inspection is optional through **View collection**. Document collections expose the same optional flashcard guidance when creating or updating their study materials. Parsing and OCR happen locally; AI requests use only your configured provider. Review generated material against the source. [Documents and AI generation](documents-and-ai-generation.md) covers formats, image collections, progress, cancellation and privacy.
+In **Library → Documents**, **Upload document** starts flashcard generation from a supported source. Expand the optional flashcard-instructions field first when you want a specific focus or style; the prompt guides flashcard authoring but is never treated as factual source evidence. For screenshots or photos, choose **Upload images**, select several files, and let ostudy create the flashcards and study guide automatically. Add more through **+**, drag files into the area below the file list, press **Ctrl+V** in the paste area, or choose **Paste images**. No ordering, cropping, region labeling or preparation step is required. Original inspection is optional through **View collection**. Document collections expose the same optional flashcard guidance when creating or updating their study materials. Parsing and OCR happen locally; AI requests use only your configured provider. Review generated material against the source. [Documents and AI generation](documents-and-ai-generation.md) covers formats, image collections, progress, cancellation and privacy.
 
-Open **Study Guides** to browse generated guides, add learner notes, review source links, export a guide, or practice linked cards. Guides and cards are separate learning artifacts: one may exist without the other. See [Study guides](study-guides.md).
+Open **Library → Study guides** to browse generated guides, add learner notes, review source links, export a guide, or practice linked cards. Guides and cards are separate learning artifacts: one may exist without the other. See [Study guides](study-guides.md).
 
 ## Adjust the interface
 
@@ -64,4 +68,4 @@ Tutorials default off and never start automatically. Enable them and start one e
 
 ## A useful first check
 
-Create a small deck, add a few cards, find them through Search, practice them, and inspect Analytics. Restart and confirm the content and reviews remain. Then make a complete backup. For development builds, use an isolated library rather than experimenting on valuable data; the [local testing guide](../development/local-testing-and-handoff.md) shows how.
+Create a small deck, add a few cards, find them through Search, practice them, and look at Progress. Restart and confirm the content and reviews remain. Then make a complete backup. For development builds, use an isolated library rather than experimenting on valuable data; the [local testing guide](../development/local-testing-and-handoff.md) shows how.

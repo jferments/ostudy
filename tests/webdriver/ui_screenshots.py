@@ -7,6 +7,10 @@ theme at phone, tablet, and desktop widths. ``compare`` turns two capture
 directories into one self-contained comparison page. Use
 ``scripts/ui-screenshots.sh`` rather than calling this file directly; the
 wrapper provides Xvfb, isolated application data, and the binary.
+
+The engine drives builds from before and after the navigation redesign: it
+recognizes which navigation the build has and skips the screens that build
+does not have, so one capture tool serves a before/after comparison.
 """
 
 from __future__ import annotations
@@ -87,30 +91,44 @@ def xpath_literal(value: str) -> str:
 # --------------------------------------------------------------------------
 
 
+# The two navigations a build can have: the sidebar of section tabs
+# (Flashcards, Study Guides, Documents, Tutor, Analytics, Settings), and the
+# header of five destinations (Home, Library, Review, Tutor, Progress) with
+# Library's view switcher and Settings in the header.
+SECTIONS_SHELL = "sections"
+DESTINATIONS_SHELL = "destinations"
+SHELLS = (SECTIONS_SHELL, DESTINATIONS_SHELL)
+
+
 @dataclass(frozen=True)
 class Screen:
     id: str
     title: str
     group: str
     widths: tuple[int, ...] | None = None  # None: every requested width
-    flow: str = "page"  # page | dialog | practice
+    flow: str = "page"  # page | dialog | practice | first-run
+    shells: tuple[str, ...] = SHELLS  # the navigations that have this screen
 
 
 SCREENS: tuple[Screen, ...] = (
-    Screen("library", "Flashcards library", "Flashcards"),
-    Screen("deck", "Deck card list", "Flashcards"),
-    Screen("card-editor", "Card editor", "Flashcards"),
-    Screen("practice-setup-dialog", "Practice setup dialog", "Flashcards", DIALOG_WIDTHS, "dialog"),
+    Screen("home", "Home", "Home", shells=(DESTINATIONS_SHELL,)),
+    # The landing page of a library with nothing in it.
+    Screen("first-run", "First run: empty library", "Home", None, "first-run"),
+    Screen("review", "Review", "Review", shells=(DESTINATIONS_SHELL,)),
+    Screen("library", "Library: Decks", "Library"),
+    Screen("deck", "Deck card list", "Library"),
+    Screen("card-editor", "Card editor", "Library"),
+    Screen("practice-setup-dialog", "Practice setup dialog", "Library", DIALOG_WIDTHS, "dialog"),
     Screen("practice-question", "Practice: question", "Practice", None, "practice"),
     Screen("practice-answer", "Practice: answer revealed", "Practice", None, "practice"),
     Screen("practice-summary", "Practice: session summary", "Practice", None, "practice"),
-    Screen("guides", "Study guides list", "Study Guides"),
-    Screen("guide-reader", "Study guide reader", "Study Guides"),
-    Screen("documents", "Documents list", "Documents"),
-    Screen("document-info", "Document generation info", "Documents"),
-    Screen("analytics", "Analytics overview", "Analytics"),
-    Screen("analytics-summary", "Analytics summary tiles", "Analytics"),
-    Screen("analytics-details", "Analytics topic table", "Analytics"),
+    Screen("guides", "Library: Study guides", "Library"),
+    Screen("guide-reader", "Study guide reader", "Library"),
+    Screen("documents", "Library: Documents", "Library"),
+    Screen("document-info", "Document generation info", "Library"),
+    Screen("analytics", "Progress overview", "Progress"),
+    Screen("analytics-summary", "Progress summary tiles", "Progress"),
+    Screen("analytics-details", "Progress topic table", "Progress"),
     Screen("tutor", "Tutor conversation", "Tutor"),
     Screen("settings-appearance", "Settings: Appearance", "Settings"),
     Screen("settings-backup", "Settings: Backup/Sync", "Settings"),
@@ -136,6 +154,14 @@ def screen_widths(screen: Screen, widths: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(width for width in widths if width in screen.widths)
 
 
+def screens_for_shell(screens: list[Screen], shell: str) -> tuple[list[Screen], list[Screen]]:
+    """Split the selected screens into those a build with this navigation has and those it lacks."""
+    return (
+        [screen for screen in screens if shell in screen.shells],
+        [screen for screen in screens if shell not in screen.shells],
+    )
+
+
 # --------------------------------------------------------------------------
 # WebDriver session helpers
 # --------------------------------------------------------------------------
@@ -151,6 +177,7 @@ class Context:
     theme: str
     width: int = 0
     layout: str = ""
+    shell: str = ""
     warnings: list[str] = field(default_factory=list)
 
     def deadline(self, seconds: int = 30) -> float:
@@ -369,13 +396,37 @@ def close_overlays(ctx: Context) -> None:
     ui.wait_for_overlay_inactive(ctx.session_id, ctx.deadline(5), "the next screen")
 
 
+SHELL_MARKER = "//button[@data-testid='nav-library' or @data-testid='nav-decks']"
+LIBRARY_VIEWS = ("decks", "documents", "study-guides")
+DESTINATION_OF = {"home": "home", "review": "review", "tutor": "tutor", "analytics": "progress"}
+
+
+def wait_for_shell(ctx: Context) -> None:
+    """Wait for the main navigation and note which navigation this build has."""
+    find(ctx, SHELL_MARKER, 60)
+    ctx.shell = DESTINATIONS_SHELL if exists(ctx, "//button[@data-testid='nav-library']") else SECTIONS_SHELL
+
+
 def go(ctx: Context, section: str) -> None:
-    """Navigate to a top-level section through the visible navigation."""
-    if section == "settings" and ctx.layout == "compact":
-        selector = "//button[@data-testid='app-settings']"
+    """Navigate to a top-level section through the visible navigation.
+
+    ``section`` is an application section id (decks, documents, study-guides,
+    review, analytics, ...), which both navigations can reach.
+    """
+    if ctx.shell == DESTINATIONS_SHELL:
+        if section == "settings":
+            click(ctx, "//button[@data-testid='app-settings']")
+        elif section in LIBRARY_VIEWS:
+            click(ctx, "//button[@data-testid='nav-library']")
+            settle_dialogs(ctx)
+            # Choosing the open view again returns it to its first page.
+            click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
+        else:
+            click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
+    elif section == "settings" and ctx.layout == "compact":
+        click(ctx, "//button[@data-testid='app-settings']")
     else:
-        selector = f"//button[@data-testid='nav-{section}']"
-    click(ctx, selector)
+        click(ctx, f"//button[@data-testid='nav-{section}']")
     settle_dialogs(ctx)
 
 
@@ -490,6 +541,32 @@ def dismiss_toasts(ctx: Context) -> None:
         time.sleep(0.1)
 
 
+REVIEW_BADGE_SCRIPT = """
+const done = arguments[arguments.length - 1];
+const review = document.querySelector("[data-testid='nav-review']");
+if (!review) { done(true); return; }
+window.__TAURI_INTERNALS__.invoke('get_home_summary').then(
+  (summary) => {
+    const due = summary.today.scheduledReviews + summary.today.scheduledNew;
+    const expected = due > 999 ? '999+' : due > 0 ? String(due) : '';
+    const badge = review.querySelector("[data-slot='nav-badge']");
+    done((badge?.textContent || '').trim() === expected);
+  },
+  () => done(false),
+);
+"""
+
+
+def wait_for_review_badge(ctx: Context, seconds: int = 20) -> None:
+    """Wait until Review's badge shows what is due now, as a finished session rereads it."""
+    deadline = ctx.deadline(seconds)
+    while time.monotonic() < deadline:
+        if ui.execute_async(ctx.session_id, REVIEW_BADGE_SCRIPT, []) is True:
+            return
+        time.sleep(0.1)
+    raise CaptureError("Review's badge did not settle on today's count.")
+
+
 def wait_ready(ctx: Context, seconds: int = 20) -> None:
     deadline = ctx.deadline(seconds)
     last: Any = None
@@ -543,6 +620,36 @@ def stable_png(ctx: Context, attempts: int = 12) -> tuple[bytes, bool]:
 # --------------------------------------------------------------------------
 # Screens
 # --------------------------------------------------------------------------
+
+
+def open_home(ctx: Context) -> None:
+    go(ctx, "home")
+    find(ctx, "//main//*[@data-testid='home-today']")
+    expected = seed.home_tile_count()
+    wait_until(
+        ctx,
+        f"{expected} subject tiles on Home",
+        lambda: len(webdriver.request(
+            "POST", f"/session/{ctx.session_id}/elements",
+            {"using": "css selector", "value": "main [data-testid='subject-tile']"},
+        )) == expected,
+    )
+
+
+def open_first_run(ctx: Context) -> None:
+    """A library with nothing in it opens on Home's welcome, or on the empty deck library before Home existed."""
+    if ctx.shell == DESTINATIONS_SHELL:
+        go(ctx, "home")
+        find(ctx, "//main//*[@data-testid='home-first-run']//h2[normalize-space(.)='Your library is empty']")
+    else:
+        go(ctx, "decks")
+        wait_for_text(ctx, "No decks have been created yet.")
+
+
+def open_review(ctx: Context) -> None:
+    go(ctx, "review")
+    find(ctx, "//main//*[@data-testid='review-today']//h2[contains(normalize-space(.), 'due today')]")
+    find(ctx, "//main//*[@data-testid='review-subjects']/*[@data-testid='review-subject']")
 
 
 def open_library(ctx: Context) -> None:
@@ -623,14 +730,21 @@ def open_guide_reader(ctx: Context) -> None:
 
 
 def open_documents(ctx: Context) -> None:
+    """Documents lists each subject as a collection with its sources, then the documents in no subject."""
     go(ctx, "documents")
+    for subject in seed.SUBJECTS:
+        find(ctx, f"//main//section[@aria-label='Document collections']//h3[normalize-space(.)={xpath_literal(subject)}]")
     for document in seed.DOCUMENTS:
-        find(ctx, f"//main//h2[normalize-space(.)={xpath_literal(document.title)}]")
+        if document.subject is None:
+            find(ctx, f"//main//h2[normalize-space(.)={xpath_literal(document.title)}]")
+        else:
+            find(ctx, f"//main//section[@aria-label='Collection sources']//*[normalize-space(text())={xpath_literal(document.title)}]")
 
 
 def open_document_info(ctx: Context) -> None:
     open_documents(ctx)
-    document = seed.DOCUMENTS[0]
+    # Generation info is an action of a document in no subject.
+    document = seed.INFO_DOCUMENT
     click(ctx, f"//main//button[@aria-label={xpath_literal('More actions for ' + document.title)}]")
     # Wide layouts open a dropdown menu; compact layouts open a sheet of buttons.
     click(ctx, "(//*[@role='menuitem'] | //*[@role='dialog']//button)[normalize-space(.)='Generation info']")
@@ -699,6 +813,8 @@ MASKS: dict[str, str] = {
 }
 
 OPENERS: dict[str, Callable[[Context], None]] = {
+    "home": open_home,
+    "review": open_review,
     "library": open_library,
     "deck": lambda ctx: open_deck(ctx, seed.DETAIL_DECK),
     "card-editor": open_card_editor,
@@ -825,6 +941,10 @@ class Run:
     def snapshot_dir(self) -> Path:
         return self.options.app_data_root.parent / "seeded-library"
 
+    @property
+    def empty_snapshot_dir(self) -> Path:
+        return self.options.app_data_root.parent / "empty-library"
+
     def reset_app_data(self) -> None:
         # A WebKit helper of the previous session can still be flushing its
         # storage for a moment after the application itself has exited.
@@ -839,10 +959,28 @@ class Run:
                     raise
                 time.sleep(0.25)
 
-    def restore_snapshot(self, theme: str) -> None:
+    def restore_snapshot(self, theme: str, snapshot: Path | None = None) -> None:
         self.reset_app_data()
-        shutil.copytree(self.snapshot_dir, self.app_data_dir, symlinks=True)
+        shutil.copytree(snapshot or self.snapshot_dir, self.app_data_dir, symlinks=True)
         seed.set_theme(self.app_data_dir, theme)
+
+    def save_snapshot(self, snapshot: Path) -> None:
+        if snapshot.exists():
+            shutil.rmtree(snapshot)
+        shutil.copytree(self.app_data_dir, snapshot, symlinks=True)
+
+    def adopt_shell(self, shell: str) -> None:
+        """Keep only the screens this build's navigation has, and say which were skipped."""
+        self.manifest["environment"]["navigation"] = shell
+        self.selected, missing = screens_for_shell(self.selected, shell)
+        if not missing:
+            return
+        skipped = {screen.id for screen in missing}
+        self.manifest["screens"] = [entry for entry in self.manifest["screens"] if entry["id"] not in skipped]
+        self.manifest["notes"].append(
+            "This build has the sidebar navigation from before Home and Review, so these screens were not "
+            f"captured: {', '.join(screen.title for screen in missing)}."
+        )
 
     # -- driver -------------------------------------------------------------
 
@@ -884,7 +1022,7 @@ class Run:
     def open_session(self, theme: str) -> Context:
         session_id = webdriver.create_session(self.options.application)
         ctx = Context(session_id=session_id, theme=theme)
-        webdriver.verify_shell(session_id, ctx.deadline(60))
+        wait_for_shell(ctx)
         install_capture_style(ctx)
         return ctx
 
@@ -940,10 +1078,20 @@ class Run:
 
     # -- seeding ------------------------------------------------------------
 
+    def wants_first_run(self) -> bool:
+        return any(screen.flow == "first-run" for screen in self.selected)
+
     def seed_library(self) -> None:
         started = time.monotonic()
         self.reset_app_data()
         ctx = self.open_session("dark")
+        self.adopt_shell(ctx.shell)
+        if self.wants_first_run():
+            # The app has created an empty library; keep a copy for the first-run screen.
+            self.close_session(ctx)
+            self.save_snapshot(self.empty_snapshot_dir)
+            seed.write_settings(self.empty_snapshot_dir, CAPTURE_SETTINGS, self.anchor_day_ms)
+            ctx = self.open_session("dark")
         try:
             self.manifest["environment"]["browser"] = execute(
                 ctx,
@@ -960,14 +1108,13 @@ class Run:
         finally:
             self.close_session(ctx)
         notes = seed.finalize_library(self.app_data_dir, state, self.anchor_day_ms, CAPTURE_SETTINGS)
-        if self.snapshot_dir.exists():
-            shutil.rmtree(self.snapshot_dir)
-        shutil.copytree(self.app_data_dir, self.snapshot_dir, symlinks=True)
+        self.save_snapshot(self.snapshot_dir)
         card_count = sum(len(ids) for ids in state.card_ids.values())
+        unfiled = sum(1 for deck in seed.DECKS if deck.subject is None)
         self.manifest["notes"].append(
-            f"Seeded {len(seed.DECKS)} decks in {len(seed.FOLDERS)} folders with {len(seed.NOTES)} notes "
-            f"({card_count} cards), {len(state.sessions)} practice sessions over six weeks, "
-            f"{len(seed.DOCUMENTS)} documents, and one tutor conversation."
+            f"Seeded {len(seed.SUBJECTS)} subjects and {len(seed.DECKS)} decks ({unfiled} with no subject) "
+            f"with {len(seed.NOTES)} notes ({card_count} cards), {len(state.sessions)} practice sessions "
+            f"over six weeks, {len(seed.DOCUMENTS)} documents, and one tutor conversation."
         )
         self.manifest["notes"].extend(notes)
         self.manifest["timings"]["seedSeconds"] = round(time.monotonic() - started, 1)
@@ -1032,10 +1179,10 @@ class Run:
         ui.execute_async(ctx.session_id, DECODE_IMAGES_SCRIPT, [])
         wait_ready(ctx)
 
-    def capture_page(self, ctx: Context, screen: Screen) -> None:
+    def capture_page(self, ctx: Context, screen: Screen, opener: Callable[[Context], None] | None = None) -> None:
         started = time.monotonic()
         try:
-            OPENERS[screen.id](ctx)
+            (opener or OPENERS[screen.id])(ctx)
             self.prepare_capture(ctx, screen)
             self.record(ctx, screen, started)
         except Exception as error:  # noqa: BLE001 - one screen must not abort the run
@@ -1115,6 +1262,7 @@ class Run:
                 if rated > 12:
                     raise CaptureError("Practice did not finish after 12 ratings.")
                 click(ctx, "//button[normalize-space(.)='Show answer']")
+            wait_for_review_badge(ctx)
             self._practice_shots(ctx, by_id.get("practice-summary"), widths, started)
         except Exception as error:  # noqa: BLE001
             # Every wanted shot from the failed stage on is unreachable.
@@ -1138,25 +1286,40 @@ class Run:
             self.record(ctx, screen, started)
             started = time.monotonic()
 
-    def capture_theme(self, theme: str) -> None:
-        started = time.monotonic()
-        self.restore_snapshot(theme)
+    def capture_first_run(self, theme: str) -> None:
+        """Photograph the landing page of an empty library in its own session."""
+        screen = SCREEN_BY_ID["first-run"]
+        self.restore_snapshot(theme, self.empty_snapshot_dir)
         ctx = self.open_session(theme)
         try:
-            for width in self.options.widths:
+            for width in screen_widths(screen, self.options.widths):
                 set_viewport(ctx, width)
-                for screen in self.selected:
-                    if screen.flow != "page" or width not in screen_widths(screen, self.options.widths):
-                        continue
-                    self.capture_page(ctx, screen)
-            for screen in self.selected:
-                if screen.flow == "dialog":
-                    widths = screen_widths(screen, self.options.widths)
-                    if widths:
-                        self.capture_dialog(ctx, screen, widths)
-            self.capture_practice(ctx, self.options.widths)
+                self.capture_page(ctx, screen, open_first_run)
         finally:
             self.close_session(ctx)
+
+    def capture_theme(self, theme: str) -> None:
+        started = time.monotonic()
+        if any(screen.flow != "first-run" for screen in self.selected):
+            self.restore_snapshot(theme)
+            ctx = self.open_session(theme)
+            try:
+                for width in self.options.widths:
+                    set_viewport(ctx, width)
+                    for screen in self.selected:
+                        if screen.flow != "page" or width not in screen_widths(screen, self.options.widths):
+                            continue
+                        self.capture_page(ctx, screen)
+                for screen in self.selected:
+                    if screen.flow == "dialog":
+                        widths = screen_widths(screen, self.options.widths)
+                        if widths:
+                            self.capture_dialog(ctx, screen, widths)
+                self.capture_practice(ctx, self.options.widths)
+            finally:
+                self.close_session(ctx)
+        if self.wants_first_run():
+            self.capture_first_run(theme)
         seconds = round(time.monotonic() - started, 1)
         count = sum(1 for entry in self.manifest["captures"] if entry["theme"] == theme)
         self.manifest["timings"].setdefault("themes", {})[theme] = seconds
