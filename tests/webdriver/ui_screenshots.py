@@ -346,6 +346,11 @@ def click(ctx: Context, xpath: str, seconds: int = 30) -> None:
     element = find(ctx, xpath, seconds)
     try:
         webdriver.click(ctx.session_id, element)
+    except webdriver.WebDriverProtocolError as error:
+        # The Workbench re-renders its tree as subjects expand; find the target again.
+        if error.error != "stale element reference":
+            raise
+        webdriver.click(ctx.session_id, find(ctx, xpath, seconds))
     except RuntimeError as error:
         # The shared helper centres the target before each hit test. Some
         # targets land on half pixels and move by one pixel on every attempt,
@@ -407,6 +412,24 @@ def wait_for_shell(ctx: Context) -> None:
     ctx.shell = DESTINATIONS_SHELL if exists(ctx, "//button[@data-testid='nav-library']") else SECTIONS_SHELL
 
 
+def show_workbench_tree(ctx: Context) -> None:
+    """Phones show one Workbench page at a time and Library reopens the last one;
+    step back to the tree, whose More section links Documents and Study guides."""
+    if ctx.layout != "compact":
+        return
+    workbench = "//main//*[@data-testid='library-workbench']"
+    for _ in range(3):
+        if not exists(ctx, workbench) or exists(ctx, f"{workbench}//nav[@aria-label='Library']"):
+            return
+        close_editor = (
+            f"{workbench}//*[@data-testid='workbench-editor']"
+            "//button[normalize-space(.)='Cancel' or normalize-space(.)='Close']"
+        )
+        back = f"{workbench}//button[@aria-label='Library']"
+        click(ctx, close_editor if exists(ctx, close_editor) else back)
+    find(ctx, f"{workbench}//nav[@aria-label='Library']")
+
+
 def go(ctx: Context, section: str) -> None:
     """Navigate to a top-level section through the visible navigation.
 
@@ -419,6 +442,9 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
+            # Library opens its last page: the Workbench, or a page with the view switcher.
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library']")
+            show_workbench_tree(ctx)
             if section == "decks" and exists(ctx, WORKBENCH):
                 # The Workbench is Library's first page; it has no view switcher.
                 pass
