@@ -31,7 +31,7 @@ PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
 ANALYTICS_SCREEN_SELECTOR = "main section[aria-label='Learning summary']"
 # Library hosts these sections as its views. Each keeps its own page heading.
 LIBRARY_VIEW_HEADINGS = {
-    "decks": "Flashcards",
+    "decks": "All cards",
     "documents": "Documents",
     "study-guides": "Study Guides",
 }
@@ -261,6 +261,12 @@ def find_elements(
         f"Expected at least {minimum} elements for {using}={value}; "
         f"last count: {last_count}; last error: {last_error}"
     )
+
+
+def element_exists(session_id: str, using: str, value: str) -> bool:
+    """Whether the element is present right now, without waiting for it."""
+    result = request("POST", f"/session/{session_id}/elements", {"using": using, "value": value})
+    return isinstance(result, list) and len(result) > 0
 
 
 def element_text(session_id: str, element_id: str) -> str:
@@ -675,8 +681,16 @@ def verify_shell(session_id: str, deadline: float) -> None:
     find_element(session_id, "css selector", "nav[aria-label='Main navigation']", deadline)
 
 
+WORKBENCH_SELECTOR = "main [data-testid='library-workbench']"
+WORKBENCH_TREE_XPATH = "//main//*[@data-testid='library-workbench']//nav[@aria-label='Library']"
+
+
 def open_library_view(session_id: str, view: str, deadline: float) -> None:
-    """Open one of Library's views: Library in the main navigation, then its view switcher."""
+    """Open one of Library's pages: the Workbench ("decks"), Documents or Study guides.
+
+    Library reopens the page used last. The Workbench links to Documents and
+    Study guides from its tree; those pages link back with the switcher.
+    """
     library = find_element(
         session_id,
         "css selector",
@@ -684,6 +698,31 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
         deadline,
     )
     click(session_id, library)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-library'][aria-current='page']",
+        deadline,
+    )
+    if view == "decks":
+        # Whichever Library page opens: the Workbench, or a page whose switcher leads back to it.
+        find_element(
+            session_id,
+            "xpath",
+            "//main//*[@data-testid='library-workbench']"
+            " | //main//nav[@aria-label='Library']//button[@data-testid='library-view-decks']",
+            deadline,
+        )
+        if not element_exists(session_id, "css selector", WORKBENCH_SELECTOR):
+            switcher = find_element(
+                session_id,
+                "css selector",
+                "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
+                deadline,
+            )
+            click(session_id, switcher)
+        find_element(session_id, "css selector", WORKBENCH_SELECTOR, deadline)
+        return
     switcher = find_element(
         session_id,
         "css selector",
@@ -694,16 +733,77 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
     find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-library'][aria-current='page']",
-        deadline,
-    )
-    find_element(
-        session_id,
-        "css selector",
         f"button[data-testid='library-view-{view}'][aria-current='page']",
         deadline,
     )
     wait_for_main_heading(session_id, LIBRARY_VIEW_HEADINGS[view], deadline)
+
+
+def workbench_tree_entry(session_id: str, label: str, deadline: float) -> str:
+    """A subject, deck, view or tag in the Workbench's tree, by its name."""
+    return find_element(
+        session_id,
+        "xpath",
+        f"{WORKBENCH_TREE_XPATH}//button[.//span[normalize-space(.)={json.dumps(label)}]]",
+        deadline,
+    )
+
+
+def open_workbench_deck(session_id: str, deck_name: str, deadline: float) -> None:
+    """Choose a deck in the Workbench's tree and wait for its card list."""
+    click(session_id, workbench_tree_entry(session_id, deck_name, deadline))
+    wait_for_workbench_title(session_id, deck_name, deadline)
+
+
+def wait_for_workbench_title(session_id: str, expected: str, deadline: float) -> None:
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//h1[@data-testid='workbench-title'][normalize-space(.)={json.dumps(expected)}]",
+        deadline,
+    )
+
+
+def find_card_row(session_id: str, question: str, deadline: float) -> str:
+    """The Workbench row whose front starts with `question`."""
+    return find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-card-id]//button[contains(normalize-space(.), {json.dumps(question)})]",
+        deadline,
+    )
+
+
+def choose_menu_item(
+    session_id: str,
+    menu_label: str,
+    item: str,
+    deadline: float,
+    trigger_scope: str = "//main",
+) -> None:
+    """Open an overflow menu by its accessible name and choose one item.
+
+    A deck's row in the tree and the card list's header both carry a menu named
+    for the deck; pass ``trigger_scope="//main//header"`` for the header's.
+    """
+    trigger = find_element(
+        session_id,
+        "xpath",
+        f"{trigger_scope}//button[@aria-label={json.dumps(menu_label)}]",
+        deadline,
+    )
+    click(session_id, trigger)
+    # Keep the ellipsis literal: an ASCII escape would never match in XPath.
+    item_literal = json.dumps(item, ensure_ascii=False)
+    option = find_element(
+        session_id,
+        "xpath",
+        # A menu on wider screens; a sheet of buttons on phones.
+        f"//*[@role='menuitem'][normalize-space(.)={item_literal}]"
+        f" | //*[@role='dialog']//*[@aria-label={json.dumps(menu_label)}]//button[normalize-space(.)={item_literal}]",
+        deadline,
+    )
+    click(session_id, option)
 
 
 def verify_fresh_home(session_id: str, deadline: float) -> None:
@@ -775,14 +875,24 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
 
 
 def verify_search_workspace_selected(session_id: str, deadline: float) -> None:
-    wait_for_main_heading(session_id, "Flashcards", deadline)
-    find_element(
-        session_id,
-        "xpath",
-        "//main//*[@role='tab' and @aria-selected='true']"
-        "[contains(normalize-space(.), 'Search')]",
-        deadline,
-    )
+    """The header's Search opens Library on All cards with the search field focused."""
+    wait_for_workbench_title(session_id, "All cards", deadline)
+    while time.monotonic() < deadline:
+        focused = request(
+            "POST",
+            f"/session/{session_id}/execute/sync",
+            {
+                "script": """
+                    const active = document.activeElement;
+                    return Boolean(active && active.matches("main [data-testid='library-workbench'] input[type='search']"));
+                """,
+                "args": [],
+            },
+        )
+        if focused is True:
+            return
+        time.sleep(0.1)
+    raise AssertionError("Search did not focus the Workbench's search field")
 
 
 def verify_tag_filtered_search(
@@ -791,19 +901,15 @@ def verify_tag_filtered_search(
     tag_name: str,
     deadline: float,
 ) -> None:
-    verify_search_workspace_selected(session_id, deadline)
+    """A tag from Progress opens the Workbench on that tag's cards."""
+    wait_for_workbench_title(session_id, tag_name, deadline)
     find_element(
         session_id,
         "xpath",
-        f"//main//button[@aria-label={json.dumps(f'Remove Tag: {tag_name} filter')}]",
+        f"{WORKBENCH_TREE_XPATH}//button[@aria-current='true'][.//span[normalize-space(.)={json.dumps(tag_name)}]]",
         deadline,
     )
-    find_element(
-        session_id,
-        "xpath",
-        f"//main//strong[normalize-space(.)={json.dumps(question)}]",
-        deadline,
-    )
+    find_card_row(session_id, question, deadline)
 
 
 def verify_analytics_tag_search(
@@ -820,6 +926,33 @@ def verify_analytics_tag_search(
     )
     click(session_id, tag_action)
     verify_tag_filtered_search(session_id, question, tag_name, deadline)
+
+
+def wait_for_saved_library_search_checkpoint(session_id: str, deadline: float) -> None:
+    """The app saves its checkpoint shortly after navigating; restart only once it has."""
+    checkpoint: Any = None
+    while time.monotonic() < deadline:
+        checkpoint = request(
+            "POST",
+            f"/session/{session_id}/execute/async",
+            {
+                "script": """
+                    const done = arguments[arguments.length - 1];
+                    window.__TAURI_INTERNALS__.invoke('get_ui_checkpoint')
+                      .then((value) => done(value))
+                      .catch((error) => done({ error: String(error) }));
+                """,
+                "args": [],
+            },
+        )
+        if (
+            isinstance(checkpoint, dict)
+            and checkpoint.get("section") == "decks"
+            and checkpoint.get("flashcardsWorkspace") == "search"
+        ):
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"Library Search checkpoint was not saved before restart: {checkpoint!r}")
 
 
 def verify_due_today(session_id: str, expected: str, deadline: float) -> None:
@@ -868,9 +1001,16 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     deadline = deadline_after()
     verify_fresh_home(session_id, deadline)
     open_library_view(session_id, "decks", deadline)
+    wait_for_workbench_title(session_id, "All cards", deadline)
 
-    progress("Creating a deck")
+    progress("Creating a deck from the empty Workbench")
     deadline = deadline_after()
+    find_element(
+        session_id,
+        "xpath",
+        "//main//*[@data-testid='library-workbench']//*[normalize-space(.)='No cards yet']",
+        deadline,
+    )
     click_text_button(session_id, "New deck", deadline)
     set_input_text(
         session_id,
@@ -886,11 +1026,12 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, create_button)
-    wait_for_main_heading(session_id, deck_name, deadline)
+    wait_for_workbench_title(session_id, deck_name, deadline)
+    workbench_tree_entry(session_id, deck_name, deadline)
 
     progress("Creating and verifying a flashcard")
     deadline = deadline_after()
-    click_text_button(session_id, "Add flashcard", deadline)
+    click_text_button(session_id, "New card", deadline)
     set_rich_editor_text(session_id, 0, question, deadline)
     set_rich_editor_text(session_id, 1, answer, deadline)
     tag_input = find_element(
@@ -913,13 +1054,8 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, save_button)
-    wait_for_main_heading(session_id, deck_name, deadline)
-    find_element(
-        session_id,
-        "xpath",
-        f"//strong[normalize-space(.)={json.dumps(question)}]",
-        deadline,
-    )
+    wait_for_workbench_title(session_id, deck_name, deadline)
+    find_card_row(session_id, question, deadline)
 
     progress("Verifying today's count on Home, the Review badge and Review")
     deadline = deadline_after()
@@ -953,14 +1089,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     progress("Opening and dismissing selected-deck Practice setup")
     deadline = deadline_after()
     open_library_view(session_id, "decks", deadline)
-    selection = find_element(
-        session_id,
-        "xpath",
-        f"//*[@role='checkbox' and @aria-label={json.dumps(f'Select {deck_name}')}]",
-        deadline,
-    )
-    click(session_id, selection)
-    click_text_button(session_id, "Practice", deadline)
+    choose_menu_item(session_id, f"{deck_name} actions", "Practice with options…", deadline)
     find_element(
         session_id,
         "xpath",
@@ -1025,18 +1154,13 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
     click(session_id, close_setup)
-    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(session_id, "css selector", WORKBENCH_SELECTOR, deadline)
 
-    progress("Verifying one-step row Practice returns to the library")
+    progress("Verifying one-step Practice from the tree returns to the Workbench")
     deadline = deadline_after()
-    row_practice_button = find_element(
-        session_id,
-        "xpath",
-        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]"
-        "//button[normalize-space(.)='Practice']",
-        deadline,
-    )
-    click(session_id, row_practice_button)
+    click(session_id, workbench_tree_entry(session_id, "All cards", deadline))
+    wait_for_workbench_title(session_id, "All cards", deadline)
+    choose_menu_item(session_id, f"{deck_name} actions", "Practice", deadline)
     show_answer = find_element(
         session_id,
         "xpath",
@@ -1045,36 +1169,18 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     )
     assert_internal_practice_shell(session_id, deck_name)
     click_text_button(session_id, "End session", deadline)
-    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(session_id, "css selector", WORKBENCH_SELECTOR, deadline)
     find_element(
         session_id,
         "css selector",
         "button[data-testid='nav-library'][aria-current='page']",
         deadline,
     )
-    find_element(
-        session_id,
-        "css selector",
-        "button[data-testid='library-view-decks'][aria-current='page']",
-        deadline,
-    )
-    find_element(
-        session_id,
-        "xpath",
-        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
-        deadline,
-    )
+    wait_for_workbench_title(session_id, "All cards", deadline)
 
-    progress("Verifying deck-detail Practice returns to that exact deck")
+    progress("Verifying deck Practice returns to that exact deck")
     deadline = deadline_after()
-    deck_row = find_element(
-        session_id,
-        "xpath",
-        f"//main//*[@role='button' and @aria-label={json.dumps(f'Open {deck_name}')}]",
-        deadline,
-    )
-    click(session_id, deck_row)
-    wait_for_main_heading(session_id, deck_name, deadline)
+    open_workbench_deck(session_id, deck_name, deadline)
     practice_button = find_element(
         session_id,
         "xpath",
@@ -1090,15 +1196,10 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     )
     assert_internal_practice_shell(session_id, deck_name)
     click_text_button(session_id, "End session", deadline)
-    wait_for_main_heading(session_id, deck_name, deadline)
-    find_element(
-        session_id,
-        "xpath",
-        f"//strong[normalize-space(.)={json.dumps(question)}]",
-        deadline,
-    )
+    wait_for_workbench_title(session_id, deck_name, deadline)
+    find_card_row(session_id, question, deadline)
 
-    progress("Completing one review after the exact detail return")
+    progress("Completing one review after the exact deck return")
     deadline = deadline_after()
     practice_button = find_element(
         session_id,
@@ -1158,6 +1259,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
     progress("Opening Search from the current recent-review tag")
     verify_analytics_tag_search(session_id, question, tag_name, deadline)
+    wait_for_saved_library_search_checkpoint(session_id, deadline)
     progress("Progress verification completed")
     return deck_name, question
 
@@ -1171,20 +1273,8 @@ def verify_persistence_after_restart(
     deadline = deadline_after()
     verify_shell(session_id, deadline)
     open_library_view(session_id, "decks", deadline)
-    deck_button = find_element(
-        session_id,
-        "xpath",
-        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
-        deadline,
-    )
-    click(session_id, deck_button)
-    wait_for_main_heading(session_id, deck_name, deadline)
-    find_element(
-        session_id,
-        "xpath",
-        f"//strong[normalize-space(.)={json.dumps(question)}]",
-        deadline,
-    )
+    open_workbench_deck(session_id, deck_name, deadline)
+    find_card_row(session_id, question, deadline)
 
     progress("Verifying persisted review history in Progress after restart")
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)

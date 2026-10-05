@@ -346,6 +346,11 @@ def click(ctx: Context, xpath: str, seconds: int = 30) -> None:
     element = find(ctx, xpath, seconds)
     try:
         webdriver.click(ctx.session_id, element)
+    except webdriver.WebDriverProtocolError as error:
+        # The Workbench re-renders its tree as subjects expand; find the target again.
+        if error.error != "stale element reference":
+            raise
+        webdriver.click(ctx.session_id, find(ctx, xpath, seconds))
     except RuntimeError as error:
         # The shared helper centres the target before each hit test. Some
         # targets land on half pixels and move by one pixel on every attempt,
@@ -407,6 +412,24 @@ def wait_for_shell(ctx: Context) -> None:
     ctx.shell = DESTINATIONS_SHELL if exists(ctx, "//button[@data-testid='nav-library']") else SECTIONS_SHELL
 
 
+def show_workbench_tree(ctx: Context) -> None:
+    """Phones show one Workbench page at a time and Library reopens the last one;
+    step back to the tree, whose More section links Documents and Study guides."""
+    if ctx.layout != "compact":
+        return
+    workbench = "//main//*[@data-testid='library-workbench']"
+    for _ in range(3):
+        if not exists(ctx, workbench) or exists(ctx, f"{workbench}//nav[@aria-label='Library']"):
+            return
+        close_editor = (
+            f"{workbench}//*[@data-testid='workbench-editor']"
+            "//button[normalize-space(.)='Cancel' or normalize-space(.)='Close']"
+        )
+        back = f"{workbench}//button[@aria-label='Library']"
+        click(ctx, close_editor if exists(ctx, close_editor) else back)
+    find(ctx, f"{workbench}//nav[@aria-label='Library']")
+
+
 def go(ctx: Context, section: str) -> None:
     """Navigate to a top-level section through the visible navigation.
 
@@ -419,8 +442,15 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
-            # Choosing the open view again returns it to its first page.
-            click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
+            # Library opens its last page: the Workbench, or a page with the view switcher.
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library']")
+            show_workbench_tree(ctx)
+            if section == "decks" and exists(ctx, WORKBENCH):
+                # The Workbench is Library's first page; it has no view switcher.
+                pass
+            else:
+                # Choosing the open view again returns it to its first page.
+                click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
         else:
             click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
     elif section == "settings" and ctx.layout == "compact":
@@ -652,8 +682,29 @@ def open_review(ctx: Context) -> None:
     find(ctx, "//main//*[@data-testid='review-subjects']/*[@data-testid='review-subject']")
 
 
+WORKBENCH = "//main//*[@data-testid='library-workbench']"
+WORKBENCH_TREE = "//main//*[@data-testid='library-workbench']//nav[@aria-label='Library']"
+
+
+def expand_workbench_subjects(ctx: Context) -> None:
+    """Open every collapsed subject in the Workbench's tree, so all decks show."""
+    for _ in range(len(seed.SUBJECTS) + 1):
+        collapsed = f"{WORKBENCH_TREE}//button[@aria-expanded='false'][starts-with(@aria-label, 'Expand ')]"
+        if not exists(ctx, collapsed):
+            return
+        click(ctx, collapsed)
+
+
 def open_library(ctx: Context) -> None:
     go(ctx, "decks")
+    if exists(ctx, WORKBENCH):
+        find(ctx, WORKBENCH_TREE)
+        expand_workbench_subjects(ctx)
+        for deck in seed.DECKS:
+            find(ctx, f"{WORKBENCH_TREE}//button[.//span[normalize-space(.)={xpath_literal(deck.name)}]]")
+        if ctx.layout != "compact":
+            find(ctx, "//main//*[@data-testid='library-workbench']//*[@role='list'][@aria-label='Cards']//*[@data-card-id]")
+        return
     find(ctx, "//main//*[@role='tablist'][@aria-label='Flashcards workspaces']")
     for deck in seed.DECKS:
         find(ctx, f"//main//strong[normalize-space(.)={xpath_literal(deck.name)}]")
@@ -662,9 +713,21 @@ def open_library(ctx: Context) -> None:
 def open_deck(ctx: Context, deck_key: str) -> None:
     open_library(ctx)
     name = seed.deck_name(deck_key)
+    expected = sum(1 for note in seed.NOTES if note.deck == deck_key)
+    if exists(ctx, WORKBENCH):
+        click(ctx, f"{WORKBENCH_TREE}//button[.//span[normalize-space(.)={xpath_literal(name)}]]")
+        find(ctx, f"//main//h1[@data-testid='workbench-title'][normalize-space(.)={xpath_literal(name)}]")
+        wait_until(
+            ctx,
+            f"{expected} card rows in {name}",
+            lambda: len(webdriver.request(
+                "POST", f"/session/{ctx.session_id}/elements",
+                {"using": "css selector", "value": "main [data-testid='library-workbench'] [data-card-id]"},
+            )) >= min(expected, 6),
+        )
+        return
     click(ctx, f"//main//*[@role='button' and @aria-label={xpath_literal('Open ' + name)}]")
     webdriver.wait_for_main_heading(ctx.session_id, name, ctx.deadline())
-    expected = sum(1 for note in seed.NOTES if note.deck == deck_key)
     wait_until(
         ctx,
         f"{expected} card rows in {name}",
@@ -678,6 +741,11 @@ def open_deck(ctx: Context, deck_key: str) -> None:
 def open_card_editor(ctx: Context) -> None:
     open_deck(ctx, seed.DETAIL_DECK)
     question = seed.question_text(seed.note_spec(seed.EDITOR_NOTE))
+    if exists(ctx, WORKBENCH):
+        click(ctx, f"//main//*[@data-card-id]//button[contains(normalize-space(.), {xpath_literal(question[:60])})]")
+        find(ctx, "//main//*[@data-testid='workbench-editor']//h1[normalize-space(.)='Edit card']")
+        find(ctx, "//main//*[@contenteditable='true'][contains(normalize-space(.), 'Heart rate')]")
+        return
     click(ctx, f"//main//article[@role='row']//button[.//strong[normalize-space(.)={xpath_literal(question)}]]")
     find(ctx, "//main//h1[normalize-space(.)='Edit card']")
     find(ctx, "//main//*[@contenteditable='true'][contains(normalize-space(.), 'Heart rate')]")

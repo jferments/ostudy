@@ -15,9 +15,6 @@ UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
 NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
 PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
-DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "flashcards" / "DeckDetailRoute.tsx"
-CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
-CARD_BROWSER_WORKSPACE_PATH = ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
 MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
 
 
@@ -248,7 +245,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
     def test_native_smoke_verifies_analytics_recent_tag_search(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
-        for required in ("def verify_search_workspace_selected", "def verify_tag_filtered_search", "def verify_analytics_tag_search", "Search cards tagged {tag_name}", "Tag: {tag_name}", "Native smoke tag", "verify_analytics_tag_search(session_id, question, tag_name, deadline)"):
+        for required in ("def verify_search_workspace_selected", "def verify_tag_filtered_search", "def verify_analytics_tag_search", "Search cards tagged {tag_name}", "Native smoke tag", "verify_analytics_tag_search(session_id, question, tag_name, deadline)"):
             self.assertIn(required, harness)
 
     def test_persistence_restart_uses_explicit_accessible_deck_open_control(self) -> None:
@@ -259,21 +256,23 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         durable_start = durable_harness.index("def verify_persistence_after_restart(")
         durable_end = durable_harness.index("\n\nif __name__", durable_start)
         implementations = {"generic": harness[harness_start:harness_end], "durable": durable_harness[durable_start:durable_end]}
-        selector = "f\"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]\""
         for implementation, persistence in implementations.items():
             with self.subTest(implementation=implementation):
-                self.assertIn(selector, persistence)
+                # The Workbench's tree opens the deck; its card list shows the persisted card.
+                self.assertIn("open_workbench_deck(session_id, deck_name, deadline)", persistence)
+                self.assertIn("find_card_row(session_id, question, deadline)", persistence)
                 self.assertNotIn("button[.//strong", persistence)
 
-    def test_tag_filtered_search_contract_requires_selected_tab_filter_and_card(self) -> None:
-        with patch.object(self.smoke, "wait_for_main_heading") as heading, patch.object(self.smoke, "find_element", side_effect=["search-tab", "tag-filter", "reviewed-card"]) as find_element:
+    def test_tag_filtered_search_contract_requires_titled_current_tag_and_card(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=["title", "current-tag", "reviewed-card"]) as find_element:
             self.smoke.verify_tag_filtered_search("session-1", "What persisted?", "Native smoke tag", 42.0)
-        heading.assert_called_once_with("session-1", "Flashcards", 42.0)
         self.assertEqual(3, find_element.call_count)
         selectors = [call.args[2] for call in find_element.call_args_list]
-        self.assertIn("@aria-selected='true'", selectors[0])
-        self.assertIn("Search", selectors[0])
-        self.assertIn("Remove Tag: Native smoke tag filter", selectors[1])
+        self.assertIn("workbench-title", selectors[0])
+        self.assertIn('"Native smoke tag"', selectors[0])
+        self.assertIn("@aria-current='true'", selectors[1])
+        self.assertIn('"Native smoke tag"', selectors[1])
+        self.assertIn("@data-card-id", selectors[2])
         self.assertIn("What persisted?", selectors[2])
 
     def test_durable_smoke_restores_stage_five_search_workspace_checkpoint(self) -> None:
@@ -333,38 +332,6 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         for label in ("Create a subject", "Import a document", "Open Library"):
             self.assertTrue(any(json.dumps(label) in selector for selector in selectors), label)
 
-    def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
-        decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
-        search = CARDS_SCREEN_PATH.read_text(encoding="utf-8")
-        browser = CARD_BROWSER_WORKSPACE_PATH.read_text(encoding="utf-8")
-        self.assertIn("<CardBrowserWorkspace", decks)
-        self.assertIn("fixedDeckId={deck.id}", decks)
-        self.assertIn("showFilters={false}", decks)
-        self.assertNotIn("controller.cards(", decks)
-        self.assertNotIn('className="card-row-preview"', decks)
-        self.assertIn("<CardBrowserWorkspace", search)
-        self.assertIn('controls="search"', search)
-        self.assertNotIn("Bulk add", search)
-        self.assertNotIn("Add flashcard", search)
-        self.assertNotIn("organized-card-row", search)
-        self.assertIn('export type CardBrowserControls = "deck" | "search"', browser)
-        self.assertIn('controlMode === "search"', browser)
-        self.assertIn('aria-label="Search this deck"', browser)
-        self.assertIn('controlMode === "deck"', browser)
-        self.assertIn("className={styles.cardBrowserActions}", browser)
-        self.assertIn("setBulkEntryOpen(true)", browser)
-        self.assertIn("Bulk add", browser)
-        self.assertIn("Add flashcard", browser)
-        self.assertIn("Practice selected", browser)
-        self.assertNotIn("Practice results", browser)
-        self.assertNotIn("Ready now", browser)
-        self.assertIn("className={styles.organizedCardSides}", browser)
-        self.assertIn("Q:", browser)
-        self.assertIn("A:", browser)
-        self.assertIn("<Checkbox", browser)
-        self.assertIn("onCheckedChange={onToggleSelected}", browser)
-        self.assertNotIn("CardBrowserWorkspace.module.css", browser)
-
     def test_native_smoke_pins_x11_software_rendering_before_driver_launch(self) -> None:
         source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
         launch = source.index("timeout --signal=INT --kill-after=30s 300s")
@@ -382,11 +349,17 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
     def test_deck_detail_smoke_retains_visual_geometry_contract(self) -> None:
         source = UI_PLATFORM_SMOKE_PATH.read_text(encoding="utf-8")
-        for rectangle in ("header: rect(header)", "back: rect(back)", "titleRow: rect(titleRow)", "heading: rect(heading)", "description: rect(description)", "actions: rect(actions)"):
-            with self.subTest(rectangle=rectangle):
-                self.assertIn(rectangle, source)
-        for invariant in ("upper.bottom <= lower.top + 1", "above(geometry.back, geometry.titleRow)", "above(geometry.heading, geometry.description)", "above(geometry.description, geometry.actions)", "Math.abs(geometry.titleRow.left - headerRect.left) <= 1", "Math.abs(geometry.titleRow.right - headerRect.right) <= 1", "geometry.titleRow.width >= headerRect.width - 2", 'snapshot.get("visuallyOrdered") is True', 'snapshot.get("titleRowFullWidth") is True'):
-            self.assertIn(invariant, source)
+        for invariant in (
+            "const contained = [heading, actions].every(",
+            "noHeaderOverflow: header.scrollWidth <= header.clientWidth + 1",
+            'snapshot.get("labels") == expected_direct',
+            'snapshot.get("contained") is True',
+            'snapshot.get("noDocumentOverflow") is True',
+            'overflow.get("items") != expected_items',
+            '("compact", 390, 700, "sheet")',
+        ):
+            with self.subTest(invariant=invariant):
+                self.assertIn(invariant, source)
 
     def test_progress_filled_content_retains_all_four_tone_colors(self) -> None:
         source = PROGRESS_STYLES_PATH.read_text(encoding="utf-8")

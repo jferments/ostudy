@@ -6,33 +6,33 @@ ostudy keeps your study library on your device. You can create cards, organize d
 
 The main navigation has five destinations: **Home**, **Library**, **Review**, **Tutor**, and **Progress**. On a wide or medium window they sit in the header beside **Search** and the **Settings** gear. On a phone they are in the bottom bar, and the top bar keeps Search and Settings. There is no separate mobile More menu.
 
-**Home** opens first. It shows how many cards are due today with **Start review**, then your subjects: each subject's tile shows what is due, its sources and cards, and opens its decks in Library. **Library** has three views: **Decks**, **Documents**, and **Study guides**. **Review** lists what is due today by subject, with a **Start** for each and **Choose decks** for a custom practice. **Progress** shows your study activity, review outcomes, and workload.
+**Home** opens first. It shows how many cards are due today with **Start review**, then your subjects: each subject's tile shows what is due, its sources and cards, and opens that subject in Library. **Library** opens the **Workbench**, where you browse, search, edit, and organize cards; **Documents** and **Study guides** are pages linked from it. **Review** lists what is due today by subject, with a **Start** for each and **Choose decks** for a custom practice. **Progress** shows your study activity, review outcomes, and workload.
 
-Library's Decks view has two tabs: **Decks** and **Search/Filter** (shown as Search in compact presentation), and the header's **Search** opens Search/Filter. Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup/Sync**.
+The Workbench shows a tree of views, subjects, decks, and tags on the left, the chosen cards in the middle, and the open card's editor on the right; on a phone you see one of these at a time. The header's **Search** opens the Workbench on **All cards** with the search field focused. Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup/Sync**.
 
-Choosing **Library** opens the view you used last. Choosing Decks while a deck is open returns to the deck list, subject to unsaved-change protection, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Review; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination.
+Choosing **Library** opens the page you used last. On the Documents and Study guides pages, the switcher's **Workbench** returns to the Workbench, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Review; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination; in the Workbench it first steps back to the tree on a phone, or to **All cards** on a wider screen.
 
 ## Create your first deck
 
 A new library opens on Home's welcome, **Your library is empty**, with **Create a subject**, **Import a document**, and **Open Library**. A subject keeps one course's documents, study guides, and decks together; you can also start with a deck and file it later.
 
-Open **Library → Decks**. A new library shows “No decks have been created yet” and **Create a new deck**. The import icon above it is another way to begin. Empty folder and unsorted tiles, selection controls, and collapse controls are intentionally absent when there are no decks.
+Open **Library**. On a wide or medium window, a library with no decks shows **No cards yet** with **New deck** and **Import deck**. To start a deck inside a subject, choose the subject and then **New deck**, or use **New deck here** in the subject's actions menu. On a phone, the tree offers **New deck** while you have no subjects.
 
-Give the deck a name, open it, and choose **Add flashcard**. Use a Basic question and answer for a first card. Reverse presentations are useful when both directions are worth recalling. Fill in the blank cards hide marked parts of a statement. Choose a reusable template when many cards have the same structure.
+Give the deck a name. The Workbench opens it; choose **New card**. Use a Basic question and answer for a first card. Reverse presentations are useful when both directions are worth recalling. Fill in the blank cards hide marked parts of a statement. Choose a reusable template when many cards have the same structure.
 
-**Bulk add** accepts multiple prepared question/answer pairs in the current deck. The destination is fixed by the deck you opened. Ordinary authoring supports duplicate checks, tags, managed images, and recoverable drafts; a draft is not a committed card until saved successfully.
+**Bulk add…** in the deck's actions menu accepts multiple prepared question/answer pairs in the current deck. The destination is fixed by the deck you opened. Ordinary authoring supports duplicate checks, tags, managed images, and recoverable drafts; a draft is not a committed card until saved successfully.
 
-Keep one focused retrieval task per card. Generated or imported wording should receive the same review as a card you wrote yourself. See [Flashcards and authoring](flashcards-workspace.md).
+Keep one focused retrieval task per card. Generated or imported wording should receive the same review as a card you wrote yourself. See [Library Workbench and authoring](flashcards-workspace.md).
 
 ## Organize without changing your study history
 
-Once active decks exist, the **+** beside Folders creates an optional folder. Unsorted decks appears only when some active decks have no folder. Move decks by dragging a non-interactive part of a row, using keyboard reorder controls, or using the selected-deck Move action.
+The **+** beside Subjects creates a subject. **No subject** appears only when some decks or documents are not filed under one. Use a deck's actions menu for **Move to subject…**, **Move up**, and **Move down**.
 
-Collapse/expand changes presentation, not membership. **Practice** is the only permanently exposed action on an active deck row; use the **…** menu for **Merge…**, export/save, and delete. **Merge…** moves the source deck's cards into another active deck while preserving card/note identities, schedules, review history, tags, media, and source provenance. The emptied source deck is archived after the transaction, and existing destination cards are not deduplicated simply because their wording looks similar. Deleting a folder returns its decks to Unsorted decks; deleting a deck is a different action with different consequences. Archiving retains the deck but removes it from normal study availability until restored. See [Folders, ordering, and selection](flashcards-organization.md).
+Collapse/expand changes presentation, not membership. A deck's actions menu also has **Merge into…**, **Export…**, **Archive**, and **Delete deck**. **Merge into…** moves the source deck's cards into another active deck while preserving card/note identities, schedules, review history, tags, media, and source provenance. The emptied source deck is archived after the transaction, and existing destination cards are not deduplicated simply because their wording looks similar. Deleting a subject moves its decks and documents to No subject; deleting a deck is a different action with different consequences. Archiving retains the deck but removes it from normal study availability until restored. See [Subjects and deck organization](flashcards-organization.md).
 
 ## Practice a small session
 
-Use **Practice** on an active deck with studyable cards, or select decks and open the practice setup. Deck, tag, and exact-card study actions can have different scopes; the setup/workload display shows what will be studied. Scheduled practice applies daily limits, whereas an explicit deck practice action follows its all-studyable-card scope. Suspended, buried, or archived material can make a card unavailable.
+Use **Practice** on an active deck with studyable cards, or choose **Practice with options…** in its actions menu (or **Practice…** on a subject) to open the practice setup. Deck, tag, and exact-card study actions can have different scopes; the setup/workload display shows what will be studied. Scheduled practice applies daily limits, whereas an explicit deck practice action follows its all-studyable-card scope. Suspended, buried, or archived material can make a card unavailable.
 
 Think of the answer before revealing it. Choose **Wrong**, **Hard**, **Medium**, or **Easy** based on recall difficulty. On a keyboard, Space or Enter reveals the answer, and 0–3 selects the four outcomes when no editor or overlay has focus. Reviews update your schedule and history; they are not merely a visual score.
 
@@ -40,13 +40,13 @@ The progress track shows studied, remaining, and percentage. Ending early asks f
 
 ## Find and manage cards
 
-**Search/Filter** finds material across your library. Use the query, scope, sort, and **All filters** controls. Active filters appear as removable chips. A deck detail has a simpler deck-scoped search plus authoring actions; global Search is not a second card-creation screen.
+The Workbench's search box finds cards within the chosen view, subject, deck, or tag; choose **All cards** to search the whole library. Use **Sort** and, inside a subject, deck, or tag, the **All**, **Due**, **New**, and **Suspended** filters to narrow the list.
 
-**Select visible** affects loaded rows. **Select all matching** resolves the complete filtered scope. Forward and reverse presentations can appear separately, while actions that edit their shared note can affect both. Read the confirmation before bulk deletion, moving, or scheduling changes.
+**Select shown** affects loaded rows. **Select all N** selects every matching card. Forward and reverse presentations can appear separately, while actions that edit their shared note can affect both. Read the confirmation before bulk deletion, moving, or scheduling changes.
 
 ## Protect your library
 
-Use the library's **Import deck** button for `.studydeck` or supported generated-card JSON. Export an individual deck or selected decks through contextual export controls. A shared deck has fresh schedules when imported and does not include the sender's personal review history.
+Use **Import deck…** under More in the Workbench's tree for `.studydeck` or supported generated-card JSON. Export a deck with **Export…** in its actions menu. A shared deck has fresh schedules when imported and does not include the sender's personal review history.
 
 Use **Settings → Backup/Sync** for a complete `.ostudybackup` and restoration. A backup contains personal library history and managed files but excludes credentials. Restore validates and replaces the library in the running application, then refreshes the interface; it does not require restarting oStudy and is not an append operation. Keep backups outside the app's data directory and before testing risky changes. [Backups, imports, and sharing](backups-imports-and-sharing.md) explains the formats and [device sync](device-sync.md) explains explicit trusted-device exchange.
 
