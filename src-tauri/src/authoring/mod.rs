@@ -76,6 +76,14 @@ pub struct CardBrowserRowDto {
     pub needs_more_practice: bool,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Days until the next review as of the last one; 0 for a new card.
+    pub interval_days: i64,
+    pub lapses: i64,
+    pub stability: f64,
+    pub difficulty: f64,
+    /// Where the card came from in its source document, when it has one.
+    pub source_unit_kind: Option<String>,
+    pub source_unit: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -103,7 +111,7 @@ pub struct ListTagsInput {
     pub deck_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchCardsInput {
     #[serde(default)]
@@ -375,7 +383,7 @@ fn validate_search_input(input: &SearchCardsInput) -> Result<(), CommandError> {
     }
     if !matches!(
         input.sort.as_str(),
-        "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc"
+        "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc" | "source_order"
     ) {
         return Err(CommandError::new(
             "invalid_card_sort",
@@ -504,6 +512,9 @@ fn build_search_sql(
             "bm25(card_search_fts) ASC, n.updated_at DESC, c.template_ordinal ASC"
         }
         "due_asc" => "s.due_at ASC, n.updated_at DESC, c.template_ordinal ASC",
+        // Deck by deck, then the order of the source the cards were made from;
+        // cards without a source position follow in the order they were made.
+        "source_order" => SOURCE_ORDER_SQL,
         "last_reviewed_desc" => {
             "CASE WHEN s.reps > 0 THEN 0 ELSE 1 END ASC, s.last_review_at DESC, n.updated_at DESC, c.template_ordinal ASC"
         }
@@ -516,6 +527,31 @@ fn build_search_sql(
         order_sql,
     })
 }
+
+/// The first source unit (page, slide, ...) a note cites: its own citation
+/// first, then its primary document topic, as the editor's source panel does.
+pub(super) const SOURCE_UNIT_SQL: &str = "COALESCE(
+         (SELECT CASE WHEN json_valid(cite.source_locator_json)
+                 THEN json_extract(cite.source_locator_json, '$.unitNumbers[0]') END
+          FROM note_source_citations cite WHERE cite.note_id = n.id),
+         (SELECT CASE WHEN json_valid(topic.source_locator_json)
+                 THEN json_extract(topic.source_locator_json, '$.unitNumbers[0]') END
+          FROM document_note_topics topic
+          WHERE topic.note_id = n.id AND topic.relationship_kind = 'primary'))";
+
+/// The unit kind matching [`SOURCE_UNIT_SQL`].
+pub(super) const SOURCE_UNIT_KIND_SQL: &str = "COALESCE(
+         (SELECT CASE WHEN json_valid(cite.source_locator_json)
+                 THEN json_extract(cite.source_locator_json, '$.unitKind') END
+          FROM note_source_citations cite WHERE cite.note_id = n.id),
+         (SELECT CASE WHEN json_valid(topic.source_locator_json)
+                 THEN json_extract(topic.source_locator_json, '$.unitKind') END
+          FROM document_note_topics topic
+          WHERE topic.note_id = n.id AND topic.relationship_kind = 'primary'))";
+
+const SOURCE_ORDER_SQL: &str = "d.name COLLATE NOCASE ASC, c.deck_id ASC,
+         source_unit IS NULL ASC, source_unit ASC,
+         n.created_at ASC, n.id ASC, c.template_ordinal ASC, c.direction ASC";
 
 /// The card ids whose reviews count as reviews of card `c`: the card itself
 /// and the collection copies merged into it (release schema 6).
@@ -563,7 +599,7 @@ pub(crate) fn list_matching_cards_at(
     let limit_index = push_value(&mut search.values, maximum);
     let sql = format!(
         "WITH {signals}
-         SELECT c.id, n.id, c.deck_id
+         SELECT c.id, n.id, c.deck_id, {source_unit} AS source_unit
          FROM notes n
          JOIN cards c ON c.note_id = n.id
          JOIN decks d ON d.id = c.deck_id
@@ -573,6 +609,7 @@ pub(crate) fn list_matching_cards_at(
          ORDER BY {order_sql}
          LIMIT ?{limit_index}",
         signals = signal_projection::LEARNING_SIGNAL_CTES,
+        source_unit = SOURCE_UNIT_SQL,
         joins = search.joins,
         where_sql = search.where_sql,
         order_sql = search.order_sql,
