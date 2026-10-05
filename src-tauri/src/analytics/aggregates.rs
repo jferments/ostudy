@@ -44,7 +44,7 @@ pub fn load_decks(
          history_stats AS (
              SELECT
                  c.deck_id,
-                 COUNT(DISTINCT r.card_id) AS cards_practiced,
+                 COUNT(DISTINCT c.id) AS cards_practiced,
                  COUNT(*) AS review_count,
                  COALESCE(SUM(r.answer_correct), 0) AS correct_count,
                  AVG(CAST(r.rating - 1 AS REAL)) AS average_confidence,
@@ -184,7 +184,7 @@ pub fn load_tags(
              SELECT
                  rta.tag_id,
                  MAX(rta.tag_name) AS captured_name,
-                 COUNT(DISTINCT CASE WHEN {current_predicate} THEN r.card_id END)
+                 COUNT(DISTINCT CASE WHEN {current_predicate} THEN c.id END)
                      AS cards_practiced,
                  COALESCE(SUM(CASE WHEN {current_predicate} THEN 1 ELSE 0 END), 0)
                      AS review_count,

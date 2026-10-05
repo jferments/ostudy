@@ -26,7 +26,7 @@ pub(crate) use context::{
     load_document_task_context, load_tutor_task_context, DocumentTaskContext,
 };
 pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
-pub(crate) use curation::{curate_document_cards, curate_document_cards_required};
+pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, preflight_window_flashcards, FlashcardGenerationLimits,

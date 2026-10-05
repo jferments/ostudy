@@ -119,7 +119,9 @@ fn list_from_connection(
          FROM notes n
          JOIN decks d ON d.id = n.deck_id
          LEFT JOIN cards c ON c.note_id = n.id
-         LEFT JOIN review_events r ON r.card_id = c.id
+         -- A collection copy merged into this card was practiced as this card.
+         LEFT JOIN card_merges merged ON merged.surviving_card_id = c.id
+         LEFT JOIN review_events r ON r.card_id IN (c.id, merged.retired_card_id)
          LEFT JOIN note_assets na ON na.note_id = n.id
          LEFT JOIN assets a ON a.id = na.asset_id
          WHERE {where_sql}
@@ -324,5 +326,35 @@ mod tests {
                 })
                 .expect("bounded deck page should load");
         }
+    }
+
+    #[test]
+    fn practiced_order_counts_a_merged_copy_s_reviews_for_its_original() {
+        use crate::database::subjects_fixture::{advance_release_library, release_library, seed};
+
+        let connection = release_library(5);
+        let library = seed(&connection);
+        advance_release_library(&connection, 5, 6);
+        let page = list_from_connection(
+            &connection,
+            DeckCardSummaryQuery {
+                deck_id: library.k_optics.clone(),
+                query: String::new(),
+                sort: "practiced_asc".to_string(),
+                limit: 10,
+                offset: 0,
+            },
+        )
+        .unwrap();
+        // Never practiced first, then the card studied only through its copy.
+        let notes: Vec<&str> = page
+            .cards
+            .iter()
+            .map(|card| card.note_id.as_str())
+            .collect();
+        assert_eq!(
+            notes,
+            [library.o_opt[1].id.as_str(), library.o_opt[0].id.as_str()]
+        );
     }
 }

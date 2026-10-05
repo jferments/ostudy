@@ -82,4 +82,44 @@ describe("PracticeScreen tag scope", () => {
       expect(practiceIpc.markPracticeCardViewed).toHaveBeenCalledOnce();
     });
   });
+
+  it("auto-starts a subject scope, which the native side resolves to its decks", async () => {
+    const subjectId = "b".repeat(32);
+    const onLaunchConsumed = vi.fn();
+
+    render(
+      <PracticeScreen
+        decks={[]}
+        settings={makeSettings({ practiceShuffle: true })}
+        launchRequest={{
+          requestId: 1,
+          kind: "selected",
+          subjectIds: [subjectId, subjectId],
+          deckIds: [],
+          tagIds: [],
+          shuffle: true,
+          mode: "extra",
+        }}
+        onLaunchConsumed={onLaunchConsumed}
+        returnTarget={{ section: "documents" }}
+        onViewAnalytics={vi.fn()}
+        onEndEarly={vi.fn()}
+        onChooseDecks={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
+        operationId: "2".repeat(32),
+        subjectIds: [subjectId],
+        deckIds: [],
+        tagIds: [],
+        shuffle: true,
+        mode: "extra",
+      });
+      expect(onLaunchConsumed).toHaveBeenCalledOnce();
+      expect(screen.getByText("Active practice")).toBeTruthy();
+    });
+  });
 });

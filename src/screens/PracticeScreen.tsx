@@ -754,8 +754,10 @@ function operationIdForStart(
 
 function canonicalLaunchRequest(request: PracticeLaunchRequest): CanonicalPracticeRequest {
   if (request.kind === "selected") {
+    const subjectIds = [...new Set(request.subjectIds ?? [])];
     return {
       kind: "selected",
+      ...(subjectIds.length > 0 ? { subjectIds } : {}),
       deckIds: [...new Set(request.deckIds)],
       tagIds: [...new Set(request.tagIds)],
       shuffle: request.shuffle,
@@ -774,7 +776,9 @@ function canonicalLaunchRequest(request: PracticeLaunchRequest): CanonicalPracti
 function practiceRequestHasScope(request: CanonicalPracticeRequest): boolean {
   return request.kind === "cards"
     ? request.cardIds.length > 0
-    : request.deckIds.length > 0 || request.tagIds.length > 0;
+    : (request.subjectIds?.length ?? 0) > 0
+      || request.deckIds.length > 0
+      || request.tagIds.length > 0;
 }
 
 function practiceStartKey(request: CanonicalPracticeRequest): string {

@@ -139,3 +139,87 @@ fn serialized_snapshot_has_no_deleted_chat_bytes_or_uncheckpointed_wal() {
     drop(snapshot);
     fs::remove_dir_all(root).unwrap();
 }
+
+/// A document with its generated deck and a card the learner reset: the
+/// document's deck link and the reset point into both categories' graphs.
+fn studied_document_fixture() -> Database {
+    let database = Database::open_in_memory().unwrap();
+    let (deck, document, job, note, card) = (
+        "1".repeat(32),
+        "2".repeat(32),
+        "3".repeat(32),
+        "4".repeat(32),
+        "5".repeat(32),
+    );
+    database
+        .with_connection(|connection| {
+            connection
+                .execute_batch(&format!(
+                    "INSERT INTO decks(id, name, created_at, updated_at) VALUES ('{deck}', 'Deck', 1, 1);
+                     INSERT INTO documents(id, title, original_filename, mime_type, byte_size, sha256,
+                         source_relative_path, lifecycle_state, created_at, updated_at,
+                         generated_deck_id)
+                     VALUES ('{document}', 'Source', 'source.pdf', 'application/pdf', 10,
+                         '{sha}', 'documents/source.pdf', 'ready', 1, 1, '{deck}');
+                     INSERT INTO document_generation_jobs(id, document_id, provider_kind, model_id,
+                         profile_revision, credential_epoch, network_scope, state, page_count,
+                         created_at, updated_at, generated_deck_id)
+                     VALUES ('{job}', '{document}', 'local', 'model', 1, 0, 'local', 'succeeded', 1,
+                         1, 1, '{deck}');
+                     INSERT INTO document_decks(document_id, deck_id, job_id, created_at)
+                     VALUES ('{document}', '{deck}', '{job}', 1);
+                     INSERT INTO notes(id, deck_id, note_type, content_format,
+                         content_schema_version, front_doc, back_doc, front_text, back_text,
+                         created_at, updated_at, revision)
+                     VALUES ('{note}', '{deck}', 'basic', 'tiptap-json', 1, '{doc}', '{doc}',
+                         'question', 'question', 1, 1, 1);
+                     INSERT INTO cards(id, note_id, deck_id, direction, template_ordinal,
+                         created_at, updated_at)
+                     VALUES ('{card}', '{note}', '{deck}', 'forward', 0, 1, 1);
+                     INSERT INTO card_schedules(card_id, state, due_at, stability, difficulty,
+                         elapsed_days, scheduled_days, reps, lapses, last_review_at,
+                         scheduler_name, scheduler_version, updated_at, revision)
+                     VALUES ('{card}', 0, 2, 0.0, 0.0, 0, 0, 0, 0, 2, 'fsrs', 'rs-fsrs-1.2.1', 2, 2);
+                     INSERT INTO schedule_action_operations(id, action, requested_count,
+                         changed_count, unchanged_count, rejected_count, occurred_at, created_at)
+                     VALUES ('{operation}', 'reset', 1, 1, 0, 0, 2, 2);
+                     INSERT INTO schedule_action_events(id, operation_id, card_id, action,
+                         due_before, due_after, state_before, state_after,
+                         schedule_revision_before, schedule_revision_after, occurred_at,
+                         created_at)
+                     VALUES ('{event}', '{operation}', '{card}', 'reset', 1, 2, 0, 0, 1, 2, 2, 2);",
+                    sha = "a".repeat(64),
+                    doc = serde_json::json!({
+                        "type": "doc",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "question"}],
+                        }],
+                    }),
+                    operation = "6".repeat(32),
+                    event = "7".repeat(32),
+                ))
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    database
+}
+
+#[test]
+fn every_valid_sync_selection_leaves_a_complete_graph_for_a_studied_document() {
+    for bits in 1..32_u8 {
+        let selection = SyncSelection {
+            flashcards: bits & 1 != 0,
+            documents: bits & 2 != 0,
+            study_guides: bits & 4 != 0,
+            api_settings: bits & 8 != 0,
+            api_credentials: bits & 16 != 0,
+        };
+        if selection.validate().is_err() {
+            continue;
+        }
+        studied_document_fixture()
+            .with_connection(|connection| sanitize_snapshot(connection, selection))
+            .unwrap_or_else(|error| panic!("selection {bits}: {error:?}"));
+    }
+}

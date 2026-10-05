@@ -136,6 +136,7 @@ mod tests {
                 "CREATE TABLE decks(id TEXT PRIMARY KEY, deleted_at INTEGER);
                  CREATE TABLE notes(id TEXT PRIMARY KEY, deleted_at INTEGER, note_type TEXT);
                  CREATE TABLE cards(id TEXT PRIMARY KEY, note_id TEXT, deck_id TEXT, deleted_at INTEGER);
+                 CREATE TABLE card_merges(retired_card_id TEXT PRIMARY KEY, surviving_card_id TEXT);
                  CREATE TABLE review_events(id TEXT PRIMARY KEY, card_id TEXT, answer_correct INTEGER);
                  CREATE TABLE review_event_attributions(review_event_id TEXT PRIMARY KEY,
                      card_type TEXT, review_local_date TEXT, reviewed_at INTEGER,

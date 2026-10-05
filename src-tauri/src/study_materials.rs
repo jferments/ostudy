@@ -832,6 +832,12 @@ fn begin_bundle(
     if !input.output_policy.flashcards && !input.output_policy.study_guide {
         return Err(invalid("Request at least one study-material output."));
     }
+    if input.target.kind == StudyTargetKind::Collection && !input.generation_instructions.is_empty()
+    {
+        return Err(invalid(
+            "A collection's flashcards are the decks filed in it, so they take no flashcard instructions.",
+        ));
+    }
     if input.recreate_artifacts.iter().any(|kind| {
         (*kind == StudyTargetArtifactKind::Flashcards && !input.output_policy.flashcards)
             || (*kind == StudyTargetArtifactKind::StudyGuide && !input.output_policy.study_guide)
@@ -894,9 +900,10 @@ fn begin_bundle(
             .map_err(CommandError::database)?;
         }
 
-        let provider_authorized = input.target.kind == StudyTargetKind::Collection
-            && (input.output_policy.study_guide
-                || (input.output_policy.flashcards && !input.generation_instructions.is_empty()));
+        // Only the collection guide uses the provider: collection flashcards
+        // are the subject's decks, studied live.
+        let provider_authorized =
+            input.target.kind == StudyTargetKind::Collection && input.output_policy.study_guide;
         tx.execute(
             "INSERT INTO study_target_batches(
                  operation_id,target_id,request_sha256,source_snapshot_id,source_snapshot_json,
@@ -1121,6 +1128,11 @@ fn load_bundle_status(
             None
         };
 
+        // A collection's flashcards are its subject's decks, not one deck.
+        let deck_id = match stored.target.kind {
+            StudyTargetKind::Document => active_deck_id(connection, stored.deck_id.as_deref())?,
+            StudyTargetKind::Collection => None,
+        };
         Ok(Some(StudyTargetBundleStatus {
             target_id: stored.id,
             target: stored.target,
@@ -1128,7 +1140,7 @@ fn load_bundle_status(
             revision: stored.revision,
             source_snapshot_id: stored.snapshot_id,
             source_changed,
-            deck_id: active_deck_id(connection, stored.deck_id.as_deref())?,
+            deck_id,
             guide_id: collection_guide
                 .as_ref()
                 .map(|value| value.0.clone())
@@ -1198,6 +1210,11 @@ fn load_artifact_status(
     }
 
     let artifact_id = match kind {
+        StudyTargetArtifactKind::Flashcards
+            if target.target.kind == StudyTargetKind::Collection =>
+        {
+            subject_has_cards(connection, &target.target.id)?.then(|| target.target.id.clone())
+        }
         StudyTargetArtifactKind::Flashcards => {
             active_deck_id(connection, target.deck_id.as_deref())?
         }
@@ -1323,6 +1340,24 @@ fn target_title(connection: &Connection, target: &StudyTargetRef) -> Result<Stri
             .map_err(CommandError::database)?,
     };
     title.ok_or_else(target_not_found)
+}
+
+/// Whether a subject has a live card to study. A collection's flashcards are
+/// its subject's live, unarchived decks, studied in place.
+fn subject_has_cards(connection: &Connection, subject_id: &str) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM decks d
+                 JOIN cards c ON c.deck_id=d.id AND c.deleted_at IS NULL
+                 JOIN notes n ON n.id=c.note_id AND n.deleted_at IS NULL
+                 WHERE d.subject_id=?1
+                   AND d.deleted_at IS NULL AND d.archived_at IS NULL
+             )",
+            [subject_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
 }
 
 fn active_deck_id(

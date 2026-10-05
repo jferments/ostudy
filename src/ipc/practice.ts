@@ -91,6 +91,11 @@ export interface PracticeWorkloadOverview {
 }
 
 export interface SelectedPracticeRequest {
+  /**
+   * Subjects to study live: each one adds the live, unarchived decks filed in
+   * it when the session starts.
+   */
+  subjectIds?: string[];
   deckIds: string[];
   tagIds: string[];
   shuffle: boolean;
@@ -171,9 +176,10 @@ export interface ReviewResult {
 export async function getPracticeWorkload(
   deckIds: string[],
   tagIds: string[] = [],
+  subjectIds: string[] = [],
 ): Promise<PracticeWorkloadOverview> {
   return invoke<PracticeWorkloadOverview>("get_practice_workload", {
-    input: { deckIds, tagIds },
+    input: { deckIds, tagIds, ...(subjectIds.length > 0 ? { subjectIds } : {}) },
   });
 }
 

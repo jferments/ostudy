@@ -27,11 +27,13 @@ use crate::{
     settings::save_new_day_start_hour, study_calendar::StudyTimeContext,
 };
 
-/// The history joins every analytics query used before the order was pinned.
+/// The history joins every analytics query used before the order was pinned,
+/// counting a merged collection copy's reviews under its original.
 /// (The session query listed `practice_sessions` first; inner joins commute.)
 const PREVIOUS_HISTORY_FROM_SQL: &str = "review_events r
          JOIN review_event_attributions a ON a.review_event_id = r.id
-         JOIN cards c ON c.id = r.card_id
+         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
          JOIN notes n ON n.id = c.note_id
          JOIN decks d ON d.id = c.deck_id";
 
@@ -164,13 +166,21 @@ fn history_loops(plan: &[String]) -> (usize, usize) {
     (position("a"), position("r"))
 }
 
+/// Whether the plan searches `alias` with an index lookup on `key`.
+fn searches(plan: &[String], alias: &str, key: &str) -> bool {
+    plan.iter()
+        .any(|line| line.starts_with(&format!("SEARCH {alias} ")) && line.contains(key))
+}
+
 fn assert_starts_from_local_date_index(plan: &[String]) {
     let (attribution, review) = history_loops(plan);
     assert!(
         attribution < review
             && plan[attribution].contains("INDEX review_event_attributions_local_date_idx")
-            && plan[review].contains("sqlite_autoindex_review_events_1 (id=?)"),
-        "a dated window must scan the local-date index, then look reviews up by key: {plan:#?}"
+            && plan[review].contains("sqlite_autoindex_review_events_1 (id=?)")
+            && searches(plan, "merged", "(retired_card_id=?)")
+            && searches(plan, "c", "sqlite_autoindex_cards_1 (id=?)"),
+        "a dated window must scan the local-date index, then look rows up by key: {plan:#?}"
     );
 }
 
@@ -179,8 +189,10 @@ fn assert_walks_reviews_by_card(plan: &[String]) {
     assert!(
         review < attribution
             && plan[review].contains("(card_id=?)")
-            && plan[attribution].contains("(review_event_id=?)"),
-        "selected decks and all time must walk each card's reviews: {plan:#?}"
+            && plan[attribution].contains("(review_event_id=?)")
+            && searches(plan, "retired", "(retired_card_id=?)")
+            && searches(plan, "merged", "(surviving_card_id=?)"),
+        "selected decks and all time must walk each card's own and merged reviews: {plan:#?}"
     );
 }
 
@@ -246,7 +258,8 @@ const CARD_TYPES: [&str; 6] = [
 /// A library with archived and deleted decks, deleted notes and cards, moved
 /// cards, current and historical-only tags, sessions spanning several decks,
 /// resets, checked and self-rated questions, backfilled attributions, ties in
-/// review time, and reviews spread over two years plus one future local date.
+/// review time, reviews spread over two years plus one future local date, and
+/// reviewed collection copies merged into their originals.
 fn seed(connection: &Connection, time: &StudyTimeContext) -> Fixture {
     let now = time.now_utc_millis;
     let mut sequence = Sequence(0x9E37_79B9_7F4A_7C15);
@@ -572,11 +585,164 @@ fn seed(connection: &Connection, time: &StudyTimeContext) -> Fixture {
                 .unwrap();
         }
     }
-    Fixture {
+    let fixture = Fixture {
         decks,
         tags,
         historical_tags,
         sessions,
+    };
+    seed_merged_copies(connection, time, &fixture, &cards, &mut sequence);
+    fixture
+}
+
+/// Collection copies that release schema 6 retired into six of the cards,
+/// each with reviews filed under the copy in the otherwise unused last deck.
+/// The last copy is live again, which the schema allows; its reviews still
+/// count only under its original.
+fn seed_merged_copies(
+    connection: &Connection,
+    time: &StudyTimeContext,
+    fixture: &Fixture,
+    cards: &[(String, String, usize, &str)],
+    sequence: &mut Sequence,
+) {
+    let now = time.now_utc_millis;
+    let copy_deck = DECK_NAMES.len() - 1;
+    for (copy_index, (card_id, note_id, _, direction)) in
+        cards.iter().step_by(5).take(6).enumerate()
+    {
+        let copy = u64::try_from(copy_index).unwrap();
+        let copy_note_id = hex_id(12, copy);
+        let copy_card_id = hex_id(13, copy);
+        let retired_at = (copy_index < 5).then_some(now - 200 * DAY_MS);
+        connection
+            .execute(
+                "INSERT INTO notes (
+                     id, deck_id, note_type, content_format, content_schema_version,
+                     front_doc, back_doc, front_text, back_text, created_at, updated_at,
+                     deleted_at, revision, duplicate_hash
+                 ) VALUES (
+                     ?1, ?2, 'basic', 'tiptap-json', 1, '{}', '{}', ?3, 'Answer',
+                     ?4, ?4, ?5, 1, ?1
+                 )",
+                params![
+                    copy_note_id,
+                    fixture.decks[copy_deck],
+                    format!("Copy {copy}"),
+                    now - 600 * DAY_MS,
+                    retired_at,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO cards (
+                     id, note_id, deck_id, direction, template_ordinal, created_at,
+                     updated_at, deleted_at
+                 ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5, ?6)",
+                params![
+                    copy_card_id,
+                    copy_note_id,
+                    fixture.decks[copy_deck],
+                    direction,
+                    now - 600 * DAY_MS,
+                    retired_at,
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO card_merges (
+                     retired_card_id, surviving_card_id, retired_note_id,
+                     surviving_note_id, reason, copied_at
+                 ) VALUES (?1, ?2, ?3, ?4, 'collection_copy', ?5)",
+                params![
+                    copy_card_id,
+                    card_id,
+                    copy_note_id,
+                    note_id,
+                    now - 600 * DAY_MS
+                ],
+            )
+            .unwrap();
+        for (slot, days_ago) in [0_i64, 4, 45, 300].into_iter().enumerate() {
+            let review = copy * 4 + u64::try_from(slot).unwrap();
+            let review_id = hex_id(14, review);
+            let days_ago = days_ago + i64::try_from(copy).unwrap();
+            let reviewed_at =
+                now - days_ago * DAY_MS - i64::try_from(sequence.below(80_000_000)).unwrap();
+            let rating = i64::try_from(1 + review % 4).unwrap();
+            let confidence = [
+                "wrong",
+                "not_confident",
+                "somewhat_confident",
+                "very_confident",
+            ][usize::try_from(rating - 1).unwrap()];
+            let session =
+                (review % 2 == 0).then(|| &fixture.sessions[usize::try_from(review % 12).unwrap()]);
+            connection
+                .execute(
+                    "INSERT INTO review_events (
+                         id, submission_id, session_id, card_id, reviewed_at, rating,
+                         answer_correct, confidence, response_time_ms, state_before,
+                         state_after, due_before, due_after, stability_before, stability_after,
+                         difficulty_before, difficulty_after, scheduled_days_before,
+                         scheduled_days_after, scheduler_name, scheduler_version, created_at
+                     ) VALUES (
+                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 2, 2, ?10, ?10,
+                         1.0, 2.0, 5.0, 5.0, 0, 1, 'fsrs', 'test', ?5
+                     )",
+                    params![
+                        review_id,
+                        hex_id(15, review),
+                        session,
+                        copy_card_id,
+                        reviewed_at,
+                        rating,
+                        i64::from(rating > 1),
+                        confidence,
+                        i64::try_from(sequence.below(120_000)).unwrap(),
+                        reviewed_at + DAY_MS,
+                    ],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO review_event_attributions (
+                         review_event_id, reviewed_at, review_local_date, time_zone_id,
+                         utc_offset_minutes, card_id, note_id, note_revision,
+                         owner_deck_id_at_review, captured_deck_name, direction, card_type,
+                         card_label, presentation_variant, question_excerpt,
+                         question_text_hash, question_was_truncated, attribution_source
+                     ) VALUES (
+                         ?1, ?2, ?3, 'UTC', 0, ?4, ?5, 1, ?6, ?7, ?8, 'basic', 'Basic', '',
+                         ?9, ?10, 0, 'captured'
+                     )",
+                    params![
+                        review_id,
+                        reviewed_at,
+                        (time.local_date - Duration::days(days_ago)).to_string(),
+                        copy_card_id,
+                        copy_note_id,
+                        fixture.decks[copy_deck],
+                        DECK_NAMES[copy_deck],
+                        direction,
+                        format!("Copy {copy}"),
+                        format!("{:064x}", 10_000 + review),
+                    ],
+                )
+                .unwrap();
+            if review % 3 == 0 {
+                connection
+                    .execute(
+                        "INSERT INTO review_event_tag_attributions (
+                             review_event_id, tag_id, tag_name
+                         ) VALUES (?1, ?2, 'Topic 1')",
+                        params![review_id, fixture.tags[1]],
+                    )
+                    .unwrap();
+            }
+        }
     }
 }
 

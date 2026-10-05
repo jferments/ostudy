@@ -13,3 +13,6 @@ mod current_format_questions;
 mod current_format_sources;
 #[path = "current_format_tests.rs"]
 mod current_format_tests;
+
+#[path = "subjects_restore_tests.rs"]
+mod subjects_restore_tests;

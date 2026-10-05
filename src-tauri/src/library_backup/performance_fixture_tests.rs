@@ -226,16 +226,16 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
                     description: Some("Stage 0 performance fixture".to_string()),
                 },
             )?;
-            let folder_id = generate_id(connection)?;
+            let subject_id = generate_id(connection)?;
             connection
                 .execute(
-                    "INSERT INTO deck_folders (id, name, sort_order, created_at, updated_at, revision)
+                    "INSERT INTO document_collections (id, name, sort_order, created_at, updated_at, revision)
                      VALUES (?1, 'Clinical foundations', 0, ?2, ?2, 1)",
-                    params![folder_id, FIXTURE_TIME],
+                    params![subject_id, FIXTURE_TIME],
                 )
                 .map_err(CommandError::database)?;
             connection
-                .execute("UPDATE decks SET folder_id = ?1 WHERE id = ?2", params![folder_id, primary.id])
+                .execute("UPDATE decks SET subject_id = ?1 WHERE id = ?2", params![subject_id, primary.id])
                 .map_err(CommandError::database)?;
             for (key, value) in [
                 ("theme", json!("light")),
@@ -364,12 +364,12 @@ pub fn writes_stage_4a_large_library_drag_pending_restore() {
 
     database
         .with_connection(|connection| {
-            let folder_id = generate_id(connection)?;
+            let subject_id = generate_id(connection)?;
             connection
                 .execute(
-                    "INSERT INTO deck_folders (id, name, sort_order, created_at, updated_at, revision)
+                    "INSERT INTO document_collections (id, name, sort_order, created_at, updated_at, revision)
                      VALUES (?1, 'Large library folder', 0, ?2, ?2, 1)",
-                    params![folder_id, FIXTURE_TIME],
+                    params![subject_id, FIXTURE_TIME],
                 )
                 .map_err(CommandError::database)?;
             for index in 0..120 {
@@ -389,8 +389,8 @@ pub fn writes_stage_4a_large_library_drag_pending_restore() {
                 if index % 2 == 0 {
                     connection
                         .execute(
-                            "UPDATE decks SET folder_id = ?1 WHERE id = ?2",
-                            params![folder_id, deck.id],
+                            "UPDATE decks SET subject_id = ?1 WHERE id = ?2",
+                            params![subject_id, deck.id],
                         )
                         .map_err(CommandError::database)?;
                 }

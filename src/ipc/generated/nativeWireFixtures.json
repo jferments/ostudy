@@ -75,5 +75,61 @@
     "assetCount": 4,
     "restartRequired": false,
     "completed": true
+  },
+  "subjectLibrary": {
+    "libraryRevision": 9,
+    "documentFilingRevision": 4,
+    "subjects": [
+      {
+        "id": "33333333333333333333333333333333",
+        "name": "Pharmacology",
+        "sortOrder": 1000,
+        "createdAt": 10,
+        "updatedAt": 20,
+        "revision": 2
+      }
+    ],
+    "decks": [
+      {
+        "deckId": "11111111111111111111111111111111",
+        "subjectId": "33333333333333333333333333333333",
+        "sortOrder": 1000
+      },
+      {
+        "deckId": "44444444444444444444444444444444",
+        "subjectId": null,
+        "sortOrder": 1000
+      }
+    ],
+    "documents": [
+      {
+        "documentId": "55555555555555555555555555555555",
+        "subjectId": "33333333333333333333333333333333"
+      }
+    ],
+    "studyRanges": [
+      {
+        "id": "66666666666666666666666666666666",
+        "documentId": "55555555555555555555555555555555",
+        "unitKind": "page",
+        "startUnit": 10,
+        "endUnit": 40,
+        "sourceSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+        "createdAt": 30
+      }
+    ],
+    "checkTheseCount": 1
+  },
+  "subjectFilingReview": {
+    "entityKind": "deck",
+    "entityId": "44444444444444444444444444444444",
+    "reason": "moved_to_collection_subject",
+    "detail": {
+      "folderSubjectId": null,
+      "subjectIds": [
+        "33333333333333333333333333333333"
+      ]
+    },
+    "label": "Pharmacology study bundle"
   }
 }

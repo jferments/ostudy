@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    database::{Database, LATEST_SCHEMA_VERSION},
+    database::{Database, CURRENT_SCHEMA_VERSION, LEGACY_PUBLIC_SCHEMA_VERSION},
     document_backup,
     error::CommandError,
     media::inspect_managed_asset_bytes,
@@ -23,6 +23,13 @@ use super::scope::{self, SyncSelection};
 const PACKAGE_FORMAT: &str = "ostudy-device-sync";
 const PACKAGE_VERSION: i64 = 3;
 const LEGACY_PACKAGE_VERSION: i64 = 2;
+/// Builds before release schema 6 record the frozen public schema number 30 as
+/// a package's `schemaVersion` and refuse a higher number with "Update this
+/// device first". Packages now record 30 plus the release schema version, so
+/// those builds refuse a package they cannot read with that message instead of
+/// failing to open its snapshot, and so does this build for a package from a
+/// later release. A package recording 30 or less is migrated before merging.
+const PACKAGE_SCHEMA_VERSION: i64 = LEGACY_PUBLIC_SCHEMA_VERSION + CURRENT_SCHEMA_VERSION;
 const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_DATABASE_BYTES: usize = 1_500 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -162,7 +169,7 @@ pub(crate) fn create_package(
         for (key, value) in [
             ("format", PACKAGE_FORMAT.to_string()),
             ("formatVersion", PACKAGE_VERSION.to_string()),
-            ("schemaVersion", LATEST_SCHEMA_VERSION.to_string()),
+            ("schemaVersion", PACKAGE_SCHEMA_VERSION.to_string()),
             ("createdAt", created_at.to_string()),
             ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
             (
@@ -290,7 +297,7 @@ pub(crate) fn extract_package(
     let schema_version = metadata_value(&package, "schemaVersion")?
         .parse::<i64>()
         .map_err(|_| invalid_package("The package schema version is invalid."))?;
-    if schema_version > LATEST_SCHEMA_VERSION {
+    if schema_version > PACKAGE_SCHEMA_VERSION {
         return Err(invalid_package(
             "The sending device uses a newer ostudy database schema. Update this device first.",
         ));
@@ -802,3 +809,7 @@ mod tests {
 #[cfg(test)]
 #[path = "media_asset_tests.rs"]
 mod media_asset_tests;
+
+#[cfg(test)]
+#[path = "subjects_sync_tests.rs"]
+mod subjects_sync_tests;

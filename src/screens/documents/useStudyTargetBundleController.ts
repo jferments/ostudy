@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
-import { generationInstructionsInput } from "../../ipc/generationInstructions";
 import {
   beginStudyTargetBundle,
   cancelStudyTargetBundle,
@@ -60,15 +59,9 @@ export function useStudyTargetBundleController({
   const [busy, setBusy] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingGenerationInstructions, setPendingGenerationInstructions] =
-    useState<string | null>(null);
   const cancelingRef = useRef(false);
   const readSequence = useRef(0);
-  const receipt = useRef<{
-    key: string;
-    operationId: string;
-    generationInstructions: string;
-  } | null>(null);
+  const receipt = useRef<{ key: string; operationId: string } | null>(null);
   const targetRef = useRef(target);
   targetRef.current = target;
 
@@ -136,25 +129,12 @@ export function useStudyTargetBundleController({
     }
   }
 
-  async function run(generationInstructions = ""): Promise<boolean> {
+  async function run(): Promise<boolean> {
     if (!target || busy) return false;
     const key = targetKey(target);
-    let capturedInstructions: string;
     const existing = receipt.current?.key === key ? receipt.current : null;
-    if (existing) {
-      capturedInstructions = existing.generationInstructions;
-    } else {
-      try {
-        capturedInstructions =
-          generationInstructionsInput(generationInstructions).generationInstructions ?? "";
-      } catch (failure: unknown) {
-        setError(getErrorMessage(failure));
-        return false;
-      }
-    }
     const operationId = existing?.operationId ?? createOperationId();
-    receipt.current = { key, operationId, generationInstructions: capturedInstructions };
-    setPendingGenerationInstructions(capturedInstructions);
+    receipt.current = { key, operationId };
     setBusy(true);
     setError(null);
     readSequence.current += 1;
@@ -162,14 +142,12 @@ export function useStudyTargetBundleController({
       const begun = await beginStudyTargetBundle({
         operationId,
         target,
-        ...(capturedInstructions ? { generationInstructions: capturedInstructions } : {}),
         outputPolicy: { flashcards: true, studyGuide: true },
         recreateArtifacts: suppressedArtifacts(status),
       });
       setStatus(begun);
       const result = await composeStudyTargetBundle({ operationId });
       receipt.current = null;
-      setPendingGenerationInstructions(null);
       setStatus(result);
       const failure = durableFailure(result);
       setError(failure && !cancelingRef.current ? failure : null);
@@ -184,7 +162,6 @@ export function useStudyTargetBundleController({
         && TERMINAL_BATCH_STATES.has(durable.latestBatchState)
       ) {
         receipt.current = null;
-        setPendingGenerationInstructions(null);
         setError(durable.latestBatchState === "canceled" ? null : durableFailure(durable));
         await reconcileCommitted("Study materials were saved");
         return true;
@@ -231,7 +208,6 @@ export function useStudyTargetBundleController({
     busy,
     canceling,
     error,
-    pendingGenerationInstructions,
     load,
     run,
     stop,

@@ -44,6 +44,9 @@ Coverage includes read-only older/future admission, SQLite-full snapshot refusal
 committed WAL preservation, changed private bytes, managed-root drift, equal-count
 value loss, rewritten or backfilled review evidence, table changes no preservation
 contract lists, releases without a contract, populated schedules/review evidence,
+the schema-6 subjects contract (a moved or rewritten review, a merged edited
+copy, a lost page range and an undeclared table are refused), a schema-5 backup
+that restores as the same subjects library an in-place upgrade makes,
 stale recovery choices, post-reconciliation commit refusal, compatible-schema
 restoration, committed bookkeeping failures and abrupt child-process termination
 during preparation, activation and rollback. Existing

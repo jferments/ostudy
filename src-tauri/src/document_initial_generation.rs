@@ -548,6 +548,14 @@ async fn process_initial_flashcards(
                         "The document changed before generated cards could be committed.",
                     ));
                 }
+                // The new deck joins its document's subject, so studying the
+                // subject includes the document's cards.
+                crate::subjects::file_generated_deck_with_document(
+                    connection,
+                    document_id,
+                    None,
+                    now,
+                )?;
                 let job_changed = connection
                     .execute(
                         "UPDATE document_generation_jobs

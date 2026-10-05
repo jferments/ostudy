@@ -154,21 +154,41 @@ fn seed_prepared_knowledge(
 }
 
 #[test]
-fn one_level_collection_contract_rejects_nested_storage() {
+fn one_level_collection_contract_has_no_nested_storage() {
     let database = Database::open_in_memory().unwrap();
     database
         .with_connection(|connection| {
-            let organization = create_root(connection, '1', "Week 1", 1)?;
-            let first = organization.collections[0].clone();
-            let error = connection
-                .execute(
-                    "UPDATE document_collections SET parent_id=?1 WHERE id=?2",
-                    params![first.id, first.id],
+            create_root(connection, '1', "Week 1", 1)?;
+            // A collection is a subject: subjects do not nest, and a document
+            // names its one subject itself.
+            let mut statement = connection
+                .prepare("SELECT name FROM pragma_table_info('document_collections') ORDER BY cid")
+                .map_err(CommandError::database)?;
+            let columns = statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(CommandError::database)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                columns,
+                [
+                    "id",
+                    "name",
+                    "sort_order",
+                    "created_at",
+                    "updated_at",
+                    "revision"
+                ]
+            );
+            let filing_tables: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema
+                     WHERE type='table' AND name='document_collection_memberships'",
+                    [],
+                    |row| row.get(0),
                 )
-                .unwrap_err();
-            assert!(error
-                .to_string()
-                .contains("document_collections_parent_must_be_null"));
+                .map_err(CommandError::database)?;
+            assert_eq!(filing_tables, 0);
             Ok(())
         })
         .unwrap();
@@ -359,6 +379,64 @@ fn membership_lifecycle_does_not_rewrite_prepared_knowledge() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(analysis_source_hash, "b".repeat(64));
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
+fn a_collection_takes_in_and_gives_back_its_documents_generated_decks() {
+    let database = Database::open_in_memory().unwrap();
+    database
+        .with_connection(|connection| {
+            let document = id('d');
+            seed_document(connection, &document, 1, 'a')?;
+            let deck = crate::decks::create_deck_in_connection(
+                connection,
+                crate::decks::CreateDeckInput {
+                    name: "Generated".into(),
+                    description: None,
+                },
+            )?
+            .id;
+            connection
+                .execute(
+                    "UPDATE documents SET generated_deck_id=?2 WHERE id=?1",
+                    params![document, deck],
+                )
+                .map_err(CommandError::database)?;
+            let deck_subject = |connection: &Connection| -> Result<Option<String>, CommandError> {
+                connection
+                    .query_row("SELECT subject_id FROM decks WHERE id=?1", [&deck], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)
+            };
+
+            let created = create_root(connection, '1', "Week 1", 1)?;
+            let week = created.collections[0].id.clone();
+            let added = add_membership(
+                connection,
+                AddDocumentCollectionMembershipInput {
+                    operation_id: id('2'),
+                    collection_id: week.clone(),
+                    document_id: document.clone(),
+                    expected_organization_revision: created.revision,
+                },
+            )?;
+            // Studying the collection studies the decks filed in its subject.
+            assert_eq!(deck_subject(connection)?, Some(week));
+            let membership = added.memberships[0].clone();
+            remove_membership(
+                connection,
+                RemoveDocumentCollectionMembershipInput {
+                    operation_id: id('3'),
+                    membership_id: membership.id,
+                    revision: membership.revision,
+                    expected_organization_revision: added.revision,
+                },
+            )?;
+            assert_eq!(deck_subject(connection)?, None);
             Ok(())
         })
         .unwrap();

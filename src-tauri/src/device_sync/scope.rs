@@ -71,6 +71,9 @@ impl SyncSelection {
     }
 
     pub(crate) fn includes_table(self, table: &str) -> bool {
+        if SUBJECT_TABLES.contains(&table) {
+            return self.flashcards || self.documents;
+        }
         if FLASHCARD_TABLES.contains(&table) {
             return self.flashcards;
         }
@@ -90,8 +93,13 @@ impl SyncSelection {
     }
 }
 
+/// Subjects hold decks and documents, so they travel with either category.
+/// Removing them from a Flashcards-only package would leave every filed deck
+/// pointing at a missing subject, and clearing `decks.subject_id` instead would
+/// unfile the receiver's decks: the receiver would see the sender change it.
+pub(crate) const SUBJECT_TABLES: &[&str] = &["document_collection_organization", "document_collections"];
+
 pub(crate) const FLASHCARD_TABLES: &[&str] = &[
-    "deck_folders",
     "decks",
     "tags",
     "card_templates",
@@ -100,6 +108,7 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
     "notes",
     "question_generation_evidence",
     "cards",
+    "card_merges",
     "card_question_presentations",
     "card_template_rules",
     "note_tags",
@@ -125,10 +134,7 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
 
 pub(crate) const DOCUMENT_TABLES: &[&str] = &[
     "documents",
-    "document_collection_organization",
-    "document_collections",
-    "document_collection_memberships",
-    "document_collection_ranges",
+    "document_study_ranges",
     "study_targets",
     "study_target_suppressions",
     "document_pages",
@@ -418,7 +424,8 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM asset_reconciliation_events;
              DELETE FROM editor_draft_assets;
              DELETE FROM editor_drafts;
-             DELETE FROM question_note_writes;",
+             DELETE FROM question_note_writes;
+             DELETE FROM subject_filing_reviews;",
         )
         .map_err(CommandError::database)?;
 
@@ -465,6 +472,8 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM review_event_attributions;
                  DELETE FROM review_event_scheduler_context;
                  DELETE FROM review_events;
+                 DELETE FROM schedule_action_events;
+                 DELETE FROM schedule_action_operations;
                  DELETE FROM practice_session_card_tag_snapshots;
                  DELETE FROM practice_session_card_snapshots;
                  DELETE FROM practice_session_cards;
@@ -477,14 +486,14 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM card_template_assets;
                  DELETE FROM note_tags;
                  DELETE FROM card_template_rules;
+                 DELETE FROM card_merges;
                  DELETE FROM cards;
                  DELETE FROM notes;
                  DELETE FROM assets;
                  DELETE FROM card_template_fields;
                  DELETE FROM card_templates;
                  DELETE FROM tags;
-                 DELETE FROM decks;
-                 DELETE FROM deck_folders;",
+                 DELETE FROM decks;",
             )
             .map_err(CommandError::database)?;
     } else if !selection.documents {
@@ -492,11 +501,7 @@ pub(crate) fn sanitize_snapshot(
         // source_document_id intentionally is not a foreign key, so generated
         // cards can retain provenance without transferring the live document.
         connection
-            .execute_batch(
-                "UPDATE question_generation_evidence SET document_id = NULL;
-                 DELETE FROM document_decks;
-                 DELETE FROM document_note_topics;",
-            )
+            .execute_batch("UPDATE question_generation_evidence SET document_id = NULL;")
             .map_err(CommandError::database)?;
     }
 
@@ -511,17 +516,17 @@ pub(crate) fn sanitize_snapshot(
     }
 
     if !selection.documents {
+        // Document-to-card links leave with either side.
         connection
             .execute_batch(
-                "DELETE FROM study_target_guide_overlays;
+                "DELETE FROM document_decks;
+                 DELETE FROM document_note_topics;
+                 DELETE FROM study_target_guide_overlays;
                  DELETE FROM study_target_guides;
                  DELETE FROM study_target_card_origins;
                  DELETE FROM study_target_suppressions;
                  DELETE FROM study_targets;
-                 DELETE FROM document_collection_ranges;
-                 DELETE FROM document_collection_memberships;
-                 DELETE FROM document_collections;
-                 DELETE FROM document_collection_organization;
+                 DELETE FROM document_study_ranges;
                  DELETE FROM document_study_guide_sections;
                  DELETE FROM document_study_guide_overlays;
                  DELETE FROM document_study_guide_checkpoints;
@@ -547,6 +552,14 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM document_semantic_elements;
                  DELETE FROM document_pages;
                  DELETE FROM documents;",
+            )
+            .map_err(CommandError::database)?;
+    }
+    if !selection.flashcards && !selection.documents {
+        connection
+            .execute_batch(
+                "DELETE FROM document_collections;
+                 DELETE FROM document_collection_organization;",
             )
             .map_err(CommandError::database)?;
     }
@@ -620,6 +633,39 @@ mod tests {
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn subjects_travel_with_either_category_and_the_check_list_never_does() {
+        let flashcards_only = SyncSelection {
+            flashcards: true,
+            documents: false,
+            study_guides: false,
+            api_settings: false,
+            api_credentials: false,
+        };
+        let documents_only = SyncSelection {
+            flashcards: false,
+            documents: true,
+            ..flashcards_only
+        };
+        let settings_only = SyncSelection {
+            flashcards: false,
+            api_settings: true,
+            ..flashcards_only
+        };
+        for table in SUBJECT_TABLES {
+            assert!(flashcards_only.includes_table(table));
+            assert!(documents_only.includes_table(table));
+            assert!(!settings_only.includes_table(table));
+        }
+        assert!(flashcards_only.includes_table("card_merges"));
+        assert!(!documents_only.includes_table("card_merges"));
+        assert!(documents_only.includes_table("document_study_ranges"));
+        assert!(!flashcards_only.includes_table("document_study_ranges"));
+        for selection in [flashcards_only, documents_only, settings_only] {
+            assert!(!selection.includes_table("subject_filing_reviews"));
+        }
     }
 
     #[test]

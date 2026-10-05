@@ -126,8 +126,8 @@ WITH guide_rows AS (
         NULL AS source_unit_count,
         (
             SELECT COUNT(*)
-            FROM document_collection_memberships membership
-            WHERE membership.collection_id = collection.id
+            FROM documents member
+            WHERE member.subject_id = collection.id
         ) AS source_count,
         guide.revision AS guide_revision,
         COALESCE(json_array_length(json_extract(guide.content_json, '$.sections')), 0)
@@ -392,9 +392,15 @@ mod tests {
                 connection
                     .execute(
                         "INSERT INTO document_collections(
-                             id,parent_id,name,sort_order,created_at,updated_at,revision
-                         ) VALUES(?1,NULL,'Week 1 physiology',1000,1,1,1)",
+                             id,name,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'Week 1 physiology',1000,1,1,1)",
                         [&collection_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE documents SET subject_id=?1 WHERE id=?2",
+                        params![collection_id, "1".repeat(32)],
                     )
                     .map_err(CommandError::database)?;
                 connection
@@ -439,6 +445,7 @@ mod tests {
         assert_eq!(page.items[0].target_kind, "collection");
         assert_eq!(page.items[0].title, "Week 1 physiology");
         assert_eq!(page.items[0].section_count, 2);
+        assert_eq!(page.items[0].source_count, 1);
 
         let all = list_study_guides(
             &database,

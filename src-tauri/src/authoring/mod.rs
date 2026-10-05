@@ -465,10 +465,12 @@ fn build_search_sql(
     }
 
     match input.reviewed_filter.as_str() {
-        "never" => conditions.push(
-            "NOT EXISTS (SELECT 1 FROM review_events reviewed WHERE reviewed.card_id = c.id)"
-                .to_string(),
-        ),
+        "never" => conditions.push(format!(
+            "NOT EXISTS (
+                 SELECT 1 FROM review_events reviewed
+                 WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
+             )"
+        )),
         "today" => conditions.push(reviewed_on_study_dates_sql(
             time,
             Some(time.local_date),
@@ -515,8 +517,14 @@ fn build_search_sql(
     })
 }
 
-/// A review of card `c` on study dates `start..=end`; see
-/// [`StudyTimeContext::review_study_dates_sql`].
+/// The card ids whose reviews count as reviews of card `c`: the card itself
+/// and the collection copies merged into it (release schema 6).
+const REVIEWED_AS_CARD: &str =
+    "SELECT c.id UNION ALL SELECT merged.retired_card_id FROM card_merges merged
+     WHERE merged.surviving_card_id = c.id";
+
+/// A review of card `c`, or of a copy merged into it, on study dates
+/// `start..=end`; see [`StudyTimeContext::review_study_dates_sql`].
 fn reviewed_on_study_dates_sql(
     time: &StudyTimeContext,
     start: Option<NaiveDate>,
@@ -530,7 +538,7 @@ fn reviewed_on_study_dates_sql(
              FROM review_events reviewed
              JOIN review_event_attributions review_attr
                ON review_attr.review_event_id = reviewed.id
-             WHERE reviewed.card_id = c.id
+             WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
                AND {dates}
          )"
     ))
