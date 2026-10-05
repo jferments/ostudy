@@ -23,6 +23,7 @@ import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation"
 import { HomeScreen } from "./screens/home/HomeScreen";
 import { SubjectScreen } from "./screens/subject/SubjectScreen";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
+import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { ReviewScreen } from "./screens/review/ReviewScreen";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
@@ -36,7 +37,7 @@ import { AppFrame, AppContent } from "./ui/layout/AppFrame";
 import { BrandMark } from "./components/Brand";
 import { InlineNotice } from "./ui/primitives/InlineNotice";
 
-const loadFlashcardsWorkspace = () => import("./screens/flashcards/FlashcardsWorkspace");
+const loadLibraryWorkbench = () => import("./screens/library/workbench/LibraryWorkbench");
 const loadDocumentsSection = () => import("./screens/DocumentsSection");
 const loadStudyGuidesRoute = () => import("./screens/StudyGuidesRoute");
 const loadPracticeScreen = () => import("./screens/PracticeScreen");
@@ -44,8 +45,8 @@ const loadAnalyticsScreen = () => import("./screens/AnalyticsScreen");
 const loadTutorScreen = () => import("./screens/tutor/TutorWorkspace");
 const loadSettingsScreen = () => import("./screens/SettingsScreen");
 
-const FlashcardsWorkspace = lazy(() =>
-  loadFlashcardsWorkspace().then((module) => ({ default: module.FlashcardsWorkspace })),
+const LibraryWorkbench = lazy(() =>
+  loadLibraryWorkbench().then((module) => ({ default: module.LibraryWorkbench })),
 );
 const DocumentsSection = lazy(() =>
   loadDocumentsSection().then((module) => ({ default: module.DocumentsSection })),
@@ -67,7 +68,7 @@ const SettingsScreen = lazy(() =>
 );
 
 const FEATURE_PRELOADERS = [
-  loadFlashcardsWorkspace,
+  loadLibraryWorkbench,
   loadDocumentsSection,
   loadStudyGuidesRoute,
   loadPracticeScreen,
@@ -220,39 +221,20 @@ function App() {
                                 onOpenLibrary={() => void controller.openLibrary()}
                               />
                             ) : controller.section === "decks" ? (
-                              <LibraryFrame view="decks" onSelectView={navigate}>
-                                <FlashcardsWorkspace
-                                  workspace={controller.flashcardsWorkspace}
-                                  navigationKey={controller.flashcardsRoute.requestId}
-                                  onWorkspaceChange={controller.navigateFlashcardsWorkspace}
-                                  decks={controller.decks}
-                                  settings={controller.activeSettings}
-                                  refreshDecks={controller.refreshDecks}
-                                  onPracticeDeck={controller.practiceDeck}
-                                  onPracticeSelected={controller.practiceSelected}
-                                  restoredSelection={
-                                    controller.flashcardsRoute.view === "root"
-                                      ? controller.flashcardsRoute.restoreDeckSelection
-                                      : undefined
-                                  }
-                                  analyticsSearchLaunch={
-                                    controller.flashcardsRoute.view === "root"
-                                      ? controller.flashcardsRoute.analyticsSearchLaunch
-                                      : undefined
-                                  }
-                                  subjectFocus={
-                                    controller.flashcardsRoute.view === "root"
-                                      ? controller.flashcardsRoute.subjectFocus
-                                      : undefined
-                                  }
-                                  onPracticeCards={controller.practiceCards}
-                                  openDeckRequest={controller.deckOpenRequest}
-                                  onOpenDeck={controller.openFlashcardsDeck}
-                                  onReturnToLibrary={controller.returnToFlashcardsLibrary}
-                                  onCardDirtyChange={controller.setHasUnsavedCard}
-                                  showToast={controller.showToast}
-                                />
-                              </LibraryFrame>
+                              <LibraryWorkbench
+                                decks={controller.decks}
+                                refreshDecks={controller.refreshDecks}
+                                launch={workbenchLaunchFor(controller.flashcardsRoute)}
+                                onPracticeDeck={controller.practiceDeck}
+                                onPracticeCards={controller.practiceCards}
+                                onPracticeSelected={(request) => controller.practiceSelected(request, [])}
+                                practiceShuffle={controller.activeSettings.practiceShuffle}
+                                onOpenDocuments={() => navigate("documents")}
+                                onOpenStudyGuides={() => navigate("study-guides")}
+                                onCardDirtyChange={controller.setHasUnsavedCard}
+                                onDeckScopeChange={controller.recordLibraryDeck}
+                                showToast={controller.showToast}
+                              />
                             ) : controller.section === "study-guides" ? (
                               <LibraryFrame view="study-guides" onSelectView={navigate}>
                                 <StudyGuidesRoute

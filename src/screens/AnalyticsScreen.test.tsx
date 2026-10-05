@@ -63,6 +63,9 @@ function analyticsForRange(
       studyableCardCount: 12,
       studyableDueCount: 4,
       needsMorePracticeCount: 2,
+      readyReviewCount: 3,
+      readyNewCount: 1,
+      dueTodayReviewCount: 5,
     },
     history: {
       cardsPracticed,
@@ -73,6 +76,9 @@ function analyticsForRange(
       averageResponseTimeMs: 4200,
       totalStudyTimeMs: 120_000,
       sessionCount: 2,
+      retentionReviewCount: 5,
+      retentionRememberedCount: 4,
+      trueRetention: 0.8,
     },
     dailyLimits: {
       newLimit: 20,
@@ -104,6 +110,9 @@ function analyticsForRange(
         studyTimeMs: 120_000,
         sessionCount: 2,
         containsHighlightedSession: true,
+        retentionReviewCount: 5,
+        retentionRememberedCount: 4,
+        trueRetention: 0.8,
       },
     ],
     deckStats: [
@@ -124,6 +133,9 @@ function analyticsForRange(
         averageResponseTimeMs: 4200,
         totalStudyTimeMs: 120_000,
         lastPracticedAt: 1,
+        retentionReviewCount: 5,
+        retentionRememberedCount: 4,
+        trueRetention: 0.8,
       },
     ],
     tagStats: [
@@ -144,6 +156,9 @@ function analyticsForRange(
         averageResponseTimeMs: 5000,
         totalStudyTimeMs: 35_000,
         lastPracticedAt: 1,
+        retentionReviewCount: 12,
+        retentionRememberedCount: 8,
+        trueRetention: 8 / 12,
         trendDelta: -0.2,
         status: "needs_attention",
       },
@@ -292,7 +307,7 @@ describe("AnalyticsScreen", () => {
       label: "ready work exceeds capacity",
       reviewsRemaining: 2,
       dueCount: 5,
-      expected: "3 ready cards exceed today's remaining review capacity.",
+      expected: "3 due reviews exceed today's remaining review capacity.",
     },
     {
       label: "work remains within limits",
@@ -303,7 +318,7 @@ describe("AnalyticsScreen", () => {
   ])("renders the $label workload branch", async ({ reviewsRemaining, dueCount, expected }) => {
     const analytics = analyticsForRange("7d");
     analytics.dailyLimits.reviewsRemaining = reviewsRemaining;
-    analytics.currentInventory.studyableDueCount = dueCount;
+    analytics.currentInventory.readyReviewCount = dueCount;
     vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
 
     renderAnalytics();
@@ -417,7 +432,7 @@ describe("AnalyticsScreen", () => {
       objectiveAccuracy: 1 / 3, unassistedObjectiveCount: 2,
       unassistedCorrectCount: 1, unassistedAccuracy: 0.5,
       assistanceTrackedCount: 3, assistedCount: 1, overrideCount: 1,
-      remediationCount: 2, unavailableEvidenceCount: 0,
+      remediationCount: 2, unavailableEvidenceCount: 0, rememberedCount: 2, rememberedRate: 2 / 3,
     }];
     vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
     renderAnalytics();

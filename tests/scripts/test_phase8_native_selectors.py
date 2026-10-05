@@ -25,11 +25,11 @@ class Phase8NativeSelectorTests(unittest.TestCase):
         self.assertTrue(any("[role='dialog'] [data-layout-mode]" in text for text in literals))
         self.assertFalse(any('"dialog ' in text or text.startswith("dialog ") for text in literals))
 
-    def test_selection_and_open_target_actual_interactive_surface(self):
+    def test_workbench_flow_targets_tree_entries_and_card_rows(self):
         source = SMOKE.read_text(encoding="utf-8")
-        self.assertIn("//*[@role='checkbox' and @aria-label=", source)
-        self.assertIn("//main//*[@role='button' and @aria-label=", source)
-        self.assertNotIn("//input[@aria-label={json.dumps(f'Select", source)
+        self.assertIn("{WORKBENCH_TREE_XPATH}//button[.//span[normalize-space(.)=", source)
+        self.assertIn("//main//*[@data-card-id]//button[contains(normalize-space(.), ", source)
+        self.assertIn("choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options…\", deadline)", source)
         for invariant in ("set_input_text(", "set_rich_editor_text(",
                           "assert_internal_practice_shell(session_id, deck_name)",
                           "layout == {\"mode\": expected_mode, \"contained\": True}",
@@ -37,8 +37,7 @@ class Phase8NativeSelectorTests(unittest.TestCase):
             self.assertIn(invariant, source)
 
     def test_every_native_deck_creation_targets_semantic_dialogs(self):
-        for filename in ("smoke.py", "ui_platform_smoke.py", "card_listing_followup_smoke.py",
-                         "deck_toolbar_layout_smoke.py"):
+        for filename in ("smoke.py", "ui_platform_smoke.py", "card_listing_followup_smoke.py"):
             with self.subTest(filename=filename):
                 source = (SMOKE.parent / filename).read_text(encoding="utf-8")
                 self.assertIn("[role='dialog'] input[data-autofocus='true']", source)

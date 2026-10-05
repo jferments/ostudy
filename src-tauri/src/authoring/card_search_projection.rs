@@ -43,7 +43,9 @@ pub(crate) fn search_cards_in_connection(
              c.direction, c.template_ordinal, n.note_type,
              n.front_doc, n.back_doc, n.front_text, n.back_text,
              n.cloze_source, COALESCE(n.cloze_mode, 'one_at_a_time'),
-             {signal_value}, n.question_definition, qp.question_key
+             {signal_value}, n.question_definition, qp.question_key,
+             s.scheduled_days, s.lapses, s.stability, s.difficulty,
+             {source_unit} AS source_unit, {source_unit_kind}
          FROM notes n
          JOIN cards c ON c.note_id = n.id
          JOIN decks d ON d.id = c.deck_id
@@ -55,6 +57,8 @@ pub(crate) fn search_cards_in_connection(
          LIMIT ?{limit_index} OFFSET ?{offset_index}",
         signals = signal_projection::LEARNING_SIGNAL_CTES,
         signal_value = signal_projection::value_sql(),
+        source_unit = SOURCE_UNIT_SQL,
+        source_unit_kind = SOURCE_UNIT_KIND_SQL,
         joins = search.joins,
         where_sql = search.where_sql,
         order_sql = search.order_sql,
@@ -150,6 +154,12 @@ pub(crate) fn search_cards_in_connection(
                 needs_more_practice: row.get::<_, i64>(21)? != 0,
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
+                interval_days: row.get(24)?,
+                lapses: row.get(25)?,
+                stability: row.get(26)?,
+                difficulty: row.get(27)?,
+                source_unit: row.get(28)?,
+                source_unit_kind: row.get(29)?,
             })
         })
         .map_err(CommandError::database)?
@@ -336,6 +346,125 @@ mod tests {
                 )?;
                 assert_eq!(page.total_count, 1);
                 assert_eq!(page.cards[0].tags, ["Alpha", "beta", "zeta"]);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    fn insert_basic_card(
+        connection: &Connection,
+        note: u32,
+        card: u32,
+        created_at: i64,
+        front: &str,
+    ) -> Result<(), CommandError> {
+        connection
+            .execute(
+                "INSERT INTO notes (
+                    id, deck_id, note_type, content_format, content_schema_version,
+                    front_doc, back_doc, front_text, back_text, duplicate_hash,
+                    created_at, updated_at, revision
+                 ) VALUES (?1, ?2, 'basic', ?3, ?4, ?5, ?6, ?7, 'answer', '', ?8, ?8, 1)",
+                params![
+                    id(note),
+                    id(1),
+                    CONTENT_FORMAT,
+                    CONTENT_SCHEMA_VERSION,
+                    rich(front).to_string(),
+                    rich("answer").to_string(),
+                    front,
+                    created_at
+                ],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                params![id(card), id(note), id(1), created_at],
+            )
+            .map_err(CommandError::database)?;
+        insert_new_schedule(connection, &id(card), created_at)
+    }
+
+    #[test]
+    fn source_order_follows_cited_slides_and_rows_carry_schedule_detail() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO decks (id, name, created_at, updated_at) VALUES (?1, 'Lecture 7', 1, 1)",
+                        [id(1)],
+                    )
+                    .map_err(CommandError::database)?;
+                // Made in a different order from the slides they cite; the
+                // uncited card was made first but has no place in the source.
+                insert_basic_card(connection, 20, 30, 1, "No source")?;
+                insert_basic_card(connection, 21, 31, 2, "Slide 14")?;
+                insert_basic_card(connection, 22, 32, 3, "Slide 8")?;
+                connection
+                    .execute(
+                        "INSERT INTO source_citation_snapshots (
+                            id, source_document_id, source_identity, source_fingerprint_sha256,
+                            source_title, original_filename, source_format, source_media_type,
+                            source_unit_kind, source_unit_count, created_at, updated_at
+                         ) VALUES (?1, ?2, 'sha256:x', ?3, 'Lecture 7', 'lecture7.pdf', 'pdf',
+                                   'application/pdf', 'slide', 40, 1, 1)",
+                        params![id(40), id(41), "a".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                for (note, slides) in [(21, "[14,15]"), (22, "[8]")] {
+                    connection
+                        .execute(
+                            "INSERT INTO note_source_citations (
+                                note_id, citation_id, source_locator_json, created_at, updated_at
+                             ) VALUES (?1, ?2, ?3, 1, 1)",
+                            params![
+                                id(note),
+                                id(40),
+                                format!(
+                                    "{{\"unitKind\":\"slide\",\"unitNumbers\":{slides},\"sectionLabel\":null}}"
+                                )
+                            ],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+                connection
+                    .execute(
+                        "UPDATE card_schedules SET scheduled_days = 5, lapses = 1,
+                             stability = 5.25, difficulty = 5.5, reps = 6
+                         WHERE card_id = ?1",
+                        [id(31)],
+                    )
+                    .map_err(CommandError::database)?;
+                let input = SearchCardsInput {
+                    deck_ids: vec![id(1)],
+                    query: String::new(),
+                    tag_ids: vec![],
+                    availability_filter: "all".to_string(),
+                    status_filter: "all".to_string(),
+                    reviewed_filter: "all".to_string(),
+                    sort: "source_order".to_string(),
+                    limit: 20,
+                    offset: 0,
+                };
+                let page = search_cards_in_connection(connection, input.clone())?;
+                let fronts: Vec<_> = page.cards.iter().map(|card| card.front_text.as_str()).collect();
+                assert_eq!(fronts, ["Slide 8", "Slide 14", "No source"]);
+                assert_eq!(page.cards[0].source_unit, Some(8));
+                assert_eq!(page.cards[0].source_unit_kind.as_deref(), Some("slide"));
+                assert_eq!(page.cards[2].source_unit, None);
+                let reviewed = &page.cards[1];
+                assert_eq!(reviewed.interval_days, 5);
+                assert_eq!(reviewed.lapses, 1);
+                assert_eq!(reviewed.stability, 5.25);
+                assert_eq!(reviewed.difficulty, 5.5);
+
+                let time = StudyTimeContext::capture(connection)?;
+                let selection = list_matching_cards_at(connection, input, &time)?;
+                let ids: Vec<_> = selection.iter().map(|card| card.card_id.clone()).collect();
+                assert_eq!(ids, [id(32), id(31), id(30)]);
                 Ok(())
             })
             .unwrap();

@@ -22,6 +22,8 @@ function result(overrides: Partial<QuestionTypeAnalytics> = {}): QuestionTypeAna
     overrideCount: 1,
     remediationCount: 2,
     unavailableEvidenceCount: 0,
+    rememberedCount: 2,
+    rememberedRate: 2 / 3,
     ...overrides,
   };
 }
@@ -30,6 +32,7 @@ describe("Question type evidence", () => {
   it("keeps objective accuracy, assistance, overrides and retries distinct", () => {
     render(<QuestionTypeBreakdown rows={[result()]} />);
     const row = within(screen.getByRole("row", { name: /Matching/ }));
+    expect(row.getByText("67%")).toBeTruthy();
     expect(row.getByText("33%")).toBeTruthy();
     expect(row.getByText("50%")).toBeTruthy();
     expect(row.getByText("1 / 3 checked")).toBeTruthy();

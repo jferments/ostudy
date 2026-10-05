@@ -25,6 +25,9 @@ function bucket(overrides: Partial<TimelineBucket> = {}): TimelineBucket {
     studyTimeMs: 40_000,
     sessionCount: 1,
     containsHighlightedSession: false,
+    retentionReviewCount: 5,
+    retentionRememberedCount: 4,
+    trueRetention: 0.8,
     ...overrides,
   };
 }

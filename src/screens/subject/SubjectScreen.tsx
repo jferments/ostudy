@@ -256,7 +256,7 @@ function OverviewSection({
             ? "One guide that brings together what your sources say about this subject."
             : sourceCount === 0
               ? "Add sources to this subject. Each source gets its own guide and cards, and an overview can then bring them together."
-              : "No overview guide yet. Write one from this subject's sources in Library's Documents view."}
+              : "No overview guide yet. Write one from this subject's sources on Library's Documents page."}
         </p>
         {hasOverviewGuide ? (
           <Button variant="primary" className="tw:rounded-full" onClick={onRead}>

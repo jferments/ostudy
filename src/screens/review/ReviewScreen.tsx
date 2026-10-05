@@ -157,8 +157,8 @@ export function ReviewScreen({ onStartReview, onChooseDecks }: ReviewScreenProps
               className="tw:flex-row tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-3 tw:p-5 tw:compact:p-4"
             >
               <p className="tw:m-0 tw:min-w-0 tw:flex-[1_1_16rem] tw:text-body tw:text-muted-foreground">
-                Pick decks in Library, then choose Practice to narrow by tags, study extra cards
-                beyond today&apos;s schedule or turn shuffling off.
+                Open a deck in Library and choose Practice with options to narrow by tags, study
+                extra cards beyond today&apos;s schedule or turn shuffling off.
               </p>
               <Button onClick={onChooseDecks}>
                 <Icon name="library" size={16} /> Choose decks

@@ -322,9 +322,12 @@ class CatalogueTests(unittest.TestCase):
 
     def test_navigation_reaches_each_section_through_the_build_s_own_navigation(self) -> None:
         clicks: list[str] = []
-        original = capture.click, capture.settle_dialogs
+        original = capture.click, capture.settle_dialogs, capture.find, capture.exists
         capture.click = lambda ctx, xpath, seconds=30: clicks.append(xpath)
         capture.settle_dialogs = lambda ctx: None
+        # Library opens on a page with its view switcher, not the Workbench.
+        capture.find = lambda ctx, xpath, seconds=30: "element"
+        capture.exists = lambda ctx, xpath: False
         try:
             def route(shell: str, layout: str, section: str) -> list[str]:
                 clicks.clear()
@@ -342,7 +345,7 @@ class CatalogueTests(unittest.TestCase):
             self.assertEqual(route(sections, "wide", "settings"), ["nav-settings"])
             self.assertEqual(route(sections, "compact", "settings"), ["app-settings"])
         finally:
-            capture.click, capture.settle_dialogs = original
+            capture.click, capture.settle_dialogs, capture.find, capture.exists = original
 
     def test_filters_accept_aliases_and_keep_catalogue_order(self) -> None:
         self.assertEqual(capture.parse_list("desktop,phone", tuple(capture.VIEWPORTS), "width",

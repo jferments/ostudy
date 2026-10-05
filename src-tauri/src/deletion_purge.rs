@@ -16,6 +16,7 @@ use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, Transacti
 use crate::{
     database::Database,
     error::CommandError,
+    learning_metrics,
     projections::scope::{chunks, push_value},
 };
 
@@ -437,33 +438,7 @@ fn refresh_or_delete_sessions(
     session_ids: &[String],
 ) -> Result<(), CommandError> {
     for session_id in session_ids {
-        connection
-            .execute(
-                "UPDATE practice_sessions
-                 SET card_count = (
-                         SELECT COUNT(*) FROM practice_session_cards
-                         WHERE session_id = practice_sessions.id
-                     ),
-                     viewed_count = (
-                         SELECT COUNT(*) FROM practice_session_cards
-                         WHERE session_id = practice_sessions.id AND viewed_at IS NOT NULL
-                     ),
-                     revealed_count = (
-                         SELECT COUNT(*) FROM practice_session_cards
-                         WHERE session_id = practice_sessions.id AND revealed_at IS NOT NULL
-                     ),
-                     rated_count = (
-                         SELECT COUNT(*) FROM practice_session_cards
-                         WHERE session_id = practice_sessions.id AND rated_at IS NOT NULL
-                     ),
-                     correct_count = (
-                         SELECT COUNT(*) FROM practice_session_cards
-                         WHERE session_id = practice_sessions.id AND rating BETWEEN 2 AND 4
-                     )
-                 WHERE id = ?1",
-                [session_id],
-            )
-            .map_err(CommandError::database)?;
+        learning_metrics::refresh_session_counts(connection, session_id)?;
         connection
             .execute(
                 "DELETE FROM practice_sessions

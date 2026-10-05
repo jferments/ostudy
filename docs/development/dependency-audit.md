@@ -8,6 +8,7 @@ ostudy requires no paid service, hosted database, account system, or cloud runti
 - Tauri JavaScript API `2.11.1` and CLI `2.11.4`
 - Tauri dialog/opener plugins `2.7.2` / `2.5.4`
 - Tiptap editor packages `3.28.0`
+- TanStack Virtual for React `3.14.13` (MIT, with its one dependency `@tanstack/virtual-core` `3.17.11`): row virtualization behind the `VirtualList` pattern, for card lists that can run to thousands of rows
 - Vite `7.3.6`, TypeScript `5.8.3`, and esbuild `0.28.1`
 - Vitest `4.1.10`
 - Testing Library React `16.3.2` and DOM `10.4.1`

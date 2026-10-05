@@ -185,10 +185,10 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
       {analytics ? <>
         <section className={styles.metricsGridAnalyticsMetrics} aria-label="Learning summary">
           <StatTile label="Cards practiced" value={analytics.history.cardsPracticed} hint={`${analytics.history.reviewCount} total reviews`} />
-          <StatTile label="Remembered" value={formatPercent(analytics.history.correctRate)} hint={`${analytics.history.correctCount} remembered answers`} />
+          <StatTile label="Remembered" value={formatPercent(analytics.history.correctRate)} hint={analytics.history.trueRetention === null ? `${analytics.history.correctCount} remembered answers` : `${formatPercent(analytics.history.trueRetention)} of due reviews`} />
           <StatTile label="Focused study" value={formatStudyTime(analytics.history.totalStudyTimeMs)} hint={`${analytics.history.sessionCount} session${analytics.history.sessionCount === 1 ? "" : "s"}`} />
           <StatTile label="Average confidence" value={formatConfidence(analytics.history.averageConfidence)} hint="0 Wrong · 3 Easy" />
-          <StatTile label="Ready now" value={analytics.currentInventory.studyableDueCount} hint={`${analytics.currentInventory.studyableCardCount} studyable generated cards`} />
+          <StatTile label="Reviews due now" value={analytics.currentInventory.readyReviewCount} hint={`${analytics.currentInventory.readyNewCount} new card${analytics.currentInventory.readyNewCount === 1 ? "" : "s"} available`} />
           <StatTile label="Needs more practice" value={analytics.currentInventory.needsMorePracticeCount} hint="Repeatedly missed current cards" />
         </section>
         <section className={styles.analyticsWorkloadStrip} aria-label="Today's workload">
@@ -207,7 +207,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
                 <td><strong>{tag.tagName}</strong><small>{tag.generatedCardCount} cards</small></td>
                 <td>{formatLastPracticed(tag.lastPracticedAt)}</td>
                 <td>{tag.cardsPracticed} cards<small>{tag.reviewCount} reviews · {formatStudyTime(tag.totalStudyTimeMs)}</small></td>
-                <td>{formatPercent(tag.correctRate)}<small>{formatConfidence(tag.averageConfidence)}</small></td>
+                <td>{formatPercent(tag.correctRate)}<small>{tag.trueRetention === null ? "No due reviews" : `${formatPercent(tag.trueRetention)} of due reviews`}</small></td>
                 <td><Trend value={tag.trendDelta} /></td><td>{tag.studyableDueCount}</td><td>{tag.needsMorePracticeCount}</td>
                 <td><StatusBadge status={tag.status} /></td>
                 <td><Button variant="primary" size="small" disabled={tag.studyableDueCount === 0 || practicingTagId !== null} onClick={() => practiceReadyTag(tag)}>{practicingTagId === tag.tagId ? "Starting…" : "Practice"}</Button></td>
@@ -298,7 +298,7 @@ function StatusBadge({ status }: { status: TagAnalytics["status"] }) {
 
 function workloadMessage(analytics: Analytics): string {
   if (analytics.dailyLimits.reviewsRemaining === 0) return "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from a deck’s Practice action in Flashcards.";
-  if (analytics.currentInventory.studyableDueCount > analytics.dailyLimits.reviewsRemaining) return `${analytics.currentInventory.studyableDueCount - analytics.dailyLimits.reviewsRemaining} ready cards exceed today's remaining review capacity.`;
+  if (analytics.currentInventory.readyReviewCount > analytics.dailyLimits.reviewsRemaining) return `${analytics.currentInventory.readyReviewCount - analytics.dailyLimits.reviewsRemaining} due reviews exceed today's remaining review capacity.`;
   return `${analytics.dailyLimits.reviewsRemaining} reviews and ${analytics.dailyLimits.newRemaining} new cards remain in today's limits.`;
 }
 

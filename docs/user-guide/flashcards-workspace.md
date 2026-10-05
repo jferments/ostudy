@@ -1,32 +1,77 @@
-# Flashcards, authoring, and Search
+# Library Workbench, authoring, and search
 
-Library's **Decks** view has two visible tabs: **Decks** and **Search/Filter**. The compact Search label refers to the same workspace, and so does the **Search** button in the header. Reusable templates live in **Settings → Card templates**, not another tab. Import and export open from contextual deck actions; whole-library backup belongs in Settings → Backup/Sync.
+**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of views, subjects, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup/Sync.
 
-## Navigate between library, deck, and editor
+Documents and study guides are separate Library pages. Choose them under **More** in the tree; their page switcher's first item, **Workbench**, brings you back.
 
-Selecting Decks opens the deck list, including when a deck is already open. Choosing **Library** while its Decks view is open also returns to that list. An open deck provides **All decks** to return. Unsaved editor changes still receive the normal discard protection before navigation proceeds.
+## The tree
 
-The app keeps a device-local presentation checkpoint for useful destinations, including an explicitly open deck. It is not a copy of card content, credentials, or the entire screen state. A real practice session can resume over its logical launch destination. If the old deck no longer exists, the return destination safely falls back to the library. This recovery does not resurrect deleted content.
+The tree has four sections:
 
-Selecting decks is temporary interaction state. Opening a deck and returning can preserve unchanged active selections during the same process; changed or archived entries are removed. Selection is not written into the restart checkpoint.
+- **Views** lists library-wide card lists: **All cards**, **Due today**, **New**, **Often missed**, and **Suspended**.
+- **Subjects** lists your subjects in your order, each with its card count. Expand a subject to see its decks and documents. **No subject** holds decks and documents that are not filed under a subject. Archived decks sit behind **Archived decks (N)** at the end of the section. See [Subjects and deck organization](flashcards-organization.md).
+- **Tags** shows your eight most used tags; **Show all N tags** lists the rest.
+- **More** opens **Documents** and **Study guides**, and **Import deck…** starts a deck import.
+
+Choosing a view, subject, deck, or tag shows its cards in the list. Choosing a document opens Documents.
+
+## Screen sizes and going back
+
+On a wide window the tree, the card list, and the editor sit side by side, and you can drag the dividers between them to resize the panes. On a medium window the tree and the list sit side by side, and an open card's editor takes the list's place until you close it. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
+
+Android Back steps back inside the Workbench before leaving Library: on a phone from the card list to the tree, and on wider screens from a deck, subject, or tag to **All cards**. An open editor handles Back itself. Unsaved editor changes still ask before you discard them when you choose another place or another card.
+
+The app keeps a device-local presentation checkpoint for useful destinations, including the deck open in the Workbench. It is not a copy of card content, credentials, or the entire screen state. A real practice session can resume over its logical launch destination. If the deck no longer exists, the Workbench falls back to **All cards**. This recovery does not resurrect deleted content.
 
 ## Start from an empty library
 
-When no active or archived decks exist, the library shows one create-deck state. Choose **Create a new deck**, or use the **Import deck** button. There is no empty Unsorted section, empty folder tile, meaningless Select all, or Collapse all.
+When the library has no active decks, **All cards** shows **No cards yet** with **New deck** and **Import deck**. On a phone the tree's Subjects section offers **New deck** instead while you have no subjects, and each subject's menu has **New deck here**. There are no empty folder tiles, selection controls, or collapse controls to work around. An archived-only library still lists its decks under **Archived decks (N)**.
 
-Once decks exist, **New deck** becomes a toolbar action. Active decks expose optional folder organization. An archived-only library still exposes its archived content and is not presented as a brand-new empty library. See [Organization](flashcards-organization.md) for folders, selection, and keyboard movement.
+A new deck goes under the subject you created it in, or under No subject when you start it from the empty library. See [Subjects and deck organization](flashcards-organization.md) to file it later.
+
+## The card list
+
+The list shows the cards in the chosen view, subject, deck, or tag as dense rows. Each row shows the source unit when the card cites one (such as a slide or page number), the front, the card type, when it is due (**today**, **in 3 d**, **new**, or **suspended**), and its interval. On a phone each row shows the front with the type, source, and due date below it. More rows load as you scroll.
+
+Above the list:
+
+- The search box finds questions, answers, and tags within the current view, subject, deck, or tag.
+- **Sort** offers **Source order**, **Due first**, **Recently edited**, and **Recently studied**, plus **Best match** while you are searching. A deck or subject opens in source order and Due today opens due first.
+- For a subject, deck, or tag, the quick filters **All**, **Due**, **New**, and **Suspended** narrow the list and show their counts. Library-wide views set their own filters.
+
+Results describe actual study presentations: a forward and reverse card can appear separately, while a multi-blank cloze note appears once. An image-occlusion note can show several separately scheduled question presentations. Rows show compact question text; open a card to inspect its full rich content rather than treating truncation as missing data.
+
+## Select cards and act on them
+
+Use a row's checkbox to select it. Shift-click another checkbox to select the range between them. **Select shown** selects the loaded rows, and **Select all N** selects every card that matches the current list, including rows not loaded yet.
+
+A selection opens a toolbar with **Move…**, **Tag…**, and **Suspend**. Its overflow menu adds **Practice…**, **Remove tags…**, **Resume**, **Bury until tomorrow**, **Unbury**, **Reschedule…**, **Reset schedules…**, and **Delete cards…**. Narrower screens move more of these into the overflow. **Deselect all** clears the selection. Moving, tagging, and deleting act on notes, so they account for presentations that share one source note. Review the scope and confirmation before acting.
+
+**Practice…** opens **Practice these cards**: **Start practice** studies exactly the selected cards, and **Save as new deck** copies them into a new deck. Ending that practice returns to Library rather than a separate standing Practice tab. Schedule actions such as suspend, bury, reset, and reschedule alter availability or current schedules; they do not invent review events. [Practice and analytics](practice-and-analytics.md) explains those differences.
+
+Current tags shown on recent reviews in Progress open the Workbench on that tag's cards, by stable tag identity. Historical tag text remains readable but is not a link to a current tag.
 
 ## Open and manage a deck
 
-An open deck places **All decks**, its title/edit action, description, and actions in a clear vertical flow. Practice is the primary action. Secondary actions adapt to available width: export remains direct where space permits; archive/restore and delete are available in their appropriate action menu. Delete remains a deliberate destructive action rather than an accidental row gesture.
+Choose a deck in the tree to list its cards. The header names the deck and its subject and offers **Practice**, **New card**, and the deck's actions menu. Practice is unavailable for a deck with no cards. The menu offers:
 
-An archived deck is still readable, but practice is unavailable until restored. Archiving and deletion are different: archive retains recoverable material and its history; finalized deletion removes the data and analytics owned by the deleted material. Use Undo promptly when offered after deletion; it is a bounded recovery window, not a permanent trash archive.
+- **Bulk add…** for several plain-text cards at once.
+- **Practice with options…**, which opens **Practice selected decks**: choose **Scheduled study** or **Extra study**, optionally refine by tags, and choose whether to shuffle.
+- **Rename…**, **Move to subject…**, and **Merge into…**.
+- **Export…** to save the deck as a portable file.
+- **Archive** and **Delete deck**.
 
-Export one deck from its action, or select decks in the library and use the selected export control. Multiple selected decks produce separate portable files. Native system Share is offered for a single deck where supported. Opening the operating system's share sheet does not prove the receiving application completed the transfer. See [Backups and sharing](backups-imports-and-sharing.md).
+The same actions, plus **Move up** and **Move down**, are in the menu beside the deck in the tree. A subject's header offers **Practice…**, which opens the same practice options for the subject's decks, and **New deck**.
+
+**Merge into…** moves the deck's cards into another active deck while preserving card and note identities, schedules, review history, tags, media, and source provenance. The emptied source deck is archived afterward. Existing destination cards are not deduplicated just because their wording looks similar.
+
+An archived deck is still readable, but practice and new cards are unavailable until you choose **Restore** from its menu. Archiving and deletion are different: archive retains recoverable material and its history; finalized deletion removes the data and analytics owned by the deleted material. **Delete deck** asks for confirmation and then offers **Undo**. Use it promptly; it is a bounded recovery window, not a permanent trash archive.
+
+**Export…** saves one deck as a portable file. Opening the operating system's share sheet does not prove the receiving application completed the transfer. See [Backups and sharing](backups-imports-and-sharing.md).
 
 ## Add or edit cards
 
-Inside a deck, **Add flashcard** opens the full rich editor for that destination. **Bulk add** opens multi-row plain-text entry with the deck already fixed. You do not choose that destination again. Search is for finding/managing existing material, not a duplicate global card-creation workflow.
+In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. Above an existing card's editor, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Suspend** (or **Resume**) and **Reset** act on that one card. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
 
 Basic questions and answers support the editor's allowed formatting, lists, links, and managed images. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 
@@ -74,22 +119,8 @@ A template is useful for repeating structures such as term/definition, mechanism
 
 The Settings template tab is a full normal workspace. Once opened it can retain its editor state while another Settings tab is selected, and unsaved changes remain protected when leaving the area.
 
-## Search and filters
-
-Open **Search/Filter** for cross-library queries. Common controls stay visible: text, deck/folder scope, sort, and **All filters**. Less frequent availability, schedule, last-studied, tag, and scope criteria live in the filter sheet. Active criteria appear as removable chips so the current scope is visible.
-
-A deck's inline search is simpler and stays within that deck. Clearing global filters should not be confused with changing the underlying cards or schedules. A folder filter resolves current deck membership; it is not a temporary deck.
-
-Results describe actual study presentations: a forward and reverse card can appear separately, while a multi-blank cloze note appears once. An image-occlusion note can expose several separately scheduled question presentations. Previews use compact question/answer text; open a card to inspect its full rich content rather than treating truncation as missing data.
-
-**Select visible** selects only loaded rows. **Select all matching** resolves the complete current filtered identity set. Bulk move/copy/tag/delete operations account for presentations that share one source note. Review the scope and confirmation before acting.
-
-Use **Practice selected** for exact-card practice. Ending it returns to Search rather than a separate standing Practice tab. Schedule actions such as suspend, bury, reset, and reschedule alter availability/current schedules; they do not invent review events. [Practice and analytics](practice-and-analytics.md) explains those differences.
-
-Current tags shown on recent reviews in Progress can launch Search by stable tag identity. Historical tag text remains readable but is not a link to a current tag. If the target is no longer available, Search asks you to clear that unavailable filter explicitly instead of silently showing the whole library.
-
 ## Importing content
 
-The library's **Import deck** action accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
+**Import deck…** under More in the tree (or **Import deck** in an empty library) accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
 
-Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. A new imported deck appears in Unsorted decks until organized locally. Folder membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.
+Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. The Workbench opens the new deck, which starts under No subject until you file it. Subject membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.

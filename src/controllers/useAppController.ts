@@ -563,7 +563,15 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, ...analytics });
     }
     if (next === "decks") {
-      setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
+      // Coming back to Library reopens the deck the Workbench had open; choosing
+      // Library again from inside it returns to All cards.
+      const requestId = nextFlashcardsRequestId();
+      const returning = section !== "decks";
+      setFlashcardsRoute((current) =>
+        returning && current.view === "deck"
+          ? createFlashcardsDeckRoute(current.deckId, requestId)
+          : createFlashcardsRootRoute("decks", requestId),
+      );
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -590,8 +598,8 @@ export function useAppController() {
   /**
    * Opens Library from anywhere. No scope opens the view the learner used
    * last; `subjectId` puts that subject's decks in view (`null` is No
-   * subject's unsorted decks); `deckId` opens the deck. Today's views serve
-   * it until the Workbench replaces them and reads the scope itself.
+   * subject's unsorted decks); `deckId` opens the deck. The Workbench reads
+   * the scope from the Library route (see workbenchLaunchFor).
    */
   async function openLibrary(scope: LibraryScope = {}): Promise<void> {
     if (scope.deckId === undefined && scope.subjectId === undefined) {
@@ -620,7 +628,7 @@ export function useAppController() {
 
   /**
    * Opens a subject's page inside Home. No subject has no page of its own, so
-   * it opens Library: its unsorted decks, or Documents when it holds only
+   * it opens the Library Workbench on its unsorted cards, or Documents when it holds only
    * documents.
    */
   async function openSubject(
@@ -668,6 +676,21 @@ export function useAppController() {
         returnDeckSelection,
       ),
     );
+  }
+
+  /**
+   * Records where the Library Workbench is, without a new launch request, so
+   * practice returns to the open deck and a checkpoint reopens it.
+   */
+  function recordLibraryDeck(deckId: string | null): void {
+    setFlashcardsRoute((current) => {
+      if (deckId === null) {
+        return current.view === "deck" ? createFlashcardsRootRoute("decks", current.requestId) : current;
+      }
+      return current.view === "deck" && current.deckId === deckId
+        ? current
+        : createFlashcardsDeckRoute(deckId, current.requestId);
+    });
   }
 
   function openAnalyticsTagSearch(tagId: string): void {
@@ -844,6 +867,7 @@ export function useAppController() {
     homeSubjectId,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
+    recordLibraryDeck,
     openAnalyticsTagSearch,
     returnToFlashcardsLibrary,
     practiceDeck,

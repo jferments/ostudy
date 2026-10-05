@@ -191,9 +191,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     # Return to the existing card and open its contextual hint sheet. The sheet
     # must not reveal an answer, replace Practice, or start a different session.
     webdriver.open_library_view(session_id, "decks", deadline)
-    deck = webdriver.find_element(session_id, "xpath", f"//main//*[@role='button' and @aria-label={json.dumps('Open ' + deck_name)}]", deadline)
-    webdriver.click(session_id, deck)
-    webdriver.wait_for_main_heading(session_id, deck_name, deadline)
+    webdriver.open_workbench_deck(session_id, deck_name, deadline)
     practice = webdriver.wait_for_enabled_element(session_id, "xpath", "//main//button[normalize-space(.)='Practice']", deadline)
     webdriver.click(session_id, practice)
     hint = webdriver.wait_for_enabled_element(session_id, "css selector", "main button[aria-label='Get a flashcard hint']", deadline)
