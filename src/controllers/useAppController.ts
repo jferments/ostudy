@@ -37,10 +37,17 @@ import {
 } from "./practiceExitGuard";
 import { useRequestLane } from "./requestLane";
 
+/**
+ * Home and Review are destinations of their own. decks, study-guides and
+ * documents are Library's views and analytics is Progress; they keep their
+ * ids so saved checkpoints and launch requests still name them.
+ */
 export type AppSection =
+  | "home"
   | "decks"
   | "study-guides"
   | "documents"
+  | "review"
   | "tutor"
   | "analytics"
   | "settings";

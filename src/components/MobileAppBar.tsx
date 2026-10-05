@@ -4,9 +4,11 @@ import { BrandLockup } from "./Brand";
 import { CompactAppHeader } from "../ui/layout/AppFrame";
 
 const TITLES: Record<AppSection, string> = {
+  home: "Home",
   decks: "Flashcards",
   "study-guides": "Study Guides",
   documents: "Documents",
+  review: "Review",
   tutor: "Tutor",
   analytics: "Analytics",
   settings: "Settings",
