@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { PublicQuestion } from "../../ipc/questionAttempts";
@@ -28,20 +28,23 @@ function drag(tile: HTMLElement, target: HTMLElement) {
 }
 
 describe("clear category targets and editable connected matches", () => {
-  it("groups have distinct surfaces and headings while unplaced items stay neutral", () => {
+  it("groups have their own headings and drop areas while unplaced items stay neutral and outside them", () => {
     const question: Extract<PublicQuestion, { kind: "grouping" }> = {
       kind: "grouping", prompt: { text: "Group" }, categories: [item("Dogs"), item("Cats")], items: [item("Dachshund"), item("Siamese")],
     };
-    const { container } = render(<GroupingBoard question={question} assignments={[]} assets={[]} disabled={false}
+    const { container } = render(<GroupingBoard question={question} assets={[]} assignments={[]} disabled={false}
       evaluation={null} onChange={vi.fn()} onError={vi.fn()} />);
-    for (const category of container.querySelectorAll("[data-group-category]")) {
-      expect(category.className).toContain("tw:bg-accent");
-      expect(category.className).toContain("tw:border-2");
-    }
+    const categories = [...container.querySelectorAll<HTMLElement>("[data-group-category]")];
+    expect(categories.map((category) => category.dataset.practiceDropTargetId)).toEqual(["Dogs", "Cats"]);
     expect(screen.getAllByText("Group")).toHaveLength(2);
-    for (const tile of container.querySelectorAll("[data-question-item-id]")) {
-      expect(tile.className).toContain("tw:bg-background");
-      expect(tile.className).not.toContain("tw:bg-accent");
+    for (const category of categories) expect(within(category).getByRole("button").getAttribute("aria-expanded")).toBe("false");
+    const tiles = [...container.querySelectorAll<HTMLElement>("[data-question-item-id]")];
+    expect(tiles.map((tile) => tile.dataset.questionItemId)).toEqual(["Dachshund", "Siamese"]);
+    for (const tile of tiles) {
+      expect(tile.closest("[data-group-category]")).toBeNull();
+      expect(within(tile).getByRole("button").getAttribute("aria-pressed")).toBe("false");
+      expect(tile.dataset.connected).toBeUndefined();
+      expect(tile.dataset.result).toBeUndefined();
     }
   });
 
@@ -49,7 +52,9 @@ describe("clear category targets and editable connected matches", () => {
     const { container } = render(<Harness />);
     const left = container.querySelector<HTMLElement>('[data-question-item-id="A"]')!;
     const right = container.querySelector<HTMLElement>('[data-match-target="Y"]')!;
-    expect(left.getAttribute("aria-disabled")).toBe("false");
+    expect((within(left).getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+    expect(left.dataset.connected).toBe("true");
+    expect(right.dataset.connected).toBe("true");
     expect(left.className).toContain("tw:bg-accent");
     expect(right.className).toContain("tw:bg-accent");
     expect(left.getAttribute("data-result")).toBeNull();

@@ -127,7 +127,7 @@ describe("ActivePractice media isolation", () => {
     fireEvent.keyDown(frontMedia, { key: "Enter" });
     fireEvent.keyDown(frontMedia, { key: " " });
     expect(view.props.onReveal).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Reveal answer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show answer" })).toBeTruthy();
 
     view.rerender(<ActivePractice {...view.props} revealed previewSet={previews} />);
     await waitFor(() => expect(screen.getByTestId("media-back")).toBeTruthy());

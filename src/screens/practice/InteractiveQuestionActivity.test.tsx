@@ -34,12 +34,15 @@ function mount(question: PublicQuestion) {
     disabled={false} onSave={onSave} onCheck={onCheck} onAttempt={vi.fn()} onChecked={onChecked} onError={vi.fn()} />);
   return { ...view, attempt, onSave, onCheck, onChecked };
 }
-function drag(tile: HTMLElement, target: HTMLElement, pointerType = "touch", cancel = false) {
+/** Presses a tile's button and drags. The tile captures the pointer, so the browser delivers
+ * the rest of the gesture to the tile rather than to its button. */
+function drag(handle: HTMLElement, target: HTMLElement, pointerType = "touch", cancel = false) {
+  const tile = required(handle.closest<HTMLElement>("[data-question-item-id]"), "dragged tile");
   for (const name of ["setPointerCapture", "releasePointerCapture", "hasPointerCapture"]) {
     Object.defineProperty(tile, name, { configurable: true, value: vi.fn(() => true) });
   }
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: vi.fn(() => target) });
-  fireEvent.pointerDown(tile, { pointerId: 7, button: 0, clientX: 1, clientY: 1, pointerType });
+  fireEvent.pointerDown(handle, { pointerId: 7, button: 0, clientX: 1, clientY: 1, pointerType });
   fireEvent.pointerMove(tile, { pointerId: 7, clientX: 50, clientY: 50, pointerType });
   if (cancel) fireEvent.pointerCancel(tile, { pointerId: 7, pointerType });
   else fireEvent.pointerUp(tile, { pointerId: 7, clientX: 50, clientY: 50, pointerType });
@@ -99,12 +102,30 @@ describe("interactive input and inline feedback", () => {
     const { onSave } = mount(matching);
     drag(screen.getByRole("button", { name: "Select Left A" }), screen.getByRole("button", { name: "Match with Right Y" }), "mouse");
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Select Left B" }).getAttribute("aria-disabled")).toBe("false"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select Left B" })).toHaveProperty("disabled", false));
     drag(screen.getByRole("button", { name: "Select Left B" }), screen.getByRole("button", { name: "Select Left C" }), "pen");
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
     expect(required(onSave.mock.calls.at(-1)?.[0], "latest save input").request.answer.response.assignments).toEqual([
       { itemId: id("a"), targetId: id("y") }, { itemId: id("b"), targetId: id("z") },
     ]);
+  });
+
+  it("names each tile and target by what it says and reads a tile's status as its description", async () => {
+    const { onSave } = mount(matching);
+    const tile = screen.getByRole("button", { name: "Select Left A" });
+    expect(tile.tagName).toBe("BUTTON");
+    expect(screen.getByRole("button", { name: "Match with Right Y" }).tagName).toBe("BUTTON");
+    fireEvent.click(tile);
+    expect(tile.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Match with Right Y" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Select Left A", description: "Connected" })).toBeTruthy();
+  });
+
+  it("names a tile without words by its place", () => {
+    mount({ ...matching, items: [{ id: id("a"), content: { type: "doc", content: [{ type: "paragraph" }] } }, ...matching.items.slice(1)] });
+    expect(screen.getByRole("button", { name: "Select item 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Select Left B" })).toBeTruthy();
   });
 
   it("will not silently displace a connected pair", () => {
@@ -187,6 +208,14 @@ describe("interactive input and inline feedback", () => {
     expect(within(tile as HTMLElement).getByText("Right Y")).toBeTruthy();
     expect(within(tile as HTMLElement).getByText("→ Correct match:")).toBeTruthy();
     expect(screen.queryByText("Correct placement")).toBeNull();
+  });
+
+  it("leaves a checked board as readable content without tile buttons", () => {
+    showFeedback(matching, { kind: "matching", assignments: [{ itemId: id("a"), targetId: id("x") }] },
+      evaluation([{ kind: "placement", itemId: id("a"), selectedTargetId: id("x"), expectedTargetId: id("y"), rationale: null }], "incorrect"));
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.getByText("Left A")).toBeTruthy();
+    expect(screen.getByText("Incorrect match")).toBeTruthy();
   });
 
   it("grouping reveals all placed items with per-item results in their chosen groups", () => {

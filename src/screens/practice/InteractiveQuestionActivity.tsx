@@ -13,12 +13,14 @@ type InteractiveQuestionActivityProps = Omit<ObjectiveProps, "attempt" | "onAtte
 };
 
 /** A self-assessed image has its own reveal interaction, not an empty objective
- * answer. Both adapters return to the same captured-session/rating host.
+ * answer. Both adapters return to the same captured-session/rating host, and both
+ * put their one action (Check answer or Reveal answer) in the host's action slot
+ * when it offers one, where Show answer and the ratings also sit.
  */
 export function InteractiveQuestionActivity(props: InteractiveQuestionActivityProps) {
   if (isImageOcclusionAttempt(props.attempt)) {
     return <ImageOcclusionActivity sessionId={props.sessionId} cardId={props.cardId}
-      attempt={props.attempt} assets={props.assets} disabled={props.disabled}
+      attempt={props.attempt} assets={props.assets} disabled={props.disabled} actionSlot={props.actionSlot}
       onReveal={props.onReveal ?? unavailableReveal} onAttempt={props.onAttempt} onRevealed={props.onChecked} onError={props.onError} />;
   }
   return <ObjectiveQuestionActivity {...props} attempt={props.attempt} />;
