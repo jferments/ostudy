@@ -56,6 +56,12 @@ const card: CardBrowserRow = {
   needsMorePractice: false,
   createdAt: 1,
   updatedAt: 1,
+  intervalDays: 0,
+  lapses: 0,
+  stability: 0,
+  difficulty: 0,
+  sourceUnitKind: null,
+  sourceUnit: null,
 };
 
 beforeEach(() => {
