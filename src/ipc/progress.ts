@@ -10,7 +10,7 @@ import type {
   TimelineBucket,
 } from "./analytics";
 
-/** The scope every scoped Progress section shares. Subjects and decks are a union. */
+/** The scope every scoped Progress section shares. Each non-empty filter narrows it further. */
 export interface ProgressQuery {
   range: AnalyticsRange;
   subjectIds: string[];
