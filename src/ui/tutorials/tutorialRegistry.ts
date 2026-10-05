@@ -21,14 +21,14 @@ export interface TutorialModule {
 export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>> = {
   orientation: {
     id: "orientation",
-    version: 3,
+    version: 4,
     title: "Welcome to ostudy",
     steps: [
       {
-        id: "flashcards-workspaces",
+        id: "library-workbench",
         title: "Everything for flashcards lives together",
-        body: "Library's Decks view has your decks and Search/Filter for every card. Open a deck to add one card or bulk add many cards to that deck; import and export sit beside the decks.",
-        anchor: "flashcards.workspaces",
+        body: "Library lists your subjects with their decks and documents. Choose a subject, deck, view or tag to see its cards; open a card to edit it beside the list. Each subject and deck has a menu for renaming, moving, import and export.",
+        anchor: "library.workbench",
         placement: "bottom",
       },
       {
@@ -42,13 +42,13 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
   },
   search: {
     id: "search",
-    version: 1,
+    version: 2,
     title: "Find and manage cards",
     steps: [
       {
         id: "filters",
-        title: "Keep the ordinary view simple",
-        body: "Search, deck scope, and sort stay visible. Open All filters for study state, folders, tags, and scheduling status; applied filters return as removable chips.",
+        title: "Search inside what you chose",
+        body: "Search and sort work inside the subject, deck, view or tag chosen on the left, and the filters below them narrow it to due, new or suspended cards. Select cards to move, tag, suspend or reschedule them together.",
         anchor: "search.filters",
         placement: "bottom",
         helpTopicId: "flashcards.search.studyState",

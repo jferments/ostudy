@@ -85,6 +85,8 @@ function renderWorkbench(width = 1400, launch?: WorkbenchLaunch) {
     launch,
     onPracticeDeck: vi.fn(),
     onPracticeCards: vi.fn(),
+    onPracticeSelected: vi.fn(),
+    practiceShuffle: true,
     onOpenDocuments: vi.fn(),
     onOpenStudyGuides: vi.fn(),
     onCardDirtyChange: vi.fn(),

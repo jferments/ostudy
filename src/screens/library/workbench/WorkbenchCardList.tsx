@@ -109,7 +109,7 @@ export function WorkbenchCardList({
           </div>
           {actions ? <div className="tw:flex tw:shrink-0 tw:flex-wrap tw:items-center tw:gap-2">{actions}</div> : null}
         </div>
-        <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
+        <div data-tour-anchor="search.filters" className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
           <label className="tw:relative tw:flex tw:min-w-0 tw:flex-[1_1_14rem] tw:items-center">
             <span className="sr-only">Search cards</span>
             <Icon name="search" size={16} className="tw:pointer-events-none tw:absolute tw:left-3 tw:text-muted-foreground" />

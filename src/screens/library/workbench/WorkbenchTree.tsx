@@ -99,7 +99,7 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
   }
 
   return (
-    <nav aria-label="Library" className="tw:grid tw:min-w-0 tw:content-start tw:gap-5 tw:pb-4">
+    <nav aria-label="Library" data-tour-anchor="library.workbench" className="tw:grid tw:min-w-0 tw:content-start tw:gap-5 tw:pb-4">
       <TreeSection title="Views">
         {VIEWS.map((entry) => (
           <TreeEntry

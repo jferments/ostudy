@@ -212,6 +212,8 @@ function App() {
                                 launch={workbenchLaunchFor(controller.flashcardsRoute)}
                                 onPracticeDeck={controller.practiceDeck}
                                 onPracticeCards={controller.practiceCards}
+                                onPracticeSelected={(request) => controller.practiceSelected(request, [])}
+                                practiceShuffle={controller.activeSettings.practiceShuffle}
                                 onOpenDocuments={() => navigate("documents")}
                                 onOpenStudyGuides={() => navigate("study-guides")}
                                 onCardDirtyChange={controller.setHasUnsavedCard}

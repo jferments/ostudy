@@ -9,7 +9,9 @@ import type { CardBrowserRow, CardSort, SelectionCard } from "../../../ipc/cards
 import { createMutationId, createOperationId, getErrorCode, getErrorMessage } from "../../../ipc/common";
 import type { DeckSummary, MergeDecksInput } from "../../../ipc/decks";
 import type { DocumentSummary } from "../../../ipc/documents";
+import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import type { ScheduleAction } from "../../../ipc/scheduling";
+import { getSubjectLibrary, moveDeckToSubject } from "../../../ipc/subjects";
 import type { OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../../ui/overlays/overlayContext";
@@ -28,6 +30,8 @@ import { ScheduleActionModal } from "../../cards/ScheduleActionModal";
 import { scheduleActionNotice } from "../../cards/scheduleActionResult";
 import { DeckMergeSheet } from "../../flashcards/DeckMergeSheet";
 import { DeckTransferDialog, type DeckTransferDialogRequest } from "../../flashcards/DeckTransferDialog";
+import { PracticeSetupSheet } from "../../flashcards/deck-library/PracticeSetupSheet";
+import type { PracticeDeckScope } from "../../flashcards/deck-library/practiceSetupModel";
 import { CheckTheseSheet } from "../../home/CheckTheseSheet";
 import { NewSubjectSheet } from "../../home/NewSubjectSheet";
 import { CardScheduleSummary } from "./CardScheduleSummary";
@@ -38,6 +42,7 @@ import { MoveToSubjectSheet, NameSheet } from "./WorkbenchSheets";
 import { WorkbenchTree } from "./WorkbenchTree";
 import {
   CARD_FILTERS,
+  decksInSubject,
   DEFAULT_SCOPE,
   defaultSort,
   sameScope,
@@ -64,6 +69,9 @@ export interface LibraryWorkbenchProps {
   launch?: WorkbenchLaunch;
   onPracticeDeck: (deckId: string) => void | Promise<void>;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
+  /** Practice with options: scheduled or extra cards, tags and shuffle. */
+  onPracticeSelected: (request: SelectedPracticeRequest) => void | Promise<void>;
+  practiceShuffle: boolean;
   onOpenDocuments: () => void;
   onOpenStudyGuides: () => void;
   onCardDirtyChange: (dirty: boolean) => void;
@@ -85,7 +93,8 @@ type Sheet =
   | { kind: "tag-cards"; mode: "add" | "remove" }
   | { kind: "delete-cards" }
   | { kind: "schedule-cards"; action: "reschedule" | "reset"; cards: SelectionCard[] }
-  | { kind: "practice-cards" };
+  | { kind: "practice-cards" }
+  | { kind: "practice-setup"; scope: PracticeDeckScope };
 
 type Editor =
   | { kind: "card"; row: CardBrowserRow; note: AuthoringNote }
@@ -109,6 +118,8 @@ export function LibraryWorkbench({
   launch,
   onPracticeDeck,
   onPracticeCards,
+  onPracticeSelected,
+  practiceShuffle,
   onOpenDocuments,
   onOpenStudyGuides,
   onCardDirtyChange,
@@ -419,13 +430,47 @@ export function LibraryWorkbench({
     }
     return [
       { id: "practice", label: "Practice", disabled: deck.generatedCardCount === 0, onSelect: () => void onPracticeDeck(deck.id) },
+      { id: "practice-options", label: "Practice with options…", disabled: deck.generatedCardCount === 0, onSelect: () => beginPracticeSetup([deck]) },
       { id: "rename", label: "Rename…", onSelect: () => setSheet({ kind: "rename-deck", deck }) },
       { id: "move", label: "Move to subject…", onSelect: () => setSheet({ kind: "move-deck", deck }) },
+      { id: "up", label: "Move up", onSelect: () => void moveDeckBy(deck, -1) },
+      { id: "down", label: "Move down", onSelect: () => void moveDeckBy(deck, 1) },
       { id: "merge", label: "Merge into…", disabled: deck.sourceNoteCount === 0, onSelect: () => beginMerge(deck) },
       { id: "export", label: "Export…", onSelect: () => setSheet({ kind: "transfer", request: { kind: "export", decks: [deck] } }) },
       { id: "archive", label: "Archive", onSelect: () => void setArchived(deck, true) },
       { id: "delete", label: "Delete deck", destructive: true, onSelect: () => void deleteDeck(deck) },
     ];
+  }
+
+  function beginPracticeSetup(scopeDecks: readonly DeckSummary[]): void {
+    const studyable = scopeDecks.filter((deck) => deck.archivedAt === null && deck.generatedCardCount > 0);
+    if (studyable.length === 0) {
+      showToast("info", "These decks have no cards to practice yet.");
+      return;
+    }
+    const snapshots = studyable
+      .map((deck) => ({ id: deck.id, name: deck.name, revision: deck.revision, generatedCardCount: deck.generatedCardCount }))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    setSheet({ kind: "practice-setup", scope: { deckIds: snapshots.map((deck) => deck.id), decks: snapshots } });
+  }
+
+  async function moveDeckBy(deck: DeckSummary, offset: -1 | 1): Promise<void> {
+    const subjectId = subjectOfDeck(library, deck.id);
+    const siblings = decksInSubject(library, subjectId);
+    const index = siblings.findIndex((candidate) => candidate.id === deck.id);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= siblings.length) return;
+    try {
+      const current = await getSubjectLibrary();
+      libraryState.acceptOrganization(await moveDeckToSubject({
+        deckId: deck.id,
+        subjectId,
+        targetIndex: target,
+        expectedLibraryRevision: current.libraryRevision,
+      }));
+    } catch (caught: unknown) {
+      showToast("error", getErrorMessage(caught));
+    }
   }
 
   function documentMenu(document: DocumentSummary): OverflowMenuItem[] {
@@ -501,12 +546,22 @@ export function LibraryWorkbench({
           ...(scopeDeck.archivedAt === null
             ? [{ id: "bulk", label: "Bulk add…", onSelect: () => setSheet({ kind: "bulk-add", deckId: scopeDeck.id }) }]
             : []),
-          ...deckMenu(scopeDeck).filter((item) => item.id !== "practice"),
+          ...deckMenu(scopeDeck).filter((item) => item.id !== "practice" && item.id !== "up" && item.id !== "down"),
         ]}
       />
     </>
   ) : scope.kind === "subject" ? (
-    <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "new-deck", subjectId: scope.subjectId })}>New deck</Button>
+    <>
+      <Button
+        variant="secondary"
+        size="small"
+        disabled={decksInSubject(library, scope.subjectId).every((deck) => deck.generatedCardCount === 0)}
+        onClick={() => beginPracticeSetup(decksInSubject(library, scope.subjectId))}
+      >
+        Practice…
+      </Button>
+      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "new-deck", subjectId: scope.subjectId })}>New deck</Button>
+    </>
   ) : null;
 
   const empty = emptyCopy(scope, filter, query, scopeDeck);
@@ -761,6 +816,19 @@ export function LibraryWorkbench({
       case "schedule-cards":
         return (
           <ScheduleActionModal cards={sheet.cards} action={sheet.action} onClose={close} onComplete={refreshAfterMutation} showToast={showToast} />
+        );
+      case "practice-setup":
+        return (
+          <PracticeSetupSheet
+            scope={sheet.scope}
+            currentDecks={decks}
+            initialShuffle={practiceShuffle}
+            onClose={close}
+            onStart={async (request) => {
+              close();
+              await onPracticeSelected(request);
+            }}
+          />
         );
       case "practice-cards":
         return (
