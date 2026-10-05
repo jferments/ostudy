@@ -9,7 +9,7 @@ import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { ItemTrigger } from "../../ui/primitives/Item";
 
 const VIEWS: Readonly<Record<LibrarySection, { label: string; icon: IconName }>> = {
-  decks: { label: "Decks", icon: "cards" },
+  decks: { label: "Workbench", icon: "cards" },
   documents: { label: "Documents", icon: "document" },
   "study-guides": { label: "Study guides", icon: "study-guide" },
 };
