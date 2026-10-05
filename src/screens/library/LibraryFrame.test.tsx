@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LibrarySection } from "../../navigation/appDestinations";
 import { matchesLayoutQuery } from "../../test/viewport";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
-import { LibraryFrame } from "./LibraryFrame";
+import { LibraryFrame, useLibraryFullPage } from "./LibraryFrame";
 
 const media = window.matchMedia;
 afterEach(() => {
@@ -79,5 +80,37 @@ describe("LibraryFrame", () => {
     expect(screen.getByRole("navigation", { name: "Library" })).toBe(switcher);
     expect(screen.getByRole("heading", { name: "Hosted documents" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Hosted decks" })).toBeNull();
+  });
+
+  it("steps aside while a hosted view shows a page of its own", () => {
+    function Guides({ open }: { open: boolean }) {
+      useLibraryFullPage(open);
+      return <h1>{open ? "Open guide" : "Study Guides"}</h1>;
+    }
+    setViewport(1440);
+    const frame = (content: ReactNode) => (
+      <LayoutModeProvider>
+        <LibraryFrame view="study-guides" onSelectView={vi.fn()}>
+          {content}
+        </LibraryFrame>
+      </LayoutModeProvider>
+    );
+    const { rerender } = render(frame(<Guides open />));
+    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    // Without the frame's inset, the page's own sticky top bar reaches the edges.
+    expect(screen.getByTestId("library").className).toContain("tw:p-0");
+    const heading = screen.getByRole("heading", { name: "Open guide" });
+
+    rerender(frame(<Guides open={false} />));
+    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(screen.getByTestId("library").className).toContain("tw:px-page");
+    // The view stays mounted while the switcher comes and goes.
+    expect(screen.getByRole("heading", { name: "Study Guides" })).toBe(heading);
+
+    // A view that leaves with its page open brings the switcher back too.
+    rerender(frame(<Guides open />));
+    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    rerender(frame(<h1>Hosted decks</h1>));
+    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
   });
 });
