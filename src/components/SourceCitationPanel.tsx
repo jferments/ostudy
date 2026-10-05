@@ -25,16 +25,16 @@ export function SourceCitationPanel({ deckId, noteId, compact = false }: SourceC
   if (errorMessage) return <InlineNotice kind="warning">Source details could not be loaded: {errorMessage}</InlineNotice>;
   if (citations.length === 0) return null;
   return (
-    <Panel className={compact ? "tw:my-3 tw:text-sm" : "tw:my-5"}
+    <Panel className={compact ? "tw:my-3 tw:text-small" : "tw:my-5"}
       aria-label={citations.length === 1 ? "Source" : "Sources"} data-source-citation-panel>
-      <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:text-sm tw:[&>span]:text-xs tw:[&>span]:text-muted-foreground">
+      <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:text-small tw:[&>span]:text-caption tw:[&>span]:text-muted-foreground">
         <strong>{citations.length === 1 ? "Source" : "Sources"}</strong>
         <span>{citations.length} preserved {citations.length === 1 ? "citation" : "citations"}</span>
       </div>
       <div className="tw:grid tw:min-w-0 tw:gap-3">
         {citations.map((citation) => (
           <article className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:rounded-lg tw:bg-background tw:p-3" key={citation.citationId}>
-            <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words tw:[&>span]:text-sm tw:[&>span]:text-muted-foreground tw:[&>small]:text-xs tw:[&>small]:text-muted-foreground">
+            <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words tw:[&>span]:text-small tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground">
               <strong>{citation.sourceTitle}</strong><span>{formatSource(citation)}</span>
               {citation.sourceLocator ? <small>{formatLocator(citation)}</small> : null}
             </div>

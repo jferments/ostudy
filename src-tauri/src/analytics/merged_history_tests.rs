@@ -116,3 +116,33 @@ fn a_deck_filter_counts_merged_reviews_in_the_original_deck() {
     .unwrap();
     assert_eq!(misc.history.review_count, 0);
 }
+
+#[test]
+fn a_dated_window_counts_merged_reviews_under_their_originals() {
+    let mut connection = release_library(5);
+    seed(&connection);
+    advance_release_library(&connection, 5, 6);
+
+    // A dated window over the whole library starts from the review dates, a
+    // different join from the all-time and deck views above.
+    let analytics = load_analytics(
+        &mut connection,
+        AnalyticsQueryDto {
+            range: "custom".to_string(),
+            custom_start_local_date: Some("2025-10-01".to_string()),
+            custom_end_local_date: Some("2025-10-31".to_string()),
+            ..all_time()
+        },
+    )
+    .unwrap();
+    assert_eq!(analytics.history.review_count, 12);
+    assert_eq!(analytics.history.cards_practiced, 8);
+    assert_eq!(
+        analytics
+            .question_types
+            .iter()
+            .map(|kind| kind.review_count)
+            .sum::<i64>(),
+        12
+    );
+}

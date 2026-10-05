@@ -17,7 +17,7 @@ export function Progress({ value, max, label, className, size = "medium", tone =
   const progressStyle = { "--progress-value": fraction, "--progress-percent": `${fraction * 100}%` } as ProgressStyle;
   const contentClass = "tw:pointer-events-none tw:absolute tw:inset-0 tw:grid tw:min-w-0 tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-3 tw:px-3 tw:whitespace-nowrap tw:[&>span]:truncate";
   return <div className={cn("tw:grid tw:min-w-0 tw:gap-2", className)} data-progress-variant={inline ? "inline-content" : "standard"}>
-    {text ? <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3 tw:text-sm tw:text-muted-foreground">{text}</div> : null}
+    {text ? <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3 tw:text-small tw:text-muted-foreground">{text}</div> : null}
     <ProgressBar value={value === null ? null : accessibleValue} max={accessibleMax} label={label} valueText={valueText} style={progressStyle} size={size} className={styles[tone]} inline={inline}>
       {inline ? <>
         <div className={cn(contentClass, "tw:text-foreground tw:forced-colors:text-[CanvasText]")} data-progress-content-layer="unfilled" aria-hidden="true"><span>{inlineContent.start}</span><span>{inlineContent.end}</span></div>

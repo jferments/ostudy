@@ -9,6 +9,7 @@ use crate::{
 use super::{
     history::rate,
     scope::{AnalyticsContext, HistoryPeriod},
+    signals::RequestSignals,
     DeckAnalyticsDto, TagAnalyticsDto,
 };
 
@@ -17,13 +18,13 @@ const MIN_CLASSIFICATION_REVIEWS: i64 = 5;
 pub fn load_decks(
     connection: &Connection,
     context: &AnalyticsContext,
+    signals: &RequestSignals<'_>,
 ) -> Result<Vec<DeckAnalyticsDto>, CommandError> {
     let mut values = vec![SqlValue::Integer(context.time.now_utc_millis)];
     let current_conditions = context.current_card_conditions(&mut values);
     let history_conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
     let sql = format!(
-        "WITH {signals},
-         current_stats AS (
+        "WITH current_stats AS (
              SELECT
                  c.deck_id,
                  COUNT(DISTINCT n.id) AS source_note_count,
@@ -52,12 +53,7 @@ pub fn load_decks(
                  AVG(CAST(r.response_time_ms AS REAL)) AS average_response_time_ms,
                  COALESCE(SUM(r.response_time_ms), 0) AS total_study_time_ms,
                  MAX(r.reviewed_at) AS last_practiced_at
-             FROM review_events r
-             JOIN review_event_attributions a ON a.review_event_id = r.id
-             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-             JOIN notes n ON n.id = c.note_id
-             JOIN decks d ON d.id = c.deck_id
+             FROM {history_from}
              WHERE {history_conditions}
              GROUP BY c.deck_id
          )
@@ -88,12 +84,12 @@ pub fn load_decks(
              COALESCE(hs.review_count, 0) DESC,
              d.name COLLATE NOCASE,
              d.id",
-        signals = signal_projection::LEARNING_SIGNAL_CTES,
         studyable = studyability::studyable_card_sql("?1"),
         studyable_due = studyability::studyable_due_sql("?1"),
         signal_value = signal_projection::value_sql(),
-        signal_join = signal_projection::join_sql(),
+        signal_join = signals.join_sql(),
         current_conditions = current_conditions.join(" AND "),
+        history_from = context.history_from_sql(),
         history_conditions = history_conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -129,6 +125,7 @@ pub fn load_decks(
 pub fn load_tags(
     connection: &Connection,
     context: &AnalyticsContext,
+    signals: &RequestSignals<'_>,
     desired_retention: f64,
 ) -> Result<Vec<TagAnalyticsDto>, CommandError> {
     let mut values = vec![SqlValue::Integer(context.time.now_utc_millis)];
@@ -150,8 +147,7 @@ pub fn load_tags(
     };
 
     let sql = format!(
-        "WITH {signals},
-         current_scoped_cards AS (
+        "WITH current_scoped_cards AS (
              SELECT
                  c.id AS card_id,
                  n.id AS note_id,
@@ -201,13 +197,8 @@ pub fn load_tags(
                  COALESCE(SUM(CASE
                      WHEN {previous_predicate} THEN r.answer_correct ELSE 0
                  END), 0) AS previous_correct_count
-             FROM review_events r
-             JOIN review_event_attributions a ON a.review_event_id = r.id
-             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-             JOIN notes n ON n.id = c.note_id
-             JOIN decks d ON d.id = c.deck_id
-             JOIN review_event_tag_attributions rta ON rta.review_event_id = r.id
+             FROM {history_from}
+             CROSS JOIN review_event_tag_attributions rta ON rta.review_event_id = r.id
              WHERE {history_conditions}
              GROUP BY rta.tag_id
          ),
@@ -238,14 +229,14 @@ pub fn load_tags(
          LEFT JOIN tags t ON t.id = keys.tag_id
          LEFT JOIN current_tag_stats cts ON cts.tag_id = keys.tag_id
          LEFT JOIN historical_tag_stats hts ON hts.tag_id = keys.tag_id",
-        signals = signal_projection::LEARNING_SIGNAL_CTES,
         studyable = studyability::studyable_card_sql("?1"),
         studyable_due = studyability::studyable_due_sql("?1"),
         signal_value = signal_projection::value_sql(),
-        signal_join = signal_projection::join_sql(),
+        signal_join = signals.join_sql(),
         current_conditions = current_conditions.join(" AND "),
         current_predicate = current_predicate,
         previous_predicate = previous_predicate,
+        history_from = context.history_from_sql(),
         history_conditions = history_conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;

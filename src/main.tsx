@@ -1,3 +1,6 @@
+// First import: the foundation stylesheet declares the cascade layer order, and a
+// layer's first declaration fixes its place, so it must load before any CSS Module.
+import "./ui/foundations/index.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -8,7 +11,6 @@ import { installGlobalWebviewDiagnostics, queueFrontendDiagnostic } from "./ipc/
 import { PlatformProvider } from "./platform/PlatformProvider";
 import { installUiPerformanceBridge } from "./testing/uiPerformanceBridge";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
-import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
 import { OverlayProvider } from "./ui/overlays/OverlayProvider";
 

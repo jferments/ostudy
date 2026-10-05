@@ -207,6 +207,8 @@ Wall-clock WebKit/UI performance measurements are advisory/manual rather than re
 
 When performance is an acceptance criterion, collect new exact-source candidate evidence and compare against the intended stable baseline without rewriting historical data to manufacture success.
 
+For a UI change, [UI screenshots](ui-screenshots.md) captures the main screens of the base commit and the branch in every theme at phone, tablet and desktop widths and builds a before/after comparison page. The images are review evidence, not a gate.
+
 ## GitHub incidents
 
 GitHub control-plane failure is neither product pass nor product fail. When broad API/Actions/archive/webhook operations show repeated service failures or an official incident is active, preserve the exact branch head, determine whether ambiguous writes landed using bounded reads, keep unavailable qualification explicitly pending, and rerun the normal workflow after recovery. Do not change source, permissions, triggers, or PR state merely to force activity.

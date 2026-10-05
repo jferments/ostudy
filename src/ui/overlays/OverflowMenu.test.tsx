@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { OverlayProvider } from "./OverlayProvider";
 import { OverflowMenu } from "./OverflowMenu";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 const originalMatchMedia = window.matchMedia;
 afterEach(() => { window.matchMedia = originalMatchMedia; delete document.documentElement.dataset.theme; });
 function renderMenu(compact = false, triggerIcon: "overflow" | "timer" = "overflow") {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({ matches: compact && (query === "(max-width: 760px)" || query === "(max-width: 1180px)"), media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({ matches: matchesLayoutQuery(query, layoutWidths[compact ? "compact" : "wide"]), media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
   const onFirst = vi.fn();
   render(<LayoutModeProvider><OverlayProvider><OverflowMenu label="Card actions" triggerIcon={triggerIcon} items={[
     { id: "first", label: "First", onSelect: onFirst }, { id: "disabled", label: "Disabled", disabled: true, onSelect: vi.fn() }, { id: "last", label: "Last", onSelect: vi.fn() }, { id: "delete", label: "Delete", destructive: true, onSelect: vi.fn() },

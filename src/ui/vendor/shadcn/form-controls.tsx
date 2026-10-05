@@ -20,7 +20,7 @@ export function Checkbox({ className, ...props }: Styled<CheckboxPrimitive.Root.
       "tw:relative tw:inline-flex tw:size-5 tw:shrink-0 tw:items-center tw:justify-center tw:rounded-sm tw:border tw:border-solid tw:border-input tw:bg-background tw:text-primary-foreground tw:transition-colors tw:data-checked:border-primary tw:data-checked:bg-primary tw:data-indeterminate:border-primary tw:data-indeterminate:bg-primary tw:data-disabled:cursor-not-allowed tw:data-disabled:opacity-50 tw:coarse:size-6 tw:aria-invalid:border-destructive", focus, className,
     )}>
       <CheckboxPrimitive.Indicator className="tw:grid tw:place-items-center">
-        <Icon name={props.indeterminate ? "stop" : "check"} size={14} />
+        <Icon name={props.indeterminate ? "minus" : "check"} size={14} />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

@@ -41,11 +41,11 @@ export function MetricTile({
       )}
       data-tone={tone}
     >
-      <span className="tw:text-sm tw:font-medium tw:text-muted-foreground">{label}</span>
-      <strong className={cn("tw:break-words tw:font-semibold tw:leading-none tw:tracking-tight tw:tabular-nums tw:text-foreground", compact ? "tw:text-2xl" : "tw:text-3xl")}>
+      <span className="tw:text-small tw:font-medium tw:text-muted-foreground">{label}</span>
+      <strong className={cn("tw:break-words tw:font-semibold tw:leading-none tw:tracking-tight tw:tabular-nums tw:text-foreground", compact ? "tw:text-section" : "tw:text-title")}>
         {value}
       </strong>
-      {detail ? <small className="tw:text-xs tw:leading-relaxed tw:text-muted-foreground">{detail}</small> : null}
+      {detail ? <small className="tw:text-caption tw:leading-relaxed tw:text-muted-foreground">{detail}</small> : null}
     </Card>
   );
 }
@@ -92,7 +92,7 @@ export function DistributionBar({ label, segments }: { label: string; segments: 
           />
         ))}
       </div>
-      <figcaption className="tw:grid tw:min-w-0 tw:grid-cols-2 tw:gap-x-5 tw:gap-y-2 tw:text-sm tw:text-muted-foreground tw:sm:flex tw:sm:flex-wrap">
+      <figcaption className="tw:grid tw:min-w-0 tw:grid-cols-2 tw:gap-x-5 tw:gap-y-2 tw:text-small tw:text-muted-foreground tw:sm:flex tw:sm:flex-wrap">
         {segments.map((segment) => (
           <span key={segment.id} className="tw:inline-flex tw:min-w-0 tw:items-center tw:gap-2">
             <i className={cn("tw:size-2 tw:shrink-0 tw:rounded-full", colors[segment.tone])} data-tone={segment.tone} aria-hidden="true" />

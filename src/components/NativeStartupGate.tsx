@@ -111,7 +111,7 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
 
   return (
     <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
-      <div className="tw:mx-auto"><BrandMark /></div>
+      <div className="tw:mx-auto"><BrandMark className="tw:size-12" /></div>
       <h1 className="tw:m-0">{state === "failed" ? "Library recovery needs attention" : upgrade ? "Updating your oStudy library" : state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
       <p role="status" aria-live="polite" className="tw:m-0 tw:max-w-xl tw:text-muted-foreground">
         {state === "failed"

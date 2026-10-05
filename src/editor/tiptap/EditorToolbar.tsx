@@ -46,16 +46,16 @@ export function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, 
       <Toolbar label="Insert media and links" disabled={disabled}>
         <ToolbarGroup label="Quick insert">
           <ToolbarAction label="Insert image" onMouseDown={preserveSelection} onClick={onAddImage} disabled={isImportingImage || !imageDraftReady}>
-            <InsertGlyph kind="image" />
+            <Icon name="image" />
           </ToolbarAction>
           <ToolbarAction label="Add or edit link" pressed={adapter.isActive("link")} onMouseDown={preserveSelection} onClick={onOpenLink}>
-            <InsertGlyph kind="link" />
+            <Icon name="link" />
           </ToolbarAction>
           <ToolbarAction label="Insert or edit formula" onMouseDown={preserveSelection} onClick={onOpenFormula}>
-            <InsertGlyph kind="formula" />
+            <Icon name="formula" />
           </ToolbarAction>
           <ToolbarAction label="Insert audio or video" onMouseDown={preserveSelection} onClick={onAddMedia} disabled={isImportingMedia || !mediaDraftReady}>
-            <InsertGlyph kind="media" />
+            <Icon name="media" />
           </ToolbarAction>
         </ToolbarGroup>
       </Toolbar>
@@ -108,8 +108,8 @@ export function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, 
       </ToolbarGroup> : null}
     </Toolbar>
     <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:gap-3">
-      <label className="tw:grid tw:gap-1 tw:text-xs tw:text-muted-foreground">Text color<ColorField disabled={disabled} aria-label="Text color" value={normalizeColor(textStyle.color, "#d9e2f2")} onChange={(event) => run({ command: "set_text_color", value: event.currentTarget.value })} /></label>
-      <label className="tw:grid tw:gap-1 tw:text-xs tw:text-muted-foreground">Highlight<ColorField disabled={disabled} aria-label="Highlight color" value="#ffd166" onChange={(event) => run({ command: "set_highlight", value: event.currentTarget.value })} /></label>
+      <label className="tw:grid tw:gap-1 tw:text-caption tw:text-muted-foreground">Text color<ColorField disabled={disabled} aria-label="Text color" value={normalizeColor(textStyle.color, "#d9e2f2")} onChange={(event) => run({ command: "set_text_color", value: event.currentTarget.value })} /></label>
+      <label className="tw:grid tw:gap-1 tw:text-caption tw:text-muted-foreground">Highlight<ColorField disabled={disabled} aria-label="Highlight color" value="#ffd166" onChange={(event) => run({ command: "set_highlight", value: event.currentTarget.value })} /></label>
       <div className="tw:w-28"><NativeSelect disabled={disabled} aria-label="Insert symbol" defaultValue="" onChange={(event) => { const symbol = event.currentTarget.value; if (symbol !== "") { run({ command: "insert_text", value: symbol }); event.currentTarget.value = ""; } }}><option value="">Symbol</option>{SYMBOLS.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}</NativeSelect></div>
       <OverflowMenu disabled={disabled} label="Insert content" triggerPresentation="text" items={[{ id: "table", label: "Insert table", onSelect: onOpenTable }, { id: "answer-checklist", label: "Insert answer checklist", onSelect: onOpenChecklist }, { id: "divider", label: "Horizontal divider", onSelect: () => run({ command: "insert_horizontal_rule" }) }]} />
       <Button variant="text" size="small" disabled={disabled} onMouseDown={preserveSelection} onClick={() => run({ command: "reset_colors" })}>Reset color</Button>
@@ -131,14 +131,3 @@ const formatGlyphs: Record<string, string> = {
 };
 
 function normalizeColor(value: unknown, fallback: string): string { return typeof value === "string" && /^#[0-9a-f]{6}$/iu.test(value) ? value : fallback; }
-
-/** Local editor glyphs: no external icon/font/CDN dependency. */
-function InsertGlyph({ kind }: { kind: "image" | "link" | "formula" | "media" }) {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-    {kind === "image" ? <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 4 4 4-7 5 8" /></> : null}
-    {kind === "link" ? <><path d="m10 13 4-4M9 15l-2 2a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M13 9l2-2a3.5 3.5 0 1 1 5 5l-4 4a3.5 3.5 0 0 1-5 0" /></> : null}
-    {kind === "formula" ? <><path d="M7 20c2 0 2-2 2.5-5l1-6c.5-3 1-5 3.5-5M6 10h9m1 4 5 6m0-6-5 6" /></> : null}
-    {kind === "media" ? <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="m10 8 6 4-6 4z" /></> : null}
-  </svg>;
-}

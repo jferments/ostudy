@@ -149,7 +149,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
         <EmptyState title="No documents yet" description="Upload a course handout, chapter, presentation, or study packet to create learning materials." />
       ) : looseDocuments.length === 0 ? (
-        <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+        <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
           Every document is currently organized into a collection.
         </p>
       ) : (

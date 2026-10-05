@@ -75,8 +75,8 @@ export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: 
         <div className={styles.screen} aria-busy={isSaving}>
           <RadioGroup label="Action" name="transfer-mode" value={mode} onValueChange={setMode} disabled={isSaving}
             options={[
-              { value: "move", ariaLabel: "Move", label: <span><strong>Move</strong><span className="tw:block tw:mt-1 tw:text-sm tw:text-muted-foreground">Keep all review history and reattribute it to the destination deck.</span></span> },
-              { value: "copy", ariaLabel: "Copy", label: <span><strong>Copy</strong><span className="tw:block tw:mt-1 tw:text-sm tw:text-muted-foreground">Create new cards with fresh schedules in the destination.</span></span> },
+              { value: "move", ariaLabel: "Move", label: <span><strong>Move</strong><span className="tw:block tw:mt-1 tw:text-small tw:text-muted-foreground">Keep all review history and reattribute it to the destination deck.</span></span> },
+              { value: "copy", ariaLabel: "Copy", label: <span><strong>Copy</strong><span className="tw:block tw:mt-1 tw:text-small tw:text-muted-foreground">Create new cards with fresh schedules in the destination.</span></span> },
             ]} />
           <label className={styles.moveCopyDestination}>
             <span>Destination deck</span>

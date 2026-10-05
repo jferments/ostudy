@@ -21,8 +21,8 @@ export function GenerationSummary({ report }: { report: GenerationReport | null 
   const weightTotal = policy.allowedTypes.reduce((sum, kind) => sum + (policy.weights[kind] ?? 0), 0);
   return (
     <section aria-labelledby={heading} className="tw:mt-6 tw:grid tw:gap-3">
-      <h3 id={heading} className="tw:m-0 tw:text-base tw:font-semibold">Latest card generation</h3>
-      <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+      <h3 id={heading} className="tw:m-0 tw:text-body tw:font-semibold">Latest card generation</h3>
+      <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
         Completed {new Date(report.generatedAt).toLocaleString()}. These counts describe this pass, not the current deck.
       </p>
       <MetadataList>
@@ -35,7 +35,7 @@ export function GenerationSummary({ report }: { report: GenerationReport | null 
         <MetadataItem label="Compound item limit" value={String(policy.maxCompoundItems)} />
       </MetadataList>
       <div className="tw:max-w-full tw:overflow-x-auto">
-        <table className="tw:w-full tw:border-collapse tw:text-left tw:text-sm tw:[&_th]:p-2 tw:[&_td]:p-2">
+        <table className="tw:w-full tw:border-collapse tw:text-left tw:text-small tw:[&_th]:p-2 tw:[&_td]:p-2">
           <caption className="tw:sr-only">Requested soft mix and saved question workload</caption>
           <thead>
             <tr>
@@ -63,11 +63,11 @@ export function GenerationSummary({ report }: { report: GenerationReport | null 
           </tbody>
         </table>
       </div>
-      <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+      <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
         The requested mix is a preference, not a quota. Source fit and coverage take priority; missing formats do not require filler.
         Items count options, pairs, group members, ordered steps, or recall prompts. A compound board is still one scheduled card.
       </p>
-      <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+      <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
         Coverage counts distinct saved source units available to this pass, not all ideas in the document. Existing cards may already cover other units.
         Source links identify evidence; they do not certify that a generated answer is correct. Review generated material before relying on it.
       </p>

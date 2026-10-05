@@ -48,14 +48,14 @@ export function FormField({
   return (
     <div role="group" data-slot="field" className={cn("tw:flex tw:min-w-0 tw:w-full tw:flex-col tw:gap-1.5", className)}>
       <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
-        <label htmlFor={inputId} className="tw:min-w-0 tw:text-sm tw:font-medium tw:leading-none tw:text-foreground">
+        <label htmlFor={inputId} className="tw:min-w-0 tw:text-small tw:font-medium tw:leading-none tw:text-foreground">
           {label}
           {required ? <span aria-hidden="true"> *</span> : null}
         </label>
         {helpTopic ? <HelpTrigger topicId={helpTopic} label={`Help for ${label}`} /> : null}
       </div>
       {description ? (
-        <p id={descriptionId} data-slot="field-description" className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
+        <p id={descriptionId} data-slot="field-description" className="tw:m-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground">
           {description}
         </p>
       ) : null}
@@ -68,7 +68,7 @@ export function FormField({
           })
         : children}
       {error ? (
-        <p id={errorId} data-slot="field-error" className="tw:m-0 tw:text-sm tw:text-destructive" role="alert">
+        <p id={errorId} data-slot="field-error" className="tw:m-0 tw:text-small tw:text-destructive" role="alert">
           {error}
         </p>
       ) : null}
@@ -79,8 +79,8 @@ export function FormField({
 export function FieldGroup({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
     <fieldset data-slot="field-set" className="tw:m-0 tw:flex tw:min-w-0 tw:flex-col tw:gap-3 tw:border-0 tw:p-0">
-      <legend className="tw:mb-1 tw:px-0 tw:text-sm tw:font-medium tw:text-foreground">{label}</legend>
-      {description ? <p className="tw:-mt-2 tw:mb-1 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
+      <legend className="tw:mb-1 tw:px-0 tw:text-small tw:font-medium tw:text-foreground">{label}</legend>
+      {description ? <p className="tw:-mt-2 tw:mb-1 tw:text-small tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
       {children}
     </fieldset>
   );
@@ -100,7 +100,7 @@ export function FormStack({
 
 export function FieldError({ children }: { children: ReactNode }) {
   return (
-    <p data-slot="field-error" className="tw:mt-1 tw:text-sm tw:text-destructive" role="alert">
+    <p data-slot="field-error" className="tw:mt-1 tw:text-small tw:text-destructive" role="alert">
       {children}
     </p>
   );
@@ -115,7 +115,7 @@ export function SwitchRow({
     <label
       {...props}
       className={cn(
-        "tw:flex tw:min-h-10 tw:items-center tw:justify-between tw:gap-5 tw:py-2 tw:text-sm tw:[&_small]:block tw:[&_small]:mt-0.5 tw:[&_small]:text-sm tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground tw:coarse:min-h-touch",
+        "tw:flex tw:min-h-10 tw:items-center tw:justify-between tw:gap-5 tw:py-2 tw:text-small tw:[&_small]:block tw:[&_small]:mt-0.5 tw:[&_small]:text-small tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground tw:coarse:min-h-touch",
         className,
       )}
     >

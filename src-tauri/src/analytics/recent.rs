@@ -35,12 +35,7 @@ pub fn load_reviews(
                  r.due_after,
                  a.attribution_source,
                  r.created_at
-             FROM review_events r
-             JOIN review_event_attributions a ON a.review_event_id = r.id
-             LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-             JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-             JOIN notes n ON n.id = c.note_id
-             JOIN decks d ON d.id = c.deck_id
+             FROM {history_from}
              WHERE {conditions}
              ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC
              LIMIT {RECENT_REVIEW_LIMIT}
@@ -85,6 +80,7 @@ pub fn load_reviews(
          LEFT JOIN tags ON tags.id = current_tag_ids.tag_id
          ORDER BY recent.reviewed_at DESC, recent.created_at DESC, recent.id DESC,
                   resolved_tag_name COLLATE NOCASE ASC, rta.tag_id ASC",
+        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -168,18 +164,14 @@ pub fn load_sessions(
              ps.correct_count,
              COALESCE(SUM(r.response_time_ms), 0),
              MAX(r.reviewed_at)
-         FROM practice_sessions ps
-         JOIN review_events r ON r.session_id = ps.id
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
+         FROM {history_from}
+         CROSS JOIN practice_sessions ps ON ps.id = r.session_id
          WHERE {conditions}
          GROUP BY ps.id, ps.mode, ps.started_at, ps.completed_at,
                   ps.card_count, ps.rated_count, ps.correct_count
          ORDER BY MAX(r.reviewed_at) DESC, ps.started_at DESC, ps.id DESC
          LIMIT {RECENT_SESSION_LIMIT}",
+        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;

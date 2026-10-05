@@ -109,7 +109,7 @@ function ObjectiveDraftPreview({ draft, assets, disabled, onError }: QuestionDra
       <Button variant="primary" size="large" disabled={disabled || isChecking || !responseReady(response)}
         onClick={() => void checkAnswer()}>{isChecking ? "Checking…" : "Check answer"}</Button>
     </div> : null}
-    <p className="tw:text-xs tw:text-muted-foreground">
+    <p className="tw:text-caption tw:text-muted-foreground">
       Preview checking uses the native question evaluator but creates no attempt, review, schedule, or analytics event.
     </p>
   </section>;

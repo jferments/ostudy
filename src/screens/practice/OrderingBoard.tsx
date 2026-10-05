@@ -37,7 +37,7 @@ export function OrderingBoard({ question, orderedItemIds, assets, disabled, eval
   }
   const pointer = usePracticePointerDrop({ disabled, onDrop: drop, scopeRef: root });
   return <div className="tw:grid tw:gap-3">
-    {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Drag tiles into order, or use the arrow buttons.</p> : null}
+    {!evaluation ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">Drag tiles into order, or use the arrow buttons.</p> : null}
     <ol ref={root} className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0" aria-label="Current item order">
       {orderedItemIds.map((id, index) => {
         const item = items.get(id); if (!item) return null;
@@ -62,7 +62,7 @@ export function OrderingBoard({ question, orderedItemIds, assets, disabled, eval
           </div> : null}
         </li>;
       })}
-      {!disabled ? <li data-practice-drop-target-id="order-end" className={cn("tw:min-h-5 tw:rounded-lg tw:text-center tw:text-sm tw:text-muted-foreground", pointer.draggingItemId && "tw:min-h-11 tw:border tw:border-dashed tw:border-primary tw:p-2")}>
+      {!disabled ? <li data-practice-drop-target-id="order-end" className={cn("tw:min-h-5 tw:rounded-lg tw:text-center tw:text-small tw:text-muted-foreground", pointer.draggingItemId && "tw:min-h-11 tw:border tw:border-dashed tw:border-primary tw:p-2")}>
         {pointer.draggingItemId ? "Drop last" : null}
       </li> : null}
     </ol>

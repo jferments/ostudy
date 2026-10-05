@@ -37,7 +37,7 @@ export function GroupingQuestionEditor({
     <Surface className="tw:grid tw:gap-6 tw:p-5">
       <div className="tw:grid tw:gap-1">
         <h2>Grouping</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">
+        <p className="tw:text-small tw:text-muted-foreground">
           Define mutually exclusive categories, then assign every item to exactly one correct category.
         </p>
       </div>
@@ -70,7 +70,7 @@ export function GroupingQuestionEditor({
         <div className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
           <div className="tw:grid tw:gap-1">
             <h3 id="grouping-categories-heading">Categories</h3>
-            <p className="tw:text-sm tw:text-muted-foreground">Create 2–8 distinct destination groups.</p>
+            <p className="tw:text-small tw:text-muted-foreground">Create 2–8 distinct destination groups.</p>
           </div>
           <Button variant="secondary" disabled={disabled || draft.categories.length >= 8}
             onClick={() => onChange(addGroupingCategory(draft) as GroupingDraft)}>
@@ -117,7 +117,7 @@ export function GroupingQuestionEditor({
         <div className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
           <div className="tw:grid tw:gap-1">
             <h3 id="grouping-items-heading">Items</h3>
-            <p className="tw:text-sm tw:text-muted-foreground">Each item has one authored correct category.</p>
+            <p className="tw:text-small tw:text-muted-foreground">Each item has one authored correct category.</p>
           </div>
           <Button variant="secondary" disabled={disabled || draft.items.length >= 32}
             onClick={() => onChange(addGroupingItem(draft) as GroupingDraft)}>

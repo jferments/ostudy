@@ -26,12 +26,12 @@ export function AnswerChoices({ options, selectedIds, multiple, assets, disabled
       data-correct={result === undefined ? undefined : String(result.expected)}>
       <RichTextView document={option.content} assets={assets} onLinkError={onError} />
       {result ? <>
-        <div className={cn("tw:flex tw:items-center tw:gap-2 tw:text-sm tw:font-medium", result.expected ? "tw:text-success" : "tw:text-destructive")}>
+        <div className={cn("tw:flex tw:items-center tw:gap-2 tw:text-small tw:font-medium", result.expected ? "tw:text-success" : "tw:text-destructive")}>
           <Icon name={result.expected ? "check" : "close"} size={18} />
           <span>{result.expected ? "Correct answer" : "Incorrect answer"}</span>
           <span className="tw:text-muted-foreground">{result.selected ? "· Selected" : result.expected ? "· Missed" : "· Not selected"}</span>
         </div>
-        {result.rationale ? <div className="tw:text-sm"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
+        {result.rationale ? <div className="tw:text-small"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
       </> : null}
     </div>;
   }

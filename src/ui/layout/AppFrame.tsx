@@ -12,7 +12,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
       data-ui-root="true"
       data-frame-layout={layoutMode}
       className={cn(
-        "tw:relative tw:z-1 tw:grid tw:h-dvh tw:w-full tw:min-w-0 tw:overflow-hidden tw:bg-sidebar tw:font-sans tw:text-foreground",
+        "tw:relative tw:z-(--ostudy-layer-base) tw:grid tw:h-dvh tw:w-full tw:min-w-0 tw:overflow-hidden tw:bg-sidebar tw:font-sans tw:text-foreground",
         layoutMode === "compact"
           ? "tw:block tw:pt-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:pb-[calc(var(--ostudy-navigation-compact-height)+var(--safe-bottom))] tw:[[data-android-ime-visible=true]_&]:pb-(--android-ime-bottom)"
           : layoutMode === "medium"
@@ -44,7 +44,7 @@ export function CompactAppHeader({ className, ...props }: HTMLAttributes<HTMLEle
     <header
       {...props}
       className={cn(
-        "tw:fixed tw:inset-x-0 tw:top-0 tw:z-20 tw:hidden tw:min-h-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:grid-cols-[minmax(70px,1fr)_auto_minmax(70px,1fr)] tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:pt-(--safe-top) tw:pr-[max(1rem,var(--safe-right))] tw:pb-1 tw:pl-[max(1rem,var(--safe-left))] tw:max-[760px]:grid",
+        "tw:fixed tw:inset-x-0 tw:top-0 tw:z-(--ostudy-layer-chrome) tw:hidden tw:min-h-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:grid-cols-[minmax(70px,1fr)_auto_minmax(70px,1fr)] tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:pt-(--safe-top) tw:pr-[max(1rem,var(--safe-right))] tw:pb-1 tw:pl-[max(1rem,var(--safe-left))] tw:compact:grid",
         className,
       )}
     />

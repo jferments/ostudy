@@ -39,6 +39,9 @@ versions and their `/usr/share/doc/*/copyright` records.
 ### Local font assets
 
 IBM Plex Sans is the default interface and card family for new installations.
+IBM Plex Mono (600 and 700 static faces) is the Console theme's heading and
+wordmark face; it is theme-owned rather than a selectable preset and ships under
+the same IBM Plex OFL notice.
 It is not a package-manager dependency: `scripts/font-sources.mjs` records the
 Google Fonts provisioning source, requested Latin variable face, audited
 `OFL-1.1` metadata, and shipped notice. `scripts/install-local-fonts.mjs`
@@ -59,6 +62,15 @@ does not claim identical glyph metrics across platforms.
 This audit covers browser UI/card packaging only. IBM Plex faces for the native
 Study Guide PDF renderer, including print-specific styles and embedding, remain
 Stage 9 work.
+
+### Interface icons
+
+Interface icons are Lucide glyphs vendored as SVG path data in
+`src/ui/icons/Icon.tsx`; no icon package is installed or loaded at runtime. The
+glyphs were taken from `lucide-static` `1.52.0` and each case names its Lucide
+source icon. Lucide is ISC licensed, and the icons it derives from Feather carry
+Feather's MIT notice; both ship in `public/licenses/LUCIDE-ISC.txt`, which Vite
+copies into the distribution.
 
 ## Rust and local data
 

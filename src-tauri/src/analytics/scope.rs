@@ -17,6 +17,40 @@ const MAX_ANALYTICS_DECKS: usize = 256;
 const MAX_ANALYTICS_TAGS: usize = 64;
 const MAX_CUSTOM_RANGE_DAYS: i64 = 3_660;
 
+/// Review history for a dated window over the whole library: the captured
+/// local date selects the window through
+/// `review_event_attributions_local_date_idx`, and every other table is a key
+/// lookup, so the cost follows the reviews inside the window.
+///
+/// Both history sources count a review of a collection copy that release
+/// schema 6 merged into its original as a review of the original (`c` is the
+/// surviving card). The copy itself is never `c`.
+pub(super) const HISTORY_BY_LOCAL_DATE_SQL: &str = "review_event_attributions a
+         CROSS JOIN review_events r ON r.id = a.review_event_id
+         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
+         CROSS JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
+         CROSS JOIN notes n ON n.id = c.note_id
+         CROSS JOIN decks d ON d.id = c.deck_id";
+
+/// Review history for selected decks or for all time: walk each current card's
+/// reviews deck by deck, the order SQLite already chose for every history
+/// query without statistics. Selected decks are the narrow side; all time
+/// reads every review anyway, and this order measured faster than starting
+/// from the attributions. A card's reviews include those of the copies merged
+/// into it, and a retired copy is skipped even if it is no longer deleted.
+pub(super) const HISTORY_BY_DECK_SQL: &str = "decks d
+         CROSS JOIN cards c ON c.deck_id = d.id AND NOT EXISTS (
+             SELECT 1 FROM card_merges retired WHERE retired.retired_card_id = c.id
+         )
+         CROSS JOIN notes n ON n.id = c.note_id
+         CROSS JOIN review_events r ON r.card_id IN (
+             SELECT c.id
+             UNION ALL
+             SELECT merged.retired_card_id FROM card_merges merged
+             WHERE merged.surviving_card_id = c.id
+         )
+         CROSS JOIN review_event_attributions a ON a.review_event_id = r.id";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnalyticsRange {
     Days7,
@@ -181,6 +215,19 @@ impl AnalyticsContext {
             ));
         }
         conditions
+    }
+
+    /// The `FROM` source for history queries, in a loop order fixed with
+    /// `CROSS JOIN`. oStudy never collects `sqlite_stat1`; without it SQLite
+    /// walked every card's whole review history before applying the date
+    /// filter, so a 7-day view cost as much as all time. Pinning the order
+    /// makes the plan independent of planner statistics.
+    pub fn history_from_sql(&self) -> &'static str {
+        if self.window.current.is_some() && self.deck_ids.is_empty() {
+            HISTORY_BY_LOCAL_DATE_SQL
+        } else {
+            HISTORY_BY_DECK_SQL
+        }
     }
 
     pub fn historical_conditions(

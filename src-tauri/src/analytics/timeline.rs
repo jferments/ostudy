@@ -77,15 +77,11 @@ fn load_local_date_buckets(
              COALESCE(SUM(r.response_time_ms), 0),
              COUNT(DISTINCT r.session_id),
              {highlighted_sql}
-         FROM review_events r
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
+         FROM {history_from}
          WHERE {conditions}
          GROUP BY 1
          ORDER BY 1",
+        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -171,15 +167,11 @@ fn load_months(
              COALESCE(SUM(r.response_time_ms), 0),
              COUNT(DISTINCT r.session_id),
              {highlighted_sql}
-         FROM review_events r
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         LEFT JOIN card_merges merged ON merged.retired_card_id = r.card_id
-         JOIN cards c ON c.id = COALESCE(merged.surviving_card_id, r.card_id)
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
+         FROM {history_from}
          WHERE {conditions}
          GROUP BY 1
          ORDER BY 1",
+        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;

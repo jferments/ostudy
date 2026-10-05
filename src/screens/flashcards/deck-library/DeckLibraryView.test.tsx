@@ -23,6 +23,7 @@ vi.mock("./ArchivedDecksSection", () => ({ ArchivedDecksSection: () => null }));
 
 import { DeckLibraryView } from "./DeckLibraryView";
 import { LibraryDragFeedback } from "./LibraryDragFeedback";
+import { matchesLayoutQuery, layoutWidths } from "../../../test/viewport";
 
 const decks = Array.from({ length: 240 }, (_, index) => deck(index));
 const folder: DeckFolder = {
@@ -322,9 +323,7 @@ function dragFeedback(
 
 function setLayoutMode(mode: "wide" | "medium" | "compact"): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches:
-      (query === "(max-width: 760px)" && mode === "compact") ||
-      (query === "(max-width: 1180px)" && mode !== "wide"),
+    matches: matchesLayoutQuery(query, layoutWidths[mode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
