@@ -47,11 +47,6 @@ export function summarizeRecentDecks(reviews: RecentReview[]): RecentDeckSummary
     .slice(0, 5);
 }
 
-export function confidenceAverage(counts: ConfidenceCounts, total: number): number {
-  if (total === 0) return 0;
-  return counts.reduce((sum, count, score) => sum + count * score, 0) / total;
-}
-
 export function formatConfidence(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(1)} / 3`;
 }

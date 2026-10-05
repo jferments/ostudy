@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type { RecentReview } from "../../ipc/analytics";
 import {
-  confidenceAverage,
   formatConfidence,
   outcomeForScore,
   summarizeRecentDecks,
@@ -85,9 +84,7 @@ describe("practice confidence helpers", () => {
     ]);
   });
 
-  it("calculates and formats confidence without dividing by zero", () => {
-    expect(confidenceAverage([1, 1, 1, 1], 4)).toBe(1.5);
-    expect(confidenceAverage([0, 0, 0, 0], 0)).toBe(0);
+  it("formats confidence, with a dash for none", () => {
     expect(formatConfidence(2.25)).toBe("2.3 / 3");
     expect(formatConfidence(null)).toBe("—");
   });

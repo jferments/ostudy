@@ -141,6 +141,7 @@ export interface NativeCommandGatewayMap {
   "get_review_log": readonly [typeof GatewayModule24.getReviewLog];
   "get_semantic_preparation": readonly [typeof GatewayModule19.getSemanticPreparation];
   "get_semantic_source_citation": readonly [typeof GatewayModule19.getSemanticSourceCitation];
+  "get_session_summary": readonly [typeof GatewayModule24.getSessionSummary];
   "get_settings": readonly [typeof GatewayModule29.getSettings];
   "get_study_target_bundle": readonly [typeof GatewayModule31.getStudyTargetBundle];
   "get_subject_filing_reviews": readonly [typeof GatewayModule32.getSubjectFilingReviews];

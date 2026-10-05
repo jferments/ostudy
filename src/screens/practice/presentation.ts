@@ -47,18 +47,6 @@ export const practiceStyles = {
   cardSideToggle: "tw:absolute tw:top-7 tw:right-5 tw:z-(--ostudy-layer-raised) tw:text-muted-foreground tw:enabled:hover:text-foreground tw:compact:top-5 tw:compact:right-2.5",
 } as const;
 
-export const completionStyles = {
-  screen: "tw:grid tw:content-start tw:gap-5",
-  hero: "tw:grid tw:min-w-0 tw:grid-cols-1 tw:items-center tw:gap-5 tw:p-5 tw:lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] tw:lg:p-6",
-  artworkWrap: "tw:grid tw:min-w-0 tw:place-items-center tw:[&_[data-artwork-slot]]:[--ostudy-artwork-max:13rem]",
-  heroCopy: "tw:grid tw:min-w-0 tw:justify-items-start tw:gap-2 tw:[&_h1]:m-0 tw:[&_h1]:text-title tw:[&_h1]:font-semibold tw:[&_h1]:tracking-tight tw:[&_p]:m-0 tw:[&_p]:max-w-prose tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground",
-  completionMark: "tw:grid tw:size-9 tw:place-items-center tw:rounded-lg tw:bg-success-soft tw:text-success",
-  eyebrow: "tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
-  analytics: "tw:grid tw:min-w-0 tw:gap-3",
-  distributionCard: "tw:grid tw:min-w-0 tw:items-center tw:gap-4 tw:p-4 tw:lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]",
-  actions: "tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-2 tw:max-sm:[&>button]:w-full",
-} as const;
-
 export const scoreTones = {
   0: "tw:[--confidence-tone:var(--ostudy-color-confidence-0)]",
   1: "tw:[--confidence-tone:var(--ostudy-color-confidence-1)]",

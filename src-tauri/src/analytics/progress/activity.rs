@@ -90,27 +90,81 @@ pub fn load(
     })
 }
 
-/// The current and longest runs of consecutive study dates. `dates` is sorted
-/// and distinct; a later date than `today` (a clock moved back) is ignored.
-fn streaks(dates: &[NaiveDate], today: NaiveDate) -> (Option<StreakDto>, Option<StreakDto>) {
-    let mut longest: Option<(NaiveDate, NaiveDate)> = None;
-    let mut run: Option<(NaiveDate, NaiveDate)> = None;
+/// Runs of consecutive study dates, oldest first. `dates` is sorted and
+/// distinct; a later date than `today` (a clock moved back) is ignored.
+fn runs(dates: &[NaiveDate], today: NaiveDate) -> Vec<(NaiveDate, NaiveDate)> {
+    let mut runs: Vec<(NaiveDate, NaiveDate)> = Vec::new();
     for &date in dates.iter().filter(|date| **date <= today) {
-        run = match run {
-            Some((start, end)) if end.succ_opt() == Some(date) => Some((start, date)),
-            _ => Some((date, date)),
-        };
-        if let Some((start, end)) = run {
-            let longer = longest.is_none_or(|(best_start, best_end)| {
-                (end - start).num_days() > (best_end - best_start).num_days()
-            });
-            if longer {
-                longest = Some((start, end));
-            }
+        match runs.last_mut() {
+            Some((_, end)) if end.succ_opt() == Some(date) => *end = date,
+            _ => runs.push((date, date)),
         }
     }
-    let current = run.filter(|(_, end)| *end == today || end.succ_opt() == Some(today));
-    (current.map(streak_dto), longest.map(streak_dto))
+    runs
+}
+
+fn span((start, end): (NaiveDate, NaiveDate)) -> i64 {
+    (end - start).num_days()
+}
+
+/// The run ending today, or yesterday while today has no review yet.
+fn current_run(
+    runs: &[(NaiveDate, NaiveDate)],
+    today: NaiveDate,
+) -> Option<(NaiveDate, NaiveDate)> {
+    runs.last()
+        .copied()
+        .filter(|(_, end)| *end == today || end.succ_opt() == Some(today))
+}
+
+/// The current and longest runs of consecutive study dates.
+fn streaks(dates: &[NaiveDate], today: NaiveDate) -> (Option<StreakDto>, Option<StreakDto>) {
+    let runs = runs(dates, today);
+    // The earliest of equal runs wins.
+    let longest = runs.iter().copied().fold(None, |best, run| match best {
+        Some(best) if span(best) >= span(run) => Some(best),
+        _ => Some(run),
+    });
+    (
+        current_run(&runs, today).map(streak_dto),
+        longest.map(streak_dto),
+    )
+}
+
+/// The streak standing a finished session reports: the current and longest
+/// streaks, and the most recent earlier run at least as long as the current
+/// one, for "your longest since July". No earlier run means the current
+/// streak is the learner's longest yet.
+pub struct StreakStanding {
+    pub current: Option<StreakDto>,
+    pub longest: Option<StreakDto>,
+    pub last_as_long: Option<StreakDto>,
+}
+
+pub fn streak_standing(
+    connection: &Connection,
+    time: &StudyTimeContext,
+) -> Result<StreakStanding, CommandError> {
+    let dates = study_activity::learner_study_dates(connection, time.new_day_start_hour())?;
+    Ok(standing(&dates, time.local_date))
+}
+
+fn standing(dates: &[NaiveDate], today: NaiveDate) -> StreakStanding {
+    let (current, longest) = streaks(dates, today);
+    let all = runs(dates, today);
+    let last_as_long = current_run(&all, today).and_then(|current| {
+        all[..all.len() - 1]
+            .iter()
+            .rev()
+            .find(|run| span(**run) >= span(current))
+            .copied()
+            .map(streak_dto)
+    });
+    StreakStanding {
+        current,
+        longest,
+        last_as_long,
+    }
 }
 
 fn streak_dto((start, end): (NaiveDate, NaiveDate)) -> StreakDto {
@@ -180,5 +234,26 @@ mod tests {
                 run(2, "2026-09-01", "2026-09-02")
             )
         );
+    }
+
+    #[test]
+    fn a_session_finds_the_last_streak_at_least_as_long_as_today_s() {
+        let dates = [
+            date("2026-07-01"),
+            date("2026-07-02"),
+            date("2026-07-03"),
+            date("2026-08-01"),
+            date("2026-08-02"),
+            date("2026-09-04"),
+            date("2026-09-05"),
+        ];
+        let today = standing(&dates, date("2026-09-05"));
+        assert_eq!(today.current, run(2, "2026-09-04", "2026-09-05"));
+        assert_eq!(today.longest, run(3, "2026-07-01", "2026-07-03"));
+        assert_eq!(today.last_as_long, run(2, "2026-08-01", "2026-08-02"));
+        // The longest streak yet has no earlier run as long.
+        assert_eq!(standing(&dates[..3], date("2026-07-03")).last_as_long, None);
+        // Without a current streak there is nothing to compare.
+        assert_eq!(standing(&dates, date("2026-09-08")).last_as_long, None);
     }
 }
