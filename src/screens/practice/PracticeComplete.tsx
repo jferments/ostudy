@@ -50,7 +50,7 @@ export function PracticeComplete({ ratedCount, confidenceCounts, isStarting, can
       </Surface>
     </section>
     <div className={styles.actions}>
-      <Button variant="primary" disabled={isStarting} onClick={onViewAnalytics}>View analytics</Button>
+      <Button variant="primary" disabled={isStarting} onClick={onViewAnalytics}>View progress</Button>
       <Button variant="secondary" disabled={isStarting} onClick={onChooseDecks}>Choose decks</Button>
       <Button variant="text" disabled={isStarting || !canRestart} onClick={onRestart}>{isStarting ? "Starting…" : "Practice this scope again"}</Button>
     </div>

@@ -3,13 +3,15 @@
 The screenshot harness seeds a fresh, disposable library in two phases:
 
 1. ``seed_through_ipc`` runs inside the running app through the same native
-   commands the UI uses: folders, decks, notes of every authoring family, tags,
-   a tutor conversation, and real practice sessions that produce review history.
+   commands the UI uses: subjects, decks, notes of every authoring family,
+   tags, a tutor conversation, and real practice sessions that produce review
+   history.
 2. ``finalize_library`` runs after the app has exited and edits the library the
    app created: it gives tags fixed ids, moves the review history onto fixed
    days before the capture date, gives every content row a stable timestamp,
-   pins the Practice deck's due order, and adds documents, learning plans,
-   study guides, and tutor turns that would otherwise need an AI provider.
+   pins the Practice deck's due order and the finished subject's next reviews,
+   and adds documents filed in their subjects, learning plans, study guides,
+   and tutor turns that would otherwise need an AI provider.
 
 Nothing here adds a production code path. Content is fixed; only calendar dates
 move with the capture day because the app reads the real clock.
@@ -25,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-SEED_VERSION = "ui-screenshots-seed-v1"
+SEED_VERSION = "ui-screenshots-seed-v2"
 DAY_MS = 86_400_000
 MINUTE_MS = 60_000
 
@@ -79,7 +81,7 @@ class DeckSpec:
     key: str
     name: str
     description: str
-    folder: str | None
+    subject: str | None  # None files the deck under No subject
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,12 @@ class NoteSpec:
     question: dict[str, Any] | None = None
 
 
-FOLDERS = ("Physiology", "Biochemistry")
+# Subjects in the learner's order, which is also their creation order (and so
+# their colors on Home). Physiology has decks and a document with a guide,
+# Biochemistry has only decks, Pharmacology has a deck and a document,
+# Microbiology has nothing due today, and one deck and one document (the
+# renal lecture, not yet filed) have no subject.
+SUBJECTS = ("Physiology", "Biochemistry", "Pharmacology", "Microbiology")
 
 DECKS: tuple[DeckSpec, ...] = (
     DeckSpec("cardio", "Cardiovascular physiology", "Cardiac cycle, hemodynamics, and blood pressure control.", "Physiology"),
@@ -105,7 +112,9 @@ DECKS: tuple[DeckSpec, ...] = (
     DeckSpec("resp", "Respiratory physiology", "Ventilation, gas exchange, and oxygen transport.", "Physiology"),
     DeckSpec("metab", "Metabolism", "Glycolysis, the TCA cycle, and fuel regulation.", "Biochemistry"),
     DeckSpec("molbio", "Molecular biology", "Replication, transcription, and translation.", "Biochemistry"),
-    DeckSpec("pharm", "Pharmacology essentials", "Pharmacokinetics and autonomic drugs.", None),
+    DeckSpec("pharm", "Pharmacology essentials", "Pharmacokinetics and autonomic drugs.", "Pharmacology"),
+    DeckSpec("micro", "Bacterial structure", "Cell walls, spores, and gene transfer.", "Microbiology"),
+    DeckSpec("terms", "Medical terminology", "Prefixes, suffixes, and word roots.", None),
 )
 
 # The deck whose Practice flow is captured. Its cards get distinct due dates so
@@ -114,6 +123,10 @@ PRACTICE_DECK = "renal"
 PRACTICE_ORDER = ("renal-glucose", "renal-macula", "renal-adh", "renal-gfr", "renal-aldosterone")
 # Ratings used while capturing Practice: 0 Wrong, 1 Hard, 2 Medium, 3 Easy.
 PRACTICE_RATINGS = (2, 3, 0, 2, 3)
+
+# Every card of this deck has been reviewed and is next due after the capture
+# day, so its subject shows "All done" on Home.
+FINISHED_DECK = "micro"
 
 # The note opened in the card editor screenshot.
 EDITOR_NOTE = "cardio-oxygen-demand"
@@ -348,6 +361,26 @@ NOTES: tuple[NoteSpec, ...] = (
              back="The fraction of a dose that reaches the systemic circulation unchanged."),
     NoteSpec("pharm-first-order", "pharm", "cloze", ("pharmacology", "exam-2"),
              cloze="First-order elimination removes a constant {{c1::fraction}} of drug per unit time."),
+    # Bacterial structure (recall cards only, all reviewed: nothing due today)
+    NoteSpec("micro-gram", "micro", "basic", ("microbiology", "high-yield"),
+             front="What does the Gram stain distinguish?",
+             back="A thick peptidoglycan wall that keeps crystal violet (Gram-positive, purple) from a thin wall"
+                  " under an outer membrane (Gram-negative, pink)."),
+    NoteSpec("micro-endospore", "micro", "basic", ("microbiology",),
+             front="Which bacterial structure survives heat, drying, and disinfectants?",
+             back="The endospore, formed by Bacillus and Clostridium species."),
+    NoteSpec("micro-lps", "micro", "cloze", ("microbiology", "high-yield"),
+             cloze="The outer membrane of Gram-negative bacteria contains {{c1::lipopolysaccharide}},"
+                   " whose lipid A acts as an endotoxin."),
+    NoteSpec("micro-conjugation", "micro", "basic", ("microbiology",),
+             front="Conjugation", back="Transfer of DNA, often a plasmid, from one bacterium to another through a pilus."),
+    # Medical terminology (no subject; new cards only)
+    NoteSpec("terms-brady", "terms", "basic", ("terminology",),
+             front="What does the prefix brady- mean?", back="Slow, as in bradycardia: a heart rate below 60 beats per minute."),
+    NoteSpec("terms-itis", "terms", "basic", ("terminology",),
+             front="What does the suffix -itis mean?", back="Inflammation, as in nephritis: inflammation of the kidney."),
+    NoteSpec("terms-hyper", "terms", "cloze", ("terminology",),
+             cloze="{{c1::Hyper-}} means above normal; {{c2::hypo-}} means below normal."),
 )
 
 # Review history: (days before the capture day, minute of day, deck, notes).
@@ -381,6 +414,10 @@ HISTORY: tuple[tuple[int, int, str, tuple[str, ...]], ...] = (
     (3, 1125, "molbio", ("molbio-polymerase", "molbio-codon")),
     (2, 1180, "cardio", (EDITOR_NOTE, "cardio-output", "cardio-frank-starling")),
     (1, 1110, "metab", ("metab-thiamine", "metab-tca", "metab-pfk")),
+    # Bacterial structure, appended so the sessions above keep their ratings.
+    (33, 1120, "micro", ("micro-gram", "micro-endospore", "micro-lps", "micro-conjugation")),
+    (19, 1135, "micro", ("micro-gram", "micro-endospore", "micro-lps", "micro-conjugation")),
+    (8, 1105, "micro", ("micro-gram", "micro-endospore", "micro-lps", "micro-conjugation")),
 )
 
 OUTCOMES = ("wrong", "not_confident", "somewhat_confident", "very_confident")
@@ -476,6 +513,7 @@ class DocumentSpec:
     filename: str
     days_ago: int
     pages: tuple[tuple[str, tuple[str, ...]], ...]
+    subject: str | None = None
     summary: str = ""
     objectives: tuple[str, ...] = ()
     concepts: tuple[str, ...] = ()
@@ -712,6 +750,7 @@ DOCUMENTS: tuple[DocumentSpec, ...] = (
                 "and pulmonary valves. S3 and S4 are filling sounds.",
             )),
         ),
+        subject="Physiology",
         summary="The phases of the cardiac cycle, pressure-volume loops, and heart sounds.",
         objectives=("Sequence the phases of the cardiac cycle.", "Interpret pressure-volume loops."),
         concepts=("Cardiac cycle", "Stroke work", "Heart sounds"),
@@ -732,8 +771,20 @@ DOCUMENTS: tuple[DocumentSpec, ...] = (
                 "Steady state is reached after about four to five half-lives.",
             )),
         ),
+        subject="Pharmacology",
     ),
 )
+
+
+# The document whose generation info is captured. Documents offers that action
+# only on a document in no subject.
+INFO_DOCUMENT = DOCUMENTS[0]
+
+
+def home_tile_count() -> int:
+    """Home's subject tiles: one per subject, and No subject when anything is unfiled."""
+    unfiled = any(deck.subject is None for deck in DECKS) or any(spec.subject is None for spec in DOCUMENTS)
+    return len(SUBJECTS) + (1 if unfiled else 0)
 
 
 # --------------------------------------------------------------------------
@@ -798,7 +849,7 @@ PracticeBatch = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
 
 @dataclass
 class SeedState:
-    folder_ids: dict[str, str] = field(default_factory=dict)
+    subject_ids: dict[str, str] = field(default_factory=dict)
     deck_ids: dict[str, str] = field(default_factory=dict)
     note_ids: dict[str, str] = field(default_factory=dict)
     card_ids: dict[str, list[str]] = field(default_factory=dict)
@@ -808,7 +859,7 @@ class SeedState:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "folderIds": self.folder_ids,
+            "subjectIds": self.subject_ids,
             "deckIds": self.deck_ids,
             "noteIds": self.note_ids,
             "cardIds": self.card_ids,
@@ -820,7 +871,7 @@ class SeedState:
     @classmethod
     def from_json(cls, value: dict[str, Any]) -> SeedState:
         return cls(
-            folder_ids=dict(value["folderIds"]),
+            subject_ids=dict(value["subjectIds"]),
             deck_ids=dict(value["deckIds"]),
             note_ids=dict(value["noteIds"]),
             card_ids={key: list(ids) for key, ids in value["cardIds"].items()},
@@ -920,12 +971,14 @@ def seed_through_ipc(batch: Batch, practice: PracticeBatch, chunk: int = 9) -> S
     Few round trips keep seeding fast and avoid bursts of WebDriver requests.
     """
     state = SeedState()
+    # The deck folder commands create and fill subjects; a folder id is the
+    # subject id.
     results = batch(
         [_step("get_deck_library_organization", {})]
-        + [_step("create_deck_folder", {"input": {"name": folder}}, chain_revision=True) for folder in FOLDERS]
+        + [_step("create_deck_folder", {"input": {"name": subject}}, chain_revision=True) for subject in SUBJECTS]
     )
-    for folder in FOLDERS:
-        state.folder_ids[folder] = next(item["id"] for item in results[-1]["folders"] if item["name"] == folder)
+    for subject in SUBJECTS:
+        state.subject_ids[subject] = next(item["id"] for item in results[-1]["folders"] if item["name"] == subject)
 
     results = batch(
         [_step("create_deck", {"input": {"name": deck.name, "description": deck.description}}) for deck in DECKS]
@@ -934,20 +987,20 @@ def seed_through_ipc(batch: Batch, practice: PracticeBatch, chunk: int = 9) -> S
         state.deck_ids[deck.key] = summary["id"]
 
     moves: list[dict[str, Any]] = [_step("get_deck_library_organization", {})]
-    folder_positions: dict[str, int] = {}
+    subject_positions: dict[str, int] = {}
     for deck in DECKS:
-        if deck.folder is None:
+        if deck.subject is None:
             continue
-        index = folder_positions.get(deck.folder, 0)
+        index = subject_positions.get(deck.subject, 0)
         moves.append(
             _step(
                 "move_deck_in_library",
-                {"input": {"deckId": state.deck_ids[deck.key], "targetFolderId": state.folder_ids[deck.folder],
+                {"input": {"deckId": state.deck_ids[deck.key], "targetFolderId": state.subject_ids[deck.subject],
                            "targetIndex": index}},
                 chain_revision=True,
             )
         )
-        folder_positions[deck.folder] = index + 1
+        subject_positions[deck.subject] = index + 1
     batch(moves)
 
     results = batch([_note_step(note, state.deck_ids[note.deck]) for note in NOTES])
@@ -1038,9 +1091,10 @@ def finalize_library(app_data_dir: Path, state: SeedState, anchor_day_ms: int, s
             _rewrite_history(connection, state, anchor_day_ms)
             _normalize_content_times(connection, state, anchor_day_ms)
             _pin_practice_order(connection, state, anchor_day_ms)
+            _pin_finished_deck(connection, state, anchor_day_ms)
             _write_settings(connection, settings, anchor_day_ms)
         with connection:
-            notes.extend(_insert_documents(connection, app_data_dir, anchor_day_ms))
+            notes.extend(_insert_documents(connection, app_data_dir, state, anchor_day_ms))
         with connection:
             _insert_tutor_turns(connection, state, anchor_day_ms)
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1156,11 +1210,12 @@ def _rewrite_history(connection: sqlite3.Connection, state: SeedState, anchor_da
 
 def _normalize_content_times(connection: sqlite3.Connection, state: SeedState, anchor_day_ms: int) -> None:
     base = anchor_day_ms - 45 * DAY_MS + 9 * 60 * MINUTE_MS
-    for index, folder in enumerate(FOLDERS):
+    # Subjects are document_collections rows; Home colors them in creation order.
+    for index, subject in enumerate(SUBJECTS):
         stamp = base + index * MINUTE_MS
         connection.execute(
-            "UPDATE deck_folders SET created_at = ?1, updated_at = ?1 WHERE id = ?2",
-            (stamp, state.folder_ids[folder]),
+            "UPDATE document_collections SET created_at = ?1, updated_at = ?1 WHERE id = ?2",
+            (stamp, state.subject_ids[subject]),
         )
     for index, deck in enumerate(DECKS):
         stamp = base + (10 + index) * MINUTE_MS
@@ -1197,6 +1252,25 @@ def _pin_practice_order(connection: sqlite3.Connection, state: SeedState, anchor
         due = anchor_day_ms - (count - index) * DAY_MS + 8 * 60 * MINUTE_MS
         for card_id in state.card_ids[note_key]:
             connection.execute("UPDATE card_schedules SET due_at = ?1 WHERE card_id = ?2", (due, card_id))
+
+
+def _pin_finished_deck(connection: sqlite3.Connection, state: SeedState, anchor_day_ms: int) -> None:
+    """Move the finished deck's next reviews to the days after the capture day."""
+    for index, note in enumerate(note for note in NOTES if note.deck == FINISHED_DECK):
+        due = anchor_day_ms + (3 + index) * DAY_MS + 8 * 60 * MINUTE_MS
+        for card_id in state.card_ids[note.key]:
+            connection.execute("UPDATE card_schedules SET due_at = ?1 WHERE card_id = ?2", (due, card_id))
+
+
+def write_settings(app_data_dir: Path, settings: dict[str, Any], anchor_day_ms: int) -> None:
+    """Store capture settings in a library the app created and closed, such as an empty one."""
+    connection = sqlite3.connect(app_data_dir / "library.sqlite3")
+    try:
+        with connection:
+            _write_settings(connection, settings, anchor_day_ms)
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        connection.close()
 
 
 def _write_settings(connection: sqlite3.Connection, settings: dict[str, Any], anchor_day_ms: int) -> None:
@@ -1264,7 +1338,9 @@ def _full_section_content(content: dict[str, Any]) -> dict[str, Any]:
     return full
 
 
-def _insert_documents(connection: sqlite3.Connection, app_data_dir: Path, anchor_day_ms: int) -> list[str]:
+def _insert_documents(
+    connection: sqlite3.Connection, app_data_dir: Path, state: SeedState, anchor_day_ms: int
+) -> list[str]:
     seeded: list[str] = []
     for spec in DOCUMENTS:
         document_id = stable_hex("document", spec.key)
@@ -1284,11 +1360,14 @@ def _insert_documents(connection: sqlite3.Connection, app_data_dir: Path, anchor
                    completed_at, archived_at, revision, extraction_backend, render_backend,
                    outline_state, source_format, source_unit_kind, source_unit_count,
                    extracted_source_unit_count, source_media_type, adapter_backend,
-                   semantic_chunk_count, processing_started_at, processing_duration_ms
+                   semantic_chunk_count, processing_started_at, processing_duration_ms, subject_id
                ) VALUES (?1, ?2, ?3, 'application/pdf', ?4, ?5, ?6, 'ready', ?7, ?7, 0, 0, 0, ?8, ?8,
                          ?8, NULL, 1, 'pdfium-text-v1', 'pdfium-render-v1', 'ready', 'pdf', 'page', ?7, ?7,
-                         'application/pdf', 'native-pdf-adapter-v1', ?7, ?9, 41000)""",
-            (document_id, spec.title, spec.filename, len(pdf), digest, relative, page_count, stamp, stamp - 41_000),
+                         'application/pdf', 'native-pdf-adapter-v1', ?7, ?9, 41000, ?10)""",
+            (
+                document_id, spec.title, spec.filename, len(pdf), digest, relative, page_count, stamp, stamp - 41_000,
+                state.subject_ids[spec.subject] if spec.subject else None,
+            ),
         )
         connection.execute(
             """INSERT INTO document_source_files (

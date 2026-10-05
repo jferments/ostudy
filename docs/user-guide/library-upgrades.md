@@ -25,12 +25,12 @@ Builds may still share the application version `0.1.0`. Do not identify a candid
 
 ## The subjects update (schema 6)
 
-A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Flashcards and Documents show the same subjects as folders and as collections. Each deck and each document is in at most one subject.
+A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Decks and Documents views show the same subjects as folders and as collections. Each deck and each document is in at most one subject.
 
 - Every folder becomes a subject with its decks. A folder and a collection with the same name, ignoring capitals and surrounding spaces, become one subject, but only when no other folder or collection uses that name. Otherwise both are kept under their own names.
 - A document that was in several collections stays in the one it joined first and leaves the others, keeping the page ranges set there. A document in no collection joins the folder of its generated deck.
 - A deck generated from a document, or a collection's study bundle deck, joins that document's or collection's subject. Other decks stay in their folders.
-- Collection flashcards were copies of the original cards, each with its own schedule. Unedited copies fold back into their originals: the original keeps the schedule of whichever card you studied, reset or rescheduled most recently, and reviews of the copy count under the original in Analytics, history and Search/Filter. No review is moved, changed or deleted. Copies you edited, and copies whose original is gone, stay as cards of their own.
+- Collection flashcards were copies of the original cards, each with its own schedule. Unedited copies fold back into their originals: the original keeps the schedule of whichever card you studied, reset or rescheduled most recently, and reviews of the copy count under the original in Progress, history and Search/Filter. No review is moved, changed or deleted. Copies you edited, and copies whose original is gone, stay as cards of their own.
 - A study bundle deck left without cards is archived. Studying a collection now studies the decks filed in it, live.
 
 Older builds cannot open a schema-6 library. Restoring the pre-upgrade checkpoint returns the schema-5 library as it was. A `.ostudybackup` made before the update still restores, and the restored library gets the same subjects as updating in place.

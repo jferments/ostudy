@@ -1,10 +1,10 @@
 # Flashcards, authoring, and Search
 
-**Flashcards** has two visible tabs: **Decks** and **Search/Filter**. The compact Search label refers to the same workspace. Reusable templates live in **Settings → Card templates**, not another Flashcards tab. Import and export open from contextual deck actions; whole-library backup belongs in Settings → Backup/Sync.
+Library's **Decks** view has two visible tabs: **Decks** and **Search/Filter**. The compact Search label refers to the same workspace, and so does the **Search** button in the header. Reusable templates live in **Settings → Card templates**, not another tab. Import and export open from contextual deck actions; whole-library backup belongs in Settings → Backup/Sync.
 
 ## Navigate between library, deck, and editor
 
-Selecting Decks opens the library root, including when a deck is already open. Selecting the main Flashcards destination also returns to that root. An open deck provides **All decks** to return. Unsaved editor changes still receive the normal discard protection before navigation proceeds.
+Selecting Decks opens the deck list, including when a deck is already open. Choosing **Library** while its Decks view is open also returns to that list. An open deck provides **All decks** to return. Unsaved editor changes still receive the normal discard protection before navigation proceeds.
 
 The app keeps a device-local presentation checkpoint for useful destinations, including an explicitly open deck. It is not a copy of card content, credentials, or the entire screen state. A real practice session can resume over its logical launch destination. If the old deck no longer exists, the return destination safely falls back to the library. This recovery does not resurrect deleted content.
 
@@ -86,7 +86,7 @@ Results describe actual study presentations: a forward and reverse card can appe
 
 Use **Practice selected** for exact-card practice. Ending it returns to Search rather than a separate standing Practice tab. Schedule actions such as suspend, bury, reset, and reschedule alter availability/current schedules; they do not invent review events. [Practice and analytics](practice-and-analytics.md) explains those differences.
 
-Current tags shown on recent reviews in Analytics can launch Search by stable tag identity. Historical tag text remains readable but is not a link to a current tag. If the target is no longer available, Search asks you to clear that unavailable filter explicitly instead of silently showing the whole library.
+Current tags shown on recent reviews in Progress can launch Search by stable tag identity. Historical tag text remains readable but is not a link to a current tag. If the target is no longer available, Search asks you to clear that unavailable filter explicitly instead of silently showing the whole library.
 
 ## Importing content
 

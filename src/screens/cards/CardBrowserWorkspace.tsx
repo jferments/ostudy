@@ -169,12 +169,12 @@ export function CardBrowserWorkspace({
       }
       setIsLoading(false);
       setSearchGate("blocked");
-      setErrorMessage("The Analytics tag is no longer available. Clear the unavailable tag filter to search all cards.");
+      setErrorMessage("The tag chosen in Progress is no longer available. Clear the unavailable tag filter to search all cards.");
     }).catch((error: unknown) => {
       if (!active || requestedTagClearedRef.current) return;
       setIsLoading(false);
       setSearchGate("blocked");
-      setErrorMessage(`The Analytics tag could not be verified: ${getErrorMessage(error)} Clear the unavailable tag filter to search all cards.`);
+      setErrorMessage(`The tag chosen in Progress could not be verified: ${getErrorMessage(error)} Clear the unavailable tag filter to search all cards.`);
     });
     return () => { active = false; };
   }, [analyticsSearchLaunch, controller]);
