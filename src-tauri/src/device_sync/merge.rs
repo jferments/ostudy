@@ -73,6 +73,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "review_event_tag_attributions",
         &["review_event_id", "tag_id"],
     ),
+    TableSpec::new("review_event_scheduler_context", &["review_event_id"]),
     TableSpec::new("question_review_links", &["review_event_id"]),
     TableSpec::new("question_remediation_attempts", &["operation_id"]),
     TableSpec::new("source_citation_snapshots", &["id"]),

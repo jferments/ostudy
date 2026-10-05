@@ -218,6 +218,7 @@ impl Fixture {
                 outcome: outcome.to_string(),
                 response_time_ms: 234,
                 schedule_revision: load_schedule(connection, &target.card_id)?.revision,
+                active_time_ms: None,
             })
         })
     }
