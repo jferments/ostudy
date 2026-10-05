@@ -105,6 +105,40 @@ export interface NativeSubjectFilingReview {
   label: string;
 }
 
+export interface NativeHomeSubjectSummary {
+  subjectId: string | null;
+  dueReviews: number;
+  dueNew: number;
+  scheduledReviews: number;
+  scheduledNew: number;
+  cardCount: number;
+  deckCount: number;
+  sourceCount: number;
+  hasOverviewGuide: boolean;
+  dueDeckIds: string[];
+}
+
+export interface NativeHomeToday {
+  dueReviews: number;
+  dueNew: number;
+  scheduledReviews: number;
+  scheduledNew: number;
+  reviewsRemaining: number;
+  newRemaining: number;
+  subjectCount: number;
+  deckIds: string[];
+  estimatedMinutes: number;
+  estimateMsPerCard: number;
+  estimateReviewCount: number;
+}
+
+export interface NativeHomeSummary {
+  studyDate: string;
+  today: NativeHomeToday;
+  subjects: NativeHomeSubjectSummary[];
+  noSubject: NativeHomeSubjectSummary;
+}
+
 export type NativeWireEncodingFixture =
   | { kind: "ready"; bytes: number[]; optional: string | null; signed: number; unsigned: number }
   | { kind: "empty" };

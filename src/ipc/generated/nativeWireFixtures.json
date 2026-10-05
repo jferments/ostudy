@@ -130,5 +130,54 @@
       ]
     },
     "label": "Pharmacology study bundle"
+  },
+  "homeSummary": {
+    "studyDate": "2026-10-05",
+    "today": {
+      "dueReviews": 31,
+      "dueNew": 12,
+      "scheduledReviews": 31,
+      "scheduledNew": 12,
+      "reviewsRemaining": 180,
+      "newRemaining": 15,
+      "subjectCount": 2,
+      "deckIds": [
+        "11111111111111111111111111111111",
+        "44444444444444444444444444444444"
+      ],
+      "estimatedMinutes": 7,
+      "estimateMsPerCard": 9500,
+      "estimateReviewCount": 120
+    },
+    "subjects": [
+      {
+        "subjectId": "33333333333333333333333333333333",
+        "dueReviews": 28,
+        "dueNew": 12,
+        "scheduledReviews": 28,
+        "scheduledNew": 12,
+        "cardCount": 340,
+        "deckCount": 1,
+        "sourceCount": 1,
+        "hasOverviewGuide": true,
+        "dueDeckIds": [
+          "11111111111111111111111111111111"
+        ]
+      }
+    ],
+    "noSubject": {
+      "subjectId": null,
+      "dueReviews": 3,
+      "dueNew": 0,
+      "scheduledReviews": 3,
+      "scheduledNew": 0,
+      "cardCount": 25,
+      "deckCount": 1,
+      "sourceCount": 0,
+      "hasOverviewGuide": false,
+      "dueDeckIds": [
+        "44444444444444444444444444444444"
+      ]
+    }
   }
 }

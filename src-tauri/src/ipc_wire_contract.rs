@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 use crate::{
     decks::DeckSummaryDto,
     error::CommandError,
+    home_summary::{HomeSubjectSummaryDto, HomeSummaryDto, HomeTodayDto},
     library_backup::live::LiveRestoreResult,
     library_session::SessionStatus,
     settings::AppSettingsDto,
@@ -305,6 +306,46 @@ const SUBJECT_FILING_REVIEW_FIELDS: &[FieldContract] = &[
     field("label", TypeScriptType::String),
 ];
 
+const HOME_SUBJECT_SUMMARY_FIELDS: &[FieldContract] = &[
+    field("subjectId", NULLABLE_STRING),
+    field("dueReviews", TypeScriptType::Number),
+    field("dueNew", TypeScriptType::Number),
+    field("scheduledReviews", TypeScriptType::Number),
+    field("scheduledNew", TypeScriptType::Number),
+    field("cardCount", TypeScriptType::Number),
+    field("deckCount", TypeScriptType::Number),
+    field("sourceCount", TypeScriptType::Number),
+    field("hasOverviewGuide", TypeScriptType::Boolean),
+    field("dueDeckIds", TypeScriptType::Named("string[]")),
+];
+
+const HOME_TODAY_FIELDS: &[FieldContract] = &[
+    field("dueReviews", TypeScriptType::Number),
+    field("dueNew", TypeScriptType::Number),
+    field("scheduledReviews", TypeScriptType::Number),
+    field("scheduledNew", TypeScriptType::Number),
+    field("reviewsRemaining", TypeScriptType::Number),
+    field("newRemaining", TypeScriptType::Number),
+    field("subjectCount", TypeScriptType::Number),
+    field("deckIds", TypeScriptType::Named("string[]")),
+    field("estimatedMinutes", TypeScriptType::Number),
+    field("estimateMsPerCard", TypeScriptType::Number),
+    field("estimateReviewCount", TypeScriptType::Number),
+];
+
+const HOME_SUMMARY_FIELDS: &[FieldContract] = &[
+    field("studyDate", TypeScriptType::String),
+    field("today", TypeScriptType::Named("NativeHomeToday")),
+    field(
+        "subjects",
+        TypeScriptType::Named("NativeHomeSubjectSummary[]"),
+    ),
+    field(
+        "noSubject",
+        TypeScriptType::Named("NativeHomeSubjectSummary"),
+    ),
+];
+
 const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeCommandError",
@@ -349,6 +390,18 @@ const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeSubjectFilingReview",
         fields: SUBJECT_FILING_REVIEW_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeHomeSubjectSummary",
+        fields: HOME_SUBJECT_SUMMARY_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeHomeToday",
+        fields: HOME_TODAY_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeHomeSummary",
+        fields: HOME_SUMMARY_FIELDS,
     },
 ];
 
@@ -485,6 +538,49 @@ pub fn representative_fixtures() -> Value {
             }),
             label: "Pharmacology study bundle".to_string(),
         },
+        "homeSummary": HomeSummaryDto {
+            study_date: "2026-10-05".to_string(),
+            today: HomeTodayDto {
+                due_reviews: 31,
+                due_new: 12,
+                scheduled_reviews: 31,
+                scheduled_new: 12,
+                reviews_remaining: 180,
+                new_remaining: 15,
+                subject_count: 2,
+                deck_ids: vec![
+                    "11111111111111111111111111111111".to_string(),
+                    "44444444444444444444444444444444".to_string(),
+                ],
+                estimated_minutes: 7,
+                estimate_ms_per_card: 9_500,
+                estimate_review_count: 120,
+            },
+            subjects: vec![HomeSubjectSummaryDto {
+                subject_id: Some("33333333333333333333333333333333".to_string()),
+                due_reviews: 28,
+                due_new: 12,
+                scheduled_reviews: 28,
+                scheduled_new: 12,
+                card_count: 340,
+                deck_count: 1,
+                source_count: 1,
+                has_overview_guide: true,
+                due_deck_ids: vec!["11111111111111111111111111111111".to_string()],
+            }],
+            no_subject: HomeSubjectSummaryDto {
+                subject_id: None,
+                due_reviews: 3,
+                due_new: 0,
+                scheduled_reviews: 3,
+                scheduled_new: 0,
+                card_count: 25,
+                deck_count: 1,
+                source_count: 0,
+                has_overview_guide: false,
+                due_deck_ids: vec!["44444444444444444444444444444444".to_string()],
+            },
+        },
         "encoding": EncodingFixture::Ready {
             bytes: vec![0, 127, 255],
             optional: None,
@@ -540,6 +636,9 @@ mod tests {
             ("/subjectLibrary/studyRanges/0", "NativeDocumentStudyRange"),
             ("/subjectLibrary", "NativeSubjectLibrary"),
             ("/subjectFilingReview", "NativeSubjectFilingReview"),
+            ("/homeSummary/subjects/0", "NativeHomeSubjectSummary"),
+            ("/homeSummary/today", "NativeHomeToday"),
+            ("/homeSummary", "NativeHomeSummary"),
         ];
         let mut named = covered.iter().map(|(_, name)| *name).collect::<Vec<_>>();
         let mut declared = OBJECT_CONTRACTS
