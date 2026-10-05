@@ -8,6 +8,7 @@ import { Surface } from "../ui/primitives/Surface";
 import { TextField } from "../ui/primitives/TextField";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { ListRow, ListRowMedia, ListRows } from "../ui/primitives/ListRow";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
@@ -94,7 +95,7 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
             <EmptyState icon={<Icon name="study-guide" size={30} />} title={controller.query ? "No matching study guides" : "No study guides yet"}
               description={controller.query ? "Change the search text or clear the filter." : "Generate a guide from Documents. It will appear here without loading every guide body."} />
           ) : (
-            <div className={styles.list}>
+            <ListRows as="div">
               {controller.page.items.map((item) => {
                 const deleteTarget = deleteTargetFromItem(item);
                 return <GuideRow
@@ -109,7 +110,7 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
                   onDelete={deleteTarget ? () => void confirmDelete(deleteTarget) : null}
                 />;
               })}
-            </div>
+            </ListRows>
           )}
           {controller.page.totalCount > controller.page.limit ? (
             <nav className={styles.pagination} aria-label="Study Guides pages">
@@ -150,24 +151,19 @@ function GuideRow({
       onSelect: onDelete,
     }] : []),
   ];
-  return <article className={styles.row}>
-    <Button variant="ghost" className={styles.rowMain} onClick={onOpen}>
-      <span className={styles.rowIcon} aria-hidden="true"><Icon name="study-guide" size={22} /></span>
-      <span className={styles.rowCopy}>
-        <strong>{item.title}</strong><small>{sourceSummary(item)}</small>
-        <span className={styles.metrics}>
-          <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
-          <span>{item.noteCount} note{item.noteCount === 1 ? "" : "s"}</span><span>{formatDate(item.publishedAt)}</span>
-        </span>
+  return <ListRow as="article" leading={<ListRowMedia icon="study-guide" />} title={item.title} onActivate={onOpen} activateDisabled={deleting}
+    meta={<>
+      <span className="tw:wrap-anywhere">{sourceSummary(item)}</span>
+      <span className={styles.metrics}>
+        <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
+        <span>{item.noteCount} note{item.noteCount === 1 ? "" : "s"}</span><span>{formatDate(item.publishedAt)}</span>
       </span>
-    </Button>
-    <ResponsiveActionGroup
+    </>}
+    trailing={<ResponsiveActionGroup
       label={`Actions for ${item.title}`}
       overflowLabel={`${item.title} actions`}
-      className={styles.actions}
       actions={actions}
-    />
-  </article>;
+    />} />;
 }
 function sourceSummary(item: StudyGuidePageItem): string {
   if (item.targetKind === "collection") {

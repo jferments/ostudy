@@ -122,7 +122,7 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2" aria-busy={busy}>
       {errorMessage ? <InlineNotice kind="error" className="tw:col-span-full">{errorMessage}</InlineNotice> : null}
-      <Panel title="Temporary diagnostic session" description="Increase detail for one subsystem while reproducing a problem. The previous filter is restored automatically when the session expires.">
+      <Panel headingLevel={2} title="Temporary diagnostic session" description="Increase detail for one subsystem while reproducing a problem. The previous filter is restored automatically when the session expires.">
         <div className="tw:grid tw:gap-5 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-label">
           <label>Subsystem
             <NativeSelect value={target} disabled={busy} onChange={(event) => {
@@ -152,7 +152,7 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
           <Button variant="secondary" disabled={busy} onClick={() => void restoreNormalFilter()}>Restore normal diagnostics</Button>
         </div>
       </Panel>
-      <Panel title="Current diagnostic state" description="Diagnostics stay on this device and use bounded rotating files.">
+      <Panel headingLevel={2} title="Current diagnostic state" description="Diagnostics stay on this device and use bounded rotating files.">
         <dl className="tw:m-0 tw:grid tw:min-w-0 tw:gap-2 tw:[&>dt]:text-caption tw:[&>dt]:text-muted-foreground tw:[&>dd]:m-0 tw:[&>dd]:mb-3 tw:[&>dd]:break-all tw:[&>dd]:text-label">
           <dt>Active filter</dt><dd><code>{configuration?.filter ?? "Loading…"}</code></dd>
           <dt>Current log</dt><dd>{configuration?.logPath ?? "Unavailable until application logging initializes"}</dd>

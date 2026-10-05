@@ -7,7 +7,7 @@ import { Checkbox, RadioGroup } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 export interface TransferableCard { noteId: string; deckId: string; }
@@ -66,7 +66,14 @@ export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: 
     <Dialog title="Move or copy cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="medium" busy={isSaving} dismissible={!isSaving}
-      onClose={() => { if (!isSaving) onClose(); }}>
+      onClose={() => { if (!isSaving) onClose(); }}
+      actions={destinations.length === 0 ? undefined : <>
+        <Button variant="secondary" disabled={isSaving} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={isSaving || targetDeckId === ""} onClick={() => void submit()}>
+          {isSaving ? (mode === "move" ? "Moving…" : "Copying…")
+            : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+        </Button>
+      </>}>
       {destinations.length === 0 ? (
         <EmptyState compact title="Create or unarchive another deck first"
           description="A destination deck must be active and different from every selected card’s deck."
@@ -90,13 +97,6 @@ export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: 
             <span>Skip exact duplicates already in the destination</span>
           </label>
           {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-          <DialogActions>
-            <Button variant="secondary" disabled={isSaving} onClick={onClose}>Cancel</Button>
-            <Button variant="primary" disabled={isSaving || targetDeckId === ""} onClick={() => void submit()}>
-              {isSaving ? (mode === "move" ? "Moving…" : "Copying…")
-                : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-            </Button>
-          </DialogActions>
         </div>
       )}
     </Dialog>

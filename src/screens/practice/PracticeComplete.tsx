@@ -1,6 +1,8 @@
 import { Artwork } from "../../ui/artwork/Artwork";
 import { Icon } from "../../ui/icons/Icon";
-import { DistributionBar, MetricGrid, MetricTile, type DistributionSegment } from "../../ui/patterns/Metrics";
+import { DistributionBar, type DistributionSegment } from "../../ui/patterns/Metrics";
+import { SectionHeading } from "../../ui/primitives/SectionHeading";
+import { StatGrid, StatTile } from "../../ui/primitives/StatTile";
 import { Surface } from "../../ui/primitives/Surface";
 import { confidenceAverage, type ConfidenceCounts } from "./confidence";
 import { completionStyles as styles } from "./presentation";
@@ -33,16 +35,17 @@ export function PracticeComplete({ ratedCount, confidenceCounts, isStarting, can
       </div>
     </Surface>
     <section className={styles.analytics} aria-labelledby="completion-analytics-heading">
-      <div className={styles.sectionHeading}><div><span className={styles.eyebrow}>Session analytics</span><h2 id="completion-analytics-heading">How this session went</h2></div></div>
-      <MetricGrid>
-        <MetricTile label="Cards studied" value={ratedCount} detail="Submitted answers" tone="accent" />
-        <MetricTile label="Average confidence" value={`${averageConfidence.toFixed(1)} / 3`} detail="0 Wrong · 3 Easy" />
-        <MetricTile label="Remembered" value={`${Math.round(rememberedRate * 100)}%`} detail={`${rememberedCount} medium or easy answers`}
+      <SectionHeading id="completion-analytics-heading" eyebrow="Session analytics" title="How this session went" />
+      <StatGrid>
+        <StatTile label="Cards studied" value={ratedCount} hint="Submitted answers" tone="accent" />
+        <StatTile label="Average confidence" value={`${averageConfidence.toFixed(1)} / 3`} hint="0 Wrong · 3 Easy" />
+        <StatTile label="Remembered" value={`${Math.round(rememberedRate * 100)}%`} hint={`${rememberedCount} medium or easy answers`}
           tone={rememberedRate >= 0.8 ? "success" : rememberedRate >= 0.5 ? "warning" : "danger"} />
-        <MetricTile label="Needs another look" value={needsAnotherLook} detail="Wrong or hard answers" tone={needsAnotherLook > 0 ? "warning" : "success"} />
-      </MetricGrid>
+        <StatTile label="Needs another look" value={needsAnotherLook} hint="Wrong or hard answers" tone={needsAnotherLook > 0 ? "warning" : "success"} />
+      </StatGrid>
       <Surface level={2} material="soft" className={styles.distributionCard}>
-        <div><h3>Confidence distribution</h3><p>The shape of this session is shown with labels and counts, not color alone.</p></div>
+        <SectionHeading level={3} title="Confidence distribution"
+          description="The shape of this session is shown with labels and counts, not color alone." />
         <DistributionBar label="Confidence results for this session" segments={distribution} />
       </Surface>
     </section>

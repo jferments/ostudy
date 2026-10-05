@@ -22,6 +22,7 @@ import { Chip } from "../../ui/primitives/Chip";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
 import { Button } from "../../ui/primitives/Button";
+import { Card } from "../../ui/primitives/Card";
 import { cn } from "../../ui/internal/cn";
 import { CardEditorScreen } from "../CardEditorScreen";
 import { BulkEntryModal } from "./BulkEntryModal";
@@ -389,7 +390,7 @@ export function CardBrowserWorkspace({
       {isOpeningCard ? <InlineProgress>Opening card…</InlineProgress> : null}
       {isLoading ? <InlineProgress>Searching cards…</InlineProgress> : null}
 
-      <section className={styles.cardLibraryPanel} aria-label="Card browser">
+      <Card as="section" className={styles.cardLibraryPanel} aria-label="Card browser">
         <div className={styles.cardBrowserHeading}>
           <div><h2>{fixedDeckId ? "Cards" : "Results"}</h2>
             {!fixedDeckId ? <span className={styles.cardCountSummary}>{page.totalCount} {page.totalCount === 1 ? "card" : "cards"}</span> : null}
@@ -450,7 +451,7 @@ export function CardBrowserWorkspace({
             {isLoadingMore ? "Loading…" : "Load more"}
           </Button>
         ) : null}
-      </section>
+      </Card>
       {renderSelectionModal()}
       {practiceCards ? <PracticeResultsModal cards={practiceCards} sourceLabel={practiceSourceLabel}
         refreshDecks={refreshDecks} onPracticeCards={onPracticeCards} onClose={() => setPracticeCards(null)} showToast={showToast} /> : null}

@@ -19,8 +19,7 @@ export function ReviewSchedulingSettings({
 }: ReviewSchedulingSettingsProps) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2">
-      <Panel className="tw:min-w-0">
-        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">FSRS scheduling</h2>
+      <Panel className="tw:min-w-0" headingLevel={2} title="FSRS scheduling">
         <RangeControl
           label="Desired retention"
           min={80}
@@ -35,8 +34,7 @@ export function ReviewSchedulingSettings({
         </p>
       </Panel>
 
-      <Panel className="tw:min-w-0">
-        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Daily workload</h2>
+      <Panel className="tw:min-w-0" headingLevel={2} title="Daily workload">
         <div className="tw:grid tw:gap-5 tw:sm:grid-cols-2">
           <NumberControl
             label="New cards per day"
@@ -67,8 +65,7 @@ export function ReviewSchedulingSettings({
         </div>
       </Panel>
 
-      <Panel className="tw:min-w-0">
-        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Card reveal</h2>
+      <Panel className="tw:min-w-0" headingLevel={2} title="Card reveal">
         <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Display both question and answer when card is flipped</strong>

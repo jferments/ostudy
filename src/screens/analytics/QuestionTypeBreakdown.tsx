@@ -1,4 +1,5 @@
 import type { QuestionTypeAnalytics } from "../../ipc/analytics";
+import { SectionHeading } from "../../ui/primitives/SectionHeading";
 import { Surface } from "../../ui/primitives/Surface";
 import { styles } from "./presentation";
 
@@ -23,14 +24,8 @@ export function QuestionTypeBreakdown({ rows }: { rows: QuestionTypeAnalytics[] 
   if (rows.length === 0) return null;
   return (
     <Surface as="section" className={styles.analyticsPanel} aria-labelledby="question-types-heading">
-      <div className={styles.panelHeadingRow}>
-        <div>
-          <h2 id="question-types-heading">Question types</h2>
-          <p className={styles.analyticsPanelNote}>
-            First checks and self-ratings are separate. Each board counts as one review.
-          </p>
-        </div>
-      </div>
+      <SectionHeading id="question-types-heading" title="Question types"
+        description="First checks and self-ratings are separate. Each board counts as one review." />
       <div className={styles.analyticsTableWrap}>
         <table className={styles.analyticsTable}>
           <caption className="tw:sr-only">

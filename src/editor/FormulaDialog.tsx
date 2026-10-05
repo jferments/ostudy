@@ -4,7 +4,7 @@ import { mountFormulaInput, type FormulaInput } from "../math/mathlive";
 import { formulaRenderingError, formulaSourceError } from "../math/source";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
 import { IconButton } from "../ui/icons/IconButton";
-import { Dialog, DialogActions } from "../ui/overlays/Dialog";
+import { Dialog } from "../ui/overlays/Dialog";
 import type { OverlayCloseReason } from "../ui/overlays/overlayContext";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
@@ -131,8 +131,18 @@ export function FormulaDialog({ session, onClose }: {
       initialFocusRef={initialFocus}
       onClose={cancel}
       description="Use the visual formula tools, mathematical keyboard, or type directly. Changes apply only when you save."
+      actions={<>
+        <Button type="button" variant="secondary" onClick={() => cancel("cancel_action")}>Cancel</Button>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={!ready || !!formulaSourceError(source)}
+          onClick={save}
+        >
+          Save formula
+        </Button>
+      </>}
     >
-      <div className="tw:box-border tw:grid tw:w-full tw:min-w-0 tw:gap-4 tw:p-4">
         <div className="tw:relative tw:min-w-0" data-formula-input-shell>
           <div ref={setHost} className={contentStyles.formulaInput} />
           <IconButton
@@ -180,19 +190,6 @@ export function FormulaDialog({ session, onClose }: {
             <option value="block">On its own line</option>
           </NativeSelect>
         </label>
-
-        <DialogActions>
-          <Button type="button" variant="secondary" onClick={() => cancel("cancel_action")}>Cancel</Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!ready || !!formulaSourceError(source)}
-            onClick={save}
-          >
-            Save formula
-          </Button>
-        </DialogActions>
-      </div>
     </Dialog>
   );
 }

@@ -1,14 +1,11 @@
 // Analytics presentation only; evidence, scope and aggregations stay in the controller.
-const panel = "tw:min-w-0 tw:rounded-xl tw:bg-card tw:p-4 tw:ring-1 tw:ring-border tw:sm:p-5";
+// Panels are Surfaces: the card owns radius, border and shadow, and its gutter pads the content.
+const panel = "tw:p-(--card-gutter)";
 export const styles = {
   analyticsPanel: panel,
   analyticsPanelProgressChartPanel: panel,
   analyticsPanelTagInsightsPanel: panel,
   analyticsPanelRecentReviewPanel: panel,
-  panelHeadingRow: "tw:mb-4 tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:[&_h2]:m-0 tw:[&_h2]:text-body tw:[&_h2]:font-medium",
-  panelHeadingRowAnalyticsChartHeading: "tw:mb-4 tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:[&_h2]:m-0 tw:[&_h2]:text-body tw:[&_h2]:font-medium",
-  analyticsPanelNote: "tw:mt-1 tw:mb-0 tw:max-w-prose tw:text-small tw:leading-relaxed tw:text-muted-foreground",
-  analyticsChartActions: "tw:flex tw:flex-wrap tw:items-center tw:gap-1.5",
   metricsGridAnalyticsMetrics: "tw:grid tw:min-w-0 tw:grid-cols-2 tw:gap-3 tw:xl:grid-cols-3",
   analyticsWorkloadStrip: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:rounded-lg tw:bg-muted/35 tw:p-3 tw:text-small tw:[&>div]:flex tw:[&>div]:flex-wrap tw:[&>div]:items-center tw:[&>div]:gap-3 tw:[&>p]:m-0 tw:[&>p]:max-w-prose tw:[&>p]:leading-relaxed tw:[&>p]:text-muted-foreground",
   mutedCopy: "tw:text-small tw:leading-relaxed tw:text-muted-foreground",
@@ -16,15 +13,13 @@ export const styles = {
   analyticsTableWrapChartDataTable: "tw:mt-4 tw:w-full tw:min-w-0 tw:overflow-x-auto tw:rounded-lg tw:ring-1 tw:ring-border",
   analyticsTable: "tw:w-full tw:border-collapse tw:text-left tw:text-small tw:tabular-nums tw:[&_caption]:px-3 tw:[&_caption]:py-2 tw:[&_caption]:text-left tw:[&_caption]:text-caption tw:[&_caption]:text-muted-foreground tw:[&_th]:bg-muted/50 tw:[&_th]:px-3 tw:[&_th]:py-2 tw:[&_th]:text-caption tw:[&_th]:font-medium tw:[&_th]:text-muted-foreground tw:[&_td]:border-0 tw:[&_td]:border-t tw:[&_td]:border-solid tw:[&_td]:border-border tw:[&_td]:px-3 tw:[&_td]:py-2.5 tw:[&_td]:align-top tw:[&_small]:mt-1 tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground",
   analyticsGridAnalyticsDetailGrid: "tw:grid tw:min-w-0 tw:gap-5 tw:2xl:grid-cols-2",
-  analyticsSessionList: "tw:grid tw:min-w-0 tw:gap-1 tw:[&>article]:flex tw:[&>article]:flex-wrap tw:[&>article]:items-start tw:[&>article]:justify-between tw:[&>article]:gap-3 tw:[&>article]:rounded-lg tw:[&>article]:px-2 tw:[&>article]:py-2 tw:[&>article]:hover:bg-muted/40 tw:[&>article>div]:grid tw:[&>article>div]:min-w-0 tw:[&>article>div]:gap-0.5 tw:[&_strong]:break-words tw:[&_strong]:text-small tw:[&_span]:text-caption tw:[&_span]:text-muted-foreground tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground",
   compactEmptyState: "tw:rounded-lg tw:bg-muted/30 tw:p-5 tw:text-small tw:text-muted-foreground",
-  recentReviewList: "tw:grid tw:min-w-0 tw:gap-1",
-  recentReviewRow: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:gap-3 tw:rounded-lg tw:px-2 tw:py-2 tw:hover:bg-muted/40",
-  recentReviewCopy: "tw:grid tw:min-w-0 tw:flex-1 tw:gap-0.5 tw:[&>strong]:break-words tw:[&>strong]:text-small tw:[&>span]:text-caption tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
   recentReviewTags: "tw:flex tw:flex-wrap tw:items-center tw:gap-1",
   recentReviewTagAction: "tw:h-auto tw:min-h-0 tw:p-0 tw:text-caption tw:font-normal tw:underline tw:underline-offset-4",
-  recentReviewMeta: "tw:grid tw:min-w-0 tw:gap-0.5 tw:text-right tw:tabular-nums tw:[&>strong]:text-small tw:[&>span]:text-caption tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
-  analyticsFilterPanel: "tw:min-w-0 tw:rounded-xl tw:bg-card tw:p-4 tw:ring-1 tw:ring-border tw:sm:p-5 tw:grid tw:gap-3",
+  recentFigures: "tw:grid tw:min-w-0 tw:gap-0.5 tw:text-right tw:tabular-nums tw:[&>strong]:text-small tw:[&>strong]:font-medium tw:[&>span]:text-caption tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
+  analyticsFilterPanel: "tw:grid tw:gap-3 tw:p-(--card-gutter)",
+  analyticsRangeRow: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2",
+  analyticsCustomToggle: "tw:min-h-touch tw:aria-pressed:border-primary tw:aria-pressed:bg-accent tw:aria-pressed:text-accent-foreground",
   analyticsCustomRange: "tw:grid tw:min-w-0 tw:gap-3 tw:sm:grid-cols-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
   analyticsScopeDetails: "tw:min-w-0",
   analyticsScopeGrid: "tw:grid tw:min-w-0 tw:gap-3 tw:md:grid-cols-2",
@@ -33,9 +28,6 @@ export const styles = {
   progressChartCanvas: "tw:relative tw:h-80 tw:min-w-0 tw:w-full tw:sm:h-96",
   analyticsTableTopicTable: "tw:w-full tw:border-collapse tw:text-left tw:text-small tw:tabular-nums tw:[&_caption]:px-3 tw:[&_caption]:py-2 tw:[&_caption]:text-left tw:[&_caption]:text-caption tw:[&_caption]:text-muted-foreground tw:[&_th]:bg-muted/50 tw:[&_th]:px-3 tw:[&_th]:py-2 tw:[&_th]:text-caption tw:[&_th]:font-medium tw:[&_th]:text-muted-foreground tw:[&_td]:border-0 tw:[&_td]:border-t tw:[&_td]:border-solid tw:[&_td]:border-border tw:[&_td]:px-3 tw:[&_td]:py-2.5 tw:[&_td]:align-top tw:[&_small]:mt-1 tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground tw:min-w-[60rem]",
   highlighted: "tw:bg-accent/60 tw:ring-1 tw:ring-primary/30",
-  trend: "tw:inline-flex tw:whitespace-nowrap tw:font-medium tw:tabular-nums",
-  positive: "tw:text-success",
-  negative: "tw:text-destructive",
   neutral: "tw:text-muted-foreground",
   reviewDot: "tw:mt-1 tw:size-2.5 tw:shrink-0 tw:rounded-full",
 } as const;

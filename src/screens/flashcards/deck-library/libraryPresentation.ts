@@ -9,7 +9,7 @@ export const libraryPresentation = {
   sectionTitle: "tw:flex tw:min-w-0 tw:items-center tw:gap-2",
   sectionActions: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-2 tw:@max-[620px]/deck-library:w-full tw:@max-[620px]/deck-library:justify-stretch tw:@max-[620px]/deck-library:[&>button]:flex-1",
   folderList: "tw:grid tw:min-w-0 tw:gap-4",
-  row: "tw:grid tw:min-w-0 tw:grid-cols-[auto_minmax(0,1fr)_auto] tw:items-stretch tw:select-none tw:[-webkit-user-drag:none] tw:shadow-none tw:transition-colors tw:hover:border-border-strong tw:data-selected:border-primary tw:data-selected:bg-accent tw:reduce-motion:transition-none",
+  row: "tw:grid tw:min-w-0 tw:grid-cols-[auto_minmax(0,1fr)_auto] tw:items-stretch tw:py-4 tw:select-none tw:[-webkit-user-drag:none] tw:shadow-none tw:transition-colors tw:hover:border-border-strong tw:data-selected:border-primary tw:data-selected:bg-accent tw:reduce-motion:transition-none",
   selection: "tw:grid tw:min-h-12 tw:w-11 tw:place-items-center tw:rounded-lg tw:hover:bg-muted tw:coarse:min-w-touch",
   main: "tw:grid tw:min-w-0 tw:cursor-grab tw:touch-pan-y tw:grid-cols-[auto_minmax(0,1fr)] tw:items-center tw:gap-3 tw:rounded-lg tw:border-0 tw:bg-transparent tw:px-3 tw:py-3 tw:text-start tw:active:cursor-grabbing tw:focus-visible:outline-2 tw:focus-visible:outline-ring tw:coarse:min-h-touch tw:@max-[620px]/deck-library:grid-cols-1 tw:@max-[620px]/deck-library:px-2",
   mark: "tw:grid tw:size-9 tw:place-items-center tw:rounded-lg tw:bg-muted tw:text-accent-foreground tw:@max-[620px]/deck-library:hidden",
@@ -24,6 +24,5 @@ export const libraryPresentation = {
   folderTitleLine: "tw:flex tw:min-w-0 tw:items-center tw:gap-1 tw:[&_h3]:m-0 tw:[&_h3]:truncate tw:[&_h3]:text-small tw:[&_h3]:font-semibold",
   folderActions: "tw:flex tw:min-w-0 tw:flex-wrap tw:justify-end tw:gap-1 tw:@max-[620px]/deck-library:col-span-full",
   folderEmpty: "tw:grid tw:min-h-24 tw:place-content-center tw:justify-items-center tw:gap-2 tw:rounded-lg tw:border tw:border-dashed tw:border-border tw:p-4 tw:text-small tw:text-muted-foreground tw:[&_p]:m-0 tw:[&_[data-artwork-slot]]:max-w-24",
-  form: "tw:grid tw:min-w-0 tw:gap-5 tw:p-6 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-small tw:[&>label]:font-medium tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground",
-  formActions: "tw:flex tw:flex-wrap tw:justify-end tw:gap-3 tw:pt-2 tw:compact:[&>button]:flex-1",
+  fields: "tw:grid tw:min-w-0 tw:gap-5 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-small tw:[&>label]:font-medium tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground",
 } as const;

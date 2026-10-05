@@ -335,7 +335,30 @@ export function TiptapRichTextEditor({
           disabled={disabled}
         />
         {linkOpen ? (
-          <Dialog title="Edit link" width="small" onClose={() => setLinkOpen(false)}><form className={styles.insertForm} onSubmit={saveLink}>
+          <Dialog title="Edit link" width="small" onClose={() => setLinkOpen(false)} onSubmit={saveLink}
+            actions={<>
+              {adapter.isActive("link") ? (
+                <Button
+                  type="button"
+                  variant="dangerGhost"
+                  className="tw:mr-auto"
+                  disabled={disabled}
+                  onClick={() => {
+                    adapter.execute({ command: "unset_link" });
+                    setEditorError(null);
+                    setLinkOpen(false);
+                  }}
+                >
+                  Remove link
+                </Button>
+              ) : null}
+              <Button type="button" variant="secondary" disabled={disabled} onClick={() => setLinkOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={disabled}>
+                Apply
+              </Button>
+            </>}>
             <label className="tw:grid tw:gap-2 tw:text-label">
               <span>Link address</span>
               <TextField
@@ -347,30 +370,8 @@ export function TiptapRichTextEditor({
                 placeholder="https://example.org"
               />
             </label>
-            <div className={styles.linkActions}>
-              <Button type="button" variant="text" disabled={disabled} onClick={() => setLinkOpen(false)}>
-                Cancel
-              </Button>
-              {adapter.isActive("link") ? (
-                <Button
-                  type="button"
-                  variant="dangerGhost"
-                  disabled={disabled}
-                  onClick={() => {
-                    adapter.execute({ command: "unset_link" });
-                    setEditorError(null);
-                    setLinkOpen(false);
-                  }}
-                >
-                  Remove link
-                </Button>
-              ) : null}
-              <Button type="submit" variant="primary" size="small" disabled={disabled}>
-                Apply
-              </Button>
-            </div>
             {editorError ? <InlineNotice kind="error">{editorError}</InlineNotice> : null}
-          </form></Dialog>
+          </Dialog>
         ) : null}
         <div className={styles.surface} style={{ minHeight }} onClick={(event) => {
           // Padding/empty wrapper clicks focus the document. Clicks within its
@@ -387,8 +388,11 @@ export function TiptapRichTextEditor({
       {formulaSession ? <FormulaDialog session={formulaSession} onClose={() => setFormulaSession(null)} /> : null}
 
       {tableOpen ? (
-        <Dialog title="Insert table" width="small" onClose={() => setTableOpen(false)}>
-          <form className={styles.insertForm} onSubmit={insertTable}>
+        <Dialog title="Insert table" width="small" onClose={() => setTableOpen(false)} onSubmit={insertTable}
+          actions={<>
+            <Button type="button" variant="secondary" onClick={() => setTableOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="primary">Insert table</Button>
+          </>}>
             <div className={styles.insertGrid}>
               <label>
                 <span>Rows</span>
@@ -403,17 +407,15 @@ export function TiptapRichTextEditor({
               <Checkbox checked={tableHeader} onCheckedChange={(checked) => setTableHeader(checked)} />
               Use the first row as a header
             </label>
-            <div className={styles.insertActions}>
-              <Button type="button" variant="secondary" onClick={() => setTableOpen(false)}>Cancel</Button>
-              <Button type="submit" variant="primary">Insert table</Button>
-            </div>
-          </form>
         </Dialog>
       ) : null}
 
       {checklistOpen ? (
-        <Dialog title="Insert answer checklist" width="medium" onClose={() => setChecklistOpen(false)}>
-          <form className={styles.insertForm} onSubmit={insertChecklist}>
+        <Dialog title="Insert answer checklist" width="medium" onClose={() => setChecklistOpen(false)} onSubmit={insertChecklist}
+          actions={<>
+            <Button type="button" variant="secondary" onClick={() => setChecklistOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="primary">Insert checklist</Button>
+          </>}>
             <p className={styles.insertHelp}>
               Mark the correct options here. Copy the checklist to the answer before saving; the
               question then shows empty boxes and the answer reveals the marked boxes.
@@ -431,12 +433,7 @@ export function TiptapRichTextEditor({
                 </div>
               ))}
             </div>
-            <Button type="button" variant="secondary" size="small" disabled={checklistItems.length >= 12} onClick={() => setChecklistItems((current) => [...current, { id: createItemId(), text: "", correct: false }])}>Add option</Button>
-            <div className={styles.insertActions}>
-              <Button type="button" variant="secondary" onClick={() => setChecklistOpen(false)}>Cancel</Button>
-              <Button type="submit" variant="primary">Insert checklist</Button>
-            </div>
-          </form>
+            <Button type="button" variant="secondary" size="small" className="tw:justify-self-start" disabled={checklistItems.length >= 12} onClick={() => setChecklistItems((current) => [...current, { id: createItemId(), text: "", correct: false }])}>Add option</Button>
         </Dialog>
       ) : null}
     </section>

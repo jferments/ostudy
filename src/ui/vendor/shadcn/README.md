@@ -11,7 +11,7 @@ This directory is oStudy's owned shadcn implementation boundary. Features import
 
 Owned source includes Button, Badge, Skeleton, Input, NativeSelect, form controls, Tabs, Card, Item, ButtonGroup, Dialog/Sheet, DropdownMenu, Tooltip, Toast/notification, Alert, Progress, Empty, Toolbar and Sidebar composition.
 
-Card exposes title/description/action/content/footer slots instead of requiring feature-local header recipes. Item is the preferred generic list-object presentation. ButtonGroup is the preferred visual grouping for related adjacent controls. Application-specific wrappers should encapsulate semantic intent or platform behavior rather than preserve legacy styling.
+Card exposes title/description/action/content/footer slots instead of requiring feature-local header recipes, and owns the one card surface and its gutter; Panel, Surface and StatTile compose it. Item is the preferred generic list-object presentation; its ItemTrigger is the one native button over an item's media and text, which ListRow uses for rows that open what they name. ButtonGroup is the preferred visual grouping for related adjacent controls. Application-specific wrappers should encapsulate semantic intent or platform behavior rather than preserve legacy styling.
 
 ## Deliberate adaptations
 
@@ -19,11 +19,12 @@ Card exposes title/description/action/content/footer slots instead of requiring 
 - Semantic shadcn roles resolve through oStudy tokens; no parallel palette or `dark` provider exists.
 - Button follows Nova's stock `default`, `outline`, `secondary`, `ghost`, `destructive` and `link` variants. The public oStudy facade keeps application semantic names and loading/write-lock behavior without growing additional vendor variants.
 - Fine-pointer controls use Nova-like compact dimensions. Coarse-pointer variants retain the application touch-target minimum.
+- Segmented control options keep the application touch target at every pointer size: each option's button is the target and the pill it draws sits inside it, so the mockups' proportions stay visual only.
 - NativeSelect deliberately retains the operating-system picker, options/optgroups, multiple selection and numeric listbox semantics.
 - Checkbox, Switch, RadioGroup, Slider, Tabs and Toolbar rely on Base UI interaction behavior rather than custom event imitation.
 - Disclosure content remains mounted when required to preserve drafts. FormField keeps contextual help outside the input label and owns label/description/error association.
 - Sidebar is intentionally non-collapsing. `LayoutModeProvider` owns responsive behavior, so there is no second cookie, mobile detector or vendor navigation hotkey.
-- Modal behavior uses Base UI while oStudy owns application overlay registration, native Back, compact/fullscreen policy, busy dismissal and explicit focus policy. Inline workspaces remain nonmodal.
+- Modal behavior uses Base UI while oStudy owns application overlay registration, native Back, compact/fullscreen policy, busy dismissal and explicit focus policy. The modal composes one header, scrolling body and pinned action footer (optionally one form) for every dialog, sheet and confirmation. Inline workspaces remain nonmodal.
 - Notification rendering does not own durable mutation success, retry identity or Undo expiry.
 - Rich editor/document/Markdown descendants, drag geometry, Practice card transforms, QR quiet zones and other registered specialized CSS owners remain outside generic component styling.
 - No Preflight is imported. Border recipes that require a visible border therefore specify border style explicitly.

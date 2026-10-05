@@ -4,7 +4,7 @@ import { deleteCards, undoDeletion, type SelectionCard } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface DeleteCardsModalProps {
@@ -58,19 +58,19 @@ export function DeleteCardsModal({ cards, onClose, onComplete, showToast }: Dele
     <Dialog title="Delete selected cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="small" busy={isDeleting} dismissible={!isDeleting}
-      onClose={() => { if (!isDeleting) onClose(); }}>
+      onClose={() => { if (!isDeleting) onClose(); }}
+      actions={<>
+        <Button variant="secondary" disabled={isDeleting} onClick={onClose}>Cancel</Button>
+        <Button variant="danger" disabled={isDeleting} onClick={() => void submit()}>
+          {isDeleting ? "Deleting…" : `Delete ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+        </Button>
+      </>}>
       <div className={styles.deleteCardsForm} aria-busy={isDeleting}>
         <InlineNotice kind="warning">
           This removes the selected cards from their decks. Their schedules, review
           history, tags, and images remain recoverable during the brief Undo window.
         </InlineNotice>
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-        <DialogActions>
-          <Button variant="secondary" disabled={isDeleting} onClick={onClose}>Cancel</Button>
-          <Button variant="danger" disabled={isDeleting} onClick={() => void submit()}>
-            {isDeleting ? "Deleting…" : `Delete ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-          </Button>
-        </DialogActions>
       </div>
     </Dialog>
   );

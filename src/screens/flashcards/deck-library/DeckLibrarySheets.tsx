@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Sheet } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
@@ -107,14 +107,17 @@ function MoveSelectionSheet({
       onClose={onClose}
       busy={busy}
       dismissible={!busy}
+      onSubmit={() => void onMove(targetFolderId === "" ? null : targetFolderId)}
+      actions={<>
+        <Button disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" loading={busy}>
+          Move selected
+        </Button>
+      </>}
     >
-      <form
-        className={styles.form}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onMove(targetFolderId === "" ? null : targetFolderId);
-        }}
-      >
+      <div className={styles.fields}>
         <label>
           <span>Destination</span>
           <NativeSelect
@@ -131,15 +134,7 @@ function MoveSelectionSheet({
             ))}
           </NativeSelect>
         </label>
-        <div className={styles.formActions}>
-          <Button disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={busy}>
-            Move selected
-          </Button>
-        </div>
-      </form>
+      </div>
     </Sheet>
   );
 }
@@ -163,14 +158,17 @@ function DeckCreateSheet({
       onClose={onClose}
       busy={busy}
       dismissible={!busy}
+      onSubmit={() => void onCreate(name, description)}
+      actions={<>
+        <Button disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
+          Create deck
+        </Button>
+      </>}
     >
-      <form
-        className={styles.form}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onCreate(name, description);
-        }}
-      >
+      <div className={styles.fields}>
         <label>
           <span>Name</span>
           <TextField
@@ -191,15 +189,7 @@ function DeckCreateSheet({
             onChange={(event) => setDescription(event.currentTarget.value)}
           />
         </label>
-        <div className={styles.formActions}>
-          <Button disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
-            Create deck
-          </Button>
-        </div>
-      </form>
+      </div>
     </Sheet>
   );
 }
@@ -229,14 +219,17 @@ function FolderSheet({
       onClose={onClose}
       busy={busy}
       dismissible={!busy}
+      onSubmit={() => void onSave(name)}
+      actions={<>
+        <Button disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
+          {sheet.kind === "create-folder" ? "Create folder" : "Save name"}
+        </Button>
+      </>}
     >
-      <form
-        className={styles.form}
-        onSubmit={(event: FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          void onSave(name);
-        }}
-      >
+      <div className={styles.fields}>
         <label>
           <span>Folder name</span>
           <TextField
@@ -246,15 +239,7 @@ function FolderSheet({
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </label>
-        <div className={styles.formActions}>
-          <Button disabled={busy} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === ""}>
-            {sheet.kind === "create-folder" ? "Create folder" : "Save name"}
-          </Button>
-        </div>
-      </form>
+      </div>
     </Sheet>
   );
 }

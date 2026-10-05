@@ -2,8 +2,15 @@ import { useId } from "react";
 
 import type { NormalizedRect } from "../../ipc/questions";
 import { Button } from "../../ui/primitives/Button";
+import { SegmentedControl, type SegmentedOptions } from "../../ui/primitives/SegmentedControl";
 import { moveRectangle, resizeRectangle, toScreenPoint, type Point } from "./geometry";
+import type { OcclusionTool } from "./gestures";
 import { RESIZE_HANDLES, useOcclusionWorkspace, type OcclusionWorkspaceOptions } from "./useOcclusionWorkspace";
+
+const TOOLS = [
+  { value: "select", label: "Select / adjust" }, { value: "rectangle", label: "Draw rectangle" },
+  { value: "corners", label: "Tap two corners" }, { value: "pan", label: "Pan image" },
+] as const satisfies SegmentedOptions<OcclusionTool>;
 
 export interface OcclusionWorkspaceProps extends OcclusionWorkspaceOptions {
   imageUrl: string;
@@ -22,10 +29,6 @@ export function OcclusionWorkspace(props: OcclusionWorkspaceProps) {
   const selectedRect = interaction.preview?.maskId === selected?.id
     ? interaction.preview?.rectangle : selected?.rect;
   const hitRadius = 22;
-  const tools = [
-    ["select", "Select / adjust"], ["rectangle", "Draw rectangle"],
-    ["corners", "Tap two corners"], ["pan", "Pan image"],
-  ] as const;
 
   function adjusted(rectangle: NormalizedRect): void {
     if (!selected || props.disabled) return;
@@ -37,13 +40,8 @@ export function OcclusionWorkspace(props: OcclusionWorkspaceProps) {
 
   return (
     <section className="tw:grid tw:min-w-0 tw:gap-3" aria-label="Image region editor">
-      <div className="tw:flex tw:flex-wrap tw:gap-2" role="group" aria-label="Image editing tools">
-        {tools.map(([tool, label]) => (
-          <Button key={tool} variant={workspace.tool === tool ? "primary" : "secondary"}
-            disabled={props.disabled} aria-pressed={workspace.tool === tool} onClick={() => workspace.setTool(tool)}>
-            {label}
-          </Button>
-        ))}
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2" role="group" aria-label="Image editing tools">
+        <SegmentedControl label="Tool" value={workspace.tool} options={TOOLS} disabled={props.disabled} onChange={workspace.setTool} />
         <Button disabled={props.disabled || props.masks.length >= 128} onClick={workspace.addRegion}>Add rectangle</Button>
       </div>
       <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2" role="group" aria-label="Image view and history">

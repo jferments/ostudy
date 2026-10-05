@@ -217,6 +217,14 @@ export function CardFilters({
         title="Filter flashcards"
         description="Narrow the current library without changing cards or schedules."
         onClose={() => setFiltersOpen(false)}
+        actions={<>
+          {activeFilters.length > 0 ? (
+            <Button onClick={clearFilters}>Clear filters</Button>
+          ) : null}
+          <Button variant="primary" onClick={() => setFiltersOpen(false)}>
+            View results
+          </Button>
+        </>}
       >
         <div className={styles.filterSheet}>
           <FilterGroup
@@ -361,15 +369,6 @@ export function CardFilters({
               </div>
             )}
           </FilterGroup>
-
-          <div className={styles.sheetActions}>
-            {activeFilters.length > 0 ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
-            ) : null}
-            <Button variant="primary" onClick={() => setFiltersOpen(false)}>
-              View results
-            </Button>
-          </div>
         </div>
       </AdaptiveSheet>
     </section>

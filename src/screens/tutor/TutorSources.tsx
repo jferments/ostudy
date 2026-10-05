@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { scopeMembers, selectedScope, studyScopeKey, type MaterialScope, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
@@ -45,7 +45,12 @@ export function TutorSources({
     if (next.length > 16) { setError("Select at most 16 sources for one conversation."); return; }
     setSelected(next); setError(null);
   }
-  return <Dialog title={title} description={description} onClose={onClose} width="medium">
+  return <Dialog title={title} description={description} onClose={onClose} width="medium"
+    actions={<>
+      <Button className="tw:mr-auto" onClick={() => { setSelected([]); setError(null); }}>Clear selection</Button>
+      <Button onClick={onClose}>Cancel</Button>
+      <Button variant="primary" onClick={() => { onApply(selectedScope(selected)); onClose(); }}>{applyLabel}</Button>
+    </>}>
     <label className={styles.field} htmlFor={`${id}-search`}>Find material
       <TextField id={`${id}-search`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     </label>
@@ -61,10 +66,5 @@ export function TutorSources({
     </div>
     <p className={styles.muted}>{selected.length} selected. {note}</p>
     {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-    <DialogActions>
-      <Button onClick={() => { setSelected([]); setError(null); }}>Clear selection</Button>
-      <Button onClick={onClose}>Cancel</Button>
-      <Button variant="primary" onClick={() => { onApply(selectedScope(selected)); onClose(); }}>{applyLabel}</Button>
-    </DialogActions>
   </Dialog>;
 }

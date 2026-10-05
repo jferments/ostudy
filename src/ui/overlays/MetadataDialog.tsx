@@ -1,6 +1,5 @@
 import { type ReactNode, useState } from "react";
 import { IconButton } from "../icons/IconButton";
-import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { Dialog } from "./Dialog";
 import type { OverlayCloseReason } from "./overlayContext";
 
@@ -11,12 +10,11 @@ export interface MetadataDialogProps {
   children: ReactNode;
   onClose: (reason: OverlayCloseReason) => void;
 }
+/** Read-only details: a sheet on compact screens, a dialog elsewhere. */
 export function MetadataDialog({ open, title, description, children, onClose }: MetadataDialogProps) {
-  const { layoutMode } = useLayoutMode();
   if (!open) return null;
-  return <Dialog title={title} description={description} width="medium"
-    presentation={layoutMode === "compact" ? "sheet" : "dialog"} onClose={onClose}>
-    <div className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">{children}</div>
+  return <Dialog title={title} description={description} width="medium" presentation="sheet" onClose={onClose}>
+    {children}
   </Dialog>;
 }
 
