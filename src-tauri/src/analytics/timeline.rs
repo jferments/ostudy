@@ -69,7 +69,7 @@ fn load_local_date_buckets(
     let sql = format!(
         "SELECT
              {bucket_sql},
-             COUNT(DISTINCT r.card_id),
+             COUNT(DISTINCT c.id),
              COUNT(*),
              COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(r.answer_correct), 0),
@@ -159,7 +159,7 @@ fn load_months(
     let sql = format!(
         "SELECT
              substr({study_date}, 1, 7),
-             COUNT(DISTINCT r.card_id),
+             COUNT(DISTINCT c.id),
              COUNT(*),
              COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(r.answer_correct), 0),

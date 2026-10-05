@@ -12,11 +12,11 @@ import { providerStyles as styles } from "./documents/presentation";
 interface DocumentsSectionProps {
   refreshDecks: () => Promise<unknown>;
   onPracticeCards: (cardIds: string[]) => Promise<void>;
-  onOpenDeck?: (deckId: string) => void;
+  onStudyCollection?: (collectionId: string) => void;
   showToast: ShowToast;
 }
 
-export function DocumentsSection({ refreshDecks, onOpenDeck, showToast }: DocumentsSectionProps) {
+export function DocumentsSection({ refreshDecks, onStudyCollection, showToast }: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable = capabilities.native === null || capabilities.native.services.nativePdfRender.state === "available";
   const [profile, setProfile] = useState<AiProviderProfileSummary | null>(null);
@@ -63,7 +63,7 @@ export function DocumentsSection({ refreshDecks, onOpenDeck, showToast }: Docume
   return <div className={styles.section} data-tour-anchor="documents.upload">
     <DocumentsScreen
       refreshDecks={refreshDecks}
-      onOpenDeck={onOpenDeck}
+      onStudyCollection={onStudyCollection}
       showToast={showToast}
       headerSupplement={providerPanel}
     />

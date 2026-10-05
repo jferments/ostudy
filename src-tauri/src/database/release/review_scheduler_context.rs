@@ -19,9 +19,9 @@ pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(
 mod tests {
     use super::*;
     use crate::database::release::{
-        apply_migrations, migration_sql, preservation_receipt, validate_backup_input,
-        validate_input, validate_supported_input, write_release_ledger, BASELINE_SQL,
-        RELEASE_MIGRATIONS, SCHEMA_VERSION,
+        apply_migrations, apply_migrations_through, migration_sql, preservation_receipt,
+        validate_backup_input, validate_input, validate_supported_input, write_release_ledger,
+        BASELINE_SQL, RELEASE_MIGRATIONS,
     };
     use rusqlite::params;
 
@@ -104,6 +104,8 @@ mod tests {
         connection.query_row(sql, [], |row| row.get(0)).unwrap()
     }
 
+    /// Schema 6 reshapes filing and has its own tests, so this additive release
+    /// is compared on its own.
     #[test]
     fn schema_four_upgrades_additively_and_keeps_old_reviews_without_context() {
         let mut connection = schema_four();
@@ -112,12 +114,8 @@ mod tests {
         validate_backup_input(&connection).unwrap();
         assert_eq!(connection.total_changes(), changes);
 
-        assert!(apply_migrations(&mut connection).unwrap());
-        assert_eq!(
-            validate_supported_input(&connection).unwrap(),
-            SCHEMA_VERSION
-        );
-        validate_input(&connection).unwrap();
+        assert!(apply_migrations_through(&mut connection, 5).unwrap());
+        assert_eq!(validate_supported_input(&connection).unwrap(), 5);
         assert_eq!(count(&connection, "SELECT COUNT(*) FROM review_events"), 1);
         assert_eq!(
             count(

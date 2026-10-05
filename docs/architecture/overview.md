@@ -102,7 +102,7 @@ Startup must not expose an ordinary library before its durable state is ready. I
 
 Normal whole-library restore completes inside the running native process rather than waiting for a manual application restart. The restore owner acquires maintenance admission, closes IPC admission, drains request leases, validates and stages the candidate, journals coordinated database/managed-file replacement, reopens and reconciles the replacement, records a durable completion receipt, advances the library generation, and then refreshes the interface. Startup recovery exists for interrupted or indeterminate activation; source/code rollback and data recovery consequently require different reasoning.
 
-Schema compatibility is explicit. The current writer is `ostudy-release-v1` schema 5. Its immutable schema-1 baseline is verified by [database initialization](../../src-tauri/src/database.rs), and reviewed release migrations advance it normally. Supported legacy `ostudy-public-v1` schema 10–30 inputs are first admitted read-only against their immutable migration/repair ledgers and persisted payload contracts, normalized through the terminal public-v1 state, preservation-checked on a private disk-backed SQLite candidate with bounded cache/temp-storage policy, converted to the release baseline by the dedicated database owner, and then migrated forward. The candidate is never authoritative; an abandoned or low-space staging attempt leaves the live legacy lineage unchanged. The explicit final pre-public recovery path remains separate from ordinary startup. Whole-library restore uses the same admission/conversion ownership before activation. Historical migrations retain registered identities/checksums; unsupported, future, tampered, or corrupt durable state fails visibly instead of being guessed or silently replaced.
+Schema compatibility is explicit. The current writer is `ostudy-release-v1` schema 6. Its immutable schema-1 baseline is verified by [database initialization](../../src-tauri/src/database.rs), and reviewed release migrations advance it normally. Supported legacy `ostudy-public-v1` schema 10–30 inputs are first admitted read-only against their immutable migration/repair ledgers and persisted payload contracts, normalized through the terminal public-v1 state, preservation-checked on a private disk-backed SQLite candidate with bounded cache/temp-storage policy, converted to the release baseline by the dedicated database owner, and then migrated forward. The candidate is never authoritative; an abandoned or low-space staging attempt leaves the live legacy lineage unchanged. The explicit final pre-public recovery path remains separate from ordinary startup. Whole-library restore uses the same admission/conversion ownership before activation. Historical migrations retain registered identities/checksums; unsupported, future, tampered, or corrupt durable state fails visibly instead of being guessed or silently replaced.
 
 The shared activity gate refuses maintenance while registered processing work is active; request leases separately protect synchronous dispatch and complete asynchronous futures. Synchronous native commands are admitted to bounded application-owned workers rather than running substantial SQL/filesystem work on the event thread, and the accepted job owns its original-generation lease through completion even if its caller disappears. A separate bounded control lane keeps cancellation/session/Back controls responsive behind blocked ordinary work. These are not interchangeable mechanisms. Collection study-material composition now joins the common activity gate for its full owned lifetime, so maintenance admission and close protection see the same safety fact while the feature-local registry continues to own cancellation/progress. Complete-library restore prepares and validates its private candidate while ordinary admission remains open, then rechecks the originating library generation before entering exclusive activation and draining the remaining leases.
 
@@ -142,7 +142,7 @@ Sources: [Flashcards route model](../../src/navigation/flashcardsRoutes.ts), [St
 
 Base UI, behind oStudy's shared adapters, owns browser focus containment/restoration, modality, popup behavior and scroll locking. OverlayProvider owns application stack/parent registration and native Back policy; it is not a competing DOM focus trap. Features use Dialog, Sheet, Menu, overflow, and confirmation primitives rather than creating competing focus traps or backdrops. Busy/non-dismissible behavior is explicit. Native shutdown protection remains native because a React dialog cannot reliably prevent all process termination.
 
-A Study Guide reader is currently an **inline workspace**, even though its implementation file retains the name `StudyGuideDialog.tsx`. It is not a modal covering the application navigation. A filename must not override the actual accessibility role and composition. Desktop window management uses native OS chrome; the removed in-app maximize/full-screen adapter is not part of current frontend ownership.
+A Study Guide reader is currently an **inline workspace**, even though its implementation file retains the name `StudyGuideDialog.tsx`. It is not a modal covering the application navigation. A document guide reads as pages (an overview and one page per section) under a top bar with a back button to the library; a collection guide keeps its single scrolling reader. A filename must not override the actual accessibility role and composition. Desktop window management uses native OS chrome; the removed in-app maximize/full-screen adapter is not part of current frontend ownership.
 
 Styling has one global entry, `src/ui/foundations/index.css`, which establishes layers, root sizing, local typography, safe areas, and semantic foundations. Ordinary application presentation uses complete `tw:` Tailwind utilities and oStudy semantic tokens through owned UI primitives; registered remaining CSS Modules and specialized rich-content/platform geometry retain explicit owners where utilities are not the right boundary. Do not introduce a new feature stylesheet merely to recreate the older CSS-Modules-first presentation pattern. Generated reference/semantic/component tokens connect themes to controls without separate feature implementations for Light, Dark, Console, or Synthwave. Named layers make overlay/effect ordering reviewable.
 
@@ -171,22 +171,23 @@ The IPC boundary now has one explicit application-owned command transport: domai
 The simplest useful conceptual graph is:
 
 ```text
-folder → decks
-           └── notes: editable structured content, tags, source associations
-                 └── cards: stable recall/interactive presentations
-                       └── current schedules
+subject → decks
+            └── notes: editable structured content, tags, source associations
+                  └── cards: stable recall/interactive presentations
+                        └── current schedules
+        → documents → study ranges
 
 practice session → ordered session-card snapshots → review events
 
 source document → canonical evidence → shared knowledge → learning plan/topics
                                                         ├── generated note links
                                                         └── guide revisions/sections
-collection → selected documents/ranges → synthesis + StudyTarget deck/guide
+subject (collection) → filed documents/ranges → synthesis + StudyTarget guide
 Tutor project → independent scoped conversations/turns and memory preferences
 learner annotations ── document/topic identity or exact generated base
 ```
 
-A folder organizes decks and does not own an independent schedule. A note owns source content; one note can produce multiple independently scheduled presentations. A template defines a safe authoring structure but does not remain the mutable owner of every note it once generated. Review/session history is not the same as the current card schedule.
+A subject is one course: every deck and document is filed in at most one subject or in No subject, and subjects do not nest. A subject does not own an independent schedule; studying it studies its decks' cards live. Deck folders and document collections are both views of subjects ([ADR 0055](../decisions/0055-subjects.md)). A note owns source content; one note can produce multiple independently scheduled presentations. A template defines a safe authoring structure but does not remain the mutable owner of every note it once generated. Review/session history is not the same as the current card schedule.
 
 SQLite holds structured entities, relationship tables, optimistic revisions, operation identities, search indexes, historical evidence, document metadata/checkpoints, and settings. [Managed paths](../../src-tauri/src/paths.rs) separate card images, staging/quarantine, retained document sources, renders and versioned assets, and external transfer staging/exports. The database records controlled identities and integrity metadata rather than accepting arbitrary imported absolute paths.
 
@@ -232,7 +233,7 @@ Managed assets are a lifecycle, not just a path in a rich-text node. Staged imag
 
 Rich content retains `study-asset://<asset-id>` identities. Managed image presentation uses the asset protocol; managed audio/video playback uses its bounded native byte-to-Blob path. Both receive only authorized bytes rather than durable arbitrary filesystem or remote URLs. An internal custom URL is not permission to traverse arbitrary filesystem paths. External file imports similarly use opaque staged handles rather than passing desktop paths or Android content URIs around feature code.
 
-Deleting a folder only changes organization and returns its decks to an unsorted scope. Archiving a deck retains it and changes study availability. Deleting a deck/note/card follows an explicit recovery window and then finalized purge semantics. Undo is a bounded durable recovery operation, not a permanent trash archive.
+Deleting a subject only changes organization and returns its decks and documents to No subject. Archiving a deck retains it and changes study availability. Deleting a deck/note/card follows an explicit recovery window and then finalized purge semantics. Undo is a bounded durable recovery operation, not a permanent trash archive.
 
 `review_events` is append-only historical evidence while the owning material is retained. This does not mean personally deleted content must survive forever: finalized deletion deliberately purges its owned history/analytics according to policy. Distinguish that ownership lifecycle from editing or rewriting a retained historical event.
 
@@ -356,7 +357,7 @@ Provider-enforced structured output is necessary but insufficient. Adapters use 
 
 Generated cards normalize into the existing authoring and scheduling model. Recall-style definitions, scenarios, application prompts, reversible definitions, and cloze prompts use the established recall families where appropriate. Interactive generation produces native typed `single_choice`, `select_all`, `true_false`, `matching`, `grouping`, and `ordering` questions; legacy text-only `multiple_choice` output is rejected and image occlusion remains manually authored. There is no hidden generated-card approval queue. “Generate more” reuses valid retained derivatives/understanding and current coverage rather than rerendering an unchanged source unnecessarily.
 
-Document collections are single-level organization over retained documents and selected ranges. CollectionSynthesis is a derived map, not duplicated source knowledge. A collection StudyTarget assembles its ordinary deck from eligible unedited document-generated notes and authors its guide from retained authorized knowledge; it does not invent replacement flashcards through a second collection generator. Source removal prevents new contributions without erasing surviving learner cards, schedules or reviews.
+Document collections are subjects: single-level organization over retained documents and their study ranges. CollectionSynthesis is a derived map, not duplicated source knowledge. A collection StudyTarget authors its guide from retained authorized knowledge. Its flashcards are the live view of the decks filed in the subject: nothing is copied, so a fact keeps one card and one schedule. Collection copies made before schema 6 are retired into their original cards through `card_merges`, and every reader of review history counts a retired copy's reviews under its original.
 
 Tutor is a current consumer of this shared knowledge, with optional selected-material grounding and learner-controlled conversation history. Projects organize chats and supply defaults/instructions; project membership does not grant retrieval permission. Scope/evidence revisions and hidden-answer rules govern context before transmission. A general conversation can proceed without source retrieval, but source-only requests must identify evidence gaps. See [knowledge representation](knowledge-representation.md) and [Tutor privacy](../user-guide/tutor-memory-and-privacy.md).
 
@@ -370,7 +371,7 @@ Usage/time/cost observations retain their provenance. Missing provider token usa
 
 A guide is generated semantic content with a revision lifecycle, not a long card answer or a blob owned by the Documents screen. Document and collection guides use a shared reader/effective-snapshot boundary for narrative sections, key points, terminology, processes, comparisons and supported tables/examples/visual explanations. It shares a source and learning plan with generated flashcards but can exist independently. Native topic/card links connect exact identities; editable tags and text similarity do not become the source-of-truth mapping.
 
-The guide library uses bounded summary pages, search/sort, counts, and an explicit open request. Opening one item hydrates its guide, not every list row. The inline reader preserves main navigation. Technical revision metadata stays native/diagnostic rather than cluttering the everyday reading surface.
+The guide library uses bounded summary pages, search/sort, counts, and an explicit open request. Opening one item hydrates its guide, not every list row. The inline reader preserves main navigation and shows one section at a time with an outline, the section's source, note, terms and cards, and check-yourself prompts whose answers stay in memory while the guide is open. Technical revision metadata stays native/diagnostic rather than cluttering the everyday reading surface.
 
 Generated base sections are published as a complete validated revision. Regeneration leaves the prior active revision available until replacement succeeds. Learner guide notes attach to the document; topic notes attach to stable topics; section overrides attach to an exact generated base/content hash. A changed base that cannot safely accept an old override becomes a visible preserved conflict rather than silently losing or misapplying learner text.
 
@@ -478,7 +479,7 @@ Known limits include incomplete platform/release qualification, model/extraction
 | Card browsing/editing | `src/screens/cards/`, `CardEditorScreenBase.tsx`, `src/editor/`, `src/controllers/useDurableDraft.ts` |
 | Native composition/data | `src-tauri/src/lib.rs`, `startup.rs`, `database.rs`, `database/release.rs`, `src-tauri/schema/`, `paths.rs`, retained migrations/repairs |
 | Restore and admission | `library_backup/live.rs`, `library_backup/activation.rs`, `library_session.rs`, `task_activity.rs`, `library_lock.rs`, `platform/file_lock.rs` |
-| Cards/templates/drafts | `authoring/`, `cards/content.rs`, `editor_drafts.rs`, `decks.rs`, `deck_folders.rs` under native source |
+| Cards/templates/drafts | `authoring/`, `cards/content.rs`, `editor_drafts.rs`, `decks.rs` under native source |
 | Learning/schedules | `scheduler.rs`, `practice.rs`, `practice_selection.rs`, `practice_resume.rs`, `schedule_controls.rs`, `study_calendar.rs`, `studyability.rs` |
 | Read projections/history | `deck_cards.rs`, `projections/`, `analytics/`, `workload.rs` |
 | Assets and deletion | `asset_lifecycle.rs`, `asset_protocol.rs`, `deletion.rs`, `deletion_purge.rs` |
@@ -487,7 +488,7 @@ Known limits include incomplete platform/release qualification, model/extraction
 | Source ingestion | `documents/`, `document_ingestion/`, `pdf_backend/`, `pdf_document_ingestion/`, `xberg_document_adapter/` |
 | Canonical learning artifacts | `document_canonical*.rs`, `document_learning*.rs`, `document_topic_links.rs`, `document_citations.rs`, `document_artifacts.rs` |
 | Generation and guides | `ai/document_intelligence/`, `document_generation.rs`, `document_checkpoints.rs`, `document_study_guide*.rs`, `src/screens/StudyGuidesScreen.tsx`, `StudyGuideDialog.tsx` |
-| Knowledge, collections and Tutor | `src-tauri/src/knowledge/`, `collections.rs`, `study_materials/`, `tutor/`, `src/screens/tutor/` |
+| Subjects, knowledge and Tutor | `src-tauri/src/subjects.rs` (with the `deck_folders.rs` and `collections.rs` adapters), `knowledge/`, `study_materials/`, `tutor/`, `src/ipc/subjects.ts`, `src/screens/tutor/` |
 | Sync | `src-tauri/src/device_sync/`, `src/screens/settings/DeviceSyncSettings.tsx` |
 | Android | `plugins/ostudy-platform/`, `src-tauri/gen/android/`, Android scripts/instrumentation |
 | Build/evidence/policy | `scripts/`, `.github/workflows/`, `tests/scripts/`, `tests/webdriver/`, co-located frontend and native tests |

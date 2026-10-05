@@ -288,7 +288,6 @@ mod tests {
     ) -> Result<(StudyScope, Vec<SourceRecord>), CommandError> {
         let document = id('d');
         let collection = id('c');
-        let membership = id('m');
         let sha = "a".repeat(64);
         connection
             .execute(
@@ -370,25 +369,23 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO document_collections(
-                 id,parent_id,name,sort_order,created_at,updated_at,revision
-             ) VALUES(?1,NULL,'Week 1',1000,1,1,1)",
+                 id,name,sort_order,created_at,updated_at,revision
+             ) VALUES(?1,'Week 1',1000,1,1,1)",
                 [&collection],
             )
             .map_err(CommandError::database)?;
         connection
             .execute(
-                "INSERT INTO document_collection_memberships(
-                 id,collection_id,document_id,sort_order,created_at,updated_at,revision
-             ) VALUES(?1,?2,?3,1000,1,1,1)",
-                params![membership, collection, document],
+                "UPDATE documents SET subject_id=?1 WHERE id=?2",
+                params![collection, document],
             )
             .map_err(CommandError::database)?;
         connection
             .execute(
-                "INSERT INTO document_collection_ranges(
-                 id,membership_id,unit_kind,start_unit,end_unit,source_sha256,created_at
+                "INSERT INTO document_study_ranges(
+                 id,document_id,unit_kind,start_unit,end_unit,source_sha256,created_at
              ) VALUES(?1,?2,'page',1,1,?3,1)",
-                params![id('r'), membership, sha],
+                params![id('r'), document, sha],
             )
             .map_err(CommandError::database)?;
         Ok((

@@ -20,9 +20,9 @@ pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(
 mod tests {
     use super::*;
     use crate::database::release::{
-        apply_migrations, preservation_receipt, validate_backup_input, validate_input,
-        validate_supported_input, write_release_ledger, BASELINE_SQL, RELEASE_MIGRATIONS,
-        SCHEMA_VERSION,
+        apply_migrations, apply_migrations_through, preservation_receipt, validate_backup_input,
+        validate_input, validate_supported_input, write_release_ledger, BASELINE_SQL,
+        RELEASE_MIGRATIONS,
     };
     use rusqlite::params;
 
@@ -52,20 +52,18 @@ mod tests {
         connection
     }
 
+    /// Schema 6 reshapes filing and has its own tests, so the additive releases
+    /// are compared through schema 5.
     #[test]
-    fn schema_two_backup_upgrades_additively_to_current_schema() {
+    fn schema_two_backup_upgrades_additively_through_schema_five() {
         let mut connection = schema_two();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
         assert_eq!(connection.total_changes(), changes);
 
-        assert!(apply_migrations(&mut connection).unwrap());
-        assert_eq!(
-            validate_supported_input(&connection).unwrap(),
-            SCHEMA_VERSION
-        );
-        validate_input(&connection).unwrap();
+        assert!(apply_migrations_through(&mut connection, 5).unwrap());
+        assert_eq!(validate_supported_input(&connection).unwrap(), 5);
         let rows: i64 = connection
             .query_row("SELECT COUNT(*) FROM deck_merge_operations", [], |row| {
                 row.get(0)

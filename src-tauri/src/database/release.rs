@@ -27,9 +27,16 @@ mod review_scheduler_context;
 #[path = "release/staging.rs"]
 mod staging;
 
+#[path = "release/subjects.rs"]
+mod subjects;
+
+#[cfg(test)]
+#[path = "release/subjects_fixture.rs"]
+pub(crate) mod subjects_fixture;
+
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 5;
+pub(crate) const SCHEMA_VERSION: i64 = 6;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -67,6 +74,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "review_event_scheduler_context",
         checksum: "ffb3788f79fcb4b3fe2092bcb6207f7ff7e2742b694fa845f175862737863158",
         sql: include_str!("../../schema/0005_review_event_scheduler_context.sql"),
+    },
+    ReleaseMigration {
+        version: 6,
+        name: "subjects",
+        checksum: "6b072b0f86efab3a628647edb8d5712e852dc03313e859e1e25aa996a3066a06",
+        sql: include_str!("../../schema/0006_subjects.sql"),
     },
 ];
 
@@ -274,6 +287,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     deck_merge::validate_schema(connection, user_version)?;
     generation_instructions::validate_schema(connection, user_version)?;
     review_scheduler_context::validate_schema(connection, user_version)?;
+    subjects::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
@@ -321,10 +335,16 @@ fn validate_baseline_input(connection: &Connection) -> Result<(), String> {
 }
 
 pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, String> {
+    apply_migrations_through(connection, SCHEMA_VERSION)
+}
+
+/// Apply every bundled migration after the stored version, up to and including
+/// `through`, each in its own transaction, and require that version afterwards.
+fn apply_migrations_through(connection: &mut Connection, through: i64) -> Result<bool, String> {
     let current = validate_supported_input(connection)?;
     let mut applied = false;
     for migration in RELEASE_MIGRATIONS {
-        if migration.version <= current {
+        if migration.version <= current || migration.version > through {
             continue;
         }
         let transaction = connection
@@ -344,7 +364,12 @@ pub(super) fn apply_migrations(connection: &mut Connection) -> Result<bool, Stri
         })?;
         applied = true;
     }
-    validate_input(connection)?;
+    let version = validate_supported_input(connection)?;
+    if version != through {
+        return Err(format!(
+            "This release database is schema {version}; schema {through} is required after migration."
+        ));
+    }
     Ok(applied)
 }
 
@@ -403,6 +428,18 @@ fn convert_legacy_current_with<F>(connection: &mut Connection, stage: F) -> Resu
 where
     F: FnOnce(&Connection) -> Result<staging::Candidate, String>,
 {
+    convert_legacy_current_through(connection, stage, SCHEMA_VERSION)
+}
+
+/// Convert, then apply the release migrations up to and including `through`.
+fn convert_legacy_current_through<F>(
+    connection: &mut Connection,
+    stage: F,
+    through: i64,
+) -> Result<(), String>
+where
+    F: FnOnce(&Connection) -> Result<staging::Candidate, String>,
+{
     let legacy_version = entry::validate_public_input(connection)?;
     if legacy_version != LEGACY_PUBLIC_SCHEMA_VERSION {
         return Err(format!(
@@ -443,8 +480,7 @@ where
     }
     verify_integrity(candidate.connection())?;
     verify_schema_matches_release_baseline(candidate.connection())?;
-    apply_migrations(candidate.connection_mut())?;
-    validate_input(candidate.connection())?;
+    apply_migrations_through(candidate.connection_mut(), through)?;
 
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -460,7 +496,7 @@ where
     transaction
         .commit()
         .map_err(|error| format!("Could not commit release lineage conversion: {error}"))?;
-    apply_migrations(connection)?;
+    apply_migrations_through(connection, through)?;
     verify_integrity(connection)?;
     Ok(())
 }
@@ -778,6 +814,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(scheduler_context_table, 1);
+        let subject_tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE type = 'table'
+                   AND name IN ('card_merges', 'document_study_ranges', 'subject_filing_reviews')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(subject_tables, 3);
+        let folder_tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema
+                 WHERE name IN ('deck_folders', 'document_collection_memberships',
+                                'document_collection_ranges')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_tables, 0);
     }
 
     #[test]
@@ -923,8 +979,11 @@ mod tests {
             )
             .unwrap();
         let before = preservation_receipt(&connection).unwrap();
-        convert_legacy_current(&mut connection).unwrap();
-        validate_input(&connection).unwrap();
+        // Schema 6 reshapes deck and document filing, which its own tests and
+        // preservation contract cover. Conversion is proven through schema 5,
+        // where every release addition is an empty table.
+        convert_legacy_current_through(&mut connection, staging::Candidate::copy_from, 5).unwrap();
+        assert_eq!(validate_supported_input(&connection).unwrap(), 5);
         for table in [
             "selection_deck_operations",
             "deck_merge_operations",
@@ -952,15 +1011,17 @@ mod tests {
             .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();
-        let deck: (String, i64, i64) = connection
+        assert!(apply_migrations(&mut connection).unwrap());
+        validate_input(&connection).unwrap();
+        let deck: (String, i64, i64, Option<String>) = connection
             .query_row(
-                "SELECT name, created_at, updated_at FROM decks
+                "SELECT name, created_at, updated_at, subject_id FROM decks
                  WHERE id = '11111111111111111111111111111111'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(deck, ("Preserved".to_string(), 10, 20));
+        assert_eq!(deck, ("Preserved".to_string(), 10, 20, None));
     }
 }
 

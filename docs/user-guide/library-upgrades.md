@@ -19,9 +19,23 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 5: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance and schema 5 records what the scheduler predicted at each new review and how long the card was on screen. Reviews from before the update keep no such record. Libraries at schemas 1–4 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 6: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), and schema 6 turns deck folders and document collections into subjects, described below. Libraries at schemas 1–5 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
+
+## The subjects update (schema 6)
+
+A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Flashcards and Documents show the same subjects as folders and as collections. Each deck and each document is in at most one subject.
+
+- Every folder becomes a subject with its decks. A folder and a collection with the same name, ignoring capitals and surrounding spaces, become one subject, but only when no other folder or collection uses that name. Otherwise both are kept under their own names.
+- A document that was in several collections stays in the one it joined first and leaves the others, keeping the page ranges set there. A document in no collection joins the folder of its generated deck.
+- A deck generated from a document, or a collection's study bundle deck, joins that document's or collection's subject. Other decks stay in their folders.
+- Collection flashcards were copies of the original cards, each with its own schedule. Unedited copies fold back into their originals: the original keeps the schedule of whichever card you studied, reset or rescheduled most recently, and reviews of the copy count under the original in Analytics, history and Search/Filter. No review is moved, changed or deleted. Copies you edited, and copies whose original is gone, stay as cards of their own.
+- A study bundle deck left without cards is archived. Studying a collection now studies the decks filed in it, live.
+
+Older builds cannot open a schema-6 library. Restoring the pre-upgrade checkpoint returns the schema-5 library as it was. A `.ostudybackup` made before the update still restores, and the restored library gets the same subjects as updating in place.
+
+If you synchronize several devices, update all of them, ideally right after a final sync. A device without the update refuses a package from an updated device and asks to be updated first; an updated device still accepts a package from one that has not updated yet. See [Device sync](device-sync.md).
 
 ## What happens when migration is required
 

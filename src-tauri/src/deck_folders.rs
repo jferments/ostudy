@@ -1,15 +1,20 @@
-use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+//! The deck library's folder commands, kept working on top of subjects.
+//!
+//! Since release schema 6 a deck folder is a subject (see `subjects`): the
+//! folders are every subject, a deck's folder is its subject, and the
+//! organization revision is the library revision. The folder screens keep
+//! this wire format until the Library replaces them.
+
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
     database::Database,
     error::CommandError,
-    util::{generate_id, unix_time_millis, validate_entity_id},
+    subjects::{self, Outcome, Revision, MAX_SUBJECT_NAME_CHARS as MAX_FOLDER_NAME_CHARS},
+    util::{unix_time_millis, validate_entity_id},
 };
-
-const MAX_FOLDER_NAME_CHARS: usize = 120;
-const ORDER_STEP: i64 = 1_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -136,52 +141,30 @@ pub fn move_deck_folder(
 fn load_organization(
     connection: &mut Connection,
 ) -> Result<DeckLibraryOrganizationDto, CommandError> {
-    let revision = organization_revision(connection)?;
-    let folders = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id, name, sort_order, created_at, updated_at, revision
-                 FROM deck_folders
-                 ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(DeckFolderDto {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    sort_order: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    revision: row.get(5)?,
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>();
-        rows.map_err(CommandError::database)?
-    };
-    let placements = {
-        let mut statement = connection
-            .prepare(
-                "SELECT id, folder_id, sort_order
-                 FROM decks
-                 WHERE deleted_at IS NULL
-                 ORDER BY folder_id IS NOT NULL DESC, folder_id ASC,
-                          sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(DeckPlacementDto {
-                    deck_id: row.get(0)?,
-                    folder_id: row.get(1)?,
-                    sort_order: row.get(2)?,
-                })
-            })
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>();
-        rows.map_err(CommandError::database)?
-    };
+    organization(connection)
+}
+
+fn organization(connection: &Connection) -> Result<DeckLibraryOrganizationDto, CommandError> {
+    let revision = subjects::revision(connection, Revision::Library)?;
+    let folders = subjects::list_subjects(connection)?
+        .into_iter()
+        .map(|subject| DeckFolderDto {
+            id: subject.id,
+            name: subject.name,
+            sort_order: subject.sort_order,
+            created_at: subject.created_at,
+            updated_at: subject.updated_at,
+            revision: subject.revision,
+        })
+        .collect();
+    let placements = subjects::deck_placements(connection)?
+        .into_iter()
+        .map(|placement| DeckPlacementDto {
+            deck_id: placement.deck_id,
+            folder_id: placement.subject_id,
+            sort_order: placement.sort_order,
+        })
+        .collect();
     Ok(DeckLibraryOrganizationDto {
         revision,
         folders,
@@ -200,25 +183,10 @@ fn create_folder(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&transaction, input.expected_organization_revision)?;
-    let id = generate_id(&transaction)?;
-    let sort_order: i64 = transaction
-        .query_row(
-            "SELECT COALESCE(MAX(sort_order), 0) + ?1 FROM deck_folders",
-            [ORDER_STEP],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    transaction
-        .execute(
-            "INSERT INTO deck_folders (
-                 id, name, sort_order, created_at, updated_at, revision
-             ) VALUES (?1, ?2, ?3, ?4, ?4, 1)",
-            params![id, name, sort_order, now],
-        )
-        .map_err(CommandError::database)?;
+    subjects::insert_subject(&transaction, &name, now)?;
     bump_organization(&transaction, input.expected_organization_revision, now)?;
     transaction.commit().map_err(CommandError::database)?;
-    load_organization(connection)
+    organization(connection)
 }
 
 fn update_folder(
@@ -233,22 +201,19 @@ fn update_folder(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&transaction, input.expected_organization_revision)?;
-    let changed = transaction
-        .execute(
-            "UPDATE deck_folders
-             SET name = ?1, updated_at = ?2, revision = revision + 1
-             WHERE id = ?3 AND revision = ?4",
-            params![name, now, input.folder_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if changed != 1 {
+    let renamed =
+        subjects::rename_subject_row(&transaction, &input.folder_id, &name, input.revision, now)?;
+    if renamed != Outcome::Done {
         return Err(folder_changed());
     }
     bump_organization(&transaction, input.expected_organization_revision, now)?;
     transaction.commit().map_err(CommandError::database)?;
-    load_organization(connection)
+    organization(connection)
 }
 
+/// Deletes a folder, returning its decks to the end of the unfiled decks. A
+/// folder is a subject, and one that also holds documents or study materials
+/// is deleted from Documents, where they are shown, rather than from here.
 fn delete_folder(
     connection: &mut Connection,
     input: DeleteDeckFolderInput,
@@ -260,45 +225,25 @@ fn delete_folder(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&transaction, input.expected_organization_revision)?;
-    let current_revision: Option<i64> = transaction
-        .query_row(
-            "SELECT revision FROM deck_folders WHERE id = ?1",
-            [input.folder_id.as_str()],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    match current_revision {
+    match subjects::subject_revision(&transaction, &input.folder_id)? {
         None => return Err(folder_not_found()),
         Some(revision) if revision != input.revision => return Err(folder_changed()),
         Some(_) => {}
     }
-
-    let mut unfiled = ordered_deck_ids(&transaction, None, None)?;
-    let moved = ordered_deck_ids(&transaction, Some(input.folder_id.as_str()), None)?;
-    unfiled.extend(moved.iter().cloned());
-    transaction
-        .execute(
-            "UPDATE decks
-             SET folder_id = NULL, updated_at = ?1
-             WHERE folder_id = ?2 AND deleted_at IS NULL",
-            params![now, input.folder_id],
-        )
-        .map_err(CommandError::database)?;
-    write_deck_order(&transaction, None, &unfiled, now)?;
-    let deleted = transaction
-        .execute(
-            "DELETE FROM deck_folders WHERE id = ?1 AND revision = ?2",
-            params![input.folder_id, input.revision],
-        )
-        .map_err(CommandError::database)?;
-    if deleted != 1 {
-        return Err(folder_changed());
+    if subjects::subject_holds_documents(&transaction, &input.folder_id)? {
+        return Err(CommandError::new(
+            "deck_folder_holds_documents",
+            "This folder also holds documents or study materials. Delete it from Documents instead.",
+        ));
     }
-    renormalize_folder_order(&transaction, now)?;
+    match subjects::delete_subject_row(&transaction, &input.folder_id, input.revision, now)? {
+        Outcome::Done => {}
+        Outcome::Missing => return Err(folder_not_found()),
+        Outcome::Stale | Outcome::OutOfRange => return Err(folder_changed()),
+    }
     bump_organization(&transaction, input.expected_organization_revision, now)?;
     transaction.commit().map_err(CommandError::database)?;
-    load_organization(connection)
+    organization(connection)
 }
 
 fn move_deck(
@@ -314,57 +259,30 @@ fn move_deck(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&transaction, input.expected_organization_revision)?;
-    assert_folder_exists(&transaction, input.target_folder_id.as_deref())?;
-    let previous_folder: Option<Option<String>> = transaction
-        .query_row(
-            "SELECT folder_id FROM decks WHERE id = ?1 AND deleted_at IS NULL",
-            [input.deck_id.as_str()],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let Some(previous_folder) = previous_folder else {
-        return Err(CommandError::new(
-            "deck_not_found",
-            "That deck no longer exists.",
-        ));
-    };
-
-    let mut target_order = ordered_deck_ids(
-        &transaction,
-        input.target_folder_id.as_deref(),
-        Some(input.deck_id.as_str()),
-    )?;
-    let target_index = usize::try_from(input.target_index).map_err(|_| invalid_target_index())?;
-    if target_index > target_order.len() {
-        return Err(invalid_target_index());
+    if let Some(folder_id) = input.target_folder_id.as_deref() {
+        if !subjects::subject_exists(&transaction, folder_id)? {
+            return Err(folder_not_found());
+        }
     }
-    target_order.insert(target_index, input.deck_id.clone());
-    transaction
-        .execute(
-            "UPDATE decks SET folder_id = ?1, updated_at = ?2
-             WHERE id = ?3 AND deleted_at IS NULL",
-            params![input.target_folder_id, now, input.deck_id],
-        )
-        .map_err(CommandError::database)?;
-    write_deck_order(
+    match subjects::file_deck(
         &transaction,
+        &input.deck_id,
         input.target_folder_id.as_deref(),
-        &target_order,
+        Some(input.target_index),
         now,
-    )?;
-    if previous_folder.as_deref() != input.target_folder_id.as_deref() {
-        let previous_order = ordered_deck_ids(&transaction, previous_folder.as_deref(), None)?;
-        write_deck_order(
-            &transaction,
-            previous_folder.as_deref(),
-            &previous_order,
-            now,
-        )?;
+    )? {
+        Outcome::Done => {}
+        Outcome::Missing => {
+            return Err(CommandError::new(
+                "deck_not_found",
+                "That deck no longer exists.",
+            ))
+        }
+        Outcome::Stale | Outcome::OutOfRange => return Err(invalid_target_index()),
     }
     bump_organization(&transaction, input.expected_organization_revision, now)?;
     transaction.commit().map_err(CommandError::database)?;
-    load_organization(connection)
+    organization(connection)
 }
 
 fn move_folder(
@@ -380,43 +298,21 @@ fn move_folder(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     assert_organization_revision(&transaction, input.expected_organization_revision)?;
-    let exists: bool = transaction
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM deck_folders WHERE id = ?1)",
-            [input.folder_id.as_str()],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if !exists {
-        return Err(folder_not_found());
+    match subjects::move_subject_row(&transaction, &input.folder_id, input.target_index, now)? {
+        Outcome::Done => {}
+        Outcome::Missing => return Err(folder_not_found()),
+        Outcome::Stale | Outcome::OutOfRange => return Err(invalid_target_index()),
     }
-    let mut order = ordered_folder_ids(&transaction, Some(input.folder_id.as_str()))?;
-    let target_index = usize::try_from(input.target_index).map_err(|_| invalid_target_index())?;
-    if target_index > order.len() {
-        return Err(invalid_target_index());
-    }
-    order.insert(target_index, input.folder_id);
-    write_folder_order(&transaction, &order, now)?;
     bump_organization(&transaction, input.expected_organization_revision, now)?;
     transaction.commit().map_err(CommandError::database)?;
-    load_organization(connection)
-}
-
-fn organization_revision(connection: &Connection) -> Result<i64, CommandError> {
-    connection
-        .query_row(
-            "SELECT revision FROM library_organization WHERE singleton_id = 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
+    organization(connection)
 }
 
 fn assert_organization_revision(
     transaction: &Transaction<'_>,
     expected: i64,
 ) -> Result<(), CommandError> {
-    if organization_revision(transaction)? == expected {
+    if subjects::revision(transaction, Revision::Library)? == expected {
         Ok(())
     } else {
         Err(organization_changed())
@@ -428,143 +324,11 @@ fn bump_organization(
     expected: i64,
     now: i64,
 ) -> Result<(), CommandError> {
-    let changed = transaction
-        .execute(
-            "UPDATE library_organization
-             SET revision = revision + 1, updated_at = ?1
-             WHERE singleton_id = 1 AND revision = ?2",
-            params![now, expected],
-        )
-        .map_err(CommandError::database)?;
-    if changed == 1 {
+    if subjects::bump(transaction, Revision::Library, Some(expected), now)? {
         Ok(())
     } else {
         Err(organization_changed())
     }
-}
-
-fn assert_folder_exists(
-    transaction: &Transaction<'_>,
-    folder_id: Option<&str>,
-) -> Result<(), CommandError> {
-    let Some(folder_id) = folder_id else {
-        return Ok(());
-    };
-    let exists: bool = transaction
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM deck_folders WHERE id = ?1)",
-            [folder_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if exists {
-        Ok(())
-    } else {
-        Err(folder_not_found())
-    }
-}
-
-fn ordered_deck_ids(
-    connection: &Connection,
-    folder_id: Option<&str>,
-    excluding: Option<&str>,
-) -> Result<Vec<String>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT id FROM decks
-             WHERE deleted_at IS NULL
-               AND folder_id IS ?1
-               AND (?2 IS NULL OR id <> ?2)
-             ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
-        )
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map(params![folder_id, excluding], |row| row.get(0))
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>();
-    rows.map_err(CommandError::database)
-}
-
-fn ordered_folder_ids(
-    connection: &Connection,
-    excluding: Option<&str>,
-) -> Result<Vec<String>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT id FROM deck_folders
-             WHERE (?1 IS NULL OR id <> ?1)
-             ORDER BY sort_order ASC, name COLLATE NOCASE ASC, created_at ASC",
-        )
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([excluding], |row| row.get(0))
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>();
-    rows.map_err(CommandError::database)
-}
-
-fn write_deck_order(
-    transaction: &Transaction<'_>,
-    folder_id: Option<&str>,
-    ordered_ids: &[String],
-    now: i64,
-) -> Result<(), CommandError> {
-    for (index, deck_id) in ordered_ids.iter().enumerate() {
-        let order = order_for_index(index)?;
-        let changed = transaction
-            .execute(
-                "UPDATE decks
-                 SET folder_id = ?1, sort_order = ?2, updated_at = ?3
-                 WHERE id = ?4 AND deleted_at IS NULL",
-                params![folder_id, order, now, deck_id],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "deck_not_found",
-                "A deck changed while its library position was being updated.",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn write_folder_order(
-    transaction: &Transaction<'_>,
-    ordered_ids: &[String],
-    now: i64,
-) -> Result<(), CommandError> {
-    for (index, folder_id) in ordered_ids.iter().enumerate() {
-        let order = order_for_index(index)?;
-        let changed = transaction
-            .execute(
-                "UPDATE deck_folders SET sort_order = ?1, updated_at = ?2 WHERE id = ?3",
-                params![order, now, folder_id],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(folder_not_found());
-        }
-    }
-    Ok(())
-}
-
-fn renormalize_folder_order(transaction: &Transaction<'_>, now: i64) -> Result<(), CommandError> {
-    let order = ordered_folder_ids(transaction, None)?;
-    write_folder_order(transaction, &order, now)
-}
-
-fn order_for_index(index: usize) -> Result<i64, CommandError> {
-    let position = i64::try_from(index)
-        .ok()
-        .and_then(|value| value.checked_add(1))
-        .and_then(|value| value.checked_mul(ORDER_STEP));
-    position.ok_or_else(|| {
-        CommandError::new(
-            "library_order_too_large",
-            "The deck library contains too many ordered items.",
-        )
-    })
 }
 
 fn validate_folder_name(value: String) -> Result<String, CommandError> {
@@ -626,8 +390,13 @@ fn invalid_target_index() -> CommandError {
 
 #[cfg(test)]
 mod tests {
+    use rusqlite::params;
+
     use super::*;
-    use crate::decks::{create_deck_in_connection, CreateDeckInput};
+    use crate::{
+        collections::test_support::seed_document,
+        decks::{create_deck_in_connection, CreateDeckInput},
+    };
 
     #[test]
     fn folder_delete_returns_decks_to_unfiled_without_deleting_them() {
@@ -641,7 +410,7 @@ mod tests {
                         description: None,
                     },
                 )?;
-                let current_revision = organization_revision(connection)?;
+                let current_revision = subjects::revision(connection, Revision::Library)?;
                 let created = create_folder(
                     connection,
                     CreateDeckFolderInput {
@@ -701,6 +470,65 @@ mod tests {
                 )
                 .expect_err("stale revision should fail");
                 assert_eq!(error.code, "library_organization_changed");
+                Ok(())
+            })
+            .expect("test should complete");
+    }
+
+    #[test]
+    fn folders_are_subjects_and_leave_document_filing_alone() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let filing = subjects::revision(connection, Revision::DocumentFiling)?;
+                let created = create_folder(
+                    connection,
+                    CreateDeckFolderInput {
+                        name: " Nursing ".to_string(),
+                        expected_organization_revision: subjects::revision(
+                            connection,
+                            Revision::Library,
+                        )?,
+                    },
+                )?;
+                let folder = created.folders[0].clone();
+                let renamed = update_folder(
+                    connection,
+                    UpdateDeckFolderInput {
+                        folder_id: folder.id.clone(),
+                        name: "Clinical nursing".to_string(),
+                        revision: folder.revision,
+                        expected_organization_revision: created.revision,
+                    },
+                )?;
+                let library = subjects::load_library(connection)?;
+                assert_eq!(library.subjects.len(), 1);
+                assert_eq!(library.subjects[0].id, folder.id);
+                assert_eq!(library.subjects[0].name, "Clinical nursing");
+                assert_eq!(library.library_revision, renamed.revision);
+                assert_eq!(library.document_filing_revision, filing);
+
+                // A folder whose subject holds documents is deleted from
+                // Documents, where they are shown.
+                let document = "d".repeat(32);
+                seed_document(connection, &document, 1, 'a')?;
+                connection
+                    .execute(
+                        "UPDATE documents SET subject_id = ?1 WHERE id = ?2",
+                        params![folder.id, document],
+                    )
+                    .map_err(CommandError::database)?;
+                let refused = delete_folder(
+                    connection,
+                    DeleteDeckFolderInput {
+                        folder_id: folder.id.clone(),
+                        revision: renamed.folders[0].revision,
+                        expected_organization_revision: renamed.revision,
+                    },
+                )
+                .expect_err("a folder holding documents should stay");
+                assert_eq!(refused.code, "deck_folder_holds_documents");
+                assert_eq!(organization(connection)?, renamed);
                 Ok(())
             })
             .expect("test should complete");

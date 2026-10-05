@@ -165,10 +165,7 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
         .map_err(CommandError::database)?;
     assert_eq!(
         latest_migration,
-        (
-            CURRENT_SCHEMA_VERSION,
-            "review_event_scheduler_context".to_string()
-        )
+        (CURRENT_SCHEMA_VERSION, "subjects".to_string())
     );
     let migration_count: i64 = connection
         .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {

@@ -265,3 +265,33 @@ fn bulk_entry_skips_exact_duplicates() {
         .expect("bulk insert should work");
     assert_eq!(result, (1, 1));
 }
+
+#[test]
+fn reviewed_filters_count_a_merged_copy_s_reviews_for_its_original() {
+    use crate::database::subjects_fixture::{advance_release_library, release_library, seed};
+
+    let connection = release_library(5);
+    let library = seed(&connection);
+    advance_release_library(&connection, 5, 6);
+    let optics = |reviewed_filter: &str| -> Vec<String> {
+        card_commands::search_cards_in_connection_for_tests(
+            &connection,
+            SearchCardsInput {
+                reviewed_filter: reviewed_filter.to_string(),
+                ..search_input(vec![library.k_optics.clone()], "")
+            },
+        )
+        .unwrap()
+        .cards
+        .into_iter()
+        .map(|card| card.card_id)
+        .collect()
+    };
+    // The first Optics card was studied only through its collection copy,
+    // more than 30 days ago.
+    assert_eq!(optics("never"), vec![library.o_opt[1].card().to_string()]);
+    assert_eq!(
+        optics("before_past_30_local_dates"),
+        vec![library.o_opt[0].card().to_string()]
+    );
+}

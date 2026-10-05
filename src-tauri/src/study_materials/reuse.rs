@@ -362,8 +362,8 @@ mod tests {
                 connection
                     .execute(
                         "INSERT INTO document_collections(
-                             id,parent_id,name,sort_order,created_at,updated_at,revision
-                         ) VALUES(?1,NULL,'Reuse fixture',1000,1,1,1)",
+                             id,name,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'Reuse fixture',1000,1,1,1)",
                         [&collection_id],
                     )
                     .map_err(CommandError::database)?;
@@ -493,8 +493,8 @@ mod tests {
                 connection
                     .execute(
                         "INSERT INTO document_collections(
-                             id,parent_id,name,sort_order,created_at,updated_at,revision
-                         ) VALUES(?1,NULL,'Reuse fixture',1000,1,1,1)",
+                             id,name,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,'Reuse fixture',1000,1,1,1)",
                         [&collection_id],
                     )
                     .map_err(CommandError::database)?;

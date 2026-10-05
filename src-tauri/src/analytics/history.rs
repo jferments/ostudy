@@ -22,7 +22,7 @@ pub fn load(
     let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let sql = format!(
         "SELECT
-             COUNT(DISTINCT r.card_id),
+             COUNT(DISTINCT c.id),
              COUNT(*),
              COALESCE(SUM(r.answer_correct), 0),
              AVG(CAST(r.rating - 1 AS REAL)),

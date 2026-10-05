@@ -13,6 +13,8 @@ mod current_inventory;
 mod daily;
 mod history;
 #[cfg(test)]
+mod merged_history_tests;
+#[cfg(test)]
 mod query_plan_tests;
 mod question_types;
 mod recent;

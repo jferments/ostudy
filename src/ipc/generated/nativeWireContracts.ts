@@ -58,6 +58,54 @@ export interface NativeLibrarySession {
   lastRestore: NativeCompletedLibraryRestore | null;
 }
 
+export interface NativeSubject {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+  revision: number;
+}
+
+export interface NativeSubjectDeckPlacement {
+  deckId: string;
+  subjectId: string | null;
+  sortOrder: number;
+}
+
+export interface NativeSubjectDocumentPlacement {
+  documentId: string;
+  subjectId: string | null;
+}
+
+export interface NativeDocumentStudyRange {
+  id: string;
+  documentId: string;
+  unitKind: string;
+  startUnit: number;
+  endUnit: number;
+  sourceSha256: string;
+  createdAt: number;
+}
+
+export interface NativeSubjectLibrary {
+  libraryRevision: number;
+  documentFilingRevision: number;
+  subjects: NativeSubject[];
+  decks: NativeSubjectDeckPlacement[];
+  documents: NativeSubjectDocumentPlacement[];
+  studyRanges: NativeDocumentStudyRange[];
+  checkTheseCount: number;
+}
+
+export interface NativeSubjectFilingReview {
+  entityKind: "subject" | "deck" | "document" | "note";
+  entityId: string;
+  reason: string;
+  detail: Record<string, unknown>;
+  label: string;
+}
+
 export type NativeWireEncodingFixture =
   | { kind: "ready"; bytes: number[]; optional: string | null; signed: number; unsigned: number }
   | { kind: "empty" };

@@ -13,7 +13,7 @@ import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
-import { deleteTargetFromItem, useStudyGuidesController, type StudyGuideDeleteTarget, type StudyGuideOpenRequest } from "../controllers/useStudyGuidesController";
+import { deleteTargetFromItem, guideSourceFromItem, useStudyGuidesController, type StudyGuideDeleteTarget, type StudyGuideOpenRequest } from "../controllers/useStudyGuidesController";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { guideLibraryStyles as styles } from "./documents/presentation";
@@ -40,8 +40,9 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
     event.preventDefault();
     controller.submitSearch();
   }
+  // The document reader is a whole page with its own sticky top bar, so it starts at the edges.
   if (controller.selected) return (
-    <PageScaffold width="full" aria-label="Study Guides">
+    <PageScaffold width="full" inset={controller.selected.targetKind === "collection"} aria-label="Study Guides">
       <PerformanceProfiler id="guide-dialog">
         {controller.selected.targetKind === "collection" ? (
           <CollectionStudyGuideDialog
@@ -54,6 +55,7 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
           <StudyGuideDialog
             documentId={controller.selected.targetId}
             documentTitle={controller.selected.title}
+            source={controller.selected.source ?? null}
             showToast={showToast}
             onPracticeCards={onPracticeCards}
             onClose={controller.closeGuide}
@@ -106,6 +108,7 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
                     targetKind: item.targetKind,
                     targetId: item.targetId,
                     title: item.title,
+                    source: guideSourceFromItem(item),
                   })}
                   onDelete={deleteTarget ? () => void confirmDelete(deleteTarget) : null}
                 />;

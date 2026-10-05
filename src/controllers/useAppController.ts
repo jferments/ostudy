@@ -85,6 +85,7 @@ export type ContextualPracticeLaunchRequest =
       originSelection: readonly TransientDeckSelectionEntry[];
     }
   | { kind: "scope"; deckIds: string[]; tagIds: string[] }
+  | { kind: "subject"; subjectId: string }
   | { kind: "cards"; cardIds: string[] };
 
 export interface PracticeWorkflowState {
@@ -466,6 +467,22 @@ export function useAppController() {
       );
       return;
     }
+    if (request.kind === "subject") {
+      openPracticeWorkflow(
+        {
+          kind: "selected",
+          // A subject is studied live, as the decks filed in it now.
+          subjectIds: [request.subjectId],
+          deckIds: [],
+          tagIds: [],
+          // Like one-click deck Practice: an extra session over the whole scope.
+          shuffle: true,
+          mode: "extra",
+        },
+        returnTarget,
+      );
+      return;
+    }
     if (request.kind === "scope") {
       openPracticeWorkflow(
         {
@@ -599,6 +616,10 @@ export function useAppController() {
     return launchPractice({ kind: "cards", cardIds });
   }
 
+  function practiceSubject(subjectId: string): Promise<void> {
+    return launchPractice({ kind: "subject", subjectId });
+  }
+
   async function returnFromPractice(target: PracticeReturnTarget): Promise<void> {
     practiceCursorRef.current = null;
     setPracticeWorkflow(null);
@@ -716,6 +737,7 @@ export function useAppController() {
     practiceScope,
     practiceSelected,
     practiceCards,
+    practiceSubject,
     launchPractice,
     returnFromPractice,
     choosePracticeDecks,

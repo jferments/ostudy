@@ -29,6 +29,9 @@ mod entry;
 #[path = "database/release.rs"]
 mod release;
 
+#[cfg(test)]
+pub(crate) use release::subjects_fixture;
+
 #[path = "database/table_rebuild.rs"]
 mod table_rebuild;
 

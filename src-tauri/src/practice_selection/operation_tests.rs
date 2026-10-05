@@ -113,8 +113,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 connection,
                 &paths.paths,
                 operation_id.clone(),
-                vec![deck_id.clone()],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id.clone()]),
                 false,
                 "extra",
             )?;
@@ -122,8 +121,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 connection,
                 &paths.paths,
                 operation_id.clone(),
-                vec![deck_id.clone()],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id.clone()]),
                 false,
                 "extra",
             )?;
@@ -146,8 +144,7 @@ fn equivalent_practice_start_retry_returns_one_committed_session() {
                 connection,
                 &paths.paths,
                 operation_id,
-                vec![deck_id],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id]),
                 true,
                 "extra",
             )
@@ -184,8 +181,7 @@ fn response_hydration_failure_occurs_before_session_commit() {
                 connection,
                 &paths.paths,
                 "b".repeat(32),
-                vec![deck_id],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id]),
                 false,
                 "extra",
             )
@@ -226,8 +222,7 @@ fn operation_identifiers_cannot_cross_practice_start_kinds() {
                 connection,
                 &paths.paths,
                 operation_id.clone(),
-                vec![deck_id],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id]),
                 false,
                 "extra",
             )?;
@@ -267,8 +262,7 @@ fn consecutive_shuffled_sessions_avoid_repeating_the_same_equal_priority_first_c
                 connection,
                 &paths.paths,
                 "1".repeat(32),
-                vec![deck_id.clone()],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id.clone()]),
                 true,
                 "extra",
             )?;
@@ -276,8 +270,7 @@ fn consecutive_shuffled_sessions_avoid_repeating_the_same_equal_priority_first_c
                 connection,
                 &paths.paths,
                 "2".repeat(32),
-                vec![deck_id],
-                Vec::new(),
+                SelectedScope::decks(vec![deck_id]),
                 true,
                 "extra",
             )?;
@@ -427,4 +420,130 @@ fn practice_start_persists_snapshot_and_returns_a_bounded_first_window() {
             Ok(())
         })
         .expect("practice snapshot should be durable");
+}
+
+#[test]
+fn a_subject_is_studied_as_its_current_live_decks() {
+    let paths = TestPaths::new();
+    let database = Database::open_in_memory().expect("database should open");
+    database
+        .with_connection(|connection| {
+            let subject = "5".repeat(32);
+            connection
+                .execute(
+                    "INSERT INTO document_collections(
+                         id, name, sort_order, created_at, updated_at, revision
+                     ) VALUES (?1, 'Pharmacology', 1000, 1, 1, 1)",
+                    [&subject],
+                )
+                .map_err(CommandError::database)?;
+            let mut deck = |name: &str| {
+                create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: name.to_string(),
+                        description: None,
+                    },
+                )
+                .map(|deck| deck.id)
+            };
+            let filed = deck("Filed")?;
+            let archived = deck("Archived")?;
+            let elsewhere = deck("Elsewhere")?;
+            let (_, filed_card) = create_card(connection, &filed)?;
+            create_card(connection, &archived)?;
+            create_card(connection, &elsewhere)?;
+            connection
+                .execute(
+                    "UPDATE decks SET subject_id = ?1 WHERE id IN (?2, ?3)",
+                    params![subject, filed, archived],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "UPDATE decks SET archived_at = 20 WHERE id = ?1",
+                    [&archived],
+                )
+                .map_err(CommandError::database)?;
+
+            let scope = SelectedScope {
+                subject_ids: vec![subject.clone()],
+                ..SelectedScope::default()
+            };
+            let session = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "c".repeat(32),
+                scope.clone(),
+                false,
+                "extra",
+            )?;
+            assert_eq!(session.card_count, 1);
+            assert_eq!(session.first_window.cards[0].presentation.id, filed_card);
+            let selected: String = connection
+                .query_row(
+                    "SELECT selected_deck_ids_json FROM practice_sessions WHERE id = ?1",
+                    [&session.id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(selected, json!([filed]).to_string());
+
+            // A retry keeps the request's identity even after filing changes,
+            // while a new start studies the subject as it is now.
+            connection
+                .execute("UPDATE decks SET subject_id = NULL WHERE id = ?1", [&filed])
+                .map_err(CommandError::database)?;
+            let replay = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "c".repeat(32),
+                scope.clone(),
+                false,
+                "extra",
+            )?;
+            assert_eq!(replay.id, session.id);
+            let empty = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "d".repeat(32),
+                scope,
+                false,
+                "extra",
+            )
+            .expect_err("a subject without live decks has nothing to study");
+            assert_eq!(empty.code, "empty_practice_scope");
+            let missing = start_selected_practice_in_connection(
+                connection,
+                &paths.paths,
+                "e".repeat(32),
+                SelectedScope {
+                    subject_ids: vec!["6".repeat(32)],
+                    ..SelectedScope::default()
+                },
+                false,
+                "extra",
+            )
+            .expect_err("a deleted subject is not a scope");
+            assert_eq!(missing.code, "practice_scope_not_found");
+            Ok(())
+        })
+        .expect("subject practice should follow current filing");
+}
+
+#[test]
+fn requests_without_subjects_keep_their_start_identity() {
+    let deck_id = "a".repeat(32);
+    let fingerprint = selected_practice_request_fingerprint(
+        &SelectedScope::decks(vec![deck_id.clone()]),
+        true,
+        "scheduled",
+    )
+    .expect("fingerprint should serialize");
+    assert_eq!(
+        fingerprint,
+        format!(
+            "practice-selected:v2:{{\"deckIds\":[\"{deck_id}\"],\"tagIds\":[],\"shuffle\":true,\"mode\":\"scheduled\"}}"
+        )
+    );
 }

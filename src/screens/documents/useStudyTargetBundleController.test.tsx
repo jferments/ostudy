@@ -158,42 +158,21 @@ describe("study target bundle controller", () => {
     expect(result.current.status?.latestBatchState).toBe("complete");
   });
 
-  it("captures normalized flashcard guidance once and reuses it across an ambiguous retry", async () => {
+  it("requests both artifacts without flashcard instructions, which collections no longer use", async () => {
     const { result } = renderHook(() => useStudyTargetBundleController({ target }));
     await waitFor(() => expect(studyMaterials.getStudyTargetBundle).toHaveBeenCalledTimes(1));
-
-    vi.mocked(studyMaterials.composeStudyTargetBundle)
-      .mockRejectedValueOnce(new Error("response lost"))
-      .mockResolvedValueOnce(complete);
-    vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValueOnce(queued);
+    vi.mocked(studyMaterials.composeStudyTargetBundle).mockResolvedValueOnce(complete);
 
     await act(async () => {
-      expect(await result.current.run("  Nursing cranial nerve assessments  ")).toBe(false);
-    });
-    expect(result.current.pendingGenerationInstructions).toBe(
-      "Nursing cranial nerve assessments",
-    );
-
-    await act(async () => {
-      expect(await result.current.run("A different request that must not replace captured intent")).toBe(true);
+      expect(await result.current.run()).toBe(true);
     });
 
-    expect(createOperationId).toHaveBeenCalledTimes(1);
-    expect(studyMaterials.beginStudyTargetBundle).toHaveBeenNthCalledWith(1, {
+    expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
       operationId: "o".repeat(32),
       target,
-      generationInstructions: "Nursing cranial nerve assessments",
       outputPolicy: { flashcards: true, studyGuide: true },
       recreateArtifacts: [],
     });
-    expect(studyMaterials.beginStudyTargetBundle).toHaveBeenNthCalledWith(2, {
-      operationId: "o".repeat(32),
-      target,
-      generationInstructions: "Nursing cranial nerve assessments",
-      outputPolicy: { flashcards: true, studyGuide: true },
-      recreateArtifacts: [],
-    });
-    expect(result.current.pendingGenerationInstructions).toBeNull();
   });
 
   it("accepts a terminal durable receipt after a lost response without repeating the write", async () => {
