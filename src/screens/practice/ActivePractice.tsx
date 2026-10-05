@@ -25,7 +25,7 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Progress } from "../../ui/primitives/Progress";
 import { cn } from "../../ui/internal/cn";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
-import { practiceStyles as view, scoreColors } from "./presentation";
+import { practiceStyles as view, scoreTones } from "./presentation";
 import styles from "./PracticeCard.module.css";
 import type { ConfidenceScore } from "./confidence";
 import { InteractiveQuestionActivity } from "./InteractiveQuestionActivity";
@@ -203,43 +203,45 @@ export function ActivePractice({
           data-layers={interactive ? undefined : stackLayers} data-tour-anchor="practice.card">{cardSurface}</div>
       </div>
     </div>
-    <div className={view.actionArea}><div className={view.column}>
-    {!revealed ? interactive ? null : <div className={view.practicePrimaryAction}>
-      <Button variant="primary" size="large" disabled={busy} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Show answer"}</Button>
-    </div> : <section ref={ratingPanelRef} tabIndex={-1} className={view.reviewRatingPanelConfidenceRatingPanel}
-      aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
-      <div className={view.confidenceRatingHeading}>
-        <h2 id="confidence-rating-heading">{objectiveCorrect === false ? "First answer recorded as wrong" : "How difficult was that answer?"}</h2>
-        <p>{objectiveCorrect === false
-          ? "Continue with Wrong. The checked result remains immutable even if you practice the item again."
-          : "Choose the result that best matches your recall."}</p>
+    {interactive && !revealed ? null : <div className={view.actionArea} data-practice-actions="">
+      <div className={view.column}>
+        {!revealed ? <Button variant="primary" size="large" className={view.primaryAction} disabled={busy} onClick={onReveal}>
+          {isRevealing ? "Calculating intervals…" : "Show answer"}
+        </Button> : <section ref={ratingPanelRef} tabIndex={-1} className={view.ratingGroup}
+          aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
+          <h2 id="confidence-rating-heading" className={view.ratingHeading}>
+            {objectiveCorrect === false ? "First answer recorded as wrong" : "How difficult was that answer?"}
+          </h2>
+          {objectiveCorrect === false ? <p className={view.ratingNote}>
+            Continue with Wrong. The checked result remains immutable even if you practice the item again.
+          </p> : null}
+          {!previewSet ? <Button className={view.ratingRetry} disabled={busy} onClick={onReveal}>
+            {isRevealing ? "Calculating intervals…" : "Retry interval preview"}
+          </Button> : null}
+          <div className={view.ratingButtons}>
+            <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
+            <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
+            <ConfidenceButton score={2} label="Medium" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
+            <ConfidenceButton score={3} label="Easy" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
+          </div>
+        </section>}
       </div>
-      {!previewSet ? <div className="tw:mb-3">
-        <Button disabled={busy} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Retry interval preview"}</Button>
-      </div> : null}
-      <div className={view.confidenceScoreActions}>
-        <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
-        <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
-        <ConfidenceButton score={2} label="Medium" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
-        <ConfidenceButton score={3} label="Easy" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
-      </div>
-    </section>}
-    </div></div>
+    </div>}
   </PageScaffold>;
 }
 
+/** Each rating is tinted with its confidence color; the solid key carries the color and the
+ * number that is its keyboard shortcut. */
 function ConfidenceButton({ score, label, disabled, onClick }: {
   score: ConfidenceScore;
   label: string;
   disabled: boolean;
   onClick: () => void;
 }) {
-  return <Button className={cn(view.confidenceButton, scoreColors[score])} disabled={disabled}
+  return <Button className={cn(view.ratingButton, scoreTones[score])} disabled={disabled}
     aria-label={`${score} ${label}`} aria-keyshortcuts={String(score)} onClick={onClick}>
-    <span className={view.confidenceButtonContent}>
-      <span className={view.confidenceScoreNumber} aria-hidden="true">{score}</span>
-      <span className={view.confidenceScoreCopy}><strong>{label}</strong></span>
-    </span>
+    <span className={view.ratingKey} aria-hidden="true">{score}</span>
+    <span className={view.ratingName}>{label}</span>
   </Button>;
 }
 

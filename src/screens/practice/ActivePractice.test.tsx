@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PracticeCard, PracticeSession, ReviewPreviewSet } from "../../ipc/practice";
-import { makeCardPresentation, resetTestEntityIds } from "../../test/factories";
+import { makeCardPresentation, requiredTestValue as required, resetTestEntityIds } from "../../test/factories";
 import { layoutWidths, matchesLayoutQuery } from "../../test/viewport";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { ActivePractice } from "./ActivePractice";
@@ -89,6 +89,23 @@ describe("ActivePractice", () => {
     expect(props.onScore).toHaveBeenNthCalledWith(1, 0); expect(props.onScore).toHaveBeenNthCalledWith(2, 1);
     expect(props.onScore).toHaveBeenNthCalledWith(3, 2); expect(props.onScore).toHaveBeenNthCalledWith(4, 3);
   });
+  it("rates from one labeled group of four, by pointer, and takes focus to it when the answer shows", () => {
+    const { props, rerender } = renderActive({ previewSet: previews });
+    rerender(<LayoutModeProvider><ActivePractice {...props} revealed /></LayoutModeProvider>);
+    const group = screen.getByRole("region", { name: "How difficult was that answer?" });
+    expect(document.activeElement).toBe(group);
+    const ratings = within(group).getAllByRole("button");
+    expect(ratings.map((button) => button.getAttribute("aria-label"))).toEqual(["0 Wrong", "1 Hard", "2 Medium", "3 Easy"]);
+    expect(ratings.map((button) => button.getAttribute("aria-keyshortcuts"))).toEqual(["0", "1", "2", "3"]);
+    fireEvent.click(within(group).getByRole("button", { name: "2 Medium" }));
+    expect(props.onScore).toHaveBeenCalledOnce(); expect(props.onScore).toHaveBeenCalledWith(2);
+  });
+  it("offers to retry the interval preview and keeps the ratings disabled until it arrives", () => {
+    const { props } = renderActive({ revealed: true, previewSet: null });
+    for (const name of ["0 Wrong", "1 Hard", "2 Medium", "3 Easy"]) expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry interval preview" }));
+    expect(props.onReveal).toHaveBeenCalledOnce();
+  });
   it("blocks shortcuts and buttons while any review mutation is pending", () => {
     const { props } = renderActive({ revealed: true, previewSet: previews, isRating: true });
     fireEvent.keyDown(window, { key: "2" }); expect(props.onScore).not.toHaveBeenCalled();
@@ -164,6 +181,19 @@ describe("ActivePractice on a phone", () => {
     fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Card actions" })).getByRole("button", { name: "Suspend card" }));
     expect(props.onScheduleAction).toHaveBeenCalledWith("suspend");
+  });
+  it("keeps Show answer, then all four ratings, together in the action area after the card", () => {
+    const { props, rerender } = renderActive({ previewSet: previews });
+    const card = required(document.querySelector<HTMLElement>("[data-tour-anchor='practice.card']"), "card");
+    const reveal = screen.getByRole("button", { name: "Show answer" });
+    const actions = required(reveal.closest<HTMLElement>("[data-practice-actions]"), "action area");
+    expect(card.contains(actions)).toBe(false);
+    expect(Boolean(card.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    fireEvent.click(reveal); expect(props.onReveal).toHaveBeenCalledOnce();
+    rerender(<LayoutModeProvider><ActivePractice {...props} revealed /></LayoutModeProvider>);
+    const area = required(document.querySelector<HTMLElement>("[data-practice-actions]"), "action area");
+    expect(within(area).getAllByRole("button").map((button) => button.textContent)).toEqual(["0Wrong", "1Hard", "2Medium", "3Easy"]);
+    fireEvent.keyDown(window, { key: "0" }); expect(props.onScore).toHaveBeenCalledWith(0);
   });
   it("disables the card actions menu with the other controls while a change is pending", () => {
     renderActive({ isManaging: true });

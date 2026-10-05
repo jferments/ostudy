@@ -17,24 +17,30 @@ export const practiceStyles = {
   topBarActions: "tw:flex tw:shrink-0 tw:items-center tw:gap-1",
   quietIconButton: "tw:border-transparent tw:bg-transparent",
   endAction: "tw:ml-1 tw:whitespace-nowrap",
-  // The card column: as wide as comfortable reading, centered under the top bar.
-  body: "tw:px-page tw:pt-6 tw:pb-4 tw:compact:px-4 tw:compact:pt-4",
+  // The card column: as wide as comfortable reading, centered under the top bar. On a phone it
+  // takes the free height, which keeps the actions at the bottom of the screen.
+  body: "tw:px-page tw:pt-6 tw:pb-6 tw:compact:flex-1 tw:compact:px-4 tw:compact:pt-4",
   column: "tw:mx-auto tw:grid tw:w-full tw:max-w-[45rem] tw:min-w-0 tw:gap-4",
-  actionArea: "tw:px-page tw:pb-6 tw:compact:px-4",
-  practicePrimaryAction: "tw:flex tw:shrink-0 tw:justify-center tw:pt-3 tw:[&>button]:min-w-40",
-  reviewRatingPanelConfidenceRatingPanel: "tw:mt-3 tw:min-w-0 tw:shrink-0 tw:rounded-lg tw:bg-muted/30 tw:p-3 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
-  confidenceRatingHeading: "tw:text-center tw:[&_h2]:m-0 tw:[&_h2]:text-small tw:[&_h2]:font-medium tw:[&_p]:mt-1 tw:[&_p]:mb-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground",
-  confidenceScoreActions: "tw:mt-3 tw:grid tw:min-w-0 tw:grid-cols-4 tw:gap-2 tw:max-[600px]:grid-cols-2",
-  confidenceScoreNumber: "tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-md tw:bg-foreground/10 tw:text-small tw:font-medium",
-  confidenceScoreCopy: "tw:min-w-0 tw:text-small tw:font-medium",
+  // The reveal button and the ratings keep one place at the bottom of the view: a long card scrolls
+  // under them, behind a short fade, and on a phone they sit just above the bottom navigation.
+  actionArea: "tw:sticky tw:bottom-0 tw:z-(--ostudy-layer-sticky) tw:shrink-0 tw:bg-background tw:px-page tw:pt-3 tw:pb-[max(1.5rem,var(--safe-bottom))] tw:compact:px-4 tw:compact:pb-3 tw:before:pointer-events-none tw:before:absolute tw:before:inset-x-0 tw:before:bottom-full tw:before:h-6 tw:before:bg-linear-to-t tw:before:from-background tw:before:to-transparent",
+  primaryAction: "tw:h-12 tw:min-w-56 tw:justify-self-center tw:text-body tw:compact:w-full tw:compact:justify-self-stretch",
+  // The four ratings are one group: its question, then one row of four that a phone stacks inside
+  // each button so the names keep their full width.
+  ratingGroup: "tw:grid tw:min-w-0 tw:gap-3 tw:rounded-lg tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:gap-2",
+  ratingHeading: "tw:m-0 tw:text-center tw:text-small tw:font-medium tw:text-muted-foreground",
+  ratingNote: "tw:m-0 tw:text-center tw:text-small tw:text-muted-foreground",
+  ratingRetry: "tw:justify-self-center",
+  ratingButtons: "tw:grid tw:min-w-0 tw:grid-cols-4 tw:gap-2",
+  ratingButton: "tw:h-12 tw:min-w-0 tw:gap-2 tw:border-(--confidence-tone)/40 tw:bg-(--confidence-tone)/10 tw:px-2 tw:text-small tw:text-foreground tw:enabled:hover:bg-(--confidence-tone)/20 tw:compact:h-auto tw:compact:min-h-14 tw:compact:flex-col tw:compact:gap-1 tw:compact:rounded-lg tw:compact:py-2",
+  ratingKey: "tw:grid tw:size-6 tw:shrink-0 tw:place-items-center tw:rounded-full tw:bg-(--confidence-tone) tw:text-caption tw:font-semibold tw:tabular-nums tw:text-(--ostudy-color-confidence-on)",
+  ratingName: "tw:min-w-0 tw:truncate",
   // The flashcard: the card font, sized to its content above a modest minimum. An animated card
   // draws its frame on each face so the frame turns over with it.
   cardSurface: "tw:min-h-40 tw:min-w-0 tw:text-card-foreground tw:font-(family-name:--card-font-family) tw:text-(length:--card-base-size) tw:compact:min-h-32",
   cardFrame: "tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:shadow-sm tw:compact:shadow-none",
   cardFace: "tw:px-8 tw:py-7 tw:compact:p-5",
   cardSideToggle: "tw:absolute tw:top-7 tw:right-5 tw:z-(--ostudy-layer-raised) tw:text-muted-foreground tw:enabled:hover:text-foreground tw:compact:top-5 tw:compact:right-2.5",
-  confidenceButton: "tw:h-auto tw:min-h-12 tw:min-w-0 tw:rounded-lg tw:border-transparent tw:px-3 tw:py-2.5 tw:text-(--ostudy-color-confidence-on) tw:enabled:hover:text-(--ostudy-color-confidence-on) tw:enabled:hover:brightness-105 tw:coarse:min-h-touch",
-  confidenceButtonContent: "tw:flex tw:w-full tw:items-center tw:justify-center tw:gap-2.5",
 } as const;
 
 export const completionStyles = {
@@ -49,9 +55,9 @@ export const completionStyles = {
   actions: "tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-2 tw:max-sm:[&>button]:w-full",
 } as const;
 
-export const scoreColors = {
-  0: "tw:bg-(--ostudy-color-confidence-0) tw:enabled:hover:bg-(--ostudy-color-confidence-0)",
-  1: "tw:bg-(--ostudy-color-confidence-1) tw:enabled:hover:bg-(--ostudy-color-confidence-1)",
-  2: "tw:bg-(--ostudy-color-confidence-2) tw:enabled:hover:bg-(--ostudy-color-confidence-2)",
-  3: "tw:bg-(--ostudy-color-confidence-3) tw:enabled:hover:bg-(--ostudy-color-confidence-3)",
+export const scoreTones = {
+  0: "tw:[--confidence-tone:var(--ostudy-color-confidence-0)]",
+  1: "tw:[--confidence-tone:var(--ostudy-color-confidence-1)]",
+  2: "tw:[--confidence-tone:var(--ostudy-color-confidence-2)]",
+  3: "tw:[--confidence-tone:var(--ostudy-color-confidence-3)]",
 } as const;
