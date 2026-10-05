@@ -20,7 +20,7 @@ from typing import Any
 MANIFEST_NAME = "manifest.json"
 MANIFEST_SCHEMA_VERSION = 1
 TOOL_ID = "ostudy-ui-screenshots"
-DEFAULT_MAX_FILES = 250
+DEFAULT_MAX_FILES = 300
 DEFAULT_MAX_BYTES = 40 * 1024 * 1024
 CAPTURE_STATUSES = ("ok", "empty", "failed")
 _NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
