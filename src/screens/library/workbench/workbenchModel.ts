@@ -1,0 +1,270 @@
+import type {
+  AvailabilityFilter,
+  CardBrowserRow,
+  CardSearchInput,
+  CardSort,
+  CardStatusFilter,
+  ReviewedFilter,
+  SelectionCard,
+} from "../../../ipc/cards";
+import type { DeckSummary } from "../../../ipc/decks";
+import type { DocumentSummary } from "../../../ipc/documents";
+import type { Subject, SubjectLibrary } from "../../../ipc/subjects";
+
+/** The library-wide card lists the Workbench offers above the subjects. */
+export type WorkbenchView = "all" | "due" | "new" | "often_missed" | "suspended";
+
+/** What the card list shows: a library-wide view, a subject, one deck, or one tag. */
+export type WorkbenchScope =
+  | { kind: "view"; view: WorkbenchView }
+  | { kind: "subject"; subjectId: string | null }
+  | { kind: "deck"; deckId: string }
+  | { kind: "tag"; tagId: string };
+
+/** The quick filters above the card list, inside the chosen scope. */
+export type CardFilter = "all" | "due" | "new" | "suspended";
+
+export const DEFAULT_SCOPE: WorkbenchScope = { kind: "view", view: "all" };
+
+export const VIEWS: ReadonlyArray<{ view: WorkbenchView; label: string; icon: "cards" | "calendar-check" | "sparkles" | "warning" | "stop" }> = [
+  { view: "all", label: "All cards", icon: "cards" },
+  { view: "due", label: "Due today", icon: "calendar-check" },
+  { view: "new", label: "New", icon: "sparkles" },
+  { view: "often_missed", label: "Often missed", icon: "warning" },
+  { view: "suspended", label: "Suspended", icon: "stop" },
+];
+
+export const CARD_FILTERS: ReadonlyArray<{ value: CardFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "due", label: "Due" },
+  { value: "new", label: "New" },
+  { value: "suspended", label: "Suspended" },
+];
+
+export const SORT_OPTIONS: ReadonlyArray<{ value: CardSort; label: string }> = [
+  { value: "source_order", label: "Source order" },
+  { value: "due_asc", label: "Due first" },
+  { value: "updated_desc", label: "Recently edited" },
+  { value: "last_reviewed_desc", label: "Recently studied" },
+  { value: "relevance", label: "Best match" },
+];
+
+export function sameScope(left: WorkbenchScope, right: WorkbenchScope): boolean {
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "view":
+      return left.view === (right as typeof left).view;
+    case "subject":
+      return left.subjectId === (right as typeof left).subjectId;
+    case "deck":
+      return left.deckId === (right as typeof left).deckId;
+    case "tag":
+      return left.tagId === (right as typeof left).tagId;
+  }
+}
+
+/** The sort a scope opens with: a deck or subject in source order, the due list by due date. */
+export function defaultSort(scope: WorkbenchScope): CardSort {
+  if (scope.kind === "deck" || scope.kind === "subject") return "source_order";
+  if (scope.kind === "view" && scope.view === "due") return "due_asc";
+  return "updated_desc";
+}
+
+interface Filters {
+  availabilityFilter: AvailabilityFilter;
+  statusFilter: CardStatusFilter;
+  reviewedFilter: ReviewedFilter;
+}
+
+const FILTERS: Readonly<Record<WorkbenchView, Filters>> = {
+  all: { availabilityFilter: "all", statusFilter: "all", reviewedFilter: "all" },
+  due: { availabilityFilter: "ready_now", statusFilter: "active", reviewedFilter: "all" },
+  new: { availabilityFilter: "all", statusFilter: "active", reviewedFilter: "never" },
+  often_missed: { availabilityFilter: "all", statusFilter: "needs_more_practice", reviewedFilter: "all" },
+  suspended: { availabilityFilter: "all", statusFilter: "suspended", reviewedFilter: "all" },
+};
+
+const CARD_FILTER_VIEWS: Readonly<Record<CardFilter, WorkbenchView>> = {
+  all: "all",
+  due: "due",
+  new: "new",
+  suspended: "suspended",
+};
+
+/**
+ * The card search for a scope. A library-wide view sets the filters itself;
+ * elsewhere the quick filter does. Subject scopes list the subject's live
+ * decks; a subject with no decks searches none, never the whole library.
+ */
+export function searchInputFor(
+  scope: WorkbenchScope,
+  filter: CardFilter,
+  query: string,
+  sort: CardSort,
+  library: WorkbenchLibrary,
+  limit: number,
+): CardSearchInput | null {
+  const view = scope.kind === "view" ? scope.view : CARD_FILTER_VIEWS[filter];
+  let deckIds: string[] = [];
+  let tagIds: string[] = [];
+  if (scope.kind === "deck") deckIds = [scope.deckId];
+  if (scope.kind === "subject") {
+    deckIds = decksInSubject(library, scope.subjectId).map((deck) => deck.id);
+    if (deckIds.length === 0) return null;
+  }
+  if (scope.kind === "tag") tagIds = [scope.tagId];
+  const trimmed = query.trim();
+  const effectiveSort: CardSort = trimmed === "" && sort === "relevance" ? defaultSort(scope) : sort;
+  return { deckIds, query: trimmed, tagIds, ...FILTERS[view], sort: effectiveSort, limit, offset: 0 };
+}
+
+/** The decks, documents and subjects the tree and the actions work from. */
+export interface WorkbenchLibrary {
+  subjects: Subject[];
+  decks: DeckSummary[];
+  documents: DocumentSummary[];
+  organization: SubjectLibrary | null;
+}
+
+export interface SubjectNode {
+  /** null is No subject. */
+  subjectId: string | null;
+  subject: Subject | null;
+  name: string;
+  decks: DeckSummary[];
+  documents: DocumentSummary[];
+  cardCount: number;
+  dueCount: number;
+}
+
+export function subjectOfDeck(library: WorkbenchLibrary, deckId: string): string | null {
+  return library.organization?.decks.find((placement) => placement.deckId === deckId)?.subjectId ?? null;
+}
+
+/** A subject's live decks in the learner's order. */
+export function decksInSubject(library: WorkbenchLibrary, subjectId: string | null): DeckSummary[] {
+  const byId = new Map(library.decks.map((deck) => [deck.id, deck]));
+  const placements = library.organization?.decks ?? [];
+  const placed = new Set(placements.map((placement) => placement.deckId));
+  const ordered = placements
+    .filter((placement) => placement.subjectId === subjectId)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((placement) => byId.get(placement.deckId))
+    .filter((deck): deck is DeckSummary => deck !== undefined && deck.archivedAt === null);
+  // A deck the organization has not caught up with yet waits under No subject.
+  if (subjectId === null) {
+    ordered.push(...library.decks.filter((deck) => deck.archivedAt === null && !placed.has(deck.id)));
+  }
+  return ordered;
+}
+
+export function documentsInSubject(library: WorkbenchLibrary, subjectId: string | null): DocumentSummary[] {
+  const placements = new Map((library.organization?.documents ?? []).map((placement) => [placement.documentId, placement.subjectId]));
+  return library.documents
+    .filter((document) => (placements.get(document.id) ?? null) === subjectId)
+    .sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" }));
+}
+
+/**
+ * Subjects in the learner's order, then No subject when it holds anything.
+ * Counts are the decks' card and due counts, which the deck list already
+ * carries, so the tree needs no extra queries.
+ */
+export function subjectNodes(library: WorkbenchLibrary): SubjectNode[] {
+  const subjects = [...library.subjects].sort((left, right) => left.sortOrder - right.sortOrder);
+  const nodes: SubjectNode[] = subjects.map((subject) => node(library, subject.id, subject, subject.name));
+  const unfiled = node(library, null, null, "No subject");
+  if (unfiled.decks.length > 0 || unfiled.documents.length > 0) nodes.push(unfiled);
+  return nodes;
+}
+
+function node(library: WorkbenchLibrary, subjectId: string | null, subject: Subject | null, name: string): SubjectNode {
+  const decks = decksInSubject(library, subjectId);
+  return {
+    subjectId,
+    subject,
+    name,
+    decks,
+    documents: documentsInSubject(library, subjectId),
+    cardCount: decks.reduce((total, deck) => total + deck.generatedCardCount, 0),
+    dueCount: decks.reduce((total, deck) => total + deck.studyableDueCount, 0),
+  };
+}
+
+export function archivedDecks(library: WorkbenchLibrary): DeckSummary[] {
+  return library.decks
+    .filter((deck) => deck.archivedAt !== null)
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
+}
+
+export function scopeTitle(scope: WorkbenchScope, library: WorkbenchLibrary, tagName: (tagId: string) => string | undefined): string {
+  switch (scope.kind) {
+    case "view":
+      return VIEWS.find((entry) => entry.view === scope.view)?.label ?? "All cards";
+    case "subject":
+      return scope.subjectId === null
+        ? "No subject"
+        : (library.subjects.find((subject) => subject.id === scope.subjectId)?.name ?? "Subject");
+    case "deck":
+      return library.decks.find((deck) => deck.id === scope.deckId)?.name ?? "Deck";
+    case "tag":
+      return tagName(scope.tagId) ?? "Tag";
+  }
+}
+
+/** Whether a scope still names something that exists. */
+export function scopeExists(scope: WorkbenchScope, library: WorkbenchLibrary): boolean {
+  if (scope.kind === "deck") return library.decks.some((deck) => deck.id === scope.deckId);
+  if (scope.kind === "subject" && scope.subjectId !== null) {
+    return library.subjects.some((subject) => subject.id === scope.subjectId);
+  }
+  return true;
+}
+
+export function selectionFromRow(row: CardBrowserRow): SelectionCard {
+  return { cardId: row.cardId, noteId: row.noteId, deckId: row.deckId };
+}
+
+/** One entry per note: tags, moves and deletes act on notes, not on each presentation. */
+export function uniqueNotes(cards: readonly SelectionCard[]): SelectionCard[] {
+  return [...new Map(cards.map((card) => [card.noteId, card])).values()];
+}
+
+const DAY = 86_400_000;
+
+export type DueTone = "due" | "new" | "suspended" | "later";
+
+/** The due column: "today", "in 3 d", "new" or "suspended", from the row's own schedule. */
+export function dueLabel(row: CardBrowserRow, todayStartAt: number): { text: string; tone: DueTone } {
+  if (row.suspendedAt !== null) return { text: "suspended", tone: "suspended" };
+  if (row.reviewCount === 0) return { text: "new", tone: "new" };
+  const tomorrowStart = todayStartAt + DAY;
+  if (row.dueAt < tomorrowStart) return { text: "today", tone: "due" };
+  const days = Math.max(1, Math.ceil((row.dueAt - tomorrowStart + 1) / DAY));
+  return { text: `in ${days} d`, tone: "later" };
+}
+
+export function intervalLabel(row: CardBrowserRow): string {
+  return row.reviewCount === 0 || row.intervalDays <= 0 ? "–" : `${row.intervalDays} d`;
+}
+
+const UNIT_LABELS: Readonly<Record<string, string>> = {
+  page: "Page",
+  slide: "Slide",
+  chapter: "Chapter",
+  section: "Section",
+  segment: "Part",
+  image: "Image",
+  time_segment: "Part",
+};
+
+export function sourceUnitLabel(kind: string | null): string {
+  return (kind && UNIT_LABELS[kind]) ?? "Source";
+}
+
+/** The column heading for a list's source units: "Slide" when every cited card names slides. */
+export function sourceColumnLabel(rows: readonly CardBrowserRow[]): string | null {
+  const kinds = new Set(rows.filter((row) => row.sourceUnit !== null).map((row) => row.sourceUnitKind));
+  if (kinds.size === 0) return null;
+  return kinds.size === 1 ? sourceUnitLabel([...kinds][0] ?? null) : "Source";
+}

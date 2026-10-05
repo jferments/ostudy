@@ -11,7 +11,7 @@ function Anchors() {
   return (
     <div>
       <nav data-tour-anchor="app.navigation">Navigation</nav>
-      <div data-tour-anchor="flashcards.workspaces">Workspaces</div>
+      <div data-tour-anchor="library.workbench">Workbench</div>
     </div>
   );
 }

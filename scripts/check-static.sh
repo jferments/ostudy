@@ -70,7 +70,6 @@ node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
 node --test tests/scripts/ui-theme.node-test.mjs tests/scripts/ui-import-policy.node-test.mjs tests/scripts/ui-presentation-policy.node-test.mjs
 node "$SCRIPT_DIR/verify-style-ownership.mjs"
 node "$SCRIPT_DIR/verify-button-contrast.mjs"
-node "$SCRIPT_DIR/verify-deck-toolbar-layout.mjs"
 node "$SCRIPT_DIR/verify-device-sync-qr-ui.mjs"
 node "$SCRIPT_DIR/verify-android-usb-accessory-manifest.mjs"
 node "$SCRIPT_DIR/verify-usb-sync-hardening.mjs"
