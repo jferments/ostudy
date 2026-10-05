@@ -18,8 +18,10 @@ export const ICON_NAMES = [
   "chat",
   "check",
   "chevron-down",
+  "chevron-left",
   "chevron-right",
   "close",
+  "contents",
   "copy",
   "delete",
   "document",
@@ -36,6 +38,7 @@ export const ICON_NAMES = [
   "import",
   "information",
   "keyboard",
+  "lightbulb",
   "link",
   "maximize",
   "media",
@@ -199,6 +202,8 @@ function iconPath(name: IconName): ReactNode {
       return <path d="M20 6 9 17l-5-5" />;
     case "chevron-down": // Lucide: chevron-down
       return <path d="m6 9 6 6 6-6" />;
+    case "chevron-left": // Lucide: chevron-left
+      return <path d="m15 18-6-6 6-6" />;
     case "chevron-right": // Lucide: chevron-right
       return <path d="m9 18 6-6-6-6" />;
     case "close": // Lucide: x
@@ -206,6 +211,17 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M18 6 6 18" />
           <path d="m6 6 12 12" />
+        </>
+      );
+    case "contents": // Lucide: list
+      return (
+        <>
+          <path d="M3 5h.01" />
+          <path d="M3 12h.01" />
+          <path d="M3 19h.01" />
+          <path d="M8 5h13" />
+          <path d="M8 12h13" />
+          <path d="M8 19h13" />
         </>
       );
     case "copy": // Lucide: copy
@@ -326,6 +342,14 @@ function iconPath(name: IconName): ReactNode {
           <path d="M7 16h10" />
           <path d="M8 12h.01" />
           <rect x="2" y="4" width="20" height="16" rx="2" />
+        </>
+      );
+    case "lightbulb": // Lucide: lightbulb
+      return (
+        <>
+          <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
         </>
       );
     case "link": // Lucide: link

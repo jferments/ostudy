@@ -6,7 +6,8 @@ export const styles = {
   // Applied to the shared Card, which owns the surface; this keeps the chat's own spacing and body text.
   chat: "tw:min-h-0 tw:gap-2 tw:p-3 tw:text-body tw:sm:p-4",
   chatHeader: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border/70 tw:pb-3",
-  heading: "tw:min-w-0 tw:flex-1 tw:[&_h2]:m-0 tw:[&_h2]:break-words tw:[&_h2]:text-body tw:[&_h2]:font-medium tw:[&_span]:mt-0.5 tw:[&_span]:block tw:[&_span]:line-clamp-2",
+  // A real basis lets the toolbar wrap below the title on phones instead of squeezing it.
+  heading: "tw:min-w-0 tw:flex-[1_1_12rem] tw:[&_h2]:m-0 tw:[&_h2]:break-words tw:[&_h2]:text-body tw:[&_h2]:font-medium tw:[&_span]:mt-0.5 tw:[&_span]:block tw:[&_span]:line-clamp-2",
   toolbar: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-1.5",
   sources: "tw:mt-2 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-1.5 tw:[&_button]:max-w-full tw:[&_button]:h-auto tw:[&_button]:whitespace-normal tw:[&_button]:break-words tw:[&_button]:text-left",
   historyPane: "tw:min-h-0 tw:min-w-0 tw:overflow-y-auto tw:rounded-lg tw:bg-muted/30 tw:p-1.5",

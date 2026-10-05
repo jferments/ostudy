@@ -24,7 +24,7 @@ import { Checkbox, Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
-import { StudyGuideStructuredContent } from "./StudyGuideDialog";
+import { StudyGuideStructuredContent } from "./study-guides/StudyGuideContent";
 
 type CollectionEditingMode = "note" | "override";
 interface CollectionEditingState { blockKey: string | null; mode: CollectionEditingMode; value: string; }

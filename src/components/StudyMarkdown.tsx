@@ -65,7 +65,7 @@ export function StudyMarkdown({ text, inline = false }: { text: string; inline?:
     }
   }
   const Host = inline ? "span" : "div";
-  return <Host className={styles.markdown}>
+  return <Host className={inline ? `${styles.markdown} ${styles.inline}` : styles.markdown}>
     {tokens ? render(tokens) : <span className={styles.plain}>{text}</span>}
     {linkError ? <span role="alert">The link could not be opened.</span> : null}
   </Host>;
