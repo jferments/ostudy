@@ -8,9 +8,11 @@ import { SelectionToolbar } from "../../../ui/patterns/SelectionToolbar";
 import { VirtualList } from "../../../ui/patterns/VirtualList";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
 import { Button } from "../../../ui/primitives/Button";
+import { ChipButton } from "../../../ui/primitives/Chip";
 import { EmptyState } from "../../../ui/primitives/EmptyState";
 import { Checkbox } from "../../../ui/primitives/FormControls";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
+import { ItemTrigger } from "../../../ui/primitives/Item";
 import { NativeSelect } from "../../../ui/primitives/NativeSelect";
 import { TextField } from "../../../ui/primitives/TextField";
 import type { WorkbenchCardsState } from "./useWorkbenchCards";
@@ -135,19 +137,10 @@ export function WorkbenchCardList({
               const count = cards.filterCounts[option.value];
               const active = filter === option.value;
               return (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onFilterChange(option.value)}
-                  className={cn(
-                    "tw:inline-flex tw:min-h-8 tw:cursor-pointer tw:items-center tw:gap-1.5 tw:rounded-full tw:border tw:border-solid tw:border-border tw:bg-card tw:px-3 tw:text-small tw:text-foreground tw:transition-colors tw:hover:bg-muted tw:coarse:min-h-11 tw:reduce-motion:transition-none",
-                    active && "tw:border-transparent tw:bg-accent tw:font-semibold tw:text-accent-foreground tw:hover:bg-accent",
-                  )}
-                >
+                <ChipButton key={option.value} selected={active} onClick={() => onFilterChange(option.value)}>
                   {option.label}
                   {count !== undefined ? <span className="tw:tabular-nums tw:text-muted-foreground">{count.toLocaleString()}</span> : null}
-                </button>
+                </ChipButton>
               );
             })}
           </div>
@@ -274,8 +267,7 @@ function CardRow({ row, todayStartAt, selected, open, compact, onShift, onCheck,
     return (
       <div className={cn(rowClass, "tw:flex tw:min-w-0 tw:items-start tw:gap-2 tw:py-2")} data-card-id={row.cardId}>
         <span className="tw:pt-0.5">{checkbox}</span>
-        <button
-          type="button"
+        <ItemTrigger
           aria-current={open ? "true" : undefined}
           onClick={onOpen}
           className="tw:grid tw:min-h-11 tw:min-w-0 tw:flex-1 tw:cursor-pointer tw:gap-1 tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-foreground"
@@ -286,7 +278,7 @@ function CardRow({ row, todayStartAt, selected, open, compact, onShift, onCheck,
             {source ? <span>{source}</span> : null}
             <span className={DUE_TONES[due.tone]}>{due.tone === "due" ? "due today" : due.text}</span>
           </span>
-        </button>
+        </ItemTrigger>
       </div>
     );
   }
@@ -296,16 +288,15 @@ function CardRow({ row, todayStartAt, selected, open, compact, onShift, onCheck,
       <span className="tw:text-small tw:text-muted-foreground tw:tabular-nums" title={source ?? undefined}>
         {row.sourceUnit ?? ""}
       </span>
-      <button
-        type="button"
+      <ItemTrigger
         aria-current={open ? "true" : undefined}
         aria-label={`${front}. ${row.cardLabel}, ${due.text}`}
         onClick={onOpen}
-        className="tw:min-h-9 tw:min-w-0 tw:cursor-pointer tw:truncate tw:border-0 tw:bg-transparent tw:p-0 tw:text-left tw:text-small tw:text-foreground tw:hover:underline"
+        className="tw:min-h-9 tw:min-w-0 tw:text-small tw:text-foreground tw:hover:underline"
         title={front}
       >
-        {front}
-      </button>
+        <span className="tw:truncate">{front}</span>
+      </ItemTrigger>
       <span className="tw:truncate tw:text-small tw:text-muted-foreground">{row.cardLabel}</span>
       <span className={cn("tw:text-small", DUE_TONES[due.tone])}>{due.text}</span>
       <span className="tw:text-right tw:text-small tw:text-muted-foreground tw:tabular-nums">{intervalLabel(row)}</span>

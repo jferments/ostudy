@@ -8,6 +8,7 @@ import { IconButton } from "../../../ui/icons/IconButton";
 import { cn } from "../../../ui/internal/cn";
 import { OverflowMenu, type OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { Button } from "../../../ui/primitives/Button";
+import { ItemTrigger } from "../../../ui/primitives/Item";
 import { subjectColorIndexes, subjectInitials } from "../../home/homeModel";
 import { SubjectBadge } from "../../home/SubjectBadge";
 import {
@@ -303,8 +304,7 @@ interface TreeEntryProps {
 
 function TreeEntry({ label, icon, leading, count, current = false, muted = false, compact, testId, onSelect }: TreeEntryProps) {
   return (
-    <button
-      type="button"
+    <ItemTrigger
       data-testid={testId}
       aria-current={current ? "true" : undefined}
       onClick={onSelect}
@@ -320,6 +320,6 @@ function TreeEntry({ label, icon, leading, count, current = false, muted = false
       {count !== undefined ? (
         <span className="tw:shrink-0 tw:text-caption tw:text-muted-foreground tw:tabular-nums">{count.toLocaleString()}</span>
       ) : null}
-    </button>
+    </ItemTrigger>
   );
 }
