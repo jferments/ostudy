@@ -399,7 +399,7 @@ function CardsSection({
   onBrowse: () => void;
   onPractice: () => void;
 }) {
-  const { cardCount, dueNew, scheduledReviews } = tile.summary;
+  const { cardCount, scheduledNew, scheduledReviews } = tile.summary;
   const color = tile.colorIndex === null ? null : SUBJECT_COLORS[tile.colorIndex];
   return (
     <section aria-labelledby={headingId} data-testid="subject-cards" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-3">
@@ -408,7 +408,7 @@ function CardsSection({
         <dl className="tw:m-0 tw:grid tw:grid-cols-3 tw:gap-3">
           <Stat label="Due today" value={tile.dueCount} highlight={color?.soft ?? null} />
           <Stat label="Reviews" value={scheduledReviews} />
-          <Stat label="New" value={dueNew} />
+          <Stat label="New" value={scheduledNew} />
         </dl>
         {decks.length > 0 ? (
           <ul className="tw:m-0 tw:flex tw:list-none tw:flex-col tw:gap-1 tw:p-0" aria-label="Decks">

@@ -179,7 +179,9 @@ describe("SubjectScreen", () => {
     fireEvent.click(decks[1]!);
     expect(props.onOpenLibrary).toHaveBeenCalledWith({ deckId: "deck-lecture" });
     expect(within(cards).getByText("Due today").nextElementSibling?.textContent).toBe("23");
-    expect(within(cards).getByText("New").nextElementSibling?.textContent).toBe("14");
+    expect(within(cards).getByText("Reviews").nextElementSibling?.textContent).toBe("20");
+    // Due today is exactly the reviews plus the new cards today's session studies.
+    expect(within(cards).getByText("New").nextElementSibling?.textContent).toBe("3");
 
     fireEvent.click(within(cards).getByRole("button", { name: "Browse cards" }));
     expect(props.onOpenLibrary).toHaveBeenLastCalledWith({ subjectId: "cardiac" });
