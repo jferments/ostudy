@@ -18,6 +18,10 @@ import smoke as webdriver
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
 SPACE_KEY = "\ue00d"
+# The same five destinations on every screen size; Search and Settings sit in the header.
+MAIN_NAVIGATION_LABELS = ["Home", "Library", "Review", "Tutor", "Progress"]
+# Library's outer page, which hosts Decks, Documents and Study guides below its view switcher.
+LIBRARY_ROUTE_SELECTOR = "[data-testid='library']"
 EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
     {
         "'IBM Plex Sans', var(--ostudy-font-family-system)",
@@ -371,6 +375,9 @@ def assert_viewport_consumption(
         const routeLayer = main?.firstElementChild;
         const route = routeSelector ? routeLayer?.querySelector(routeSelector) : null;
         const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null;
+        // Wider screens stack the header above main; a phone's header is fixed over the padding.
+        const header = shell?.querySelector(":scope > header[data-slot='app-header']");
+        const headerInFlow = header instanceof HTMLElement && getComputedStyle(header).position !== "fixed";
         const contentBox = main instanceof HTMLElement ? {
           left: main.getBoundingClientRect().left + main.clientLeft,
           top: main.getBoundingClientRect().top + main.clientTop,
@@ -395,6 +402,8 @@ def assert_viewport_consumption(
           shellPaddingTop: Number.parseFloat(shellStyle?.paddingTop || "0") || 0,
           shellPaddingBottom: Number.parseFloat(shellStyle?.paddingBottom || "0") || 0,
           shellPaddingRight: Number.parseFloat(shellStyle?.paddingRight || "0") || 0,
+          shellPaddingLeft: Number.parseFloat(shellStyle?.paddingLeft || "0") || 0,
+          headerBottom: headerInFlow ? header.getBoundingClientRect().bottom : null,
           contentBox,
           shell: rect(shell),
           main: rect(main),
@@ -417,6 +426,8 @@ def assert_viewport_consumption(
     shell_padding_top = float(measurements.get("shellPaddingTop", 0))
     shell_padding_bottom = float(measurements.get("shellPaddingBottom", 0))
     shell_padding_right = float(measurements.get("shellPaddingRight", 0))
+    shell_padding_left = float(measurements.get("shellPaddingLeft", 0))
+    header_bottom = measurements.get("headerBottom")
     tolerance = 2
     if (
         abs(float(shell["left"])) > tolerance
@@ -425,10 +436,17 @@ def assert_viewport_consumption(
         or abs(float(shell["bottom"]) - viewport_height) > tolerance
     ):
         raise AssertionError(f"Application shell did not consume {label}: {measurements!r}")
+    # Main starts below an in-flow header, or at the shell's padding when the header is fixed.
+    expected_main_top = (
+        float(header_bottom)
+        if header_bottom is not None
+        else float(shell["top"]) + shell_padding_top
+    )
     if (
         float(main["width"]) <= 0
+        or abs(float(main["left"]) - (float(shell["left"]) + shell_padding_left)) > tolerance
         or abs(float(main["right"]) - (float(shell["right"]) - shell_padding_right)) > tolerance
-        or abs(float(main["top"]) - (float(shell["top"]) + shell_padding_top)) > tolerance
+        or abs(float(main["top"]) - expected_main_top) > tolerance
         or abs(float(main["bottom"]) - (float(shell["bottom"]) - shell_padding_bottom)) > tolerance
         or abs(float(route_layer["left"]) - float(content_box["left"])) > tolerance
         or abs(float(route_layer["top"]) - float(content_box["top"])) > tolerance
@@ -526,11 +544,43 @@ def assert_navigation_labels(
         session_id,
         """
         return [...document.querySelectorAll("nav[aria-label='Main navigation'] button")]
-          .map((button) => (button.textContent || '').trim());
+          .map((button) => (button.querySelector("[data-slot='nav-label']")?.textContent || '').trim());
         """,
     )
     if labels != expected:
         raise AssertionError(f"Unexpected {label} navigation order: {labels!r}")
+
+
+def assert_shell_placement(session_id: str, layout: str) -> None:
+    """A phone has a bottom bar; wider screens carry the navigation in the header."""
+    placement = execute(
+        session_id,
+        """
+        const header = document.querySelector("header[data-slot='app-header']");
+        const navigation = document.querySelector("nav[aria-label='Main navigation']");
+        const visible = (element) => element instanceof HTMLElement
+          && element.getBoundingClientRect().width > 0
+          && getComputedStyle(element).visibility !== 'hidden';
+        return {
+          navigationCount: document.querySelectorAll("nav[aria-label='Main navigation']").length,
+          inHeader: Boolean(header && navigation && header.contains(navigation)),
+          bottom: navigation?.dataset.slot === 'bottom-navigation',
+          search: visible(header?.querySelector("button[data-testid='app-search']")),
+          settings: visible(header?.querySelector("button[data-testid='app-settings']")),
+          settingsInNavigation: Boolean(navigation?.querySelector("[data-testid*='settings']")),
+        };
+        """,
+    )
+    expected = {
+        "navigationCount": 1,
+        "inHeader": layout != "compact",
+        "bottom": layout == "compact",
+        "search": True,
+        "settings": True,
+        "settingsInNavigation": False,
+    }
+    if placement != expected:
+        raise AssertionError(f"The {layout} shell placed its navigation or header actions wrongly: {placement!r}")
 
 
 def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
@@ -740,7 +790,7 @@ def wait_for_window_control_transition(
 
 def verify_native_window_controls(session_id: str, deadline: float) -> None:
     open_study_guides(session_id, deadline, "resized desktop viewport")
-    route_selector = "[aria-label='Study Guides']"
+    route_selector = LIBRARY_ROUTE_SELECTOR
     keyboard_probe = activate_window_control_with_keyboard(
         session_id, "Maximize window", False, deadline
     )
@@ -791,13 +841,7 @@ def open_study_guides(
     deadline: float,
     label: str,
 ) -> None:
-    study_guides = webdriver.find_element(
-        session_id,
-        "css selector",
-        "button[data-testid='nav-study-guides']",
-        deadline,
-    )
-    webdriver.click(session_id, study_guides)
+    webdriver.open_library_view(session_id, "study-guides", deadline)
     webdriver.wait_for_element_text(
         session_id,
         "css selector",
@@ -805,7 +849,7 @@ def open_study_guides(
         "Study Guides",
         deadline,
     )
-    assert_viewport_consumption(session_id, label, "[aria-label='Study Guides']")
+    assert_viewport_consumption(session_id, label, LIBRARY_ROUTE_SELECTOR)
 
 
 def open_study_guides_and_return(
@@ -815,10 +859,11 @@ def open_study_guides_and_return(
 ) -> None:
     open_study_guides(session_id, deadline, label)
 
+    # Library's switcher returns to Decks without leaving Library.
     flashcards = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks']",
+        "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
         deadline,
     )
     webdriver.click(session_id, flashcards)
@@ -834,11 +879,10 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
     wait_for_layout_mode(session_id, "compact", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "compact layout")
-    assert_navigation_labels(
-        session_id,
-        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics"],
-        "compact",
-    )
+    assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "compact")
+    assert_shell_placement(session_id, "compact")
+    webdriver.verify_fresh_home(session_id, deadline)
+    assert_no_horizontal_overflow(session_id, "compact first-run Home")
     open_study_guides_and_return(
         session_id,
         deadline,
@@ -856,13 +900,29 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     documents = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-documents']",
+        "main nav[aria-label='Library'] button[data-testid='library-view-documents']",
         deadline,
     )
     webdriver.click(session_id, documents)
     webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Documents", deadline)
     wait_for_overlay_inactive(session_id, deadline, "compact Documents assertions")
     assert_no_horizontal_overflow(session_id, "compact Documents screen")
+
+    review = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-review']",
+        deadline,
+    )
+    webdriver.click(session_id, review)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Review", deadline)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@data-testid='review-today']//h2[normalize-space(.)='Nothing due today']",
+        deadline,
+    )
+    assert_no_horizontal_overflow(session_id, "compact Review screen")
 
     settings = webdriver.find_element(
         session_id,
@@ -875,12 +935,24 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     wait_for_overlay_inactive(session_id, deadline, "compact Settings assertions")
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
-    flashcards = webdriver.find_element(
+    # Search in the header opens Search/Filter inside Library.
+    search = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks']",
+        "header button[data-testid='app-search']",
         deadline,
     )
+    webdriver.click(session_id, search)
+    webdriver.verify_search_workspace_selected(session_id, deadline)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-library'][aria-current='page']",
+        deadline,
+    )
+    assert_no_horizontal_overflow(session_id, "compact Search/Filter workspace")
+
+    flashcards = find_workspace_tab(session_id, "Decks", deadline)
     webdriver.click(session_id, flashcards)
     webdriver.find_element(
         session_id,
@@ -928,11 +1000,8 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     wait_for_layout_mode(session_id, "wide", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "wide layout")
     assert_utilities_restyle_document_defaults(session_id)
-    assert_navigation_labels(
-        session_id,
-        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],
-        "wide",
-    )
+    assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "wide")
+    assert_shell_placement(session_id, "wide")
     open_study_guides_and_return(
         session_id,
         deadline,
@@ -951,13 +1020,7 @@ def verify_study_guides_checkpoint_after_restart(
     application: Path,
     session_id: str,
 ) -> str:
-    study_guides = webdriver.find_element(
-        session_id,
-        "css selector",
-        "button[data-testid='nav-study-guides']",
-        webdriver.deadline_after(),
-    )
-    webdriver.click(session_id, study_guides)
+    webdriver.open_library_view(session_id, "study-guides", webdriver.deadline_after())
     webdriver.wait_for_element_text(
         session_id,
         "css selector",
@@ -998,7 +1061,13 @@ def verify_study_guides_checkpoint_after_restart(
     webdriver.find_element(
         restarted,
         "css selector",
-        "button[data-testid='nav-study-guides'][aria-current='page']",
+        "button[data-testid='nav-library'][aria-current='page']",
+        webdriver.deadline_after(),
+    )
+    webdriver.find_element(
+        restarted,
+        "css selector",
+        "button[data-testid='library-view-study-guides'][aria-current='page']",
         webdriver.deadline_after(),
     )
     return restarted
@@ -1008,16 +1077,13 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "medium layout")
-    assert_navigation_labels(
-        session_id,
-        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],
-        "medium",
-    )
+    assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "medium")
+    assert_shell_placement(session_id, "medium")
     open_study_guides_and_return(session_id, deadline, "medium Study Guides destination")
     webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks'][aria-current='page']",
+        "button[data-testid='nav-library'][aria-current='page']",
         deadline,
     )
     webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
@@ -1026,24 +1092,24 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     navigation = execute(
         session_id,
         """
-        const sidebar = document.querySelector("nav[aria-label='Main navigation']")?.closest("aside");
-        const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] button span:last-child")];
+        const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] [data-slot='nav-label']")];
         return {
-          sidebarWidth: sidebar instanceof HTMLElement ? sidebar.getBoundingClientRect().width : 0,
           visibleLabels: labels.filter((label) => {
             if (!(label instanceof HTMLElement)) return false;
             const style = getComputedStyle(label);
             return style.display !== 'none' && style.visibility !== 'hidden' && label.getBoundingClientRect().width > 20;
-          }).map((label) => (label.textContent || '').trim())
+          }).map((label) => (label.textContent || '').trim()),
+          clipped: labels
+            .filter((label) => label instanceof HTMLElement && label.scrollWidth > label.clientWidth + 1)
+            .map((label) => (label.textContent || '').trim()),
         };
         """,
     )
     if not isinstance(navigation, dict):
         raise AssertionError(f"Could not measure medium navigation: {navigation!r}")
-    if float(navigation.get("sidebarWidth", 0)) < 150:
-        raise AssertionError(f"Medium navigation collapsed into an icon rail: {navigation!r}")
-    if "Flashcards" not in navigation.get("visibleLabels", []):
-        raise AssertionError(f"Medium navigation labels are not visible: {navigation!r}")
+    # Medium widths keep the labeled top bar rather than collapsing to icons.
+    if navigation.get("visibleLabels") != MAIN_NAVIGATION_LABELS or navigation.get("clipped"):
+        raise AssertionError(f"Medium navigation labels are not all visible: {navigation!r}")
     assert_no_horizontal_overflow(session_id, "medium Flashcards workspace")
 
     search = find_workspace_tab(session_id, "Search/Filter", deadline)
@@ -1407,7 +1473,10 @@ def main() -> int:
         verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
-            "Native UI platform smoke passed: compact, labeled medium, and wide navigation and branding; "
+            "Native UI platform smoke passed: fresh-library Home; the same five destinations in the "
+            "phone bottom bar and the labeled medium and wide header, with Search and Settings in the header; "
+            "Library's Decks, Documents and Study guides views; Review; "
+            "compact, labeled medium, and wide branding; "
             "fresh-profile IBM Plex interface/card defaults; "
             "two-workspace Flashcards containment; vertical responsive deck-detail actions; "
             "deck-scoped authoring; no horizontal overflow; "

@@ -104,8 +104,8 @@ if ((launch_ok == 0)); then
     a1_freshLibraryUsesQuietNavigation \
     a_seedLibraryPracticeAndAnalytics \
     b_restartPreservesLibraryAndReviewHistory \
-    c_documentsStubAndAndroidBackReturnToFlashcardsDecks \
-    c_tutorOfflineAndAndroidBackReturnToFlashcards \
+    c_documentsViewAndAndroidBackReturnHome \
+    c_tutorOfflineAndAndroidBackReturnHome \
     c_nestedDeckAndEditorBackReturnThroughTheStack \
     d_reloadsIntoInterruptedPracticeSession \
     e_processRestartKeepsInterruptedPracticeSession \
@@ -123,8 +123,8 @@ else
 
   seed_ok=1
   record_case a_seedLibraryPracticeAndAnalytics || seed_ok=0
-  record_case c_documentsStubAndAndroidBackReturnToFlashcardsDecks || true
-  record_case c_tutorOfflineAndAndroidBackReturnToFlashcards || true
+  record_case c_documentsViewAndAndroidBackReturnHome || true
+  record_case c_tutorOfflineAndAndroidBackReturnHome || true
 
   if ((seed_ok == 1)); then
     record_case b_restartPreservesLibraryAndReviewHistory || true

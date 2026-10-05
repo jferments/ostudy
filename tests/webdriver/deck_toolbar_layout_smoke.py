@@ -127,7 +127,13 @@ def prepare_decks_workspace(session_id: str, width: int, height: int, deadline: 
     webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks'][aria-current='page']",
+        "button[data-testid='nav-library'][aria-current='page']",
+        deadline,
+    )
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='library-view-decks'][aria-current='page']",
         deadline,
     )
     decks_tab = webdriver.find_element(
@@ -289,6 +295,8 @@ def main() -> int:
         webdriver.wait_for_driver(time.monotonic() + 20)
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
+        # A fresh library opens on Home; the deck library is Library's Decks view.
+        webdriver.open_library_view(session_id, "decks", webdriver.deadline_after())
 
         for width, height in VIEWPORTS:
             verify_empty_library(session_id, width, height)

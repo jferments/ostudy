@@ -34,11 +34,9 @@ class RouteSmokeContractTests(unittest.TestCase):
                     paths.add(edge["from"])
                     paths.add(edge["to"])
 
-        for catalog in ("primaryDestinations", "flashcardsWorkspaces"):
+        for catalog in ("applicationSections", "flashcardsWorkspaces", "protectedWorkflows"):
             for entry in contract[catalog]:
                 add_smoke_paths(entry["smoke"])
-        for workflow in contract["protectedWorkflows"]:
-            add_smoke_paths(workflow["smoke"])
         paths.add("scripts/route-smoke-contract.json")
         for relative_path in paths:
             destination = root / relative_path
@@ -56,10 +54,14 @@ class RouteSmokeContractTests(unittest.TestCase):
     def test_repository_contract_passes(self) -> None:
         completed = self.run_verifier(ROOT)
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("6 application sections, 1 application workflow", completed.stdout)
-        self.assertIn("8 route-entry; 0 presence-only", completed.stdout)
+        self.assertIn("8 application sections, 1 application workflow", completed.stdout)
+        self.assertIn("8 checkpoint sections", completed.stdout)
+        self.assertIn(
+            "5 navigation destinations, 3 Library views, 2 header actions",
+            completed.stdout,
+        )
+        self.assertIn("10 route-entry; 0 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
-        self.assertIn("5 compact primary / 0 More / 1 app-bar destinations", completed.stdout)
 
     def test_internal_practice_retains_protected_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -67,7 +69,7 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.copy_fixture(fixture)
             completed = self.run_verifier(fixture)
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("6 primary destinations", completed.stdout)
+            self.assertIn("5 navigation destinations", completed.stdout)
             self.assertIn("1 protected workflow", completed.stdout)
 
     def test_internal_practice_cannot_drop_protected_smoke(self) -> None:
@@ -83,25 +85,90 @@ class RouteSmokeContractTests(unittest.TestCase):
                 completed.stderr,
             )
 
-    def test_rejects_missing_compact_destination(self) -> None:
+    def test_rejects_main_navigation_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             contract = self.copy_fixture(fixture)
-            contract["compactNavigation"]["primary"].remove("documents")
+            contract["navigation"]["destinations"].reverse()
             self.write_contract(fixture, contract)
             completed = self.run_verifier(fixture)
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("compact navigation coverage is missing: documents", completed.stderr)
+            self.assertIn("main navigation destinations drifted", completed.stderr)
 
-    def test_rejects_compact_order_drift(self) -> None:
+    def test_rejects_library_view_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             contract = self.copy_fixture(fixture)
-            contract["compactNavigation"]["primary"].reverse()
+            contract["navigation"]["library"]["views"].reverse()
             self.write_contract(fixture, contract)
             completed = self.run_verifier(fixture)
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("compact primary destination order drifted", completed.stderr)
+            self.assertIn("Library views drifted", completed.stderr)
+            self.assertIn("Library view labels drifted", completed.stderr)
+
+    def test_every_section_names_where_it_opens(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            documents = next(
+                entry for entry in contract["applicationSections"] if entry["id"] == "documents"
+            )
+            del documents["placement"]
+            self.write_contract(fixture, contract)
+            completed = self.run_verifier(fixture)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "section documents must name the destination or header action that opens it",
+                completed.stderr,
+            )
+
+    def test_rejects_highlighted_destination_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            mapping = fixture / "src/navigation/appDestinations.ts"
+            source = mapping.read_text(encoding="utf-8")
+            highlight = 'case "analytics":\n      return "progress";'
+            self.assertIn(highlight, source)
+            mapping.write_text(
+                source.replace(highlight, 'case "analytics":\n      return "review";', 1),
+                encoding="utf-8",
+            )
+            completed = self.run_verifier(fixture)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                'highlighted destination for section analytics drifted: expected "progress", found "review"',
+                completed.stderr,
+            )
+
+    def test_destination_must_open_a_section_it_highlights(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            shell = fixture / "src/App.tsx"
+            source = shell.read_text(encoding="utf-8")
+            opening = '  progress: "analytics",\n'
+            self.assertIn(opening, source)
+            shell.write_text(source.replace(opening, '  progress: "review",\n', 1), encoding="utf-8")
+            completed = self.run_verifier(fixture)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("sections opened by navigation destinations drifted", completed.stderr)
+
+    def test_settings_stays_wired_to_the_header_gear(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            shell = fixture / "src/App.tsx"
+            source = shell.read_text(encoding="utf-8")
+            wiring = 'onSettings={() => navigate("settings")}'
+            self.assertIn(wiring, source)
+            shell.write_text(source.replace(wiring, "onSettings={() => undefined}", 1), encoding="utf-8")
+            completed = self.run_verifier(fixture)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "header action settings does not open section settings in src/App.tsx",
+                completed.stderr,
+            )
 
     def test_rejects_flashcards_workspace_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -136,7 +203,7 @@ class RouteSmokeContractTests(unittest.TestCase):
             )
             completed = self.run_verifier(fixture)
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("primary destination study-guides", completed.stderr)
+            self.assertIn("section study-guides", completed.stderr)
             self.assertIn("missing required entry fragment", completed.stderr)
 
     def test_route_entry_cannot_be_reclassified_as_presence(self) -> None:
