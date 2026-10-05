@@ -101,7 +101,7 @@ describe("active practice navigation", () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings({ practiceShuffle: false }));
     const terminate = vi.fn().mockResolvedValue(true);
     renderHarness(terminate);
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
 
     fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
 
@@ -112,7 +112,7 @@ describe("active practice navigation", () => {
   it("asks before leaving and terminates without navigating when the user says no", async () => {
     const terminate = vi.fn().mockResolvedValue(true);
     renderHarness(terminate);
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
     await enterPractice();
 
     expect(dispatchPlatformBack()).toBe(true);
@@ -124,14 +124,14 @@ describe("active practice navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(terminate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("section").textContent).toBe("decks");
+    expect(screen.getByLabelText("section").textContent).toBe("home");
     expect(screen.getByLabelText("workflow").textContent).toBe("practice");
   });
 
   it("completes the active session before navigating away when confirmed", async () => {
     const terminate = vi.fn().mockResolvedValue(true);
     renderHarness(terminate);
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
     await enterPractice();
 
     expect(dispatchPlatformBack()).toBe(true);
@@ -139,7 +139,7 @@ describe("active practice navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Yes, terminate" }));
 
     await waitFor(() => expect(terminate).toHaveBeenCalledOnce());
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
     expect(screen.getByLabelText("workflow").textContent).toBe("none");
   });
 });
