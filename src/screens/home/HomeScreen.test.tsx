@@ -449,6 +449,21 @@ describe("HomeScreen", () => {
     expect(screen.getAllByTestId("subject-tile")[0]?.closest("ul")?.className).toContain("tw:grid-cols-2");
   });
 
+  it.each([
+    [1440, "Choose subjects to review them in parts."],
+    [390, "Start one subject at a time in Review."],
+  ])("at %s px, says how to review cards due in more decks than one session takes", async (width, advice) => {
+    const deckIds = Array.from({ length: 101 }, (_, index) => `deck-${index}`);
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(
+      makeHomeSummary({ today: { scheduledReviews: 101, estimatedMinutes: 20, deckIds } }),
+    );
+    renderHome({ width });
+    const strip = await screen.findByTestId("home-today");
+    expect(within(strip).getByText(`Cards are due in more than 100 decks. ${advice}`)).toBeTruthy();
+    const start = within(strip).getByRole("button", { name: width === 390 ? "Start" : "Start review" });
+    expect((start as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("says when today's limits are reached instead of showing zero", async () => {
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(
       makeHomeSummary({

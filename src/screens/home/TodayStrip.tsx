@@ -66,8 +66,10 @@ export function TodayStrip({ studyDate, today, headingId, onStartReview, onChoos
         </h2>
         <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{detail}</p>
         {tooManyDecks ? (
+          // A phone's strip has no subject chooser; Review starts one subject at a time.
           <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-            Cards are due in more than {MAX_SESSION_DECKS} decks. Choose subjects to review them in parts.
+            Cards are due in more than {MAX_SESSION_DECKS} decks.{" "}
+            {compact ? "Start one subject at a time in Review." : "Choose subjects to review them in parts."}
           </p>
         ) : null}
       </div>
