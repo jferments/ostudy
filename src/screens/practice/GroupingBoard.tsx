@@ -34,10 +34,10 @@ export function GroupingBoard({ question, assignments, assets, disabled, evaluat
     const correct = result ? result.selectedTargetId === result.expectedTargetId : undefined;
     const expected = result ? categories.get(result.expectedTargetId) : null;
     return <div key={item.id} className="tw:grid tw:gap-1">
-      <QuestionTile id={item.id} label={`Select ${extractRichDocumentText(item.content) || "item"}`}
-        pointer={pointer} disabled={disabled || evaluation !== null} selected={selected === item.id} correct={correct}
+      <QuestionTile id={item.id} action="Select" fallbackName={extractRichDocumentText(item.content) ? undefined : "item"}
+        content={<RichTextView document={item.content} assets={assets} onLinkError={onError} />}
+        pointer={pointer} disabled={disabled} locked={evaluation !== null} selected={selected === item.id} correct={correct}
         onSelect={() => setSelected((value) => value === item.id ? null : item.id)}>
-        <RichTextView document={item.content} assets={assets} onLinkError={onError} />
         {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-small", correct ? "tw:text-success" : "tw:text-destructive")}>
           <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : result.selectedTargetId ? "Wrong group" : "Not placed"}
         </div> : null}

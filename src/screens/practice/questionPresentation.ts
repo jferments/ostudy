@@ -2,7 +2,7 @@ import type { ComponentFeedback, PublicQuestion, QuestionResponse } from "../../
 
 export type Placement = { itemId: string; targetId: string };
 export type PlacementFeedback = Extract<ComponentFeedback, { kind: "placement" }>;
-export const answerTile = "tw:min-w-0 tw:rounded-xl tw:border tw:border-solid tw:p-3 tw:text-foreground";
+export const answerTile = "tw:min-w-0 tw:rounded-md tw:border tw:border-solid tw:p-3 tw:text-foreground";
 export const neutralTile = "tw:border-border tw:bg-background";
 export const connectedTile = "tw:border-primary/60 tw:bg-accent";
 export const correctTile = "tw:border-success/60 tw:bg-success-soft";
@@ -12,6 +12,10 @@ export const incorrectTile = "tw:border-destructive/60 tw:bg-destructive-soft";
  * color that disappears against the active background.
  */
 export const activePointerTile = "tw:border-primary tw:bg-primary tw:text-primary-foreground tw:[&_*]:text-inherit";
+/** The real button that covers a tile. It sits under the tile's content, which lets pointers
+ * through except on the content's own links and players. */
+export const tileHandle = "tw:absolute tw:inset-0 tw:h-auto tw:w-auto tw:rounded-[inherit] tw:border-0 tw:bg-transparent tw:p-0 tw:enabled:hover:bg-foreground/5";
+export const tileContent = "tw:relative tw:min-w-0 tw:[&_:is(a,button,audio,video,input,select,textarea,[contenteditable=true])]:pointer-events-auto";
 
 export function tileResult(correct: boolean | undefined): string {
   return correct === undefined ? neutralTile : correct ? correctTile : incorrectTile;
