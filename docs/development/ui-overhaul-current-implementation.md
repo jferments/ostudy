@@ -59,13 +59,11 @@ PageScaffold, PageHeader, CommandBar, selection toolbars and responsive action g
 
 ## Phase 8: Flashcards, search, authoring setup and transfer
 
-The production Flashcards route now uses the migrated library, folder/archive presentation, row selection/actions, search/filter workspace and card browser. Pointer drag geometry and mutation policy remain separate from visual recipes. Keyboard move/reorder alternatives remain available; hover or canceled drags do not commit an organization change.
+PR #96 migrated the Flashcards route's deck library, folder/archive presentation, search/filter workspace and card browser. The Library Workbench (`src/screens/library/workbench/`) has since replaced those screens, the deck detail route and their pointer-drag geometry. Library opens LibraryWorkbench: WorkbenchTree lists views, subjects with their decks and documents, archived decks and tags; WorkbenchCardList shows the chosen scope's cards with search, sort, quick filters and selection; the open card's CardEditorScreen sits beside the list with CardScheduleSummary above it. ResizablePanes divides wide and medium layouts; phones show one page at a time. workbenchLaunch maps the existing Flashcards route (deck, subject focus, Progress tag launch, Search) to a Workbench scope, so saved checkpoints and launch requests keep opening Library.
 
-CardFilters uses shared fields, checkbox/radio groups and chips, while the shared browser retains distinction between source notes and generated presentations, visible/all-matching selection, tag scope, query/sort behavior and transactional bulk identities. Bulk entry/tagging, move/copy, deletion, rescheduling and practice-result dialogs are migrated. Deck-only authoring remains deck-only.
+The Workbench keeps the contracts the old screens established. Selection distinguishes source notes from generated presentations, offers shown-row and all-matching selection, and bulk move/tag/delete act on unique notes with transactional identities. Bulk entry, tagging, move/copy, deletion, rescheduling and practice-result dialogs are the same shared modals. Organization changes are menu actions checked against the current library revision; there is no drag reordering, so pointer, keyboard and screen-reader users share one path. Deck-only authoring remains deck-only.
 
-Selected-deck Practice setup uses shared panels, tagged choices, explicit scheduled/extra modes and meaningful workload metrics. Obsolete workload results disappear until the exact new query is ready. The start lock, invalidated deck snapshot handling and refusal to silently substitute extra study remain.
-
-DeckDetailRoute owns the migrated header/actions and source footer. The browser remains the same mounted instance when entering/leaving its editor; a regression test verifies unsaved local state survives that layout transition. Deck import/export/share and bounded Anki conversion receipts use the same panels and feedback.
+Practice setup (PracticeSetupSheet, shown as Practice selected decks) uses shared panels, tagged choices, explicit scheduled/extra modes and meaningful workload metrics. Obsolete workload results disappear until the exact new query is ready. The start lock, invalidated deck snapshot handling and refusal to silently substitute extra study remain. Deck import/export and bounded Anki conversion receipts use DeckTransferDialog with the same panels and feedback.
 
 ## Phase 9: card editor chrome
 
@@ -97,9 +95,9 @@ The only raw feature inputs are explicitly disabled checklist markers emitted by
 
 ## Phases 14–15: cleanup and enforceable ownership
 
-The remaining ordinary layout, branding, responsive actions, visually hidden utility and InlineWorkspace chrome use Tailwind. Dead Menu/Settings styles and the old Button, Tabs, Surface and feature-exclusive styles have been removed. The unmounted all-in-one DecksScreen and its private styles/tests are retired; live DeckDetailRoute, DeckLibraryWorkspace and DeckTransferDialog are the owners.
+The remaining ordinary layout, branding, responsive actions, visually hidden utility and InlineWorkspace chrome use Tailwind. Dead Menu/Settings styles and the old Button, Tabs, Surface and feature-exclusive styles have been removed. The unmounted all-in-one DecksScreen and its private styles/tests are retired. DeckDetailRoute and DeckLibraryWorkspace were later retired in favor of the Library Workbench; LibraryWorkbench and DeckTransferDialog are the owners.
 
-Coverage is preserved on those active paths: creation routes to the authoritative new identity; deck-only browsing and direct Practice keep their scope; empty/archived decks cannot practice; archive/restore uses the exact revision and prevents duplicate actions; deletion requires confirmation and retains Undo's absolute deadline; post-commit refresh/navigation errors do not invite another write. Transfer tests cover chooser cancellation, unsupported inputs, retry, duplicate reports, exact export totals, busy-state locking and post-commit recovery. Existing library/controller, browser, Anki, dirty-state and native smoke suites remain.
+Coverage is preserved on the active paths: creation opens the authoritative new deck; deck-only browsing and direct Practice keep their scope; empty/archived decks cannot practice; archive/restore uses the exact revision and prevents duplicate actions; deletion requires confirmation and retains Undo's absolute deadline; post-commit refresh/navigation errors do not invite another write. Transfer tests cover chooser cancellation, unsupported inputs, retry, duplicate reports, exact export totals, busy-state locking and post-commit recovery. Existing library/controller, browser, Anki, dirty-state and native smoke suites remain.
 
 The legacy classOwnership API and its three shared CSS maps are removed after their last production consumer. The replacement verifier checks explicit CSS Module selectors, complete utilities, conditional/cn usage, and rejects reintroducing the retired API. The production CSS contract discovers the entire source tree rather than maintaining a partial screen list.
 
@@ -112,13 +110,12 @@ The legacy classOwnership API and its three shared CSS maps are removed after th
 | AppShell | Definite-height native route and scroll containment. |
 | RichContent and TutorMarkdown | Rich-content descendants, media/math/print, sanitized Markdown and overflow. |
 | PracticeCard | Two-face 3D geometry, inert-face visibility, independent scaling and reduced motion. |
-| Five deck-library geometry Modules | Hit testing, scrolling, pointer transforms and insertion destinations. |
 | DeviceSync QR frame | Machine-readable quiet zone and literal white contrast. |
 | TourProvider | Measured spotlight masking and viewport collision geometry. |
 | Artwork, Motion and experience | Illustration cropping and optional motion/effect geometry. |
 | Progress | Text contrast split across the filled and unfilled track. |
 
-There are 15 registered Modules. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
+There are 10 registered Modules; the five deck-library drag-geometry Modules left with the screens the Workbench replaced. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
 
 ### Historical human-acceptance boundary
 
@@ -128,7 +125,7 @@ PR #96's source completion and automated qualification did not declare subjectiv
 
 The TypeScript import verifier restricts vendor/Base UI ownership. The class-ownership check rejects interpolated utility names and unowned legacy classes. The in-memory CSS build discovers all production frontend sources, verifies every used utility and the four themes/capability variants, and rejects raw generic controls outside the approved implementation boundary. It also checks explicit partial-border behavior with no Preflight.
 
-Behavior suites retain form/ref/loading/disabled contracts, keyboard tab/radio behavior, disclosure drafts, Settings/provider/sync operations, atomic import receipts, deck-library drag/selection, browser bulk actions, Practice setup and nested modal/Back behavior. They assert observable outcomes rather than hidden-input implementation details. Node-only suites remain explicit `.node-test.mjs` files.
+Behavior suites retain form/ref/loading/disabled contracts, keyboard tab/radio behavior, disclosure drafts, Settings/provider/sync operations, atomic import receipts, Workbench scope, selection and compact-page behavior, browser bulk actions, Practice setup and nested modal/Back behavior. They assert observable outcomes rather than hidden-input implementation details. Node-only suites remain explicit `.node-test.mjs` files.
 
 Android's fresh-library test waits for the asynchronous library surface, not only the earlier route heading. All existing create/import, empty-state and irrelevant-control assertions remain. A Python policy regression locks in that readiness boundary and semantic selectors.
 

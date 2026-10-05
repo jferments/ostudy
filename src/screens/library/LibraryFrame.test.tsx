@@ -45,11 +45,11 @@ function views() {
 describe("LibraryFrame", () => {
   it.each([390, 1000, 1440])("names the three views in order at %s px", (width) => {
     renderLibrary("decks", width);
-    expect(views().map((button) => button.textContent)).toEqual(["Decks", "Documents", "Study guides"]);
+    expect(views().map((button) => button.textContent)).toEqual(["Workbench", "Documents", "Study guides"]);
   });
 
   it.each([
-    ["decks", "Decks"],
+    ["decks", "Workbench"],
     ["documents", "Documents"],
     ["study-guides", "Study guides"],
   ] as const)("marks %s as the current view and hosts it below the switcher", (view, label) => {
@@ -63,7 +63,7 @@ describe("LibraryFrame", () => {
     const { onSelectView } = renderLibrary("study-guides", 390);
     fireEvent.click(screen.getByRole("button", { name: "Documents" }));
     fireEvent.click(screen.getByRole("button", { name: "Study guides" }));
-    fireEvent.click(screen.getByRole("button", { name: "Decks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workbench" }));
     expect(onSelectView.mock.calls.map(([view]) => view)).toEqual(["documents", "study-guides", "decks"]);
   });
 
