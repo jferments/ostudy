@@ -1,6 +1,6 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
-use crate::error::CommandError;
+use crate::{error::CommandError, study_calendar::review_wall_clock_sql};
 
 use super::{
     scope::{AnalyticsContext, HistoryPeriod},
@@ -16,7 +16,7 @@ pub fn load_reviews(
     context: &AnalyticsContext,
 ) -> Result<Vec<RecentReviewDto>, CommandError> {
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let sql = format!(
         "WITH recent_reviews AS (
              SELECT
@@ -31,7 +31,7 @@ pub fn load_reviews(
                  r.rating,
                  r.response_time_ms,
                  r.reviewed_at,
-                 a.review_local_date,
+                 {review_wall_clock} AS review_wall_clock,
                  r.due_after,
                  a.attribution_source,
                  r.created_at
@@ -60,7 +60,7 @@ pub fn load_reviews(
              recent.rating,
              recent.response_time_ms,
              recent.reviewed_at,
-             recent.review_local_date,
+             {study_date},
              recent.due_after,
              recent.attribution_source,
              rta.tag_id,
@@ -80,6 +80,11 @@ pub fn load_reviews(
          LEFT JOIN tags ON tags.id = current_tag_ids.tag_id
          ORDER BY recent.reviewed_at DESC, recent.created_at DESC, recent.id DESC,
                   resolved_tag_name COLLATE NOCASE ASC, rta.tag_id ASC",
+        // The study date is formatted only for the reviews that are shown.
+        review_wall_clock = review_wall_clock_sql("a"),
+        study_date = context
+            .time
+            .wall_clock_study_date_sql("recent.review_wall_clock"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
@@ -151,7 +156,7 @@ pub fn load_sessions(
     context: &AnalyticsContext,
 ) -> Result<Vec<SessionAnalyticsDto>, CommandError> {
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let sql = format!(
         "SELECT
              ps.id,

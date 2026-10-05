@@ -119,6 +119,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  newDayStartHour: 4,
 };
 
 export function useAppController() {
@@ -836,6 +837,7 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     desiredRetention: settings.desiredRetention,
     dailyNewLimit: settings.dailyNewLimit,
     dailyReviewLimit: settings.dailyReviewLimit,
+    newDayStartHour: settings.newDayStartHour,
   };
 }
 

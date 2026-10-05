@@ -5,7 +5,7 @@ pub(crate) fn search_cards_in_connection(
     connection: &Connection,
     input: SearchCardsInput,
 ) -> Result<CardSearchPageDto, CommandError> {
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let mut search = build_search_sql(&input, &time)?;
     let count_sql = format!(
         "WITH {signals}
@@ -155,7 +155,11 @@ pub(crate) fn search_cards_in_connection(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    Ok(CardSearchPageDto { cards, total_count })
+    Ok(CardSearchPageDto {
+        cards,
+        total_count,
+        today_start_at: time.today_start_utc_millis,
+    })
 }
 
 fn projection_error(column: usize, message: &str) -> rusqlite::Error {

@@ -46,7 +46,7 @@ Cover:
 
 - spring daylight-saving transition;
 - autumn daylight-saving transition;
-- local midnight;
+- the study-day start (`newDayStartHour`, 4 a.m. by default) and local midnight;
 - month and year boundaries;
 - leap-day one-year windows;
 - a custom reschedule date equal to today;
@@ -54,6 +54,14 @@ Cover:
 - retry of the same reschedule mutation after a date boundary.
 
 FSRS due instants remain exact. Only calendar operations such as “tomorrow,” daily limits, burial expiry, and Analytics windows use local-date resolution.
+
+Day boundaries follow the study-day start hour ([ADR 0054](../decisions/0054-study-day-start.md)). Build contexts with an explicit hour (`StudyTimeContext::pacific_2026_at(now, hour)` reads the synthetic 2026 Pacific zone, so results do not depend on the machine's zone) and seed attribution rows the way practice writes them: the calendar date, zone and offset of the review instant. A row whose offset disagrees with its stored date is dated by its offset. `src-tauri/src/study_day_tests.rs` holds the cross-consumer guards:
+
+- with the day starting at midnight, analytics, limits and search equal `src-tauri/tests/fixtures/study-day/midnight-boundary-golden.txt`, the output of the code before study days existed; change that file only for a deliberate change to midnight behavior, and say so in the PR;
+- for several hours, every consumer agrees with SQLite's `date(reviewed_at / 1000 + utc_offset_minutes * 60 - H * 3600, 'unixepoch')`;
+- named 4 a.m., daylight-saving, travel, burial and practice-order scenarios.
+
+Native test runs are also worth repeating with `TZ` set so the local time is between midnight and 4 a.m., where a test that mixes calendar and study dates fails.
 
 ## Historical attribution tests
 
@@ -130,7 +138,7 @@ Mixed sessions require counter recomputation after some cards are purged. Empty 
 ### Analytics
 
 - query the 7-day, 30-day, 90-day, one-year, and all-time ranges;
-- verify buckets use durable local review dates;
+- verify buckets use study dates derived from each review's stored instant and offset, not the device clock;
 - verify current inventory and historical evidence remain separate;
 - verify deck/tag filters do not change captured presentation facts;
 - verify an old request cannot overwrite a newer filter/range response.

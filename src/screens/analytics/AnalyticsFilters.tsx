@@ -13,6 +13,8 @@ import { styles } from "./presentation";
 
 interface AnalyticsFiltersProps {
   range: AnalyticsRange; customStartLocalDate: string; customEndLocalDate: string;
+  /** The current study date from native, the latest end date it accepts. */
+  todayLocalDate: string;
   selectedDeckIds: Set<string>; selectedTagIds: Set<string>; highlightedSessionId?: string;
   deckOptions: AnalyticsDeckOption[]; tagOptions: AnalyticsTagOption[]; decks: DeckSummary[];
   onRangeChange: (range: AnalyticsRange) => void;
@@ -26,7 +28,7 @@ const RANGE_OPTIONS = [
   { value: "1y", label: "1 year" }, { value: "all", label: "All time" },
 ] as const satisfies SegmentedOptions<PresetRange>;
 /** Pure scope controls: native reads and stale-response policy stay in the controller. */
-export function AnalyticsFilters({ range, customStartLocalDate, customEndLocalDate, selectedDeckIds, selectedTagIds,
+export function AnalyticsFilters({ range, customStartLocalDate, customEndLocalDate, todayLocalDate, selectedDeckIds, selectedTagIds,
   highlightedSessionId, deckOptions, tagOptions, decks, onRangeChange, onCustomStartLocalDateChange,
   onCustomEndLocalDateChange, onDeckIdsChange, onTagIdsChange, onClearHighlightedSession, onClearScope }: AnalyticsFiltersProps) {
   const deckIds = [...selectedDeckIds].sort();
@@ -49,7 +51,7 @@ export function AnalyticsFilters({ range, customStartLocalDate, customEndLocalDa
     </div>
     {range === "custom" ? <div className={styles.analyticsCustomRange} aria-label="Custom analytics date range">
       <label><span>Start date</span><TextField type="date" value={customStartLocalDate} max={customEndLocalDate} onChange={(event) => onCustomStartLocalDateChange(event.currentTarget.value)} /></label>
-      <label><span>End date</span><TextField type="date" value={customEndLocalDate} min={customStartLocalDate} max={localToday()} onChange={(event) => onCustomEndLocalDateChange(event.currentTarget.value)} /></label>
+      <label><span>End date</span><TextField type="date" value={customEndLocalDate} min={customStartLocalDate} max={todayLocalDate} onChange={(event) => onCustomEndLocalDateChange(event.currentTarget.value)} /></label>
     </div> : null}
     <Disclosure className={styles.analyticsScopeDetails} title={<>
       Scope: {selectedDeckNames.length === 0 ? "All decks" : `${selectedDeckNames.length} deck${selectedDeckNames.length === 1 ? "" : "s"}`}
@@ -84,8 +86,4 @@ function FilterChecklist({ label, emptyLabel, options, selected, onChange }: Fil
       }} /><span><strong>{option.name}</strong><small>{option.detail}</small></span>
     </label>)}</div>}
   </fieldset>;
-}
-function localToday(): string {
-  const now = new Date();
-  return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
 }

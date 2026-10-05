@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeSet, HashSet};
 
+use chrono::NaiveDate;
 use rusqlite::{
     params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension, Transaction,
     TransactionBehavior,
@@ -82,6 +83,9 @@ pub struct CardBrowserRowDto {
 pub struct CardSearchPageDto {
     pub cards: Vec<CardBrowserRowDto>,
     pub total_count: i64,
+    /// When the current study day began, so "Studied today" agrees with the
+    /// reviewed-today filter instead of the screen's own clock.
+    pub today_start_at: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -260,7 +264,7 @@ fn list_tags_in_connection(
     connection: &Connection,
     deck_ids: &[String],
 ) -> Result<Vec<TagDto>, CommandError> {
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let mut values = vec![SqlValue::Integer(time.now_utc_millis)];
     let studyable_due = studyability::studyable_due_sql("?1");
     let mut sql = format!(
@@ -467,32 +471,30 @@ fn build_search_sql(
                  WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
              )"
         )),
-        "today" => {
-            let date = push_value(&mut values, time.local_date.to_string());
-            conditions.push(review_local_date_exists_sql(&format!("= ?{date}")));
-        }
-        "past_7_local_dates" => {
-            let start = time.trailing_local_dates(7)?.start_local_date.to_string();
-            let date = push_value(&mut values, start);
-            conditions.push(review_local_date_exists_sql(&format!(">= ?{date}")));
-        }
-        "past_30_local_dates" => {
-            let start = time.trailing_local_dates(30)?.start_local_date.to_string();
-            let date = push_value(&mut values, start);
-            conditions.push(review_local_date_exists_sql(&format!(">= ?{date}")));
-        }
+        "today" => conditions.push(reviewed_on_study_dates_sql(
+            time,
+            Some(time.local_date),
+            Some(time.local_date),
+            &mut values,
+        )?),
+        "past_7_local_dates" => conditions.push(reviewed_on_study_dates_sql(
+            time,
+            Some(time.trailing_local_dates(7)?.start_local_date),
+            None,
+            &mut values,
+        )?),
+        "past_30_local_dates" => conditions.push(reviewed_on_study_dates_sql(
+            time,
+            Some(time.trailing_local_dates(30)?.start_local_date),
+            None,
+            &mut values,
+        )?),
         "before_past_30_local_dates" => {
-            let start = time.trailing_local_dates(30)?.start_local_date.to_string();
-            let date = push_value(&mut values, start);
-            conditions.push(format!(
-                "(
-                    SELECT MAX(review_attr.review_local_date)
-                    FROM review_events reviewed
-                    JOIN review_event_attributions review_attr
-                      ON review_attr.review_event_id = reviewed.id
-                    WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
-                 ) < ?{date}"
-            ));
+            // Reviewed at some time, but on none of the past 30 study dates.
+            let start = time.trailing_local_dates(30)?.start_local_date;
+            let reviewed = reviewed_on_study_dates_sql(time, None, None, &mut values)?;
+            let recent = reviewed_on_study_dates_sql(time, Some(start), None, &mut values)?;
+            conditions.push(format!("{reviewed} AND NOT {recent}"));
         }
         _ => {}
     }
@@ -521,25 +523,42 @@ const REVIEWED_AS_CARD: &str =
     "SELECT c.id UNION ALL SELECT merged.retired_card_id FROM card_merges merged
      WHERE merged.surviving_card_id = c.id";
 
-fn review_local_date_exists_sql(predicate: &str) -> String {
-    format!(
+/// A review of card `c`, or of a copy merged into it, on study dates
+/// `start..=end`; see [`StudyTimeContext::review_study_dates_sql`].
+fn reviewed_on_study_dates_sql(
+    time: &StudyTimeContext,
+    start: Option<NaiveDate>,
+    end: Option<NaiveDate>,
+    values: &mut Vec<SqlValue>,
+) -> Result<String, CommandError> {
+    let dates = time.review_study_dates_sql("review_attr", start, end, values)?;
+    Ok(format!(
         "EXISTS (
              SELECT 1
              FROM review_events reviewed
              JOIN review_event_attributions review_attr
                ON review_attr.review_event_id = reviewed.id
              WHERE reviewed.card_id IN ({REVIEWED_AS_CARD})
-               AND review_attr.review_local_date {predicate}
+               AND {dates}
          )"
-    )
+    ))
 }
 
 fn list_matching_cards_in_connection(
     connection: &Connection,
     input: SearchCardsInput,
 ) -> Result<Vec<SelectionCardDto>, CommandError> {
-    let time = StudyTimeContext::capture()?;
-    let mut search = build_search_sql(&input, &time)?;
+    let time = StudyTimeContext::capture(connection)?;
+    list_matching_cards_at(connection, input, &time)
+}
+
+/// The matching selection for one captured study time.
+pub(crate) fn list_matching_cards_at(
+    connection: &Connection,
+    input: SearchCardsInput,
+    time: &StudyTimeContext,
+) -> Result<Vec<SelectionCardDto>, CommandError> {
+    let mut search = build_search_sql(&input, time)?;
     let maximum = i64::try_from(MAX_SEARCH_SELECTION + 1).unwrap_or(i64::MAX);
     let limit_index = push_value(&mut search.values, maximum);
     let sql = format!(

@@ -131,14 +131,16 @@ pub enum HistoryPeriod {
 }
 
 impl AnalyticsContext {
-    pub fn from_query(mut input: AnalyticsQueryDto) -> Result<Self, CommandError> {
+    pub fn from_query(
+        mut input: AnalyticsQueryDto,
+        time: StudyTimeContext,
+    ) -> Result<Self, CommandError> {
         let range = AnalyticsRange::parse(&input.range)?;
         input.deck_ids = normalize_ids(input.deck_ids, "deck", MAX_ANALYTICS_DECKS)?;
         input.tag_ids = normalize_ids(input.tag_ids, "tag", MAX_ANALYTICS_TAGS)?;
         if let Some(session_id) = input.highlighted_session_id.as_deref() {
             validate_entity_id(session_id, "practice session")?;
         }
-        let time = StudyTimeContext::capture()?;
         let current = match range {
             AnalyticsRange::Days7 => Some(time.trailing_local_dates(7)?),
             AnalyticsRange::Days30 => Some(time.trailing_local_dates(30)?),
@@ -163,7 +165,7 @@ impl AnalyticsContext {
             deck_ids: input.deck_ids,
             tag_ids: input.tag_ids,
             highlighted_session_id: input.highlighted_session_id,
-            time: time.clone(),
+            time,
             window: AnalyticsWindow {
                 current,
                 previous,
@@ -196,6 +198,7 @@ impl AnalyticsContext {
                     window.end_utc_millis.saturating_sub(1)
                 }),
             bucket_granularity: self.range.granularity().to_string(),
+            today_local_date: self.time.local_date.to_string(),
             deck_ids: self.deck_ids.clone(),
             tag_ids: self.tag_ids.clone(),
             highlighted_session_id: self.highlighted_session_id.clone(),
@@ -230,11 +233,13 @@ impl AnalyticsContext {
         }
     }
 
+    /// Conditions for review rows in the period's study dates; see
+    /// [`StudyTimeContext::review_study_dates_sql`].
     pub fn historical_conditions(
         &self,
         values: &mut Vec<SqlValue>,
         period: HistoryPeriod,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>, CommandError> {
         let mut conditions = vec![
             "c.deleted_at IS NULL".to_string(),
             "n.deleted_at IS NULL".to_string(),
@@ -251,30 +256,21 @@ impl AnalyticsContext {
                  )"
             ));
         }
-        match period {
-            HistoryPeriod::Current => {
-                if let Some(window) = &self.window.current {
-                    let start = push_value(values, window.start_local_date.to_string());
-                    conditions.push(format!("a.review_local_date >= ?{start}"));
-                }
-                let end = push_value(values, self.window.end_local_date.to_string());
-                conditions.push(format!("a.review_local_date <= ?{end}"));
-            }
-            HistoryPeriod::CurrentAndPrevious => {
-                if let Some(window) = self
-                    .window
-                    .previous
-                    .as_ref()
-                    .or(self.window.current.as_ref())
-                {
-                    let start = push_value(values, window.start_local_date.to_string());
-                    conditions.push(format!("a.review_local_date >= ?{start}"));
-                }
-                let end = push_value(values, self.window.end_local_date.to_string());
-                conditions.push(format!("a.review_local_date <= ?{end}"));
-            }
-        }
-        conditions
+        let first_window = match period {
+            HistoryPeriod::Current => self.window.current.as_ref(),
+            HistoryPeriod::CurrentAndPrevious => self
+                .window
+                .previous
+                .as_ref()
+                .or(self.window.current.as_ref()),
+        };
+        conditions.push(self.time.review_study_dates_sql(
+            "a",
+            first_window.map(|window| window.start_local_date),
+            Some(self.window.end_local_date),
+            values,
+        )?);
+        Ok(conditions)
     }
 
     pub fn previous_window(&self) -> Option<&CalendarWindow> {
@@ -328,12 +324,12 @@ fn custom_window(
                 "The custom analytics end date is outside the supported calendar.",
             )
         })?;
-        time.first_valid_instant(next)?
+        time.study_day_start(next)?
     };
     Ok(CalendarWindow {
         start_local_date,
         end_local_date,
-        start_utc_millis: time.first_valid_instant(start_local_date)?,
+        start_utc_millis: time.study_day_start(start_local_date)?,
         end_utc_millis,
     })
 }
