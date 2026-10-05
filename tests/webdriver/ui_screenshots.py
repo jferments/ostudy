@@ -111,7 +111,6 @@ SCREENS: tuple[Screen, ...] = (
     Screen("analytics", "Progress overview", "Analytics"),
     Screen("analytics-summary", "Progress summary tiles", "Analytics"),
     Screen("analytics-details", "Progress topics and card strength", "Analytics"),
-    Screen("analytics-activity", "Progress activity and answers", "Analytics"),
     Screen("tutor", "Tutor conversation", "Tutor"),
     Screen("settings-appearance", "Settings: Appearance", "Settings"),
     Screen("settings-backup", "Settings: Backup/Sync", "Settings"),
@@ -658,10 +657,6 @@ def scroll_analytics_details(ctx: Context) -> None:
     scroll_into_view(ctx, "(//main//h2[normalize-space(.)='Needs attention'])[1]/ancestor::section[1]")
 
 
-def scroll_analytics_activity(ctx: Context) -> None:
-    scroll_into_view(ctx, "(//main//h2[normalize-space(.)='Activity'])[1]/ancestor::section[1]")
-
-
 def open_tutor(ctx: Context) -> None:
     go(ctx, "tutor")
     title = seed.TUTOR_CONVERSATION_TITLE
@@ -714,7 +709,6 @@ OPENERS: dict[str, Callable[[Context], None]] = {
     "analytics": open_analytics,
     "analytics-summary": open_analytics,
     "analytics-details": open_analytics_details,
-    "analytics-activity": open_analytics_details,
     "tutor": open_tutor,
     **{screen_id: functools.partial(open_settings_tab, tab=tab) for screen_id, tab in SETTINGS_TABS.items()},
 }
@@ -723,7 +717,6 @@ AFTER_RESET: dict[str, Callable[[Context], None]] = {
     "card-editor": scroll_card_editor,
     "analytics-summary": scroll_analytics_summary,
     "analytics-details": scroll_analytics_details,
-    "analytics-activity": scroll_analytics_activity,
 }
 
 
