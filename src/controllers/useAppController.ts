@@ -554,7 +554,15 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, ...analytics });
     }
     if (next === "decks") {
-      setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
+      // Coming back to Library reopens the deck the Workbench had open; choosing
+      // Library again from inside it returns to All cards.
+      const requestId = nextFlashcardsRequestId();
+      const returning = section !== "decks";
+      setFlashcardsRoute((current) =>
+        returning && current.view === "deck"
+          ? createFlashcardsDeckRoute(current.deckId, requestId)
+          : createFlashcardsRootRoute("decks", requestId),
+      );
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
       );
@@ -581,8 +589,8 @@ export function useAppController() {
   /**
    * Opens Library from anywhere. No scope opens the view the learner used
    * last; `subjectId` puts that subject's decks in view (`null` is No
-   * subject's unsorted decks); `deckId` opens the deck. Today's views serve
-   * it until the Workbench replaces them and reads the scope itself.
+   * subject's unsorted decks); `deckId` opens the deck. The Workbench reads
+   * the scope from the Library route (see workbenchLaunchFor).
    */
   async function openLibrary(scope: LibraryScope = {}): Promise<void> {
     if (scope.deckId === undefined && scope.subjectId === undefined) {
@@ -610,8 +618,8 @@ export function useAppController() {
   }
 
   /**
-   * Opens a subject from Home in the Library view that shows it best: Decks
-   * with the subject's folder in view (`null` is No subject's unsorted decks),
+   * Opens a subject from Home in the Library view that shows it best: the
+   * Workbench scoped to the subject (`null` is No subject),
    * or Documents for a subject that has documents and no decks yet. One call,
    * so the subject page can take its place later.
    */

@@ -110,13 +110,6 @@ if (sources.flashcardsRoutes !== null) {
     parseStringArray(sources.flashcardsRoutes, "flashcardsWorkspaceNames"),
   );
 }
-if (sources.flashcardsTabs !== null) {
-  compareOrderedRecords(
-    "Flashcards workspace tabs",
-    contract.flashcardsWorkspaces.map((entry) => ({ id: entry.id, label: entry.label })),
-    parseNavigationItems(sources.flashcardsTabs, "WORKSPACES", "value"),
-  );
-}
 
 const nativeSmokeEntrypoints =
   sources.nativeSmokeRunner === null
@@ -159,7 +152,6 @@ function validateContractShape(value) {
     "libraryViews",
     "headerActions",
     "flashcardsRoutes",
-    "flashcardsTabs",
     "nativeSmokeRunner",
     "androidSmokeRunner",
   ];

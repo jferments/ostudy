@@ -434,6 +434,25 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Workbench request").textContent).toBe(request);
   });
 
+  it("reopens the Workbench's deck when coming back to Library", async () => {
+    const deck = makeDeck({ name: "Pharmacology" });
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
+
+    await openDecks();
+    fireEvent.click(screen.getByRole("button", { name: "Open deck mock" }));
+    fireEvent.click(navButton("Home"));
+    await screen.findByRole("heading", { name: "Home mock" });
+    fireEvent.click(navButton("Library"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Workbench launch").textContent).toBe(`deck:${deck.id}`),
+    );
+
+    // Choosing Library again from inside it returns to All cards.
+    fireEvent.click(navButton("Library"));
+    await waitFor(() => expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"));
+  });
+
   it("routes Progress tags into the Workbench with fresh request IDs", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);

@@ -12,6 +12,7 @@ import type { DocumentSummary } from "../../../ipc/documents";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import type { ScheduleAction } from "../../../ipc/scheduling";
 import { getSubjectLibrary, moveDeckToSubject } from "../../../ipc/subjects";
+import { registerPlatformBackHandler } from "../../../platform/backNavigation";
 import type { OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../../ui/overlays/overlayContext";
@@ -190,6 +191,20 @@ export function LibraryWorkbench({
     // Only on the first mount; later launches focus above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Android Back steps out of the Workbench before leaving Library: on phones
+  // from the card list to the tree, elsewhere from a deck, subject or tag to All
+  // cards. The open card's editor handles Back itself.
+  const backAction = useRef<() => void>(() => undefined);
+  backAction.current = compact ? () => setPage("tree") : () => void chooseScope(DEFAULT_SCOPE);
+  const backActive = compact ? page === "cards" : !sameScope(scope, DEFAULT_SCOPE);
+  useEffect(() => {
+    if (!backActive) return;
+    return registerPlatformBackHandler(() => {
+      backAction.current();
+      return true;
+    });
+  }, [backActive]);
 
   // A deck or subject that disappears (deleted here or elsewhere) returns the list to All cards.
   useEffect(() => {

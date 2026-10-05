@@ -506,35 +506,6 @@ def assert_dialog_viewport_bounds(session_id: str, label: str) -> None:
     assert_no_horizontal_overflow(session_id, label)
 
 
-def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
-    """Use the explicit accessible name shared by compact and wide tab labels."""
-    return webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//*[@role='tablist' and @aria-label='Flashcards workspaces']"
-        f"//button[@role='tab' and @aria-label={json.dumps(label)}]",
-        deadline,
-    )
-
-
-def assert_flashcards_tabs(session_id: str, deadline: float) -> None:
-    expected = ["Decks", "Search/Filter"]
-    for label in expected:
-        find_workspace_tab(session_id, label, deadline)
-    labels = execute(
-        session_id,
-        """
-        return [...document.querySelectorAll(
-          "[role='tablist'][aria-label='Flashcards workspaces'] [role='tab']"
-        )].map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim());
-        """,
-    )
-    if labels != expected:
-        raise AssertionError(
-            f"Flashcards must expose exactly Decks and Search/Filter: {labels!r}"
-        )
-
-
 def assert_navigation_labels(
     session_id: str,
     expected: list[str],
@@ -868,20 +839,15 @@ def open_study_guides_and_return(
 ) -> None:
     open_study_guides(session_id, deadline, label)
 
-    # Library's switcher returns to Decks without leaving Library.
-    flashcards = webdriver.find_element(
+    # Library's switcher returns to the Workbench without leaving Library.
+    workbench = webdriver.find_element(
         session_id,
         "css selector",
         "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
         deadline,
     )
-    webdriver.click(session_id, flashcards)
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        "main [role='tablist'][aria-label='Flashcards workspaces']",
-        deadline,
-    )
+    webdriver.click(session_id, workbench)
+    webdriver.find_element(session_id, "css selector", webdriver.WORKBENCH_SELECTOR, deadline)
 
 
 def verify_compact_navigation(session_id: str, deadline: float) -> None:
@@ -944,7 +910,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     wait_for_overlay_inactive(session_id, deadline, "compact Settings assertions")
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
-    # Search in the header opens Search/Filter inside Library.
+    # Search in the header opens Library's Workbench with its search focused.
     search = webdriver.find_element(
         session_id,
         "css selector",
@@ -959,18 +925,25 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         "button[data-testid='nav-library'][aria-current='page']",
         deadline,
     )
-    assert_no_horizontal_overflow(session_id, "compact Search/Filter workspace")
+    assert_no_horizontal_overflow(session_id, "compact Workbench search")
 
-    flashcards = find_workspace_tab(session_id, "Decks", deadline)
-    webdriver.click(session_id, flashcards)
-    webdriver.find_element(
+    # Phones show one Workbench page at a time; the back button leads to its tree.
+    back = webdriver.find_element(
         session_id,
         "css selector",
-        "main [role='tablist'][aria-label='Flashcards workspaces']",
+        "main [data-testid='library-workbench'] button[aria-label='Library']",
         deadline,
     )
-    assert_flashcards_tabs(session_id, deadline)
-    assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
+    webdriver.click(session_id, back)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        f"{webdriver.WORKBENCH_TREE_XPATH}//button[.//span[normalize-space(.)='All cards']]",
+        deadline,
+    )
+    if execute(session_id, "return document.querySelectorAll(\"main section[aria-label='Cards']\").length;") != 0:
+        raise AssertionError("Compact Workbench showed its card list beside the tree")
+    assert_no_horizontal_overflow(session_id, "compact Workbench tree")
 
 
 def verify_dialog_focus(session_id: str, deadline: float) -> None:
@@ -1082,7 +1055,7 @@ def verify_study_guides_checkpoint_after_restart(
     return restarted
 
 
-def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
+def verify_medium_workbench_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "medium layout", mark_only=True)
@@ -1095,8 +1068,22 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         "button[data-testid='nav-library'][aria-current='page']",
         deadline,
     )
-    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
-    assert_flashcards_tabs(session_id, deadline)
+    webdriver.find_element(session_id, "css selector", webdriver.WORKBENCH_SELECTOR, deadline)
+    panes = execute(
+        session_id,
+        """
+        const workbench = document.querySelector("main [data-testid='library-workbench']");
+        const tree = workbench?.querySelector("nav[aria-label='Library']");
+        const list = workbench?.querySelector("section[aria-label='Cards']");
+        if (!tree || !list) return null;
+        return {
+          separators: workbench.querySelectorAll("[role='separator'][aria-orientation='vertical']").length,
+          sideBySide: tree.getBoundingClientRect().right <= list.getBoundingClientRect().left + 1,
+        };
+        """,
+    )
+    if panes != {"separators": 1, "sideBySide": True}:
+        raise AssertionError(f"Medium Workbench did not show its tree beside the card list: {panes!r}")
 
     navigation = execute(
         session_id,
@@ -1119,189 +1106,101 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     # Medium widths keep the labeled top bar rather than collapsing to icons.
     if navigation.get("visibleLabels") != MAIN_NAVIGATION_LABELS or navigation.get("clipped"):
         raise AssertionError(f"Medium navigation labels are not all visible: {navigation!r}")
-    assert_no_horizontal_overflow(session_id, "medium Flashcards workspace")
+    assert_no_horizontal_overflow(session_id, "medium Workbench")
 
-    search = find_workspace_tab(session_id, "Search/Filter", deadline)
-    webdriver.click(session_id, search)
-    webdriver.find_element(
+
+DECK_OVERFLOW_ITEMS = [
+    "Bulk add…",
+    "Practice with options…",
+    "Rename…",
+    "Move to subject…",
+    "Merge into…",
+    "Export…",
+    "Archive",
+    "Delete deck",
+]
+
+
+def read_deck_overflow(session_id: str, actions_label: str) -> dict | None:
+    """Return the open deck-actions overflow surface and its item labels."""
+    return execute(
         session_id,
-        "css selector",
-        "main section[aria-label='Card filters']",
-        deadline,
-    )
-    assert_no_horizontal_overflow(session_id, "medium Search/Filter workspace")
-
-    decks = find_workspace_tab(session_id, "Decks", deadline)
-    webdriver.click(session_id, decks)
-
-
-def verify_deck_detail_header(
-    session_id: str,
-    deck_name: str,
-    deck_description: str,
-) -> None:
-    placements = (
-        (
-            "wide",
-            1440,
-            900,
-            ["Practice", "Export", f"Archive {deck_name}", "More actions"],
-            [f"Delete {deck_name}"],
-        ),
-        (
-            "medium",
-            1000,
-            800,
-            ["Practice", "Export", "More actions"],
-            [f"Archive {deck_name}", f"Delete {deck_name}"],
-        ),
-        (
-            "compact",
-            390,
-            700,
-            ["Practice", "More actions"],
-            ["Export", f"Archive {deck_name}", f"Delete {deck_name}"],
-        ),
+        """
+        const label = arguments[0];
+        const text = (element) => (element.textContent || '').trim();
+        const menu = [...document.querySelectorAll('[role="menu"]')]
+          .find((candidate) => candidate.getAttribute('aria-label') === label);
+        if (menu) {
+          return {
+            surface: 'menu',
+            items: [...menu.querySelectorAll('[role="menuitem"]')].map(text),
+          };
+        }
+        const sheet = [...document.querySelectorAll('[role="dialog"] [aria-label]')]
+          .find((candidate) => candidate.getAttribute('aria-label') === label);
+        if (sheet) {
+          return {
+            surface: 'sheet',
+            items: [...sheet.querySelectorAll('button')].map(text),
+          };
+        }
+        return null;
+        """,
+        [actions_label],
     )
 
-    for mode, width, height, expected_direct, expected_overflow in placements:
+
+def verify_deck_detail_header(session_id: str, deck_name: str) -> None:
+    """A deck's Workbench header keeps Practice, New card and its actions menu at every width.
+
+    The long deck name wraps above the actions rather than pushing them out of
+    the header. The rest of the deck's actions live in its overflow: a menu on
+    wide and medium screens and a sheet on phones.
+    """
+    actions_label = f"{deck_name} actions"
+    expected_direct = ["Practice", "New card", actions_label]
+    for mode, width, height, surface in (
+        ("wide", 1440, 900, "menu"),
+        ("medium", 1000, 800, "menu"),
+        ("compact", 390, 700, "sheet"),
+    ):
         mode_deadline = webdriver.deadline_after()
         set_window_rect(session_id, width, height)
+        wait_for_layout_mode(session_id, mode, mode_deadline)
         snapshot = None
         while time.monotonic() < mode_deadline:
             snapshot = execute(
                 session_id,
                 """
                 const deckName = arguments[0];
-                const deckDescription = arguments[1];
-                const heading = [...document.querySelectorAll('main h1')]
-                  .find((candidate) => candidate.textContent?.trim() === deckName);
+                const heading = document.querySelector("main h1[data-testid='workbench-title']");
                 const header = heading?.closest('header');
-                const back = header
-                  ? [...header.querySelectorAll('button')]
-                    .find((button) => button.textContent?.trim() === '← All decks')
-                  : null;
-                const description = header
-                  ? [...header.querySelectorAll('p')]
-                    .find((candidate) => candidate.textContent?.trim() === deckDescription)
-                  : null;
-                const actions = header?.querySelector('[role="group"]');
-                const titleLine = heading?.parentElement;
-                const titleRow = titleLine?.parentElement;
-                if (!(heading instanceof HTMLElement)
-                    || !(header instanceof HTMLElement)
-                    || !(back instanceof HTMLElement)
-                    || !(description instanceof HTMLElement)
-                    || !(actions instanceof HTMLElement)
-                    || !(titleRow instanceof HTMLElement)) return null;
-                const directButtons = [...actions.children].flatMap((child) => {
-                  if (child instanceof HTMLButtonElement) return [child];
-                  const trigger = child.querySelector('button');
-                  return trigger instanceof HTMLButtonElement ? [trigger] : [];
-                });
-                const labels = directButtons.map((button) =>
-                  (button.getAttribute('aria-label') || button.textContent || '').trim()
-                );
-                const rect = (element) => {
+                if (!(heading instanceof HTMLElement) || !(header instanceof HTMLElement)) return null;
+                const titleRow = header.firstElementChild;
+                const actions = titleRow?.lastElementChild;
+                if (!(actions instanceof HTMLElement) || actions.contains(heading)) return null;
+                const labels = [...actions.querySelectorAll('button')]
+                  .map((button) => (button.getAttribute('aria-label') || button.textContent || '').trim());
+                const headerRect = header.getBoundingClientRect();
+                const contained = [heading, actions].every((element) => {
                   const bounds = element.getBoundingClientRect();
-                  return {
-                    left: bounds.left,
-                    top: bounds.top,
-                    right: bounds.right,
-                    bottom: bounds.bottom,
-                    width: bounds.width,
-                    height: bounds.height,
-                  };
-                };
-                const geometry = {
-                  header: rect(header),
-                  back: rect(back),
-                  titleRow: rect(titleRow),
-                  heading: rect(heading),
-                  description: rect(description),
-                  actions: rect(actions),
-                };
-                const headerRect = geometry.header;
-                const contained = [back, heading, description, actions].every((element) => {
-                  const bounds = element.getBoundingClientRect();
-                  return bounds.left >= headerRect.left - 1
-                    && bounds.right <= headerRect.right + 1;
+                  return bounds.left >= headerRect.left - 1 && bounds.right <= headerRect.right + 1;
                 });
-                const openTooltips = [...header.querySelectorAll('[role="tooltip"]')];
-                const tooltipDisplays = openTooltips.map((tooltip) => tooltip.style.display);
-                let persistentHeaderScrollWidth;
-                let persistentHeaderClientWidth;
-                try {
-                  openTooltips.forEach((tooltip) => {
-                    tooltip.style.display = 'none';
-                  });
-                  persistentHeaderScrollWidth = header.scrollWidth;
-                  persistentHeaderClientWidth = header.clientWidth;
-                } finally {
-                  openTooltips.forEach((tooltip, index) => {
-                    tooltip.style.display = tooltipDisplays[index];
-                  });
-                }
-                const descendantOverflow = [...header.querySelectorAll('*')]
-                  .map((element) => {
-                    const bounds = element.getBoundingClientRect();
-                    const style = getComputedStyle(element);
-                    return {
-                      tag: element.tagName.toLowerCase(),
-                      className: element.className?.toString() || '',
-                      role: element.getAttribute('role'),
-                      ariaLabel: element.getAttribute('aria-label'),
-                      position: style.position,
-                      overflowX: style.overflowX,
-                      left: bounds.left,
-                      right: bounds.right,
-                      clientWidth: element.clientWidth,
-                      scrollWidth: element.scrollWidth,
-                      text: (element.textContent || '').trim().slice(0, 120),
-                    };
-                  })
-                  .filter((entry) =>
-                    entry.scrollWidth > entry.clientWidth + 1
-                    || entry.left < headerRect.left - 1
-                    || entry.right > headerRect.right + 1
-                  );
-                const above = (upper, lower) => upper.bottom <= lower.top + 1;
                 return {
-                  mode: actions.dataset.layoutMode,
+                  title: (heading.textContent || '').trim() === deckName,
                   labels,
-                  ordered:
-                    Boolean(back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING)
-                    && Boolean(heading.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING)
-                    && Boolean(description.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING),
-                  visuallyOrdered:
-                    above(geometry.back, geometry.titleRow)
-                    && above(geometry.heading, geometry.description)
-                    && above(geometry.description, geometry.actions),
-                  titleRowFullWidth:
-                    Math.abs(geometry.titleRow.left - headerRect.left) <= 1
-                    && Math.abs(geometry.titleRow.right - headerRect.right) <= 1
-                    && geometry.titleRow.width >= headerRect.width - 2,
-                  geometry,
                   contained,
-                  descendantOverflow,
-                  excludedOpenTooltipCount: openTooltips.length,
-                  persistentHeaderScrollWidth,
-                  persistentHeaderClientWidth,
-                  noHeaderOverflow:
-                    persistentHeaderScrollWidth <= persistentHeaderClientWidth,
+                  noHeaderOverflow: header.scrollWidth <= header.clientWidth + 1,
                   noDocumentOverflow:
                     document.documentElement.scrollWidth <= document.documentElement.clientWidth,
                 };
                 """,
-                [deck_name, deck_description],
+                [deck_name],
             )
             if (
                 isinstance(snapshot, dict)
-                and snapshot.get("mode") == mode
+                and snapshot.get("title") is True
                 and snapshot.get("labels") == expected_direct
-                and snapshot.get("ordered") is True
-                and snapshot.get("visuallyOrdered") is True
-                and snapshot.get("titleRowFullWidth") is True
                 and snapshot.get("contained") is True
                 and snapshot.get("noHeaderOverflow") is True
                 and snapshot.get("noDocumentOverflow") is True
@@ -1310,46 +1209,42 @@ def verify_deck_detail_header(
             time.sleep(0.1)
         else:
             raise AssertionError(
-                f"Deck detail header failed {mode} visual order, width, placement, or containment: {snapshot!r}"
+                f"Deck header failed {mode} placement or containment: {snapshot!r}"
             )
 
         more_actions = webdriver.find_element(
             session_id,
             "css selector",
-            "main header button[aria-label='More actions']",
+            f"main header button[aria-label={json.dumps(actions_label)}]",
             mode_deadline,
         )
         webdriver.click(session_id, more_actions)
-        overflow_items = execute(
-            session_id,
-            """
-            return [...document.querySelectorAll(
-              '[role="menu"][aria-label="More actions"] [role="menuitem"]'
-            )].map((item) => (item.textContent || '').trim());
-            """,
-        )
-        if overflow_items != expected_overflow:
-            raise AssertionError(
-                f"Deck detail {mode} overflow actions were incorrect: {overflow_items!r}"
-            )
+        overflow = None
+        while time.monotonic() < mode_deadline:
+            overflow = read_deck_overflow(session_id, actions_label)
+            if isinstance(overflow, dict) and overflow.get("items"):
+                break
+            time.sleep(0.1)
+        expected_items = DECK_OVERFLOW_ITEMS
+        if not isinstance(overflow, dict) or overflow.get("surface") != surface or overflow.get("items") != expected_items:
+            raise AssertionError(f"Deck {mode} overflow actions were incorrect: {overflow!r}")
         send_key(session_id, ESCAPE_KEY)
-        wait_for_absent(
-            session_id,
-            "css selector",
-            '[role="menu"][aria-label="More actions"]',
-            mode_deadline,
-        )
+        while time.monotonic() < mode_deadline:
+            if read_deck_overflow(session_id, actions_label) is None:
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"Deck {mode} overflow did not close on Escape")
+        wait_for_overlay_inactive(session_id, mode_deadline, f"{mode} deck overflow dismissal")
 
 
 def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     deck_name = "Cardiology pharmacology respiratory physiology comprehensive review collection"
-    deck_description = (
-        "A comprehensive deck description that verifies the detail header remains in one flow."
-    )
+    webdriver.open_library_view(session_id, "decks", deadline)
     new_deck = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='Create a new deck' or normalize-space(.)='New deck']",
+        "//main//button[normalize-space(.)='New deck']",
         deadline,
     )
     webdriver.click(session_id, new_deck)
@@ -1360,13 +1255,6 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
         deck_name,
         deadline,
     )
-    webdriver.set_input_text(
-        session_id,
-        "css selector",
-        "[role='dialog'] textarea",
-        deck_description,
-        deadline,
-    )
     create = webdriver.find_element(
         session_id,
         "xpath",
@@ -1374,24 +1262,19 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, create)
-    webdriver.wait_for_main_heading(session_id, deck_name, deadline)
-    wait_for_overlay_inactive(session_id, deadline, "new deck detail assertions")
-    verify_deck_detail_header(session_id, deck_name, deck_description)
+    webdriver.wait_for_workbench_title(session_id, deck_name, deadline)
+    wait_for_overlay_inactive(session_id, deadline, "new deck assertions")
+    verify_deck_detail_header(session_id, deck_name)
     set_window_rect(session_id, 1000, 800)
+    wait_for_layout_mode(session_id, "medium", deadline)
 
     webdriver.find_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='Add flashcard']",
+        "//main//header//button[normalize-space(.)='New card']",
         deadline,
     )
-    bulk_add = webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//button[normalize-space(.)='Bulk add']",
-        deadline,
-    )
-    webdriver.click(session_id, bulk_add)
+    webdriver.choose_menu_item(session_id, f"{deck_name} actions", "Bulk add…", deadline)
     webdriver.find_element(
         session_id,
         "css selector",
@@ -1479,15 +1362,15 @@ def main() -> int:
         verify_wide_navigation(session_id, webdriver.deadline_after())
         verify_native_window_controls(session_id, webdriver.deadline_after(45))
         session_id = verify_study_guides_checkpoint_after_restart(application, session_id)
-        verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
+        verify_medium_workbench_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
             "Native UI platform smoke passed: fresh-library Home; the same five destinations in the "
             "phone bottom bar and the labeled medium and wide header, with Search and Settings in the header; "
-            "Library's Decks, Documents and Study guides views; Review; "
+            "Library's Workbench, Documents and Study guides pages; Review; "
             "compact, labeled medium, and wide branding; "
             "fresh-profile IBM Plex interface/card defaults; "
-            "two-workspace Flashcards containment; vertical responsive deck-detail actions; "
+            "the Workbench's tree and card panes; responsive deck header actions; "
             "deck-scoped authoring; no horizontal overflow; "
             "maintained-route viewport consumption through resize, maximize/restore, and full-screen entry/exit; "
             "dialog focus containment; "

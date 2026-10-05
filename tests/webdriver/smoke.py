@@ -786,7 +786,9 @@ def choose_menu_item(session_id: str, menu_label: str, item: str, deadline: floa
     option = find_element(
         session_id,
         "xpath",
-        f"//*[@role='menuitem'][normalize-space(.)={json.dumps(item)}]",
+        # A menu on wider screens; a sheet of buttons on phones.
+        f"//*[@role='menuitem'][normalize-space(.)={json.dumps(item)}]"
+        f" | //*[@role='dialog']//*[@aria-label={json.dumps(menu_label)}]//button[normalize-space(.)={json.dumps(item)}]",
         deadline,
     )
     click(session_id, option)

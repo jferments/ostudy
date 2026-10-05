@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as cardsIpc from "../../../ipc/cards";
@@ -6,6 +6,7 @@ import type { DeckSummary } from "../../../ipc/decks";
 import * as documentsIpc from "../../../ipc/documents";
 import * as schedulingIpc from "../../../ipc/scheduling";
 import * as subjectsIpc from "../../../ipc/subjects";
+import { dispatchPlatformBack } from "../../../platform/backNavigation";
 import { makeDeck, makeSubject, makeSubjectLibrary } from "../../../test/factories";
 import { matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
@@ -201,6 +202,26 @@ describe("LibraryWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close editor" }));
     fireEvent.click(await screen.findByRole("button", { name: "Library" }));
     expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+  });
+
+  it("steps back from the card list to the tree on Android Back", async () => {
+    renderWorkbench(390);
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    expect(dispatchPlatformBack()).toBe(false);
+    fireEvent.click(await within(tree).findByRole("button", { name: /^Loose deck\s*\d/u }));
+    expect(await screen.findByTestId("workbench-title")).toBeTruthy();
+    act(() => { expect(dispatchPlatformBack()).toBe(true); });
+    expect(await screen.findByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(dispatchPlatformBack()).toBe(false);
+  });
+
+  it("returns a deck to All cards on Back on wider screens", async () => {
+    renderWorkbench();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(await within(tree).findByRole("button", { name: /^Loose deck\s*\d/u }));
+    await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe(loose.name));
+    act(() => { expect(dispatchPlatformBack()).toBe(true); });
+    await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe("All cards"));
   });
 
   it("focuses search when the header's Search opens Library", async () => {
