@@ -51,7 +51,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current runtime lineage is `ostudy-release-v1`, schema 4. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
+The current runtime lineage is `ostudy-release-v1`, schema 5. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
 
 ### Exact-tree reuse
 
@@ -206,6 +206,8 @@ Native WebDriver uses fresh isolated XDG/application data and exercises represen
 Wall-clock WebKit/UI performance measurements are advisory/manual rather than required correctness gates. Historical Stage 0/Stage 4 baseline records are retained as provenance for comparable measurements, not as current UI specifications. A timing-capture problem must not prevent Linux/Android correctness qualification.
 
 When performance is an acceptance criterion, collect new exact-source candidate evidence and compare against the intended stable baseline without rewriting historical data to manufacture success.
+
+For a UI change, [UI screenshots](ui-screenshots.md) captures the main screens of the base commit and the branch in every theme at phone, tablet and desktop widths and builds a before/after comparison page. The images are review evidence, not a gate.
 
 ## GitHub incidents
 
