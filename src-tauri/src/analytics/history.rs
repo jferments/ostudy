@@ -38,12 +38,9 @@ pub fn load(
                  WHEN a.attribution_source = 'legacy_current_state_backfill' THEN 1 ELSE 0
              END), 0),
              MIN(a.review_local_date)
-         FROM review_events r
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         JOIN cards c ON c.id = r.card_id
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
+         FROM {history_from}
          WHERE {conditions}",
+        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     connection

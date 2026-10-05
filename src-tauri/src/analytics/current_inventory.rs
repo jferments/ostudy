@@ -4,17 +4,17 @@ use crate::{
     error::CommandError, projections::learning_signals as signal_projection, studyability,
 };
 
-use super::{scope::AnalyticsContext, CurrentInventorySummaryDto};
+use super::{scope::AnalyticsContext, signals::RequestSignals, CurrentInventorySummaryDto};
 
 pub fn load(
     connection: &Connection,
     context: &AnalyticsContext,
+    signals: &RequestSignals<'_>,
 ) -> Result<CurrentInventorySummaryDto, CommandError> {
     let mut values = vec![SqlValue::Integer(context.time.now_utc_millis)];
     let conditions = context.current_card_conditions(&mut values);
     let sql = format!(
-        "WITH {signals}
-         SELECT
+        "SELECT
              COUNT(DISTINCT d.id),
              COUNT(DISTINCT n.id),
              COUNT(DISTINCT c.id),
@@ -27,11 +27,10 @@ pub fn load(
          JOIN card_schedules s ON s.card_id = c.id
          {signal_join}
          WHERE {conditions}",
-        signals = signal_projection::LEARNING_SIGNAL_CTES,
         studyable = studyability::studyable_card_sql("?1"),
         studyable_due = studyability::studyable_due_sql("?1"),
         signal_value = signal_projection::value_sql(),
-        signal_join = signal_projection::join_sql(),
+        signal_join = signals.join_sql(),
         conditions = conditions.join(" AND "),
     );
     connection
