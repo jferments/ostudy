@@ -38,8 +38,11 @@ type HomeSheet = "new-subject" | "choose-subjects" | "check-these" | null;
 interface HomeScreenProps {
   /** Starts today's scheduled review over these decks. */
   onStartReview: (deckIds: string[]) => void;
-  /** Opens a subject (`null` is No subject) in the Library view that shows it best. */
-  onOpenSubject: (subjectId: string | null, view: "decks" | "documents") => void;
+  /**
+   * Opens a subject's page. No subject (`null`) opens in the Library view that
+   * shows it best.
+   */
+  onOpenSubject: (subjectId: string | null, noSubjectView: "decks" | "documents") => void;
   onOpenLibrary: () => void;
 }
 

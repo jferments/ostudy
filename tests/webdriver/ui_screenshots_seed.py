@@ -105,6 +105,8 @@ class NoteSpec:
 # Microbiology has nothing due today, and one deck and one document (the
 # renal lecture, not yet filed) have no subject.
 SUBJECTS = ("Physiology", "Biochemistry", "Pharmacology", "Microbiology")
+# The subject whose page the capture shows: it has decks and a filed document.
+SUBJECT_PAGE = "Physiology"
 
 DECKS: tuple[DeckSpec, ...] = (
     DeckSpec("cardio", "Cardiovascular physiology", "Cardiac cycle, hemodynamics, and blood pressure control.", "Physiology"),

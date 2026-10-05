@@ -21,6 +21,7 @@ import {
 import { isLibrarySection, type AppDestination } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { HomeScreen } from "./screens/home/HomeScreen";
+import { SubjectScreen } from "./screens/subject/SubjectScreen";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { ReviewScreen } from "./screens/review/ReviewScreen";
@@ -195,6 +196,20 @@ function App() {
                                 onViewAnalytics={controller.viewSessionAnalytics}
                                 onEndEarly={controller.returnFromPractice}
                                 onChooseDecks={controller.choosePracticeDecks}
+                                showToast={controller.showToast}
+                              />
+                            ) : controller.section === "home" && controller.homeSubjectId ? (
+                              <SubjectScreen
+                                key={controller.homeSubjectId}
+                                subjectId={controller.homeSubjectId}
+                                decks={controller.decks}
+                                onBack={() => navigate("home")}
+                                onStartReview={startReview}
+                                onPracticeSubject={(subjectId) =>
+                                  void controller.practiceSubject(subjectId)
+                                }
+                                onOpenLibrary={(scope) => void controller.openLibrary(scope)}
+                                onOpenDocuments={() => navigate("documents")}
                                 showToast={controller.showToast}
                               />
                             ) : controller.section === "home" ? (
