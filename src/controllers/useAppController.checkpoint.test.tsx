@@ -119,6 +119,21 @@ function Harness() {
       <button type="button" onClick={() => void controller.openSubject(null, "documents")}>
         Open No subject documents
       </button>
+      <button type="button" onClick={() => void controller.openLibrary()}>
+        Open Library
+      </button>
+      <button
+        type="button"
+        onClick={() => void controller.openLibrary({ subjectId: "c".repeat(32) })}
+      >
+        Open Library for subject
+      </button>
+      <button type="button" onClick={() => void controller.openLibrary({ subjectId: null })}>
+        Open Library for No subject
+      </button>
+      <button type="button" onClick={() => void controller.openLibrary({ deckId: "d".repeat(32) })}>
+        Open Library at deck
+      </button>
       <button type="button" onClick={() => void controller.practiceScope(["d".repeat(32)], [])}>
         Start review
       </button>
@@ -504,6 +519,40 @@ describe("application checkpoint lifecycle", () => {
       expect(JSON.stringify(saved)).not.toContain("subjectFocus");
       expect(JSON.stringify(saved)).not.toContain("c".repeat(32));
     }
+  });
+
+  it("opens Library as last left, scoped to a subject, or at a deck", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("c".repeat(32)),
+    );
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
+    expect(screen.getByLabelText("route view").textContent).toBe("decks");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library for No subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("no subject"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Library at deck" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("route view").textContent).toBe("d".repeat(32)),
+    );
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
   });
 
   it("restores Study Guides behind a resumable session and returns there", async () => {

@@ -583,7 +583,10 @@ def assert_shell_placement(session_id: str, layout: str) -> None:
         raise AssertionError(f"The {layout} shell placed its navigation or header actions wrongly: {placement!r}")
 
 
-def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
+def assert_brand_and_fresh_font_defaults(
+    session_id: str, label: str, *, mark_only: bool = False
+) -> None:
+    # Medium widths show the raccoon mark alone in the header, without the wordmark.
     measurement = execute(
         session_id,
         """
@@ -597,9 +600,12 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
         const lockups = [...document.querySelectorAll(
           "[data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']"
         )].filter(visible);
-        const mascots = lockups
-          .map((lockup) => lockup.querySelector("[data-artwork-slot='brand.logo.compact'] img"))
-          .filter(visible);
+        const markOnly = arguments[0];
+        const header = document.querySelector("[data-testid='app-header']");
+        const mascots = (markOnly
+          ? [...(header?.querySelectorAll("[data-artwork-slot='brand.logo.compact'] img") ?? [])]
+          : lockups.map((lockup) => lockup.querySelector("[data-artwork-slot='brand.logo.compact'] img"))
+        ).filter(visible);
         const root = document.documentElement;
         return {
           visibleLockups: lockups.length,
@@ -612,12 +618,15 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
           cardFont: root.style.getPropertyValue('--card-font-family').trim(),
         };
         """,
+        [mark_only],
     )
     if not isinstance(measurement, dict):
         raise AssertionError(f"Could not inspect brand and typography in {label}: {measurement!r}")
+    expected_lockups = 0 if mark_only else 1
+    expected_lockup_text = [] if mark_only else ["ostudy"]
     if (
-        int(measurement.get("visibleLockups", 0)) != 1
-        or measurement.get("lockupText") != ["ostudy"]
+        int(measurement.get("visibleLockups", 0)) != expected_lockups
+        or measurement.get("lockupText") != expected_lockup_text
         or int(measurement.get("visibleMascots", 0)) != 1
         or measurement.get("mascotLoaded") is not True
         # The 64 px raccoon head; a 2x screen loads the 128 px file, reported as 64 once density-corrected.
@@ -1076,7 +1085,7 @@ def verify_study_guides_checkpoint_after_restart(
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
-    assert_brand_and_fresh_font_defaults(session_id, "medium layout")
+    assert_brand_and_fresh_font_defaults(session_id, "medium layout", mark_only=True)
     assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "medium")
     assert_shell_placement(session_id, "medium")
     open_study_guides_and_return(session_id, deadline, "medium Study Guides destination")

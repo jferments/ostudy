@@ -19,7 +19,11 @@ import {
   type PracticeCursorCheckpoint,
   type SaveUiCheckpointInput,
 } from "../ipc/uiCheckpoint";
-import { isLibrarySection, type LibrarySection } from "../navigation/appDestinations";
+import {
+  isLibrarySection,
+  type LibraryScope,
+  type LibrarySection,
+} from "../navigation/appDestinations";
 import {
   createAnalyticsSearchRoute,
   createFlashcardsDeckRoute,
@@ -575,6 +579,37 @@ export function useAppController() {
   }
 
   /**
+   * Opens Library from anywhere. No scope opens the view the learner used
+   * last; `subjectId` puts that subject's decks in view (`null` is No
+   * subject's unsorted decks); `deckId` opens the deck. Today's views serve
+   * it until the Workbench replaces them and reads the scope itself.
+   */
+  async function openLibrary(scope: LibraryScope = {}): Promise<void> {
+    if (scope.deckId === undefined && scope.subjectId === undefined) {
+      await navigate(lastLibrarySectionRef.current);
+      return;
+    }
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    if (leavingPracticeWorkflow) {
+      practiceCursorRef.current = null;
+      setPracticeWorkflow(null);
+    }
+    if (scope.deckId !== undefined) {
+      openFlashcardsDeck(scope.deckId);
+      return;
+    }
+    setSection("decks");
+    setFlashcardsRoute(
+      createSubjectFocusRoute(scope.subjectId ?? null, nextFlashcardsRequestId()),
+    );
+    void refreshDecks().catch((error: unknown) =>
+      showToast("error", getErrorMessage(error)),
+    );
+  }
+
+  /**
    * Opens a subject from Home in the Library view that shows it best: Decks
    * with the subject's folder in view (`null` is No subject's unsorted decks),
    * or Documents for a subject that has documents and no decks yet. One call,
@@ -588,12 +623,7 @@ export function useAppController() {
       await navigate("documents");
       return;
     }
-    if (!(await canLeaveCurrentSection())) return;
-    setSection("decks");
-    setFlashcardsRoute(createSubjectFocusRoute(subjectId, nextFlashcardsRequestId()));
-    void refreshDecks().catch((error: unknown) =>
-      showToast("error", getErrorMessage(error)),
-    );
+    await openLibrary({ subjectId });
   }
 
   async function navigateFlashcardsWorkspace(
@@ -791,6 +821,7 @@ export function useAppController() {
     /** The Library view the Library destination opens: the last one used. */
     librarySection: lastLibrarySectionRef.current,
     openSearch,
+    openLibrary,
     openSubject,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,

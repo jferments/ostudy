@@ -202,7 +202,7 @@ function App() {
                                 onOpenSubject={(subjectId, view) =>
                                   void controller.openSubject(subjectId, view)
                                 }
-                                onOpenLibrary={() => navigate(controller.librarySection)}
+                                onOpenLibrary={() => void controller.openLibrary()}
                               />
                             ) : controller.section === "decks" ? (
                               <LibraryFrame view="decks" onSelectView={navigate}>
