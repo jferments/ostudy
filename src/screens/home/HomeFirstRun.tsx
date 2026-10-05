@@ -4,6 +4,8 @@ import { Button } from "../../ui/primitives/Button";
 import { Card } from "../../ui/primitives/Card";
 
 interface HomeFirstRunProps {
+  /** Archived decks are kept in Library, so the library is not empty. */
+  hasArchivedDecks: boolean;
   importing: boolean;
   onCreateSubject: () => void;
   onImportDocument: () => void;
@@ -12,9 +14,12 @@ interface HomeFirstRunProps {
 
 /**
  * Home for a library with nothing in it: the mascot welcomes (a plain icon
- * when mascot art is off), and creating a subject is the one main action.
+ * when mascot art is off), and creating a subject is the one main action. A
+ * library whose decks are all archived has nothing to study but is not empty,
+ * so it says where those decks are instead.
  */
 export function HomeFirstRun({
+  hasArchivedDecks,
   importing,
   onCreateSubject,
   onImportDocument,
@@ -51,9 +56,10 @@ export function HomeFirstRun({
           id="home-first-run-heading"
           className="tw:m-0 tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight tw:compact:text-section"
         >
-          Your library is empty
+          {hasArchivedDecks ? "Nothing to study yet" : "Your library is empty"}
         </h2>
         <p className="tw:m-0 tw:text-body tw:text-muted-foreground">
+          {hasArchivedDecks ? "Your archived decks are in Library. " : null}
           Start with a subject for each course. It keeps the course&apos;s documents, study guides
           and flashcard decks together.
         </p>

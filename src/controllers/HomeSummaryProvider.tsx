@@ -26,6 +26,12 @@ export interface HomeSummaryState {
   libraryError: string | null;
   /** True until both reads have answered once. */
   isLoading: boolean;
+  /**
+   * Whether the library holds archived decks. Home counts only active decks,
+   * so this keeps a library whose decks are all archived from being called
+   * empty.
+   */
+  hasArchivedDecks: boolean;
   refresh: () => void;
   /** Adopts a subject mutation's answer, then rereads what is due. */
   acceptLibrary: (library: SubjectLibrary) => void;
@@ -66,6 +72,7 @@ export function HomeSummaryProvider({
   const [summaryAnswered, setSummaryAnswered] = useState(false);
   const [libraryAnswered, setLibraryAnswered] = useState(false);
   const pendingRefresh = useRef<number | null>(null);
+  const hasArchivedDecks = useMemo(() => decks.some((deck) => deck.archivedAt !== null), [decks]);
   const documents = useDocumentJobs()?.documents;
   // Which documents exist and whether each is still processing; progress
   // within a step changes nothing Home counts.
@@ -170,11 +177,13 @@ export function HomeSummaryProvider({
       summaryError,
       libraryError,
       isLoading: !summaryAnswered || !libraryAnswered,
+      hasArchivedDecks,
       refresh: scheduleRefresh,
       acceptLibrary,
     }),
     [
       acceptLibrary,
+      hasArchivedDecks,
       library,
       libraryAnswered,
       libraryError,

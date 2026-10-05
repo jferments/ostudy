@@ -48,8 +48,16 @@ interface HomeScreenProps {
  * each. A library with nothing in it shows a welcome instead.
  */
 export function HomeScreen({ onStartReview, onOpenSubject, onOpenLibrary }: HomeScreenProps) {
-  const { summary, library, summaryError, libraryError, isLoading, refresh, acceptLibrary } =
-    useHomeSummary();
+  const {
+    summary,
+    library,
+    summaryError,
+    libraryError,
+    isLoading,
+    hasArchivedDecks,
+    refresh,
+    acceptLibrary,
+  } = useHomeSummary();
   const jobs = useDocumentJobs();
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
@@ -123,6 +131,7 @@ export function HomeScreen({ onStartReview, onOpenSubject, onOpenLibrary }: Home
       {summary && library && tiles ? (
         firstRun ? (
           <HomeFirstRun
+            hasArchivedDecks={hasArchivedDecks}
             importing={jobs?.isUploading ?? false}
             onCreateSubject={() => setSheet("new-subject")}
             onImportDocument={() => void jobs?.uploadDocument()}

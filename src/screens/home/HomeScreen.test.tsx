@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
+import type { DeckSummary } from "../../ipc/decks";
 import type { DocumentSummary } from "../../ipc/documents";
 import * as homeIpc from "../../ipc/home";
 import * as practiceIpc from "../../ipc/practice";
@@ -111,7 +112,8 @@ function populatedSummary() {
 function renderHome({
   width = 1440,
   decorativeArtwork = true,
-}: { width?: number; decorativeArtwork?: boolean } = {}) {
+  decks = DECKS,
+}: { width?: number; decorativeArtwork?: boolean; decks?: DeckSummary[] } = {}) {
   setViewport(width);
   const onStartReview = vi.fn();
   const onOpenSubject = vi.fn();
@@ -122,7 +124,7 @@ function renderHome({
         settings={{ theme: "light", uiFont: "system", cardFont: "system", uiScale: 100, cardBaseSize: 18, decorativeArtwork }}
       >
         <OverlayProvider>
-          <HomeSummaryProvider section="home" activeWorkflow={null} decks={DECKS}>
+          <HomeSummaryProvider section="home" activeWorkflow={null} decks={decks}>
             <HomeScreen
               onStartReview={onStartReview}
               onOpenSubject={onOpenSubject}
@@ -400,6 +402,17 @@ describe("HomeScreen", () => {
     expect(onOpenLibrary).toHaveBeenCalledOnce();
     fireEvent.click(within(welcome).getByRole("button", { name: "Create a subject" }));
     expect(await screen.findByRole("dialog", { name: "New subject" })).toBeTruthy();
+  });
+
+  it("does not call a library empty when its decks are all archived", async () => {
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
+    vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
+    renderHome({ decks: [makeDeck({ archivedAt: 1_700_000_000_000 })] });
+    const welcome = await screen.findByTestId("home-first-run");
+    expect(within(welcome).getByRole("heading", { name: "Nothing to study yet" })).toBeTruthy();
+    expect(within(welcome).queryByText(/Your library is empty/u)).toBeNull();
+    expect(within(welcome).getByText(/Your archived decks are in Library\./u)).toBeTruthy();
+    expect(within(welcome).getByRole("button", { name: "Open Library" })).toBeTruthy();
   });
 
   it("shows a plain icon instead of the mascot when mascot art is off", async () => {
