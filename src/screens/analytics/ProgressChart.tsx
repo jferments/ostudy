@@ -47,7 +47,7 @@ export function ProgressChart({ buckets, range }: ProgressChartProps) {
           const bucket = buckets[items[0]?.dataIndex ?? 0];
           if (!bucket) return [];
           return [String(bucket.newCards) + " new card" + (bucket.newCards === 1 ? "" : "s"),
-            "Remembered: " + formatPercent(bucket.correctRate), "Average difficulty: " + formatConfidence(bucket.averageConfidence),
+            "Remembered: " + formatPercent(bucket.correctRate), "Average confidence: " + formatConfidence(bucket.averageConfidence),
             "Focused time: " + formatDuration(bucket.studyTimeMs)];
         } },
       },

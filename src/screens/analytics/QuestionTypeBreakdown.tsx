@@ -36,6 +36,7 @@ export function QuestionTypeBreakdown({ rows }: { rows: QuestionTypeAnalytics[] 
             <tr>
               <th scope="col">Type</th>
               <th scope="col">Reviews</th>
+              <th scope="col">Remembered</th>
               <th scope="col">First-check accuracy</th>
               <th scope="col">Without recorded hints</th>
               <th scope="col">Self-rated</th>
@@ -49,6 +50,7 @@ export function QuestionTypeBreakdown({ rows }: { rows: QuestionTypeAnalytics[] 
               <tr key={row.questionType}>
                 <th scope="row">{labels[row.questionType]}</th>
                 <td>{row.reviewCount}{row.unavailableEvidenceCount > 0 ? <small>{row.unavailableEvidenceCount} without assessment evidence</small> : null}</td>
+                <td>{percent(row.rememberedRate)}</td>
                 <td>
                   {percent(row.objectiveAccuracy)}
                   {row.objectiveCount > 0 ? <>

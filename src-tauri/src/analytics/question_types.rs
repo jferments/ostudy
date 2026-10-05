@@ -4,11 +4,11 @@
 use rusqlite::{params_from_iter, Connection};
 use serde::Serialize;
 
-use super::{
-    history::rate,
-    scope::{AnalyticsContext, HistoryPeriod},
+use super::scope::{AnalyticsContext, HistoryPeriod};
+use crate::{
+    error::CommandError,
+    learning_metrics::{self, rate},
 };
-use crate::error::CommandError;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +29,9 @@ pub struct QuestionTypeAnalyticsDto {
     pub override_count: i64,
     pub remediation_count: i64,
     pub unavailable_evidence_count: i64,
+    /// Remembered reviews by the shared definition (`learning_metrics`).
+    pub remembered_count: i64,
+    pub remembered_rate: Option<f64>,
 }
 
 pub(super) fn load(
@@ -56,12 +59,14 @@ pub(super) fn load(
             SUM(CASE WHEN q.assisted = 1 THEN 1 ELSE 0 END),
             SUM(CASE WHEN link.override_reason IS NOT NULL THEN 1 ELSE 0 END),
             SUM((SELECT COUNT(*) FROM question_remediation_attempts remediation
-                WHERE remediation.instance_id = q.instance_id))
+                WHERE remediation.instance_id = q.instance_id)),
+            {}
          FROM {}
          LEFT JOIN question_review_links link ON link.review_event_id = r.id
          LEFT JOIN question_attempts q ON q.instance_id = link.instance_id
          WHERE {}
          GROUP BY a.card_type ORDER BY a.card_type",
+        learning_metrics::remembered_count_sql("r"),
         context.history_from_sql(),
         conditions.join(" AND "),
     );
@@ -74,6 +79,7 @@ pub(super) fn load(
             let correct_count: i64 = row.get(4)?;
             let unassisted_objective_count: i64 = row.get(7)?;
             let unassisted_correct_count: i64 = row.get(8)?;
+            let remembered_count: i64 = row.get(13)?;
             Ok(QuestionTypeAnalyticsDto {
                 question_type: row.get(0)?,
                 review_count,
@@ -91,6 +97,8 @@ pub(super) fn load(
                 override_count: row.get(11)?,
                 remediation_count: row.get(12)?,
                 unavailable_evidence_count: review_count - self_assessed_count - objective_count,
+                remembered_count,
+                remembered_rate: rate(remembered_count, review_count),
             })
         })
         .map_err(CommandError::database)?

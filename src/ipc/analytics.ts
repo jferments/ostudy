@@ -41,6 +41,11 @@ export interface CurrentInventorySummary {
   studyableCardCount: number;
   studyableDueCount: number;
   needsMorePracticeCount: number;
+  /** Ready now, split into due reviews and new cards. */
+  readyReviewCount: number;
+  readyNewCount: number;
+  /** Reviews due before the next study day starts, including ready ones. */
+  dueTodayReviewCount: number;
 }
 
 export interface HistoricalReviewSummary {
@@ -52,6 +57,11 @@ export interface HistoricalReviewSummary {
   averageResponseTimeMs: number | null;
   totalStudyTimeMs: number;
   sessionCount: number;
+  /** Reviews of Review-state cards that were due; true retention's evidence. */
+  retentionReviewCount: number;
+  retentionRememberedCount: number;
+  /** Remembered due reviews over due reviews, comparable with desired retention. */
+  trueRetention: number | null;
 }
 
 export interface DailyLimitUsage {
@@ -89,6 +99,11 @@ export interface TimelineBucket {
   studyTimeMs: number;
   sessionCount: number;
   containsHighlightedSession: boolean;
+  /** Reviews of Review-state cards that were due; true retention's evidence. */
+  retentionReviewCount: number;
+  retentionRememberedCount: number;
+  /** Remembered due reviews over due reviews, comparable with desired retention. */
+  trueRetention: number | null;
 }
 
 export interface DeckAnalytics {
@@ -108,6 +123,9 @@ export interface DeckAnalytics {
   averageResponseTimeMs: number | null;
   totalStudyTimeMs: number;
   lastPracticedAt: number | null;
+  retentionReviewCount: number;
+  retentionRememberedCount: number;
+  trueRetention: number | null;
 }
 
 export interface TagAnalytics {
@@ -127,6 +145,9 @@ export interface TagAnalytics {
   averageResponseTimeMs: number | null;
   totalStudyTimeMs: number;
   lastPracticedAt: number | null;
+  retentionReviewCount: number;
+  retentionRememberedCount: number;
+  trueRetention: number | null;
   trendDelta: number | null;
   status: TagAnalyticsStatus;
 }
@@ -212,6 +233,9 @@ export interface QuestionTypeAnalytics {
   overrideCount: number;
   remediationCount: number;
   unavailableEvidenceCount: number;
+  /** Remembered reviews by the same rule as every other surface. */
+  rememberedCount: number;
+  rememberedRate: number | null;
 }
 
 export interface Analytics {

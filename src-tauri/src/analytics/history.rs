@@ -1,6 +1,9 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
-use crate::error::CommandError;
+use crate::{
+    error::CommandError,
+    learning_metrics::{self, rate},
+};
 
 use super::{
     scope::{AnalyticsContext, HistoryPeriod},
@@ -24,8 +27,8 @@ pub fn load(
         "SELECT
              COUNT(DISTINCT c.id),
              COUNT(*),
-             COALESCE(SUM(r.answer_correct), 0),
-             AVG(CAST(r.rating - 1 AS REAL)),
+             {remembered},
+             {average_confidence},
              AVG(CAST(r.response_time_ms AS REAL)),
              COALESCE(SUM(r.response_time_ms), 0),
              COUNT(DISTINCT r.session_id),
@@ -37,9 +40,13 @@ pub fn load(
              COALESCE(SUM(CASE
                  WHEN a.attribution_source = 'legacy_current_state_backfill' THEN 1 ELSE 0
              END), 0),
-             {earliest_study_date}
+             {earliest_study_date},
+             {retention}
          FROM {history_from}
          WHERE {conditions}",
+        remembered = learning_metrics::remembered_count_sql("r"),
+        average_confidence = learning_metrics::average_confidence_sql("r"),
+        retention = learning_metrics::retention_counts_sql("r"),
         earliest_study_date = context.time.earliest_review_study_date_sql("a"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
@@ -48,6 +55,8 @@ pub fn load(
         .query_row(&sql, params_from_iter(values.iter()), |row| {
             let review_count: i64 = row.get(1)?;
             let correct_count: i64 = row.get(2)?;
+            let retention_review_count: i64 = row.get(14)?;
+            let retention_remembered_count: i64 = row.get(15)?;
             Ok(HistoricalLoad {
                 summary: HistoricalReviewSummaryDto {
                     cards_practiced: row.get(0)?,
@@ -58,6 +67,9 @@ pub fn load(
                     average_response_time_ms: row.get(4)?,
                     total_study_time_ms: row.get(5)?,
                     session_count: row.get(6)?,
+                    retention_review_count,
+                    retention_remembered_count,
+                    true_retention: rate(retention_remembered_count, retention_review_count),
                 },
                 rating_distribution: RatingDistributionDto {
                     again: row.get(7)?,
@@ -73,12 +85,4 @@ pub fn load(
             })
         })
         .map_err(CommandError::database)
-}
-
-pub fn rate(numerator: i64, denominator: i64) -> Option<f64> {
-    if denominator == 0 {
-        None
-    } else {
-        Some(numerator as f64 / denominator as f64)
-    }
 }

@@ -3,10 +3,13 @@ use std::collections::BTreeMap;
 use chrono::{Duration, NaiveDate};
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
-use crate::{error::CommandError, projections::scope::push_value};
+use crate::{
+    error::CommandError,
+    learning_metrics::{self, rate},
+    projections::scope::push_value,
+};
 
 use super::{
-    history::rate,
     scope::{AnalyticsContext, AnalyticsRange, HistoryPeriod},
     TimelineBucketDto,
 };
@@ -26,6 +29,8 @@ struct BucketValues {
     study_time_ms: i64,
     session_count: i64,
     highlighted: bool,
+    retention_review_count: i64,
+    retention_remembered_count: i64,
 }
 
 pub fn load(
@@ -71,21 +76,26 @@ fn load_local_date_buckets(
              {bucket_sql},
              COUNT(DISTINCT c.id),
              COUNT(*),
-             COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
-             COALESCE(SUM(r.answer_correct), 0),
+             {new_reviews},
+             {remembered},
              COALESCE(SUM(CASE WHEN r.rating = 1 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 2 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 3 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 4 THEN 1 ELSE 0 END), 0),
-             AVG(CAST(r.rating - 1 AS REAL)),
+             {average_confidence},
              AVG(CAST(r.response_time_ms AS REAL)),
              COALESCE(SUM(r.response_time_ms), 0),
              COUNT(DISTINCT r.session_id),
-             {highlighted_sql}
+             {highlighted_sql},
+             {retention}
          FROM {history_from}
          WHERE {conditions}
          GROUP BY 1
          ORDER BY 1",
+        new_reviews = learning_metrics::new_card_review_count_sql("r"),
+        remembered = learning_metrics::remembered_count_sql("r"),
+        average_confidence = learning_metrics::average_confidence_sql("r"),
+        retention = learning_metrics::retention_counts_sql("r"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
@@ -108,6 +118,8 @@ fn load_local_date_buckets(
                     study_time_ms: row.get(11)?,
                     session_count: row.get(12)?,
                     highlighted: row.get::<_, i64>(13)? != 0,
+                    retention_review_count: row.get(14)?,
+                    retention_remembered_count: row.get(15)?,
                 },
             ))
         })
@@ -161,22 +173,27 @@ fn load_months(
              substr({study_date}, 1, 7),
              COUNT(DISTINCT c.id),
              COUNT(*),
-             COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
-             COALESCE(SUM(r.answer_correct), 0),
+             {new_reviews},
+             {remembered},
              COALESCE(SUM(CASE WHEN r.rating = 1 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 2 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 3 THEN 1 ELSE 0 END), 0),
              COALESCE(SUM(CASE WHEN r.rating = 4 THEN 1 ELSE 0 END), 0),
-             AVG(CAST(r.rating - 1 AS REAL)),
+             {average_confidence},
              AVG(CAST(r.response_time_ms AS REAL)),
              COALESCE(SUM(r.response_time_ms), 0),
              COUNT(DISTINCT r.session_id),
-             {highlighted_sql}
+             {highlighted_sql},
+             {retention}
          FROM {history_from}
          WHERE {conditions}
          GROUP BY 1
          ORDER BY 1",
         study_date = context.time.review_study_date_sql("a"),
+        new_reviews = learning_metrics::new_card_review_count_sql("r"),
+        remembered = learning_metrics::remembered_count_sql("r"),
+        average_confidence = learning_metrics::average_confidence_sql("r"),
+        retention = learning_metrics::retention_counts_sql("r"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
@@ -199,6 +216,8 @@ fn load_months(
                     study_time_ms: row.get(11)?,
                     session_count: row.get(12)?,
                     highlighted: row.get::<_, i64>(13)? != 0,
+                    retention_review_count: row.get(14)?,
+                    retention_remembered_count: row.get(15)?,
                 },
             ))
         })
@@ -258,6 +277,12 @@ fn to_dto(
         study_time_ms: values.study_time_ms,
         session_count: values.session_count,
         contains_highlighted_session: values.highlighted,
+        retention_review_count: values.retention_review_count,
+        retention_remembered_count: values.retention_remembered_count,
+        true_retention: rate(
+            values.retention_remembered_count,
+            values.retention_review_count,
+        ),
     })
 }
 

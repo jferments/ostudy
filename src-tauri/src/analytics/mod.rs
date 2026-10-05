@@ -76,6 +76,11 @@ pub struct CurrentInventorySummaryDto {
     pub studyable_card_count: i64,
     pub studyable_due_count: i64,
     pub needs_more_practice_count: i64,
+    /// Ready now, split: due reviews, then new cards (`learning_metrics`).
+    pub ready_review_count: i64,
+    pub ready_new_count: i64,
+    /// Reviews due before the next study day starts, including ready ones.
+    pub due_today_review_count: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -89,6 +94,10 @@ pub struct HistoricalReviewSummaryDto {
     pub average_response_time_ms: Option<f64>,
     pub total_study_time_ms: i64,
     pub session_count: i64,
+    /// Reviews of due Review-state cards; see `learning_metrics`.
+    pub retention_review_count: i64,
+    pub retention_remembered_count: i64,
+    pub true_retention: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -132,6 +141,10 @@ pub struct TimelineBucketDto {
     pub study_time_ms: i64,
     pub session_count: i64,
     pub contains_highlighted_session: bool,
+    /// Reviews of due Review-state cards; see `learning_metrics`.
+    pub retention_review_count: i64,
+    pub retention_remembered_count: i64,
+    pub true_retention: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -153,6 +166,10 @@ pub struct DeckAnalyticsDto {
     pub average_response_time_ms: Option<f64>,
     pub total_study_time_ms: i64,
     pub last_practiced_at: Option<i64>,
+    /// Reviews of due Review-state cards; see `learning_metrics`.
+    pub retention_review_count: i64,
+    pub retention_remembered_count: i64,
+    pub true_retention: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -174,6 +191,10 @@ pub struct TagAnalyticsDto {
     pub average_response_time_ms: Option<f64>,
     pub total_study_time_ms: i64,
     pub last_practiced_at: Option<i64>,
+    /// Reviews of due Review-state cards; see `learning_metrics`.
+    pub retention_review_count: i64,
+    pub retention_remembered_count: i64,
+    pub true_retention: Option<f64>,
     pub trend_delta: Option<f64>,
     pub status: String,
 }
@@ -558,5 +579,58 @@ mod tests {
                 Ok(())
             })
             .expect("ending early must retain accepted review analytics");
+    }
+
+    #[test]
+    fn ready_now_splits_due_reviews_from_new_cards_and_counts_due_today() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let time = StudyTimeContext::capture(connection)?;
+                let now = time.now_utc_millis;
+                let deck_id = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Ready split".to_string(),
+                        description: None,
+                    },
+                )?
+                .id;
+                create_card(connection, &deck_id, "New", now)?;
+                let overdue = create_card(connection, &deck_id, "Overdue", now)?;
+                let later_today = create_card(connection, &deck_id, "Later today", now)?;
+                let tomorrow = create_card(connection, &deck_id, "Tomorrow", now)?;
+                for (card, due_at) in [
+                    (&overdue, now - 1_000),
+                    (&later_today, time.tomorrow_start_utc_millis - 1),
+                    (&tomorrow, time.tomorrow_start_utc_millis),
+                ] {
+                    connection
+                        .execute(
+                            "UPDATE card_schedules SET state = 2, due_at = ?2 WHERE card_id = ?1",
+                            params![card, due_at],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+                let analytics = load_analytics_at(
+                    connection,
+                    AnalyticsQueryDto {
+                        range: default_range(),
+                        deck_ids: Vec::new(),
+                        tag_ids: Vec::new(),
+                        custom_start_local_date: None,
+                        custom_end_local_date: None,
+                        highlighted_session_id: None,
+                    },
+                    time,
+                )?;
+                let inventory = analytics.current_inventory;
+                assert_eq!(inventory.studyable_due_count, 2);
+                assert_eq!(inventory.ready_review_count, 1);
+                assert_eq!(inventory.ready_new_count, 1);
+                assert_eq!(inventory.due_today_review_count, 2);
+                Ok(())
+            })
+            .expect("ready counts should follow the shared definitions");
     }
 }

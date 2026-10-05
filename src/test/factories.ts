@@ -198,6 +198,9 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
       studyableCardCount: 0,
       studyableDueCount: 0,
       needsMorePracticeCount: 0,
+      readyReviewCount: 0,
+      readyNewCount: 0,
+      dueTodayReviewCount: 0,
     },
     history: {
       cardsPracticed: 0,
@@ -208,6 +211,9 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
       averageResponseTimeMs: null,
       totalStudyTimeMs: 0,
       sessionCount: 0,
+      retentionReviewCount: 0,
+      retentionRememberedCount: 0,
+      trueRetention: null,
     },
     dailyLimits: {
       newLimit: 20,

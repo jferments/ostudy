@@ -73,6 +73,7 @@ mod external_file_streaming;
 mod external_files;
 pub mod ipc_wire_contract;
 mod knowledge;
+mod learning_metrics;
 mod library_backup;
 mod library_backup_commands;
 mod library_lock;
