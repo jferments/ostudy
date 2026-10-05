@@ -93,10 +93,10 @@ export function CoachBanner({ overview, topic, activity, dueToday, busy, onPract
           <p className="tw:m-0 tw:text-caption tw:font-bold tw:uppercase tw:tracking-wide tw:text-primary">{rangeEyebrow(overview)}</p>
           <p className="tw:mt-1 tw:mb-0 tw:max-w-[60ch] tw:text-body-large tw:text-foreground tw:compact:text-body">{coachSentence(overview, topic)}</p>
           {streak ? (
-            <p className="tw:mt-2 tw:mb-0 tw:flex tw:flex-wrap tw:items-center tw:gap-x-2 tw:text-small tw:text-foreground">
-              <Icon name="practice" size={14} className="tw:text-primary" />
-              <span>{streak}</span>
-              {onStartReview && topic ? <Button variant="text" className="tw:h-auto tw:min-h-0 tw:p-0 tw:underline tw:underline-offset-4" disabled={busy} onClick={onStartReview}>Start review</Button> : null}
+            <p className="tw:mt-2 tw:mb-0 tw:text-small tw:text-foreground">
+              <Icon name="practice" size={14} className="tw:mr-1.5 tw:inline-block tw:align-[-2px] tw:text-primary" />
+              {streak}
+              {onStartReview && topic ? <> <Button variant="text" className="tw:inline tw:h-auto tw:min-h-0 tw:p-0 tw:underline tw:underline-offset-4" disabled={busy} onClick={onStartReview}>Start review</Button></> : null}
             </p>
           ) : null}
         </> : (

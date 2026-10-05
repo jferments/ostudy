@@ -48,7 +48,7 @@ export function SubjectsPanel({ subjects, colors, periodLabel, loading, onOpenSu
       </NativeSelect>}
     >
       <div className="tw:min-w-0 tw:overflow-x-auto">
-        <table className="tw:w-full tw:min-w-[40rem] tw:border-collapse tw:text-left tw:text-small tw:tabular-nums tw:[&_td]:border-0 tw:[&_td]:border-t tw:[&_td]:border-solid tw:[&_td]:border-border tw:[&_td]:px-2 tw:[&_td]:py-2.5 tw:[&_th]:px-2 tw:[&_th]:pb-2 tw:[&_th]:text-caption tw:[&_th]:font-semibold tw:[&_th]:uppercase tw:[&_th]:tracking-wide tw:[&_th]:text-muted-foreground">
+        <table className="tw:w-full tw:min-w-[40rem] tw:border-collapse tw:text-left tw:text-small tw:tabular-nums tw:[&_td]:border-0 tw:[&_td]:border-t tw:[&_td]:border-solid tw:[&_td]:border-border tw:[&_td]:px-2 tw:[&_td]:py-2.5 tw:[&_thead_th]:px-2 tw:[&_thead_th]:pb-2 tw:[&_thead_th]:text-caption tw:[&_thead_th]:font-semibold tw:[&_thead_th]:uppercase tw:[&_thead_th]:tracking-wide tw:[&_thead_th]:text-muted-foreground">
           <thead>
             <tr><th scope="col">Subject</th><th scope="col">Card strength</th><th scope="col">Remembered</th><th scope="col">Due today</th><th scope="col">Time</th></tr>
           </thead>
@@ -70,7 +70,7 @@ export function SubjectsPanel({ subjects, colors, periodLabel, loading, onOpenSu
               </>;
               return (
                 <tr key={subjectId ?? "none"}>
-                  <th scope="row" className="tw:p-0 tw:font-normal">
+                  <th scope="row" className="tw:border-0 tw:border-t tw:border-solid tw:border-border tw:p-0 tw:text-left tw:font-normal">
                     {subjectId ? (
                       <Button variant="ghost" onClick={() => onOpenSubject(subjectId)} aria-label={`Show only ${name}`}
                         className="tw:h-auto tw:min-h-touch tw:w-full tw:justify-start tw:gap-3 tw:p-1 tw:text-left tw:font-normal">

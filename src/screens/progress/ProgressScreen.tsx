@@ -159,18 +159,22 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
         title="Progress"
         description={`${subjectName ?? "All subjects"}${span ? ` · ${span}` : ""}`}
         actions={
-          <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
-            <NativeSelect aria-label="Subject" value={subjectId ?? ""} onChange={(event) => setSubjectId(event.currentTarget.value || null)} className="tw:w-auto tw:max-w-56">
-              <option value="">All subjects</option>
-              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
-            </NativeSelect>
+          <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:compact:w-full tw:compact:flex-nowrap">
+            <span className="tw:w-48 tw:compact:min-w-0 tw:compact:flex-1">
+              <NativeSelect aria-label="Subject" value={subjectId ?? ""} onChange={(event) => setSubjectId(event.currentTarget.value || null)}>
+                <option value="">All subjects</option>
+                {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+              </NativeSelect>
+            </span>
             <span className="tw:compact:hidden">
               <SegmentedControl label="Time range" value={range === "custom" ? null : range} options={RANGE_OPTIONS} onChange={chooseRange} />
             </span>
-            <NativeSelect aria-label="Time range" value={range} onChange={(event) => chooseRange(event.currentTarget.value as AnalyticsRange)} className="tw:hidden tw:w-auto tw:compact:block">
-              {RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              {range === "custom" ? <option value="custom">Custom dates</option> : null}
-            </NativeSelect>
+            <span className="tw:hidden tw:w-32 tw:compact:block">
+              <NativeSelect aria-label="Time range" value={range} onChange={(event) => chooseRange(event.currentTarget.value as AnalyticsRange)}>
+                {RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {range === "custom" ? <option value="custom">Custom dates</option> : null}
+              </NativeSelect>
+            </span>
             <span className="tw:compact:hidden">
               <Button variant="ghost" aria-haspopup="dialog" onClick={() => setFiltersOpen(true)}>
                 <Icon name="filter" size={16} />Decks and tags{filterCount > 0 ? ` (${filterCount})` : ""}

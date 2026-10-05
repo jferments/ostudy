@@ -26,12 +26,12 @@ export function TopicsPanel({ topics, goal, loading, practicingTagId, onPractice
   const [showAll, setShowAll] = useState(false);
   const reviewed = reviewedTopics(topics);
   const shown = showAll ? reviewed : reviewed.slice(0, SHOWN);
-  const goalText = goal === null ? "" : ` under your ${formatPercent(goal)} goal`;
+  const goalText = goal === null ? "" : ` against your ${formatPercent(goal)} goal`;
   return (
     <Panel
       headingLevel={2}
       title="Needs attention"
-      description={reviewed.length === 0 ? "Topics come from your tags." : `Topics${goalText}, weakest first`}
+      description={reviewed.length === 0 ? "Topics come from your tags." : `Your tags${goalText}, the ones that need attention first`}
       aria-busy={loading || undefined}
       actions={reviewed.length > SHOWN ? (
         <Button variant="text" aria-expanded={showAll} onClick={() => setShowAll((value) => !value)}>

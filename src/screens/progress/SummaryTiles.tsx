@@ -80,7 +80,7 @@ export function SummaryTiles({ overview, strength, activity, loading }: SummaryT
       <StatTile
         label="Study time"
         value={summary ? formatStudyTime(summary.studyTimeMs) : pending}
-        hint={summary && perDay > 0 ? `About ${formatStudyTime(perDay)} on a study day` : summary ? "Time spent answering" : undefined}
+        hint={summary && perDay >= 60_000 ? `About ${formatStudyTime(perDay)} on a study day` : summary && perDay > 0 ? "Under a minute on a study day" : summary ? "Time spent answering" : undefined}
       >
         {timeline.length > 1 ? <MiniBars values={timeline.map((bucket) => bucket.studyTimeMs)} /> : null}
       </StatTile>
