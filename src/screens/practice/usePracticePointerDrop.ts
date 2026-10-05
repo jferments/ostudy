@@ -19,17 +19,19 @@ interface PracticePointerDropOptions {
 }
 const DROP_TARGET_SELECTOR = "[data-practice-drop-target-id]";
 const INTERACTIVE = "a,button,input,textarea,select,audio,video,[contenteditable=true],[role=checkbox],[role=radio],[data-no-drag]";
+/** The tile's own button. Pressing it starts a drag; any other control inside a tile keeps its input. */
+const DRAG_HANDLE = "[data-drag-handle]";
 
 /** Some WebViews clear document selection as a side effect of programmatic
  * focus. Preserve it until this gesture actually owns a drag; keyboard focus
- * still moves to the tile whose native pointer-down we prevented.
+ * still moves to the tile's button whose native pointer-down we prevented.
  */
 function focusDragHandle(owner: HTMLElement): void {
   const selection = window.getSelection();
   const ranges = selection && !selection.isCollapsed
     ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
     : [];
-  owner.focus({ preventScroll: true });
+  (owner.querySelector<HTMLElement>(DRAG_HANDLE) ?? owner).focus({ preventScroll: true });
   if (selection && ranges.length > 0) {
     selection.removeAllRanges();
     for (const range of ranges) selection.addRange(range);
@@ -61,7 +63,7 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }:
       if (owner?.contains(element)) continue;
       const node = element.closest<HTMLElement>(DROP_TARGET_SELECTOR);
       if (!node || owner?.contains(node) || (scope && !scope.contains(node))) continue;
-      if (node.getAttribute("aria-disabled") === "true") continue;
+      if (node.dataset.dropDisabled === "true") continue;
       return node.dataset.practiceDropTargetId ?? null;
     }
     return null;
@@ -129,8 +131,9 @@ export function usePracticePointerDrop({ disabled, onDrop, scopeRef, resetKey }:
   function pointerDown(event: ReactPointerEvent<HTMLElement>, itemId: string): void {
     if (disabled || event.button !== 0) return;
     if (pointerRef.current) { cancel(); return; }
-    if (event.target instanceof Element && event.target !== event.currentTarget
-      && event.target.closest(INTERACTIVE)) return;
+    const control = event.target instanceof Element && event.target !== event.currentTarget
+      ? event.target.closest(INTERACTIVE) : null;
+    if (control && !control.matches(DRAG_HANDLE)) return;
     suppressClickRef.current = false;
     try { event.currentTarget.setPointerCapture(event.pointerId); }
     catch { return; }

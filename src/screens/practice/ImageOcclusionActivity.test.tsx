@@ -32,11 +32,11 @@ function receipt(input: RevealPracticeQuestionInput): ImageOcclusionAttemptView 
     revealedAtMs: 2000, answer: { text: "ANSWER_FROM_NATIVE" }, explanation: { text: "An authored explanation" },
   } };
 }
-function Harness() {
+function Harness({ actionSlot }: { actionSlot?: HTMLElement | null }) {
   const [attempt, setAttempt] = useState(initial);
   return <ImageOcclusionActivity sessionId={"1".repeat(32)} cardId={"2".repeat(32)}
     attempt={attempt} assets={[]} disabled={false} onReveal={mocks.reveal}
-    onAttempt={setAttempt} onRevealed={mocks.exposed} onError={vi.fn()} />;
+    onAttempt={setAttempt} onRevealed={mocks.exposed} onError={vi.fn()} actionSlot={actionSlot} />;
 }
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
@@ -116,5 +116,18 @@ describe("image-occlusion Practice interaction", () => {
     await act(async () => { finish(receipt(required(mocks.reveal.mock.calls[0]?.[0], "reveal input"))); });
     await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
     expect(mocks.view.mock.calls.at(-1)?.[0].targets).toEqual([]);
+  });
+
+  it("puts Reveal answer in the host's action slot and leaves the answer with the image", async () => {
+    const slot = document.createElement("div"); document.body.append(slot);
+    render(<Harness actionSlot={slot} />);
+    const reveal = screen.getByRole("button", { name: "Reveal answer" });
+    expect(slot.contains(reveal)).toBe(true);
+    fireEvent.click(reveal);
+    await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
+    expect(slot.contains(screen.getByText(/ANSWER_FROM_NATIVE/))).toBe(false);
+    expect(slot.childElementCount).toBe(0);
+    expect(screen.getByRole("heading", { name: "Answer" })).toBeTruthy();
+    slot.remove();
   });
 });

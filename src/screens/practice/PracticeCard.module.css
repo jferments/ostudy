@@ -1,24 +1,24 @@
-/* Specialized 3D flashcard/stack geometry. Ordinary controls/layout use Tailwind. */
+/* Specialized two-face card geometry. Ordinary card styling uses Tailwind. */
 @reference "../../ui/tokens/generated/viewport-variants.css";
 
 @layer components {
+  /* Cards still to come peek out behind the current one. The stack takes the card's height. */
   .stack {
-    position: relative; display: flex; min-width: 0; min-height: clamp(170px, 34vh, 420px);
-    flex: 1 1 auto; isolation: isolate; margin-block: var(--ostudy-space-3); perspective: 1200px;
+    position: relative; display: grid; min-width: 0; isolation: isolate;
   }
   .stack::before, .stack::after {
     position: absolute; inset: 0; z-index: var(--ostudy-layer-behind);
     border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-large);
-    background: var(--ostudy-color-surface-soft); box-shadow: var(--ostudy-shadow-level-1);
+    background: var(--ostudy-color-surface-soft);
     content: ""; pointer-events: none;
     transition: transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard), opacity var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
   }
-  .stack::before { opacity: 0; transform: translate3d(0, 5px, -1px) rotate(.35deg) scale(.994); }
-  .stack::after { opacity: 0; transform: translate3d(0, 10px, -2px) rotate(-.45deg) scale(.986); }
-  .stack[data-layers="1"]::before, .stack[data-layers="2"]::before { opacity: .9; }
-  .stack[data-layers="2"]::after { opacity: .68; }
+  .stack::before { opacity: 0; transform: translate3d(0, 5px, -1px) scale(.985); }
+  .stack::after { opacity: 0; transform: translate3d(0, 10px, -2px) scale(.97); }
+  .stack[data-layers="1"]::before, .stack[data-layers="2"]::before { opacity: 1; }
+  .stack[data-layers="2"]::after { opacity: .7; }
   .stack > .cardSurface {
-    position: relative; z-index: var(--ostudy-layer-raised); width: 100%; min-height: inherit;
+    position: relative; z-index: var(--ostudy-layer-raised); min-width: 0;
     animation: stackEnter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter);
   }
   @keyframes stackEnter {
@@ -29,20 +29,26 @@
   :root[data-motion="none"] .stack::before, :root[data-motion="none"] .stack::after { transition: none; }
   :root[data-motion="reduced"] .stack > .cardSurface,
   :root[data-motion="none"] .stack > .cardSurface { animation: none; }
-  .stack { @variant compact { min-height: clamp(190px, 42vh, 430px); margin-block: var(--ostudy-space-2); } }
-  .stack::before { @variant compact { transform: translate3d(0, 4px, -1px) scale(.994); } }
-  .stack::after { @variant compact { transform: translate3d(0, 8px, -2px) scale(.988); } }
-  .flipCard { position: relative; min-height: inherit; overflow: hidden; padding: 0; cursor: pointer; perspective: 1200px; isolation: isolate; }
+  .stack::before { @variant compact { transform: translate3d(0, 4px, -1px) scale(.985); } }
+  .stack::after { @variant compact { transform: translate3d(0, 8px, -2px) scale(.97); } }
+
+  /* Each face is a whole card (frame and all) so the frame turns with it. The visible face sizes
+   * the card, so a short card stays short and a long one grows; the face turning away rides along
+   * on top of it, clipped to that size until it has turned. */
+  .flipCard { position: relative; cursor: pointer; perspective: 1200px; isolation: isolate; }
   .flipInner {
-    position: relative; height: 100%; min-height: inherit; transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
-    transition: transform var(--ostudy-motion-duration-flip) var(--ostudy-motion-ease-standard); will-change: transform;
+    position: relative; display: grid; min-height: inherit;
+    transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+    transition: transform var(--ostudy-motion-duration-flip) var(--ostudy-motion-ease-standard);
   }
   .flipCard[data-flipped="true"] .flipInner { transform: rotateY(180deg); }
   .flipFace {
-    position: absolute; inset: 0; min-width: 0; overflow: auto; border-radius: inherit;
-    padding: clamp(1.5rem, 4vw, 2.5rem); background: var(--ostudy-color-surface-base);
+    position: relative; min-width: 0;
     backface-visibility: hidden; -webkit-backface-visibility: hidden;
     transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+  }
+  .flipCard[data-flipped="false"] .flipBack, .flipCard[data-flipped="true"] .flipFront {
+    position: absolute; inset: 0; overflow: hidden;
   }
   .flipFront { z-index: var(--ostudy-layer-focus); transform: rotateY(0deg) translateZ(1px); -webkit-transform: rotateY(0deg) translateZ(1px); }
   .flipBack { z-index: var(--ostudy-layer-selected); transform: rotateY(180deg) translateZ(1px); -webkit-transform: rotateY(180deg) translateZ(1px); }
