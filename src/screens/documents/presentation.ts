@@ -26,18 +26,12 @@ export const providerStyles = {
 } as const;
 
 export const guideLibraryStyles = {
-  "workspace": "tw:p-4 tw:sm:p-5",
+  "workspace": "tw:p-(--card-gutter)",
   "toolbar": "tw:mb-4 tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:justify-between tw:gap-4",
   "search": "tw:max-sm:w-full tw:max-sm:flex-[0_1_auto] tw:max-sm:[&>label]:w-full tw:max-sm:[&>label]:max-w-none tw:max-sm:[&>label]:flex-[0_1_auto] tw:flex tw:min-w-0 tw:flex-1 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:flex-1 tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
   "tools": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
   "summary": "tw:mb-3 tw:flex tw:flex-wrap tw:justify-between tw:gap-2 tw:text-small tw:text-muted-foreground",
-  "list": "tw:grid tw:min-w-0 tw:gap-1",
-  "row": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-3 tw:rounded-lg tw:px-2 tw:py-2 tw:transition-colors tw:hover:bg-muted/40 tw:reduce-motion:transition-none",
-  "rowMain": "tw:h-auto tw:min-w-0 tw:flex-1 tw:justify-start tw:whitespace-normal tw:rounded-lg tw:border-0 tw:bg-transparent tw:p-1 tw:text-left tw:font-normal tw:shadow-none",
-  "rowIcon": "tw:grid tw:size-8 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-muted tw:text-muted-foreground",
-  "rowCopy": "tw:grid tw:min-w-0 tw:gap-1 tw:[&>strong]:break-words tw:[&>strong]:text-small tw:[&>strong]:font-medium tw:[&>small]:break-all tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
-  "metrics": "tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:text-caption tw:tabular-nums tw:text-muted-foreground",
-  "actions": "tw:shrink-0",
+  "metrics": "tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:tabular-nums",
   "pagination": "tw:mt-4 tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2 tw:text-small tw:tabular-nums tw:text-muted-foreground"
 } as const;
 

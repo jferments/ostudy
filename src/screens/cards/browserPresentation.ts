@@ -1,13 +1,14 @@
 // Ordinary card-management layout. Domain behavior stays in its controllers.
 const styles = {
   deckCardSearch: "tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:data-[expanded=true]:flex-1 tw:data-[expanded=true]:basis-64 tw:data-[expanded=true]:max-w-md tw:[&_label]:min-w-0 tw:[&_label]:flex-1 tw:max-[560px]:data-[expanded=true]:basis-full",
-  organizedCardMain: "tw:grid tw:min-w-0 tw:h-auto tw:justify-items-start tw:justify-start tw:gap-1.5 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-3 tw:text-start tw:font-normal tw:whitespace-normal tw:shadow-none tw:hover:bg-transparent",
+  organizedCardMain: "tw:grid tw:min-w-0 tw:h-auto tw:justify-items-start tw:justify-start tw:gap-0 tw:rounded-none tw:border-0 tw:bg-transparent tw:p-3 tw:text-start tw:font-normal tw:whitespace-normal tw:shadow-none tw:hover:bg-transparent",
   cardBrowserHeading: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-4 tw:py-3 tw:[&_h2]:m-0 tw:[&_h2]:text-body tw:[&_h2]:font-medium",
   organizedCardMeta: "tw:grid tw:min-w-0 tw:content-center tw:justify-items-end tw:gap-1 tw:px-3 tw:py-2.5 tw:text-caption tw:text-muted-foreground tw:compact:col-start-2 tw:compact:justify-items-start tw:compact:pt-0",
   cardListingLine: "tw:grid tw:min-w-0 tw:grid-cols-[1.5rem_minmax(0,1fr)] tw:items-baseline tw:gap-2 tw:[&>strong]:truncate tw:[&>strong]:text-small tw:[&>strong]:font-medium",
   cardLibrarySummary: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-muted/25 tw:px-4 tw:py-2.5",
   screenHeader: "tw:flex tw:items-center tw:justify-between tw:gap-4 tw:py-2 tw:[&_h1]:m-0 tw:[&_h1]:text-section tw:[&_h1]:font-semibold",
-  cardLibraryPanel: "tw:min-w-0 tw:overflow-hidden tw:rounded-xl tw:bg-card tw:ring-1 tw:ring-border",
+  // Applied to the shared Card, which owns the surface; the panel keeps its block flow, edge-to-edge rows and body text.
+  cardLibraryPanel: "tw:block tw:py-0 tw:text-body",
   organizedCardDeck: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:text-caption tw:font-medium tw:text-muted-foreground",
   selectionButtons: "tw:ml-auto tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-1.5 tw:max-[560px]:w-full",
   organizedCardTags: "tw:flex tw:flex-wrap tw:gap-1 tw:has-[small]:hidden tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground",
@@ -29,13 +30,12 @@ const styles = {
   bulkEntryDestination: "tw:grid tw:gap-1 tw:text-small tw:[&_span]:text-muted-foreground",
   duplicateRowLabel: "tw:col-span-full tw:text-caption tw:text-warning",
   bulkAddRows: "tw:justify-self-start",
-  bulkEntryActions: "tw:flex-wrap",
   modalHelpText: "tw:m-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground",
   deleteCardsForm: "tw:grid tw:gap-4",
   compactCheckbox: "tw:flex tw:min-w-0 tw:items-center tw:gap-2.5 tw:text-small",
   moveCopyDestination: "tw:grid tw:min-w-0 tw:gap-1.5 tw:text-small",
   practiceResultOption: "tw:grid tw:gap-2 tw:rounded-lg tw:bg-muted/30 tw:p-3 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small tw:[&_p]:m-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground tw:[&_h3]:m-0 tw:[&_h3]:text-small tw:[&_h3]:font-medium tw:[&_button]:justify-self-start",
-  scheduleActionOptions: "tw:my-4 tw:grid tw:gap-3 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small",
+  scheduleActionOptions: "tw:grid tw:gap-3 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small",
   mutedCopy: "tw:text-small tw:text-muted-foreground",
   organizedCardRow: "tw:grid tw:min-w-0 tw:grid-cols-[3rem_minmax(0,1fr)_auto] tw:border-0 tw:border-b tw:border-solid tw:border-border tw:last:border-b-0 tw:hover:bg-muted/30 tw:compact:grid-cols-[3rem_minmax(0,1fr)]",
 } as const;

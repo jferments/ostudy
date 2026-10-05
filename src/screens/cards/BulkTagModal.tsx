@@ -4,7 +4,7 @@ import { bulkTagCards, type SelectionCard, type TagChangeMode, type TagSummary }
 import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface BulkTagModalProps {
@@ -50,7 +50,13 @@ export function BulkTagModal({ cards, mode, suggestions, onClose, onComplete, sh
     <Dialog title={adding ? "Add tags to selected cards" : "Remove tags from selected cards"}
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
       width="medium" busy={isSaving} dismissible={!isSaving}
-      onClose={() => { if (!isSaving) onClose(); }}>
+      onClose={() => { if (!isSaving) onClose(); }}
+      actions={<>
+        <Button variant="secondary" disabled={isSaving} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={isSaving || tags.length === 0} onClick={() => void submit()}>
+          {isSaving ? "Saving…" : adding ? "Add tags" : "Remove tags"}
+        </Button>
+      </>}>
       <div className={styles.screen} aria-busy={isSaving}>
         <TagInput tags={tags} suggestions={suggestions} disabled={isSaving}
           onChange={(nextTags) => { setTags(nextTags); setErrorMessage(null); }} />
@@ -59,12 +65,6 @@ export function BulkTagModal({ cards, mode, suggestions, onClose, onComplete, sh
             : "Only the tags listed here will be removed; all other tags are preserved."}
         </p>
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-        <DialogActions>
-          <Button variant="secondary" disabled={isSaving} onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={isSaving || tags.length === 0} onClick={() => void submit()}>
-            {isSaving ? "Saving…" : adding ? "Add tags" : "Remove tags"}
-          </Button>
-        </DialogActions>
       </div>
     </Dialog>
   );

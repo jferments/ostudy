@@ -396,9 +396,11 @@ describe("Document collections workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ New collection" }));
     const dialog = await screen.findByRole("dialog", { name: "Create document collection" });
     expect(dialog.getAttribute("data-width")).toBe("small");
-    const body = dialog.querySelector("[data-collection-dialog-body]");
-    expect(body?.className).toContain("tw:p-4");
-    expect(body?.className).toContain("tw:min-w-0");
+    // The shared dialog structure owns the scrolling body and the pinned actions.
+    const body = dialog.querySelector("[data-slot='dialog-body']");
+    const actions = dialog.querySelector("[data-slot='dialog-actions']");
+    expect(body?.contains(within(dialog).getByRole("textbox", { name: "Name" }))).toBe(true);
+    expect(actions?.contains(within(dialog).getByRole("button", { name: "Save" }))).toBe(true);
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), {
       target: { value: "Week 2" },
     });

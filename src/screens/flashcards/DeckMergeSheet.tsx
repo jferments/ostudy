@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { DeckSummary } from "../../ipc/decks";
-import { DialogActions, Sheet } from "../../ui/overlays/Dialog";
+import { Sheet } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
@@ -42,16 +42,23 @@ export function DeckMergeSheet({
       onClose={onClose}
       busy={busy}
       dismissible={!busy}
+      onSubmit={() => {
+        if (!destinationDeckId) return;
+        setAttempted(true);
+        void onMerge(destinationDeckId);
+      }}
+      actions={<>
+        <Button type="button" disabled={busy} onClick={onClose}>Cancel</Button>
+        <Button
+          type="submit"
+          variant="primary"
+          loading={busy}
+          disabled={busy || destinationDeckId === ""}
+        >
+          {attempted && !busy ? "Retry merge" : "Merge decks"}
+        </Button>
+      </>}
     >
-      <form
-        className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4 tw:sm:p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!destinationDeckId) return;
-          setAttempted(true);
-          void onMerge(destinationDeckId);
-        }}
-      >
         <label className="tw:grid tw:gap-2">
           <span>Destination deck</span>
           <NativeSelect
@@ -82,19 +89,6 @@ export function DeckMergeSheet({
             identity and destination instead of moving cards twice.
           </p>
         ) : null}
-
-        <DialogActions>
-          <Button type="button" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={busy}
-            disabled={busy || destinationDeckId === ""}
-          >
-            {attempted && !busy ? "Retry merge" : "Merge decks"}
-          </Button>
-        </DialogActions>
-      </form>
     </Sheet>
   );
 }

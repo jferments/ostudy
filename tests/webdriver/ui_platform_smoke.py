@@ -453,7 +453,7 @@ def assert_dialog_viewport_bounds(session_id: str, label: str) -> None:
         """
         const dialog = [...document.querySelectorAll("[data-slot='dialog-overlay']")].at(-1);
         const card = [...document.querySelectorAll("[data-overlay-id][aria-modal='true']")].at(-1);
-        const body = card?.querySelector(":scope > div:last-child");
+        const body = card?.querySelector("[data-slot='dialog-body']");
         if (!(dialog instanceof HTMLElement) || !(card instanceof HTMLElement) || !(body instanceof HTMLElement)) {
           return null;
         }

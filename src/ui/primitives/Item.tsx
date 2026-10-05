@@ -9,4 +9,5 @@ export {
   ItemMedia,
   ItemSeparator,
   ItemTitle,
+  ItemTrigger,
 } from "../vendor/shadcn/item";

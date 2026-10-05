@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 
 import { sameStudyScope, scopeMembers, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import type { ConversationSummary, TutorProject } from "../../ipc/tutor";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
@@ -60,6 +60,12 @@ function ProjectEditor({
       onClose={onClose}
       busy={tutor.organizing}
       width="medium"
+      actions={<>
+        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={tutor.organizing || !title.trim()} onClick={() => { void save(); }}>
+          {project ? "Save project" : "Create project"}
+        </Button>
+      </>}
     >
       <label className={styles.field} htmlFor={`${id}-project-title`}>
         Project name
@@ -102,12 +108,6 @@ function ProjectEditor({
         <Button disabled={tutor.organizing} onClick={() => setSourcesOpen(true)}>Choose sources</Button>
       </div>
       <p className={styles.muted}>New chats inherit the current defaults. Existing chats and historical Tutor turns keep the sources they already captured.</p>
-      <DialogActions>
-        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={tutor.organizing || !title.trim()} onClick={() => { void save(); }}>
-          {project ? "Save project" : "Create project"}
-        </Button>
-      </DialogActions>
       {sourcesOpen ? (
         <TutorSources
           title="Default project sources"
@@ -141,7 +141,11 @@ function RenameConversationDialog({
   }
 
   return (
-    <Dialog title="Rename conversation" onClose={onClose} busy={tutor.organizing} width="small">
+    <Dialog title="Rename conversation" onClose={onClose} busy={tutor.organizing} width="small"
+      actions={<>
+        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={tutor.organizing || !title.trim()} onClick={() => { void save(); }}>Rename</Button>
+      </>}>
       <label className={styles.field} htmlFor={`${id}-conversation-title`}>
         Conversation name
         <TextField
@@ -152,10 +156,6 @@ function RenameConversationDialog({
           onChange={(event) => setTitle(event.currentTarget.value)}
         />
       </label>
-      <DialogActions>
-        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={tutor.organizing || !title.trim()} onClick={() => { void save(); }}>Rename</Button>
-      </DialogActions>
     </Dialog>
   );
 }
@@ -186,6 +186,10 @@ function MoveConversationDialog({
       onClose={onClose}
       busy={tutor.organizing}
       width="small"
+      actions={<>
+        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={tutor.organizing || unchanged} onClick={() => { void move(); }}>Move conversation</Button>
+      </>}
     >
       <label className={styles.field} htmlFor={`${id}-project`}>
         Destination
@@ -212,10 +216,6 @@ function MoveConversationDialog({
         Use destination project's current default sources
       </label>
       <p className={styles.muted}>When this is off, the conversation keeps its current sources exactly.</p>
-      <DialogActions>
-        <Button disabled={tutor.organizing} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={tutor.organizing || unchanged} onClick={() => { void move(); }}>Move conversation</Button>
-      </DialogActions>
     </Dialog>
   );
 }

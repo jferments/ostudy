@@ -89,7 +89,7 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
             disabled={disabled || !input}
             aria-label={tool.label}
             title={`${tool.label}: ${tool.description}`}
-            className="tw:min-h-12 tw:min-w-0 tw:px-2 tw:py-2 tw:[&>span]:min-w-0"
+            className="tw:min-h-12 tw:min-w-0 tw:px-2 tw:py-2"
             // Keep the MathLive selection active for pointer users so #@/#0
             // can wrap it. Keyboard users retain MathLive's internal selection.
             onPointerDown={(event) => event.preventDefault()}

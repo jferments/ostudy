@@ -6,7 +6,7 @@ import type { DeckSummary } from "../../ipc/decks";
 import type { OperationProgress } from "../../ipc/operationProgress";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { Icon } from "../../ui/icons/Icon";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { Badge } from "../../ui/primitives/Badge";
 import { Panel } from "../../ui/primitives/Panel";
@@ -110,8 +110,17 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
       : exportDecks.length === 1 ? "Save a portable .studydeck file, or share it through the operating system when available."
         : "Each selected deck is saved as its own portable .studydeck file.";
 
-  return <Dialog title={title} description={description} width="medium" busy={busy !== null} dismissible={busy === null} onClose={onClose}>
-    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:p-4 tw:sm:p-5">
+  return <Dialog title={title} description={description} width="medium" busy={busy !== null} dismissible={busy === null} onClose={onClose}
+    actions={<>
+      <Button variant="ghost" disabled={busy !== null} onClick={onClose}>{importedOutcome ? "Close" : "Cancel"}</Button>
+      {importedOutcome ? <Button variant="primary" onClick={() => void openImportedDeck(importedOutcome)}>{onImportedDeck ? "Open imported deck" : "Done"}</Button>
+        : importing ? <Button variant="primary" loading={busy === "import"} onClick={() => void importDeck()}>{busy === "import" ? "Importing…" : "Import deck"}</Button>
+          : <>
+            {canShare ? <Button variant="secondary" loading={busy === "share"} disabled={busy !== null} onClick={() => void shareDeck()}><Icon name="export" size={18} /> Share</Button> : null}
+            <Button variant="primary" loading={busy === "export"} disabled={busy !== null || exportDecks.length === 0} onClick={() => void saveDecks()}><Icon name="save" size={18} />{exportDecks.length === 1 ? "Save file" : "Save deck files"}</Button>
+          </>}
+    </>}>
+    <div className="tw:grid tw:min-w-0 tw:gap-6">
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {importedOutcome?.ankiReport ? <AnkiImportReportView report={importedOutcome.ankiReport} message={importedOutcome.message} />
         : activeAnkiProgress ? <AnkiProgressView progress={activeAnkiProgress} />
@@ -129,15 +138,6 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
               </li>)}
             </ul>
           </Panel>}
-      <DialogActions>
-        <Button variant="ghost" disabled={busy !== null} onClick={onClose}>{importedOutcome ? "Close" : "Cancel"}</Button>
-        {importedOutcome ? <Button variant="primary" onClick={() => void openImportedDeck(importedOutcome)}>{onImportedDeck ? "Open imported deck" : "Done"}</Button>
-          : importing ? <Button variant="primary" loading={busy === "import"} onClick={() => void importDeck()}>{busy === "import" ? "Importing…" : "Import deck"}</Button>
-            : <>
-              {canShare ? <Button variant="secondary" loading={busy === "share"} disabled={busy !== null} onClick={() => void shareDeck()}><Icon name="export" size={18} /> Share</Button> : null}
-              <Button variant="primary" loading={busy === "export"} disabled={busy !== null || exportDecks.length === 0} onClick={() => void saveDecks()}><Icon name="save" size={18} />{exportDecks.length === 1 ? "Save file" : "Save deck files"}</Button>
-            </>}
-      </DialogActions>
     </div>
   </Dialog>;
 }

@@ -11,7 +11,7 @@ import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { Panel } from "../../ui/primitives/Panel";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import styles from "./browserPresentation";
 
 interface PracticeResultsModalProps {
@@ -95,7 +95,8 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
   return (
     <Dialog title="Practice these cards"
       description={`${cards.length} selected ${cards.length === 1 ? "card" : "cards"} from ${sourceLabel}.`}
-      width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!busyRef.current) onClose(); }}>
+      width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!busyRef.current) onClose(); }}
+      actions={<Button variant="secondary" disabled={isSaving} onClick={onClose}>Close</Button>}>
       <div className={styles.screen} aria-busy={isSaving}>
         <Panel title="Temporary practice set"
           description="Start practicing these cards now without changing their current decks or creating a permanent deck.">
@@ -114,7 +115,6 @@ export function PracticeResultsModal({ cards, sourceLabel, refreshDecks, onPract
         {committed ? <InlineNotice kind="info">{committedMessage(committed)}</InlineNotice> : null}
         {reconciliationMessage ? <InlineNotice kind="info">{reconciliationMessage}</InlineNotice> : null}
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-        <DialogActions><Button variant="secondary" disabled={isSaving} onClick={onClose}>Close</Button></DialogActions>
       </div>
     </Dialog>
   );

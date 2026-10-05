@@ -6,7 +6,7 @@ import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { scheduleActionNotice } from "./scheduleActionResult";
 import styles from "./browserPresentation";
 
@@ -84,7 +84,13 @@ export function ScheduleActionModal({ cards, action, onClose, onComplete, showTo
   return (
     <Dialog title={action === "reset" ? "Reset schedule" : "Reschedule cards"}
       description={`${cards.length} ${cards.length === 1 ? "card" : "cards"} selected`}
-      width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => close()}>
+      width="medium" busy={isSaving} dismissible={!isSaving} onClose={() => close()}
+      actions={<>
+        <Button variant="secondary" disabled={isSaving} onClick={close}>Cancel</Button>
+        <Button variant={action === "reset" ? "danger" : "primary"} disabled={isSaving} onClick={() => void submit()}>
+          {isSaving ? "Applying…" : action === "reset" ? "Reset schedule" : "Reschedule"}
+        </Button>
+      </>}>
       {action === "reset" ? (
         <InlineNotice kind="warning">
           The selected cards will become New and ready now. Existing review history remains
@@ -116,12 +122,6 @@ export function ScheduleActionModal({ cards, action, onClose, onComplete, showTo
         </div>
       )}
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-      <DialogActions>
-        <Button variant="secondary" disabled={isSaving} onClick={close}>Cancel</Button>
-        <Button variant={action === "reset" ? "danger" : "primary"} disabled={isSaving} onClick={() => void submit()}>
-          {isSaving ? "Applying…" : action === "reset" ? "Reset schedule" : "Reschedule"}
-        </Button>
-      </DialogActions>
     </Dialog>
   );
 }

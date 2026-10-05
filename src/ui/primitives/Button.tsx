@@ -42,8 +42,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
     >
-      {/* Opacity preserves both layout and the action's accessible name while busy. */}
-      <span className={loading ? "tw:opacity-0" : undefined}>{children}</span>
+      {/* The label slot adds no box while idle, so an icon and its text are
+          direct flex items of the button: centered, and spaced by its gap.
+          While busy it keeps their layout and the accessible name but hides them. */}
+      <span
+        data-slot="button-label"
+        className={loading
+          ? "tw:inline-flex tw:items-center tw:justify-center tw:gap-[inherit] tw:opacity-0"
+          : "tw:contents"}
+      >
+        {children}
+      </span>
       {loading ? (
         <span aria-hidden="true" className="tw:absolute tw:inset-0 tw:grid tw:place-items-center tw:text-caption tw:font-medium">
           Working…

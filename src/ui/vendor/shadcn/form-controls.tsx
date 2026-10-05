@@ -78,9 +78,33 @@ export function DisclosureContent({ className, ...props }: Styled<Collapsible.Pa
   return <Collapsible.Panel {...props} data-slot="collapsible-content" className={cn("tw:px-3 tw:pb-4", className)} />;
 }
 
+/**
+ * The segmented track: a pill on the card surface whose options fill its height. When the options
+ * cannot share one row, whole options move to a second row instead of squeezing their labels, and
+ * the corner radius stops at half a row so the track stays a rounded rectangle.
+ */
 export function SegmentedRadioGroup({ className, ...props }: Styled<RadioGroupPrimitive.Props>) {
-  return <RadioGroupPrimitive {...props} aria-orientation="horizontal" data-slot="segmented-control" className={cn("tw:inline-flex tw:flex-wrap tw:gap-1 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-muted tw:p-1", className)} />;
+  return <RadioGroupPrimitive {...props} aria-orientation="horizontal" data-slot="segmented-control" className={cn(
+    "tw:inline-flex tw:w-fit tw:min-w-0 tw:max-w-full tw:flex-wrap tw:gap-0.5 tw:rounded-[min(var(--ostudy-radius-button),calc(var(--touch-target-min)/2_+_1px))] tw:border tw:border-solid tw:border-border tw:bg-card tw:px-1",
+    className,
+  )} />;
 }
+/**
+ * One segment. The button is the whole touch target at every pointer size, and the pill it draws
+ * sits 4 px inside it, so the track keeps the mockups' proportions without shrinking the target.
+ * A label wider than the whole track wraps rather than clips.
+ */
 export function SegmentedRadioItem({ className, children, ...props }: Styled<RadioPrimitive.Root.Props>) {
-  return <RadioPrimitive.Root {...props} nativeButton render={<button type="button" />} className={cn("tw:min-h-10 tw:rounded-lg tw:border tw:border-solid tw:border-transparent tw:bg-transparent tw:px-3 tw:py-2 tw:text-label tw:font-medium tw:text-muted-foreground tw:data-checked:border-border tw:data-checked:bg-background tw:data-checked:text-foreground tw:data-disabled:opacity-50 tw:coarse:min-h-touch", focus, className)}>{children}</RadioPrimitive.Root>;
+  return <RadioPrimitive.Root {...props} nativeButton render={<button type="button" />} data-slot="segmented-control-item" className={cn(
+    "tw:relative tw:inline-flex tw:min-h-touch tw:min-w-touch tw:max-w-full tw:flex-[1_1_auto] tw:cursor-pointer tw:items-center tw:justify-center tw:border-0 tw:bg-transparent tw:px-3.5 tw:py-2 tw:text-center tw:font-sans tw:text-small tw:font-medium tw:break-words tw:text-(--ostudy-color-text-secondary) tw:outline-none tw:select-none tw:compact:px-1.5 tw:compact:text-label",
+    "tw:before:absolute tw:before:inset-x-0 tw:before:inset-y-1 tw:before:rounded-button tw:before:transition-colors tw:before:duration-(--ostudy-motion-duration-fast) tw:reduce-motion:before:transition-none",
+    "tw:data-unchecked:hover:text-foreground tw:data-unchecked:hover:before:bg-muted",
+    "tw:data-checked:font-semibold tw:data-checked:text-accent-foreground tw:data-checked:before:bg-accent",
+    "tw:focus-visible:shadow-none tw:focus-visible:before:shadow-focus",
+    "tw:data-disabled:pointer-events-none tw:data-disabled:opacity-50",
+    className,
+  )}>
+    {/* Positioned after the pill, so the label paints above it. */}
+    <span className="tw:relative tw:min-w-0">{children}</span>
+  </RadioPrimitive.Root>;
 }

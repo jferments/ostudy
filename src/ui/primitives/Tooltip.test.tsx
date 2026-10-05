@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dialog } from "../overlays/Dialog";
@@ -63,6 +64,14 @@ describe("Tooltip", () => {
     document.documentElement.dataset.theme = theme;
     const trigger = renderTooltip(); fireEvent.focus(trigger);
     expect(screen.getByRole("tooltip").textContent).toBe("Helpful context");
+  });
+  it("floats at the overlay shadow level that menus and toasts use, above the card level", () => {
+    const bridge = readFileSync("src/ui/tokens/generated/tailwind-theme.css", "utf8");
+    const token = (step: string) => new RegExp(`--shadow-${step}: var\\((--ostudy-[a-z0-9-]+)\\);`, "u").exec(bridge)?.[1];
+    const trigger = renderTooltip(); fireEvent.focus(trigger);
+    const steps = screen.getByRole("tooltip").className.split(/\s+/u).map((name) => /^tw:shadow-([a-z]+)$/u.exec(name)?.[1]).filter(Boolean);
+    expect(steps.map((step) => token(step!))).toEqual([token("overlay")]);
+    expect(token("overlay")).not.toBe(token("panel"));
   });
   it.each(["reduced", "none"])("preserves content in %s-motion mode", (motion) => {
     document.documentElement.dataset.motion = motion;

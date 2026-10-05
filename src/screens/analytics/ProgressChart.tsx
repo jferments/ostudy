@@ -5,6 +5,7 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import type { AnalyticsRange, TimelineBucket } from "../../ipc/analytics";
+import { chartAxis, chartLegend, chartTooltip, distinctPaletteColors, useChartTheme } from "../../ui/charts/chartTheme";
 import { useAnimationsEnabled } from "../../ui/hooks/useAnimationsEnabled";
 import { buildDifficultyTimelineSeries } from "./difficultySeries";
 import { styles } from "./presentation";
@@ -19,24 +20,29 @@ type LineChartData = ChartData<"line", ChartPoint[], string>;
 export function ProgressChart({ buckets, range }: ProgressChartProps) {
   const animationsEnabled = useAnimationsEnabled();
   const motionDisabled = !animationsEnabled;
-  const colors = readChartColors();
+  const theme = useChartTheme();
   const labels = useMemo(() => buckets.map((bucket) => formatBucketLabel(bucket.startAt, range)), [buckets, range]);
   const series = useMemo(() => buildDifficultyTimelineSeries(buckets), [buckets]);
-  const data = useMemo<LineChartData>(() => ({ labels, datasets: [
-    lineDataset("Cards reviewed", series.reviewed, colors.accent, buckets),
-    lineDataset("Wrong", series.wrong, colors.wrong, buckets),
-    lineDataset("Hard", series.hard, colors.hard, buckets),
-    lineDataset("Medium", series.medium, colors.medium, buckets),
-    lineDataset("Easy", series.easy, colors.easy, buckets),
-  ] }), [buckets, colors, labels, series]);
+  const data = useMemo<LineChartData>(() => {
+    const [wrong, hard, medium, easy] = theme.ratings;
+    // The total takes the first palette color that no rating color resembles, and the middle
+    // ratings are dashed, because Wrong and Hard are close in hue in several themes.
+    const [reviewed = theme.palette[0] ?? ""] = distinctPaletteColors(theme, 1, theme.ratings);
+    return { labels, datasets: [
+      lineDataset("Cards reviewed", series.reviewed, reviewed, buckets, { width: 2.5 }),
+      lineDataset("Wrong", series.wrong, wrong, buckets),
+      lineDataset("Hard", series.hard, hard, buckets, { dash: [7, 4] }),
+      lineDataset("Medium", series.medium, medium, buckets, { dash: [2, 3] }),
+      lineDataset("Easy", series.easy, easy, buckets),
+    ] };
+  }, [buckets, labels, series, theme]);
   const options = useMemo<ChartOptions<"line">>(() => ({
     responsive: true, maintainAspectRatio: false, animation: motionDisabled ? false : { duration: 260 },
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { position: "top", align: "start", labels: { color: colors.textSoft, usePointStyle: true, boxWidth: 9 } },
+      legend: { position: "top", align: "start", ...chartLegend(theme) },
       tooltip: {
-        backgroundColor: colors.surfaceRaised, titleColor: colors.text, bodyColor: colors.textSoft,
-        borderColor: colors.border, borderWidth: 1,
+        ...chartTooltip(theme),
         callbacks: { afterBody(items) {
           const bucket = buckets[items[0]?.dataIndex ?? 0];
           if (!bucket) return [];
@@ -47,32 +53,21 @@ export function ProgressChart({ buckets, range }: ProgressChartProps) {
       },
     },
     scales: {
-      x: { grid: { display: false }, ticks: { color: colors.muted, maxRotation: 0, autoSkip: true }, border: { color: colors.border } },
-      y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.muted, precision: 0 },
-        border: { color: colors.border }, title: { display: true, text: "Reviews", color: colors.muted } },
+      x: { ...chartAxis(theme, { grid: false }), ticks: { ...chartAxis(theme).ticks, maxRotation: 0, autoSkip: true } },
+      y: { ...chartAxis(theme, { title: "Reviews" }), beginAtZero: true, ticks: { ...chartAxis(theme).ticks, precision: 0 } },
     },
-  }), [buckets, colors, motionDisabled]);
+  }), [buckets, motionDisabled, theme]);
   return <div className={styles.progressChartCanvas}>
     <Chart type="line" data={data} options={options} role="img" aria-label={buildAriaLabel(buckets)} />
   </div>;
 }
-function lineDataset(label: string, values: number[], color: string, buckets: TimelineBucket[]): ChartDataset<"line", ChartPoint[]> {
+function lineDataset(label: string, values: number[], color: string, buckets: TimelineBucket[],
+  { width = 2, dash = [] }: { width?: number; dash?: number[] } = {}): ChartDataset<"line", ChartPoint[]> {
   return {
-    label, data: values, borderColor: color, backgroundColor: color, pointBackgroundColor: color,
+    label, data: values, borderColor: color, backgroundColor: color, pointBackgroundColor: color, borderWidth: width, borderDash: dash,
     pointBorderColor: buckets.map((bucket) => bucket.containsHighlightedSession ? color : "transparent"),
     pointBorderWidth: buckets.map((bucket) => bucket.containsHighlightedSession ? 3 : 0),
     pointRadius: buckets.map((bucket) => bucket.containsHighlightedSession ? 5 : 3), spanGaps: false, tension: 0.24,
-  };
-}
-interface ChartColors { accent: string; wrong: string; hard: string; medium: string; easy: string; surfaceRaised: string; text: string; textSoft: string; muted: string; border: string; grid: string; }
-function readChartColors(): ChartColors {
-  const style = getComputedStyle(document.documentElement);
-  const value = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-  return {
-    accent: value("--accent", "#78a9ff"), wrong: value("--confidence-wrong", "#b4233b"),
-    hard: value("--confidence-hard", "#c45d16"), medium: value("--confidence-medium", "#d8a000"), easy: value("--confidence-easy", "#197a46"),
-    surfaceRaised: value("--surface-raised", "#182235"), text: value("--text", "#edf3fb"),
-    textSoft: value("--text-soft", "#b6c1d2"), muted: value("--muted", "#7f8da4"), border: value("--border", "#2b3950"), grid: value("--border", "#2b3950"),
   };
 }
 function formatBucketLabel(value: number, range: AnalyticsRange): string {

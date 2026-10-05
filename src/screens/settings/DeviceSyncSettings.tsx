@@ -268,7 +268,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     : "Waiting for the Android device to accept the request…";
 
   return (
-    <Panel title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
+    <Panel headingLevel={2} title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
       actions={<Button variant="text" disabled={busyAction !== null} onClick={() => void refresh()}>Refresh</Button>}>
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {!state && busyAction === "refresh" ? <InlineProgress>Opening the device synchronization store…</InlineProgress> : null}
@@ -306,7 +306,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <Button disabled={busyAction !== null || !state.localNetworkAvailable || !hasSelectedCategory} onClick={() => void hostPairing()}>
               {busyAction === "host" ? "Opening listener…" : hasUnclaimedSendingOffer ? "Replace with network offer" : "Create network sync offer"}
             </Button>
-            {invitation && qrSource ? <div className="tw:grid tw:justify-items-center tw:gap-4 tw:rounded-xl tw:border tw:border-solid tw:border-primary tw:bg-accent tw:p-4">
+            {invitation && qrSource ? <div className="tw:grid tw:justify-items-center tw:gap-4 tw:rounded-md tw:border tw:border-solid tw:border-primary tw:bg-accent tw:p-4">
               <div className={styles.qrFrame}><img src={qrSource} alt="QR code containing the short-lived ostudy synchronization offer" /></div>
               <div className="tw:grid tw:w-full tw:min-w-0 tw:gap-2 tw:break-words tw:text-label">
                 <strong>Expires {formatDateTime(invitation.expiresAt)}</strong><span>Local network · {invitation.endpoint}</span><code>{formatFingerprint(invitation.fingerprint)}</code>

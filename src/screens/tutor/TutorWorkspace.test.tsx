@@ -73,13 +73,12 @@ vi.mock("../../ui/overlays/overlayContext", () => {
 });
 vi.mock("./TutorMemoryControls", () => ({ TutorMemoryControls: () => null }));
 vi.mock("../../ui/overlays/Dialog", () => ({
-  Dialog: ({ title, children }: { title: string; children: ReactNode }) => (
-    <section role="dialog" aria-label={title}>{children}</section>
+  Dialog: ({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) => (
+    <section role="dialog" aria-label={title}>{children}<div>{actions}</div></section>
   ),
-  Sheet: ({ title, children }: { title: string; children: ReactNode }) => (
-    <section role="dialog" aria-label={title}>{children}</section>
+  Sheet: ({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) => (
+    <section role="dialog" aria-label={title}>{children}<div>{actions}</div></section>
   ),
-  DialogActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 const scope = { kind: "deck" as const, id: "a".repeat(32) };
