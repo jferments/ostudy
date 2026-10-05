@@ -120,20 +120,12 @@ pub fn workload_overview_for_scope(
             })
             .map_err(CommandError::database)?;
 
-    let new_remaining = settings
-        .daily_new_limit
-        .saturating_sub(new_completed)
-        .max(0);
-    let reviews_remaining = settings
-        .daily_review_limit
-        .saturating_sub(reviews_completed)
-        .max(0);
-    let scheduled_reviews = due_reviews.min(reviews_remaining);
-    let scheduled_new = if due_reviews > reviews_remaining {
-        0
-    } else {
-        due_new.min(new_remaining)
-    };
+    let allowance = DailyAllowance::new(settings, new_completed, reviews_completed);
+    let (scheduled_reviews, scheduled_new) = allowance.schedule(due_reviews, due_new);
+    let DailyAllowance {
+        new_remaining,
+        reviews_remaining,
+    } = allowance;
 
     Ok(WorkloadOverviewDto {
         new_limit: settings.daily_new_limit,
@@ -151,6 +143,41 @@ pub fn workload_overview_for_scope(
         needs_more_practice,
         extra_available,
     })
+}
+
+/// What the global daily limits leave for the rest of the study date.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DailyAllowance {
+    pub new_remaining: i64,
+    pub reviews_remaining: i64,
+}
+
+impl DailyAllowance {
+    pub fn new(settings: &AppSettingsDto, new_completed: i64, reviews_completed: i64) -> Self {
+        Self {
+            new_remaining: settings
+                .daily_new_limit
+                .saturating_sub(new_completed)
+                .max(0),
+            reviews_remaining: settings
+                .daily_review_limit
+                .saturating_sub(reviews_completed)
+                .max(0),
+        }
+    }
+
+    /// The (reviews, new cards) one scheduled session studies from a scope
+    /// with these ready cards: due reviews first, and new cards only when
+    /// every due review fits.
+    pub fn schedule(self, due_reviews: i64, due_new: i64) -> (i64, i64) {
+        let scheduled_reviews = due_reviews.min(self.reviews_remaining);
+        let scheduled_new = if due_reviews > self.reviews_remaining {
+            0
+        } else {
+            due_new.min(self.new_remaining)
+        };
+        (scheduled_reviews, scheduled_new)
+    }
 }
 
 pub fn planned_scheduled_cards_for_scope(
@@ -435,6 +462,33 @@ mod tests {
             2,
         );
         assert_eq!(priority[0].card_id, "older-normal");
+    }
+
+    #[test]
+    fn daily_allowance_schedules_due_reviews_before_new_cards() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let mut settings = database
+            .with_connection(crate::settings::load_settings)
+            .unwrap();
+        settings.daily_new_limit = 20;
+        settings.daily_review_limit = 200;
+        let allowance = DailyAllowance::new(&settings, 5, 190);
+        assert_eq!(
+            allowance,
+            DailyAllowance {
+                new_remaining: 15,
+                reviews_remaining: 10
+            }
+        );
+        // Every due review fits, so new cards fill up to the new-card limit.
+        assert_eq!(allowance.schedule(10, 40), (10, 15));
+        // A review that does not fit today keeps new cards out.
+        assert_eq!(allowance.schedule(11, 40), (10, 0));
+        // Limits already used up schedule nothing, and never go negative.
+        let spent = DailyAllowance::new(&settings, 30, 250);
+        assert_eq!(spent.new_remaining, 0);
+        assert_eq!(spent.reviews_remaining, 0);
+        assert_eq!(spent.schedule(3, 3), (0, 0));
     }
 
     #[test]

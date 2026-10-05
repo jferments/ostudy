@@ -206,7 +206,7 @@ Generate-more now uses the same 5,000-token / 10-page generation bound as the fi
 
 1. Start a Practice session with several cards.
 2. Rate at least two cards.
-3. Click a sidebar destination such as **Decks**.
+3. Choose another destination such as **Library**. (Choosing **Review** keeps the session, which runs inside Review.)
 4. Confirm **Terminate this practice session?** appears and explains that completed reviews remain durable while post-review analytics will not open automatically.
 5. Cancel and verify the session remains active.
 6. Try again and choose **Yes, terminate**.

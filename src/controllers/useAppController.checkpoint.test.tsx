@@ -5,6 +5,7 @@ import * as decksIpc from "../ipc/decks";
 import type { LifecycleSnapshot } from "../ipc/platform";
 import * as settingsIpc from "../ipc/settings";
 import * as checkpointIpc from "../ipc/uiCheckpoint";
+import { dispatchPlatformBack } from "../platform/backNavigation";
 import { makeDeck, makeSettings } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { useAppController } from "./useAppController";
@@ -79,6 +80,13 @@ function Harness() {
           ? `${controller.flashcardsRoute.analyticsSearchLaunch.requestId}|${controller.flashcardsRoute.analyticsSearchLaunch.source}|${controller.flashcardsRoute.analyticsSearchLaunch.tagIds.join(",")}`
           : "none"}
       </output>
+      <output aria-label="library section">{controller.librarySection}</output>
+      <output aria-label="finished sessions">{controller.finishedPracticeSessions}</output>
+      <output aria-label="subject focus">
+        {controller.flashcardsRoute.view === "root" && controller.flashcardsRoute.subjectFocus
+          ? controller.flashcardsRoute.subjectFocus.subjectId ?? "no subject"
+          : "none"}
+      </output>
       <output aria-label="restored selection">
         {controller.flashcardsRoute.view === "root"
           ? controller.flashcardsRoute.restoreDeckSelection?.map((entry) => entry.id).join(",") ?? "none"
@@ -86,6 +94,48 @@ function Harness() {
       </output>
       <button type="button" onClick={() => void controller.navigate("study-guides")}>
         Open Study Guides
+      </button>
+      <button type="button" onClick={() => void controller.navigate("decks")}>
+        Open Decks
+      </button>
+      <button type="button" onClick={() => void controller.navigate("documents")}>
+        Open Documents
+      </button>
+      <button type="button" onClick={() => void controller.navigate("review")}>
+        Open Review
+      </button>
+      <button type="button" onClick={() => void controller.navigate("home")}>
+        Open Home
+      </button>
+      <button type="button" onClick={() => void controller.openSearch()}>
+        Open Search
+      </button>
+      <button type="button" onClick={() => void controller.openSubject("c".repeat(32))}>
+        Open subject
+      </button>
+      <button type="button" onClick={() => void controller.openSubject(null)}>
+        Open No subject
+      </button>
+      <button type="button" onClick={() => void controller.openSubject(null, "documents")}>
+        Open No subject documents
+      </button>
+      <button type="button" onClick={() => void controller.openLibrary()}>
+        Open Library
+      </button>
+      <button
+        type="button"
+        onClick={() => void controller.openLibrary({ subjectId: "c".repeat(32) })}
+      >
+        Open Library for subject
+      </button>
+      <button type="button" onClick={() => void controller.openLibrary({ subjectId: null })}>
+        Open Library for No subject
+      </button>
+      <button type="button" onClick={() => void controller.openLibrary({ deckId: "d".repeat(32) })}>
+        Open Library at deck
+      </button>
+      <button type="button" onClick={() => void controller.practiceScope(["d".repeat(32)], [])}>
+        Start review
       </button>
       <button
         type="button"
@@ -146,6 +196,9 @@ function Harness() {
       >
         Report cursor
       </button>
+      <button type="button" onClick={() => controller.reportPracticeCheckpoint(null)}>
+        Report summary
+      </button>
       <button
         type="button"
         onClick={() => {
@@ -166,6 +219,12 @@ function renderHarness() {
   );
 }
 
+async function openDecks(): Promise<void> {
+  await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+  fireEvent.click(screen.getByRole("button", { name: "Open Decks" }));
+  await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+}
+
 function lifecycle(phase: LifecycleSnapshot["phase"]): void {
   if (!lifecycleListener) throw new Error("Lifecycle listener is not registered.");
   lifecycleListener({ schemaVersion: 1, phase, observedAtUtcMillis: 10 });
@@ -182,7 +241,7 @@ describe("application checkpoint lifecycle", () => {
 
   it("saves Study Guides as a visible destination", async () => {
     renderHarness();
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await openDecks();
     fireEvent.click(screen.getByRole("button", { name: "Open Study Guides" }));
     await waitFor(() =>
       expect(screen.getByLabelText("section").textContent).toBe("study-guides"),
@@ -196,7 +255,7 @@ describe("application checkpoint lifecycle", () => {
 
   it("checkpoints only the visible Search workspace and omits the Analytics launch", async () => {
     renderHarness();
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await openDecks();
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     await waitFor(() =>
       expect(screen.getByLabelText("analytics search launch").textContent).toMatch(
@@ -223,7 +282,7 @@ describe("application checkpoint lifecycle", () => {
 
   it("constructs plain routes for top-level, workspace, deck, and library navigation", async () => {
     renderHarness();
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await openDecks();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     expect(screen.getByLabelText("analytics search launch").textContent).not.toBe("none");
@@ -259,6 +318,7 @@ describe("application checkpoint lifecycle", () => {
   it("flushes the latest active Practice cursor and logical return target on lifecycle save", async () => {
     renderHarness();
     await waitFor(() => expect(lifecycleListener).not.toBeNull());
+    await openDecks();
     fireEvent.click(screen.getByRole("button", { name: "Open Practice" }));
     await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
     fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
@@ -295,7 +355,7 @@ describe("application checkpoint lifecycle", () => {
       .mockResolvedValueOnce([current, removed])
       .mockResolvedValueOnce([current]);
     renderHarness();
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    await openDecks();
     fireEvent.click(screen.getByRole("button", { name: "Open selected Practice" }));
     await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
     fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
@@ -310,6 +370,189 @@ describe("application checkpoint lifecycle", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("restored selection").textContent).toBe(current.id),
     );
+  });
+
+  it("counts a session that reaches its summary once, so Home can reread what is due", async () => {
+    renderHarness();
+    await openDecks();
+    fireEvent.click(screen.getByRole("button", { name: "Open Practice" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    // Before the session has a cursor, an empty report is not a finished session.
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("1");
+    expect(screen.getByLabelText("workflow").textContent).toBe("practice");
+  });
+
+  it("opens a fresh library on Home and saves it", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    await waitFor(() =>
+      expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalledWith(
+        expect.objectContaining({ section: "home" }),
+      ),
+    );
+    const saved = vi
+      .mocked(checkpointIpc.saveUiCheckpoint)
+      .mock.calls.find(([input]) => input.section === "home")?.[0];
+    expect(saved?.flashcardsWorkspace).toBeUndefined();
+    expect(saved?.deckId).toBeUndefined();
+  });
+
+  it("saves Home as the return target of a session started there", async () => {
+    renderHarness();
+    await waitFor(() => expect(lifecycleListener).not.toBeNull());
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Start review" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    expect(screen.getByLabelText("return target").textContent).toBe("home||");
+    fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+
+    lifecycle("background");
+
+    await waitFor(() =>
+      expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          section: "home",
+          practice: {
+            sessionId: "s".repeat(32),
+            position: 9,
+            revealed: true,
+            returnTarget: { section: "home", flashcardsWorkspace: null, deckId: null },
+          },
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
+    expect(screen.getByLabelText("section").textContent).toBe("home");
+  });
+
+  it("keeps a running session when Review is chosen and returns a Review session to Review", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Review" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("review"));
+    fireEvent.click(screen.getByRole("button", { name: "Start review" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    expect(screen.getByLabelText("return target").textContent).toBe("review||");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Review" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+
+    fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
+    expect(screen.getByLabelText("section").textContent).toBe("review");
+    expect(screen.getByLabelText("workflow").textContent).toBe("none");
+  });
+
+  it("restores a session saved behind Review and returns there", async () => {
+    vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
+      schemaVersion: 2,
+      updatedAt: 1,
+      section: "review",
+      flashcardsWorkspace: null,
+      deckId: null,
+      editorDraftId: null,
+      practice: {
+        sessionId: "s".repeat(32),
+        position: 2,
+        revealed: true,
+        returnTarget: { section: "review", flashcardsWorkspace: null, deckId: null },
+      },
+      analytics: null,
+    });
+
+    renderHarness();
+
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    expect(screen.getByLabelText("return target").textContent).toBe("review||");
+    fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
+    expect(screen.getByLabelText("section").textContent).toBe("review");
+  });
+
+  it("returns to Home on platform Back and lets Home itself leave the app", async () => {
+    renderHarness();
+    await openDecks();
+    await waitFor(() => expect(dispatchPlatformBack()).toBe(true));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    await waitFor(() => expect(dispatchPlatformBack()).toBe(false));
+  });
+
+  it("opens Search/Filter and subjects inside Library and remembers the Library view", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    expect(screen.getByLabelText("library section").textContent).toBe("decks");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Search" }));
+    await waitFor(() => expect(screen.getByLabelText("route view").textContent).toBe("search"));
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("c".repeat(32)),
+    );
+    expect(screen.getByLabelText("route view").textContent).toBe("decks");
+    fireEvent.click(screen.getByRole("button", { name: "Open No subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("no subject"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open No subject documents" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+    expect(screen.getByLabelText("library section").textContent).toBe("documents");
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    expect(screen.getByLabelText("library section").textContent).toBe("documents");
+
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    lifecycle("background");
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
+    // The focus request is process-local, like an Analytics launch.
+    for (const [saved] of vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls) {
+      expect(JSON.stringify(saved)).not.toContain("subjectFocus");
+      expect(JSON.stringify(saved)).not.toContain("c".repeat(32));
+    }
+  });
+
+  it("opens Library as last left, scoped to a subject, or at a deck", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("c".repeat(32)),
+    );
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
+    expect(screen.getByLabelText("route view").textContent).toBe("decks");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library for No subject" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("subject focus").textContent).toBe("no subject"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Library at deck" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("route view").textContent).toBe("d".repeat(32)),
+    );
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
   });
 
   it("restores Study Guides behind a resumable session and returns there", async () => {
