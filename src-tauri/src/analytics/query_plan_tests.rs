@@ -24,7 +24,7 @@ use super::{
 };
 use crate::{
     database::Database, error::CommandError, projections::learning_signals as signal_projection,
-    study_calendar::StudyTimeContext,
+    settings::save_new_day_start_hour, study_calendar::StudyTimeContext,
 };
 
 /// The history joins every analytics query used before the order was pinned.
@@ -605,31 +605,36 @@ fn dated_history_queries_start_from_the_local_date_index_without_statistics() {
     Database::open_in_memory()
         .unwrap()
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let fixture = seed(connection, &time);
             assert!(!statistics_present(connection));
             let mut checked = 0;
-            for range in ["7d", "30d", "90d", "1y", "custom"] {
-                for tag_ids in [vec![], vec![&fixture.tags[1]]] {
-                    let reads = traced_reads(
-                        connection,
-                        query(range, &[], &tag_ids, Some(&fixture.sessions[2]), &time),
-                    );
-                    // The deck and tag statements join the request table.
-                    let signals = RequestSignals::materialize(connection)?;
-                    let dated: Vec<&String> = reads
-                        .iter()
-                        .filter(|sql| sql.contains(HISTORY_BY_LOCAL_DATE_SQL))
-                        .collect();
-                    assert_eq!(dated.len(), HISTORY_STATEMENTS_PER_REQUEST, "{range}");
-                    for sql in dated {
-                        assert_starts_from_local_date_index(&plan(connection, sql));
-                        checked += 1;
+            // A midnight boundary reads exact local dates; a later one widens
+            // the local-date range by a date and filters the study dates.
+            for hour in [0, 4] {
+                save_new_day_start_hour(connection, hour)?;
+                for range in ["7d", "30d", "90d", "1y", "custom"] {
+                    for tag_ids in [vec![], vec![&fixture.tags[1]]] {
+                        let reads = traced_reads(
+                            connection,
+                            query(range, &[], &tag_ids, Some(&fixture.sessions[2]), &time),
+                        );
+                        // The deck and tag statements join the request table.
+                        let signals = RequestSignals::materialize(connection)?;
+                        let dated: Vec<&String> = reads
+                            .iter()
+                            .filter(|sql| sql.contains(HISTORY_BY_LOCAL_DATE_SQL))
+                            .collect();
+                        assert_eq!(dated.len(), HISTORY_STATEMENTS_PER_REQUEST, "{range}");
+                        for sql in dated {
+                            assert_starts_from_local_date_index(&plan(connection, sql));
+                            checked += 1;
+                        }
+                        drop(signals);
                     }
-                    drop(signals);
                 }
             }
-            assert_eq!(checked, 5 * 2 * HISTORY_STATEMENTS_PER_REQUEST);
+            assert_eq!(checked, 2 * 5 * 2 * HISTORY_STATEMENTS_PER_REQUEST);
 
             // Selected decks and all time keep walking each card's reviews.
             for (range, deck_ids) in [
@@ -678,7 +683,7 @@ fn pinned_history_and_shared_signals_return_the_previous_rows() {
     Database::open_in_memory()
         .unwrap()
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let fixture = seed(connection, &time);
             let filters: [(Vec<&String>, Vec<&String>, Option<&String>); 7] = [
                 (vec![], vec![], None),
@@ -741,7 +746,7 @@ fn the_request_signal_table_is_dropped_after_success_and_failure() {
     Database::open_in_memory()
         .unwrap()
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let fixture = seed(connection, &time);
             let loaded = load_analytics(connection, query("30d", &[], &[], None, &time))?;
             assert!(loaded.history.review_count > 0);

@@ -132,7 +132,7 @@ pub fn mark_practice_card_revealed(
     validate_card_event(&input)?;
     database.with_connection(|connection| {
         record_practice_event(connection, &input.session_id, &input.card_id, true)?;
-        let time = StudyTimeContext::capture()?;
+        let time = StudyTimeContext::capture(connection)?;
         let desired_retention = load_settings(connection)?.desired_retention;
         let schedule = load_schedule(connection, &input.card_id)?;
         preview_intervals(&schedule, time.now_utc_millis, desired_retention)
@@ -154,8 +154,8 @@ pub fn complete_practice_session(
     session_id: String,
 ) -> Result<(), CommandError> {
     validate_entity_id(&session_id, "practice session")?;
-    let time = StudyTimeContext::capture()?;
     database.with_connection(|connection| {
+        let time = StudyTimeContext::capture(connection)?;
         let changed = connection
             .execute(
                 "UPDATE practice_sessions
@@ -185,7 +185,7 @@ pub(crate) fn record_practice_event(
     card_id: &str,
     revealed: bool,
 ) -> Result<(), CommandError> {
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -271,7 +271,7 @@ pub(crate) fn submit_review_with_question(
         ),
         None => review_request_fingerprint(&input)?,
     };
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let desired_retention = load_settings(connection)?.desired_retention;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)

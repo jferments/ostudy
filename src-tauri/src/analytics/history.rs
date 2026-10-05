@@ -19,7 +19,7 @@ pub fn load(
     context: &AnalyticsContext,
 ) -> Result<HistoricalLoad, CommandError> {
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let sql = format!(
         "SELECT
              COUNT(DISTINCT r.card_id),
@@ -37,9 +37,10 @@ pub fn load(
              COALESCE(SUM(CASE
                  WHEN a.attribution_source = 'legacy_current_state_backfill' THEN 1 ELSE 0
              END), 0),
-             MIN(a.review_local_date)
+             {earliest_study_date}
          FROM {history_from}
          WHERE {conditions}",
+        earliest_study_date = context.time.earliest_review_study_date_sql("a"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
