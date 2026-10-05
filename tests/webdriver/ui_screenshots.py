@@ -541,6 +541,32 @@ def dismiss_toasts(ctx: Context) -> None:
         time.sleep(0.1)
 
 
+REVIEW_BADGE_SCRIPT = """
+const done = arguments[arguments.length - 1];
+const review = document.querySelector("[data-testid='nav-review']");
+if (!review) { done(true); return; }
+window.__TAURI_INTERNALS__.invoke('get_home_summary').then(
+  (summary) => {
+    const due = summary.today.scheduledReviews + summary.today.scheduledNew;
+    const expected = due > 999 ? '999+' : due > 0 ? String(due) : '';
+    const badge = review.querySelector("[data-slot='nav-badge']");
+    done((badge?.textContent || '').trim() === expected);
+  },
+  () => done(false),
+);
+"""
+
+
+def wait_for_review_badge(ctx: Context, seconds: int = 20) -> None:
+    """Wait until Review's badge shows what is due now, as a finished session rereads it."""
+    deadline = ctx.deadline(seconds)
+    while time.monotonic() < deadline:
+        if ui.execute_async(ctx.session_id, REVIEW_BADGE_SCRIPT, []) is True:
+            return
+        time.sleep(0.1)
+    raise CaptureError("Review's badge did not settle on today's count.")
+
+
 def wait_ready(ctx: Context, seconds: int = 20) -> None:
     deadline = ctx.deadline(seconds)
     last: Any = None
@@ -1236,6 +1262,7 @@ class Run:
                 if rated > 12:
                     raise CaptureError("Practice did not finish after 12 ratings.")
                 click(ctx, "//button[normalize-space(.)='Show answer']")
+            wait_for_review_badge(ctx)
             self._practice_shots(ctx, by_id.get("practice-summary"), widths, started)
         except Exception as error:  # noqa: BLE001
             # Every wanted shot from the failed stage on is unreachable.

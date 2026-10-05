@@ -61,9 +61,19 @@ function renderProvider(section: AppSection = "home", activeWorkflow: AppWorkflo
   );
   return {
     ...view,
-    rerenderWith(nextSection: AppSection, nextWorkflow: AppWorkflow | null, nextDecks = decks) {
+    rerenderWith(
+      nextSection: AppSection,
+      nextWorkflow: AppWorkflow | null,
+      nextDecks = decks,
+      finishedSessions = 0,
+    ) {
       view.rerender(
-        <HomeSummaryProvider section={nextSection} activeWorkflow={nextWorkflow} decks={nextDecks}>
+        <HomeSummaryProvider
+          section={nextSection}
+          activeWorkflow={nextWorkflow}
+          decks={nextDecks}
+          finishedSessions={finishedSessions}
+        >
           <Probe />
         </HomeSummaryProvider>,
       );
@@ -131,6 +141,23 @@ describe("HomeSummaryProvider", () => {
     view.rerenderWith("review", null, [makeDeck()]);
     await settle();
     expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(4);
+  });
+
+  it("reads again when a session reaches its summary, not for each rating", async () => {
+    const view = renderProvider("review", "practice");
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(1);
+
+    // Ratings change nothing the provider watches, so the session keeps its count.
+    view.rerenderWith("review", "practice");
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(1);
+
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(summaryWith(0));
+    view.rerenderWith("review", "practice", decks, 1);
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText("due").textContent).toBe("0");
   });
 
   it("reads again when a document arrives or finishes, not while it makes progress", async () => {

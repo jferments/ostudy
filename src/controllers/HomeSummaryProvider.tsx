@@ -44,6 +44,8 @@ interface HomeSummaryProviderProps {
   activeWorkflow: AppWorkflow | null;
   /** The deck list: a new list means decks or their cards changed. */
   decks: readonly DeckSummary[];
+  /** Counts the practice sessions that reached their summary; each changed what is due. */
+  finishedSessions?: number;
   children: ReactNode;
 }
 
@@ -53,14 +55,17 @@ const REFRESH_DELAY_MS = 50;
 /**
  * Today's summary and the subject library for Home, Review and the Review
  * badge on every screen. Each is an independent latest-request read. They are
- * read again when Home or Review opens, when a practice session ends, when the
- * deck list changes, when a document arrives, leaves or finishes processing,
- * and when the app becomes visible again (the study day may have turned over).
+ * read again when Home or Review opens, when a practice session reaches its
+ * summary or ends, when the deck list changes, when a document arrives, leaves
+ * or finishes processing, and when the app becomes visible again (the study
+ * day may have turned over). A running session keeps the count it started
+ * with, so its ratings add no reads to the native queue.
  */
 export function HomeSummaryProvider({
   section,
   activeWorkflow,
   decks,
+  finishedSessions = 0,
   children,
 }: HomeSummaryProviderProps) {
   const summaryLane = useRequestLane();
@@ -145,6 +150,12 @@ export function HomeSummaryProvider({
     previousWorkflow.current = activeWorkflow;
     if (endedPractice) scheduleRefresh();
   }, [activeWorkflow, scheduleRefresh]);
+
+  // A finished session's reviews are saved while its summary still shows, so
+  // the Review badge counts what is left before the learner moves on.
+  useEffect(() => {
+    if (finishedSessions > 0) scheduleRefresh();
+  }, [finishedSessions, scheduleRefresh]);
 
   useEffect(() => {
     scheduleRefresh();

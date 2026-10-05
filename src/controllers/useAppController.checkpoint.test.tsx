@@ -81,6 +81,7 @@ function Harness() {
           : "none"}
       </output>
       <output aria-label="library section">{controller.librarySection}</output>
+      <output aria-label="finished sessions">{controller.finishedPracticeSessions}</output>
       <output aria-label="subject focus">
         {controller.flashcardsRoute.view === "root" && controller.flashcardsRoute.subjectFocus
           ? controller.flashcardsRoute.subjectFocus.subjectId ?? "no subject"
@@ -179,6 +180,9 @@ function Harness() {
         }
       >
         Report cursor
+      </button>
+      <button type="button" onClick={() => controller.reportPracticeCheckpoint(null)}>
+        Report summary
       </button>
       <button
         type="button"
@@ -351,6 +355,23 @@ describe("application checkpoint lifecycle", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("restored selection").textContent).toBe(current.id),
     );
+  });
+
+  it("counts a session that reaches its summary once, so Home can reread what is due", async () => {
+    renderHarness();
+    await openDecks();
+    fireEvent.click(screen.getByRole("button", { name: "Open Practice" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    // Before the session has a cursor, an empty report is not a finished session.
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Report summary" }));
+    expect(screen.getByLabelText("finished sessions").textContent).toBe("1");
+    expect(screen.getByLabelText("workflow").textContent).toBe("practice");
   });
 
   it("opens a fresh library on Home and saves it", async () => {

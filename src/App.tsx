@@ -145,6 +145,7 @@ function App() {
                 section={controller.section}
                 activeWorkflow={controller.activeWorkflow}
                 decks={controller.decks}
+                finishedSessions={controller.finishedPracticeSessions}
               >
                 <TutorProvider>
                   <AppFrame>

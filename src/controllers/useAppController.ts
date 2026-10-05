@@ -146,6 +146,8 @@ export function useAppController() {
   const [practiceWorkflow, setPracticeWorkflow] = useState<PracticeWorkflowState | null>(null);
   const practiceCursorRef = useRef<PracticeCursorCheckpoint | null>(null);
   const [practiceCursorRevision, setPracticeCursorRevision] = useState(0);
+  // Sessions that reached their summary in this run: their saved reviews changed what is due.
+  const [finishedPracticeSessions, setFinishedPracticeSessions] = useState(0);
   const practiceRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsCheckpointRef = useRef<AnalyticsCheckpoint | null>(null);
@@ -202,6 +204,10 @@ export function useAppController() {
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
   const reportPracticeCheckpoint = useCallback(
     (checkpoint: PracticeCursorCheckpoint | null) => {
+      // A session that had a cursor and reports none has finished: its summary shows.
+      if (checkpoint === null && practiceCursorRef.current !== null) {
+        setFinishedPracticeSessions((current) => current + 1);
+      }
       practiceCursorRef.current = checkpoint;
       setPracticeCursorRevision((current) => current + 1);
     },
@@ -777,6 +783,8 @@ export function useAppController() {
     consumePracticeLaunch,
     consumePracticeRestore,
     reportPracticeCheckpoint,
+    /** Counts the practice sessions that reached their summary in this run. */
+    finishedPracticeSessions,
     consumeAnalyticsLaunch,
     navigate,
     /** The Library view the Library destination opens: the last one used. */
