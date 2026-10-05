@@ -464,6 +464,29 @@ fn validate_schedule(schedule: &ScheduleRecord) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// FSRS's predicted probability of recalling a studied card at `now`, from
+/// its stored stability and last review. `None` for a new card or a schedule
+/// whose values give no valid prediction.
+pub fn estimated_recall(
+    state: i64,
+    stability: f64,
+    last_review_at: i64,
+    now_utc_millis: i64,
+) -> Option<f64> {
+    let state = state_from_i64(state)
+        .ok()
+        .filter(|state| *state != State::New)?;
+    let card = FsrsCard {
+        state,
+        stability,
+        last_review: DateTime::<Utc>::from_timestamp_millis(last_review_at)?,
+        ..FsrsCard::new()
+    };
+    let now = DateTime::<Utc>::from_timestamp_millis(now_utc_millis)?;
+    Some(card.get_retrievability(now))
+        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+}
+
 fn datetime_from_millis(value: i64, label: &str) -> Result<DateTime<Utc>, CommandError> {
     DateTime::<Utc>::from_timestamp_millis(value).ok_or_else(|| {
         CommandError::new(

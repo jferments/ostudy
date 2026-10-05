@@ -15,8 +15,28 @@ pub fn load_reviews(
     connection: &Connection,
     context: &AnalyticsContext,
 ) -> Result<Vec<RecentReviewDto>, CommandError> {
+    load_review_rows(
+        connection,
+        context,
+        context.history_from_sql(),
+        |_| Vec::new(),
+        RECENT_REVIEW_LIMIT,
+    )
+}
+
+/// Reviews in scope, newest first, from `history_from` (which binds `a`, `r`,
+/// `c`, `n` and `d`), with the conditions `extra` adds after binding its own
+/// values.
+pub(super) fn load_review_rows(
+    connection: &Connection,
+    context: &AnalyticsContext,
+    history_from: &str,
+    extra: impl FnOnce(&mut Vec<SqlValue>) -> Vec<String>,
+    limit: i64,
+) -> Result<Vec<RecentReviewDto>, CommandError> {
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
+    let mut conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
+    conditions.extend(extra(&mut values));
     let sql = format!(
         "WITH recent_reviews AS (
              SELECT
@@ -38,7 +58,7 @@ pub fn load_reviews(
              FROM {history_from}
              WHERE {conditions}
              ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC
-             LIMIT {RECENT_REVIEW_LIMIT}
+             LIMIT {limit}
          ),
          current_tag_ids AS (
              SELECT DISTINCT nt.tag_id
@@ -85,7 +105,6 @@ pub fn load_reviews(
         study_date = context
             .time
             .wall_clock_study_date_sql("recent.review_wall_clock"),
-        history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -125,6 +144,7 @@ pub fn load_reviews(
                     review_local_date: row.get(10)?,
                     due_after: row.get(11)?,
                     attribution_source: row.get(12)?,
+                    created_at: row.get(16)?,
                 },
                 tag,
             ))

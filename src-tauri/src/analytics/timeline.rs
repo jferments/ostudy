@@ -55,14 +55,25 @@ fn load_local_date_buckets(
         )
     })?;
     let step_days = context.range.step_days().unwrap_or(1);
+    let date_count = window
+        .end_local_date
+        .signed_duration_since(window.start_local_date)
+        .num_days()
+        .saturating_add(1);
+    let bucket_count = date_count
+        .saturating_add(step_days - 1)
+        .div_euclid(step_days);
+    // Buckets are cut back from the window's last date, so every bucket but
+    // the first is whole and the newest point is not a false drop.
+    let origin = checked_add_days(
+        window.end_local_date,
+        1 - bucket_count.saturating_mul(step_days),
+    )?;
     let mut values = Vec::<SqlValue>::new();
     let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
-    let bucket_sql = context.time.review_study_period_sql(
-        "a",
-        window.start_local_date,
-        step_days,
-        &mut values,
-    )?;
+    let bucket_sql = context
+        .time
+        .review_study_period_sql("a", origin, step_days, &mut values)?;
     let highlighted_index = context
         .highlighted_session_id
         .as_ref()
@@ -127,18 +138,11 @@ fn load_local_date_buckets(
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(CommandError::database)?;
 
-    let date_count = window
-        .end_local_date
-        .signed_duration_since(window.start_local_date)
-        .num_days()
-        .saturating_add(1);
-    let bucket_count = date_count
-        .saturating_add(step_days - 1)
-        .div_euclid(step_days);
     let mut timeline = Vec::with_capacity(usize::try_from(bucket_count).unwrap_or_default());
     for index in 0..bucket_count {
-        let start_date = checked_add_days(window.start_local_date, index * step_days)?;
-        let end_date = checked_add_days(start_date, step_days - 1)?.min(window.end_local_date);
+        let bucket_start = checked_add_days(origin, index * step_days)?;
+        let start_date = bucket_start.max(window.start_local_date);
+        let end_date = checked_add_days(bucket_start, step_days - 1)?;
         let values = rows.get(&index).cloned().unwrap_or_default();
         timeline.push(to_dto(context, start_date, end_date, values)?);
     }
