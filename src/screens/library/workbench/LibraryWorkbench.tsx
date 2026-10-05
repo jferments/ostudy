@@ -623,9 +623,15 @@ export function LibraryWorkbench({
       selectionActions={selectionActions}
       emptyTitle={empty.title}
       emptyDescription={empty.description}
-      emptyAction={scope.kind === "deck" && scopeDeck && scopeDeck.archivedAt === null && query.trim() === "" && filter === "all" ? (
-        <Button variant="primary" onClick={() => void beginNewCard(scopeDeck.id)}>New card</Button>
-      ) : undefined}
+      emptyAction={query.trim() !== "" || filter !== "all" ? undefined
+        : scope.kind === "deck" && scopeDeck && scopeDeck.archivedAt === null ? (
+          <Button variant="primary" onClick={() => void beginNewCard(scopeDeck.id)}>New card</Button>
+        ) : scope.kind === "view" && scope.view === "all" && activeDecks.length === 0 && !compact ? (
+          <>
+            <Button variant="primary" onClick={() => setSheet({ kind: "new-deck", subjectId: null })}>New deck</Button>
+            <Button variant="secondary" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>Import deck</Button>
+          </>
+        ) : undefined}
       compact={compact}
       onBack={compact ? () => setPage("tree") : undefined}
     />

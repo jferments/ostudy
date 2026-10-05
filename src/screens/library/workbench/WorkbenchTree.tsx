@@ -130,9 +130,13 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
           </Button>
         ) : null}
         {nodes.length === 0 ? (
-          <p className="tw:m-0 tw:px-2 tw:text-small tw:text-muted-foreground">
-            Subjects hold a course's decks and documents.
-          </p>
+          <div className="tw:grid tw:justify-items-start tw:gap-2 tw:px-2">
+            <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
+              Subjects hold a course's decks and documents.
+            </p>
+            {/* Phones open on this page, so an empty library starts its first deck here. */}
+            {compact ? <Button variant="primary" onClick={() => actions.onNewDeck(null)}>New deck</Button> : null}
+          </div>
         ) : null}
         {nodes.map((node, index) => {
           const key = nodeKey(node);
