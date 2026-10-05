@@ -9,7 +9,7 @@ The repository contains a Tauri Android project, private Kotlin platform plugin,
 The Android application supports:
 
 - deck/folder/card/tag/template authoring, Search/Filter, bulk operations, and managed images;
-- Practice, scheduling controls, Analytics, and interrupted-session restoration;
+- Practice, scheduling controls, Progress, and interrupted-session restoration;
 - durable authoring drafts and complete personal backup/restore;
 - `.studydeck` and generated `.ostudy.json` import, system picker/export, Sharesheet send, and confirmed incoming shares;
 - Android Keystore-backed AI credentials plus local/LAN/cloud provider profiles;
@@ -66,7 +66,7 @@ Representative mobile qualification includes:
 
 - first launch, migration, restart, upgrade/persistence;
 - compact navigation, overlays, focus, keyboard/IME, system Back, and accessibility;
-- authoring, Practice, scheduling controls, and Analytics;
+- authoring, Practice, scheduling controls, and Progress;
 - import/export/backup/restore/sharing;
 - provider credentials and mobile network policy;
 - representative document parsing, PDF rendering/OCR, cancellation, foreground/background recovery;

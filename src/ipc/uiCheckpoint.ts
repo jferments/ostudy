@@ -3,10 +3,13 @@ import { invoke } from "./transport";
 import type { AnalyticsRange } from "./analytics";
 import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
 
+/** Every released value still reads; Home and Review joined them. */
 export type CheckpointSection =
+  | "home"
   | "decks"
   | "study-guides"
   | "documents"
+  | "review"
   | "tutor"
   | "analytics"
   | "settings";

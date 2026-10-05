@@ -108,8 +108,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     conversation_id = conversation["id"]
     # A normal return to Tutor refreshes local history. No provider request or
     # obsolete top-level Refresh button is needed to discover the saved chat.
-    click_css(session_id, "button[data-testid='nav-decks']", deadline)
-    webdriver.wait_for_main_heading(session_id, "Flashcards", deadline)
+    webdriver.open_library_view(session_id, "decks", deadline)
     click_css(session_id, "button[data-testid='nav-tutor']", deadline)
     webdriver.wait_for_main_heading(session_id, "Tutor", deadline)
     if not ui.execute(session_id, "return Boolean(document.querySelector('main nav[aria-label=\"Conversations\"]')); ".strip()):
@@ -191,7 +190,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
 
     # Return to the existing card and open its contextual hint sheet. The sheet
     # must not reveal an answer, replace Practice, or start a different session.
-    click_css(session_id, "button[data-testid='nav-decks']", deadline)
+    webdriver.open_library_view(session_id, "decks", deadline)
     deck = webdriver.find_element(session_id, "xpath", f"//main//*[@role='button' and @aria-label={json.dumps('Open ' + deck_name)}]", deadline)
     webdriver.click(session_id, deck)
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)

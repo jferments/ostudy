@@ -4,7 +4,7 @@ Open **Settings → Appearance**. Presentation preferences change how ostudy loo
 
 ## Navigation and available space
 
-The same application resolves compact, medium, and wide layouts from its available viewport. Wide/medium layouts use labeled navigation. Compact layouts show Flashcards, Study Guides, Documents, and Analytics in bottom navigation, with Settings in the upper-right gear.
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show the five destinations (Home, Library, Review, Tutor, and Progress) with labels in the header, beside Search and the Settings gear. Compact layouts put the destinations in a bottom bar and keep Search and Settings in the top bar.
 
 An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. The application uses native operating-system window chrome on desktop; old instructions for separate in-app maximize/full-screen buttons no longer describe the current shell. Use your window manager's supported controls and shortcuts.
 
@@ -42,7 +42,7 @@ Help can identify a related guide or offer **Start guided tutorial**. Ordinary h
 
 ## Explicitly started tutorials
 
-**Interactive tutorials** default off. To use one, enable the setting, open a relevant Help topic, and explicitly start its tutorial. Current modules cover Flashcards orientation, Search filters, practice reveal/rating, and document generation.
+**Interactive tutorials** default off. To use one, enable the setting, open a relevant Help topic, and explicitly start its tutorial. Current modules cover orientation to Library and the main navigation, Search filters, practice reveal/rating, and document generation.
 
 Tutorials never auto-start because you opened a route, exposed a target, upgraded a version, or restarted the app. Observing the target of an already-running step only keeps its spotlight aligned with layout changes.
 

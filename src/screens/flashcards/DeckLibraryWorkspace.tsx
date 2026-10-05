@@ -1,11 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
-import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
+import type {
+  SubjectFocusLaunch,
+  TransientDeckSelectionEntry,
+} from "../../navigation/flashcardsRoutes";
 import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import {
@@ -26,6 +29,7 @@ interface DeckLibraryWorkspaceProps {
     originSelection: readonly TransientDeckSelectionEntry[],
   ) => void | Promise<void>;
   restoredSelection?: readonly TransientDeckSelectionEntry[];
+  subjectFocus?: SubjectFocusLaunch;
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (
     deckId: string,
@@ -43,6 +47,7 @@ export function DeckLibraryWorkspace({
   onPracticeDeck,
   onPracticeSelected,
   restoredSelection = [],
+  subjectFocus,
   openDeckRequest,
   onOpenDeck,
   onReturnToLibrary,
@@ -62,6 +67,7 @@ export function DeckLibraryWorkspace({
     restoredSelection,
   });
   controllerSelectionRef.current = controllerSelectionEntries(controller.selection);
+  useSubjectFocus(subjectFocus, controller, openDeckRequest === null);
 
   if (openDeckRequest) {
     return (
@@ -113,6 +119,39 @@ export function DeckLibraryWorkspace({
       ) : null}
     </>
   );
+}
+
+/**
+ * Brings the subject Home asked for into view once the library has rendered:
+ * its folder, expanded, at the top of the page, or the unsorted decks for No
+ * subject. It jumps without animating, and each request is handled once.
+ */
+function useSubjectFocus(
+  focus: SubjectFocusLaunch | undefined,
+  controller: ReturnType<typeof useDeckLibraryController>,
+  libraryVisible: boolean,
+): void {
+  const handledRequestId = useRef<number | null>(null);
+  const latest = useRef(controller);
+  latest.current = controller;
+  const ready = controller.snapshot !== null;
+  useEffect(() => {
+    if (!focus || !ready || !libraryVisible || handledRequestId.current === focus.requestId) {
+      return;
+    }
+    handledRequestId.current = focus.requestId;
+    const { subjectId } = focus;
+    if (subjectId !== null && latest.current.collapsedFolderIds.has(subjectId)) {
+      latest.current.expandFolder(subjectId);
+    }
+    const target =
+      subjectId === null
+        ? document.querySelector('[data-geometry-key="destination:unsorted"]')
+        : [...document.querySelectorAll<HTMLElement>("[data-folder-id]")].find(
+            (element) => element.dataset.folderId === subjectId,
+          );
+    target?.scrollIntoView?.({ block: "start" });
+  }, [focus, libraryVisible, ready]);
 }
 
 function controllerSelectionEntries(

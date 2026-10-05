@@ -1,11 +1,14 @@
 import raccoonHead128 from "./images/raccoon-head-128.webp";
 import raccoonHead64 from "./images/raccoon-head-64.webp";
+import raccoonLogo160 from "./images/raccoon-logo-160.webp";
+import raccoonLogo320 from "./images/raccoon-logo-320.webp";
 
 export type ArtworkSlot =
   | "brand.logo.sidebar"
   | "brand.logo.compact"
   | "empty.deck"
   | "empty.folder"
+  | "empty.library"
   | "empty.search"
   | "empty.documents"
   | "empty.templates"
@@ -37,6 +40,11 @@ export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> =
   },
   "empty.deck": { slot: "empty.deck", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty flashcard deck", category: "empty" },
   "empty.folder": { slot: "empty.folder", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty folder", category: "empty" },
+  "empty.library": {
+    slot: "empty.library", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "Welcome to ostudy", category: "empty",
+    // The whole project mascot at its desk, downscaled (see ARTWORK-LICENSES.md). Home's first run.
+    image: { src: raccoonLogo160, srcSet: `${raccoonLogo160} 1x, ${raccoonLogo320} 2x` },
+  },
   "empty.search": { slot: "empty.search", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No matching flashcards", category: "empty" },
   "empty.documents": { slot: "empty.documents", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No documents", category: "empty" },
   "empty.templates": { slot: "empty.templates", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No templates", category: "empty" },

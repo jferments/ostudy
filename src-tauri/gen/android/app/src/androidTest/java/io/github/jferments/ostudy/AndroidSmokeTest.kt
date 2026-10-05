@@ -46,9 +46,63 @@ class AndroidSmokeTest {
     fun a1_freshLibraryUsesQuietNavigation() {
         withApplication { webView ->
             waitForBridge(webView)
-            // The route heading precedes the asynchronous deck-library snapshot.
-            // Await that exact ready surface, not an arbitrary delay, before asserting
-            // its create action and absence of irrelevant populated-library controls.
+            // A fresh library opens on Home, which welcomes it instead of showing
+            // an empty Today strip or empty subject tiles.
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Home' && " +
+                        "Array.from(document.querySelectorAll('main h2')).some(heading => heading.textContent?.trim() === 'Your library is empty')"
+                }
+            )
+            val homeSnapshot = evaluateJsonObject(
+                webView,
+                """
+                (() => {
+                  const navigation = document.querySelector("nav[aria-label='Main navigation']");
+                  const items = [...(navigation?.querySelectorAll('button') ?? [])];
+                  const buttons = [...document.querySelectorAll('main button')];
+                  const has = (label) => buttons.some((button) => button.textContent?.trim() === label);
+                  return {
+                    navigation: items
+                      .map((button) => (button.querySelector("[data-slot='nav-label']")?.textContent || '').trim())
+                      .join('|'),
+                    current: items
+                      .filter((button) => button.getAttribute('aria-current') === 'page')
+                      .map((button) => button.dataset.testid || '')
+                      .join('|'),
+                    bottomNavigation: navigation?.dataset.slot === 'bottom-navigation',
+                    searchAction: Boolean(document.querySelector('header [data-testid="app-search"]')),
+                    settingsGear: Boolean(document.querySelector('header [data-testid="app-settings"]')),
+                    createSubject: has('Create a subject'),
+                    importDocument: has('Import a document'),
+                    openLibrary: has('Open Library'),
+                    todayStrip: Boolean(document.querySelector('main [data-testid="home-today"]')),
+                    subjectTiles: document.querySelectorAll('main [data-testid="subject-tile"]').length
+                  };
+                })()
+                """.trimIndent()
+            )
+            assertEquals("Home|Library|Review|Tutor|Progress", homeSnapshot.getString("navigation"))
+            assertEquals("nav-home", homeSnapshot.getString("current"))
+            assertTrue(homeSnapshot.getBoolean("bottomNavigation"))
+            assertTrue(homeSnapshot.getBoolean("searchAction"))
+            assertTrue(homeSnapshot.getBoolean("settingsGear"))
+            assertTrue(homeSnapshot.getBoolean("createSubject"))
+            assertTrue(homeSnapshot.getBoolean("importDocument"))
+            assertTrue(homeSnapshot.getBoolean("openLibrary"))
+            assertFalse(homeSnapshot.getBoolean("todayStrip"))
+            assertEquals(0, homeSnapshot.getInt("subjectTiles"))
+
+            // Open Library leads to its Decks view. The route heading precedes the
+            // asynchronous deck-library snapshot. Await that exact ready surface, not
+            // an arbitrary delay, before asserting its create action and absence of
+            // irrelevant populated-library controls.
+            evaluateSync(
+                webView,
+                "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'Open Library')?.click(); true"
+            )
             waitUntil(
                 webView,
                 predicate = { it == "true" },
@@ -64,14 +118,19 @@ class AndroidSmokeTest {
                   const tabLabels = [...document.querySelectorAll(
                     "main [role='tablist'][aria-label='Flashcards workspaces'] [role='tab']"
                   )].map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim());
-                  const navigationLabels = [...document.querySelectorAll(
-                    "nav[aria-label='Main navigation'] button"
-                  )].map((button) => (button.textContent || '').trim());
+                  const libraryViews = [...document.querySelectorAll(
+                    "main nav[aria-label='Library'] button"
+                  )];
                   const mainText = document.querySelector('main')?.textContent || '';
                   const buttons = [...document.querySelectorAll('main button')];
                   return {
                     tabs: tabLabels.join('|'),
-                    navigation: navigationLabels.join('|'),
+                    libraryViews: libraryViews.map((button) => (button.textContent || '').trim()).join('|'),
+                    currentLibraryView: libraryViews
+                      .filter((button) => button.getAttribute('aria-current') === 'page')
+                      .map((button) => button.dataset.testid || '')
+                      .join('|'),
+                    libraryCurrent: document.querySelector('[data-testid="nav-library"]')?.getAttribute('aria-current') === 'page',
                     settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
                     importAction: buttons.some(
                       (button) => button.textContent?.trim() === 'Import deck'
@@ -106,10 +165,9 @@ class AndroidSmokeTest {
                 """.trimIndent()
             )
             assertEquals("Decks|Search/Filter", snapshot.getString("tabs"))
-            assertEquals(
-                "Flashcards|Study\nGuides|Docs|Tutor|Analytics",
-                snapshot.getString("navigation")
-            )
+            assertEquals("Decks|Documents|Study guides", snapshot.getString("libraryViews"))
+            assertEquals("library-view-decks", snapshot.getString("currentLibraryView"))
+            assertTrue(snapshot.getBoolean("libraryCurrent"))
             assertTrue(snapshot.getBoolean("settingsGear"))
             assertTrue(snapshot.getBoolean("importAction"))
             assertTrue(snapshot.getBoolean("createAction"))
@@ -149,19 +207,31 @@ class AndroidSmokeTest {
     }
 
     @Test
-    fun c_documentsStubAndAndroidBackReturnToFlashcardsDecks() {
+    fun c_documentsViewAndAndroidBackReturnHome() {
         withApplication { webView ->
             waitForBridge(webView)
             evaluateSync(
                 webView,
-                "document.querySelector('[data-testid=\"nav-documents\"]')?.click(); true"
+                "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-documents\"]'))"
+                }
+            )
+            evaluateSync(
+                webView,
+                "document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-documents\"]')?.click(); true"
             )
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Documents' && " +
-                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload document')"
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload document') && " +
+                        "document.querySelector('[data-testid=\"library-view-documents\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
             waitForAndroidBackReady(webView)
@@ -170,15 +240,23 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks'))"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Home' && " +
+                        "document.querySelector('[data-testid=\"nav-home\"]')?.getAttribute('aria-current') === 'page'"
+                }
+            )
+            // Home is the root: the app keeps no Back handler there, so Back leaves to Android.
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.documentElement.dataset.androidBackInterception === 'false'"
                 }
             )
         }
     }
 
     @Test
-    fun c_tutorOfflineAndAndroidBackReturnToFlashcards() {
+    fun c_tutorOfflineAndAndroidBackReturnHome() {
         withApplication { webView ->
             waitForBridge(webView)
             evaluateSync(
@@ -205,8 +283,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "document.querySelector('[data-testid=\"nav-decks\"]')?.getAttribute('aria-current') === 'page'"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Home' && " +
+                        "document.querySelector('[data-testid=\"nav-home\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
         }
@@ -219,7 +297,18 @@ class AndroidSmokeTest {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             evaluateSync(
                 webView,
-                "document.querySelector('[data-testid=\"nav-decks\"]')?.click(); true"
+                "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]'))"
+                }
+            )
+            evaluateSync(
+                webView,
+                "document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]')?.click(); true"
             )
             waitUntil(
                 webView,
@@ -274,6 +363,17 @@ class AndroidSmokeTest {
                         "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )
+            // With the nested work closed, Back leaves Library for Home.
+            waitForAndroidBackReady(webView)
+            device.pressBack()
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Home' && " +
+                        "document.querySelector('[data-testid=\"nav-home\"]')?.getAttribute('aria-current') === 'page'"
+                }
+            )
         }
     }
 
@@ -287,7 +387,7 @@ class AndroidSmokeTest {
             waitForBridge(webView)
             waitUntil(webView, predicate = { it == "true" }, expression = {
                 "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
-                    "!document.querySelector('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')"
+                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-review'"
             })
             val restored = evaluatePromise(webView, "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()")
             assertEquals(sessionId, restored.getString("sessionId"))
@@ -302,7 +402,7 @@ class AndroidSmokeTest {
             waitForBridge(webView)
             waitUntil(webView, predicate = { it == "true" }, expression = {
                 "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
-                    "!document.querySelector('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')"
+                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-review'"
             })
             val restored = evaluatePromise(webView, "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()")
             assertNotNull(restored.optString("sessionId").takeIf(String::isNotBlank))
@@ -311,7 +411,8 @@ class AndroidSmokeTest {
             evaluateSync(webView, "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'End session')?.click(); true")
             waitUntil(webView, predicate = { it == "true" }, expression = {
                 "document.querySelector('main h1')?.textContent?.trim() === 'Study Guides' && " +
-                    "document.querySelector('[data-testid=\"nav-study-guides\"]')?.getAttribute('aria-current') === 'page'"
+                    "document.querySelector('[data-testid=\"nav-library\"]')?.getAttribute('aria-current') === 'page' && " +
+                    "document.querySelector('[data-testid=\"library-view-study-guides\"]')?.getAttribute('aria-current') === 'page'"
             })
         }
     }

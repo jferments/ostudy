@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CommandErrorPayload } from "../common";
 import type { DeckSummary } from "../decks";
+import type { HomeSummary } from "../home";
 import type { LibrarySession } from "../librarySession";
 import type { AppSettings } from "../settings";
 import type { SubjectFilingReview, SubjectLibrary } from "../subjects";
@@ -10,6 +11,7 @@ import type {
   NativeAppSettings,
   NativeCommandError,
   NativeDeckSummary,
+  NativeHomeSummary,
   NativeLibrarySession,
   NativeSubjectFilingReview,
   NativeSubjectLibrary,
@@ -22,6 +24,7 @@ const asFrontendError = (value: NativeCommandError): CommandErrorPayload => valu
 const asFrontendSession = (value: NativeLibrarySession): LibrarySession => value;
 const asFrontendSubjectLibrary = (value: NativeSubjectLibrary): SubjectLibrary => value;
 const asFrontendFilingReview = (value: NativeSubjectFilingReview): SubjectFilingReview => value;
+const asFrontendHomeSummary = (value: NativeHomeSummary): HomeSummary => value;
 
 describe("native-owned IPC wire fixtures", () => {
   it("keeps generated native product DTOs assignable to frontend contracts", () => {
@@ -50,6 +53,14 @@ describe("native-owned IPC wire fixtures", () => {
       folderSubjectId: null,
       subjectIds: library.subjects.map((subject) => subject.id),
     });
+    const home = asFrontendHomeSummary(fixtures.homeSummary);
+    expect(home.subjects[0]).toMatchObject({ subjectId: library.subjects[0]?.id });
+    // Unfiled decks and documents are summarized as No subject, without an id.
+    expect(home.noSubject.subjectId).toBeNull();
+    expect(home.today.deckIds).toEqual([
+      ...home.subjects[0]!.dueDeckIds,
+      ...home.noSubject.dueDeckIds,
+    ]);
   });
 
   it("documents serde byte, nullable number and tagged-union lowering", () => {

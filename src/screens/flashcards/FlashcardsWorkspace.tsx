@@ -8,6 +8,7 @@ import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type {
   AnalyticsSearchLaunch,
   CurrentFlashcardsWorkspaceName,
+  SubjectFocusLaunch,
   TransientDeckSelectionEntry,
 } from "../../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
@@ -33,6 +34,8 @@ interface FlashcardsWorkspaceProps {
   ) => void | Promise<void>;
   restoredSelection?: readonly TransientDeckSelectionEntry[];
   analyticsSearchLaunch?: AnalyticsSearchLaunch;
+  /** A subject Home asked to show; the deck library brings it into view. */
+  subjectFocus?: SubjectFocusLaunch;
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (
     deckId: string,
@@ -70,6 +73,7 @@ export function FlashcardsWorkspace({
   onPracticeSelected,
   restoredSelection,
   analyticsSearchLaunch,
+  subjectFocus,
   onPracticeCards,
   openDeckRequest,
   onOpenDeck,
@@ -112,6 +116,7 @@ export function FlashcardsWorkspace({
               onPracticeDeck={onPracticeDeck}
               onPracticeSelected={onPracticeSelected}
               restoredSelection={restoredSelection}
+              subjectFocus={subjectFocus}
               openDeckRequest={openDeckRequest}
               onOpenDeck={onOpenDeck}
               onReturnToLibrary={onReturnToLibrary}

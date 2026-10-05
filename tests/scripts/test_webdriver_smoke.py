@@ -113,7 +113,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             return {self.smoke.ELEMENT_KEY: "element-1"}
 
         with patch.object(self.smoke, "request", side_effect=fake_request), patch.object(self.smoke.time, "sleep"):
-            element = self.smoke.find_element("session-1", "css selector", "button[data-testid='nav-decks']", self.smoke.deadline_after(1))
+            element = self.smoke.find_element("session-1", "css selector", "button[data-testid='nav-library']", self.smoke.deadline_after(1))
         self.assertEqual(element, "element-1")
         self.assertEqual(calls, 2)
 
@@ -284,13 +284,54 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertNotIn("Verifying restored Analytics checkpoint after restart", source)
 
     def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
-        state = {"selectedPrimary": [], "practiceDestinations": 0, "heading": "Cardiology", "progressValueText": "Card 1 of 1, 0 studied, 1 remaining, 0% complete", "formerHeaderProgressCount": 0}
+        state = {"selectedPrimary": ["nav-review"], "practiceDestinations": 0, "heading": "Cardiology", "progressValueText": "Card 1 of 1, 0 studied, 1 remaining, 0% complete", "formerHeaderProgressCount": 0}
         with patch.object(self.smoke, "request", return_value=state):
             self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
-        for key, invalid_value in (("progressValueText", "0 of 1"), ("formerHeaderProgressCount", 1)):
+        for key, invalid_value in (
+            ("progressValueText", "0 of 1"),
+            ("formerHeaderProgressCount", 1),
+            # A session runs inside Review: no other destination, and not none.
+            ("selectedPrimary", []),
+            ("selectedPrimary", ["nav-library"]),
+            ("practiceDestinations", 1),
+        ):
             with self.subTest(key=key), patch.object(self.smoke, "request", return_value={**state, key: invalid_value}):
                 with self.assertRaises(AssertionError):
                     self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
+
+    def test_library_views_open_through_main_navigation_then_the_view_switcher(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click, patch.object(self.smoke, "wait_for_main_heading") as heading:
+            self.smoke.open_library_view("session-1", "study-guides", 42.0)
+        clicked = [call.args[1] for call in click.call_args_list]
+        self.assertEqual(clicked[0], "button[data-testid='nav-library']")
+        self.assertIn("nav[aria-label='Library']", clicked[1])
+        self.assertIn("library-view-study-guides", clicked[1])
+        selectors = [call.args[2] for call in find_element.call_args_list]
+        self.assertIn("button[data-testid='nav-library'][aria-current='page']", selectors)
+        self.assertIn("button[data-testid='library-view-study-guides'][aria-current='page']", selectors)
+        heading.assert_called_once_with("session-1", "Study Guides", 42.0)
+
+    def test_today_count_must_agree_on_home_the_review_badge_and_review(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click, patch.object(self.smoke, "wait_for_main_heading") as heading:
+            self.smoke.verify_due_today("session-1", "3 cards due today", 42.0)
+        self.assertEqual(
+            [call.args[1] for call in click.call_args_list],
+            ["button[data-testid='nav-home']", "button[data-testid='nav-review']"],
+        )
+        heading.assert_called_once_with("session-1", "Review", 42.0)
+        selectors = [call.args[2] for call in find_element.call_args_list]
+        self.assertTrue(any("home-today" in selector and '"3 cards due today"' in selector for selector in selectors))
+        self.assertTrue(any("nav-badge" in selector and '"3"' in selector for selector in selectors))
+        self.assertTrue(any("review-today" in selector and '"3 cards due today"' in selector for selector in selectors))
+
+    def test_a_fresh_library_must_open_on_home(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "wait_for_main_heading") as heading:
+            self.smoke.verify_fresh_home("session-1", 42.0)
+        heading.assert_called_once_with("session-1", "Your library is empty", 42.0)
+        selectors = [call.args[2] for call in find_element.call_args_list]
+        self.assertEqual(selectors[0], "button[data-testid='nav-home'][aria-current='page']")
+        for label in ("Create a subject", "Import a document", "Open Library"):
+            self.assertTrue(any(json.dumps(label) in selector for selector in selectors), label)
 
     def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
         decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")

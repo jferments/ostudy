@@ -135,7 +135,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
 
       {snapshot.unsortedDecks.length > 0 ? (
         <section
-          className={cn(styles.folderArea, dragStyles.unsortedArea)}
+          className={cn(styles.folderArea, dragStyles.unsortedArea, "tw:scroll-mt-4")}
           aria-labelledby="unsorted-heading"
           data-library-folder-surface="true"
           data-geometry-key="destination:unsorted"
