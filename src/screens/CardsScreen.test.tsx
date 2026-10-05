@@ -48,6 +48,7 @@ const browserCard: cardsIpc.CardBrowserRow = {
   cardType: "basic", cardLabel: "Basic", frontText: "What reverses warfarin?", backText: "Vitamin K",
   tags: ["Anticoagulants"], dueAt: Date.now(), lastReviewedAt: null, reviewCount: 0,
   suspendedAt: null, buriedUntil: null, needsMorePractice: true, createdAt: 1, updatedAt: 1,
+  intervalDays: 0, lapses: 0, stability: 0, difficulty: 0, sourceUnitKind: null, sourceUnit: null,
 };
 const reverseCard: cardsIpc.CardBrowserRow = {
   ...browserCard, cardId: "f".repeat(32), cardLabel: "Reverse", frontText: "Vitamin K",
