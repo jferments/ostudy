@@ -53,7 +53,7 @@ export function QuestionTile({ id, action, fallbackName, content, children, poin
     data-result={correct === undefined ? undefined : correct ? "correct" : "incorrect"}
     className={cn(answerTile, correct === undefined && connected ? connectedTile : tileResult(correct), "tw:relative tw:grid tw:min-h-14 tw:gap-2",
       interactive && !disabled && "tw:touch-none tw:select-none tw:cursor-grab",
-      selected && "tw:ring-2 tw:ring-primary",
+      selected && interactive && "tw:ring-2 tw:ring-primary",
       dragging && [activePointerTile, "tw:pointer-events-none tw:z-(--ostudy-layer-drag) tw:cursor-grabbing tw:opacity-100 tw:shadow-lg tw:[&_*]:select-none"])}
     style={dragging ? { transform: `translate(${pointer.offset.x}px, ${pointer.offset.y}px)` } : undefined}
     onPointerDown={interactive ? (event) => { if (!disabled) pointer.pointerDown(event, id); } : undefined}

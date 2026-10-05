@@ -64,8 +64,9 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
         const correct = result ? result.selectedTargetId === result.expectedTargetId : undefined;
         const expected = result ? targets.get(result.expectedTargetId) : null;
         const over = pointer.draggingItemId !== null && pointer.overTargetId === target.id;
+        // On a phone each column is narrow, so a long word breaks at a hyphen where the platform can.
         return <div key={target.id} data-practice-drop-target-id={target.id}
-          className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
+          className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1 tw:hyphens-auto">
           <QuestionTile key={item.id} id={item.id} action="Select"
             fallbackName={extractRichDocumentText(item.content) ? undefined : `item ${index + 1}`}
             content={<RichTextView document={item.content} assets={assets} onLinkError={onError} />}

@@ -46,7 +46,7 @@ export function OrderingBoard({ question, orderedItemIds, assets, disabled, eval
         return <li key={id} data-practice-drop-target-id={id} className="tw:grid tw:grid-cols-[minmax(0,1fr)_auto] tw:items-center tw:gap-2">
           <QuestionTile id={id} action="Move" fallbackName={extractRichDocumentText(item.content) ? undefined : `item ${index + 1}`}
             pointer={pointer} disabled={disabled} locked={evaluation !== null} correct={correct}
-            content={<div className="tw:flex tw:items-start tw:gap-3">
+            content={<div className="tw:flex tw:items-baseline tw:gap-3">
               <span className="tw:font-sans tw:text-small tw:font-semibold tw:tabular-nums tw:text-muted-foreground" aria-hidden="true">{index + 1}.</span>
               <div className="tw:min-w-0 tw:flex-1"><RichTextView document={item.content} assets={assets} onLinkError={onError} /></div>
             </div>}>

@@ -35,16 +35,17 @@ export function AnswerChoices({ options, selectedIds, multiple, assets, disabled
       </> : null}
     </div>;
   }
+  // Every kind draws the same tile: the radio or checkbox beside the option, one option per row.
+  function tile(id: string): string {
+    return cn(answerTile, tileResult(results.get(id)?.expected), "tw:flex tw:min-h-14 tw:items-start tw:gap-3",
+      disabled ? "tw:cursor-default" : "tw:cursor-pointer", !results.has(id) && selected.has(id) && "tw:border-primary tw:bg-accent");
+  }
   if (!multiple) return <RadioGroup label={label} value={selectedIds[0] ?? ""} disabled={disabled}
-    presentation="cards" className="tw:grid-cols-1 tw:gap-3 tw:sm:grid-cols-2 tw:lg:grid-cols-2"
     options={options.map((option, index) => ({ value: option.id, label: content(option),
-      ariaLabel: extractRichDocumentText(option.content).trim() || `Option ${index + 1}`,
-      className: results.has(option.id) ? tileResult(results.get(option.id)!.expected) : undefined,
+      ariaLabel: extractRichDocumentText(option.content).trim() || `Option ${index + 1}`, className: tile(option.id),
     }))} onValueChange={(id) => onChange([id])} />;
   return <div className="tw:grid tw:gap-3" role="group" aria-label={label}>
-    {options.map((option, index) => <label key={option.id}
-      className={cn(answerTile, tileResult(results.get(option.id)?.expected), "tw:flex tw:min-h-14 tw:items-start tw:gap-3",
-        !results.has(option.id) && selected.has(option.id) && "tw:border-primary tw:bg-accent")}>
+    {options.map((option, index) => <label key={option.id} className={tile(option.id)}>
       <Checkbox aria-label={extractRichDocumentText(option.content).trim() || `Option ${index + 1}`}
         checked={selected.has(option.id)} disabled={disabled} onCheckedChange={(checked) => {
           const next = new Set(selected);
