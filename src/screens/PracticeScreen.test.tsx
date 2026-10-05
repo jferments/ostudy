@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as cardsIpc from "../ipc/cards";
 import * as commonIpc from "../ipc/common";
 import type { DeckSummary } from "../ipc/decks";
+import * as platformIpc from "../ipc/platform";
 import * as practiceIpc from "../ipc/practice";
 import * as schedulingIpc from "../ipc/scheduling";
 import {
@@ -42,6 +44,16 @@ vi.mock("../ipc/practice", () => ({
   submitPracticeReview: vi.fn(),
 }));
 vi.mock("../ipc/scheduling", () => ({ applyScheduleAction: vi.fn() }));
+vi.mock("../ipc/platform", () => ({ listenToLifecycle: vi.fn() }));
+vi.mock("../ipc/cards", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ipc/cards")>()),
+  getCardNote: vi.fn(),
+}));
+vi.mock("./CardEditorScreen", () => ({
+  CardEditorScreen: ({ onCancel }: { onCancel: () => void }) => (
+    <button type="button" onClick={onCancel}>Close editor</button>
+  ),
+}));
 
 const deck: DeckSummary = {
   id: "a".repeat(32),
@@ -137,6 +149,7 @@ describe("PracticeScreen internal workflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetPracticeExitGuardForTests();
+    vi.mocked(platformIpc.listenToLifecycle).mockResolvedValue(() => undefined);
     vi.mocked(practiceIpc.startSelectedPractice).mockResolvedValue(session);
     vi.mocked(practiceIpc.startCardPractice).mockResolvedValue({ ...session, mode: "custom" });
     vi.mocked(practiceIpc.markPracticeCardViewed).mockResolvedValue(undefined);
@@ -440,5 +453,74 @@ describe("PracticeScreen internal workflow", () => {
     await screen.findByRole("button", { name: "View analytics" });
     const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
     expect(calls[1]?.[0]).toEqual(calls[0]?.[0]);
+  });
+
+  it("sends only visible study time and keeps the measured value on a retry", async () => {
+    let now = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let visibility: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+    const setVisibility = (state: DocumentVisibilityState): void => {
+      visibility = state;
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    };
+    vi.mocked(practiceIpc.submitPracticeReview)
+      .mockRejectedValueOnce(new Error("Response lost"))
+      .mockResolvedValueOnce({
+        cardId: card.presentation.cardId,
+        rating: 2,
+        outcome: "not_confident",
+        dueAt: 3,
+        intervalMs: 2,
+        completed: true,
+        ratedCount: 1,
+        correctCount: 1,
+      });
+    renderPractice();
+    await screen.findByRole("button", { name: "Show answer" });
+
+    now += 4_000;
+    setVisibility("hidden");
+    now += 120_000;
+    setVisibility("visible");
+    now += 1_500;
+    await reveal();
+    fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
+    await screen.findByText(/safely retry the same review/u);
+    now += 9_000;
+    fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
+    await screen.findByRole("button", { name: "View analytics" });
+
+    const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
+    expect(calls[0]?.[0].activeTimeMs).toBe(5_500);
+    expect(calls[1]?.[0]).toEqual(calls[0]?.[0]);
+  });
+
+  it("does not count time in the card editor as study time", async () => {
+    let now = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(cardsIpc.getCardNote).mockResolvedValue({
+      noteId: card.presentation.noteId,
+      deckId: deck.id,
+    } as unknown as cardsIpc.CardNote);
+    renderPractice();
+    await screen.findByRole("button", { name: "Show answer" });
+
+    now += 2_000;
+    fireEvent.click(screen.getByRole("button", { name: "Edit card" }));
+    const close = await screen.findByRole("button", { name: "Close editor" });
+    now += 300_000;
+    fireEvent.click(close);
+    await screen.findByRole("button", { name: "Show answer" });
+    now += 1_000;
+    await reveal();
+    fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
+    await screen.findByRole("button", { name: "View analytics" });
+
+    expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
+      expect.objectContaining({ activeTimeMs: 3_000 }),
+    );
   });
 });

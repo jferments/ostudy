@@ -20,6 +20,11 @@ const RELEASE_TABLE_ADDITIONS: &[(i64, &str, &str)] = &[
         "study_target_generation_instructions",
         "StudyTarget generation-instruction",
     ),
+    (
+        5,
+        "review_event_scheduler_context",
+        "review scheduler-context",
+    ),
 ];
 
 pub(super) fn verify(
@@ -35,16 +40,16 @@ pub(super) fn verify(
     }
     if source_lineage != CURRENT_SCHEMA_LINEAGE
         || !(1..CURRENT_SCHEMA_VERSION).contains(&source_version)
-        || CURRENT_SCHEMA_VERSION != 4
+        || CURRENT_SCHEMA_VERSION != 5
     {
         return Err("No preservation contract is registered for this release upgrade. The active library was not replaced.".into());
     }
     let before = rows(source)?;
     let mut after = rows(target)?;
 
-    // Each forward release migration only adds one empty operation table.
-    // Remove the tables added after the source version, then every retained
-    // learner value must be identical.
+    // Each forward release migration only adds one empty table. Remove the
+    // tables added after the source version, then every retained learner value
+    // must be identical. Schema 5 in particular never backfills review context.
     for (introduced_in, table, description) in RELEASE_TABLE_ADDITIONS {
         if *introduced_in <= source_version {
             continue;

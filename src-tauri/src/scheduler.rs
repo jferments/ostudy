@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use rs_fsrs::{Card as FsrsCard, Parameters, Rating, State, FSRS};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::error::CommandError;
 
@@ -91,6 +92,62 @@ pub struct ScheduleTransition {
     pub after: ScheduleRecord,
     pub outcome: ReviewOutcome,
     pub reviewed_at: i64,
+    pub context: SchedulerContext,
+}
+
+/// What FSRS knew when it scheduled one review. None of these values can be
+/// rebuilt later from the before/after schedule, so the review records them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SchedulerContext {
+    /// The previous review time. `None` for a New card, whose `last_review_at`
+    /// holds its creation or reset time rather than a review.
+    pub previous_review_at: Option<i64>,
+    /// Whole days since the previous review as FSRS measured them for this
+    /// review (0 for a New card). The stored `elapsed_days` before a review is
+    /// stale: it describes the previous review.
+    pub elapsed_days: i64,
+    /// FSRS-predicted recall probability at review time. `None` for a New card
+    /// (the crate reports 0.0, which is not a prediction) and for a schedule
+    /// whose stability cannot produce a probability.
+    pub retrievability: Option<f64>,
+    pub reps_before: i64,
+    pub lapses_before: i64,
+    pub desired_retention: f64,
+    /// SHA-256 of the canonical identity of every other parameter that
+    /// scheduled this review (see `parameters_sha256`).
+    pub parameters_sha256: String,
+}
+
+/// Canonical form of every FSRS parameter except the retention target, which
+/// each review records on its own. The crate's fuzz seed is excluded too: the
+/// crate replaces it on every call with a value derived from the review time
+/// and card state, so it is a per-call nonce rather than configuration.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParameterIdentity<'a> {
+    format: &'static str,
+    weights: &'a [f64],
+    maximum_interval: i32,
+    decay: f64,
+    factor: f64,
+    enable_short_term: bool,
+    enable_fuzz: bool,
+}
+
+/// SHA-256 (lowercase hex) of the canonical JSON for the scheduler parameters,
+/// so a later switch to personalized weights is visible on each review.
+fn parameters_sha256(parameters: &Parameters) -> Result<String, CommandError> {
+    let identity = ParameterIdentity {
+        format: "ostudy-fsrs-parameters-v1",
+        weights: &parameters.w,
+        maximum_interval: parameters.maximum_interval,
+        decay: parameters.decay,
+        factor: parameters.factor,
+        enable_short_term: parameters.enable_short_term,
+        enable_fuzz: parameters.enable_fuzz,
+    };
+    let canonical = serde_json::to_vec(&identity).map_err(CommandError::serialization)?;
+    Ok(format!("{:x}", Sha256::digest(canonical)))
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -293,11 +350,12 @@ pub fn apply_review(
         state: state_from_i64(current.state)?,
         last_review: datetime_from_millis(current.last_review_at, "last review time")?,
     };
-    let parameters = Parameters {
-        request_retention: desired_retention,
-        enable_fuzz: false,
-        ..Parameters::default()
-    };
+    // Read the prediction before FSRS consumes the pre-review card.
+    let retrievability = (card.state != State::New)
+        .then(|| card.get_retrievability(now))
+        .filter(|value| value.is_finite() && (0.0..=1.0).contains(value));
+    let parameters = scheduler_parameters(desired_retention);
+    let parameters_sha256 = parameters_sha256(&parameters)?;
     let next = FSRS::new(parameters).next(card, now, outcome.rating()).card;
     let after = ScheduleRecord {
         card_id: current.card_id.clone(),
@@ -316,12 +374,65 @@ pub fn apply_review(
         revision: current.revision + 1,
     };
     validate_schedule(&after)?;
+    let context = SchedulerContext {
+        previous_review_at: (current.state != state_to_i64(State::New))
+            .then_some(current.last_review_at),
+        elapsed_days: after.elapsed_days,
+        retrievability,
+        reps_before: current.reps,
+        lapses_before: current.lapses,
+        desired_retention,
+        parameters_sha256,
+    };
     Ok(ScheduleTransition {
         before: current,
         after,
         outcome,
         reviewed_at,
+        context,
     })
+}
+
+/// The FSRS parameters every review uses: the crate defaults with fuzz off and
+/// the learner's retention target.
+fn scheduler_parameters(desired_retention: f64) -> Parameters {
+    Parameters {
+        request_retention: desired_retention,
+        enable_fuzz: false,
+        ..Parameters::default()
+    }
+}
+
+/// The parameter identity that reviews currently record. It does not depend on
+/// the retention target, which each review stores separately.
+#[cfg(test)]
+pub(crate) fn scheduler_parameters_sha256() -> Result<String, CommandError> {
+    parameters_sha256(&scheduler_parameters(MAX_DESIRED_RETENTION))
+}
+
+/// The recall probability rs-fsrs computes for the pre-review schedule and the
+/// elapsed days its review log reports, computed independently of
+/// `apply_review` so tests can compare the recorded context with the crate.
+#[cfg(test)]
+pub(crate) fn fsrs_review_view(schedule: &ScheduleRecord, reviewed_at: i64) -> (f64, i64) {
+    let time = |millis: i64| DateTime::<Utc>::from_timestamp_millis(millis).unwrap();
+    let now = time(reviewed_at);
+    let card = FsrsCard {
+        due: time(schedule.due_at),
+        stability: schedule.stability,
+        difficulty: schedule.difficulty,
+        elapsed_days: schedule.elapsed_days,
+        scheduled_days: schedule.scheduled_days,
+        reps: i32::try_from(schedule.reps).unwrap(),
+        lapses: i32::try_from(schedule.lapses).unwrap(),
+        state: state_from_i64(schedule.state).unwrap(),
+        last_review: time(schedule.last_review_at),
+    };
+    let retrievability = card.get_retrievability(now);
+    let log = FSRS::new(scheduler_parameters(MAX_DESIRED_RETENTION))
+        .next(card, now, Rating::Good)
+        .review_log;
+    (retrievability, log.elapsed_days)
 }
 
 pub fn validate_desired_retention(value: f64) -> Result<(), CommandError> {
@@ -419,5 +530,120 @@ mod tests {
         assert!(validate_desired_retention(0.79).is_err());
         assert!(validate_desired_retention(0.90).is_ok());
         assert!(validate_desired_retention(0.98).is_err());
+    }
+
+    const DAY: i64 = 86_400_000;
+    /// SHA-256 of the canonical JSON for rs-fsrs 1.2.1 defaults with fuzz off:
+    /// {"format":"ostudy-fsrs-parameters-v1","weights":[0.4072,...,0.6567],
+    ///  "maximumInterval":36500,"decay":-0.5,"factor":0.2345679012345679,
+    ///  "enableShortTerm":true,"enableFuzz":false}
+    const DEFAULT_PARAMETERS_SHA256: &str =
+        "c000fa95a9efa680ef0c360ce9e1e2fe6d0c1164aec88b5d40d8c5a017c72dac";
+
+    fn reviewed(state: i64, stability: f64, last_review_at: i64, due_at: i64) -> ScheduleRecord {
+        ScheduleRecord {
+            state,
+            due_at,
+            stability,
+            difficulty: 5.0,
+            // Stale on purpose: this value describes the previous review.
+            elapsed_days: 3,
+            scheduled_days: 4,
+            reps: 6,
+            lapses: 2,
+            revision: 7,
+            ..new_schedule("a".repeat(32), last_review_at)
+        }
+    }
+
+    #[test]
+    fn new_card_context_has_no_previous_review_or_prediction() {
+        let schedule = new_schedule("a".repeat(32), NOW - 5 * DAY);
+        let transition =
+            apply_review(schedule, ReviewOutcome::SomewhatConfident, NOW, 0.9).unwrap();
+        assert_eq!(
+            transition.context,
+            SchedulerContext {
+                previous_review_at: None,
+                elapsed_days: 0,
+                retrievability: None,
+                reps_before: 0,
+                lapses_before: 0,
+                desired_retention: 0.9,
+                parameters_sha256: DEFAULT_PARAMETERS_SHA256.to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn review_context_records_the_prediction_and_elapsed_days_fsrs_used() {
+        let last_review_at = NOW - 10 * DAY - 3_600_000;
+        let schedule = reviewed(2, 12.0, last_review_at, NOW - 3_600_000);
+        let (expected_retrievability, expected_elapsed) = fsrs_review_view(&schedule, NOW);
+        assert_eq!(expected_elapsed, 10);
+        assert_eq!(
+            expected_retrievability,
+            Parameters::forgetting_curve(10.0, 12.0)
+        );
+
+        let transition =
+            apply_review(schedule, ReviewOutcome::SomewhatConfident, NOW, 0.85).unwrap();
+        let context = &transition.context;
+        assert_eq!(context.previous_review_at, Some(last_review_at));
+        assert_eq!(context.elapsed_days, expected_elapsed);
+        assert_ne!(context.elapsed_days, transition.before.elapsed_days);
+        assert_eq!(context.retrievability, Some(expected_retrievability));
+        assert_eq!((context.reps_before, context.lapses_before), (6, 2));
+        assert_eq!(context.desired_retention, 0.85);
+        assert_eq!(context.parameters_sha256, DEFAULT_PARAMETERS_SHA256);
+    }
+
+    #[test]
+    fn relearning_context_keeps_the_short_term_prediction() {
+        let last_review_at = NOW - 2 * DAY - 300_000;
+        let schedule = reviewed(3, 2.0, last_review_at, NOW - 60_000);
+        let (expected_retrievability, expected_elapsed) = fsrs_review_view(&schedule, NOW);
+        let transition = apply_review(schedule, ReviewOutcome::Wrong, NOW, 0.9).unwrap();
+        assert_eq!(transition.context.elapsed_days, expected_elapsed);
+        assert_eq!(transition.context.elapsed_days, 2);
+        assert_eq!(
+            transition.context.retrievability,
+            Some(expected_retrievability)
+        );
+        assert_eq!(transition.context.previous_review_at, Some(last_review_at));
+    }
+
+    #[test]
+    fn a_schedule_without_a_usable_stability_records_no_prediction() {
+        // Stability 0 reviewed on the same day is 0/0 inside the forgetting curve.
+        let schedule = reviewed(1, 0.0, NOW - 60_000, NOW - 30_000);
+        let transition = apply_review(schedule, ReviewOutcome::Wrong, NOW, 0.9).unwrap();
+        assert_eq!(transition.context.retrievability, None);
+        assert_eq!(transition.context.previous_review_at, Some(NOW - 60_000));
+    }
+
+    #[test]
+    fn parameter_identity_ignores_retention_and_tracks_every_other_parameter() {
+        let base = parameters_sha256(&scheduler_parameters(0.9)).unwrap();
+        assert_eq!(base, DEFAULT_PARAMETERS_SHA256);
+        assert_eq!(scheduler_parameters_sha256().unwrap(), base);
+        assert_eq!(
+            parameters_sha256(&scheduler_parameters(0.8)).unwrap(),
+            base,
+            "the retention target is recorded separately"
+        );
+        let changes: [fn(&mut Parameters); 6] = [
+            |parameters| parameters.w[4] += 0.01,
+            |parameters| parameters.maximum_interval = 365,
+            |parameters| parameters.decay = -0.4,
+            |parameters| parameters.factor = 0.25,
+            |parameters| parameters.enable_short_term = false,
+            |parameters| parameters.enable_fuzz = true,
+        ];
+        for change in changes {
+            let mut parameters = scheduler_parameters(0.9);
+            change(&mut parameters);
+            assert_ne!(parameters_sha256(&parameters).unwrap(), base);
+        }
     }
 }

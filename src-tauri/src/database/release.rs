@@ -21,12 +21,15 @@ mod deck_merge;
 #[path = "release/generation_instructions.rs"]
 mod generation_instructions;
 
+#[path = "release/review_scheduler_context.rs"]
+mod review_scheduler_context;
+
 #[path = "release/staging.rs"]
 mod staging;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 4;
+pub(crate) const SCHEMA_VERSION: i64 = 5;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -58,6 +61,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "study_target_generation_instructions",
         checksum: "4708634c4fc8d757d57561b008861f86d42e9b1974656bd9b5f23f1d87827e1d",
         sql: include_str!("../../schema/0004_study_target_generation_instructions.sql"),
+    },
+    ReleaseMigration {
+        version: 5,
+        name: "review_event_scheduler_context",
+        checksum: "ffb3788f79fcb4b3fe2092bcb6207f7ff7e2742b694fa845f175862737863158",
+        sql: include_str!("../../schema/0005_review_event_scheduler_context.sql"),
     },
 ];
 
@@ -264,6 +273,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     validate_selection_receipt_schema(connection, user_version)?;
     deck_merge::validate_schema(connection, user_version)?;
     generation_instructions::validate_schema(connection, user_version)?;
+    review_scheduler_context::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
@@ -757,6 +767,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(guidance_table, 1);
+        let scheduler_context_table: i64 = connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_schema
+                     WHERE type = 'table' AND name = 'review_event_scheduler_context'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(scheduler_context_table, 1);
     }
 
     #[test]
@@ -816,9 +837,10 @@ mod tests {
     fn malformed_release_ledgers_and_receipts_are_rejected_without_writes() {
         let mut connection = Connection::open_in_memory().unwrap();
         initialize_fresh(&mut connection).unwrap();
+        let future_version = format!("PRAGMA user_version={};", SCHEMA_VERSION + 1);
         for corruption in [
             "UPDATE schema_migrations SET checksum='bad' WHERE version=2;",
-            "PRAGMA user_version=5;",
+            future_version.as_str(),
             "DELETE FROM schema_migrations WHERE version=1;",
             "DROP TABLE selection_deck_operations;",
             "INSERT INTO selection_deck_operations VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', '{}', 1);",
@@ -907,6 +929,7 @@ mod tests {
             "selection_deck_operations",
             "deck_merge_operations",
             "study_target_generation_instructions",
+            "review_event_scheduler_context",
         ] {
             assert_eq!(
                 connection
@@ -916,12 +939,13 @@ mod tests {
                 0
             );
         }
-        // Release-only operation-intent/receipt tables are additive and empty.
+        // Release-only tables are additive and empty after conversion.
         // Compare every pre-existing typed value after excluding only them.
         let comparison = connection.transaction().unwrap();
         comparison
             .execute_batch(
-                "DROP TABLE study_target_generation_instructions;
+                "DROP TABLE review_event_scheduler_context;
+                 DROP TABLE study_target_generation_instructions;
                  DROP TABLE deck_merge_operations;
                  DROP TABLE selection_deck_operations;",
             )

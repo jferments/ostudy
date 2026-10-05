@@ -403,6 +403,7 @@ describe("typed Tauri IPC wrappers", () => {
       outcome: "somewhat_confident" as const,
       responseTimeMs: 2_500,
       scheduleRevision: 2,
+      activeTimeMs: 2_100,
     };
     await expectInvocation(() => submitPracticeReview(review), "submit_practice_review", {
       input: review,

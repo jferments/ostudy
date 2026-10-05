@@ -16,7 +16,8 @@ use crate::{
     projections::practice as practice_projection,
     scheduler::{
         apply_review, load_schedule, preview_intervals, update_schedule, ReviewOutcome,
-        ReviewPreviewSetDto, ScheduleTransition, SCHEDULER_NAME, SCHEDULER_VERSION,
+        ReviewPreviewSetDto, ScheduleTransition, SchedulerContext, SCHEDULER_NAME,
+        SCHEDULER_VERSION,
     },
     settings::load_settings,
     study_calendar::StudyTimeContext,
@@ -24,6 +25,7 @@ use crate::{
 };
 
 const MAX_RESPONSE_TIME_MS: i64 = 86_400_000;
+const MAX_ACTIVE_TIME_MS: i64 = 86_400_000;
 type PracticeSessionState = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
 
 #[derive(Clone, Debug, Serialize)]
@@ -71,6 +73,12 @@ pub struct SubmitReviewInput {
     pub outcome: String,
     pub response_time_ms: i64,
     pub schedule_revision: i64,
+    /// Milliseconds the card was visible to the learner before this rating,
+    /// when the client measured it. Stored with the review's scheduler
+    /// context; it is not part of the retry identity, so a retry that reports
+    /// a different value still returns the original review.
+    #[serde(default)]
+    pub active_time_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -379,6 +387,12 @@ pub(crate) fn submit_review_with_question(
         time.now_utc_millis,
         question_evidence.as_ref().map(|evidence| evidence.correct),
     )?;
+    insert_review_scheduler_context(
+        &transaction,
+        &event_id,
+        &transition.context,
+        input.active_time_ms,
+    )?;
     if let Some(evidence) = &question_evidence {
         evidence.link(&transaction, &event_id)?;
     }
@@ -488,6 +502,37 @@ fn insert_review_event(
         )
         .map_err(CommandError::database)?;
     Ok(event_id)
+}
+
+/// Record what the scheduler knew for this review, in the review's own
+/// transaction. The row is append-only evidence like the review itself.
+fn insert_review_scheduler_context(
+    connection: &Connection,
+    review_event_id: &str,
+    context: &SchedulerContext,
+    active_time_ms: Option<i64>,
+) -> Result<(), CommandError> {
+    connection
+        .execute(
+            "INSERT INTO review_event_scheduler_context (
+                 review_event_id, previous_review_at, elapsed_days, retrievability,
+                 reps_before, lapses_before, desired_retention,
+                 scheduler_parameters_sha256, active_time_ms
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                review_event_id,
+                context.previous_review_at,
+                context.elapsed_days,
+                context.retrievability,
+                context.reps_before,
+                context.lapses_before,
+                context.desired_retention,
+                context.parameters_sha256,
+                active_time_ms,
+            ],
+        )
+        .map_err(CommandError::database)?;
+    Ok(())
 }
 
 fn review_result_for_submission(
@@ -608,11 +653,23 @@ fn validate_review_input(input: &SubmitReviewInput) -> Result<(), CommandError> 
             "The recorded response time is outside the supported range.",
         ));
     }
+    if input
+        .active_time_ms
+        .is_some_and(|active_time_ms| !(0..=MAX_ACTIVE_TIME_MS).contains(&active_time_ms))
+    {
+        return Err(CommandError::new(
+            "invalid_active_time",
+            "The recorded study time is outside the supported range.",
+        ));
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod operation_tests;
+
+#[cfg(test)]
+mod scheduler_context_tests;
 
 #[cfg(test)]
 mod tests {
@@ -627,12 +684,76 @@ mod tests {
             outcome: "wrong".to_string(),
             response_time_ms: 100,
             schedule_revision: 0,
+            active_time_ms: None,
         };
         assert_eq!(
             validate_review_input(&input)
                 .expect_err("revision should fail")
                 .code,
             "invalid_schedule_revision"
+        );
+    }
+
+    fn input_from_json(active_time: Option<serde_json::Value>) -> SubmitReviewInput {
+        let mut value = serde_json::json!({
+            "sessionId": "a".repeat(32),
+            "cardId": "b".repeat(32),
+            "submissionId": "c".repeat(32),
+            "outcome": "wrong",
+            "responseTimeMs": 100,
+            "scheduleRevision": 1,
+        });
+        if let Some(active_time) = active_time {
+            value["activeTimeMs"] = active_time;
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn active_time_is_optional_and_limited_to_one_day() {
+        assert_eq!(input_from_json(None).active_time_ms, None);
+        assert_eq!(
+            input_from_json(Some(serde_json::Value::Null)).active_time_ms,
+            None
+        );
+        for accepted in [0, 4_321, MAX_ACTIVE_TIME_MS] {
+            let input = input_from_json(Some(accepted.into()));
+            assert_eq!(input.active_time_ms, Some(accepted));
+            validate_review_input(&input).unwrap();
+        }
+        for rejected in [-1, MAX_ACTIVE_TIME_MS + 1] {
+            let input = input_from_json(Some(rejected.into()));
+            assert_eq!(
+                validate_review_input(&input).unwrap_err().code,
+                "invalid_active_time"
+            );
+        }
+        let unknown = serde_json::json!({
+            "sessionId": "a".repeat(32),
+            "cardId": "b".repeat(32),
+            "submissionId": "c".repeat(32),
+            "outcome": "wrong",
+            "responseTimeMs": 100,
+            "scheduleRevision": 1,
+            "activeTime": 5,
+        });
+        assert!(serde_json::from_value::<SubmitReviewInput>(unknown).is_err());
+    }
+
+    #[test]
+    fn active_time_is_not_part_of_the_retry_identity() {
+        let without = input_from_json(None);
+        let with = input_from_json(Some(4_321.into()));
+        let fingerprint = review_request_fingerprint(&without).unwrap();
+        assert_eq!(review_request_fingerprint(&with).unwrap(), fingerprint);
+        assert_eq!(
+            fingerprint,
+            format!(
+                "review:v1:{{\"sessionId\":\"{}\",\"cardId\":\"{}\",\"outcome\":\"wrong\",\
+                 \"responseTimeMs\":100,\"scheduleRevision\":1}}",
+                "a".repeat(32),
+                "b".repeat(32)
+            )
         );
     }
 }
