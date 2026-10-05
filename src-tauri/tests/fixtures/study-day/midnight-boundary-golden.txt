@@ -8,8 +8,8 @@
   bucket 2026-11-03..2026-11-03 at 1793692800000..1793736000001 reviews=5 cards=5 new=1
   deck Alpha reviews=11 cards=3 last=Some(1793705400000)
   deck Beta reviews=3 cards=3 last=Some(1793732400000)
-  tag Topic 1 reviews=10 correct=9 trend=None status=on_track
-  tag Topic 0 reviews=9 correct=8 trend=None status=on_track
+  tag Topic 1 reviews=10 correct=9 trend=None status=building_data
+  tag Topic 0 reviews=9 correct=8 trend=None status=building_data
   recent r25@2026-11-03 r24@2026-11-03 r23@2026-11-03 r22@2026-11-03 r21@2026-11-03 r20@2026-11-02 r19@2026-11-02 r18@2026-11-01 r17@2026-11-01 r16@2026-11-01 r15@2026-11-01 r14@2026-11-01 r13@2026-10-31 r12@2026-10-28
   type basic reviews=14
 30d: 2026-10-05..2026-11-03 at Some(1791183600000)..1793736000000 reviews=17 cards=7 correct=16 today new=1 review=4
@@ -45,8 +45,8 @@
   bucket 2026-11-03..2026-11-03 at 1793692800000..1793736000001 reviews=5 cards=5 new=1
   deck Alpha reviews=14 cards=4 last=Some(1793705400000)
   deck Beta reviews=3 cards=3 last=Some(1793732400000)
+  tag Topic 0 reviews=9 correct=8 trend=None status=building_data
   tag Topic 1 reviews=13 correct=12 trend=None status=on_track
-  tag Topic 0 reviews=9 correct=8 trend=None status=on_track
   recent r25@2026-11-03 r24@2026-11-03 r23@2026-11-03 r22@2026-11-03 r21@2026-11-03 r20@2026-11-02 r19@2026-11-02 r18@2026-11-01 r17@2026-11-01 r16@2026-11-01 r15@2026-11-01 r14@2026-11-01 r13@2026-10-31 r12@2026-10-28 r11@2026-10-20 r10@2026-10-05 r09@2026-10-05
   type basic reviews=17
 1y: 2025-11-03..2026-11-03 at Some(1762156800000)..1793736000000 reviews=26 cards=8 correct=24 today new=1 review=4
@@ -105,8 +105,8 @@
   bucket 2026-11-02..2026-11-03 at 1793606400000..1793736000001 reviews=7 cards=5 new=2
   deck Alpha reviews=15 cards=4 last=Some(1793705400000)
   deck Beta reviews=11 cards=4 last=Some(1793732400000)
-  tag Topic 0 reviews=12 correct=11 trend=None status=on_track
-  tag Topic 1 reviews=16 correct=15 trend=None status=strong
+  tag Topic 0 reviews=12 correct=11 trend=None status=building_data
+  tag Topic 1 reviews=16 correct=15 trend=None status=on_track
   recent r25@2026-11-03 r24@2026-11-03 r23@2026-11-03 r22@2026-11-03 r21@2026-11-03 r20@2026-11-02 r19@2026-11-02 r18@2026-11-01 r17@2026-11-01 r16@2026-11-01 r15@2026-11-01 r14@2026-11-01 r13@2026-10-31 r12@2026-10-28 r11@2026-10-20 r10@2026-10-05 r09@2026-10-05 r08@2026-10-04 r07@2026-06-10 r06@2026-03-09
   type basic reviews=26
 all: 2025-12-15..2026-11-03 at None..1793736000000 reviews=26 cards=8 correct=24 today new=1 review=4
@@ -124,8 +124,8 @@ all: 2025-12-15..2026-11-03 at None..1793736000000 reviews=26 cards=8 correct=24
   bucket 2026-11-01..2026-11-03 at 1793516400000..1793736000001 reviews=12 cards=6 new=2
   deck Alpha reviews=15 cards=4 last=Some(1793705400000)
   deck Beta reviews=11 cards=4 last=Some(1793732400000)
-  tag Topic 0 reviews=12 correct=11 trend=None status=on_track
-  tag Topic 1 reviews=16 correct=15 trend=None status=strong
+  tag Topic 0 reviews=12 correct=11 trend=None status=building_data
+  tag Topic 1 reviews=16 correct=15 trend=None status=on_track
   recent r25@2026-11-03 r24@2026-11-03 r23@2026-11-03 r22@2026-11-03 r21@2026-11-03 r20@2026-11-02 r19@2026-11-02 r18@2026-11-01 r17@2026-11-01 r16@2026-11-01 r15@2026-11-01 r14@2026-11-01 r13@2026-10-31 r12@2026-10-28 r11@2026-10-20 r10@2026-10-05 r09@2026-10-05 r08@2026-10-04 r07@2026-06-10 r06@2026-03-09
   type basic reviews=26
 custom: 2026-03-07..2026-03-10 at Some(1772870400000)..1773212399999 reviews=5 cards=2 correct=4 today new=1 review=4

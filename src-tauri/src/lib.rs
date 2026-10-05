@@ -74,6 +74,7 @@ mod external_files;
 mod home_summary;
 pub mod ipc_wire_contract;
 mod knowledge;
+mod learning_metrics;
 mod library_backup;
 mod library_backup_commands;
 mod library_lock;

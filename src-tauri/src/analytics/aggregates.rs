@@ -1,17 +1,20 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
 use crate::{
-    error::CommandError, projections::learning_signals as signal_projection, studyability,
+    error::CommandError,
+    learning_metrics::{self, rate, TopicStatus},
+    projections::learning_signals as signal_projection,
+    studyability,
 };
 
 use super::{
-    history::rate,
     scope::{AnalyticsContext, HistoryPeriod},
     signals::RequestSignals,
     DeckAnalyticsDto, TagAnalyticsDto,
 };
 
-const MIN_CLASSIFICATION_REVIEWS: i64 = 5;
+/// Reviews each period needs before a trend is shown.
+const MIN_TREND_REVIEWS: i64 = 5;
 
 pub fn load_decks(
     connection: &Connection,
@@ -46,11 +49,13 @@ pub fn load_decks(
                  c.deck_id,
                  COUNT(DISTINCT c.id) AS cards_practiced,
                  COUNT(*) AS review_count,
-                 COALESCE(SUM(r.answer_correct), 0) AS correct_count,
-                 AVG(CAST(r.rating - 1 AS REAL)) AS average_confidence,
+                 {remembered} AS correct_count,
+                 {average_confidence} AS average_confidence,
                  AVG(CAST(r.response_time_ms AS REAL)) AS average_response_time_ms,
                  COALESCE(SUM(r.response_time_ms), 0) AS total_study_time_ms,
-                 MAX(r.reviewed_at) AS last_practiced_at
+                 MAX(r.reviewed_at) AS last_practiced_at,
+                 {retention_reviews} AS retention_review_count,
+                 {retention_remembered} AS retention_remembered_count
              FROM {history_from}
              WHERE {history_conditions}
              GROUP BY c.deck_id
@@ -70,7 +75,9 @@ pub fn load_decks(
              hs.average_confidence,
              hs.average_response_time_ms,
              COALESCE(hs.total_study_time_ms, 0),
-             hs.last_practiced_at
+             hs.last_practiced_at,
+             COALESCE(hs.retention_review_count, 0),
+             COALESCE(hs.retention_remembered_count, 0)
          FROM decks d
          LEFT JOIN current_stats cs ON cs.deck_id = d.id
          LEFT JOIN history_stats hs ON hs.deck_id = d.id
@@ -87,6 +94,10 @@ pub fn load_decks(
         signal_value = signal_projection::value_sql(),
         signal_join = signals.join_sql(),
         current_conditions = current_conditions.join(" AND "),
+        remembered = learning_metrics::remembered_count_sql("r"),
+        average_confidence = learning_metrics::average_confidence_sql("r"),
+        retention_reviews = learning_metrics::retention_review_count_sql("r", "1"),
+        retention_remembered = learning_metrics::retention_remembered_count_sql("r", "1"),
         history_from = context.history_from_sql(),
         history_conditions = history_conditions.join(" AND "),
     );
@@ -112,6 +123,9 @@ pub fn load_decks(
                 average_response_time_ms: row.get(12)?,
                 total_study_time_ms: row.get(13)?,
                 last_practiced_at: row.get(14)?,
+                retention_review_count: row.get(15)?,
+                retention_remembered_count: row.get(16)?,
+                true_retention: rate(row.get(16)?, row.get(15)?),
             })
         })
         .map_err(CommandError::database)?
@@ -188,10 +202,8 @@ pub fn load_tags(
                      AS cards_practiced,
                  COALESCE(SUM(CASE WHEN {current_predicate} THEN 1 ELSE 0 END), 0)
                      AS review_count,
-                 COALESCE(SUM(CASE WHEN {current_predicate} THEN r.answer_correct ELSE 0 END), 0)
-                     AS correct_count,
-                 AVG(CASE WHEN {current_predicate} THEN CAST(r.rating - 1 AS REAL) END)
-                     AS average_confidence,
+                 {remembered} AS correct_count,
+                 {average_confidence} AS average_confidence,
                  AVG(CASE WHEN {current_predicate} THEN CAST(r.response_time_ms AS REAL) END)
                      AS average_response_time_ms,
                  COALESCE(SUM(CASE WHEN {current_predicate} THEN r.response_time_ms ELSE 0 END), 0)
@@ -200,9 +212,9 @@ pub fn load_tags(
                      AS last_practiced_at,
                  COALESCE(SUM(CASE WHEN {previous_predicate} THEN 1 ELSE 0 END), 0)
                      AS previous_review_count,
-                 COALESCE(SUM(CASE
-                     WHEN {previous_predicate} THEN r.answer_correct ELSE 0
-                 END), 0) AS previous_correct_count
+                 {previous_remembered} AS previous_correct_count,
+                 {retention_reviews} AS retention_review_count,
+                 {retention_remembered} AS retention_remembered_count
              FROM {history_from}
              CROSS JOIN review_event_tag_attributions rta ON rta.review_event_id = r.id
              WHERE {history_conditions}
@@ -230,7 +242,9 @@ pub fn load_tags(
              COALESCE(hts.total_study_time_ms, 0),
              hts.last_practiced_at,
              COALESCE(hts.previous_review_count, 0),
-             COALESCE(hts.previous_correct_count, 0)
+             COALESCE(hts.previous_correct_count, 0),
+             COALESCE(hts.retention_review_count, 0),
+             COALESCE(hts.retention_remembered_count, 0)
          FROM keys
          LEFT JOIN tags t ON t.id = keys.tag_id
          LEFT JOIN current_tag_stats cts ON cts.tag_id = keys.tag_id
@@ -240,6 +254,14 @@ pub fn load_tags(
         signal_value = signal_projection::value_sql(),
         signal_join = signals.join_sql(),
         current_conditions = current_conditions.join(" AND "),
+        remembered = learning_metrics::remembered_count_where_sql("r", &current_predicate),
+        average_confidence =
+            learning_metrics::average_confidence_where_sql("r", &current_predicate),
+        retention_reviews = learning_metrics::retention_review_count_sql("r", &current_predicate),
+        retention_remembered =
+            learning_metrics::retention_remembered_count_sql("r", &current_predicate),
+        previous_remembered =
+            learning_metrics::remembered_count_where_sql("r", &previous_predicate),
         current_predicate = current_predicate,
         previous_predicate = previous_predicate,
         history_from = context.history_from_sql(),
@@ -254,8 +276,8 @@ pub fn load_tags(
             let previous_correct_count: i64 = row.get(16)?;
             let correct_rate = rate(correct_count, review_count);
             let previous_rate = rate(previous_correct_count, previous_review_count);
-            let trend_delta = if review_count >= MIN_CLASSIFICATION_REVIEWS
-                && previous_review_count >= MIN_CLASSIFICATION_REVIEWS
+            let trend_delta = if review_count >= MIN_TREND_REVIEWS
+                && previous_review_count >= MIN_TREND_REVIEWS
             {
                 correct_rate
                     .zip(previous_rate)
@@ -264,6 +286,8 @@ pub fn load_tags(
                 None
             };
             let needs_more_practice_count: i64 = row.get(7)?;
+            let retention_review_count: i64 = row.get(17)?;
+            let retention_remembered_count: i64 = row.get(18)?;
             Ok(TagAnalyticsDto {
                 tag_id: row.get(0)?,
                 tag_name: row.get(1)?,
@@ -281,13 +305,17 @@ pub fn load_tags(
                 average_response_time_ms: row.get(12)?,
                 total_study_time_ms: row.get(13)?,
                 last_practiced_at: row.get(14)?,
+                retention_review_count,
+                retention_remembered_count,
+                true_retention: rate(retention_remembered_count, retention_review_count),
                 trend_delta,
-                status: classify_tag(
-                    review_count,
-                    correct_rate,
-                    needs_more_practice_count,
+                status: TopicStatus::classify(
+                    retention_review_count,
+                    retention_remembered_count,
                     desired_retention,
-                ),
+                )
+                .as_str()
+                .to_string(),
             })
         })
         .map_err(CommandError::database)?
@@ -316,32 +344,14 @@ pub fn load_tags(
     Ok(rows)
 }
 
-fn classify_tag(
-    review_count: i64,
-    correct_rate: Option<f64>,
-    needs_more_practice: i64,
-    desired_retention: f64,
-) -> String {
-    if review_count < MIN_CLASSIFICATION_REVIEWS {
-        return "building_data".to_string();
-    }
-    if needs_more_practice > 0
-        || correct_rate.is_some_and(|value| value <= desired_retention - 0.10)
-    {
-        return "needs_attention".to_string();
-    }
-    if correct_rate.is_some_and(|value| value >= desired_retention + 0.03) {
-        return "strong".to_string();
-    }
-    "on_track".to_string()
-}
-
 fn tag_status_rank(value: &str) -> i64 {
-    match value {
-        "needs_attention" => 0,
-        "building_data" => 1,
-        "on_track" => 2,
-        "strong" => 3,
-        _ => 4,
-    }
+    [
+        TopicStatus::NeedsAttention,
+        TopicStatus::BuildingData,
+        TopicStatus::OnTrack,
+        TopicStatus::Strong,
+    ]
+    .into_iter()
+    .find(|status| status.as_str() == value)
+    .map_or(4, TopicStatus::rank)
 }

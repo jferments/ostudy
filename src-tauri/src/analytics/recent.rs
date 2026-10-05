@@ -205,7 +205,7 @@ pub fn load_sessions(
                 card_count: row.get(5)?,
                 rated_count,
                 correct_count,
-                correct_rate: super::history::rate(correct_count, rated_count),
+                correct_rate: crate::learning_metrics::rate(correct_count, rated_count),
                 study_time_ms: row.get(8)?,
             })
         })

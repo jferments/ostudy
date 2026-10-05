@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::{
     error::CommandError,
+    learning_metrics,
     projections::{
         learning_signals as signal_projection,
         scope::{append_in_filter, push_value},
@@ -73,11 +74,12 @@ pub fn completed_today(
         .query_row(
             &format!(
                 "SELECT
-                     COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
+                     {new_reviews},
                      COALESCE(SUM(CASE WHEN r.state_before <> 0 THEN 1 ELSE 0 END), 0)
                  FROM review_events r
                  JOIN review_event_attributions a ON a.review_event_id = r.id
-                 WHERE {today}"
+                 WHERE {today}",
+                new_reviews = learning_metrics::new_card_review_count_sql("r"),
             ),
             params_from_iter(values.iter()),
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -98,8 +100,8 @@ pub fn workload_overview_for_scope(
     let sql = format!(
         "WITH {signals}
          SELECT
-             COALESCE(SUM(CASE WHEN s.due_at <= ?1 AND s.state <> 0 THEN 1 ELSE 0 END), 0),
-             COALESCE(SUM(CASE WHEN s.due_at <= ?1 AND s.state = 0 THEN 1 ELSE 0 END), 0),
+             COALESCE(SUM(CASE WHEN {ready_review} THEN 1 ELSE 0 END), 0),
+             COALESCE(SUM(CASE WHEN {ready_new} THEN 1 ELSE 0 END), 0),
              COUNT(*),
              COALESCE(SUM(CASE WHEN {signal_value} = 1 THEN 1 ELSE 0 END), 0)
          FROM cards c
@@ -109,6 +111,8 @@ pub fn workload_overview_for_scope(
          {signal_join}
          WHERE {conditions}",
         signals = signal_projection::LEARNING_SIGNAL_CTES,
+        ready_review = learning_metrics::ready_review_sql("s", "?1"),
+        ready_new = learning_metrics::ready_new_sql("s", "?1"),
         signal_value = signal_projection::value_sql(),
         signal_join = signal_projection::join_sql(),
         conditions = conditions.join(" AND "),

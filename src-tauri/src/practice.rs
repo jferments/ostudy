@@ -13,6 +13,7 @@ use tauri::State;
 use crate::{
     database::Database,
     error::CommandError,
+    learning_metrics,
     projections::practice as practice_projection,
     scheduler::{
         apply_review, load_schedule, preview_intervals, update_schedule, ReviewOutcome,
@@ -593,7 +594,8 @@ pub(crate) fn refresh_session_counters(
 ) -> Result<(), CommandError> {
     let changed = connection
         .execute(
-            "UPDATE practice_sessions
+            &format!(
+                "UPDATE practice_sessions
              SET viewed_count = (
                      SELECT COUNT(*) FROM practice_session_cards
                      WHERE session_id = ?1 AND viewed_at IS NOT NULL
@@ -606,16 +608,7 @@ pub(crate) fn refresh_session_counters(
                      SELECT COUNT(*) FROM practice_session_cards
                      WHERE session_id = ?1 AND rated_at IS NOT NULL
                  ),
-                 correct_count = (
-                     SELECT COUNT(*) FROM practice_session_cards p
-                     LEFT JOIN question_attempts qa
-                       ON qa.session_id = p.session_id AND qa.card_id = p.card_id
-                     WHERE p.session_id = ?1 AND p.rated_at IS NOT NULL
-                       AND ((qa.instance_id IS NULL AND p.rating BETWEEN 2 AND 4)
-                            OR (qa.question_kind = 'image_occlusion'
-                                AND qa.phase = 'revealed' AND p.rating BETWEEN 2 AND 4)
-                            OR qa.verdict = 'correct')
-                 ),
+                 correct_count = {remembered},
                  completed_at = CASE
                      WHEN (SELECT COUNT(*) FROM practice_session_cards
                            WHERE session_id = ?1
@@ -624,6 +617,8 @@ pub(crate) fn refresh_session_counters(
                      ELSE completed_at
                  END
              WHERE id = ?1",
+                remembered = learning_metrics::session_remembered_count_sql("?1"),
+            ),
             params![session_id, now],
         )
         .map_err(CommandError::database)?;

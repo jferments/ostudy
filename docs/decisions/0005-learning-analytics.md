@@ -66,6 +66,8 @@ and is not presented as focused study time.
 
 ### Topic classification
 
+Superseded by [ADR 0056](0056-learning-metric-definitions.md), which classifies topics by true retention.
+
 A tag is classified only after at least five reviews in the selected range:
 
 - **Building data:** fewer than five reviews.

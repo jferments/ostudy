@@ -20,6 +20,7 @@ function bucket(startAt: number): TimelineBucket {
     startLocalDate: "2026-08-11", endLocalDate: "2026-08-11", startAt, endAt: startAt + 1, cardsPracticed: 8, reviewCount: 10,
     newCards: 2, rememberedCount: 8, wrongCount: 2, hardCount: 1, mediumCount: 4, easyCount: 3, correctRate: 0.8,
     averageConfidence: 1.8, averageResponseTimeMs: 4000, studyTimeMs: 40_000, sessionCount: 1, containsHighlightedSession: false,
+    retentionReviewCount: 5, retentionRememberedCount: 4, trueRetention: 0.8,
   };
 }
 
