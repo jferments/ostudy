@@ -1,8 +1,10 @@
 # Practice, scheduling, and analytics
 
-Practice is a contextual workflow: start from a deck, selected decks, Search results, or linked study-guide cards. It is not a permanent main-navigation destination. Your review history and current schedules are durable library data, while the visible progress and card-stack effects are presentation.
+Practice is a contextual workflow: start from Review or Home, a deck, selected decks, Search results, or linked study-guide cards. It runs inside **Review**, which the navigation highlights during a session, rather than being a destination of its own. Your review history and current schedules are durable library data, while the visible progress and card-stack effects are presentation.
 
 ## Choose a scope
+
+**Review** in the main navigation shows how many cards are due today and about how long they take, with **Start review** for all of them, a **Start** for each subject with due cards, and **Choose decks**, which opens Library's Decks view for a custom practice. Home's Today strip starts the same review. Both count what a scheduled session studies today under your daily limits.
 
 **Scheduled practice** selects studyable due work within the chosen deck/tag scope and daily new/review limits. The workload display separates available due work from work omitted by those limits.
 
@@ -55,7 +57,7 @@ The completion view summarizes the finished work, confidence distribution, remem
 
 ## Leave or resume a session
 
-Ending early asks for confirmation and returns to the logical launch context, such as the Decks root, a particular deck, Search, or Study Guides. Every rating that was already accepted remains a durable review event: it updates that card's schedule and is counted by Analytics even though later cards in the session were never reached. Merely viewing or revealing an unrated card does not invent a review. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
+Ending early asks for confirmation and returns to the logical launch context, such as Review, Home, the Decks root, a particular deck, Search, or Study guides. Every rating that was already accepted remains a durable review event: it updates that card's schedule and is counted by Progress even though later cards in the session were never reached. Merely viewing or revealing an unrated card does not invent a review. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
 
 Restart recovery uses a saved hint to ask the native library for an actual resumable session. A saved practice-setup screen without a session is not restored as active practice. If a prior deck was removed, a valid session's return destination can fall back safely to the library.
 
@@ -73,11 +75,11 @@ Archived decks remain retained but unavailable for normal practice until restore
 
 Configure defaults in **Settings → Review/Scheduling**. Daily limits and due calculations use the app's native study-calendar rules; they are not recomputed independently by each screen. Bulk schedule actions validate their requested scope and commit as a unit.
 
-## Read Analytics
+## Read Progress
 
-Analytics presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, tag, and question-type controls to identify the question a chart answers. An empty scope means no matching evidence, not necessarily no material in the whole library.
+**Progress** presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, tag, and question-type controls to identify the question a chart answers. An empty scope means no matching evidence, not necessarily no material in the whole library.
 
-Basic/Fill in the blank recall ratings are **self-assessment**. Objective interactive kinds have a distinct **first-attempt correctness** signal (correct, incorrect, or incomplete). Analytics does not collapse those into one pretend accuracy metric. It also keeps **assistance**, **rating overrides**, and **remediation attempts** separate: an assisted correct response, a learner override, and a post-feedback retry are different evidence.
+Basic/Fill in the blank recall ratings are **self-assessment**. Objective interactive kinds have a distinct **first-attempt correctness** signal (correct, incorrect, or incomplete). Progress does not collapse those into one pretend accuracy metric. It also keeps **assistance**, **rating overrides**, and **remediation attempts** separate: an assisted correct response, a learner override, and a post-feedback retry are different evidence.
 
 Per-item choice/pair/group/order feedback is diagnostic detail for the compound question. It does not become multiple successful reviews or a separate mastery score. Image occlusion remains self-assessed and is not counted as objective correctness simply because the learner later rated the review Easy.
 
@@ -85,7 +87,7 @@ Recent reviews retain historical content and classification evidence while appli
 
 A current tag on a recent review can open Search by stable tag identity. Historical-only tag text is not a current filter link. An unavailable tag must be cleared explicitly rather than allowing a supposedly scoped action to show unfiltered cards.
 
-Analytics is derived deterministically from stored data, not an LLM assessment. It does not require a cloud provider. Visual charts are presentations of that evidence; the database and native aggregation rules remain authoritative.
+Progress is derived deterministically from stored data, not an LLM assessment. It does not require a cloud provider. Visual charts are presentations of that evidence; the database and native aggregation rules remain authoritative.
 
 ## Troubleshooting scope surprises
 

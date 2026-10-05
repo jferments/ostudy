@@ -19,7 +19,7 @@ Rust owns durable content, validation, transactions, schedules, history, process
 
 ## Root composition and state
 
-`main.tsx` composes providers and imports one foundation stylesheet. `App.tsx` renders lazy feature roots inside AppFrame/AppContent. `useAppController` owns navigation, active workflows, dirty guards, Practice launch/exit and checkpoint integration. TutorProvider shares top-level/contextual Tutor state; DocumentJobsProvider keeps document jobs alive across navigation.
+`main.tsx` composes providers and imports one foundation stylesheet. `App.tsx` renders lazy feature roots inside AppFrame/AppContent. `useAppController` owns navigation, active workflows, dirty guards, Practice launch/exit and checkpoint integration. TutorProvider shares top-level/contextual Tutor state; DocumentJobsProvider keeps document jobs alive across navigation; HomeSummaryProvider holds the native home summary and the subject library for Home, Review and Review's badge.
 
 Destination state and an active Practice workflow are separate. Contextual launch is a semantic request, not a tab selection. Consuming a one-shot payload must not unmount the session. Exit guards run before same-destination short-circuiting.
 
@@ -29,22 +29,34 @@ Independent reads use independent request lanes. An obsolete success/error must 
 
 | Area | Contract |
 | --- | --- |
-| Main navigation | Flashcards, Study Guides, Documents, Tutor, Analytics, Settings |
-| Compact navigation | First five in the bottom bar; Settings gear in the upper-right app bar; no More menu |
-| Flashcards | Decks and Search/Filter; compact Search is the same workspace |
+| Main navigation | Home, Library, Review, Tutor, Progress at every width; Search and the Settings gear in the header |
+| Compact navigation | Brand, page title, Search and Settings in the top bar; the five destinations in the bottom bar; no More menu |
+| Home | Landing page and Android Back root: Today strip, subject tiles, No subject, first-run welcome |
+| Library | Decks, Documents and Study guides views behind one switcher; reopens the last view chosen |
+| Review | Today's due cards and estimate, Start by subject, Custom practice; highlighted while Practice runs |
+| Decks view | Decks and Search/Filter; the header's Search opens Search/Filter |
+| Progress | The analytics section under its learner-facing name |
 | Templates | Card templates tab in Settings; lazy activation and retained editor state |
 | Transfers | Contextual deck import/export; library recovery and device sync in Backup/Sync |
 | Practice | Internal contextual session, not a standing navigation destination |
 | Study Guide reader | Inline workspace preserving navigation, not a modal |
 | Tutor | Shared top-level/contextual controller; general chat does not require source material or embeddings |
 
-Selecting Flashcards/Decks returns to the library root. All decks returns from deck detail. Selecting Study Guides returns to its library. Unsaved content retains save/discard protection. The native OS owns desktop window chrome; the frontend does not reintroduce a duplicate maximize/window manager.
+Choosing Library or its Decks view returns to the deck list, and All decks returns from deck detail. Choosing Library or its Study guides view returns to the guide list. Android Back returns to Home from any other destination. Unsaved content retains save/discard protection. The native OS owns desktop window chrome; the frontend does not reintroduce a duplicate maximize/window manager.
 
 ## Restoration and compatibility
 
 The schema-v2 device-local checkpoint separates destination from a real resumable-session hint and logical return target. Native SQLite owns session progress; the checkpoint is not a serialized React store or a content backup.
 
-Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy Cards/Templates checkpoint and Flashcards-workspace values are accepted only at their compatibility boundaries and normalize to current destinations before reaching live React route state. The current application-section vocabulary is therefore exactly Flashcards, Study Guides, Documents, Tutor, Analytics and Settings; the live Flashcards workspace is exactly Decks/Search. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
+Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy Cards/Templates checkpoint and Flashcards-workspace values are accepted only at their compatibility boundaries and normalize to current destinations before reaching live React route state. The application sections the checkpoint stores are home, decks, study-guides, documents, review, tutor, analytics and settings; the navigation presents them as the five destinations (decks, documents and study-guides are Library's views, analytics is Progress, and settings belongs to the header gear), and the live Flashcards workspace is exactly Decks/Search. A checkpoint written by an older build names only the older sections and still opens. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
+
+## Home, Review and Library
+
+Home is the landing page. HomeSummaryProvider reads `get_home_summary` and the subject library as independent latest-request lanes, and reads them again when Home or Review opens, when a session ends, when the deck list or a document's processing state changes, and when the app becomes visible, since the study day may have turned over. Rust computes the counts with the rules a scheduled session applies (studyability, the study date and the shared daily limits), so the Today strip, Review and Review's badge all count what Start review studies: scheduled reviews plus scheduled new cards over the decks the summary lists.
+
+A subject tile shows its due count, sources and cards, and a status line from real state (preparing a document, all done, or whether an overview guide exists). Subjects store no color: the theme's six subject colors follow creation order, so moving or re-sorting subjects never repaints one, and the sort choice lasts until the app closes. No subject appears only for unfiled decks or documents, and a quiet notice opens Check these when the upgrade left items to check. A library with nothing in it gets the first-run welcome; one whose decks are all archived is told they are in Library instead of being called empty. A tile opens Library's Decks view with the subject's folder in view, or Documents for a subject with documents and no decks, through one controller call that the subject page can replace.
+
+Review shows today's total with an estimate (the median active time of the 200 most recent timed reviews from the last 30 days, or 12 seconds a card with fewer than 20), a Start for each subject with due cards, and Custom practice, which opens Library's Decks view where selected decks open the practice setup. Library hosts the Decks, Documents and Study guides screens under its view switcher and reopens the last view chosen while the app runs.
 
 ## Flashcards library and interaction
 
@@ -122,7 +134,7 @@ Interface/card font and scale preferences remain independent. Current React appe
 
 ## Responsive and accessible presentation
 
-Wide/medium use a labeled sidebar and inset content; compact uses five bottom destinations and Settings in the app bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
+Wide and medium widths put the brand, the five labeled destinations, Search and Settings in one header (at large interface scales the destinations move to a second header row); compact keeps the brand, the page title, Search and Settings in a top bar and the five destinations in a bottom bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
 
 Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion and artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress. Surfaces are flat and opaque in every theme, so nothing depends on blur or translucency; the stored material preference is kept for settings compatibility but is no longer shown or styled. Educational images and functional status/icons are not decorative artwork.
 

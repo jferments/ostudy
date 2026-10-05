@@ -1,14 +1,14 @@
 # Folders, deck ordering, and selection
 
-Organization lives in **Flashcards → Decks**. The [Flashcards guide](flashcards-workspace.md) covers authoring, Search/Filter, and contextual import/export; this guide explains how the library's folders and selection work.
+Organization lives in **Library → Decks**. The [Flashcards guide](flashcards-workspace.md) covers authoring, Search/Filter, and contextual import/export; this guide explains how the library's folders and selection work.
 
 ## Folders are optional
 
-A deck belongs to at most one folder. A folder is a subject, the same grouping that **Documents** shows as a collection, so a folder can also hold documents and a study guide, and a collection created in Documents appears here as a folder. Active decks with no folder appear in **Unsorted decks**. Folder membership does not alter card content, schedules, or review history.
+A deck belongs to at most one folder. A folder is a subject, the same grouping that **Library → Documents** shows as a collection, so a folder can also hold documents and a study guide, and a collection created in Documents appears here as a folder. Active decks with no folder appear in **Unsorted decks**. Folder membership does not alter card content, schedules, or review history.
 
 When active decks exist, the **+** beside Folders creates a folder. There is no separate full-size New folder button. The library shows Unsorted decks only when it contains decks. A completely empty library instead offers one create-deck state; an archived-only library still exposes its archived content.
 
-Deleting a folder moves its decks back to Unsorted decks. It does not delete the decks or anything they own. A folder that also holds documents or study materials is deleted from **Documents** instead, where they are shown. Use deck deletion only when you intend to remove study material and its associated data.
+Deleting a folder moves its decks back to Unsorted decks. It does not delete the decks or anything they own. A folder that also holds documents or study materials is deleted from **Library → Documents** instead, where they are shown. Use deck deletion only when you intend to remove study material and its associated data.
 
 ## Collapse and expand
 

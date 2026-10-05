@@ -503,6 +503,6 @@ Also state briefly:
 - source-card count;
 - card-type mix;
 - whether the destination mode is create or append;
-- import path: Flashcards → Decks → Import deck.
+- import path: Library → Decks → Import deck.
 
 Do not claim that the file has already been imported into oStudy.

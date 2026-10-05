@@ -214,7 +214,7 @@ Device synchronization can transfer supported saved credentials only after expli
 
 ## Manual acceptance for Android-affecting changes
 
-Use the maintained install wrapper and test only relevant real-device paths. Human-only checks may include system insets/keyboard, persistence/restart, Practice/Analytics, Android system import/export/share, saved credentials/provider connectivity, representative document processing, foreground execution/cancel/retry, local ZXing camera scanning, and direct USB.
+Use the maintained install wrapper and test only relevant real-device paths. Human-only checks may include system insets/keyboard, persistence/restart, Practice/Progress, Android system import/export/share, saved credentials/provider connectivity, representative document processing, foreground execution/cancel/retry, local ZXing camera scanning, and direct USB.
 
 For direct USB acceptance specifically verify:
 
