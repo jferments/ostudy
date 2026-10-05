@@ -41,10 +41,10 @@ interface LibraryFrameProps {
 }
 
 /**
- * Library until the Workbench replaces it: today's Flashcards, Documents and
- * Study guides screens as three views under one compact switcher. The
- * switcher stays put while the view below it changes, and steps aside while a
- * view shows a page of its own (see useLibraryFullPage).
+ * Library's Documents and Study guides pages under one compact switcher whose
+ * first item returns to the Workbench. The switcher stays put while the page
+ * below it changes, and steps aside while a page shows a view of its own (see
+ * useLibraryFullPage).
  */
 export function LibraryFrame({ view, onSelectView, children }: LibraryFrameProps) {
   const [fullPage, setFullPage] = useState(false);
