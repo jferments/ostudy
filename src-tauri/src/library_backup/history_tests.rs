@@ -300,6 +300,16 @@ fn populate_complete_library(
             .map_err(CommandError::database)?;
         connection
             .execute(
+                "INSERT INTO review_event_scheduler_context (
+                     review_event_id, previous_review_at, elapsed_days, retrievability,
+                     reps_before, lapses_before, desired_retention,
+                     scheduler_parameters_sha256, active_time_ms
+                 ) VALUES (?1, NULL, 0, NULL, 0, 0, 0.88, ?2, 4321)",
+                params![review_id, "c".repeat(64)],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
                 "UPDATE app_settings SET value_json = '12', updated_at = 40
                  WHERE key = 'dailyNewLimit'",
                 [],
@@ -422,6 +432,23 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
                     "Question".to_string(),
                     "Important".to_string(),
                 )
+            );
+            let scheduler_context: (Option<i64>, Option<f64>, f64, String, Option<i64>) =
+                connection
+                    .query_row(
+                        "SELECT c.previous_review_at, c.retrievability, c.desired_retention,
+                                c.scheduler_parameters_sha256, c.active_time_ms
+                         FROM review_event_scheduler_context c
+                         JOIN review_events r ON r.id = c.review_event_id",
+                        [],
+                        |row| {
+                            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+                        },
+                    )
+                    .map_err(CommandError::database)?;
+            assert_eq!(
+                scheduler_context,
+                (None, None, 0.88, "c".repeat(64), Some(4321))
             );
             let daily_new: String = connection
                 .query_row(

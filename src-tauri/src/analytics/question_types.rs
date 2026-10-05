@@ -57,15 +57,12 @@ pub(super) fn load(
             SUM(CASE WHEN link.override_reason IS NOT NULL THEN 1 ELSE 0 END),
             SUM((SELECT COUNT(*) FROM question_remediation_attempts remediation
                 WHERE remediation.instance_id = q.instance_id))
-         FROM review_events r
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         JOIN cards c ON c.id = r.card_id
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
+         FROM {}
          LEFT JOIN question_review_links link ON link.review_event_id = r.id
          LEFT JOIN question_attempts q ON q.instance_id = link.instance_id
          WHERE {}
          GROUP BY a.card_type ORDER BY a.card_type",
+        context.history_from_sql(),
         conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;

@@ -50,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_three_upgrades_additively_to_schema_four() {
+    fn schema_three_upgrades_additively_to_current_schema() {
         let mut connection = schema_three();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
@@ -74,7 +74,10 @@ mod tests {
 
         let comparison = connection.transaction().unwrap();
         comparison
-            .execute_batch("DROP TABLE study_target_generation_instructions;")
+            .execute_batch(
+                "DROP TABLE review_event_scheduler_context;
+                 DROP TABLE study_target_generation_instructions;",
+            )
             .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();

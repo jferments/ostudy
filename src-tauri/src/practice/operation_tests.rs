@@ -20,7 +20,7 @@ fn paragraph(text: &str) -> serde_json::Value {
     })
 }
 
-fn create_card(
+pub(super) fn create_card(
     connection: &mut Connection,
     deck_id: &str,
     question: &str,
@@ -68,7 +68,7 @@ fn create_card(
     Ok(card_id)
 }
 
-fn create_session(
+pub(super) fn create_session(
     connection: &mut Connection,
     card_ids: &[String],
 ) -> Result<String, CommandError> {
@@ -101,7 +101,7 @@ fn create_session(
     Ok(session_id)
 }
 
-fn review_input(
+pub(super) fn review_input(
     session_id: &str,
     card_id: &str,
     submission: char,
@@ -114,6 +114,7 @@ fn review_input(
         outcome: outcome.to_string(),
         response_time_ms: 1_250,
         schedule_revision: 1,
+        active_time_ms: None,
     }
 }
 

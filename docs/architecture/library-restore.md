@@ -84,7 +84,8 @@ header avoids redundant planning scans, but `Database::open` still validates the
 current payload before ordinary use. Empty initialization and explicit pre-public
 recovery remain separate. Released SQL and the native migration metadata owner are
 unchanged. Later forward migrations (schema 3 deck-merge receipts, schema 4
-StudyTarget generation guidance) use this same checkpointed upgrade path.
+StudyTarget generation guidance, schema 5 per-review scheduler context) use this
+same checkpointed upgrade path.
 
 `library_backup/checkpoint.rs` writes a durable upgrade intent before preparation.
 It creates a private SQLite Backup API snapshot, including committed WAL rows, and
@@ -99,10 +100,11 @@ returns. These checks supplement, rather than replace, cooperating-process owner
 All startup migration and lineage-conversion writes operate on the candidate.
 Native `Database::open` retains its existing per-migration transaction, checksum,
 ledger, payload and legacy-converter checks. `checkpoint_preservation.rs` adds a
-version-specific retained-value proof for release schema 1 to 2: typed values,
-column identities, multiplicity and notes rowids remain equal, while the newly
-added receipt table must be empty. A future release upgrade requires an explicit
-preservation contract rather than silently adopting count-only comparisons.
+version-specific retained-value proof for each additive release upgrade through
+schema 5: typed values, column identities, multiplicity and notes rowids remain
+equal, while each table added after the source schema must be empty. A future
+release upgrade requires an explicit preservation contract rather than silently
+adopting count-only comparisons.
 Historical public migrations/repairs retain their existing database-owner proofs;
 there is no claim that every historical transformation is byte-identical.
 
