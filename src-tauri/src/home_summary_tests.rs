@@ -543,6 +543,94 @@ fn due_reviews_beyond_the_review_limit_keep_new_cards_out_of_start_review() {
         .unwrap();
 }
 
+/// Home, the Review badge and Start review count by the study day, which
+/// starts at the learner's "New day starts at" hour: reviews made after
+/// midnight count toward the day before until that hour, when the daily
+/// limits start over. What Home counts is what the scheduled session over
+/// Start review's decks plans, because both read the same workload and study
+/// calendar.
+#[test]
+fn todays_counts_follow_the_study_day_and_match_the_session_start_review_plans() {
+    Database::open_in_memory()
+        .unwrap()
+        .with_connection(|connection| {
+            let mut library = Library::at(connection, study_time("2026-06-10T03:00:00-07:00", 4));
+            library.set_daily_limits(2, 6);
+            let deck = library.deck("Deck", None);
+            for _ in 0..5 {
+                library.due_review(&deck);
+            }
+            for _ in 0..2 {
+                library.due_new(&deck);
+            }
+            let studied = library.card(&deck, 2, library.now() + DAY_MS);
+            // With the day starting at 4 a.m., 03:00 on 9 June belongs to
+            // 8 June, and 22:00 on 9 June and the new card at 00:30 and the
+            // review at 02:30 on 10 June belong to 9 June.
+            library.review(&studied, millis("2026-06-09T03:00:00-07:00"), 2, None);
+            library.review(&studied, millis("2026-06-09T22:00:00-07:00"), 2, None);
+            library.review(&studied, millis("2026-06-10T00:30:00-07:00"), 0, None);
+            library.review(&studied, millis("2026-06-10T02:30:00-07:00"), 2, None);
+            let settings = load_settings(connection)?;
+
+            // (now, new day hour, study date, (reviews, new) left today,
+            // (reviews, new) Start review studies)
+            let cases = [
+                // At 03:59 it is still 9 June: its two reviews leave four, so
+                // the fifth due review keeps new cards out.
+                ("2026-06-10T03:59:00-07:00", 4, "2026-06-09", (4, 1), (4, 0)),
+                // At 4 a.m. a new study day starts with the whole allowance.
+                ("2026-06-10T04:00:00-07:00", 4, "2026-06-10", (6, 2), (5, 2)),
+                // With days starting at midnight, 10 June began at 00:00 and
+                // holds the new card at 00:30 and the review at 02:30.
+                ("2026-06-10T03:59:00-07:00", 0, "2026-06-10", (5, 1), (5, 1)),
+            ];
+            for (now, hour, study_date, remaining, scheduled) in cases {
+                let case = format!("{now} with the day starting at {hour}");
+                let time = study_time(now, hour);
+                let summary = summary(connection, &time);
+                let today = &summary.today;
+                assert_eq!(summary.study_date, study_date, "{case}");
+                assert_eq!(
+                    (today.reviews_remaining, today.new_remaining),
+                    remaining,
+                    "{case}"
+                );
+                assert_eq!(
+                    (today.scheduled_reviews, today.scheduled_new),
+                    scheduled,
+                    "{case}"
+                );
+
+                // Start review starts a scheduled session over these decks.
+                let scope = workload::StudyScope {
+                    deck_ids: &today.deck_ids,
+                    tag_ids: &[],
+                };
+                let (planned, overview) = workload::planned_scheduled_cards_for_scope(
+                    connection,
+                    scope,
+                    &settings,
+                    &time,
+                    "start-review",
+                )?;
+                assert_eq!(
+                    (overview.reviews_remaining, overview.new_remaining),
+                    remaining,
+                    "{case}"
+                );
+                let planned_new = planned.iter().filter(|card| card.state == 0).count();
+                let planned = (
+                    i64::try_from(planned.len() - planned_new).unwrap(),
+                    i64::try_from(planned_new).unwrap(),
+                );
+                assert_eq!(planned, scheduled, "{case}");
+            }
+            Ok(())
+        })
+        .unwrap();
+}
+
 /// Today's summary for ten due reviews after timed reviews of `active_times`
 /// (one a minute, newest first), plus an untimed review, one older than the
 /// window and one in the future, none of which may count.
