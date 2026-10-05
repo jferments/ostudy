@@ -71,6 +71,86 @@ impl ValidatedQuestion {
         bounded_join(vec![rich_text(stem)])
     }
 
+    /// The answer key on one line for authoring lists, such as a deck's card
+    /// list, where it sits beside the prompt as a basic card's answer does.
+    /// It reveals the key, so study views never use it.
+    pub fn answer_summary(&self, presentation_key: &str) -> Result<String, QuestionError> {
+        if !self
+            .presentation_keys()
+            .iter()
+            .any(|key| key == presentation_key)
+        {
+            return Err(invalid("The question presentation does not exist."));
+        }
+        let parts: Vec<String> = match &self.definition().question {
+            QuestionBody::SingleChoice {
+                options,
+                correct_option_id,
+                ..
+            } => options
+                .iter()
+                .filter(|option| &option.id == correct_option_id)
+                .map(|option| rich_text(&option.content))
+                .collect(),
+            QuestionBody::SelectAll {
+                options,
+                correct_option_ids,
+                ..
+            } => options
+                .iter()
+                .filter(|option| correct_option_ids.contains(&option.id))
+                .map(|option| rich_text(&option.content))
+                .collect(),
+            QuestionBody::TrueFalse {
+                correct,
+                corrected_statement,
+                ..
+            } => {
+                // A corrected statement repairs a false one; it says nothing
+                // about a true statement.
+                vec![match (correct, corrected_statement) {
+                    (false, Some(statement)) => format!("False: {}", rich_text(statement)),
+                    (false, None) => "False".to_string(),
+                    (true, _) => "True".to_string(),
+                }]
+            }
+            QuestionBody::Matching { pairs, .. } => pairs
+                .iter()
+                .map(|pair| {
+                    format!(
+                        "{} → {}",
+                        rich_text(&pair.left.content),
+                        rich_text(&pair.right.content)
+                    )
+                })
+                .collect(),
+            QuestionBody::Grouping {
+                categories, items, ..
+            } => categories
+                .iter()
+                .map(|category| {
+                    let members = items
+                        .iter()
+                        .filter(|item| item.category_id == category.id)
+                        .map(|item| rich_text(&item.item.content))
+                        .collect::<Vec<_>>();
+                    format!("{}: {}", rich_text(&category.content), members.join(", "))
+                })
+                .collect(),
+            QuestionBody::Ordering { items, .. } => vec![items
+                .iter()
+                .map(|item| rich_text(&item.content))
+                .collect::<Vec<_>>()
+                .join(" → ")],
+            QuestionBody::ImageOcclusion { questions, .. } => questions
+                .iter()
+                .filter(|question| question.id == presentation_key)
+                .map(|question| rich_text(&question.answer))
+                .collect(),
+        };
+        Ok(parts.join("; "))
+    }
+
     /// Includes private fields for authoring search. Never expose this as a hint.
     pub fn search_text(&self) -> Result<QuestionSearchText, QuestionError> {
         let mut prompt = Vec::new();

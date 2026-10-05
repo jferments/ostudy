@@ -12,9 +12,12 @@ mod aggregates;
 mod current_inventory;
 mod daily;
 mod history;
+#[cfg(test)]
+mod query_plan_tests;
 mod question_types;
 mod recent;
 mod scope;
+mod signals;
 mod timeline;
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +27,7 @@ use crate::{database::Database, error::CommandError, settings::load_settings};
 
 use question_types::QuestionTypeAnalyticsDto;
 use scope::AnalyticsContext;
+use signals::RequestSignals;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -293,15 +297,19 @@ pub(crate) fn load_analytics(
 ) -> Result<AnalyticsDto, CommandError> {
     let context = AnalyticsContext::from_query(input)?;
     let settings = load_settings(connection)?;
-    let current_inventory = current_inventory::load(connection, &context)?;
+    // One learning-signal pass shared by the inventory, deck and tag queries.
+    let signals = RequestSignals::materialize(connection)?;
+    let current_inventory = current_inventory::load(connection, &context, &signals)?;
     let historical = history::load(connection, &context)?;
     let timeline = timeline::load(
         connection,
         &context,
         historical.earliest_local_date.as_deref(),
     )?;
-    let deck_stats = aggregates::load_decks(connection, &context)?;
-    let tag_stats = aggregates::load_tags(connection, &context, settings.desired_retention)?;
+    let deck_stats = aggregates::load_decks(connection, &context, &signals)?;
+    let tag_stats =
+        aggregates::load_tags(connection, &context, &signals, settings.desired_retention)?;
+    drop(signals);
     let recent_reviews = recent::load_reviews(connection, &context)?;
     let recent_sessions = recent::load_sessions(connection, &context)?;
     let dimension_options = recent::load_dimension_options(connection)?;
@@ -477,6 +485,7 @@ mod tests {
                         outcome: "somewhat_confident".to_string(),
                         response_time_ms: 1_250,
                         schedule_revision: 1,
+                        active_time_ms: None,
                     },
                 )?;
                 assert_eq!(result.rated_count, 1);

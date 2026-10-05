@@ -1,6 +1,57 @@
 use super::*;
 use rusqlite::params;
 use serde_json::json;
+use sha2::{Digest, Sha256};
+
+/// The forward release migrations a schema-4 build applied, byte for byte.
+const SCHEMA_FOUR_MIGRATIONS: &[(i64, &str, &str)] = &[
+    (
+        2,
+        "selection_deck_operations",
+        include_str!("../../schema/0002_selection_deck_operations.sql"),
+    ),
+    (
+        3,
+        "deck_merge_operations",
+        include_str!("../../schema/0003_deck_merge_operations.sql"),
+    ),
+    (
+        4,
+        "study_target_generation_instructions",
+        include_str!("../../schema/0004_study_target_generation_instructions.sql"),
+    ),
+];
+
+/// Advance the schema-1 fixture exactly as the previous release did.
+fn advance_to_schema_four(fixture: &Fixture) {
+    let connection = Connection::open(fixture.0.database_path()).unwrap();
+    for (version, name, sql) in SCHEMA_FOUR_MIGRATIONS {
+        connection.execute_batch(sql).unwrap();
+        connection
+            .execute(
+                "INSERT INTO schema_migrations(version, name, checksum, applied_at)
+                 VALUES (?1, ?2, ?3, 0)",
+                params![
+                    version,
+                    name,
+                    format!("{:x}", Sha256::digest(sql.as_bytes()))
+                ],
+            )
+            .unwrap();
+    }
+    connection.pragma_update(None, "user_version", 4).unwrap();
+    assert_eq!(validate_database(&connection).unwrap().1, 4);
+}
+
+fn review_context_rows(connection: &Connection) -> i64 {
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM review_event_scheduler_context",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
 
 fn strip_empty_release_additions(
     rows: &mut std::collections::BTreeMap<String, (Vec<String>, Vec<[u8; 32]>)>,
@@ -9,6 +60,7 @@ fn strip_empty_release_additions(
         "selection_deck_operations",
         "deck_merge_operations",
         "study_target_generation_instructions",
+        "review_event_scheduler_context",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(
@@ -141,6 +193,85 @@ fn populated_upgrade_preserves_learner_edits_schedules_and_review_evidence() {
     assert_eq!(before, after);
     drop(active);
     commit_upgrade(&fixture.0, &mut guard).unwrap();
+    fixture.original_managed_files_are_present();
+}
+
+#[test]
+fn schema_four_reviews_upgrade_to_five_without_invented_scheduler_context() {
+    let fixture = Fixture::new();
+    advance_to_schema_four(&fixture);
+    seed_history(&fixture);
+    let source = read_database(fixture.0.database_path()).unwrap();
+    let before = preservation::rows(&source).unwrap();
+    assert_eq!(before["review_events"].1.len(), 1);
+    assert_eq!(before["review_event_attributions"].1.len(), 1);
+    assert!(!before.contains_key("review_event_scheduler_context"));
+    drop(source);
+
+    let mut guard = begin_upgrade(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 4),
+        &mut |_| {},
+    )
+    .unwrap();
+    let manifest = verify_checkpoint(&fixture.transaction()).unwrap();
+    assert_eq!((manifest.source_schema, manifest.target_schema), (4, 5));
+    let checkpoint =
+        read_database(&fixture.transaction().join("checkpoint/library.sqlite3")).unwrap();
+    assert_eq!(validate_database(&checkpoint).unwrap().1, 4);
+    assert_eq!(preservation::rows(&checkpoint).unwrap(), before);
+    drop(checkpoint);
+
+    let active = read_database(fixture.0.database_path()).unwrap();
+    assert_eq!(validate_database(&active).unwrap().1, 5);
+    assert_eq!(
+        review_context_rows(&active),
+        0,
+        "old reviews get no side row"
+    );
+    let mut after = preservation::rows(&active).unwrap();
+    let (_, added) = after
+        .remove("review_event_scheduler_context")
+        .expect("schema 5 adds the review scheduler-context table");
+    assert!(added.is_empty());
+    assert_eq!(after, before, "every retained review value is unchanged");
+    drop(active);
+    commit_upgrade(&fixture.0, &mut guard).unwrap();
+    drop(guard);
+    admit_startup(&fixture.0).unwrap();
+    assert_eq!(fixture.version(), crate::database::CURRENT_SCHEMA_VERSION);
+    fixture.original_managed_files_are_present();
+}
+
+#[test]
+fn schema_five_upgrade_checkpoint_restores_the_schema_four_library_for_an_older_build() {
+    let fixture = Fixture::new();
+    advance_to_schema_four(&fixture);
+    seed_history(&fixture);
+    let before = preservation::rows(&read_database(fixture.0.database_path()).unwrap()).unwrap();
+    let mut guard = begin_upgrade(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 4),
+        &mut |_| {},
+    )
+    .unwrap();
+    // The activation committed while the recovery dialog still owns the
+    // upgrade, so the learner can choose to restore the schema-4 checkpoint.
+    guard.try_commit().unwrap();
+    drop(guard);
+    assert_eq!(fixture.version(), 5);
+
+    restore_checkpoint(&fixture.0, &fixture.operation(), &mut |_| {}).unwrap();
+    assert_eq!(fixture.version(), 4);
+    let restored = read_database(fixture.0.database_path()).unwrap();
+    assert_eq!(preservation::rows(&restored).unwrap(), before);
+    drop(restored);
+    // This build waits for an explicit decision; a schema-4 build reopens it.
+    assert!(admit_startup(&fixture.0).is_err());
+    admit_startup_for_schema(&fixture.0, crate::database::CURRENT_SCHEMA_LINEAGE, 4).unwrap();
+    assert_eq!(fixture.version(), 4);
     fixture.original_managed_files_are_present();
 }
 
