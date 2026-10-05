@@ -14,6 +14,7 @@ export const ICON_NAMES = [
   "book",
   "brain",
   "calendar",
+  "calendar-check",
   "cards",
   "chat",
   "check",
@@ -32,10 +33,12 @@ export const ICON_NAMES = [
   "formula",
   "full-screen",
   "help",
+  "home",
   "image",
   "import",
   "information",
   "keyboard",
+  "library",
   "link",
   "maximize",
   "media",
@@ -178,6 +181,16 @@ function iconPath(name: IconName): ReactNode {
           <path d="M3 9h18" />
         </>
       );
+    case "calendar-check": // Lucide: calendar-check
+      return (
+        <>
+          <path d="M8 2v3" />
+          <path d="M16 2v3" />
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M3 9h18" />
+          <path d="m9 15 2 2 4-4" />
+        </>
+      );
     case "cards": // Lucide: layers
       return (
         <>
@@ -290,6 +303,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M12 17h.01" />
         </>
       );
+    case "home": // Lucide: house
+      return (
+        <>
+          <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+          <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </>
+      );
     case "image": // Lucide: image
       return (
         <>
@@ -326,6 +346,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M7 16h10" />
           <path d="M8 12h.01" />
           <rect x="2" y="4" width="20" height="16" rx="2" />
+        </>
+      );
+    case "library": // Lucide: layers-2
+      return (
+        <>
+          <path d="M13 13.74a2 2 0 0 1-2 0L2.5 8.87a1 1 0 0 1 0-1.74L11 2.26a2 2 0 0 1 2 0l8.5 4.87a1 1 0 0 1 0 1.74z" />
+          <path d="m20 14.285 1.5.845a1 1 0 0 1 0 1.74L13 21.74a2 2 0 0 1-2 0l-8.5-4.87a1 1 0 0 1 0-1.74l1.5-.845" />
         </>
       );
     case "link": // Lucide: link

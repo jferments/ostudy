@@ -6,7 +6,10 @@ import type { DeckSummary } from "../../ipc/decks";
 import * as folderIpc from "../../ipc/deckFolders";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type { AppSettings } from "../../ipc/settings";
-import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
+import type {
+  SubjectFocusLaunch,
+  TransientDeckSelectionEntry,
+} from "../../navigation/flashcardsRoutes";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
@@ -114,6 +117,7 @@ interface RenderOptions {
     selection: readonly TransientDeckSelectionEntry[],
   ) => void;
   layout?: "wide" | "compact";
+  subjectFocus?: SubjectFocusLaunch;
 }
 
 function renderLibrary({
@@ -126,6 +130,7 @@ function renderLibrary({
   onPracticeDeck = vi.fn(),
   onPracticeSelected = vi.fn(),
   layout = "wide",
+  subjectFocus,
 }: RenderOptions = {}) {
   setLayout(layout);
   return render(
@@ -142,6 +147,7 @@ function renderLibrary({
           onReturnToLibrary={onReturnToLibrary}
           onCardDirtyChange={vi.fn()}
           showToast={showToast}
+          subjectFocus={subjectFocus}
         />
       </OverlayProvider>
     </LayoutModeProvider>,
@@ -403,6 +409,52 @@ describe("DeckLibraryWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Return to deck library" }));
     expect(onReturnToLibrary).toHaveBeenCalledOnce();
+  });
+
+  it("brings the subject Home opened into view once, without animating", async () => {
+    const scrolled: Element[] = [];
+    const scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this);
+    });
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const view = renderLibrary({ subjectFocus: { requestId: 3, subjectId: folder.id } });
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce());
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+    expect(scrolled[0]?.getAttribute("data-folder-id")).toBe(folder.id);
+
+    view.rerender(
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <DeckLibraryWorkspace
+            decks={[pharmacology, anatomy, deck("d", "Histology", 3, 1)]}
+            settings={settings}
+            refreshDecks={vi.fn(async () => [pharmacology, anatomy])}
+            onPracticeDeck={vi.fn()}
+            onPracticeSelected={vi.fn()}
+            openDeckRequest={null}
+            onOpenDeck={vi.fn()}
+            onReturnToLibrary={vi.fn()}
+            onCardDirtyChange={vi.fn()}
+            showToast={vi.fn()}
+            subjectFocus={{ requestId: 3, subjectId: folder.id }}
+          />
+        </OverlayProvider>
+      </LayoutModeProvider>,
+    );
+    await screen.findByText("Histology");
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("brings No subject's unsorted decks into view", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this);
+    });
+    renderLibrary({ subjectFocus: { requestId: 4, subjectId: null } });
+
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+    expect(scrolled[0]?.getAttribute("data-geometry-key")).toBe("destination:unsorted");
   });
 });
 
