@@ -63,7 +63,7 @@ export const FolderSection = memo(function FolderSection({
     <Surface
       as="section"
       level={2}
-      className={cn(styles.folder, dragStyles.folder)}
+      className={cn(styles.folder, dragStyles.folder, "tw:scroll-mt-4")}
       data-library-row="folder"
       data-library-folder-surface="true"
       data-geometry-key={`folder:${folder.id}`}

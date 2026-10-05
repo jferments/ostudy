@@ -28,7 +28,7 @@ describe("Analytics loading presentation", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Analytics" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Progress" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Learning progress" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("Analyzing data…");
     expect(screen.queryByRole("img", { name: "Learning progress chart" })).toBeNull();

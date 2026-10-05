@@ -25,82 +25,82 @@ for (const [name, path] of Object.entries(contract.authoritativeSources)) {
   sources[name] = await readRequired(path, `authoritative ${name} source`);
 }
 
-const protectedWorkflowById = new Map(
-  contract.protectedWorkflows.map((workflow) => [workflow.id, workflow]),
-);
+const navigation = contract.navigation;
+const sectionIds = contract.applicationSections.map((entry) => entry.id);
+const workflowIds = contract.applicationWorkflows.map((entry) => entry.id);
 
 if (sources.applicationSections !== null) {
   compareOrderedValues(
     "application sections",
-    contract.applicationSections.map((entry) => entry.id),
-    parseApplicationSections(sources.applicationSections),
+    sectionIds,
+    parseUnion(sources.applicationSections, "AppSection"),
   );
 }
 if (sources.applicationWorkflows !== null) {
   compareOrderedValues(
     "application workflows",
-    contract.applicationWorkflows.map((entry) => entry.id),
-    parseApplicationWorkflows(sources.applicationWorkflows),
+    workflowIds,
+    parseUnion(sources.applicationWorkflows, "AppWorkflow"),
   );
 }
 if (sources.checkpointGateway !== null) {
   compareOrderedValues(
-    "checkpoint destinations",
-    contract.checkpointDestinations,
-    parseCheckpointSections(sources.checkpointGateway),
+    "checkpoint sections",
+    contract.checkpointSections,
+    parseUnion(sources.checkpointGateway, "CheckpointSection"),
   );
 }
 if (sources.applicationShell !== null) {
   compareOrderedValues(
-    "rendered App shell destinations",
-    contract.applicationSections
-      .filter((entry) => entry.role === "primary-destination")
-      .map((entry) => entry.id),
+    "rendered App shell sections",
+    sectionIds,
     parseRenderedAppSections(sources.applicationShell),
   );
   compareOrderedValues(
     "rendered App shell workflows",
-    contract.applicationWorkflows.map((entry) => entry.id),
+    workflowIds,
     parseRenderedAppWorkflows(sources.applicationShell),
   );
-}
-if (sources.primaryNavigation !== null) {
   compareOrderedRecords(
-    "primary navigation destinations",
-    contract.primaryDestinations.map((entry) => ({
-      id: entry.section,
-      label: entry.label,
-    })),
-    parseNavigationItems(sources.primaryNavigation, "ITEMS", "section"),
+    "sections opened by navigation destinations",
+    expectedDestinationSections(),
+    parseDestinationSections(sources.applicationShell),
+  );
+  validateHeaderActionWiring(sources.applicationShell);
+}
+if (sources.mainNavigation !== null) {
+  compareOrderedRecords(
+    "main navigation destinations",
+    navigation.destinations.map(({ id, label }) => ({ id, label })),
+    parseNavigationItems(sources.mainNavigation, "ITEMS", "destination"),
   );
 }
-if (sources.compactNavigation !== null) {
-  const visibleDestinations = parseNavigationItems(
-    sources.compactNavigation,
-    "ITEMS",
-    "section",
-  ).map((entry) => entry.id);
-  const compactPrimary = parseStringArray(
-    sources.compactNavigation,
-    "COMPACT_PRIMARY_SECTIONS",
-  );
-  const compactAppBar =
-    sources.mobileAppBar === null ? [] : parseAppBarDestinations(sources.mobileAppBar);
-  const reserved = new Set([...compactPrimary, ...compactAppBar]);
+if (sources.destinationMapping !== null) {
   compareOrderedValues(
-    "compact primary destinations",
-    contract.compactNavigation.primary,
-    compactPrimary,
+    "navigation destination type",
+    navigation.destinations.map((entry) => entry.id),
+    parseUnion(sources.destinationMapping, "AppDestination"),
   );
+  const librarySections = parseStringArray(sources.destinationMapping, "LIBRARY_SECTIONS");
   compareOrderedValues(
-    "compact More destinations",
-    contract.compactNavigation.more,
-    visibleDestinations.filter((section) => !reserved.has(section)),
+    "Library views",
+    navigation.library.views.map((entry) => entry.id),
+    librarySections,
   );
-  compareOrderedValues(
-    "compact app-bar destinations",
-    contract.compactNavigation.appBar,
-    compactAppBar,
+  validateHighlightedDestinations(sources.destinationMapping, librarySections);
+}
+if (sources.libraryViews !== null) {
+  compareOrderedRecords(
+    "Library view labels",
+    navigation.library.views.map(({ id, label }) => ({ id, label })),
+    parseLibraryViewLabels(sources.libraryViews),
+  );
+}
+if (sources.headerActions !== null) {
+  compareOrderedRecords(
+    "header actions",
+    navigation.headerActions.map(({ id, label }) => ({ id, label })),
+    parseHeaderActions(sources.headerActions),
   );
 }
 if (sources.flashcardsRoutes !== null) {
@@ -128,26 +128,9 @@ const androidScheduledCases =
     : new Set(parseAndroidScheduledCases(sources.androidSmokeRunner));
 const smokeExecution = { nativeSmokeEntrypoints, androidScheduledCases };
 
-await validateSmokeEvidence(
-  contract.primaryDestinations.filter(
-    (entry) => !isProtectedWorkflowReference(entry.smoke),
-  ),
-  "primary destination",
-  "section",
-  smokeExecution,
-);
-await validateSmokeEvidence(
-  contract.flashcardsWorkspaces,
-  "Flashcards workspace",
-  "id",
-  smokeExecution,
-);
-await validateSmokeEvidence(
-  contract.protectedWorkflows,
-  "protected workflow",
-  "id",
-  smokeExecution,
-);
+await validateSmokeEvidence(contract.applicationSections, "section", smokeExecution);
+await validateSmokeEvidence(contract.flashcardsWorkspaces, "Flashcards workspace", smokeExecution);
+await validateSmokeEvidence(contract.protectedWorkflows, "protected workflow", smokeExecution);
 await validateProductIndependence();
 
 finish();
@@ -157,8 +140,8 @@ function validateContractShape(value) {
     fail("The route/smoke contract must be a JSON object.");
     return;
   }
-  if (value.schemaVersion !== 1) {
-    fail(`schemaVersion must be 1; found ${JSON.stringify(value.schemaVersion)}.`);
+  if (value.schemaVersion !== 2) {
+    fail(`schemaVersion must be 2; found ${JSON.stringify(value.schemaVersion)}.`);
   }
   if (value.contractRole !== "expected-inventory-only") {
     fail(
@@ -171,9 +154,10 @@ function validateContractShape(value) {
     "applicationWorkflows",
     "applicationShell",
     "checkpointGateway",
-    "primaryNavigation",
-    "compactNavigation",
-    "mobileAppBar",
+    "mainNavigation",
+    "destinationMapping",
+    "libraryViews",
+    "headerActions",
     "flashcardsRoutes",
     "flashcardsTabs",
     "nativeSmokeRunner",
@@ -196,13 +180,10 @@ function validateContractShape(value) {
     fail("applicationWorkflows must be an array.");
   }
   if (
-    !Array.isArray(value.checkpointDestinations) ||
-    value.checkpointDestinations.some((section) => !isIdentifier(section))
+    !Array.isArray(value.checkpointSections) ||
+    value.checkpointSections.some((section) => !isIdentifier(section))
   ) {
-    fail("checkpointDestinations must be an array of destination identifiers.");
-  }
-  if (!Array.isArray(value.primaryDestinations)) {
-    fail("primaryDestinations must be an array.");
+    fail("checkpointSections must be an array of section identifiers.");
   }
   if (!Array.isArray(value.protectedWorkflows)) {
     fail("protectedWorkflows must be an array.");
@@ -210,129 +191,144 @@ function validateContractShape(value) {
   if (!Array.isArray(value.flashcardsWorkspaces)) {
     fail("flashcardsWorkspaces must be an array.");
   }
-  if (!isRecord(value.compactNavigation)) {
-    fail("compactNavigation must be an object.");
-  }
+  validateNavigationShape(value.navigation);
   if (failures.length > 0) return;
 
-  validateApplicationSections(value.applicationSections);
-  validateApplicationWorkflows(value.applicationWorkflows);
+  const destinations = new Map(value.navigation.destinations.map((entry) => [entry.id, entry]));
+  const views = new Map(value.navigation.library.views.map((entry) => [entry.id, entry]));
+  const actions = new Map(value.navigation.headerActions.map((entry) => [entry.id, entry]));
+
+  validateApplicationSections(value.applicationSections, value.navigation, destinations, views, actions);
+  validateApplicationWorkflows(value.applicationWorkflows, destinations);
   validateProtectedWorkflowCatalog(value.protectedWorkflows);
-  const protectedWorkflows = new Map(
-    value.protectedWorkflows
-      .filter((entry) => isRecord(entry) && isIdentifier(entry.id))
-      .map((entry) => [entry.id, entry]),
-  );
-  validateDestinationCatalog(
-    value.primaryDestinations,
-    "primary destination",
-    "section",
-    protectedWorkflows,
-    true,
-  );
-  validateDestinationCatalog(
-    value.flashcardsWorkspaces,
-    "Flashcards workspace",
-    "id",
-    protectedWorkflows,
-    false,
-  );
+  validateCatalog(value.flashcardsWorkspaces, "Flashcards workspace");
+  if (failures.length > 0) return;
 
-  const applicationIds = value.applicationSections.map((entry) => entry.id);
-  reportDuplicates("application section", applicationIds);
-  const workflowIds = value.applicationWorkflows.map((entry) => entry.id);
-  reportDuplicates("application workflow", workflowIds);
-  const primaryIds = value.primaryDestinations.map((entry) => entry.section);
-  reportDuplicates("primary destination", primaryIds);
-  const workspaceIds = value.flashcardsWorkspaces.map((entry) => entry.id);
-  reportDuplicates("Flashcards workspace", workspaceIds);
-  const protectedWorkflowIds = value.protectedWorkflows.map((entry) => entry.id);
-  reportDuplicates("protected workflow", protectedWorkflowIds);
-  reportDuplicates("checkpoint destination", value.checkpointDestinations);
+  const sectionIdList = value.applicationSections.map((entry) => entry.id);
+  reportDuplicates("application section", sectionIdList);
+  reportDuplicates("application workflow", value.applicationWorkflows.map((entry) => entry.id));
+  reportDuplicates("Flashcards workspace", value.flashcardsWorkspaces.map((entry) => entry.id));
+  reportDuplicates("protected workflow", value.protectedWorkflows.map((entry) => entry.id));
+  reportDuplicates("checkpoint section", value.checkpointSections);
 
-  const declaredPrimaryIds = value.applicationSections
-    .filter((entry) => entry.role === "primary-destination")
-    .map((entry) => entry.id);
-  compareSets("primary destination taxonomy", declaredPrimaryIds, primaryIds);
-  compareOrderedValues(
-    "checkpoint destination taxonomy",
-    primaryIds,
-    value.checkpointDestinations,
-  );
+  // Every section can be saved and restored by the navigation checkpoint.
+  compareOrderedValues("checkpoint section taxonomy", sectionIdList, value.checkpointSections);
 
-  validateProtectedWorkflowCoverage(
-    value.applicationWorkflows,
-    value.protectedWorkflows,
-  );
-  validateCompactNavigation(value.compactNavigation, value.primaryDestinations);
-
-  const primarySet = new Set(primaryIds);
-  const workspaceSet = new Set(workspaceIds);
-  for (const entry of value.applicationSections) {
-    if (entry.role !== "compatibility-alias") continue;
-    const [section, workspace, ...remainder] = entry.target.split("/");
-    if (remainder.length > 0 || !primarySet.has(section) || (workspace && !workspaceSet.has(workspace))) {
-      fail(
-        `application section ${entry.id} has invalid compatibility target ${JSON.stringify(entry.target)}.`,
-      );
+  // Every destination opens something, and each Library view is one section.
+  for (const destination of value.navigation.destinations) {
+    const placed = value.applicationSections.filter(
+      (entry) => entry.placement.destination === destination.id,
+    );
+    if (placed.length === 0) {
+      fail(`navigation destination ${destination.id} opens no section.`);
     }
   }
+  compareSets(
+    "Library view coverage",
+    value.navigation.library.views.map((entry) => entry.id),
+    value.applicationSections
+      .filter((entry) => typeof entry.placement.libraryView === "string")
+      .map((entry) => entry.placement.libraryView),
+  );
+
+  validateProtectedWorkflowCoverage(value.applicationWorkflows, value.protectedWorkflows);
 }
 
-function validateCompactNavigation(compactNavigation, primaryDestinations) {
-  const groups = ["primary", "more", "appBar"];
-  for (const group of groups) {
-    if (
-      !Array.isArray(compactNavigation[group]) ||
-      compactNavigation[group].some((section) => !isIdentifier(section))
-    ) {
-      fail(`compactNavigation.${group} must be an array of destination identifiers.`);
-      return;
-    }
-    reportDuplicates(`compact ${group} destination`, compactNavigation[group]);
+function validateNavigationShape(value) {
+  if (!isRecord(value)) {
+    fail("navigation must be an object.");
+    return;
   }
-
-  const visible = primaryDestinations.map((entry) => entry.section);
-  const compactPrimary = compactNavigation.primary;
-  const compactMore = compactNavigation.more;
-  const compactAppBar = compactNavigation.appBar;
-  const allCompact = [...compactPrimary, ...compactMore, ...compactAppBar];
-  reportDuplicates("compact destination", allCompact);
-  compareSets("compact navigation coverage", visible, allCompact);
-
-  for (const [label, group] of [
-    ["primary", compactPrimary],
-    ["More", compactMore],
-    ["app-bar", compactAppBar],
-  ]) {
-    const groupSet = new Set(group);
-    const expectedOrder = visible.filter((section) => groupSet.has(section));
-    compareOrderedValues(`compact ${label} destination order`, expectedOrder, group);
+  validateLabeledIdentifiers(value.destinations, "navigation.destinations");
+  validateLabeledIdentifiers(value.headerActions, "navigation.headerActions");
+  if (!isRecord(value.library)) {
+    fail("navigation.library must be an object.");
+    return;
   }
+  validateLabeledIdentifiers(value.library.views, "navigation.library.views");
+  if (failures.length > 0) return;
+  if (!value.destinations.some((entry) => entry.id === value.library.destination)) {
+    fail(
+      `navigation.library.destination ${JSON.stringify(value.library.destination)} is not a navigation destination.`,
+    );
+  }
+  reportDuplicates("navigation destination", value.destinations.map((entry) => entry.id));
+  reportDuplicates("header action", value.headerActions.map((entry) => entry.id));
+  reportDuplicates("Library view", value.library.views.map((entry) => entry.id));
 }
 
-function validateApplicationSections(entries) {
+function validateLabeledIdentifiers(entries, label) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    fail(`${label} must be a non-empty array.`);
+    return;
+  }
   for (const [index, entry] of entries.entries()) {
-    const label = `applicationSections[${index}]`;
     if (!isRecord(entry) || !isIdentifier(entry.id)) {
-      fail(`${label}.id must be a non-empty route identifier.`);
+      fail(`${label}[${index}].id must be a non-empty identifier.`);
       continue;
     }
-    if (!["primary-destination", "compatibility-alias"].includes(entry.role)) {
-      fail(
-        `${label}.role must be primary-destination or compatibility-alias.`,
-      );
-    }
-    if (entry.role === "compatibility-alias" && !isIdentifier(entry.target, true)) {
-      fail(`${label}.target must name the primary destination and optional workspace.`);
-    }
-    if (entry.role !== "compatibility-alias" && "target" in entry) {
-      fail(`${label} is not an alias and must not declare an alias target.`);
+    if (typeof entry.label !== "string" || entry.label.trim() === "") {
+      fail(`${label}[${index}] must have a non-empty label.`);
     }
   }
 }
 
-function validateApplicationWorkflows(entries) {
+function validateApplicationSections(entries, navigationShape, destinations, views, actions) {
+  for (const [index, entry] of entries.entries()) {
+    if (!isRecord(entry) || !isIdentifier(entry.id)) {
+      fail(`applicationSections[${index}].id must be a non-empty route identifier.`);
+      continue;
+    }
+    const label = `section ${entry.id}`;
+    if (typeof entry.label !== "string" || entry.label.trim() === "") {
+      fail(`${label} must have a non-empty label.`);
+    }
+    validateSmokeShape(entry.smoke, label);
+
+    const placement = entry.placement;
+    const hasDestination = isRecord(placement) && "destination" in placement;
+    const hasAction = isRecord(placement) && "headerAction" in placement;
+    if (hasDestination === hasAction) {
+      fail(`${label} must name the destination or header action that opens it.`);
+      continue;
+    }
+    if (hasAction) {
+      const action = actions.get(placement.headerAction);
+      if (!action) {
+        fail(`${label} names unknown header action ${JSON.stringify(placement.headerAction)}.`);
+      } else if (action.label !== entry.label) {
+        fail(`${label} is labeled ${JSON.stringify(entry.label)} but its header action says ${JSON.stringify(action.label)}.`);
+      }
+      if ("libraryView" in placement) {
+        fail(`${label} opens from the header and cannot also be a Library view.`);
+      }
+      continue;
+    }
+
+    const destination = destinations.get(placement.destination);
+    if (!destination) {
+      fail(`${label} names unknown navigation destination ${JSON.stringify(placement.destination)}.`);
+      continue;
+    }
+    if (placement.destination === navigationShape.library.destination) {
+      const view = views.get(placement.libraryView);
+      if (!view) {
+        fail(`${label} opens in Library and must name one of its views.`);
+      } else if (placement.libraryView !== entry.id) {
+        // Library views keep their section ids so saved checkpoints still name them.
+        fail(`${label} must be the Library view with its own id, not ${placement.libraryView}.`);
+      } else if (view.label !== entry.label) {
+        fail(`${label} is labeled ${JSON.stringify(entry.label)} but its Library view says ${JSON.stringify(view.label)}.`);
+      }
+    } else if ("libraryView" in placement) {
+      fail(`${label} opens from ${placement.destination}, which has no Library views.`);
+    } else if (destination.label !== entry.label) {
+      fail(`${label} is labeled ${JSON.stringify(entry.label)} but its destination says ${JSON.stringify(destination.label)}.`);
+    }
+  }
+}
+
+function validateApplicationWorkflows(entries, destinations) {
   for (const [index, entry] of entries.entries()) {
     const label = `applicationWorkflows[${index}]`;
     if (!isRecord(entry) || !isIdentifier(entry.id)) {
@@ -342,16 +338,19 @@ function validateApplicationWorkflows(entries) {
     if (!isIdentifier(entry.protectedWorkflow)) {
       fail(`${label}.protectedWorkflow must name its protected smoke workflow.`);
     }
+    if (!destinations.has(entry.destination)) {
+      fail(`${label}.destination must name the navigation destination it runs inside.`);
+    }
   }
 }
 
 function validateProtectedWorkflowCatalog(entries) {
   for (const [index, entry] of entries.entries()) {
-    const label = `protected workflow ${isRecord(entry) ? entry.id : index}`;
     if (!isRecord(entry) || !isIdentifier(entry.id)) {
       fail(`protectedWorkflows[${index}].id must be a non-empty workflow identifier.`);
       continue;
     }
+    const label = `protected workflow ${entry.id}`;
     if (!isIdentifier(entry.workflow)) {
       fail(`${label}.workflow must be a non-empty application workflow identifier.`);
     }
@@ -362,50 +361,23 @@ function validateProtectedWorkflowCatalog(entries) {
   }
 }
 
-function validateDestinationCatalog(
-  entries,
-  catalog,
-  idKey,
-  protectedWorkflows,
-  allowProtectedWorkflow,
-) {
+function validateCatalog(entries, catalog) {
   for (const [index, entry] of entries.entries()) {
-    const label = `${catalog} ${isRecord(entry) ? entry[idKey] : index}`;
-    if (!isRecord(entry) || !isIdentifier(entry[idKey])) {
-      fail(`${catalog}[${index}].${idKey} must be a non-empty route identifier.`);
+    if (!isRecord(entry) || !isIdentifier(entry.id)) {
+      fail(`${catalog}[${index}].id must be a non-empty route identifier.`);
       continue;
     }
+    const label = `${catalog} ${entry.id}`;
     if (typeof entry.label !== "string" || entry.label.trim() === "") {
       fail(`${label} must have a non-empty label.`);
-    }
-    if (isProtectedWorkflowReference(entry.smoke)) {
-      if (!allowProtectedWorkflow) {
-        fail(`${label} cannot reference a protected workflow.`);
-        continue;
-      }
-      const workflow = protectedWorkflows.get(entry.smoke.protectedWorkflow);
-      if (!workflow) {
-        fail(
-          `${label} references undeclared protected workflow ${JSON.stringify(entry.smoke.protectedWorkflow)}.`,
-        );
-      } else if (workflow.workflow !== entry[idKey]) {
-        fail(
-          `${label} references protected workflow ${workflow.id} for workflow ${workflow.workflow}.`,
-        );
-      }
-      continue;
     }
     validateSmokeShape(entry.smoke, label);
   }
 }
 
 function validateProtectedWorkflowCoverage(applicationWorkflows, protectedWorkflows) {
-  const protectedById = new Map(
-    protectedWorkflows.map((workflow) => [workflow.id, workflow]),
-  );
-  const applicationById = new Map(
-    applicationWorkflows.map((workflow) => [workflow.id, workflow]),
-  );
+  const protectedById = new Map(protectedWorkflows.map((workflow) => [workflow.id, workflow]));
+  const applicationById = new Map(applicationWorkflows.map((workflow) => [workflow.id, workflow]));
 
   for (const applicationWorkflow of applicationWorkflows) {
     const protectedWorkflow = protectedById.get(applicationWorkflow.protectedWorkflow);
@@ -466,10 +438,7 @@ function validateSmokeShape(smoke, label) {
 
 function validateEvidenceExecutionShape(evidence, label) {
   if (evidence.runner === "native-webdriver") {
-    if (
-      !isRelativePath(evidence.entrypoint) ||
-      !isSmokePath("native-webdriver", evidence.entrypoint)
-    ) {
+    if (!isRelativePath(evidence.entrypoint) || !isSmokePath("native-webdriver", evidence.entrypoint)) {
       fail(`${label}.entrypoint must name a native WebDriver script.`);
       return;
     }
@@ -537,10 +506,82 @@ function validateFragments(fragments, label) {
   }
 }
 
-async function validateSmokeEvidence(entries, catalog, idKey, execution) {
+/**
+ * Each navigation destination opens the one section it hosts. A destination
+ * hosting several sections, Library, reopens the last one the learner used.
+ */
+function expectedDestinationSections() {
+  return navigation.destinations.map((destination) => {
+    const placed = contract.applicationSections.filter(
+      (entry) => entry.placement.destination === destination.id,
+    );
+    return { id: destination.id, section: placed.length === 1 ? placed[0].id : null };
+  });
+}
+
+function validateHeaderActionWiring(source) {
+  for (const entry of contract.applicationSections) {
+    const action = entry.placement.headerAction;
+    if (typeof action !== "string") continue;
+    const handler = `on${action[0].toUpperCase()}${action.slice(1)}`;
+    const pattern = new RegExp(
+      `\\b${escapeRegExp(handler)}=\\{\\(\\)\\s*=>\\s*navigate\\("${escapeRegExp(entry.id)}"\\)\\}`,
+      "u",
+    );
+    if (!pattern.test(source)) {
+      fail(`header action ${action} does not open section ${entry.id} in src/App.tsx.`);
+    }
+  }
+}
+
+function validateHighlightedDestinations(source, librarySections) {
+  const body = source.match(
+    /export\s+function\s+destinationOf\s*\([\s\S]*?\)\s*:[^{]*\{([\s\S]*?)\n\}/u,
+  )?.[1];
+  if (body === undefined) {
+    fail("Could not parse destinationOf from its authoritative source.");
+    return;
+  }
+  const highlightedWorkflows = new Map(
+    [...body.matchAll(/if\s*\(\s*activeWorkflow\s*===\s*"([^"]+)"\s*\)\s*return\s+"([^"]+)"\s*;/gu)].map(
+      (match) => [match[1], match[2]],
+    ),
+  );
+  const highlightedSections = new Map();
+  const library = body.match(/if\s*\(\s*isLibrarySection\(section\)\s*\)\s*return\s+"([^"]+)"\s*;/u);
+  if (library) {
+    for (const section of librarySections) highlightedSections.set(section, library[1]);
+  }
+  for (const match of body.matchAll(/case\s+"([^"]+)"\s*:\s*return\s+"([^"]+)"\s*;/gu)) {
+    highlightedSections.set(match[1], match[2]);
+  }
+  const fallback = /default\s*:\s*return\s+null\s*;/u.test(body) ? null : undefined;
+
+  for (const entry of contract.applicationSections) {
+    const expected = entry.placement.destination ?? null;
+    const found = highlightedSections.has(entry.id) ? highlightedSections.get(entry.id) : fallback;
+    if (found === undefined) {
+      fail(`destinationOf does not say which destination section ${entry.id} highlights.`);
+    } else if (found !== expected) {
+      fail(
+        `highlighted destination for section ${entry.id} drifted: expected ${JSON.stringify(expected)}, found ${JSON.stringify(found)}.`,
+      );
+    }
+  }
+  for (const entry of contract.applicationWorkflows) {
+    const found = highlightedWorkflows.get(entry.id);
+    if (found !== entry.destination) {
+      fail(
+        `highlighted destination for workflow ${entry.id} drifted: expected ${JSON.stringify(entry.destination)}, found ${JSON.stringify(found ?? null)}.`,
+      );
+    }
+  }
+}
+
+async function validateSmokeEvidence(entries, catalog, execution) {
   const cache = new Map();
   for (const entry of entries) {
-    const label = `${catalog} ${entry[idKey]}`;
+    const label = `${catalog} ${entry.id}`;
     for (const evidence of entry.smoke.evidence) {
       let source = cache.get(evidence.path);
       if (source === undefined) {
@@ -598,28 +639,17 @@ async function validateEvidenceExecution(evidence, label, evidenceSource, cache,
     const instrumentationCase = evidence.instrumentationCase;
     const caseKey = `${instrumentationCase.class}#${instrumentationCase.method}`;
     if (!execution.androidScheduledCases.has(caseKey)) {
-      fail(
-        `${label} instrumentation case ${caseKey} is not scheduled by scripts/android-emulator-smoke.sh.`,
-      );
+      fail(`${label} instrumentation case ${caseKey} is not scheduled by scripts/android-emulator-smoke.sh.`);
     }
-    const methodPattern = new RegExp(
-      `\\bfun\\s+${escapeRegExp(instrumentationCase.method)}\\s*\\(`,
-      "u",
-    );
+    const methodPattern = new RegExp(`\\bfun\\s+${escapeRegExp(instrumentationCase.method)}\\s*\\(`, "u");
     if (!methodPattern.test(evidenceSource)) {
-      fail(
-        `${label} evidence ${evidence.path} does not define instrumentation method ${instrumentationCase.method}.`,
-      );
+      fail(`${label} evidence ${evidence.path} does not define instrumentation method ${instrumentationCase.method}.`);
     }
   }
 }
 
 async function validateProductIndependence() {
-  const productRoots = [
-    "src",
-    "src-tauri/src",
-    "src-tauri/gen/android/app/src/main",
-  ];
+  const productRoots = ["src", "src-tauri/src", "src-tauri/gen/android/app/src/main"];
   const supportedExtensions = new Set([".js", ".jsx", ".ts", ".tsx", ".rs", ".kt"]);
   for (const directory of productRoots) {
     const absoluteDirectory = join(root, directory);
@@ -636,28 +666,10 @@ async function validateProductIndependence() {
   }
 }
 
-function parseApplicationSections(source) {
-  const match = source.match(/export\s+type\s+AppSection\s*=([\s\S]*?);/u);
+function parseUnion(source, name) {
+  const match = source.match(new RegExp(`export\\s+type\\s+${name}\\s*=([\\s\\S]*?);`, "u"));
   if (!match) {
-    fail("Could not parse export type AppSection from its authoritative source.");
-    return [];
-  }
-  return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
-}
-
-function parseApplicationWorkflows(source) {
-  const match = source.match(/export\s+type\s+AppWorkflow\s*=([\s\S]*?);/u);
-  if (!match) {
-    fail("Could not parse export type AppWorkflow from its authoritative source.");
-    return [];
-  }
-  return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
-}
-
-function parseCheckpointSections(source) {
-  const match = source.match(/export\s+type\s+CheckpointSection\s*=([\s\S]*?);/u);
-  if (!match) {
-    fail("Could not parse export type CheckpointSection from its authoritative source.");
+    fail(`Could not parse export type ${name} from its authoritative source.`);
     return [];
   }
   return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
@@ -665,12 +677,10 @@ function parseCheckpointSections(source) {
 
 function parseRenderedAppSections(source) {
   const sections = [
-    ...source.matchAll(
-      /(?:\{|:\s*)controller\.section\s*===\s*"([^"]+)"\s*\?\s*\(/gu,
-    ),
+    ...source.matchAll(/(?:\{|:\s*)controller\.section\s*===\s*"([^"]+)"\s*\?\s*\(/gu),
   ].map((entry) => entry[1]);
   if (sections.length === 0) {
-    fail("Could not parse rendered destination branches from src/App.tsx.");
+    fail("Could not parse rendered section branches from src/App.tsx.");
   }
   return sections;
 }
@@ -685,24 +695,44 @@ function parseRenderedAppWorkflows(source) {
   return workflows;
 }
 
-function parseAppBarDestinations(source) {
-  const pattern =
-    /<IconButton[\s\S]*?data-testid="app-([^"]+)"[\s\S]*?onClick=\{\(\) => void onNavigate\("([^"]+)"\)\}[\s\S]*?\/>/gu;
-  const destinations = [];
-  for (const match of source.matchAll(pattern)) {
-    const testId = match[1];
-    const destination = match[2];
-    if (testId !== destination) {
-      fail(
-        `Compact app-bar test ID app-${testId} does not match destination ${destination}.`,
-      );
+function parseDestinationSections(source) {
+  const match = source.match(/const\s+DESTINATION_SECTIONS\b[^=]*=\s*\{([\s\S]*?)\};/u);
+  if (!match) {
+    fail("Could not parse DESTINATION_SECTIONS from src/App.tsx.");
+    return [];
+  }
+  return [...match[1].matchAll(/^\s*"?([a-z][a-z0-9-]*)"?\s*:\s*(?:null|"([^"]+)")\s*,?\s*$/gmu)].map(
+    (entry) => ({ id: entry[1], section: entry[2] ?? null }),
+  );
+}
+
+function parseLibraryViewLabels(source) {
+  const match = source.match(/const\s+VIEWS\b[^=]*=\s*\{([\s\S]*?)\n\};/u);
+  if (!match) {
+    fail("Could not parse VIEWS from the Library frame.");
+    return [];
+  }
+  return [...match[1].matchAll(/^\s*"?([a-z][a-z0-9-]*)"?\s*:\s*\{\s*label:\s*"([^"]+)"/gmu)].map(
+    (entry) => ({ id: entry[1], label: entry[2] }),
+  );
+}
+
+function parseHeaderActions(source) {
+  const actions = [];
+  for (const element of source.matchAll(/<IconButton\b([\s\S]*?)\/>/gu)) {
+    const attributes = element[1];
+    const label = attributes.match(/(?<![-\w])label="([^"]+)"/u)?.[1];
+    const id = attributes.match(/data-testid="app-([^"]+)"/u)?.[1];
+    if (label === undefined || id === undefined) {
+      fail("Every header IconButton needs a label and an app-* test ID.");
+      continue;
     }
-    destinations.push(destination);
+    actions.push({ id, label });
   }
-  if (destinations.length === 0) {
-    fail("Could not parse compact app-bar destinations from MobileAppBar.");
+  if (actions.length === 0) {
+    fail("Could not parse header actions from AppHeaderBar.");
   }
-  return destinations;
+  return actions;
 }
 
 function parseNativeSmokeEntrypoints(source) {
@@ -802,21 +832,12 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isProtectedWorkflowReference(value) {
-  return (
-    isRecord(value) &&
-    Object.keys(value).length === 1 &&
-    typeof value.protectedWorkflow === "string"
-  );
-}
-
 function isCodeIdentifier(value) {
   return typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value);
 }
 
-function isIdentifier(value, allowSlash = false) {
-  const pattern = allowSlash ? /^[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)?$/u : /^[a-z][a-z0-9-]*$/u;
-  return typeof value === "string" && pattern.test(value);
+function isIdentifier(value) {
+  return typeof value === "string" && /^[a-z][a-z0-9-]*$/u.test(value);
 }
 
 function isRelativePath(value) {
@@ -870,26 +891,18 @@ function finish() {
     process.exit(1);
   }
 
-  const smokeEntries = [...contract.primaryDestinations, ...contract.flashcardsWorkspaces].map(
-    (entry) =>
-      isProtectedWorkflowReference(entry.smoke)
-        ? protectedWorkflowById.get(entry.smoke.protectedWorkflow)
-        : entry,
-  );
-  const routeEntryCount = smokeEntries.filter(
-    (entry) => entry.smoke.coverage === "route-entry",
-  ).length;
+  const smokeEntries = [...contract.applicationSections, ...contract.flashcardsWorkspaces];
+  const routeEntryCount = smokeEntries.filter((entry) => entry.smoke.coverage === "route-entry").length;
   const presenceCount = smokeEntries.length - routeEntryCount;
   console.log(
     `OK   Expected route/smoke inventory matches ${contract.applicationSections.length} application sections, ` +
       `${contract.applicationWorkflows.length} application workflow, ` +
-      `${contract.checkpointDestinations.length} checkpoint destinations, ` +
-      `${contract.primaryDestinations.length} primary destinations, and ` +
+      `${contract.checkpointSections.length} checkpoint sections, ` +
+      `${contract.navigation.destinations.length} navigation destinations, ` +
+      `${contract.navigation.library.views.length} Library views, ` +
+      `${contract.navigation.headerActions.length} header actions, and ` +
       `${contract.flashcardsWorkspaces.length} Flashcards workspaces ` +
       `(${routeEntryCount} route-entry; ${presenceCount} presence-only), with ` +
-      `${contract.protectedWorkflows.length} protected workflow and ` +
-      `${contract.compactNavigation.primary.length} compact primary / ` +
-      `${contract.compactNavigation.more.length} More / ` +
-      `${contract.compactNavigation.appBar.length} app-bar destinations.`,
+      `${contract.protectedWorkflows.length} protected workflow.`,
   );
 }

@@ -17,6 +17,7 @@ import { deleteTargetFromItem, guideSourceFromItem, useStudyGuidesController, ty
 import { StudyGuideDialog } from "./StudyGuideDialog";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { guideLibraryStyles as styles } from "./documents/presentation";
+import { useLibraryFullPage } from "./library/LibraryFrame";
 
 interface StudyGuidesScreenProps {
   showToast: ShowToast;
@@ -28,6 +29,8 @@ interface StudyGuidesScreenProps {
 export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed }: StudyGuidesScreenProps) {
   const confirm = useConfirm();
   const controller = useStudyGuidesController({ showToast, openRequest, onOpenRequestConsumed });
+  // An open guide is a page of its own in Library, without the view switcher.
+  useLibraryFullPage(controller.selected !== null);
   async function confirmDelete(target: StudyGuideDeleteTarget): Promise<boolean> {
     const accepted = await confirm({
       title: `Delete “${target.documentTitle}” study guide?`,

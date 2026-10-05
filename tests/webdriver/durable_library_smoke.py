@@ -32,15 +32,9 @@ def verify_persistence_after_restart(
     webdriver.verify_shell(session_id, deadline)
     webdriver.verify_search_workspace_selected(session_id, deadline)
 
-    webdriver.progress("Navigating to Flashcards > Decks to verify deck and card persistence")
+    webdriver.progress("Navigating to Library > Decks to verify deck and card persistence")
     deadline = webdriver.deadline_after()
-    decks_button = webdriver.find_element(
-        session_id,
-        "css selector",
-        "button[data-testid='nav-decks']",
-        deadline,
-    )
-    webdriver.click(session_id, decks_button)
+    webdriver.open_library_view(session_id, "decks", deadline)
     webdriver.find_element(
         session_id,
         "css selector",
@@ -80,15 +74,16 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    webdriver.progress("Verifying persisted review analytics after restart")
+    webdriver.progress("Verifying persisted review history in Progress after restart")
     deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
-    analytics_button = webdriver.find_element(
+    progress_button = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-analytics']",
+        "button[data-testid='nav-progress']",
         deadline,
     )
-    webdriver.click(session_id, analytics_button)
+    webdriver.click(session_id, progress_button)
+    webdriver.wait_for_main_heading(session_id, "Progress", deadline)
     webdriver.find_element(
         session_id,
         "css selector",
@@ -103,12 +98,12 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    webdriver.progress("Verifying post-restart navigation")
+    webdriver.progress("Verifying post-restart navigation to Settings in the header")
     deadline = webdriver.deadline_after()
     settings_button = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-settings']",
+        "button[data-testid='app-settings']",
         deadline,
     )
     webdriver.click(session_id, settings_button)

@@ -21,22 +21,22 @@ export interface TutorialModule {
 export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>> = {
   orientation: {
     id: "orientation",
-    version: 2,
+    version: 3,
     title: "Welcome to ostudy",
     steps: [
       {
         id: "flashcards-workspaces",
         title: "Everything for flashcards lives together",
-        body: "Decks, templates, Search, and import or export are separate workspaces inside Flashcards. Open a deck to add one card or bulk add many cards to that deck.",
+        body: "Library's Decks view has your decks and Search/Filter for every card. Open a deck to add one card or bulk add many cards to that deck; import and export sit beside the decks.",
         anchor: "flashcards.workspaces",
         placement: "bottom",
       },
       {
         id: "navigation",
         title: "Move between study tools",
-        body: "The main navigation stays consistent across desktop, tablet, and mobile. Android Back closes overlays and nested work before leaving the current area.",
+        body: "Home, Library, Review, Tutor and Progress are the same on desktop, tablet and phone, with Search and Settings in the header. Android Back closes overlays and nested work first, then returns to Home.",
         anchor: "app.navigation",
-        placement: "end",
+        placement: "auto",
       },
     ],
   },

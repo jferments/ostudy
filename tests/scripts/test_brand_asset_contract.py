@@ -11,6 +11,7 @@ BRAND = ROOT / "src" / "components" / "Brand.tsx"
 ARTWORK = ROOT / "src" / "ui" / "artwork"
 MANIFEST = ARTWORK / "artworkManifest.ts"
 HEADS = {64: ARTWORK / "images" / "raccoon-head-64.webp", 128: ARTWORK / "images" / "raccoon-head-128.webp"}
+LOGOS = {160: ARTWORK / "images" / "raccoon-logo-160.webp", 320: ARTWORK / "images" / "raccoon-logo-320.webp"}
 EXPECTED_SHA256 = "64979ff390c2a13a19e8f346c0f610b74fe83e14faf12497e902ac8a76f35137"
 REMOVED_MOTTO = "Learn with intent"
 IMAGE_IMPORT = re.compile(r"""from\s+["'][^"']+\.(?:png|jpe?g|webp|svg)["']""", re.IGNORECASE)
@@ -51,6 +52,15 @@ class BrandAssetContractTest(unittest.TestCase):
                 data = path.read_bytes()
                 self.assertEqual(webp_canvas(data), (size, size, True))
                 self.assertLess(len(data), 16 * 1024)
+
+    def test_first_run_welcome_ships_the_whole_mascot_as_small_transparent_webp(self) -> None:
+        manifest = MANIFEST.read_text(encoding="utf-8")
+        for size, path in LOGOS.items():
+            with self.subTest(size=size):
+                data = path.read_bytes()
+                self.assertEqual(webp_canvas(data), (size, size, True))
+                self.assertLess(len(data), 32 * 1024)
+                self.assertIn(f'from "./images/{path.name}";', manifest)
 
     def test_brand_mark_comes_from_the_artwork_registry(self) -> None:
         manifest = MANIFEST.read_text(encoding="utf-8")

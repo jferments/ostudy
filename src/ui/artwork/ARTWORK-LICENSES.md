@@ -15,6 +15,10 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 
 `brand.logo.compact` shows the raccoon's head from the project's own mascot art, `assets/images/racoon mascot (logo).png` (1254 x 1254). The head-and-shoulders square is the 740 x 740 region at +232+88 of that file (inside the 840 x 800 head crop at +186+40), so the ears sit at the top and the body runs off the bottom edge. It ships as `images/raccoon-head-64.webp` and `images/raccoon-head-128.webp` (transparent WebP, downscaled with Lanczos, metadata stripped). The brand mark always shows; the decorative-artwork preference does not apply to brand slots.
 
+## First-run welcome
+
+`empty.library` is the whole mascot from the same file, unchanged in content: the 1254 x 1254 image downscaled to `images/raccoon-logo-160.webp` and `images/raccoon-logo-320.webp` (transparent WebP, Lanczos, quality 88 with lossless alpha, metadata stripped). Home shows it when the library is empty. It is decorative artwork, so it follows the decorative-artwork preference, and a plain icon takes its place when the preference is off.
+
 Functional icons are not decorative artwork. They come from the app's icon registry (`src/ui/icons/Icon.tsx`, Lucide glyphs under the ISC notice in `public/licenses/LUCIDE-ISC.txt`) and remain visible when decorative artwork is disabled.
 
 User-authored educational images, imported document pages, and images embedded in flashcards are content, not application artwork. The decorative-artwork preference never hides or changes them.
