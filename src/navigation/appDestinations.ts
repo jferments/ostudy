@@ -15,6 +15,16 @@ export const LIBRARY_SECTIONS = ["decks", "documents", "study-guides"] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
 
+/**
+ * Where `openLibrary` opens Library. No scope opens it as the learner last
+ * left it; `subjectId` scopes it to one subject (`null` is No subject); and
+ * `deckId` opens that deck.
+ */
+export interface LibraryScope {
+  subjectId?: string | null;
+  deckId?: string;
+}
+
 export function isLibrarySection(section: AppSection): section is LibrarySection {
   return (LIBRARY_SECTIONS as readonly AppSection[]).includes(section);
 }
