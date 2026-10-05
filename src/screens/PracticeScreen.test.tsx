@@ -49,11 +49,18 @@ vi.mock("../ipc/cards", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ipc/cards")>()),
   getCardNote: vi.fn(),
 }));
-vi.mock("./CardEditorScreen", () => ({
-  CardEditorScreen: ({ onCancel }: { onCancel: () => void }) => (
-    <button type="button" onClick={onCancel}>Close editor</button>
-  ),
-}));
+const editorMounted = vi.hoisted(() => vi.fn());
+vi.mock("./CardEditorScreen", async () => {
+  const { useEffect } = await vi.importActual<typeof import("react")>("react");
+  return {
+    CardEditorScreen: ({ onCancel }: { onCancel: () => void }) => {
+      useEffect(() => {
+        editorMounted();
+      }, []);
+      return <button type="button" onClick={onCancel}>Close editor</button>;
+    },
+  };
+});
 
 const deck: DeckSummary = {
   id: "a".repeat(32),
@@ -143,6 +150,17 @@ function renderPractice(
 async function reveal(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
   await screen.findByRole("button", { name: /1 Hard/u });
+}
+
+/**
+ * Waits until the first card's timer has started, not just until it renders.
+ * React can run a commit's effects in a later task than the one in which
+ * findByRole sees the new DOM, so timing tests wait for the shown-card effect
+ * before they move the clock.
+ */
+async function findFirstCardShown(): Promise<void> {
+  await screen.findByRole("button", { name: "Show answer" });
+  await waitFor(() => expect(practiceIpc.markPracticeCardViewed).toHaveBeenCalledTimes(1));
 }
 
 describe("PracticeScreen internal workflow", () => {
@@ -479,7 +497,7 @@ describe("PracticeScreen internal workflow", () => {
         correctCount: 1,
       });
     renderPractice();
-    await screen.findByRole("button", { name: "Show answer" });
+    await findFirstCardShown();
 
     now += 4_000;
     setVisibility("hidden");
@@ -506,11 +524,13 @@ describe("PracticeScreen internal workflow", () => {
       deckId: deck.id,
     } as unknown as cardsIpc.CardNote);
     renderPractice();
-    await screen.findByRole("button", { name: "Show answer" });
+    await findFirstCardShown();
 
     now += 2_000;
     fireEvent.click(screen.getByRole("button", { name: "Edit card" }));
     const close = await screen.findByRole("button", { name: "Close editor" });
+    // The editor's mount effect runs in the same pass as the screen's pause.
+    await waitFor(() => expect(editorMounted).toHaveBeenCalledTimes(1));
     now += 300_000;
     fireEvent.click(close);
     await screen.findByRole("button", { name: "Show answer" });
