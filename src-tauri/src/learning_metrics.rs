@@ -19,6 +19,8 @@
 //!   due reviews (any state but New) and new cards.
 //! - **Due today:** studyable reviews due before the next study day starts.
 //! - **Average confidence:** the mean rating on a 0 (Wrong) to 3 (Easy) scale.
+//! - **Card strength:** New, Learning (learning or relearning), Getting there
+//!   (in review, stability under 21 days) and Solid (21 days or more).
 
 use rusqlite::Connection;
 
@@ -28,6 +30,10 @@ use crate::error::CommandError;
 pub const STATE_NEW: i64 = 0;
 /// `card_schedules.state` and `review_events.state_*` for a graduated card.
 pub const STATE_REVIEW: i64 = 2;
+
+/// Stability, in days, from which a card in review counts as solid: FSRS
+/// expects it to stay above 90 percent recall for about three weeks.
+pub const SOLID_STABILITY_DAYS: f64 = 21.0;
 
 /// Retention reviews a topic needs in the selected range before it is
 /// classified. Fewer than this reads as "Building data".
@@ -222,6 +228,26 @@ impl TopicStatus {
     }
 }
 
+/// How well a card is learned, from its schedule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CardStrength {
+    New,
+    Learning,
+    GettingThere,
+    Solid,
+}
+
+impl CardStrength {
+    pub fn of(state: i64, stability: f64) -> Self {
+        match state {
+            STATE_NEW => Self::New,
+            STATE_REVIEW if stability >= SOLID_STABILITY_DAYS => Self::Solid,
+            STATE_REVIEW => Self::GettingThere,
+            _ => Self::Learning,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +261,15 @@ mod tests {
         );
         assert_eq!(TopicStatus::classify(10, 9, 0.9), TopicStatus::OnTrack);
         assert_eq!(TopicStatus::classify(100, 93, 0.9), TopicStatus::Strong);
+    }
+
+    #[test]
+    fn card_strength_follows_state_then_stability() {
+        assert_eq!(CardStrength::of(0, 0.0), CardStrength::New);
+        assert_eq!(CardStrength::of(1, 40.0), CardStrength::Learning);
+        assert_eq!(CardStrength::of(3, 40.0), CardStrength::Learning);
+        assert_eq!(CardStrength::of(2, 20.9), CardStrength::GettingThere);
+        assert_eq!(CardStrength::of(2, 21.0), CardStrength::Solid);
     }
 
     #[test]

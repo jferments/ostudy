@@ -15,6 +15,7 @@ use super::{AnalyticsQueryDto, AnalyticsScopeDto};
 
 const MAX_ANALYTICS_DECKS: usize = 256;
 const MAX_ANALYTICS_TAGS: usize = 64;
+const MAX_ANALYTICS_SUBJECTS: usize = 256;
 const MAX_CUSTOM_RANGE_DAYS: i64 = 3_660;
 
 /// Review history for a dated window over the whole library: the captured
@@ -119,6 +120,8 @@ pub struct AnalyticsContext {
     pub range: AnalyticsRange,
     pub deck_ids: Vec<String>,
     pub tag_ids: Vec<String>,
+    /// Decks filed under any of these subjects; empty means every subject.
+    pub subject_ids: Vec<String>,
     pub highlighted_session_id: Option<String>,
     pub time: StudyTimeContext,
     pub window: AnalyticsWindow,
@@ -164,6 +167,7 @@ impl AnalyticsContext {
             range,
             deck_ids: input.deck_ids,
             tag_ids: input.tag_ids,
+            subject_ids: Vec::new(),
             highlighted_session_id: input.highlighted_session_id,
             time,
             window: AnalyticsWindow {
@@ -172,6 +176,12 @@ impl AnalyticsContext {
                 end_local_date,
             },
         })
+    }
+
+    /// Narrow the context to decks filed under `subject_ids`.
+    pub fn with_subjects(mut self, subject_ids: Vec<String>) -> Result<Self, CommandError> {
+        self.subject_ids = normalize_ids(subject_ids, "subject", MAX_ANALYTICS_SUBJECTS)?;
+        Ok(self)
     }
 
     pub fn dto(&self, earliest_local_date: Option<&str>) -> AnalyticsScopeDto {
@@ -208,6 +218,7 @@ impl AnalyticsContext {
     pub fn current_card_conditions(&self, values: &mut Vec<SqlValue>) -> Vec<String> {
         let mut conditions = vec![studyability::current_card_sql("c", "n", "d").to_string()];
         append_in_filter(&mut conditions, values, "c.deck_id", &self.deck_ids);
+        append_in_filter(&mut conditions, values, "d.subject_id", &self.subject_ids);
         for tag_id in &self.tag_ids {
             let index = push_value(values, tag_id.clone());
             conditions.push(format!(
@@ -246,6 +257,7 @@ impl AnalyticsContext {
             "d.deleted_at IS NULL".to_string(),
         ];
         append_in_filter(&mut conditions, values, "c.deck_id", &self.deck_ids);
+        append_in_filter(&mut conditions, values, "d.subject_id", &self.subject_ids);
         for tag_id in &self.tag_ids {
             let index = push_value(values, tag_id.clone());
             conditions.push(format!(

@@ -271,6 +271,8 @@ Analytics derives reproducible summaries from stored sessions/review evidence an
 
 A current tag in recent reviews can launch Search by stable ID. Historical-only tag text is not a live ID. An unavailable filter should remain visibly unresolved until cleared, not silently widen into the entire library. This is an example of preserving user intent across a presentation/domain boundary.
 
+What "remembered", true retention, "ready now", "due today" and card strength mean is defined once in `learning_metrics.rs` ([ADR 0056](../decisions/0056-learning-metric-definitions.md)); every analytics query, the workload overview and the session recounts build their SQL from it. The Progress page reads one small native command per section (`analytics/progress/`) so a filter change reloads only what depends on it, because every native command waits in one queue. Streaks and the activity calendar read every review attribution, whatever the filter.
+
 Charts and counters are renderings, not new sources of truth or LLM judgments. Missing/empty scopes must remain distinguishable from failed queries and stale results. Numerical semantics should be tested in native projections independently of chart-library output.
 
 Sources: [deck-card queries](../../src-tauri/src/deck_cards.rs), [projections](../../src-tauri/src/projections/), [analytics owners](../../src-tauri/src/analytics/), [Workbench card list](../../src/screens/library/workbench/useWorkbenchCards.ts), [ADR 0010](../decisions/0010-study-calendar-historical-attribution-and-projections.md).

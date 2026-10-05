@@ -14,6 +14,7 @@ mod daily;
 mod history;
 #[cfg(test)]
 mod merged_history_tests;
+pub mod progress;
 #[cfg(test)]
 mod query_plan_tests;
 mod question_types;
@@ -224,6 +225,9 @@ pub struct RecentReviewDto {
     pub review_local_date: String,
     pub due_after: i64,
     pub attribution_source: String,
+    /// The review log's tie breaker after `reviewed_at`; not sent to the UI.
+    #[serde(skip)]
+    pub created_at: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]

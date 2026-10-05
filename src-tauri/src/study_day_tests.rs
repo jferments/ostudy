@@ -9,7 +9,9 @@
 //!
 //! - With the day starting at midnight, every result equals the output of the
 //!   code before study days existed, captured from this fixture into
-//!   `tests/fixtures/study-day/midnight-boundary-golden.txt`.
+//!   `tests/fixtures/study-day/midnight-boundary-golden.txt`. Two later
+//!   deliberate changes are in it too: topic status by true retention
+//!   (ADR 0056) and weekly buckets cut back from today.
 //! - For several start hours, an oracle dates every review with SQLite's
 //!   `date(reviewed_at / 1000 + utc_offset_minutes * 60 - H * 3600,
 //!   'unixepoch')` and analytics, the daily limits and the search filters must
