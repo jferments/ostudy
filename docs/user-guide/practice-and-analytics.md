@@ -29,15 +29,17 @@ Basic and Fill in the blank cards retain the ordinary recall/reveal flow. Try re
 | Medium | You recalled it with some effort | 2 |
 | Easy | You recalled it readily | 3 |
 
-Space or Enter reveals the answer when the practice controls own the interaction. Rating shortcuts are not meant to intercept typing in an editor or an active overlay. The displayed interval previews show the schedule consequences supplied by the native scheduler.
+**Show answer** and, once the answer shows, the four ratings sit together at the bottom of the practice screen. A long card scrolls under them, and on a phone they stay just above the bottom navigation, within reach of your thumb. Each rating shows its keyboard number. Space or Enter reveals the answer when the practice controls own the interaction. Rating shortcuts are not meant to intercept typing in an editor or an active overlay. The ratings wait for the native scheduler's preview of the next schedule; if that preview could not be calculated, **Retry interval preview** asks for it again.
 
 By default, a Basic card shows the **question on the front and the answer on the revealed back**. Enable **Settings → Review/Scheduling → Display both question and answer when card is flipped** if you prefer to keep the Basic question visible beside the answer. Fill in the blank content keeps the blank/context as part of its revealed content so multi-blank questions remain understandable without requiring that global preference.
 
-Single-best-answer, select-all, true/false, matching, grouping, and ordering use **answer → Check answer → feedback → difficulty/continue** instead of click-to-flip. Correctness is evaluated locally from the captured immutable question instance. The first checked answer is frozen; later remediation does not rewrite it. Wrong/incomplete objective answers default to Wrong, while a correct answer permits Hard/Medium/Easy. A deliberate override retains the original objective result and its override reason.
+When motion is on, the card turns over to show the answer. **Show question** and **Show answer** at the card's top corner turn a revealed card back and forth without changing the review, and clicking the card face does the same. The card itself is ordinary content, so a screen reader reads the question and answer rather than a button label.
 
-Matching, grouping, and ordering do not auto-submit when the last item moves, and movement never reveals correctness before Check. Dragging is optional: keyboard/non-drag controls support the same logical answer. A compound board still produces one scheduling review rather than one review per tile.
+Single-best-answer, select-all, true/false, matching, grouping, and ordering use **answer → Check answer → feedback → difficulty/continue** instead of click-to-flip. **Check answer** sits where **Show answer** does. Correctness is evaluated locally from the captured immutable question instance. The first checked answer is frozen; later remediation does not rewrite it. Wrong/incomplete objective answers default to Wrong, while a correct answer permits Hard/Medium/Easy. A deliberate override retains the original objective result and its override reason.
 
-Image occlusion uses a native masked derivative before reveal and is self-assessed. Each occlusion question presentation has its own schedule. Revealing the answer records assistance/self-assessment state appropriately; oStudy does not pretend that an ungraded free-form thought was objectively correct.
+Matching, grouping, and ordering do not auto-submit when the last item moves, and movement never reveals correctness before Check. Dragging is optional: keyboard/non-drag controls support the same logical answer. Each tile is a button named by what it says, so a screen reader announces the tile's text and its status, such as Connected. A compound board still produces one scheduling review rather than one review per tile.
+
+Image occlusion uses a native masked derivative before reveal and is self-assessed; its **Reveal answer** also sits where **Show answer** does. Each occlusion question presentation has its own schedule. Revealing the answer records assistance/self-assessment state appropriately; oStudy does not pretend that an ungraded free-form thought was objectively correct.
 
 Opening Tutor is not itself an assisted attempt. Assistance is recorded only when useful help is actually exposed. A failed/cancelled hint or a response that arrives after the first check cannot change the frozen first-attempt evidence.
 
@@ -47,7 +49,7 @@ A Basic note's forward and reverse presentations have separate schedules even th
 
 ## Progress and completion
 
-The active progress track includes studied/remaining counts and a rounded percentage. Assistive technology receives a complete progress description. The current card remains the meaningful content; decorative stacked cards are not additional questions to navigate.
+The practice top bar names the deck and shows the studied and remaining counts, with the session's progress as a thin line along its bottom edge. Wider screens also name the kind of practice, such as Extra practice; a phone's app bar already says Practice. Assistive technology receives a complete progress description: the card position, the counts and a rounded percentage. The current card remains the meaningful content; decorative stacked cards are not additional questions to navigate.
 
 The completion view summarizes the finished work, confidence distribution, remembered proportion, and difficult answers. Optional celebration effects do not control whether reviews were saved. Turning them off or using reduced motion keeps the summary and its controls.
 
@@ -65,7 +67,7 @@ Unsaved authoring changes opened during a workflow still need to be saved or del
 
 ## Scheduling controls
 
-Scheduling controls are deliberate administrative actions, not review outcomes:
+Scheduling controls are deliberate administrative actions, not review outcomes. During practice they live in the **Schedule** menu (the timer icon) beside **Edit card**. On a phone, **Edit card** and these actions share one **Card actions** menu, while **End session** stays in the top bar.
 
 **Suspend** removes a card from ordinary practice until resumed. **Bury** temporarily removes it according to the app's study-day policy. **Reset** returns current scheduling state to a fresh state while preserving retained review history. **Reschedule** changes the next due time without inventing a successful recall event.
 
