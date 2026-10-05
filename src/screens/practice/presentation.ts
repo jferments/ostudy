@@ -25,6 +25,7 @@ export const practiceStyles = {
   // under them, behind a short fade, and on a phone they sit just above the bottom navigation.
   actionArea: "tw:sticky tw:bottom-0 tw:z-(--ostudy-layer-sticky) tw:shrink-0 tw:bg-background tw:px-page tw:pt-3 tw:pb-[max(1.5rem,var(--safe-bottom))] tw:compact:px-4 tw:compact:pb-3 tw:before:pointer-events-none tw:before:absolute tw:before:inset-x-0 tw:before:bottom-full tw:before:h-6 tw:before:bg-linear-to-t tw:before:from-background tw:before:to-transparent",
   primaryAction: "tw:h-12 tw:min-w-56 tw:justify-self-center tw:text-body tw:compact:w-full tw:compact:justify-self-stretch",
+  actionSlot: "tw:grid tw:min-w-0",
   // The four ratings are one group: its question, then one row of four that a phone stacks inside
   // each button so the names keep their full width.
   ratingGroup: "tw:grid tw:min-w-0 tw:gap-3 tw:rounded-lg tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:gap-2",
@@ -40,6 +41,9 @@ export const practiceStyles = {
   cardSurface: "tw:min-h-40 tw:min-w-0 tw:text-card-foreground tw:font-(family-name:--card-font-family) tw:text-(length:--card-base-size) tw:compact:min-h-32",
   cardFrame: "tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:shadow-sm tw:compact:shadow-none",
   cardFace: "tw:px-8 tw:py-7 tw:compact:p-5",
+  // Question cards share the flashcard's frame and spacing, a little tighter on a phone so their
+  // tiles keep room.
+  questionCard: "tw:px-8 tw:py-7 tw:compact:p-4",
   cardSideToggle: "tw:absolute tw:top-7 tw:right-5 tw:z-(--ostudy-layer-raised) tw:text-muted-foreground tw:enabled:hover:text-foreground tw:compact:top-5 tw:compact:right-2.5",
 } as const;
 

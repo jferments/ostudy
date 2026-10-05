@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TutorEntryButton } from "../tutor/TutorEntryButton";
 import {
   isInteractivePracticePresentation,
@@ -85,6 +85,8 @@ export function ActivePractice({
   onQuestionChecked = ignoreAttempt,
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
+  // A question's own action (Check answer, Reveal answer) renders here, beside Show answer's place.
+  const [actionSlot, setActionSlot] = useState<HTMLDivElement | null>(null);
   const wasRevealed = useRef(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
@@ -155,6 +157,7 @@ export function ActivePractice({
       onAttempt={onQuestionAttempt}
       onChecked={onQuestionChecked}
       onError={onLinkError}
+      actionSlot={actionSlot}
     />
   ) : recallPresentation ? (
     <RecallCardSurface presentation={recallPresentation} presentationKey={recallPresentation.cardId}
@@ -203,9 +206,10 @@ export function ActivePractice({
           data-layers={interactive ? undefined : stackLayers} data-tour-anchor="practice.card">{cardSurface}</div>
       </div>
     </div>
-    {interactive && !revealed ? null : <div className={view.actionArea} data-practice-actions="">
+    <div className={view.actionArea} data-practice-actions="">
       <div className={view.column}>
-        {!revealed ? <Button variant="primary" size="large" className={view.primaryAction} disabled={busy} onClick={onReveal}>
+        {!revealed ? interactive ? <div ref={setActionSlot} className={view.actionSlot} /> : <Button variant="primary" size="large"
+          className={view.primaryAction} disabled={busy} onClick={onReveal}>
           {isRevealing ? "Calculating intervals…" : "Show answer"}
         </Button> : <section ref={ratingPanelRef} tabIndex={-1} className={view.ratingGroup}
           aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
@@ -226,7 +230,7 @@ export function ActivePractice({
           </div>
         </section>}
       </div>
-    </div>}
+    </div>
   </PageScaffold>;
 }
 

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PracticeCard, PracticeSession, ReviewPreviewSet } from "../../ipc/practice";
-import { makeCardPresentation, requiredTestValue as required, resetTestEntityIds } from "../../test/factories";
+import type { QuestionAttemptView, SavePracticeAnswerInput } from "../../ipc/questionAttempts";
+import { makeCardPresentation, paragraphDocument, requiredTestValue as required, resetTestEntityIds } from "../../test/factories";
 import { layoutWidths, matchesLayoutQuery } from "../../test/viewport";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { ActivePractice } from "./ActivePractice";
@@ -15,6 +16,19 @@ const previews: ReviewPreviewSet = {
   ],
 };
 function makeCurrent(): PracticeCard { return { presentation: makeCardPresentation(), deckName: "Cardiology", dueAt: 1, scheduleState: 2, needsMorePractice: true }; }
+const choiceAttempt: QuestionAttemptView = {
+  instanceId: "c".repeat(32), revision: 1, assisted: false, progress: { phase: "answering", savedAnswer: null },
+  question: { kind: "single_choice", prompt: paragraphDocument("Pick one"), options: [
+    { id: "a".repeat(32), content: paragraphDocument("Alpha") }, { id: "b".repeat(32), content: paragraphDocument("Beta") },
+  ] },
+};
+function makeQuestionCard(): PracticeCard {
+  const { cardId, noteId, deckId } = makeCardPresentation();
+  return { deckName: "Cardiology", dueAt: 1, scheduleState: 2, needsMorePractice: false, presentation: {
+    cardId, noteId, deckId, direction: "forward", frontText: "Pick one", createdAt: 1, updatedAt: 1, noteRevision: 1,
+    question: { attempt: choiceAttempt, assets: [] },
+  } };
+}
 function makeSession(): PracticeSession {
   return { id: "a".repeat(32), cardCount: 1, firstWindow: { startPosition: 0, cards: [makeCurrent()], hasMore: false }, shuffle: false, mode: "scheduled", startedAt: 1 };
 }
@@ -105,6 +119,20 @@ describe("ActivePractice", () => {
     for (const name of ["0 Wrong", "1 Hard", "2 Medium", "3 Easy"]) expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Retry interval preview" }));
     expect(props.onReveal).toHaveBeenCalledOnce();
+  });
+  it("puts a question's Check answer where a flashcard's Show answer sits", async () => {
+    const onSaveQuestionAnswer = vi.fn(async (input: SavePracticeAnswerInput): Promise<QuestionAttemptView> => ({
+      ...choiceAttempt, revision: input.request.expectedRevision + 1, progress: { phase: "answering", savedAnswer: input.request.answer },
+    }));
+    renderActive({ current: makeQuestionCard(), onSaveQuestionAnswer });
+    expect(screen.queryByRole("button", { name: "Show answer" })).toBeNull();
+    const check = screen.getByRole("button", { name: "Check answer" }) as HTMLButtonElement;
+    const card = required(document.querySelector<HTMLElement>("[data-tour-anchor='practice.card']"), "card");
+    expect(card.contains(check)).toBe(false); expect(check.closest("[data-practice-actions]")).not.toBeNull();
+    expect(check.disabled).toBe(true);
+    fireEvent.click(required(screen.getAllByRole("radio")[0], "first choice"));
+    await waitFor(() => expect(onSaveQuestionAnswer).toHaveBeenCalledOnce());
+    expect((screen.getByRole("button", { name: "Check answer" }) as HTMLButtonElement).disabled).toBe(false);
   });
   it("blocks shortcuts and buttons while any review mutation is pending", () => {
     const { props } = renderActive({ revealed: true, previewSet: previews, isRating: true });
