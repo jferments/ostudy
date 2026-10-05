@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 6: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), and schema 6 turns deck folders and document collections into subjects, described below. Libraries at schemas 1–5 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 7: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, and schema 7 stores what you draw and type on your documents, both described below. Libraries at schemas 1–6 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -36,6 +36,12 @@ A subject is one course: it holds the course's documents, guides and decks. Deck
 Older builds cannot open a schema-6 library. Restoring the pre-upgrade checkpoint returns the schema-5 library as it was. A `.ostudybackup` made before the update still restores, and the restored library gets the same subjects as updating in place.
 
 If you synchronize several devices, update all of them, ideally right after a final sync. A device without the update refuses a package from an updated device and asks to be updated first; an updated device still accepts a package from one that has not updated yet. See [Device sync](device-sync.md).
+
+## The document annotations update (schema 7)
+
+Schema 7 adds a place for the ink, highlights, shapes and text notes you add to a document's pages in the annotator. The update itself writes nothing: the table starts empty, and your documents and their files are unchanged.
+
+Older builds cannot open a schema-7 library. Restoring the pre-upgrade checkpoint returns the schema-6 library as it was. Annotations are part of whole-library backups but stay on the device that made them: device sync does not carry them yet.
 
 ## What happens when migration is required
 

@@ -28,3 +28,9 @@ test("TanStack Virtual stays behind the VirtualList pattern", () => {
     assert.match(importViolation(owner, "@tanstack/virtual-core"), /VirtualList/u);
   }
 });
+test("perfect-freehand stays behind the annotator's stroke outline module", () => {
+  assert.equal(importViolation("src/screens/documents/annotator/strokeOutline.ts", "perfect-freehand"), null);
+  for (const owner of ["src/screens/documents/annotator/AnnotatorPage.tsx", "src/ui/patterns/Ink.tsx"]) {
+    assert.match(importViolation(owner, "perfect-freehand"), /strokeOutline/u);
+  }
+});

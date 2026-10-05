@@ -856,7 +856,7 @@ mod tests {
             transaction.rollback().unwrap();
         }
 
-        assert!(apply_migrations_through(&mut connection, 6).unwrap());
+        assert!(apply_migrations_through(&mut connection, SCHEMA_VERSION).unwrap());
         for damage in [
             "DROP TABLE subject_filing_reviews;",
             "DROP TRIGGER card_merges_one_level_insert;",

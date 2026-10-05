@@ -18,6 +18,9 @@ use super::{entry, verify_integrity, LEGACY_PUBLIC_SCHEMA_VERSION};
 #[path = "release/deck_merge.rs"]
 mod deck_merge;
 
+#[path = "release/document_annotations.rs"]
+mod document_annotations;
+
 #[path = "release/generation_instructions.rs"]
 mod generation_instructions;
 
@@ -36,7 +39,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 6;
+pub(crate) const SCHEMA_VERSION: i64 = 7;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -80,6 +83,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "subjects",
         checksum: "6b072b0f86efab3a628647edb8d5712e852dc03313e859e1e25aa996a3066a06",
         sql: include_str!("../../schema/0006_subjects.sql"),
+    },
+    ReleaseMigration {
+        version: 7,
+        name: "document_annotations",
+        checksum: "aef233f14b0d9830abc51dfecb31d4d627a6cc39917659eef4d85090854c7254",
+        sql: include_str!("../../schema/0007_document_annotations.sql"),
     },
 ];
 
@@ -288,6 +297,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     generation_instructions::validate_schema(connection, user_version)?;
     review_scheduler_context::validate_schema(connection, user_version)?;
     subjects::validate_schema(connection, user_version)?;
+    document_annotations::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

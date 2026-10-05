@@ -226,7 +226,7 @@ fn an_updated_device_merges_a_package_from_a_device_without_the_update() {
     // This device upgraded. The other device, without the update, then studied
     // a Physics copy and edited a Biology copy that this device retired.
     let mut local = common;
-    advance_release_library(&local, 5, 6);
+    advance_release_library(&local, 5, crate::database::CURRENT_SCHEMA_VERSION);
     let merges_before = rows(&local, MERGES);
     let sender = Connection::open(&sender_file).unwrap();
     review_without_the_update(&sender, library.cm_phys[0].card(), T0 + 8 * DAY);
@@ -333,8 +333,8 @@ fn packages_carry_the_release_schema_so_older_builds_ask_for_the_update() {
         .parse()
         .unwrap();
     // Builds before release schema 6 refuse any number above 30 with
-    // "Update this device first".
-    assert_eq!(recorded, 36);
+    // "Update this device first"; schema 7 packages say 37.
+    assert_eq!(recorded, 37);
     assert!(recorded > crate::database::LEGACY_PUBLIC_SCHEMA_VERSION);
 
     // This build refuses a package from a later release the same way.
@@ -357,7 +357,7 @@ fn packages_carry_the_release_schema_so_older_builds_ask_for_the_update() {
 fn subjects_and_card_merges_reach_a_new_device_with_flashcards_only() {
     let scratch = Scratch::new("round-trip");
     let (common, _) = schema5_without_documents();
-    advance_release_library(&common, 5, 6);
+    advance_release_library(&common, 5, crate::database::CURRENT_SCHEMA_VERSION);
     let sender_file = scratch.path("sender.sqlite3");
     copy_to(&common, &sender_file);
     let sender = Database::open(&sender_file).unwrap();
@@ -403,7 +403,7 @@ fn each_category_keeps_subjects_and_only_its_own_rows() {
     let upgraded = || {
         let connection = release_library(5);
         let library = seed(&connection);
-        advance_release_library(&connection, 5, 6);
+        advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
         (connection, library)
     };
     let (reference, _) = upgraded();
@@ -459,7 +459,7 @@ fn a_deck_the_two_devices_filed_differently_is_listed() {
     let scratch = Scratch::new("filing-conflict");
     let connection = release_library(5);
     let library = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
     let local_file = scratch.path("local.sqlite3");
     let remote_file = scratch.path("remote.sqlite3");
     copy_to(&connection, &local_file);
@@ -522,7 +522,7 @@ fn filing_in_a_subject_the_other_device_deleted_lands_in_no_subject() {
     let scratch = Scratch::new("deleted-subject");
     let connection = release_library(5);
     let library = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
     let local_file = scratch.path("local.sqlite3");
     let remote_file = scratch.path("remote.sqlite3");
     copy_to(&connection, &local_file);

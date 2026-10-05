@@ -185,6 +185,7 @@ source document → canonical evidence → shared knowledge → learning plan/to
 subject (collection) → filed documents/ranges → synthesis + StudyTarget guide
 Tutor project → independent scoped conversations/turns and memory preferences
 learner annotations ── document/topic identity or exact generated base
+page annotations ── document page (drawn over its page render)
 ```
 
 A subject is one course: every deck and document is filed in at most one subject or in No subject, and subjects do not nest. A subject does not own an independent schedule; studying it studies its decks' cards live. Deck folders and document collections are both views of subjects ([ADR 0055](../decisions/0055-subjects.md)). A note owns source content; one note can produce multiple independently scheduled presentations. A template defines a safe authoring structure but does not remain the mutable owner of every note it once generated. Review/session history is not the same as the current card schedule.
@@ -341,7 +342,9 @@ Desktop rendering uses an explicitly provisioned, hash-verified PDFium runtime; 
 
 Resource planning bounds extraction/OCR concurrency and high-resolution queues by workload, CPU, memory, and optional configured caps. PDFium access is serialized; parallelism belongs to safe independent work rather than blindly sharing a renderer handle. Cancellation discards uncommitted native results. Unknown resource observations produce conservative plans, not unlimited allocation.
 
-Sources: [PDF backend](../../src-tauri/src/pdf_backend/), [PDF ingestion](../../src-tauri/src/pdf_document_ingestion/), [Xberg boundary](../../src-tauri/src/xberg_document_adapter/), [canonical representation](../../src-tauri/src/document_canonical.rs), [ADR 0045](../decisions/0045-xberg-non-pdf-document-adapter.md).
+Page annotations are learner-owned marks over a PDF's pages, not derivatives. The [annotation owner](../../src-tauri/src/document_annotations.rs) lists the document's page renders with their size in points and keeps each ink or highlighter stroke, line, arrow, box, ellipse or text note as one validated `document_annotations` row in page coordinates. The source file is never rewritten, and the webview draws over the page renders instead of parsing the PDF. A write carries the whole new state of each annotation it changes (put or delete by id), so repeating a request changes nothing further. New annotations stack above the document's older ones in the order they were drawn, including several in one request. Whole-library backups keep annotations; device-sync packages leave them out until sync defines how two devices' marks combine. Deleting the document deletes them.
+
+Sources: [PDF backend](../../src-tauri/src/pdf_backend/), [PDF ingestion](../../src-tauri/src/pdf_document_ingestion/), [Xberg boundary](../../src-tauri/src/xberg_document_adapter/), [canonical representation](../../src-tauri/src/document_canonical.rs), [document annotations](../../src-tauri/src/document_annotations.rs), [ADR 0045](../decisions/0045-xberg-non-pdf-document-adapter.md).
 
 ## Bounded document intelligence
 
@@ -487,6 +490,7 @@ Known limits include incomplete platform/release qualification, model/extraction
 | External files/transfers | `external_files.rs`, `external_file_streaming.rs`, `external_file_recovery.rs`, `studydeck/`, `library_backup.rs`, `document_backup.rs` |
 | AI infrastructure | `ai/gateway/`, `ai/profiles/`, `ai/probes/`, `ai/providers/`, `ai/secrets.rs`, `ai/reasoning.rs` |
 | Source ingestion | `documents/`, `document_ingestion/`, `pdf_backend/`, `pdf_document_ingestion/`, `xberg_document_adapter/` |
+| Page annotation | `src-tauri/src/document_annotations.rs`, `src/ipc/documentAnnotations.ts`, `src/screens/documents/annotator/` |
 | Canonical learning artifacts | `document_canonical*.rs`, `document_learning*.rs`, `document_topic_links.rs`, `document_citations.rs`, `document_artifacts.rs` |
 | Generation and guides | `ai/document_intelligence/`, `document_generation.rs`, `document_checkpoints.rs`, `document_study_guide*.rs`, `src/screens/StudyGuidesScreen.tsx`, `StudyGuideDialog.tsx` |
 | Subjects, knowledge and Tutor | `src-tauri/src/subjects.rs` (with the `deck_folders.rs` and `collections.rs` adapters), `knowledge/`, `study_materials/`, `tutor/`, `src/ipc/subjects.ts`, `src/screens/tutor/` |

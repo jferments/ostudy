@@ -110,7 +110,7 @@ Generated notes can carry primary/supporting learning-topic provenance and citat
 
 Archiving a document retains its source, derivatives, learning plan, guide/annotation graph, and generation history. Restoring it can return it to ready state when a live artifact still exists. A guide-only document is valid; it does not need an artificial flashcard deck.
 
-Permanent source deletion is separate from deleting generated cards. It removes document-owned files and processing/artifact state when no active task conflicts. Already generated decks/cards remain ordinary study content, with text-only citation provenance where a live source link can no longer exist. Deleting a generated deck does not automatically delete its source document.
+Permanent source deletion is separate from deleting generated cards. It removes document-owned files, page annotations and processing/artifact state when no active task conflicts. Already generated decks/cards remain ordinary study content, with text-only citation provenance where a live source link can no longer exist. Deleting a generated deck does not automatically delete its source document.
 
 Deleting only a study guide has a narrower scope: it removes generated guide revisions, guide-specific edits/conflicts, checkpoints, and prepared exports while preserving the source, learning plan, linked cards, and stable guide/topic notes. Read the explicit confirmation.
 

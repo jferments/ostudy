@@ -18,6 +18,7 @@ import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
 import { Surface } from "../../ui/primitives/Surface";
 import { TextField } from "../../ui/primitives/TextField";
+import { canAnnotateDocument } from "./annotator/canAnnotate";
 import { hasDocumentFolderDrag, readDocumentFolderDrag } from "./documentFolderDrag";
 import { useDocumentCollectionsController } from "./useDocumentCollectionsController";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
@@ -34,12 +35,14 @@ export function DocumentCollectionsWorkspace({
   refreshDecks,
   onStudyCollection,
   onOpenGuide,
+  onAnnotateDocument,
   onContainedDocumentIdsChange,
 }: {
   documents: DocumentSummary[];
   refreshDecks?: () => Promise<unknown>;
   onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
+  onAnnotateDocument?: (document: DocumentSummary) => void;
   onContainedDocumentIdsChange?: (documentIds: string[]) => void;
 }) {
   const controller = useDocumentCollectionsController();
@@ -144,6 +147,7 @@ export function DocumentCollectionsWorkspace({
           refreshDecks={refreshDecks}
           onStudyCollection={onStudyCollection}
           onOpenGuide={onOpenGuide}
+          onAnnotateDocument={onAnnotateDocument}
           onRename={() => {
             setDialog({ kind: "rename", folder, name: folder.name });
             setDialogError(null);
@@ -191,6 +195,7 @@ function CollectionPanel({
   refreshDecks,
   onStudyCollection,
   onOpenGuide,
+  onAnnotateDocument,
   onRename,
   onDelete,
   onAdd,
@@ -206,6 +211,7 @@ function CollectionPanel({
   refreshDecks?: () => Promise<unknown>;
   onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
+  onAnnotateDocument?: (document: DocumentSummary) => void;
   onRename: () => void;
   onDelete: () => void;
   onAdd: () => void;
@@ -258,6 +264,7 @@ function CollectionPanel({
           organization={organization}
           documents={documents}
           onAdd={onAdd}
+          onAnnotate={onAnnotateDocument}
           onRanges={onRanges}
           onMove={onMove}
           onRemove={onRemove}
@@ -467,11 +474,12 @@ function bundleActionLabel(status: StudyTargetBundleStatus | null, busy: boolean
   return "Update study materials";
 }
 
-function FolderSources({ folder, organization, documents, onAdd, onRanges, onMove, onRemove, disabled }: {
+function FolderSources({ folder, organization, documents, onAdd, onAnnotate, onRanges, onMove, onRemove, disabled }: {
   folder: DocumentCollection;
   organization: DocumentCollectionOrganization;
   documents: Map<string, DocumentSummary>;
   onAdd: () => void;
+  onAnnotate?: (document: DocumentSummary) => void;
   onRanges: (membership: DocumentCollectionMembership) => void;
   onMove: (membership: DocumentCollectionMembership) => void;
   onRemove: (membership: DocumentCollectionMembership) => void;
@@ -494,6 +502,9 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
                 title={<span className="tw:wrap-anywhere">{document?.title ?? "Source no longer available"}</span>}
                 meta={<span className="tw:wrap-anywhere">{rangeLabel(membership, organization, document)}</span>}
                 trailing={<>
+                  {onAnnotate && document && canAnnotateDocument(document) ? (
+                    <Button size="small" onClick={() => onAnnotate(document)}>Annotate</Button>
+                  ) : null}
                   <Button size="small" disabled={disabled || !document} onClick={() => onRanges(membership)}>Edit range</Button>
                   <Button size="small" disabled={disabled} onClick={() => onMove(membership)}>Move</Button>
                   <Button size="small" variant="dangerGhost" disabled={disabled} onClick={() => onRemove(membership)}>Remove</Button>

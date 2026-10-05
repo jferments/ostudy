@@ -33,6 +33,11 @@ use tauri_plugin_ostudy_platform::{OpenPdfRequest, OstudyPlatformExt, RenderPdfP
 const PAGE_RENDER_DPI: f64 = 120.0;
 pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
 const PDF_POINTS_PER_INCH: f64 = 72.0;
+
+/// The length in PDF points of `pixels` of a page render at the page DPI.
+pub(crate) fn render_pixels_to_points(pixels: u32) -> f64 {
+    f64::from(pixels) * PDF_POINTS_PER_INCH / PAGE_RENDER_DPI
+}
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PDFIUM_PATH_ENV: &str = "OSTUDY_PDFIUM_PATH";
 #[cfg(target_os = "android")]

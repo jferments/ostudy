@@ -79,7 +79,8 @@
     "clsx": "2.1.1",
     "tailwind-merge": "3.6.0",
     "katex": "0.18.7",
-    "mathlive": "0.110.0"
+    "mathlive": "0.110.0",
+    "perfect-freehand": "1.2.3"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

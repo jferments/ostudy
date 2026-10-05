@@ -79,6 +79,7 @@ fn kept(connection: &Connection) -> Kept {
         "document_study_ranges",
         "card_merges",
         "subject_filing_reviews",
+        "document_annotations",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");

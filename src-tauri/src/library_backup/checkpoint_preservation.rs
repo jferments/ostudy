@@ -121,6 +121,15 @@ const CONTRACTS: &[Contract] = &[
         setup: subjects::SETUP,
         rules: subjects::RULES,
     },
+    // Learners write annotations; the upgrade only creates their table.
+    Contract {
+        version: 7,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "document_annotations",
+            description: "document annotation",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

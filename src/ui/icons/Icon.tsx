@@ -6,6 +6,7 @@ import type { CSSProperties, ReactNode, SVGAttributes } from "react";
 
 export const ICON_NAMES = [
   "analytics",
+  "annotate",
   "archive",
   "arrow-down",
   "arrow-right",
@@ -28,6 +29,7 @@ export const ICON_NAMES = [
   "document",
   "download",
   "edit",
+  "eraser",
   "export",
   "filter",
   "folder",
@@ -35,6 +37,7 @@ export const ICON_NAMES = [
   "formula",
   "full-screen",
   "help",
+  "highlighter",
   "home",
   "image",
   "import",
@@ -50,19 +53,28 @@ export const ICON_NAMES = [
   "move",
   "overflow",
   "pan",
+  "pen",
   "plus",
+  "pointer",
   "practice",
+  "redo",
   "restore",
   "save",
   "schedule",
   "search",
   "settings",
+  "shape-arrow",
+  "shape-ellipse",
+  "shape-line",
+  "shape-rectangle",
   "sort",
   "sparkles",
   "stop",
   "study-guide",
   "template",
+  "text",
   "timer",
+  "undo",
   "upload",
   "view",
   "view-off",
@@ -117,6 +129,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M18 17V9" />
           <path d="M13 17V5" />
           <path d="M8 17v-3" />
+        </>
+      );
+    case "annotate": // Lucide: pen-line
+      return (
+        <>
+          <path d="M13 21h8" />
+          <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
         </>
       );
     case "archive": // Lucide: archive
@@ -279,6 +298,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="m15 5 4 4" />
         </>
       );
+    case "eraser": // Lucide: eraser
+      return (
+        <>
+          <path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" />
+          <path d="m5.082 11.09 8.828 8.828" />
+        </>
+      );
     case "export": // Lucide: share
       return (
         <>
@@ -317,6 +343,13 @@ function iconPath(name: IconName): ReactNode {
           <circle cx="12" cy="12" r="10" />
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
           <path d="M12 17h.01" />
+        </>
+      );
+    case "highlighter": // Lucide: highlighter
+      return (
+        <>
+          <path d="m9 11-6 6v3h9l3-3" />
+          <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
         </>
       );
     case "home": // Lucide: house
@@ -440,6 +473,8 @@ function iconPath(name: IconName): ReactNode {
           <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
         </>
       );
+    case "pen": // Lucide: pen
+      return <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />;
     case "plus": // Lucide: plus
       return (
         <>
@@ -447,8 +482,17 @@ function iconPath(name: IconName): ReactNode {
           <path d="M12 5v14" />
         </>
       );
+    case "pointer": // Lucide: mouse-pointer-2
+      return <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />;
     case "practice": // Lucide: play
       return <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />;
+    case "redo": // Lucide: redo-2
+      return (
+        <>
+          <path d="m15 14 5-5-5-5" />
+          <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />
+        </>
+      );
     case "restore": // Lucide: rotate-ccw
       return (
         <>
@@ -489,6 +533,19 @@ function iconPath(name: IconName): ReactNode {
           <circle cx="12" cy="12" r="3" />
         </>
       );
+    case "shape-arrow": // Lucide: move-up-right
+      return (
+        <>
+          <path d="M13 5H19V11" />
+          <path d="M19 5L5 19" />
+        </>
+      );
+    case "shape-ellipse": // Lucide: circle
+      return <circle cx="12" cy="12" r="10" />;
+    case "shape-line": // Lucide: slash
+      return <path d="M22 2 2 22" />;
+    case "shape-rectangle": // Lucide: square
+      return <rect width="18" height="18" x="3" y="3" rx="2" />;
     case "sort": // Lucide: arrow-down-wide-narrow
       return (
         <>
@@ -534,12 +591,27 @@ function iconPath(name: IconName): ReactNode {
           <path d="M9 21V9" />
         </>
       );
+    case "text": // Lucide: type
+      return (
+        <>
+          <path d="M12 4v16" />
+          <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2" />
+          <path d="M9 20h6" />
+        </>
+      );
     case "timer": // Lucide: timer
       return (
         <>
           <line x1="10" y1="2" x2="14" y2="2" />
           <line x1="12" y1="14" x2="15" y2="11" />
           <circle cx="12" cy="14" r="8" />
+        </>
+      );
+    case "undo": // Lucide: undo-2
+      return (
+        <>
+          <path d="M9 14 4 9l5-5" />
+          <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />
         </>
       );
     case "upload": // Lucide: upload

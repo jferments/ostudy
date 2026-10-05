@@ -1,0 +1,357 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { ShowToast } from "../../../components/Toast";
+import { getErrorMessage } from "../../../ipc/common";
+import {
+  applyDocumentAnnotationChanges,
+  getDocumentAnnotations,
+  type AnnotatedPage,
+} from "../../../ipc/documentAnnotations";
+import {
+  applyEdits,
+  EMPTY_HISTORY,
+  groupByPage,
+  recordStep,
+  redoStep,
+  undoStep,
+  type AnnotationEdit,
+  type AnnotationHistory,
+  type PageAnnotations,
+} from "./annotationHistory";
+import {
+  cleanNoteText,
+  createAnnotationId,
+  DEFAULT_STYLES,
+  DEFAULT_TEXT_WIDTH,
+  estimateTextHeight,
+  isStorable,
+  moveWithinPage,
+  restyle,
+  styleFamilyForShape,
+  styleFamilyForTool,
+  TEXT_LINE_HEIGHT,
+  type Annotation,
+  type AnnotatorTool,
+  type Point,
+  type TextShape,
+  type ToolStyle,
+  type ToolStyles,
+} from "./annotationModel";
+import { AnnotationSaveQueue, type SaveState } from "./annotationSaveQueue";
+
+export type AnnotatorLoad =
+  | { state: "loading" }
+  | { state: "failed"; message: string }
+  | { state: "ready"; pages: readonly AnnotatedPage[] };
+
+/** The text note open for typing; `text` is what the field holds now. */
+export interface TextEditing {
+  annotation: Annotation & { shape: TextShape };
+  isNew: boolean;
+  text: string;
+}
+
+/**
+ * The annotator's document state: pages and annotations, the learner's tool
+ * and style choices, undo history, the open text note, and background saving.
+ * Every change goes through `commit`, which records one undo step and queues
+ * the write.
+ */
+export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
+  const [load, setLoad] = useState<AnnotatorLoad>({ state: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  const [annotations, setAnnotations] = useState<PageAnnotations>(() => new Map());
+  const annotationsRef = useRef(annotations);
+  const [history, setHistoryState] = useState<AnnotationHistory>(EMPTY_HISTORY);
+  const historyRef = useRef(history);
+  const [selection, setSelection] = useState<{ id: string; pageNumber: number } | null>(null);
+  const [tool, setToolState] = useState<AnnotatorTool>("pen");
+  const [styles, setStyles] = useState<ToolStyles>(DEFAULT_STYLES);
+  const [penOnly, setPenOnly] = useState(false);
+  const [penSeen, setPenSeen] = useState(false);
+  /** The learner's own pen-only choice, which a detected pen never overrides. */
+  const penChoice = useRef<boolean | null>(null);
+  const [editing, setEditingState] = useState<TextEditing | null>(null);
+  const editingRef = useRef(editing);
+  const [saveState, setSaveState] = useState<SaveState>({ state: "idle" });
+  const lastCreated = useRef(0);
+  const textHeights = useRef(new Map<string, { shape: TextShape; height: number }>());
+
+  const queue = useMemo(
+    () => new AnnotationSaveQueue({ documentId, send: applyDocumentAnnotationChanges, onState: setSaveState }),
+    [documentId],
+  );
+
+  useEffect(() => {
+    let current = true;
+    setLoad({ state: "loading" });
+    getDocumentAnnotations(documentId).then((loaded) => {
+      if (!current) return;
+      const grouped = groupByPage(loaded.annotations.map((annotation) => ({
+        id: annotation.id,
+        pageNumber: annotation.pageNumber,
+        shape: annotation.shape,
+        createdAt: annotation.createdAt,
+      })));
+      lastCreated.current = Math.max(0, ...loaded.annotations.map((annotation) => annotation.createdAt));
+      annotationsRef.current = grouped;
+      setAnnotations(grouped);
+      setLoad({ state: "ready", pages: loaded.pages });
+    }, (error: unknown) => {
+      if (current) setLoad({ state: "failed", message: getErrorMessage(error) });
+    });
+    return () => { current = false; };
+  }, [documentId, attempt]);
+
+  const setHistory = useCallback((next: AnnotationHistory) => {
+    historyRef.current = next;
+    setHistoryState(next);
+  }, []);
+
+  const setEditing = useCallback((next: TextEditing | null) => {
+    editingRef.current = next;
+    setEditingState(next);
+  }, []);
+
+  const apply = useCallback((edits: readonly AnnotationEdit[]) => {
+    if (edits.length === 0) return;
+    const next = applyEdits(annotationsRef.current, edits);
+    annotationsRef.current = next;
+    setAnnotations(next);
+    queue.record(edits);
+  }, [queue]);
+
+  /** Applies edits as one undoable step. */
+  const commit = useCallback((edits: readonly AnnotationEdit[]) => {
+    const kept = edits.filter((edit) => !edit.after || isStorable(edit.after.shape));
+    if (kept.length === 0) return;
+    apply(kept);
+    setHistory(recordStep(historyRef.current, kept));
+  }, [apply, setHistory]);
+
+  const find = useCallback((id: string, pageNumber: number): Annotation | null => (
+    annotationsRef.current.get(pageNumber)?.find((annotation) => annotation.id === id) ?? null
+  ), []);
+
+  const selected = selection
+    ? annotations.get(selection.pageNumber)?.find((annotation) => annotation.id === selection.id) ?? null
+    : null;
+  // An undo or an erase can remove the selected annotation.
+  useEffect(() => {
+    if (selection && !selected) setSelection(null);
+  }, [selected, selection]);
+
+  const textHeight = useCallback((annotation: Annotation): number => {
+    if (annotation.shape.kind !== "text") return 0;
+    const measured = textHeights.current.get(annotation.id);
+    return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
+  }, []);
+
+  const measureText = useCallback((annotation: Annotation, height: number) => {
+    if (annotation.shape.kind === "text") textHeights.current.set(annotation.id, { shape: annotation.shape, height });
+  }, []);
+
+  /** Creation times only increase, so a new annotation is always drawn on top. */
+  const now = useCallback(() => {
+    lastCreated.current = Math.max(Date.now(), lastCreated.current + 1);
+    return lastCreated.current;
+  }, []);
+
+  const select = useCallback((id: string | null, pageNumber?: number) => {
+    if (id === null) {
+      setSelection(null);
+      return;
+    }
+    if (pageNumber !== undefined) {
+      setSelection({ id, pageNumber });
+      return;
+    }
+    for (const [page, list] of annotationsRef.current) {
+      if (list.some((annotation) => annotation.id === id)) {
+        setSelection({ id, pageNumber: page });
+        return;
+      }
+    }
+  }, []);
+
+  /** Closes the open text note, keeping what was typed; an emptied note is removed. */
+  const finishEditing = useCallback(() => {
+    const open = editingRef.current;
+    if (!open) return;
+    setEditing(null);
+    const text = cleanNoteText(open.text);
+    const before = open.isNew ? null : find(open.annotation.id, open.annotation.pageNumber);
+    if (text.trim().length === 0) {
+      if (before) commit([{ id: before.id, before, after: null }]);
+      return;
+    }
+    const after = { ...open.annotation, shape: { ...open.annotation.shape, text } };
+    if (before && before.shape.kind === "text" && before.shape.text === text) {
+      setSelection({ id: before.id, pageNumber: before.pageNumber });
+      return;
+    }
+    commit([{ id: after.id, before, after }]);
+    setSelection({ id: after.id, pageNumber: after.pageNumber });
+  }, [commit, find, setEditing]);
+
+  const editText = useCallback((annotation: Annotation) => {
+    if (annotation.shape.kind !== "text") return;
+    finishEditing();
+    setSelection({ id: annotation.id, pageNumber: annotation.pageNumber });
+    setEditing({ annotation: { ...annotation, shape: annotation.shape }, isNew: false, text: annotation.shape.text });
+  }, [finishEditing, setEditing]);
+
+  /** Opens a new text note with its first line at `point`, kept on the page. */
+  const newText = useCallback((pageNumber: number, point: Point, page: { width: number; height: number }) => {
+    finishEditing();
+    const fontSize = styles.text.size;
+    const width = Math.min(DEFAULT_TEXT_WIDTH, page.width);
+    const lineHeight = fontSize * TEXT_LINE_HEIGHT;
+    const shape: TextShape = {
+      kind: "text",
+      x: Math.round(Math.max(0, Math.min(point.x, page.width - width)) * 100) / 100,
+      y: Math.round(Math.max(0, Math.min(point.y - lineHeight / 2, page.height - lineHeight)) * 100) / 100,
+      width,
+      text: "",
+      color: styles.text.color,
+      fontSize,
+    };
+    setSelection(null);
+    setEditing({ annotation: { id: createAnnotationId(), pageNumber, shape, createdAt: now() }, isNew: true, text: "" });
+  }, [finishEditing, now, setEditing, styles.text]);
+
+  const typeText = useCallback((text: string) => {
+    const open = editingRef.current;
+    if (open) setEditing({ ...open, text });
+  }, [setEditing]);
+
+  const setTool = useCallback((next: AnnotatorTool) => {
+    finishEditing();
+    if (next !== "select") setSelection(null);
+    setToolState(next);
+  }, [finishEditing]);
+
+  /** Restyles the selected annotation, or sets the style the current tool draws with. */
+  const chooseStyle = useCallback((patch: Partial<ToolStyle>) => {
+    if (selected) {
+      const shape = restyle(selected.shape, patch);
+      commit([{ id: selected.id, before: selected, after: { ...selected, shape } }]);
+      return;
+    }
+    const family = styleFamilyForTool(tool);
+    if (!family) return;
+    setStyles((current) => ({ ...current, [family]: { ...current[family], ...patch } }));
+  }, [commit, selected, tool]);
+
+  const activeStyle = selected
+    ? { family: styleFamilyForShape(selected.shape), style: { color: selected.shape.color, size: selected.shape.kind === "text" ? selected.shape.fontSize : selected.shape.strokeWidth } }
+    : (() => {
+      const family = styleFamilyForTool(tool);
+      return family ? { family, style: styles[family] } : null;
+    })();
+
+  const deleteSelected = useCallback(() => {
+    if (!selected) return;
+    commit([{ id: selected.id, before: selected, after: null }]);
+    setSelection(null);
+  }, [commit, selected]);
+
+  const nudgeSelected = useCallback((dx: number, dy: number, page: { width: number; height: number }) => {
+    if (!selected) return;
+    const shape = moveWithinPage(selected.shape, dx, dy, page, textHeight(selected));
+    commit([{ id: selected.id, before: selected, after: { ...selected, shape } }]);
+  }, [commit, selected, textHeight]);
+
+  const undo = useCallback(() => {
+    finishEditing();
+    const step = undoStep(historyRef.current);
+    if (!step) return;
+    setHistory(step.history);
+    apply(step.edits);
+  }, [apply, finishEditing, setHistory]);
+
+  const redo = useCallback(() => {
+    finishEditing();
+    const step = redoStep(historyRef.current);
+    if (!step) return;
+    setHistory(step.history);
+    apply(step.edits);
+  }, [apply, finishEditing, setHistory]);
+
+  /** A pen touched the page: from now on fingers pan, unless the learner chose otherwise. */
+  const notePen = useCallback(() => {
+    setPenSeen(true);
+    if (penChoice.current === null) setPenOnly(true);
+  }, []);
+
+  const togglePenOnly = useCallback(() => {
+    setPenOnly((current) => {
+      penChoice.current = !current;
+      return !current;
+    });
+  }, []);
+
+  /** Saves everything, including an open note; resolves false if something is still unsaved. */
+  const flush = useCallback(async () => {
+    finishEditing();
+    const saved = await queue.flush();
+    return saved && !queue.hasUnsaved();
+  }, [finishEditing, queue]);
+
+  // Leaving by another route still keeps the open note and saves in the background.
+  useEffect(() => () => {
+    queue.dispose();
+    const open = editingRef.current;
+    if (open) {
+      const text = cleanNoteText(open.text);
+      const before = open.isNew ? null : open.annotation;
+      const after = text.trim() ? { ...open.annotation, shape: { ...open.annotation.shape, text } } : null;
+      // A new note left empty was never saved, and an unchanged one needs no write.
+      if ((before || after) && before?.shape.text !== after?.shape.text) {
+        queue.record([{ id: open.annotation.id, before, after }]);
+      }
+    }
+    if (!queue.hasUnsaved()) return;
+    void queue.flush().then((saved) => {
+      if (!saved) showToast("error", "Some annotations could not be saved.");
+    });
+  }, [queue, showToast]);
+
+  return {
+    load,
+    retryLoad: () => setAttempt((value) => value + 1),
+    annotations,
+    annotationsRef,
+    selected,
+    select,
+    tool,
+    setTool,
+    styles,
+    activeStyle,
+    chooseStyle,
+    penOnly,
+    penSeen,
+    notePen,
+    togglePenOnly,
+    editing,
+    editText,
+    newText,
+    typeText,
+    finishEditing,
+    commit,
+    deleteSelected,
+    nudgeSelected,
+    canUndo: history.undo.length > 0,
+    canRedo: history.redo.length > 0,
+    undo,
+    redo,
+    textHeight,
+    measureText,
+    now,
+    saveState,
+    retrySave: () => { void queue.flush(); },
+    flush,
+  };
+}
+
+export type DocumentAnnotatorController = ReturnType<typeof useDocumentAnnotator>;
