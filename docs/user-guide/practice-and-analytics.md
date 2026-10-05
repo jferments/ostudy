@@ -1,18 +1,18 @@
 # Practice, scheduling, and analytics
 
-Practice is a contextual workflow: start from Review or Home, a deck, selected decks, Search results, or linked study-guide cards. It runs inside **Review**, which the navigation highlights during a session, rather than being a destination of its own. Your review history and current schedules are durable library data, while the visible progress and card-stack effects are presentation.
+Practice is a contextual workflow: start from Review or Home, a deck or subject in the Library Workbench, selected cards in the Workbench, or linked study-guide cards. It runs inside **Review**, which the navigation highlights during a session, rather than being a destination of its own. Your review history and current schedules are durable library data, while the visible progress and card-stack effects are presentation.
 
 ## Choose a scope
 
-**Review** in the main navigation shows how many cards are due today and about how long they take, with **Start review** for all of them, a **Start** for each subject with due cards, and **Choose decks**, which opens Library's Decks view for a custom practice. Home's Today strip starts the same review. Both count what a scheduled session studies today under your daily limits.
+**Review** in the main navigation shows how many cards are due today and about how long they take, with **Start review** for all of them, a **Start** for each subject with due cards, and **Choose decks**, which opens Library for a custom practice. Home's Today strip starts the same review. Both count what a scheduled session studies today under your daily limits. In the Workbench, a deck's **Practice with options…** or a subject's **Practice…** opens **Practice selected decks**, where you choose **Scheduled study** or **Extra study**, optional tags, and shuffling.
 
 **Scheduled practice** selects studyable due work within the chosen deck/tag scope and daily new/review limits. The workload display separates available due work from work omitted by those limits.
 
 **Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck **Practice** action follows the deck-practice scope rather than merely opening an editor. One-click deck Practice always shuffles cards that have the same scheduling priority while preserving due-date and learning-priority ordering; a new session receives a fresh permutation and avoids immediately repeating the previous first card when an equivalent alternative exists. It does not make suspended, buried, archived, or otherwise unavailable cards studyable. Extra practice is not capped at an arbitrary 10,000-card prefix: the whole studyable selected scope can become the session.
 
-**Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary. If you choose **Save as new deck**, oStudy creates that destination and copies the selected notes in one retry-safe native operation. The originals and their review histories stay where they are; copied presentations receive fresh schedules. If the screen cannot refresh after the native operation commits, the created deck is retained rather than deleted or created a second time.
+**Selected-card practice** uses exact card identities resolved from a current Workbench card selection (**Practice…** in the selection toolbar's menu) or a study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary. If you choose **Save as new deck**, oStudy creates that destination and copies the selected notes in one retry-safe native operation. The originals and their review histories stay where they are; copied presentations receive fresh schedules. If the screen cannot refresh after the native operation commits, the created deck is retained rather than deleted or created a second time.
 
-Read the scope and workload before starting. A loading or failed workload request is not an empty library. Folder membership is a way to select decks; it does not own schedules or create its own review history.
+Read the scope and workload before starting. A loading or failed workload request is not an empty library. Subject membership is a way to select decks; it does not own schedules or create its own review history.
 
 ### Large sessions stay windowed
 
@@ -59,7 +59,7 @@ The completion view summarizes the finished work, confidence distribution, remem
 
 ## Leave or resume a session
 
-Ending early asks for confirmation and returns to the logical launch context, such as Review, Home, the Decks root, a particular deck, Search, or Study guides. Every rating that was already accepted remains a durable review event: it updates that card's schedule and is counted by Progress even though later cards in the session were never reached. Merely viewing or revealing an unrated card does not invent a review. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
+Ending early asks for confirmation and returns to the logical launch context, such as Review, Home, Library (on the deck that was open in the Workbench), or Study guides. Every rating that was already accepted remains a durable review event: it updates that card's schedule and is counted by Progress even though later cards in the session were never reached. Merely viewing or revealing an unrated card does not invent a review. The next route transition is fresh, rather than replaying stale in-memory navigation identities.
 
 Restart recovery uses a saved hint to ask the native library for an actual resumable session. A saved practice-setup screen without a session is not restored as active practice. If a prior deck was removed, a valid session's return destination can fall back safely to the library.
 
@@ -79,7 +79,7 @@ Configure defaults in **Settings → Review/Scheduling**. Daily limits and due c
 
 ### When a new day starts
 
-A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review/Scheduling**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, the Today counts in Progress and its timeline days, weeks and months, Search/Filter's reviewed-today and recent filters, burial, and rescheduling to tomorrow or a later date.
+A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review/Scheduling**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, the Today counts in Progress and its timeline days, weeks and months, the Workbench's Due today view and due dates, burial, and rescheduling to tomorrow or a later date.
 
 Changing the hour re-groups all of your existing history by the new boundary; nothing stored is changed, so you can switch back at any time. Each review keeps the time-zone offset of the place where you made it, so travelling does not move your earlier reviews to different days.
 
@@ -93,12 +93,12 @@ Per-item choice/pair/group/order feedback is diagnostic detail for the compound 
 
 Recent reviews retain historical content and classification evidence while applicable records remain in the library. Renaming a deck does not rewrite what a prior review recorded. Moving a card preserves its identity and review evidence under the app's current ownership rules. Archived material remains available for historical analysis; finalized deletion removes the analytics owned by the deleted material.
 
-A current tag on a recent review can open Search by stable tag identity. Historical-only tag text is not a current filter link. An unavailable tag must be cleared explicitly rather than allowing a supposedly scoped action to show unfiltered cards.
+A current tag on a recent review opens the Library Workbench on that tag's cards, by stable tag identity. Historical-only tag text is not a current filter link.
 
 Progress is derived deterministically from stored data, not an LLM assessment. It does not require a cloud provider. Visual charts are presentations of that evidence; the database and native aggregation rules remain authoritative.
 
 ## Troubleshooting scope surprises
 
-When fewer cards appear than expected, check whether the session is scheduled, extra, or exact-card; whether the daily limit is reached; and whether cards are archived, suspended, buried, deleted, or outside the selected scope. Check whether you selected visible rows or all matching results. An extra session over a large deck should report the full eligible scope rather than stopping at 10,000 cards.
+When fewer cards appear than expected, check whether the session is scheduled, extra, or exact-card; whether the daily limit is reached; and whether cards are archived, suspended, buried, deleted, or outside the selected scope. Check whether you selected the shown rows (**Select shown**) or every matching card (**Select all N**). An extra session over a large deck should report the full eligible scope rather than stopping at 10,000 cards.
 
 Do not fix a missing-card surprise by resetting schedules or deleting data before understanding the filter and availability rules. For a defect report, include the scope, mode, displayed counts, exact application build, and a synthetic reproduction where possible. [Backups](backups-imports-and-sharing.md) and [local test isolation](../development/local-testing-and-handoff.md) protect valuable review history during investigation.

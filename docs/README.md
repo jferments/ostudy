@@ -7,8 +7,8 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Task | Guide |
 | --- | --- |
 | Create a first deck and study session; find current navigation | [Getting started](user-guide/getting-started.md) |
-| Create/edit cards, use templates, search, and manage selections | [Flashcards and authoring](user-guide/flashcards-workspace.md) |
-| Organize folders, reorder decks, and understand selection/lifecycle rules | [Folders and deck organization](user-guide/flashcards-organization.md) |
+| Browse, search, create, and edit cards in the Library Workbench, and manage selections | [Library Workbench and authoring](user-guide/flashcards-workspace.md) |
+| Organize subjects, reorder decks, and understand archive/delete rules | [Subjects and deck organization](user-guide/flashcards-organization.md) |
 | Enter and edit mathematical notation | [Formula entry](user-guide/formula-entry.md) |
 | Choose a practice scope, rate answers, control schedules, and interpret results | [Practice and analytics](user-guide/practice-and-analytics.md) |
 | Configure provider credentials and task-specific models/reasoning | [AI providers](user-guide/ai-providers.md) |
@@ -19,7 +19,7 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
 
-Home opens first, with today's review count and your subjects. Library has Decks (with Search/Filter), Documents, and Study guides views; Review starts today's review; Tutor and Progress are destinations of their own. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
+Home opens first, with today's review count and your subjects. Library opens the Workbench, which lists views, subjects, decks, and tags beside the chosen cards and links to the Documents and Study guides pages; Review starts today's review; Tutor and Progress are destinations of their own. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
 ## Install, build, and test locally
 

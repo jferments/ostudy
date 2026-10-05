@@ -1,8 +1,0 @@
-/* Measured pointer-destination grid geometry, shared by active/folder/archive lists. */
-@layer components {
-  .list {
-    display: grid;
-    min-width: 0;
-    gap: var(--ostudy-space-2);
-  }
-}

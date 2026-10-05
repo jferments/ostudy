@@ -241,27 +241,10 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline.CANDIDATE_SENSITIVE_PATHS,
         )
 
-    def test_candidate_sensitivity_includes_every_drag_layout_stylesheet(self) -> None:
-        drag_layout_stylesheets = {
-            "src/screens/flashcards/deck-library/DeckItem.module.css",
-            "src/screens/flashcards/deck-library/FolderSection.module.css",
-            "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
-            "src/screens/flashcards/deck-library/DeckList.module.css",
-            "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
-        }
-
-        self.assertLessEqual(
-            drag_layout_stylesheets,
-            set(baseline.CANDIDATE_SENSITIVE_PATHS),
-        )
-
-    def test_candidate_sensitivity_fails_closed_when_drag_layout_css_drifts(self) -> None:
+    def test_candidate_sensitivity_fails_closed_when_measured_sources_drift(self) -> None:
         drag_layout_stylesheets = (
-            "src/screens/flashcards/deck-library/DeckItem.module.css",
-            "src/screens/flashcards/deck-library/FolderSection.module.css",
-            "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
-            "src/screens/flashcards/deck-library/DeckList.module.css",
-            "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
+            "src/screens/library/workbench/LibraryWorkbench.tsx",
+            "src/screens/PracticeScreen.tsx",
         )
         committed_source = mock.Mock(returncode=0, stdout=b"stale css", stderr=b"")
 
