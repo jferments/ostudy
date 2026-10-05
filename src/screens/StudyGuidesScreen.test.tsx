@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as studyGuides from "../ipc/studyGuides";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import { LibraryFrame } from "./library/LibraryFrame";
 import { StudyGuidesScreen } from "./StudyGuidesScreen";
 import { matchesLayoutQuery, layoutWidths } from "../test/viewport";
 
@@ -163,6 +164,31 @@ describe("StudyGuidesScreen", () => {
     const reader = screen.getByRole("dialog", { name: "Guide Distributive shock" });
     // The reader names the source file from the row instead of loading it again.
     expect(reader.textContent).toContain("Source shock.pdf pdf 12 page");
+  });
+
+  it("gives an open guide Library's whole page, then brings the view switcher back", async () => {
+    render(
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <LibraryFrame view="study-guides" onSelectView={vi.fn()}>
+            <StudyGuidesScreen showToast={vi.fn()} onPracticeCards={vi.fn()} />
+          </LibraryFrame>
+        </OverlayProvider>
+      </LayoutModeProvider>,
+    );
+    expect(await screen.findByText("Distributive shock")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(screen.getByRole("dialog", { name: "Guide Distributive shock" })).toBeTruthy();
+    // The reader's sticky top bar starts at the edges, right under the app header.
+    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    expect(screen.getByTestId("library").className).toContain("tw:p-0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close guide" }));
+    expect(await screen.findByText("Distributive shock")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(screen.getByTestId("library").className).toContain("tw:px-page");
   });
 
   it("lists and opens collection study guides from the main Study Guides page", async () => {

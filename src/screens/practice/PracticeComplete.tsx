@@ -99,8 +99,8 @@ export function PracticeComplete({
       <div className="tw:mx-auto tw:grid tw:w-full tw:max-w-md tw:justify-items-center tw:gap-4 tw:text-center">
         <p className="tw:m-0 tw:justify-self-start tw:text-small tw:text-muted-foreground">{eyebrow}</p>
         {mascot.enabled && image ? (
-          <img src={image.src} srcSet={image.srcSet} alt="" width={240} height={240}
-            className="tw:size-48 tw:object-contain tw:compact:size-40" />
+          <img src={image.src} srcSet={image.srcSet} alt="" width={160} height={160}
+            className="tw:size-40 tw:object-contain" />
         ) : (
           <span aria-hidden="true" className="tw:grid tw:size-12 tw:place-items-center tw:rounded-full tw:bg-success-soft tw:text-success">
             <Icon name="check" size={24} />

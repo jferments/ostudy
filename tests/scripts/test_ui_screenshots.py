@@ -33,7 +33,7 @@ seed = load_module("ostudy_ui_screenshots_seed", "ui_screenshots_seed.py")
 capture = load_module("ostudy_ui_screenshots", "ui_screenshots.py")
 
 SCREENS = [
-    {"id": "library", "title": "Flashcards library", "group": "Flashcards"},
+    {"id": "library", "title": "Library: Decks", "group": "Library"},
     {"id": "settings-appearance", "title": "Settings: Appearance", "group": "Settings"},
 ]
 VIEWPORTS = [
@@ -311,6 +311,39 @@ class CatalogueTests(unittest.TestCase):
         total = sum(len(capture.screen_widths(screen, widths)) for screen in capture.SCREENS) * len(capture.THEMES)
         self.assertLess(total + 1, report.DEFAULT_MAX_FILES)
 
+    def test_builds_without_home_skip_only_the_screens_they_lack(self) -> None:
+        selected = list(capture.SCREENS)
+        kept, skipped = capture.screens_for_shell(selected, capture.SECTIONS_SHELL)
+        self.assertEqual([screen.id for screen in skipped], ["home", "review"])
+        self.assertIn("first-run", [screen.id for screen in kept])
+        self.assertEqual(kept + skipped, [screen for screen in selected if screen in kept] + skipped)
+        kept, skipped = capture.screens_for_shell(selected, capture.DESTINATIONS_SHELL)
+        self.assertEqual((kept, skipped), (selected, []))
+
+    def test_navigation_reaches_each_section_through_the_build_s_own_navigation(self) -> None:
+        clicks: list[str] = []
+        original = capture.click, capture.settle_dialogs
+        capture.click = lambda ctx, xpath, seconds=30: clicks.append(xpath)
+        capture.settle_dialogs = lambda ctx: None
+        try:
+            def route(shell: str, layout: str, section: str) -> list[str]:
+                clicks.clear()
+                capture.go(capture.Context(session_id="s", theme="dark", layout=layout, shell=shell), section)
+                return [re.search(r"data-testid='([^']+)'", xpath).group(1) for xpath in clicks]
+
+            destinations, sections = capture.DESTINATIONS_SHELL, capture.SECTIONS_SHELL
+            self.assertEqual(route(destinations, "wide", "documents"), ["nav-library", "library-view-documents"])
+            self.assertEqual(route(destinations, "compact", "study-guides"),
+                             ["nav-library", "library-view-study-guides"])
+            self.assertEqual(route(destinations, "wide", "analytics"), ["nav-progress"])
+            self.assertEqual(route(destinations, "wide", "settings"), ["app-settings"])
+            self.assertEqual(route(destinations, "medium", "review"), ["nav-review"])
+            self.assertEqual(route(sections, "wide", "documents"), ["nav-documents"])
+            self.assertEqual(route(sections, "wide", "settings"), ["nav-settings"])
+            self.assertEqual(route(sections, "compact", "settings"), ["app-settings"])
+        finally:
+            capture.click, capture.settle_dialogs = original
+
     def test_filters_accept_aliases_and_keep_catalogue_order(self) -> None:
         self.assertEqual(capture.parse_list("desktop,phone", tuple(capture.VIEWPORTS), "width",
                                             capture.width_alias), (390, 1440))
@@ -330,7 +363,23 @@ class SeedContentTests(unittest.TestCase):
         self.assertEqual(len(keys), len(set(keys)))
         self.assertTrue(30 <= len(seed.NOTES) <= 60)
         self.assertTrue(all(note.deck in decks for note in seed.NOTES))
-        self.assertTrue({deck.folder for deck in seed.DECKS if deck.folder} <= set(seed.FOLDERS))
+        filed = {deck.subject for deck in seed.DECKS if deck.subject}
+        self.assertTrue(filed <= set(seed.SUBJECTS))
+        self.assertTrue({spec.subject for spec in seed.DOCUMENTS if spec.subject} <= set(seed.SUBJECTS))
+        # Every subject holds a deck, and Home shows No subject for the unfiled deck.
+        self.assertEqual(filed, set(seed.SUBJECTS))
+        self.assertTrue(any(deck.subject is None for deck in seed.DECKS))
+        self.assertEqual(seed.home_tile_count(), len(seed.SUBJECTS) + 1)
+        # Documents offers Generation info only on a document in no subject.
+        self.assertIsNone(seed.INFO_DOCUMENT.subject)
+        self.assertTrue(any(spec.subject for spec in seed.DOCUMENTS))
+        # The finished deck's notes are all recall cards that a past session reviewed.
+        finished = {note.key for note in seed.NOTES if note.deck == seed.FINISHED_DECK}
+        self.assertTrue(finished)
+        self.assertTrue(all(seed.note_spec(key).kind in ("basic", "cloze") for key in finished))
+        reviewed = {key for _days_ago, _minute, deck, note_keys in seed.HISTORY if deck == seed.FINISHED_DECK
+                    for key in note_keys}
+        self.assertEqual(reviewed, finished)
         renal = [note.key for note in seed.NOTES if note.deck == seed.PRACTICE_DECK]
         self.assertEqual(sorted(renal), sorted(seed.PRACTICE_ORDER))
         self.assertEqual(len(seed.PRACTICE_RATINGS), len(seed.PRACTICE_ORDER))
@@ -502,7 +551,7 @@ class SeedOrchestrationTests(unittest.TestCase):
         app = FakeApp()
         state = seed.seed_through_ipc(app.batch, app.practice, chunk=9)
 
-        self.assertEqual(set(state.folder_ids), set(seed.FOLDERS))
+        self.assertEqual(set(state.subject_ids), set(seed.SUBJECTS))
         self.assertEqual(set(state.deck_ids), {deck.key for deck in seed.DECKS})
         self.assertEqual(set(state.card_ids), {note.key for note in seed.NOTES})
         self.assertTrue(all(state.card_ids.values()))
@@ -510,10 +559,10 @@ class SeedOrchestrationTests(unittest.TestCase):
         self.assertTrue(state.template_id and state.tutor_conversation_id)
         # Cloze and reverse notes list their cards by presentation label.
         self.assertEqual(len(state.card_ids["cardio-output"]), 2)
-        # Folder moves fill each folder from position zero in catalogue order.
-        for folder in seed.FOLDERS:
-            decks = [deck.key for deck in seed.DECKS if deck.folder == folder]
-            moves = [move for move in app.moves if move["targetFolderId"] == state.folder_ids[folder]]
+        # Deck moves fill each subject from position zero in catalogue order.
+        for subject in seed.SUBJECTS:
+            decks = [deck.key for deck in seed.DECKS if deck.subject == subject]
+            moves = [move for move in app.moves if move["targetFolderId"] == state.subject_ids[subject]]
             self.assertEqual([move["targetIndex"] for move in moves], list(range(len(decks))))
             self.assertEqual([move["deckId"] for move in moves], [state.deck_ids[key] for key in decks])
         # Practice runs in a few large batches rather than one round trip per card.

@@ -11,12 +11,14 @@ import {
 import {
   type DeckSummary,
 } from "../ipc/decks";
+import type { HomeSubjectSummary, HomeSummary, HomeToday } from "../ipc/home";
 import {
   type PracticeSession,
 } from "../ipc/practice";
 import {
   type AppSettings,
 } from "../ipc/settings";
+import type { Subject, SubjectLibrary } from "../ipc/subjects";
 
 let nextIdentifier = 1;
 
@@ -190,4 +192,73 @@ export function deferred<T>(): Deferred<T> {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+export function makeSubject(overrides: Partial<Subject> = {}): Subject {
+  return {
+    id: testEntityId(),
+    name: "Test subject",
+    sortOrder: 0,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
+    ...overrides,
+  };
+}
+
+export function makeSubjectLibrary(overrides: Partial<SubjectLibrary> = {}): SubjectLibrary {
+  return {
+    libraryRevision: 1,
+    documentFilingRevision: 1,
+    subjects: [],
+    decks: [],
+    documents: [],
+    studyRanges: [],
+    checkTheseCount: 0,
+    ...overrides,
+  };
+}
+
+export function makeHomeSubjectSummary(
+  overrides: Partial<HomeSubjectSummary> = {},
+): HomeSubjectSummary {
+  return {
+    subjectId: null,
+    dueReviews: 0,
+    dueNew: 0,
+    scheduledReviews: 0,
+    scheduledNew: 0,
+    cardCount: 0,
+    deckCount: 0,
+    sourceCount: 0,
+    hasOverviewGuide: false,
+    dueDeckIds: [],
+    ...overrides,
+  };
+}
+
+export function makeHomeSummary(
+  overrides: Partial<Omit<HomeSummary, "today">> & { today?: Partial<HomeToday> } = {},
+): HomeSummary {
+  const { today, ...rest } = overrides;
+  return {
+    studyDate: "2026-10-05",
+    subjects: [],
+    noSubject: makeHomeSubjectSummary(),
+    ...rest,
+    today: {
+      dueReviews: 0,
+      dueNew: 0,
+      scheduledReviews: 0,
+      scheduledNew: 0,
+      reviewsRemaining: 200,
+      newRemaining: 20,
+      subjectCount: 0,
+      deckIds: [],
+      estimatedMinutes: 0,
+      estimateMsPerCard: 12_000,
+      estimateReviewCount: 0,
+      ...today,
+    },
+  };
 }

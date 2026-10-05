@@ -49,26 +49,52 @@ class Phase8NativeSelectorTests(unittest.TestCase):
 
 class Phase8ViewportTests(unittest.TestCase):
     def setUp(self):
-        # Inset desktop main with a 1px border: route fills its usable client area.
+        # Desktop main below the in-flow header, with a 1px border: the route fills its
+        # usable client area.
         self.measurement = {
             "viewportWidth": 1280, "viewportHeight": 800,
-            "shellPaddingTop": 12, "shellPaddingBottom": 12, "shellPaddingRight": 12,
+            "shellPaddingTop": 0, "shellPaddingBottom": 0, "shellPaddingRight": 0,
+            "shellPaddingLeft": 0, "headerBottom": 76,
             "shell": {"left": 0, "top": 0, "right": 1280, "bottom": 800},
-            "main": {"left": 256, "top": 12, "right": 1268, "bottom": 788,
-                     "width": 1012, "height": 776},
-            "contentBox": {"left": 257, "top": 13, "width": 1010, "height": 774},
-            "routeLayer": {"left": 257, "top": 13, "width": 1010, "height": 774},
-            "route": {"width": 1010, "height": 774},
+            "main": {"left": 0, "top": 76, "right": 1280, "bottom": 800,
+                     "width": 1280, "height": 724},
+            "contentBox": {"left": 1, "top": 77, "width": 1278, "height": 722},
+            "routeLayer": {"left": 1, "top": 77, "width": 1278, "height": 722},
+            "route": {"width": 1278, "height": 722},
         }
 
     def check(self, measurement):
         with patch.object(ui, "wait_for_layout_stable"), patch.object(ui, "execute", return_value=measurement), \
                 patch.object(ui, "assert_no_horizontal_overflow") as overflow:
-            ui.assert_viewport_consumption("session", "inset desktop", "[aria-label='Study Guides']")
-            overflow.assert_called_once_with("session", "inset desktop")
+            ui.assert_viewport_consumption("session", "desktop", "[data-testid='library']")
+            overflow.assert_called_once_with("session", "desktop")
 
-    def test_inset_main_fills_available_content_box(self):
+    def test_main_fills_the_space_below_the_header(self):
         self.check(self.measurement)
+
+    def test_main_cannot_slide_under_the_header(self):
+        measurement = copy.deepcopy(self.measurement)
+        measurement["main"]["top"] = 0
+        with self.assertRaisesRegex(AssertionError, "Main route layer"):
+            self.check(measurement)
+
+    def test_phone_main_sits_between_the_fixed_bars(self):
+        # A phone's header and bottom navigation are fixed; the shell pads main between them.
+        measurement = copy.deepcopy(self.measurement)
+        measurement.update({
+            "viewportWidth": 390, "viewportHeight": 700,
+            "shellPaddingTop": 56, "shellPaddingBottom": 73, "headerBottom": None,
+            "shell": {"left": 0, "top": 0, "right": 390, "bottom": 700},
+            "main": {"left": 0, "top": 56, "right": 390, "bottom": 627,
+                     "width": 390, "height": 571},
+            "contentBox": {"left": 0, "top": 56, "width": 390, "height": 571},
+            "routeLayer": {"left": 0, "top": 56, "width": 390, "height": 571},
+            "route": {"width": 390, "height": 571},
+        })
+        self.check(measurement)
+        measurement["main"]["left"] = 72
+        with self.assertRaisesRegex(AssertionError, "Main route layer"):
+            self.check(measurement)
 
     def test_main_cannot_leave_unexplained_right_gap(self):
         measurement = copy.deepcopy(self.measurement)

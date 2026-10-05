@@ -29,6 +29,12 @@ RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
 RETRYABLE_PROFILE_ERRORS = {"no such window", "unknown error"}
 PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
 ANALYTICS_SCREEN_SELECTOR = "main section[aria-label='Learning summary']"
+# Library hosts these sections as its views. Each keeps its own page heading.
+LIBRARY_VIEW_HEADINGS = {
+    "decks": "Flashcards",
+    "documents": "Documents",
+    "study-guides": "Study Guides",
+}
 CHART_DATA_SELECTOR = "main section[aria-labelledby='progress-heading'] table"
 
 
@@ -659,12 +665,63 @@ def click_text_button(session_id: str, label: str, deadline: float) -> None:
 
 
 def verify_shell(session_id: str, deadline: float) -> None:
+    """The header carries the raccoon mark on every size, beside the main navigation."""
     find_element(
         session_id,
         "css selector",
-        "aside [data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']",
+        "header[data-slot='app-header'] [data-artwork-slot='brand.logo.compact']",
         deadline,
     )
+    find_element(session_id, "css selector", "nav[aria-label='Main navigation']", deadline)
+
+
+def open_library_view(session_id: str, view: str, deadline: float) -> None:
+    """Open one of Library's views: Library in the main navigation, then its view switcher."""
+    library = find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-library']",
+        deadline,
+    )
+    click(session_id, library)
+    switcher = find_element(
+        session_id,
+        "css selector",
+        f"main nav[aria-label='Library'] button[data-testid='library-view-{view}']",
+        deadline,
+    )
+    click(session_id, switcher)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-library'][aria-current='page']",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "css selector",
+        f"button[data-testid='library-view-{view}'][aria-current='page']",
+        deadline,
+    )
+    wait_for_main_heading(session_id, LIBRARY_VIEW_HEADINGS[view], deadline)
+
+
+def verify_fresh_home(session_id: str, deadline: float) -> None:
+    """A fresh library opens on Home, which welcomes it with ways to start."""
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-home'][aria-current='page']",
+        deadline,
+    )
+    wait_for_main_heading(session_id, "Your library is empty", deadline)
+    for label in ("Create a subject", "Import a document", "Open Library"):
+        find_element(
+            session_id,
+            "xpath",
+            f"//main//button[normalize-space(.)={json.dumps(label)}]",
+            deadline,
+        )
 
 
 def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
@@ -677,7 +734,7 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
                 return {
                   selectedPrimary: primary
                     .filter((button) => button.getAttribute('aria-current') === 'page')
-                    .map((button) => (button.textContent || '').trim()),
+                    .map((button) => button.dataset.testid || ''),
                   practiceDestinations: primary
                     .filter((button) => button.dataset.testid === 'nav-practice').length,
                   heading: (document.querySelector('main h1')?.textContent || '').trim(),
@@ -694,9 +751,10 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
     )
     if not isinstance(state, dict):
         raise AssertionError(f"Could not inspect the internal Practice workflow: {state!r}")
-    if state.get("selectedPrimary") != []:
+    # A session runs inside Review wherever it started, so Review is the current destination.
+    if state.get("selectedPrimary") != ["nav-review"]:
         raise AssertionError(
-            f"Internal Practice selected a primary destination: {state!r}"
+            f"Internal Practice did not run inside Review: {state!r}"
         )
     if int(state.get("practiceDestinations", -1)) != 0:
         raise AssertionError(f"Practice returned to standing navigation: {state!r}")
@@ -763,11 +821,53 @@ def verify_analytics_tag_search(
     click(session_id, tag_action)
     verify_tag_filtered_search(session_id, question, tag_name, deadline)
 
+
+def verify_due_today(session_id: str, expected: str, deadline: float) -> None:
+    """Home's Today strip, the Review badge and Review agree on what is due today."""
+    home = find_element(session_id, "css selector", "button[data-testid='nav-home']", deadline)
+    click(session_id, home)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='home-today']//h2[normalize-space(.)={json.dumps(expected)}]",
+        deadline,
+    )
+    count = expected.split(" ", 1)[0]
+    find_element(
+        session_id,
+        "xpath",
+        "//nav[@aria-label='Main navigation']//button[@data-testid='nav-review']"
+        f"//*[@data-slot='nav-badge'][normalize-space(.)={json.dumps(count)}]",
+        deadline,
+    )
+    review = find_element(session_id, "css selector", "button[data-testid='nav-review']", deadline)
+    click(session_id, review)
+    wait_for_main_heading(session_id, "Review", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='review-today']//h2[normalize-space(.)={json.dumps(expected)}]",
+        deadline,
+    )
+    # The smoke deck is filed under no subject.
+    find_element(
+        session_id,
+        "xpath",
+        "//main//*[@data-testid='review-subject'][.//*[normalize-space(.)='No subject']]",
+        deadline,
+    )
+
+
 def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"
     question = "What does the native smoke test persist?"
     answer = "A deck, a card, and one accepted review."
     tag_name = "Native smoke tag"
+
+    progress("Opening Library from Home on a fresh library")
+    deadline = deadline_after()
+    verify_fresh_home(session_id, deadline)
+    open_library_view(session_id, "decks", deadline)
 
     progress("Creating a deck")
     deadline = deadline_after()
@@ -821,16 +921,38 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
 
-    progress("Opening and dismissing selected-deck Practice setup")
+    progress("Verifying today's count on Home, the Review badge and Review")
     deadline = deadline_after()
-    decks_button = find_element(
+    verify_due_today(session_id, "1 card due today", deadline)
+
+    progress("Starting today's review from Review and ending it early")
+    deadline = deadline_after()
+    start_review = find_element(
         session_id,
-        "css selector",
-        "button[data-testid='nav-decks']",
+        "xpath",
+        "//main//*[@data-testid='review-today']//button[normalize-space(.)='Start review']",
         deadline,
     )
-    click(session_id, decks_button)
-    wait_for_main_heading(session_id, "Flashcards", deadline)
+    click(session_id, start_review)
+    find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    assert_internal_practice_shell(session_id, deck_name)
+    click_text_button(session_id, "End session", deadline)
+    wait_for_main_heading(session_id, "Review", deadline)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-review'][aria-current='page']",
+        deadline,
+    )
+
+    progress("Opening and dismissing selected-deck Practice setup")
+    deadline = deadline_after()
+    open_library_view(session_id, "decks", deadline)
     selection = find_element(
         session_id,
         "xpath",
@@ -927,7 +1049,13 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-decks'][aria-current='page']",
+        "button[data-testid='nav-library'][aria-current='page']",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='library-view-decks'][aria-current='page']",
         deadline,
     )
     find_element(
@@ -996,15 +1124,22 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     click(session_id, medium)
     find_element(session_id, "css selector", PRACTICE_COMPLETE_SELECTOR, deadline)
 
-    progress("Verifying analytics and chart data")
+    progress("Verifying Progress and chart data")
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
-    view_analytics = find_element(
+    view_progress = find_element(
         session_id,
         "xpath",
         "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='See your progress']",
         deadline,
     )
-    click(session_id, view_analytics)
+    click(session_id, view_progress)
+    wait_for_main_heading(session_id, "Progress", deadline)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-progress'][aria-current='page']",
+        deadline,
+    )
     find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
@@ -1023,7 +1158,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
     progress("Opening Search from the current recent-review tag")
     verify_analytics_tag_search(session_id, question, tag_name, deadline)
-    progress("Analytics verification completed")
+    progress("Progress verification completed")
     return deck_name, question
 
 
@@ -1035,14 +1170,7 @@ def verify_persistence_after_restart(
     progress("Verifying deck and card persistence after restart")
     deadline = deadline_after()
     verify_shell(session_id, deadline)
-    decks_button = find_element(
-        session_id,
-        "css selector",
-        "button[data-testid='nav-decks']",
-        deadline,
-    )
-    click(session_id, decks_button)
-    wait_for_element_text(session_id, "css selector", "main h1", "Flashcards", deadline)
+    open_library_view(session_id, "decks", deadline)
     deck_button = find_element(
         session_id,
         "xpath",
@@ -1058,15 +1186,16 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    progress("Verifying persisted review analytics after restart")
+    progress("Verifying persisted review history in Progress after restart")
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
-    analytics_button = find_element(
+    progress_button = find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-analytics']",
+        "button[data-testid='nav-progress']",
         deadline,
     )
-    click(session_id, analytics_button)
+    click(session_id, progress_button)
+    wait_for_main_heading(session_id, "Progress", deadline)
     find_element(session_id, "css selector", ANALYTICS_SCREEN_SELECTOR, deadline)
     find_element(
         session_id,
@@ -1076,12 +1205,12 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    progress("Verifying post-restart navigation")
+    progress("Verifying post-restart navigation to Settings in the header")
     deadline = deadline_after()
     settings_button = find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-settings']",
+        "button[data-testid='app-settings']",
         deadline,
     )
     click(session_id, settings_button)
@@ -1122,9 +1251,10 @@ def main() -> int:
         verify_persistence_after_restart(session_id, deck_name, question)
 
         print(
-            "Native smoke test passed: created a deck and card, verified accessible "
-            "inline Practice progress, accepted a review, restarted ostudy, and verified "
-            "durable content and analytics."
+            "Native smoke test passed: opened a fresh library on Home, created a deck and "
+            "card, matched today's count on Home, the Review badge and Review, ran Practice "
+            "inside Review with accessible progress, accepted a review, restarted ostudy, "
+            "and verified durable content and Progress."
         )
         return 0
     except Exception:

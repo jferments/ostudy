@@ -7,20 +7,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class MobileNavigationContractTests(unittest.TestCase):
-    def test_compact_learning_destinations_and_settings_app_bar_are_disjoint(self) -> None:
+    def test_phone_navigation_names_five_destinations_beside_header_search_and_settings(self) -> None:
         contract = json.loads((ROOT / "scripts/route-smoke-contract.json").read_text())
-        compact = contract["compactNavigation"]
-        self.assertEqual(compact["primary"], ["decks", "study-guides", "documents", "tutor", "analytics"])
-        self.assertEqual(compact["more"], [])
-        self.assertEqual(compact["appBar"], ["settings"])
-        all_destinations = compact["primary"] + compact["more"] + compact["appBar"]
-        self.assertEqual(len(all_destinations), len(set(all_destinations)))
-        navigation = (ROOT / "src/components/NavigationSidebar.tsx").read_text()
-        app_bar = (ROOT / "src/components/MobileAppBar.tsx").read_text()
-        self.assertIn('"documents",\n  "tutor",\n  "analytics"', navigation)
-        self.assertNotIn("nav-more", navigation)
-        self.assertIn('data-testid="app-settings"', app_bar)
-        self.assertIn('onNavigate("settings")', app_bar)
+        navigation = contract["navigation"]
+        destinations = [entry["id"] for entry in navigation["destinations"]]
+        actions = [entry["id"] for entry in navigation["headerActions"]]
+        self.assertEqual(destinations, ["home", "library", "review", "tutor", "progress"])
+        self.assertEqual(actions, ["search", "settings"])
+        self.assertFalse(set(destinations) & set(actions))
+        main_navigation = (ROOT / "src/components/MainNavigation.tsx").read_text()
+        header = (ROOT / "src/components/AppHeaderBar.tsx").read_text()
+        # One list serves every screen size; a phone gets no overflow "More" item.
+        self.assertNotIn('"more"', main_navigation)
+        self.assertNotIn("COMPACT_", main_navigation)
+        self.assertIn('data-testid="app-search"', header)
+        self.assertIn('data-testid="app-settings"', header)
+        app = (ROOT / "src/App.tsx").read_text()
+        self.assertIn('onSettings={() => navigate("settings")}', app)
+        self.assertIn("onSearch={() => void controller.openSearch()}", app)
 
     def test_fresh_library_android_smoke_runs_before_library_seeding(self) -> None:
         runner = (ROOT / "scripts/android-emulator-smoke.sh").read_text()
