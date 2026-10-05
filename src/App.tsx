@@ -217,6 +217,7 @@ function App() {
                                 onOpenDocuments={() => navigate("documents")}
                                 onOpenStudyGuides={() => navigate("study-guides")}
                                 onCardDirtyChange={controller.setHasUnsavedCard}
+                                onDeckScopeChange={controller.recordLibraryDeck}
                                 showToast={controller.showToast}
                               />
                             ) : controller.section === "study-guides" ? (

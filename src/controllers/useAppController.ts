@@ -623,6 +623,21 @@ export function useAppController() {
     );
   }
 
+  /**
+   * Records where the Library Workbench is, without a new launch request, so
+   * practice returns to the open deck and a checkpoint reopens it.
+   */
+  function recordLibraryDeck(deckId: string | null): void {
+    setFlashcardsRoute((current) => {
+      if (deckId === null) {
+        return current.view === "deck" ? createFlashcardsRootRoute("decks", current.requestId) : current;
+      }
+      return current.view === "deck" && current.deckId === deckId
+        ? current
+        : createFlashcardsDeckRoute(deckId, current.requestId);
+    });
+  }
+
   function openAnalyticsTagSearch(tagId: string): void {
     const requestId = nextFlashcardsRequestId();
     setSection("decks");
@@ -794,6 +809,7 @@ export function useAppController() {
     openSubject,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
+    recordLibraryDeck,
     openAnalyticsTagSearch,
     returnToFlashcardsLibrary,
     practiceDeck,

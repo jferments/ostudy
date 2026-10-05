@@ -75,6 +75,8 @@ export interface LibraryWorkbenchProps {
   onOpenDocuments: () => void;
   onOpenStudyGuides: () => void;
   onCardDirtyChange: (dirty: boolean) => void;
+  /** The open deck, or null for any other place, so practice can return to it. */
+  onDeckScopeChange?: (deckId: string | null) => void;
   showToast: ShowToast;
 }
 
@@ -123,6 +125,7 @@ export function LibraryWorkbench({
   onOpenDocuments,
   onOpenStudyGuides,
   onCardDirtyChange,
+  onDeckScopeChange,
   showToast,
 }: LibraryWorkbenchProps) {
   const { layoutMode } = useLayoutMode();
@@ -163,6 +166,11 @@ export function LibraryWorkbench({
   const selected = useMemo(() => [...cards.selected.values()], [cards.selected]);
   const activeDecks = useMemo(() => decks.filter((deck) => deck.archivedAt === null), [decks]);
   const scopeDeck = scope.kind === "deck" ? decks.find((deck) => deck.id === scope.deckId) ?? null : null;
+
+  const scopeDeckId = scope.kind === "deck" ? scope.deckId : null;
+  useEffect(() => {
+    onDeckScopeChange?.(scopeDeckId);
+  }, [onDeckScopeChange, scopeDeckId]);
 
   // A launch from Home, a subject's Manage button or the header's Search.
   const appliedLaunch = useRef<number | null>(launch?.requestId ?? null);

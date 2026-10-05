@@ -268,7 +268,7 @@ function CardRow({ row, todayStartAt, selected, open, compact, onShift, onCheck,
   const rowClass = cn(
     "tw:border-b tw:border-solid tw:border-border tw:px-3",
     selected && "tw:bg-accent/50",
-    open && "tw:bg-accent tw:shadow-[inset_3px_0_0_var(--ostudy-color-accent)]",
+    open && "tw:bg-accent tw:shadow-[inset_3px_0_0_var(--ostudy-color-accent-base)]",
   );
   if (compact) {
     return (
