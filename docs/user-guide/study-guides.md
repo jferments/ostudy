@@ -8,7 +8,7 @@ Configure a suitable AI profile in Settings → AI/LLM. For one retained documen
 
 Open **Library** and choose **Study guides**. The guide library supports **Search guides** by title, filename, or format; Newest/Oldest/Title sorting; Refresh; and pagination when needed. Library rows show summary information rather than loading every guide body just to list them.
 
-Select a row or **Open** to read its guide. The reader opens as a page within the app shell, not a modal covering main navigation. **Back to Study Guides** at the top of a document guide, or **Close collection study guide** on a collection guide, returns to the library. Choosing **Library** or its **Study guides** view also returns to that library rather than leaving you trapped in the current viewer.
+Select a row or **Open** to read its guide. The reader opens as a page within the app shell, not a modal covering main navigation; while a guide is open it fills Library's page, under the header. **Back to Study Guides** at the top of a document guide, or **Close collection study guide** on a collection guide, returns to the library. Choosing **Library** in the main navigation also returns to that library rather than leaving you trapped in the current viewer.
 
 The reader deliberately does not display internal revision numbers or a standing Regenerate button. Regeneration belongs to the source document's action in Documents.
 
