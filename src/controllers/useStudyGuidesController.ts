@@ -23,6 +23,16 @@ export interface StudyGuideSelection {
   targetKind: "document" | "collection";
   targetId: string;
   title: string;
+  /** What the library row knows about a document's source file, for the reader's source labels. */
+  source?: StudyGuideSourceSummary;
+}
+
+/** What the library knows about a document guide's source file. */
+export interface StudyGuideSourceSummary {
+  format: string | null;
+  filename: string | null;
+  unitKind: string | null;
+  unitCount: number | null;
 }
 
 export interface StudyGuideDeleteTarget {
@@ -215,6 +225,19 @@ export function useStudyGuidesController({
     openGuide,
     closeGuide,
     deleteGuide,
+  };
+}
+
+/** The source details a library row carries for a document guide; collections have none. */
+export function guideSourceFromItem(
+  item: StudyGuidePageItem,
+): StudyGuideSourceSummary | undefined {
+  if (item.targetKind !== "document") return undefined;
+  return {
+    format: item.sourceFormat,
+    filename: item.originalFilename,
+    unitKind: item.sourceUnitKind,
+    unitCount: item.sourceUnitCount,
   };
 }
 
