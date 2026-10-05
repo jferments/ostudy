@@ -1,3 +1,6 @@
+import raccoonHead128 from "./images/raccoon-head-128.webp";
+import raccoonHead64 from "./images/raccoon-head-64.webp";
+
 export type ArtworkSlot =
   | "brand.logo.sidebar"
   | "brand.logo.compact"
@@ -10,17 +13,28 @@ export type ArtworkSlot =
   | "tutorial.welcome"
   | "document.processing";
 
+/** Raster art for a slot: the base file for 1x screens and a srcSet adding the 2x file. */
+export interface ArtworkImage {
+  src: string;
+  srcSet: string;
+}
+
 export interface ArtworkDefinition {
   slot: ArtworkSlot;
   aspectRatio: string;
   decorative: boolean;
   fallbackLabel: string;
   category: "brand" | "empty" | "completion" | "tutorial" | "status";
+  image?: ArtworkImage;
 }
 
 export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> = {
   "brand.logo.sidebar": { slot: "brand.logo.sidebar", aspectRatio: "5 / 2", decorative: false, fallbackLabel: "ostudy", category: "brand" },
-  "brand.logo.compact": { slot: "brand.logo.compact", aspectRatio: "1 / 1", decorative: false, fallbackLabel: "ostudy", category: "brand" },
+  "brand.logo.compact": {
+    slot: "brand.logo.compact", aspectRatio: "1 / 1", decorative: false, fallbackLabel: "ostudy", category: "brand",
+    // The raccoon's head and shoulders, cropped square from the project mascot (see ARTWORK-LICENSES.md).
+    image: { src: raccoonHead64, srcSet: `${raccoonHead64} 1x, ${raccoonHead128} 2x` },
+  },
   "empty.deck": { slot: "empty.deck", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty flashcard deck", category: "empty" },
   "empty.folder": { slot: "empty.folder", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty folder", category: "empty" },
   "empty.search": { slot: "empty.search", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No matching flashcards", category: "empty" },

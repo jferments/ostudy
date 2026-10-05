@@ -106,7 +106,7 @@ function App() {
         <TourProvider enabled={!controller.isLoading && !controller.fatalError && tutorialsEnabled}>
           {controller.isLoading ? (
             <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
-              <div className="tw:mx-auto"><BrandMark /></div>
+              <div className="tw:mx-auto"><BrandMark className="tw:size-12" /></div>
               <h1>Opening ostudy</h1>
               <p>Loading your decks…</p>
             </div>

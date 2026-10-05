@@ -151,6 +151,34 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
             self.assertIn("requires exactly one global TypeScript CSS import", completed.stderr)
             self.assertIn("final cascade exactly", completed.stderr)
 
+    def test_zero_mode_requires_foundation_import_before_any_module(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.write_fixture(root, self.zero_baseline())
+            (root / "src/main.tsx").write_text(
+                'import App from "./App";\nimport "./ui/foundations/index.css";\n',
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(root)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("must import ./ui/foundations/index.css first", completed.stderr)
+
+    def test_zero_mode_rejects_undeclared_cascade_layer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.write_fixture(root, self.zero_baseline())
+            (root / "src/feature.module.css").write_text(
+                "@layer overlays {\n  .feature { position: fixed; }\n}\n",
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(root)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("undeclared cascade layer overlays", completed.stderr)
+
     def test_topology_verifier_does_not_text_match_owned_semantic_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

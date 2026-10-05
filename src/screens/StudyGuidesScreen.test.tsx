@@ -6,6 +6,7 @@ import * as studyGuides from "../ipc/studyGuides";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { StudyGuidesScreen } from "./StudyGuidesScreen";
+import { matchesLayoutQuery, layoutWidths } from "../test/viewport";
 
 vi.mock("../ipc/studyGuides", async () => {
   const actual = await vi.importActual<typeof import("../ipc/studyGuides")>(
@@ -243,9 +244,7 @@ describe("StudyGuidesScreen", () => {
 
 function setLayoutMode(layoutMode: "wide" | "medium" | "compact"): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches:
-      (query === "(max-width: 760px)" && layoutMode === "compact") ||
-      (query === "(max-width: 1180px)" && layoutMode !== "wide"),
+    matches: matchesLayoutQuery(query, layoutWidths[layoutMode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),

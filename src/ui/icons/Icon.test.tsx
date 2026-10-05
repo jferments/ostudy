@@ -25,8 +25,30 @@ describe("Icon", () => {
         "maximize",
         "full-screen",
         "restore",
+        "view-off",
+        "minus",
+        "zoom-in",
+        "zoom-out",
       ]),
     );
+    expect(new Set(ICON_NAMES).size).toBe(ICON_NAMES.length);
+  });
+
+  it("draws every icon on the Lucide grid with the shared stroke", () => {
+    const { container } = render(
+      <>
+        {ICON_NAMES.map((name) => (
+          <Icon key={name} name={name} />
+        ))}
+      </>,
+    );
+
+    for (const icon of container.querySelectorAll("svg")) {
+      expect(icon.getAttribute("viewBox")).toBe("0 0 24 24");
+      expect(icon.getAttribute("fill")).toBe("none");
+      expect(icon.getAttribute("stroke-width")).toBe("1.9");
+      expect(icon.children.length).toBeGreaterThan(0);
+    }
   });
 
   it("is decorative by default and exposes an optional image label", () => {

@@ -33,8 +33,8 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
     >
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
         <div className="tw:min-w-0">
-          <strong className="tw:text-sm">Formula tools</strong>
-          <p className="tw:mt-1 tw:mb-0 tw:max-w-3xl tw:text-xs tw:leading-relaxed tw:text-muted-foreground">
+          <strong className="tw:text-small">Formula tools</strong>
+          <p className="tw:mt-1 tw:mb-0 tw:max-w-3xl tw:text-caption tw:leading-relaxed tw:text-muted-foreground">
             Select an existing expression before choosing a structure to wrap it. Fraction, powers, roots, and brackets preserve the selection without adding extra parentheses.
           </p>
         </div>
@@ -95,7 +95,7 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
             onPointerDown={(event) => event.preventDefault()}
             onClick={() => insert(tool.insert)}
           >
-            <span aria-hidden="true" className="tw:flex tw:min-w-0 tw:items-center tw:justify-center tw:text-base">
+            <span aria-hidden="true" className="tw:flex tw:min-w-0 tw:items-center tw:justify-center tw:text-body">
               <Formula source={tool.preview} block={false} />
             </span>
           </Button>
@@ -108,17 +108,17 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
           className="tw:grid tw:min-w-0 tw:gap-3 tw:rounded-md tw:bg-background tw:p-3 tw:ring-1 tw:ring-border"
         >
           <div>
-            <strong className="tw:text-sm">Common operations</strong>
-            <p className="tw:mt-1 tw:mb-0 tw:text-sm tw:leading-relaxed">
+            <strong className="tw:text-small">Common operations</strong>
+            <p className="tw:mt-1 tw:mb-0 tw:text-small tw:leading-relaxed">
               Highlight an expression, then choose <strong>Fraction</strong> to make it the numerator, <strong>Square</strong> or <strong>Power</strong> to add an exponent, or <strong>Square root</strong> to put it under a radical. Empty boxes are placeholders; use Tab and Shift+Tab to move between them.
             </p>
           </div>
           <div>
-            <strong className="tw:text-sm">Keyboard shortcuts</strong>
-            <div className="tw:mt-2 tw:grid tw:grid-cols-[max-content_minmax(0,1fr)] tw:gap-x-3 tw:gap-y-1.5 tw:text-sm">
+            <strong className="tw:text-small">Keyboard shortcuts</strong>
+            <div className="tw:mt-2 tw:grid tw:grid-cols-[max-content_minmax(0,1fr)] tw:gap-x-3 tw:gap-y-1.5 tw:text-small">
               {FORMULA_SHORTCUTS.map((shortcut) => (
                 <div key={shortcut.keys} className="tw:contents">
-                  <kbd className="tw:rounded tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5 tw:font-mono tw:text-xs">
+                  <kbd className="tw:rounded tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5 tw:font-mono tw:text-caption">
                     {shortcut.keys}
                   </kbd>
                   <span>{shortcut.action}</span>
@@ -126,7 +126,7 @@ export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
               ))}
             </div>
           </div>
-          <p className="tw:m-0 tw:text-xs tw:leading-relaxed tw:text-muted-foreground">
+          <p className="tw:m-0 tw:text-caption tw:leading-relaxed tw:text-muted-foreground">
             You can also type LaTeX-style commands if you know them, but they are optional. The graphical controls and full MathLive keyboard are the intended path for users who do not know formula syntax.
           </p>
         </div>

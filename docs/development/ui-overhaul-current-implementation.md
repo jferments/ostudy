@@ -115,10 +115,10 @@ The legacy classOwnership API and its three shared CSS maps are removed after th
 | Five deck-library geometry Modules | Hit testing, scrolling, pointer transforms and insertion destinations. |
 | DeviceSync QR frame | Machine-readable quiet zone and literal white contrast. |
 | TourProvider | Measured spotlight masking and viewport collision geometry. |
-| Artwork, Motion, Materials and experience | Illustration cropping and optional motion/material/effect geometry. |
+| Artwork, Motion and experience | Illustration cropping and optional motion/effect geometry. |
 | Progress | Text contrast split across the filled and unfilled track. |
 
-There are 16 registered Modules. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
+There are 15 registered Modules. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
 
 ### Historical human-acceptance boundary
 

@@ -15,7 +15,7 @@ export function NativeSelect({ className, multiple, size, ...props }: ComponentP
         size={size}
         data-slot="native-select"
         className={cn(
-          "tw:w-full tw:min-w-0 tw:rounded-lg tw:border tw:border-solid tw:border-input tw:bg-background tw:px-2.5 tw:font-sans tw:text-sm tw:font-normal tw:text-foreground tw:outline-none tw:transition-colors tw:disabled:cursor-not-allowed tw:disabled:opacity-50 tw:focus-visible:border-ring tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:aria-invalid:border-destructive tw:aria-invalid:ring-3 tw:aria-invalid:ring-destructive/20 tw:coarse:min-h-touch",
+          "tw:w-full tw:min-w-0 tw:rounded-lg tw:border tw:border-solid tw:border-input tw:bg-background tw:px-2.5 tw:font-sans tw:text-small tw:font-normal tw:text-foreground tw:outline-none tw:transition-colors tw:disabled:cursor-not-allowed tw:disabled:opacity-50 tw:focus-visible:border-ring tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:aria-invalid:border-destructive tw:aria-invalid:ring-3 tw:aria-invalid:ring-destructive/20 tw:coarse:min-h-touch",
           listbox ? "tw:min-h-20 tw:py-2" : "tw:h-8 tw:appearance-none tw:pe-9",
           className,
         )}

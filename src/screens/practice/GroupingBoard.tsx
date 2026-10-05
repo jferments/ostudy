@@ -38,13 +38,13 @@ export function GroupingBoard({ question, assignments, assets, disabled, evaluat
         pointer={pointer} disabled={disabled || evaluation !== null} selected={selected === item.id} correct={correct}
         onSelect={() => setSelected((value) => value === item.id ? null : item.id)}>
         <RichTextView document={item.content} assets={assets} onLinkError={onError} />
-        {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-sm", correct ? "tw:text-success" : "tw:text-destructive")}>
+        {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-small", correct ? "tw:text-success" : "tw:text-destructive")}>
           <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : result.selectedTargetId ? "Wrong group" : "Not placed"}
         </div> : null}
-        {result && !correct && expected ? <div className="tw:grid tw:gap-1 tw:text-sm" aria-label="Correct group">
+        {result && !correct && expected ? <div className="tw:grid tw:gap-1 tw:text-small" aria-label="Correct group">
           <span>→ Belongs in:</span><RichTextView document={expected.content} assets={assets} onLinkError={onError} />
         </div> : null}
-        {result?.rationale ? <div className="tw:text-sm"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
+        {result?.rationale ? <div className="tw:text-small"><RichTextView document={result.rationale} assets={assets} onLinkError={onError} /></div> : null}
       </QuestionTile>
       {!evaluation && assigned.has(item.id) ? <Button variant="text" size="small" disabled={disabled}
         onClick={() => { onChange(assignments.filter((entry) => entry.itemId !== item.id)); setSelected(null); }}>
@@ -54,7 +54,7 @@ export function GroupingBoard({ question, assignments, assets, disabled, evaluat
   }
   const loose = question.items.filter((item) => !assigned.has(item.id));
   return <div ref={root} className="tw:grid tw:gap-4">
-    {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Drag tiles into a group, or select a tile and its group. Open a group to review or change your placements.</p> : null}
+    {!evaluation ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">Drag tiles into a group, or select a tile and its group. Open a group to review or change your placements.</p> : null}
     <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2" aria-label="Grouping categories">
       {question.categories.map((category) => {
         const members = question.items.filter((item) => assigned.get(item.id) === category.id);
@@ -70,8 +70,8 @@ export function GroupingBoard({ question, assignments, assets, disabled, evaluat
               else setExpanded((ids) => ids.includes(category.id) ? ids.filter((id) => id !== category.id) : [...ids, category.id]);
             }}>
             <div className="tw:grid tw:w-full tw:gap-1 tw:text-foreground">
-              <span className="tw:text-xs tw:font-semibold tw:uppercase tw:tracking-wide tw:text-primary">Group</span>
-              <div className="tw:text-lg tw:font-semibold"><RichTextView document={category.content} assets={assets} onLinkError={onError} /></div>
+              <span className="tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-primary">Group</span>
+              <div className="tw:text-body-large tw:font-semibold"><RichTextView document={category.content} assets={assets} onLinkError={onError} /></div>
               <small className="tw:text-muted-foreground">{members.length} {members.length === 1 ? "item" : "items"}{!evaluation && members.length > 0 ? " · Review" : ""}</small>
             </div>
           </Button>
@@ -80,6 +80,6 @@ export function GroupingBoard({ question, assignments, assets, disabled, evaluat
       })}
     </div>
     {loose.length > 0 ? <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2" aria-label="Items to group">{loose.map(tile)}</div>
-      : !evaluation ? <p className="tw:m-0 tw:text-center tw:text-sm tw:text-muted-foreground">All items placed. Check your answer when ready.</p> : null}
+      : !evaluation ? <p className="tw:m-0 tw:text-center tw:text-small tw:text-muted-foreground">All items placed. Check your answer when ready.</p> : null}
   </div>;
 }

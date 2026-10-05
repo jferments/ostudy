@@ -160,7 +160,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         ) : analytics ? (
           <ProgressChart buckets={analytics.timeline} range={analytics.scope.range} />
         ) : (
-          <div className="tw:grid tw:min-h-40 tw:place-items-center tw:text-sm tw:text-muted-foreground">
+          <div className="tw:grid tw:min-h-40 tw:place-items-center tw:text-small tw:text-muted-foreground">
             Analytics will appear here when the data can be analyzed.
           </div>
         )}

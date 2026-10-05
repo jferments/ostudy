@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { viewportQueries } from "../tokens/generated/viewport";
 
 export type LayoutMode = "compact" | "medium" | "wide";
 export type InputMode = "coarse" | "fine";
@@ -22,8 +23,9 @@ const LayoutModeContext = createContext<LayoutModeContextValue>({
 });
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
-  const compact = useMediaQuery("(max-width: 760px)");
-  const mediumOrSmaller = useMediaQuery("(max-width: 1180px)");
+  // The same generated conditions back Tailwind's compact/medium/wide variants.
+  const compact = useMediaQuery(viewportQueries.compact);
+  const mediumOrSmaller = useMediaQuery(viewportQueries.belowWide);
   const coarsePointer = useMediaQuery("(pointer: coarse)");
   const layoutMode: LayoutMode = compact ? "compact" : mediumOrSmaller ? "medium" : "wide";
   const inputMode: InputMode = coarsePointer ? "coarse" : "fine";

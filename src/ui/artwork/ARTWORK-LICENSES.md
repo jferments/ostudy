@@ -8,10 +8,14 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 | --- | --- | --- |
 | `empty.*` | Empty libraries, folders, documents, search results, and configuration states | Original ostudy vector artwork; MIT |
 | `practice.*` | Practice preparation and completion states | Original ostudy vector artwork; MIT |
-| `brand.*` | Responsive ostudy brand and mascot treatments | Original ostudy vector artwork; MIT |
+| `brand.*` | Responsive ostudy brand and mascot treatments | Original ostudy mascot artwork (see below); MIT |
 | `status.*` | Nonessential success and milestone decoration | Original ostudy vector artwork; MIT |
 
-Functional icons are not decorative artwork. They are defined in the app-owned SVG icon registry and remain visible when decorative artwork is disabled.
+## Brand mark
+
+`brand.logo.compact` shows the raccoon's head from the project's own mascot art, `assets/images/racoon mascot (logo).png` (1254 x 1254). The head-and-shoulders square is the 740 x 740 region at +232+88 of that file (inside the 840 x 800 head crop at +186+40), so the ears sit at the top and the body runs off the bottom edge. It ships as `images/raccoon-head-64.webp` and `images/raccoon-head-128.webp` (transparent WebP, downscaled with Lanczos, metadata stripped). The brand mark always shows; the decorative-artwork preference does not apply to brand slots.
+
+Functional icons are not decorative artwork. They come from the app's icon registry (`src/ui/icons/Icon.tsx`, Lucide glyphs under the ISC notice in `public/licenses/LUCIDE-ISC.txt`) and remain visible when decorative artwork is disabled.
 
 User-authored educational images, imported document pages, and images embedded in flashcards are content, not application artwork. The decorative-artwork preference never hides or changes them.
 

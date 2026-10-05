@@ -11,7 +11,7 @@ export function ThemePreview({ theme }: { theme: AppSettings["theme"] }) {
   const colors = {
     light: ["var(--ostudy-theme-preview-light-canvas)", "var(--ostudy-theme-preview-light-sidebar)", "var(--ostudy-theme-preview-light-card)"],
     dark: ["var(--ostudy-theme-preview-dark-canvas)", "var(--ostudy-theme-preview-dark-sidebar)", "var(--ostudy-theme-preview-dark-card)"],
-    console: ["var(--ostudy-theme-preview-console-canvas)", "var(--ostudy-theme-preview-console-chrome)", "var(--ostudy-theme-preview-console-card)"],
+    console: ["var(--ostudy-theme-preview-console-canvas)", "var(--ostudy-theme-preview-console-sidebar)", "var(--ostudy-theme-preview-console-card)"],
     synthwave: ["var(--ostudy-theme-preview-synthwave-canvas)", "var(--ostudy-theme-preview-synthwave-sidebar)", "var(--ostudy-theme-preview-synthwave-card)"],
   };
   const [canvas, sidebar, card] = colors[theme];
@@ -20,7 +20,7 @@ export function ThemePreview({ theme }: { theme: AppSettings["theme"] }) {
       <span className="tw:w-1/4" style={{ background: sidebar }} />
       <span className="tw:m-2.5 tw:flex-1 tw:rounded-md" style={{ background: card }} />
     </span>
-    <strong className="tw:text-sm tw:font-medium">{names[theme]}</strong>
+    <strong className="tw:text-small tw:font-medium">{names[theme]}</strong>
   </span>;
 }
 
@@ -61,9 +61,9 @@ export function RangeControl({ label, min, max, step, value, suffix, onChange }:
   onChange: (value: number) => void;
 }) {
   return <div className="tw:grid tw:gap-1.5">
-    <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-sm">
+    <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-small">
       <span className="tw:font-medium">{label}</span>
-      <output className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-0.5 tw:text-xs tw:font-medium tw:tabular-nums">{value}{suffix}</output>
+      <output className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-0.5 tw:text-caption tw:font-medium tw:tabular-nums">{value}{suffix}</output>
     </div>
     <Slider label={label} min={min} max={max} step={step} value={value} onValueChange={onChange} />
   </div>;
@@ -81,5 +81,5 @@ export function NumberControl({ label, value, onChange }: {
 }
 
 export function PathRow({ label, value }: { label: string; value: string }) {
-  return <div className="tw:grid tw:min-w-0 tw:gap-0.5"><dt className="tw:text-xs tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:break-all tw:text-sm" title={value}>{value}</dd></div>;
+  return <div className="tw:grid tw:min-w-0 tw:gap-0.5"><dt className="tw:text-caption tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:break-all tw:text-small" title={value}>{value}</dd></div>;
 }

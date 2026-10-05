@@ -41,7 +41,7 @@ export class AppErrorBoundary extends Component<
 
     return (
       <section className="tw:mx-auto tw:grid tw:max-w-2xl tw:gap-5 tw:p-8">
-        <h1 className="tw:m-0 tw:text-2xl tw:font-semibold tw:tracking-tight">This screen could not be displayed</h1>
+        <h1 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">This screen could not be displayed</h1>
         <InlineNotice kind="error">{this.state.error.message || "An unexpected interface error occurred."}</InlineNotice>
         <Button variant="primary" onClick={() => window.location.reload()}>
           Reload ostudy
