@@ -425,7 +425,7 @@
               }
             ],
             "entryFragments": [
-              "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='View progress']"
+              "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='See your progress']"
             ],
             "assertionFragments": [
               "wait_for_main_heading(session_id, \"Progress\", deadline)",
