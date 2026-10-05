@@ -435,7 +435,7 @@ fn workload_excludes_suspended_and_buried_cards_and_protects_review_backlog() {
             let mut settings = load_settings(connection)?;
             settings.daily_new_limit = 1;
             settings.daily_review_limit = 1;
-            let time = StudyTimeContext::capture()?;
+            let time = StudyTimeContext::capture(connection)?;
             let scope = StudyScope {
                 deck_ids: std::slice::from_ref(&deck_id),
                 tag_ids: &[],

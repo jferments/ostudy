@@ -42,11 +42,13 @@ pnpm exec vitest run \
 
 Coverage includes read-only older/future admission, SQLite-full snapshot refusal,
 committed WAL preservation, changed private bytes, managed-root drift, equal-count
-value loss, populated schedules/review evidence, stale recovery choices,
-post-reconciliation commit refusal, compatible-schema restoration, committed
-bookkeeping failures and abrupt child-process termination during preparation,
-activation and rollback. Existing package/current-format/live-restore suites remain
-required compatibility evidence. Counts are not a substitute for retained values.
+value loss, rewritten or backfilled review evidence, table changes no preservation
+contract lists, releases without a contract, populated schedules/review evidence,
+stale recovery choices, post-reconciliation commit refusal, compatible-schema
+restoration, committed bookkeeping failures and abrupt child-process termination
+during preparation, activation and rollback. Existing
+package/current-format/live-restore suites remain required compatibility
+evidence. Counts are not a substitute for retained values.
 
 Finish source and documentation review before freezing the terminal candidate.
 Then qualify its exact SHA with Static/Fast, full Linux, production Debian package,

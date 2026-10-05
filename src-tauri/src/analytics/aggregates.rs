@@ -1,9 +1,7 @@
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
 
 use crate::{
-    error::CommandError,
-    projections::{learning_signals as signal_projection, scope::push_value},
-    studyability,
+    error::CommandError, projections::learning_signals as signal_projection, studyability,
 };
 
 use super::{
@@ -22,7 +20,7 @@ pub fn load_decks(
 ) -> Result<Vec<DeckAnalyticsDto>, CommandError> {
     let mut values = vec![SqlValue::Integer(context.time.now_utc_millis)];
     let current_conditions = context.current_card_conditions(&mut values);
-    let history_conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let history_conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let sql = format!(
         "WITH current_stats AS (
              SELECT
@@ -131,17 +129,25 @@ pub fn load_tags(
     let mut values = vec![SqlValue::Integer(context.time.now_utc_millis)];
     let current_conditions = context.current_card_conditions(&mut values);
     let history_conditions =
-        context.historical_conditions(&mut values, HistoryPeriod::CurrentAndPrevious);
-    let current_predicate = if let Some(window) = context.window.current.as_ref() {
-        let index = push_value(&mut values, window.start_local_date.to_string());
-        format!("a.review_local_date >= ?{index}")
-    } else {
-        "1 = 1".to_string()
-    };
+        context.historical_conditions(&mut values, HistoryPeriod::CurrentAndPrevious)?;
+    // The query reads both windows; these split its rows between them.
+    let current_predicate = context.time.review_study_dates_sql(
+        "a",
+        context
+            .window
+            .current
+            .as_ref()
+            .map(|window| window.start_local_date),
+        None,
+        &mut values,
+    )?;
     let previous_predicate = if let Some(window) = context.previous_window() {
-        let start = push_value(&mut values, window.start_local_date.to_string());
-        let end = push_value(&mut values, window.end_local_date.to_string());
-        format!("a.review_local_date >= ?{start} AND a.review_local_date <= ?{end}")
+        context.time.review_study_dates_sql(
+            "a",
+            Some(window.start_local_date),
+            Some(window.end_local_date),
+            &mut values,
+        )?
     } else {
         "0 = 1".to_string()
     };

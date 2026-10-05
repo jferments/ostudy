@@ -74,6 +74,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
     desiredRetention: 0.9,
     dailyNewLimit: 20,
     dailyReviewLimit: 200,
+    newDayStartHour: 4,
     ...overrides,
   };
 }
@@ -185,6 +186,7 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
       startAt: 1,
       endAt: 2,
       bucketGranularity: "day",
+      todayLocalDate: "2026-08-06",
       deckIds: [],
       tagIds: [],
       highlightedSessionId: null,

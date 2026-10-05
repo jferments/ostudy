@@ -123,7 +123,7 @@ pub fn get_practice_workload(
     database.with_connection(|connection| {
         validate_current_scope(connection, &deck_ids, &tag_ids)?;
         let settings = load_settings(connection)?;
-        let time = StudyTimeContext::capture()?;
+        let time = StudyTimeContext::capture(connection)?;
         workload_overview(
             connection,
             StudyScope {
@@ -236,7 +236,7 @@ pub(crate) fn start_selected_practice_in_connection(
         return Ok(existing);
     }
     validate_current_scope(connection, &deck_ids, &tag_ids)?;
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let scope = StudyScope {
         deck_ids: &deck_ids,
         tag_ids: &tag_ids,
@@ -282,7 +282,7 @@ pub(crate) fn start_card_practice_in_connection(
     {
         return Ok(existing);
     }
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let planned = load_exact_planned_cards(connection, &card_ids, &time)?;
     let deck_ids = planned
         .iter()
@@ -420,7 +420,7 @@ fn create_practice_session(
     if shuffle {
         planned.sort_by_key(|card| {
             let due_date = time
-                .local_date_for_timestamp(card.due_at)
+                .study_date_for_timestamp(card.due_at)
                 .unwrap_or(time.local_date);
             (
                 due_date,
@@ -542,7 +542,7 @@ fn avoid_repeating_previous_first(
         return;
     }
     let due_date = time
-        .local_date_for_timestamp(first.due_at)
+        .study_date_for_timestamp(first.due_at)
         .unwrap_or(time.local_date);
     let weak = first.needs_more_practice;
     let is_new = first.state == 0;
@@ -552,7 +552,7 @@ fn avoid_repeating_previous_first(
         .skip(1)
         .find_map(|(index, card)| {
             let candidate_date = time
-                .local_date_for_timestamp(card.due_at)
+                .study_date_for_timestamp(card.due_at)
                 .unwrap_or(time.local_date);
             (candidate_date == due_date
                 && card.needs_more_practice == weak
@@ -640,7 +640,7 @@ pub(crate) fn refresh_practice_after_card_edit_in_connection(
         });
     }
 
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     let active_planned = {
         let mut statement = connection
             .prepare(

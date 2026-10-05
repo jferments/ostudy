@@ -306,6 +306,92 @@ fn a_valid_but_lossy_private_migration_is_rejected_even_when_row_counts_match() 
     assert!(!fixture.0.app_data_dir().join(JOURNAL).exists());
 }
 
+/// Prepare an upgrade whose private migration also runs `sql`, as a faulty
+/// release migration would, and return the refusal. The library is untouched.
+fn refused_upgrade(fixture: &Fixture, source_schema: i64, sql: &str) -> String {
+    let original = fs::read(fixture.0.database_path()).unwrap();
+    let error = prepare_upgrade_with(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, source_schema),
+        &mut |_| {},
+        None,
+        |path| {
+            let database = Database::open(path)?;
+            database
+                .with_connection(|connection| {
+                    connection
+                        .execute_batch(sql)
+                        .map_err(crate::error::CommandError::database)
+                })
+                .map_err(|error| error.message)?;
+            settle_candidate(&database)
+        },
+    )
+    .expect_err(sql);
+    assert_eq!(fixture.version(), source_schema);
+    assert_eq!(fs::read(fixture.0.database_path()).unwrap(), original);
+    assert!(!fixture.0.app_data_dir().join(JOURNAL).exists());
+    error
+}
+
+#[test]
+fn an_upgrade_that_rewrites_or_backfills_protected_review_evidence_is_rejected() {
+    for (source_schema, sql, refusal) in [
+        (
+            1,
+            "UPDATE review_events SET rating = 4",
+            "changed retained library values",
+        ),
+        (
+            1,
+            "UPDATE review_event_attributions SET captured_deck_name = 'Biology'",
+            "changed retained library values",
+        ),
+        (
+            1,
+            "INSERT INTO review_event_tag_attributions
+             SELECT review_event_id, printf('%032d', 7), 'Biology' FROM review_event_attributions",
+            "changed retained library values",
+        ),
+        // A schema-4 source has no scheduler-context table yet, so schema 5's
+        // rule that the table arrives empty is what refuses invented context.
+        (
+            4,
+            "INSERT INTO review_event_scheduler_context (review_event_id, elapsed_days,
+             reps_before, lapses_before, desired_retention, scheduler_parameters_sha256)
+             SELECT id, 0, 0, 0, 0.9, printf('%064d', 0) FROM review_events",
+            "unexpectedly created review scheduler-context rows",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        if source_schema == 4 {
+            advance_to_schema_four(&fixture);
+        }
+        seed_history(&fixture);
+        let error = refused_upgrade(&fixture, source_schema, sql);
+        assert!(error.contains(refusal), "{sql}: {error}");
+    }
+}
+
+#[test]
+fn an_upgrade_that_changes_a_table_no_contract_lists_is_rejected() {
+    for sql in [
+        // A new column changes an existing table's shape.
+        "ALTER TABLE decks ADD COLUMN subject_id TEXT",
+        // A table that no release declares, even an empty one.
+        "CREATE TABLE subjects (id TEXT PRIMARY KEY)",
+    ] {
+        let fixture = Fixture::new();
+        seed_history(&fixture);
+        let error = refused_upgrade(&fixture, 1, sql);
+        assert!(
+            error.contains("changed retained library values"),
+            "{sql}: {error}"
+        );
+    }
+}
+
 #[test]
 fn removed_or_new_managed_roots_are_not_mistaken_for_an_unchanged_source() {
     for originally_present in [true, false] {

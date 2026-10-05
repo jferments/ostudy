@@ -52,6 +52,7 @@ const DEFAULTS: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  newDayStartHour: 4,
 };
 
 export function SettingsScreen({
@@ -124,6 +125,7 @@ export function SettingsScreen({
         desiredRetention: DEFAULTS.desiredRetention,
         dailyNewLimit: DEFAULTS.dailyNewLimit,
         dailyReviewLimit: DEFAULTS.dailyReviewLimit,
+        newDayStartHour: DEFAULTS.newDayStartHour,
       });
     }
     if (activeTab === "storage") update({ confirmDeletions: DEFAULTS.confirmDeletions });

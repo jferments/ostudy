@@ -64,8 +64,8 @@ beforeEach(() => {
   controller.matching.mockResolvedValue([]);
   controller.search.mockImplementation(async (input: CardSearchInput) =>
     input.query.trim()
-      ? { cards: [], totalCount: 0 }
-      : { cards: [card], totalCount: 1 },
+      ? { cards: [], totalCount: 0, todayStartAt: 0 }
+      : { cards: [card], totalCount: 1, todayStartAt: 0 },
   );
 });
 

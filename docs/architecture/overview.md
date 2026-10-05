@@ -252,9 +252,11 @@ Scheduled mode applies scope and daily new/review budgets to studyable due cards
 
 Local study-calendar semantics are native. Day boundaries, date intervals, timezone observations, DST transitions, and leap days must be handled consistently across practice and analytics rather than with independent fixed-millisecond browser calculations. Capture operation-consistent time facts instead of letting half a transaction use yesterday and the other half tomorrow.
 
+A study day starts at the learner's **New day starts at** hour (4 a.m. unless changed in Settings), not at midnight. `StudyTimeContext::capture` reads that hour from the library's settings; the context's current date, today/tomorrow boundaries, daily limits, burial expiry, date-only rescheduling, Search/Filter date filters, and Analytics windows and buckets all use it. Review attributions keep the calendar date, zone, and offset of the moment they were saved; a review's study date is derived from its stored instant and offset when history is read, so changing the hour re-buckets history without rewriting it ([ADR 0054](../decisions/0054-study-day-start.md)). Screens take "today" from native data (the Analytics scope's study date, the card search page's study-day start) rather than the device clock.
+
 Suspend/resume, bury, reset, and reschedule mutate current availability/schedule under their explicit policies. Reset preserves retained review history; manually rescheduling is not evidence of recall. Review progress and remembered proportions describe recorded outcomes, not a medical/educational guarantee of mastery.
 
-Sources: [practice](../../src-tauri/src/practice.rs), [selection](../../src-tauri/src/practice_selection.rs), [resume](../../src-tauri/src/practice_resume.rs), [studyability](../../src-tauri/src/studyability.rs), [calendar](../../src-tauri/src/study_calendar.rs), [schedule controls](../../src-tauri/src/schedule_controls.rs), [ADR 0003](../decisions/0003-fsrs-review-ledger.md).
+Sources: [practice](../../src-tauri/src/practice.rs), [selection](../../src-tauri/src/practice_selection.rs), [resume](../../src-tauri/src/practice_resume.rs), [studyability](../../src-tauri/src/studyability.rs), [calendar](../../src-tauri/src/study_calendar.rs), [schedule controls](../../src-tauri/src/schedule_controls.rs), [ADR 0003](../decisions/0003-fsrs-review-ledger.md), [ADR 0054](../decisions/0054-study-day-start.md).
 
 ## Search, projections, and analytics
 

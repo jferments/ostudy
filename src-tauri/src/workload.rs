@@ -55,25 +55,43 @@ pub struct WorkloadOverviewDto {
     pub extra_available: i64,
 }
 
+/// New and review cards completed on the current study date, across every
+/// scope: the daily limits are global, and a review counts toward the study
+/// date it was made on.
+pub fn completed_today(
+    connection: &Connection,
+    time: &StudyTimeContext,
+) -> Result<(i64, i64), CommandError> {
+    let mut values = Vec::new();
+    let today = time.review_study_dates_sql(
+        "a",
+        Some(time.local_date),
+        Some(time.local_date),
+        &mut values,
+    )?;
+    connection
+        .query_row(
+            &format!(
+                "SELECT
+                     COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
+                     COALESCE(SUM(CASE WHEN r.state_before <> 0 THEN 1 ELSE 0 END), 0)
+                 FROM review_events r
+                 JOIN review_event_attributions a ON a.review_event_id = r.id
+                 WHERE {today}"
+            ),
+            params_from_iter(values.iter()),
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(CommandError::database)
+}
+
 pub fn workload_overview_for_scope(
     connection: &Connection,
     scope: StudyScope<'_>,
     settings: &AppSettingsDto,
     time: &StudyTimeContext,
 ) -> Result<WorkloadOverviewDto, CommandError> {
-    let local_date = time.local_date.to_string();
-    let (new_completed, reviews_completed): (i64, i64) = connection
-        .query_row(
-            "SELECT
-                 COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
-                 COALESCE(SUM(CASE WHEN r.state_before <> 0 THEN 1 ELSE 0 END), 0)
-             FROM review_events r
-             JOIN review_event_attributions a ON a.review_event_id = r.id
-             WHERE a.review_local_date = ?1",
-            [local_date],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(CommandError::database)?;
+    let (new_completed, reviews_completed) = completed_today(connection, time)?;
 
     let mut values = vec![SqlValue::Integer(time.now_utc_millis)];
     let conditions = scoped_studyable_conditions(scope, &mut values);
@@ -223,12 +241,14 @@ fn load_ranked_cards(
         None => {}
     }
     let candidate_limit_index = push_value(&mut values, limit);
+    // Cards are ordered by the study date they fell due on, from the captured
+    // zone and hour rather than SQLite's own idea of local time.
     let sql = format!(
         "WITH {signals}
          SELECT
              c.deck_id,
              c.id AS card_id,
-             date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date,
+             {due_study_date} AS due_local_date,
              s.due_at,
              s.state,
              {signal_value} AS needs_more_practice,
@@ -245,6 +265,7 @@ fn load_ranked_cards(
                   s.due_at ASC,
                   c.id ASC
          LIMIT ?{candidate_limit_index}",
+        due_study_date = time.instant_study_date_sql("s.due_at"),
         signals = signal_projection::LEARNING_SIGNAL_CTES,
         signal_value = signal_projection::value_sql(),
         signal_join = signal_projection::join_sql(),

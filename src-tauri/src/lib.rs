@@ -127,6 +127,8 @@ mod stage34_35_regression_tests;
 #[cfg(test)]
 mod stage36_38_regression_tests;
 #[cfg(test)]
+mod study_day_tests;
+#[cfg(test)]
 mod xberg_adapter_fixture_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
