@@ -66,6 +66,7 @@ function renderProvider(section: AppSection = "home", activeWorkflow: AppWorkflo
       nextWorkflow: AppWorkflow | null,
       nextDecks = decks,
       finishedSessions = 0,
+      studyRules?: { dailyNewLimit: number; dailyReviewLimit: number; newDayStartHour: number },
     ) {
       view.rerender(
         <HomeSummaryProvider
@@ -73,6 +74,7 @@ function renderProvider(section: AppSection = "home", activeWorkflow: AppWorkflo
           activeWorkflow={nextWorkflow}
           decks={nextDecks}
           finishedSessions={finishedSessions}
+          studyRules={studyRules}
         >
           <Probe />
         </HomeSummaryProvider>,
@@ -179,6 +181,30 @@ describe("HomeSummaryProvider", () => {
     view.rerenderWith("tutor", null);
     await settle();
     expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(3);
+  });
+
+  it("reads again when the saved daily limits or new-day hour change", async () => {
+    const rules = { dailyNewLimit: 20, dailyReviewLimit: 200, newDayStartHour: 4 };
+    const view = renderProvider("settings");
+    view.rerenderWith("settings", null, decks, 0, rules);
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(1);
+
+    // Saving another setting hands over equal rules: nothing new to count.
+    view.rerenderWith("settings", null, decks, 0, { ...rules });
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(1);
+
+    view.rerenderWith("settings", null, decks, 0, { ...rules, newDayStartHour: 0 });
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(2);
+
+    // The Review badge on Settings follows a lower review limit.
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(summaryWith(2));
+    view.rerenderWith("settings", null, decks, 0, { ...rules, dailyReviewLimit: 2 });
+    await settle();
+    expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText("due").textContent).toBe("2");
   });
 
   it("reads again when the app becomes visible, since the study day may have turned over", async () => {

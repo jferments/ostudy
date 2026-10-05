@@ -12,6 +12,7 @@ import {
 import { getErrorMessage } from "../ipc/common";
 import type { DeckSummary } from "../ipc/decks";
 import { getHomeSummary, type HomeSummary } from "../ipc/home";
+import type { AppSettings } from "../ipc/settings";
 import { getSubjectLibrary, type SubjectLibrary } from "../ipc/subjects";
 import { useDocumentJobs } from "./DocumentJobsProvider";
 import type { AppSection, AppWorkflow } from "./useAppController";
@@ -46,6 +47,8 @@ interface HomeSummaryProviderProps {
   decks: readonly DeckSummary[];
   /** Counts the practice sessions that reached their summary; each changed what is due. */
   finishedSessions?: number;
+  /** The saved daily limits and new-day hour, which decide what is due today. */
+  studyRules?: Pick<AppSettings, "dailyNewLimit" | "dailyReviewLimit" | "newDayStartHour">;
   children: ReactNode;
 }
 
@@ -57,15 +60,17 @@ const REFRESH_DELAY_MS = 50;
  * badge on every screen. Each is an independent latest-request read. They are
  * read again when Home or Review opens, when a practice session reaches its
  * summary or ends, when the deck list changes, when a document arrives, leaves
- * or finishes processing, and when the app becomes visible again (the study
- * day may have turned over). A running session keeps the count it started
- * with, so its ratings add no reads to the native queue.
+ * or finishes processing, when the saved daily limits or new-day hour change,
+ * and when the app becomes visible again (the study day may have turned over).
+ * A running session keeps the count it started with, so its ratings add no
+ * reads to the native queue.
  */
 export function HomeSummaryProvider({
   section,
   activeWorkflow,
   decks,
   finishedSessions = 0,
+  studyRules,
   children,
 }: HomeSummaryProviderProps) {
   const summaryLane = useRequestLane();
@@ -84,6 +89,9 @@ export function HomeSummaryProvider({
   const documentsKey = documents
     ?.map((document) => `${document.id}:${document.lifecycleState}`)
     .join(",");
+  const studyRulesKey = studyRules
+    ? `${studyRules.dailyNewLimit}:${studyRules.dailyReviewLimit}:${studyRules.newDayStartHour}`
+    : "";
 
   const readSummary = useCallback(() => {
     const token = summaryLane.begin();
@@ -157,9 +165,11 @@ export function HomeSummaryProvider({
     if (finishedSessions > 0) scheduleRefresh();
   }, [finishedSessions, scheduleRefresh]);
 
+  // Saved limits or a new-day hour change what Start review studies today,
+  // and the Review badge shows it on Settings too.
   useEffect(() => {
     scheduleRefresh();
-  }, [decks, documentsKey, scheduleRefresh]);
+  }, [decks, documentsKey, scheduleRefresh, studyRulesKey]);
 
   useEffect(() => {
     function refreshWhenVisible(): void {
