@@ -674,7 +674,9 @@ pub fn insert_review_attribution(
     card_id: &str,
     time: &StudyTimeContext,
 ) -> Result<(), CommandError> {
-    let local_date = time.local_date_string_for_timestamp(time.now_utc_millis)?;
+    // The calendar date, whatever hour the study day starts: study dates are
+    // derived from the stored instant and offset when history is read.
+    let local_date = time.calendar_date_string_for_timestamp(time.now_utc_millis)?;
     let inserted = connection
         .execute(
             "INSERT INTO review_event_attributions (
@@ -773,7 +775,7 @@ fn insert_current_fallback_attribution(
             params![
                 review_event_id,
                 time.now_utc_millis,
-                time.local_date_string_for_timestamp(time.now_utc_millis)?,
+                time.calendar_date_string_for_timestamp(time.now_utc_millis)?,
                 time.time_zone_id,
                 time.utc_offset_minutes,
                 card_id,

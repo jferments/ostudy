@@ -20,6 +20,7 @@ mod extended_tests {
             desired_retention: 0.90,
             daily_new_limit: 20,
             daily_review_limit: 200,
+            new_day_start_hour: 4,
         }
     }
 
@@ -43,6 +44,7 @@ mod extended_tests {
             desired_retention: 0.96,
             daily_new_limit: 12,
             daily_review_limit: 80,
+            new_day_start_hour: 23,
         };
         validate_settings(&expected).expect("fixture should validate");
         database
@@ -71,6 +73,7 @@ mod extended_tests {
         assert_eq!(loaded.desired_retention, expected.desired_retention);
         assert_eq!(loaded.daily_new_limit, expected.daily_new_limit);
         assert_eq!(loaded.daily_review_limit, expected.daily_review_limit);
+        assert_eq!(loaded.new_day_start_hour, expected.new_day_start_hour);
     }
 
     #[test]
@@ -112,6 +115,21 @@ mod extended_tests {
             "invalid_daily_limit"
         );
 
+        for hour in [-1, 24] {
+            let mut value = settings();
+            value.new_day_start_hour = hour;
+            assert_eq!(
+                validate_settings(&value).unwrap_err().code,
+                "invalid_new_day_start_hour",
+                "{hour}"
+            );
+        }
+        for hour in [0, 23] {
+            let mut value = settings();
+            value.new_day_start_hour = hour;
+            validate_settings(&value).expect("whole hours of the day are valid");
+        }
+
         let mut value = settings();
         value.desired_retention = 0.79;
         assert_eq!(
@@ -138,8 +156,28 @@ mod extended_tests {
             "displayQuestionOnAnswer": false,
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
-            "dailyReviewLimit": 200
+            "dailyReviewLimit": 200,
+            "newDayStartHour": 4
         });
+        serde_json::from_value::<AppSettingsDto>(base.clone())
+            .expect("the complete settings shape should parse");
+
+        for hour in [json!(4.5), json!("4"), json!(true), json!(null)] {
+            let mut not_an_integer = base.clone();
+            not_an_integer["newDayStartHour"] = hour.clone();
+            assert!(
+                serde_json::from_value::<AppSettingsDto>(not_an_integer).is_err(),
+                "{hour} is not a whole hour"
+            );
+        }
+        let mut missing = base.clone();
+        missing
+            .as_object_mut()
+            .unwrap()
+            .remove("newDayStartHour");
+        let error = serde_json::from_value::<AppSettingsDto>(missing)
+            .expect_err("the hour must be sent explicitly");
+        assert!(error.to_string().contains("newDayStartHour"));
 
         let mut removed_density = base.clone();
         removed_density["deckViewDensity"] = json!("comfortable");
@@ -175,5 +213,49 @@ mod extended_tests {
             })
             .expect_err("corrupt settings should fail visibly");
         assert_eq!(error.code, "serialization_error");
+    }
+
+    #[test]
+    fn a_stored_hour_outside_the_day_fails_study_time_capture_but_not_settings() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                for (stored, code) in [
+                    ("24", "invalid_new_day_start_hour"),
+                    ("-1", "invalid_new_day_start_hour"),
+                    ("4.5", "serialization_error"),
+                ] {
+                    connection
+                        .execute(
+                            "INSERT INTO app_settings (key, value_json, updated_at)
+                             VALUES ('newDayStartHour', ?1, 1)
+                             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+                            [stored],
+                        )
+                        .map_err(CommandError::database)?;
+                    assert_eq!(
+                        load_new_day_start_hour(connection).unwrap_err().code,
+                        code,
+                        "{stored}"
+                    );
+                    assert_eq!(
+                        crate::study_calendar::StudyTimeContext::capture(connection)
+                            .unwrap_err()
+                            .code,
+                        code,
+                        "{stored}"
+                    );
+                }
+                connection
+                    .execute(
+                        "UPDATE app_settings SET value_json = '24' WHERE key = 'newDayStartHour'",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                // Settings still load, so the learner can choose a valid hour.
+                assert_eq!(load_settings(connection)?.new_day_start_hour, 24);
+                Ok(())
+            })
+            .expect("stored hours should be checked");
     }
 }

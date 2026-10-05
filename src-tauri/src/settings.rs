@@ -3,8 +3,12 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    database::Database, error::CommandError, paths::AppPaths,
-    scheduler::validate_desired_retention, util::unix_time_millis,
+    database::Database,
+    error::CommandError,
+    paths::AppPaths,
+    scheduler::validate_desired_retention,
+    study_calendar::{validate_new_day_start_hour, DEFAULT_NEW_DAY_START_HOUR},
+    util::unix_time_millis,
 };
 
 const THEMES: &[&str] = &["light", "dark", "console", "synthwave"];
@@ -51,6 +55,8 @@ pub struct AppSettingsDto {
     pub desired_retention: f64,
     pub daily_new_limit: i64,
     pub daily_review_limit: i64,
+    /// Local hour (0 to 23) at which a new study day starts; see `study_calendar`.
+    pub new_day_start_hour: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -128,7 +134,23 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
         daily_new_limit: get_setting(connection, "dailyNewLimit", 20_i64)?,
         daily_review_limit: get_setting(connection, "dailyReviewLimit", 200_i64)?,
+        new_day_start_hour: get_setting(
+            connection,
+            "newDayStartHour",
+            i64::from(DEFAULT_NEW_DAY_START_HOUR),
+        )?,
     })
+}
+
+/// The saved "New day starts at" hour, which every study-time capture reads.
+/// A stored hour outside 0 to 23 fails visibly instead of silently moving the
+/// learner's day boundary; Settings still loads so it can be corrected.
+pub(crate) fn load_new_day_start_hour(connection: &Connection) -> Result<u32, CommandError> {
+    validate_new_day_start_hour(get_setting(
+        connection,
+        "newDayStartHour",
+        i64::from(DEFAULT_NEW_DAY_START_HOUR),
+    )?)
 }
 
 fn legacy_motion_preference(connection: &Connection) -> Result<String, CommandError> {
@@ -192,6 +214,19 @@ where
         .transpose()
 }
 
+/// Saves only the "New day starts at" hour, through the ordinary validation
+/// and storage path.
+#[cfg(test)]
+pub(crate) fn save_new_day_start_hour(
+    connection: &mut Connection,
+    hour: i64,
+) -> Result<(), CommandError> {
+    let mut settings = load_settings(connection)?;
+    settings.new_day_start_hour = hour;
+    validate_settings(&settings)?;
+    save_settings_in_connection(connection, &settings)
+}
+
 fn save_settings_in_connection(
     connection: &mut Connection,
     settings: &AppSettingsDto,
@@ -250,6 +285,10 @@ fn save_settings_in_connection(
         (
             "dailyReviewLimit",
             serde_json::to_string(&settings.daily_review_limit),
+        ),
+        (
+            "newDayStartHour",
+            serde_json::to_string(&settings.new_day_start_hour),
         ),
     ];
     for (key, serialized) in entries {
@@ -321,6 +360,7 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
             format!("Daily card limits must be between 0 and {MAX_DAILY_LIMIT}."),
         ));
     }
+    validate_new_day_start_hour(settings.new_day_start_hour)?;
     validate_desired_retention(settings.desired_retention)
 }
 
@@ -374,10 +414,12 @@ mod tests {
         assert_eq!(settings.daily_review_limit, 200);
         assert!(!settings.tutorials_enabled);
         assert!(!settings.display_question_on_answer);
+        assert_eq!(settings.new_day_start_hour, 4);
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.tutorials_enabled = true;
         settings.display_question_on_answer = true;
+        settings.new_day_start_hour = 0;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
@@ -388,6 +430,13 @@ mod tests {
         assert_eq!(loaded.daily_review_limit, 80);
         assert!(loaded.tutorials_enabled);
         assert!(loaded.display_question_on_answer);
+        assert_eq!(loaded.new_day_start_hour, 0);
+        assert_eq!(
+            database
+                .with_connection(|connection| load_new_day_start_hour(connection))
+                .expect("the hour should load"),
+            0
+        );
     }
 
     #[test]

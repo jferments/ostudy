@@ -21,6 +21,11 @@ export interface AppSettings {
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
+  /**
+   * The local hour, 0 (midnight) to 23, at which a new study day starts.
+   * Reviews before it count toward the previous day.
+   */
+  newDayStartHour: number;
 }
 
 export interface AppInfo {

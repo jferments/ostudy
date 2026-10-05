@@ -168,6 +168,10 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
         name: "dailyReviewLimit",
         ty: TypeScriptType::Number,
     },
+    FieldContract {
+        name: "newDayStartHour",
+        ty: TypeScriptType::Number,
+    },
 ];
 
 const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
@@ -331,6 +335,7 @@ pub fn representative_fixtures() -> Value {
             desired_retention: 0.9,
             daily_new_limit: 20,
             daily_review_limit: 200,
+            new_day_start_hour: 4,
         },
         "completedRestore": restore.clone(),
         "librarySession": SessionStatus {

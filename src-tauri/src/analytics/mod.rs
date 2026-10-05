@@ -23,7 +23,10 @@ mod timeline;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::{database::Database, error::CommandError, settings::load_settings};
+use crate::{
+    database::Database, error::CommandError, settings::load_settings,
+    study_calendar::StudyTimeContext,
+};
 
 use question_types::QuestionTypeAnalyticsDto;
 use scope::AnalyticsContext;
@@ -55,6 +58,8 @@ pub struct AnalyticsScopeDto {
     pub start_at: Option<i64>,
     pub end_at: i64,
     pub bucket_granularity: String,
+    /// The current study date, so date inputs need no clock of their own.
+    pub today_local_date: String,
     pub deck_ids: Vec<String>,
     pub tag_ids: Vec<String>,
     pub highlighted_session_id: Option<String>,
@@ -279,14 +284,17 @@ pub fn get_recent_practice_reviews(
     database: State<'_, Database>,
 ) -> Result<Vec<RecentReviewDto>, CommandError> {
     database.with_connection(|connection| {
-        let context = AnalyticsContext::from_query(AnalyticsQueryDto {
-            range: "all".to_string(),
-            deck_ids: Vec::new(),
-            tag_ids: Vec::new(),
-            custom_start_local_date: None,
-            custom_end_local_date: None,
-            highlighted_session_id: None,
-        })?;
+        let context = AnalyticsContext::from_query(
+            AnalyticsQueryDto {
+                range: "all".to_string(),
+                deck_ids: Vec::new(),
+                tag_ids: Vec::new(),
+                custom_start_local_date: None,
+                custom_end_local_date: None,
+                highlighted_session_id: None,
+            },
+            StudyTimeContext::capture(connection)?,
+        )?;
         recent::load_reviews(connection, &context)
     })
 }
@@ -295,7 +303,17 @@ pub(crate) fn load_analytics(
     connection: &mut rusqlite::Connection,
     input: AnalyticsQueryDto,
 ) -> Result<AnalyticsDto, CommandError> {
-    let context = AnalyticsContext::from_query(input)?;
+    let time = StudyTimeContext::capture(connection)?;
+    load_analytics_at(connection, input, time)
+}
+
+/// Analytics for one captured study time; `load_analytics` captures it.
+pub(crate) fn load_analytics_at(
+    connection: &mut rusqlite::Connection,
+    input: AnalyticsQueryDto,
+    time: StudyTimeContext,
+) -> Result<AnalyticsDto, CommandError> {
+    let context = AnalyticsContext::from_query(input, time)?;
     let settings = load_settings(connection)?;
     // One learning-signal pass shared by the inventory, deck and tag queries.
     let signals = RequestSignals::materialize(connection)?;
@@ -343,7 +361,6 @@ mod tests {
         decks::{create_deck_in_connection, CreateDeckInput},
         practice::{record_practice_event, submit_review_in_connection, SubmitReviewInput},
         scheduler::insert_new_schedule,
-        study_calendar::StudyTimeContext,
         util::generate_id,
     };
     use rusqlite::params;
@@ -434,7 +451,7 @@ mod tests {
         let database = Database::open_in_memory().expect("database should open");
         database
             .with_connection(|connection| {
-                let now = StudyTimeContext::capture()?.now_utc_millis;
+                let now = StudyTimeContext::capture(connection)?.now_utc_millis;
                 let deck_id = create_deck_in_connection(
                     connection,
                     CreateDeckInput {

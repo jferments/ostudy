@@ -95,7 +95,7 @@ pub fn set_deck_archived(
 pub(crate) fn list_decks_from_connection(
     connection: &mut Connection,
 ) -> Result<Vec<DeckSummaryDto>, CommandError> {
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     deck_projection::list(connection, time.now_utc_millis)
         .map(|rows| rows.into_iter().map(DeckSummaryDto::from).collect())
 }
@@ -104,7 +104,7 @@ pub(crate) fn get_deck_from_connection(
     connection: &Connection,
     deck_id: &str,
 ) -> Result<DeckSummaryDto, CommandError> {
-    let time = StudyTimeContext::capture()?;
+    let time = StudyTimeContext::capture(connection)?;
     deck_projection::get(connection, deck_id, time.now_utc_millis)?
         .map(DeckSummaryDto::from)
         .ok_or_else(|| CommandError::new("deck_not_found", "That deck no longer exists."))

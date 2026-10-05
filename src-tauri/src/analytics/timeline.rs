@@ -51,8 +51,13 @@ fn load_local_date_buckets(
     })?;
     let step_days = context.range.step_days().unwrap_or(1);
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
-    let start_index = push_value(&mut values, window.start_local_date.to_string());
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
+    let bucket_sql = context.time.review_study_period_sql(
+        "a",
+        window.start_local_date,
+        step_days,
+        &mut values,
+    )?;
     let highlighted_index = context
         .highlighted_session_id
         .as_ref()
@@ -63,7 +68,7 @@ fn load_local_date_buckets(
     );
     let sql = format!(
         "SELECT
-             CAST((julianday(a.review_local_date) - julianday(?{start_index})) / {step_days} AS INTEGER),
+             {bucket_sql},
              COUNT(DISTINCT r.card_id),
              COUNT(*),
              COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
@@ -142,7 +147,7 @@ fn load_months(
     let last_month = context.time.month_start(context.time.local_date)?;
 
     let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
+    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
     let highlighted_index = context
         .highlighted_session_id
         .as_ref()
@@ -153,7 +158,7 @@ fn load_months(
     );
     let sql = format!(
         "SELECT
-             substr(a.review_local_date, 1, 7),
+             substr({study_date}, 1, 7),
              COUNT(DISTINCT r.card_id),
              COUNT(*),
              COALESCE(SUM(CASE WHEN r.state_before = 0 THEN 1 ELSE 0 END), 0),
@@ -171,6 +176,7 @@ fn load_months(
          WHERE {conditions}
          GROUP BY 1
          ORDER BY 1",
+        study_date = context.time.review_study_date_sql("a"),
         history_from = context.history_from_sql(),
         conditions = conditions.join(" AND "),
     );
@@ -231,12 +237,12 @@ fn to_dto(
     let end_at = if end_date >= context.time.local_date {
         context.time.now_utc_millis.saturating_add(1)
     } else {
-        context.time.first_valid_instant(next_date)?
+        context.time.study_day_start(next_date)?
     };
     Ok(TimelineBucketDto {
         start_local_date: start_date.to_string(),
         end_local_date: end_date.to_string(),
-        start_at: context.time.first_valid_instant(start_date)?,
+        start_at: context.time.study_day_start(start_date)?,
         end_at,
         cards_practiced: values.cards_practiced,
         review_count: values.review_count,

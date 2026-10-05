@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { FontControl, NumberControl, RangeControl, SelectControl } from "./SettingsControls";
+import { FontControl, HourControl, NumberControl, RangeControl, SelectControl } from "./SettingsControls";
 
 describe("shared Settings controls", () => {
   it("switches from a bundled font to an editable installed family", () => {
@@ -40,5 +40,26 @@ describe("shared Settings controls", () => {
     expect(update).toHaveBeenLastCalledWith(10000);
     fireEvent.change(screen.getByRole("combobox", { name: "Motion" }), { target: { value: "none" } });
     expect(update).toHaveBeenLastCalledWith("none");
+  });
+
+  it("offers every hour from 12 a.m. to 11 p.m. and reports the chosen hour as a number", () => {
+    const update = vi.fn();
+    render(<HourControl label="New day starts at" value={4}
+      description="Reviews before this time count toward the previous day." onChange={update} />);
+    const select = screen.getByRole("combobox", { name: "New day starts at" }) as HTMLSelectElement;
+    const labels = Array.from(select.options, (option) => option.textContent);
+    expect(labels).toEqual([
+      "12 a.m.", "1 a.m.", "2 a.m.", "3 a.m.", "4 a.m.", "5 a.m.", "6 a.m.", "7 a.m.",
+      "8 a.m.", "9 a.m.", "10 a.m.", "11 a.m.", "12 p.m.", "1 p.m.", "2 p.m.", "3 p.m.",
+      "4 p.m.", "5 p.m.", "6 p.m.", "7 p.m.", "8 p.m.", "9 p.m.", "10 p.m.", "11 p.m.",
+    ]);
+    expect(select.selectedOptions[0]?.textContent).toBe("4 a.m.");
+    expect(select.getAttribute("aria-describedby")).toBeTruthy();
+    expect(screen.getByText("Reviews before this time count toward the previous day.").id)
+      .toBe(select.getAttribute("aria-describedby"));
+    fireEvent.change(select, { target: { value: "0" } });
+    expect(update).toHaveBeenLastCalledWith(0);
+    fireEvent.change(select, { target: { value: "23" } });
+    expect(update).toHaveBeenLastCalledWith(23);
   });
 });

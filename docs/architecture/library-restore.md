@@ -100,11 +100,17 @@ returns. These checks supplement, rather than replace, cooperating-process owner
 All startup migration and lineage-conversion writes operate on the candidate.
 Native `Database::open` retains its existing per-migration transaction, checksum,
 ledger, payload and legacy-converter checks. `checkpoint_preservation.rs` adds a
-version-specific retained-value proof for each additive release upgrade through
-schema 5: typed values, column identities, multiplicity and notes rowids remain
-equal, while each table added after the source schema must be empty. A future
-release upgrade requires an explicit preservation contract rather than silently
-adopting count-only comparisons.
+retained-value proof from a registry holding one preservation contract per
+release schema. An upgrade proceeds only when every schema after the source has
+a contract; a release without one is refused rather than compared by counts.
+The proof compares the source with the final candidate directly: each table a
+later release adds must exist and be empty, and every table that no contract
+names keeps its typed values, column identities, multiplicity and notes rowids.
+Review events with their attributions and scheduler context, question attempts
+and review links, practice-session cards and snapshots, schedule-action events,
+and StudyTargets with their card origins are compared by name before any
+contract applies. No contract may list them, except that schema 5 creates the
+scheduler-context table empty.
 Historical public migrations/repairs retain their existing database-owner proofs;
 there is no claim that every historical transformation is byte-identical.
 

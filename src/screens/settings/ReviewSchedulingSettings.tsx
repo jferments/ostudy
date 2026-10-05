@@ -2,7 +2,7 @@ import { Checkbox } from "../../ui/primitives/FormControls";
 import { Panel } from "../../ui/primitives/Panel";
 import type { AppSettings } from "../../ipc/settings";
 import { Button } from "../../ui/primitives/Button";
-import { NumberControl, RangeControl } from "./SettingsControls";
+import { HourControl, NumberControl, RangeControl } from "./SettingsControls";
 
 interface ReviewSchedulingSettingsProps {
   draft: AppSettings;
@@ -45,6 +45,12 @@ export function ReviewSchedulingSettings({
             label="Reviews per day"
             value={draft.dailyReviewLimit}
             onChange={(dailyReviewLimit) => update({ dailyReviewLimit })}
+          />
+          <HourControl
+            label="New day starts at"
+            value={draft.newDayStartHour}
+            description="Reviews before this time count toward the previous day."
+            onChange={(newDayStartHour) => update({ newDayStartHour })}
           />
         </div>
         <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">

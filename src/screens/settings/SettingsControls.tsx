@@ -56,6 +56,24 @@ export function SelectControl<T extends string>({ label, value, options, descrip
   </FormField>;
 }
 
+/** An hour of the day as the settings copy writes it: "12 a.m." to "11 p.m.". */
+function formatHourOfDay(hour: number): string {
+  return `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? "a.m." : "p.m."}`;
+}
+
+const HOURS_OF_DAY = Array.from({ length: 24 }, (_, hour) => ({
+  value: String(hour),
+  label: formatHourOfDay(hour),
+}));
+
+/** A whole hour of the day, midnight through 11 p.m. */
+export function HourControl({ label, value, description, onChange }: {
+  label: string; value: number; description?: string; onChange: (hour: number) => void;
+}) {
+  return <SelectControl label={label} value={String(value)} options={HOURS_OF_DAY} description={description}
+    onChange={(hour) => onChange(Number(hour))} />;
+}
+
 export function RangeControl({ label, min, max, step, value, suffix, onChange }: {
   label: string; min: number; max: number; step: number; value: number; suffix: string;
   onChange: (value: number) => void;
