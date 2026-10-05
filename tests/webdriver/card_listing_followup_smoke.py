@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -111,7 +112,13 @@ def close_open_editor(session_id: str, deadline: float) -> None:
             {"using": "xpath", "value": "//main//*[@data-testid='workbench-editor']//button[normalize-space(.)='Cancel' or @aria-label='Close editor' or normalize-space(.)='Close']"},
         )
         if isinstance(buttons, list) and buttons:
-            webdriver.click(session_id, str(buttons[0][webdriver.ELEMENT_KEY]))
+            try:
+                webdriver.click(session_id, str(buttons[0][webdriver.ELEMENT_KEY]))
+            except webdriver.WebDriverProtocolError as error:
+                # Saving a new card closes the editor itself, which can remove
+                # the button between finding and clicking it.
+                if error.error not in ("stale element reference", "no such element"):
+                    raise
         time.sleep(0.2)
     raise AssertionError("The card editor did not close")
 
@@ -160,7 +167,7 @@ def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
     if measurement.get("rowFits") is not True:
         raise AssertionError(f"Card row overflowed its pane: {measurement!r}")
     filters = measurement.get("filters")
-    if not isinstance(filters, list) or [label.split(" ")[0] for label in filters] != ["All", "Due", "New", "Suspended"]:
+    if not isinstance(filters, list) or [re.sub(r"[\d,]+$", "", label).strip() for label in filters] != ["All", "Due", "New", "Suspended"]:
         raise AssertionError(f"Deck quick filters drifted: {measurement!r}")
     ui.assert_no_horizontal_overflow(session_id, "medium Workbench deck list")
 

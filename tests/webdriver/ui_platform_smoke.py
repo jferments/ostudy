@@ -950,7 +950,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     new_deck = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='Create a new deck' or normalize-space(.)='New deck']",
+        "//main//button[normalize-space(.)='New deck']",
         deadline,
     )
     webdriver.click(session_id, new_deck)
@@ -974,7 +974,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
     wait_for_overlay_inactive(session_id, deadline, "create-deck focus restoration")
-    wait_for_active_label(session_id, "Create a new deck", deadline)
+    wait_for_active_label(session_id, "New deck", deadline)
 
 
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
@@ -1274,7 +1274,9 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
         "//main//header//button[normalize-space(.)='New card']",
         deadline,
     )
-    webdriver.choose_menu_item(session_id, f"{deck_name} actions", "Bulk add…", deadline)
+    webdriver.choose_menu_item(
+        session_id, f"{deck_name} actions", "Bulk add…", deadline, trigger_scope="//main//header"
+    )
     webdriver.find_element(
         session_id,
         "css selector",

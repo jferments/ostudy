@@ -774,21 +774,33 @@ def find_card_row(session_id: str, question: str, deadline: float) -> str:
     )
 
 
-def choose_menu_item(session_id: str, menu_label: str, item: str, deadline: float) -> None:
-    """Open an overflow menu by its accessible name and choose one item."""
+def choose_menu_item(
+    session_id: str,
+    menu_label: str,
+    item: str,
+    deadline: float,
+    trigger_scope: str = "//main",
+) -> None:
+    """Open an overflow menu by its accessible name and choose one item.
+
+    A deck's row in the tree and the card list's header both carry a menu named
+    for the deck; pass ``trigger_scope="//main//header"`` for the header's.
+    """
     trigger = find_element(
         session_id,
         "xpath",
-        f"//main//button[@aria-label={json.dumps(menu_label)}]",
+        f"{trigger_scope}//button[@aria-label={json.dumps(menu_label)}]",
         deadline,
     )
     click(session_id, trigger)
+    # Keep the ellipsis literal: an ASCII escape would never match in XPath.
+    item_literal = json.dumps(item, ensure_ascii=False)
     option = find_element(
         session_id,
         "xpath",
         # A menu on wider screens; a sheet of buttons on phones.
-        f"//*[@role='menuitem'][normalize-space(.)={json.dumps(item)}]"
-        f" | //*[@role='dialog']//*[@aria-label={json.dumps(menu_label)}]//button[normalize-space(.)={json.dumps(item)}]",
+        f"//*[@role='menuitem'][normalize-space(.)={item_literal}]"
+        f" | //*[@role='dialog']//*[@aria-label={json.dumps(menu_label)}]//button[normalize-space(.)={item_literal}]",
         deadline,
     )
     click(session_id, option)
@@ -914,6 +926,33 @@ def verify_analytics_tag_search(
     )
     click(session_id, tag_action)
     verify_tag_filtered_search(session_id, question, tag_name, deadline)
+
+
+def wait_for_saved_library_search_checkpoint(session_id: str, deadline: float) -> None:
+    """The app saves its checkpoint shortly after navigating; restart only once it has."""
+    checkpoint: Any = None
+    while time.monotonic() < deadline:
+        checkpoint = request(
+            "POST",
+            f"/session/{session_id}/execute/async",
+            {
+                "script": """
+                    const done = arguments[arguments.length - 1];
+                    window.__TAURI_INTERNALS__.invoke('get_ui_checkpoint')
+                      .then((value) => done(value))
+                      .catch((error) => done({ error: String(error) }));
+                """,
+                "args": [],
+            },
+        )
+        if (
+            isinstance(checkpoint, dict)
+            and checkpoint.get("section") == "decks"
+            and checkpoint.get("flashcardsWorkspace") == "search"
+        ):
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"Library Search checkpoint was not saved before restart: {checkpoint!r}")
 
 
 def verify_due_today(session_id: str, expected: str, deadline: float) -> None:
@@ -1220,6 +1259,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
     progress("Opening Search from the current recent-review tag")
     verify_analytics_tag_search(session_id, question, tag_name, deadline)
+    wait_for_saved_library_search_checkpoint(session_id, deadline)
     progress("Progress verification completed")
     return deck_name, question
 
