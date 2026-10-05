@@ -121,7 +121,8 @@ export type ReviewedFilter =
   | "past_7_local_dates"
   | "past_30_local_dates"
   | "before_past_30_local_dates";
-export type CardSort = "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc";
+/** `source_order` lists each deck's cards in the order of the source they came from. */
+export type CardSort = "relevance" | "updated_desc" | "due_asc" | "last_reviewed_desc" | "source_order";
 
 export interface CardSearchInput {
   deckIds: string[];
@@ -153,6 +154,14 @@ export interface CardBrowserRow {
   needsMorePractice: boolean;
   createdAt: number;
   updatedAt: number;
+  /** Days until the next review as of the last one; 0 for a new card. */
+  intervalDays: number;
+  lapses: number;
+  stability: number;
+  difficulty: number;
+  /** Where the card came from in its source document, when it has one. */
+  sourceUnitKind: string | null;
+  sourceUnit: number | null;
 }
 
 export interface CardSearchPage {
