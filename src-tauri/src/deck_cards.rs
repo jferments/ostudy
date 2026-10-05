@@ -334,7 +334,7 @@ mod tests {
 
         let connection = release_library(5);
         let library = seed(&connection);
-        advance_release_library(&connection, 5, 6);
+        advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
         let page = list_from_connection(
             &connection,
             DeckCardSummaryQuery {

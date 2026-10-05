@@ -20,7 +20,7 @@ fn all_time() -> AnalyticsQueryDto {
 fn merged_copy_reviews_count_under_their_originals() {
     let mut connection = release_library(5);
     let library = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
 
     let analytics = load_analytics(&mut connection, all_time()).unwrap();
     // Twelve reviews of eight facts. Six of the reviews were of copies the
@@ -92,7 +92,7 @@ fn merged_copy_reviews_count_under_their_originals() {
 fn a_deck_filter_counts_merged_reviews_in_the_original_deck() {
     let mut connection = release_library(5);
     let library = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
 
     let analytics = load_analytics(
         &mut connection,
@@ -121,7 +121,7 @@ fn a_deck_filter_counts_merged_reviews_in_the_original_deck() {
 fn a_dated_window_counts_merged_reviews_under_their_originals() {
     let mut connection = release_library(5);
     seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
 
     // A dated window over the whole library starts from the review dates, a
     // different join from the all-time and deck views above.

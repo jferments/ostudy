@@ -1,16 +1,15 @@
 //! The study calendar: days studied, streaks and the busiest weekday.
 //!
-//! Streaks and the calendar describe the learner, so they read every review
-//! attribution, whatever filter the page shows and whether or not the card
-//! still exists.
+//! Streaks and the calendar describe the learner, so they read the study
+//! activity ledger: every stored review, whatever filter the page shows and
+//! whether or not its card still exists, plus the totals that deletions kept
+//! when they purged review history.
 
 use chrono::{Datelike, Duration, NaiveDate};
-use rusqlite::{params_from_iter, types::Value as SqlValue, Connection};
+use rusqlite::Connection;
 use serde::Serialize;
 
-use crate::{error::CommandError, study_calendar::StudyTimeContext};
-
-use super::super::scope::{AnalyticsContext, HistoryPeriod};
+use crate::{error::CommandError, study_activity, study_calendar::StudyTimeContext};
 
 /// Study days in the activity calendar, today included (26 weeks).
 pub const ACTIVITY_DAYS: i64 = 182;
@@ -46,27 +45,6 @@ pub struct ProgressActivityDto {
     pub busiest_weekday: Option<u32>,
 }
 
-/// Study dates in the context's range with at least one review in scope.
-pub fn study_day_count(
-    connection: &Connection,
-    context: &AnalyticsContext,
-) -> Result<i64, CommandError> {
-    let mut values = Vec::<SqlValue>::new();
-    let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current)?;
-    connection
-        .query_row(
-            &format!(
-                "SELECT COUNT(DISTINCT {study_date}) FROM {history_from} WHERE {conditions}",
-                study_date = context.time.review_study_date_sql("a"),
-                history_from = context.history_from_sql(),
-                conditions = conditions.join(" AND "),
-            ),
-            params_from_iter(values.iter()),
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)
-}
-
 pub fn load(
     connection: &Connection,
     time: &StudyTimeContext,
@@ -75,34 +53,21 @@ pub fn load(
         .local_date
         .checked_sub_signed(Duration::days(ACTIVITY_DAYS - 1))
         .ok_or_else(invalid_date)?;
-    let mut values = Vec::<SqlValue>::new();
-    let in_calendar =
-        time.review_study_dates_sql("a", Some(start), Some(time.local_date), &mut values)?;
-    let sql = format!(
-        "SELECT {study_date}, COUNT(*), COALESCE(SUM(r.response_time_ms), 0)
-         FROM review_event_attributions a
-         CROSS JOIN review_events r ON r.id = a.review_event_id
-         WHERE {in_calendar}
-         GROUP BY 1
-         ORDER BY 1",
-        study_date = time.review_study_date_sql("a"),
-    );
-    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let days = statement
-        .query_map(params_from_iter(values.iter()), |row| {
-            Ok(ActivityDayDto {
-                local_date: row.get(0)?,
-                review_count: row.get(1)?,
-                study_time_ms: row.get(2)?,
-            })
+    let hour = time.new_day_start_hour();
+    let calendar =
+        study_activity::learner_days(connection, hour, Some(start), Some(time.local_date))?;
+    let days: Vec<ActivityDayDto> = calendar
+        .iter()
+        .filter(|(_, day)| day.review_count > 0)
+        .map(|(date, day)| ActivityDayDto {
+            local_date: date.to_string(),
+            review_count: day.review_count,
+            study_time_ms: day.study_time_ms,
         })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
+        .collect();
 
     let mut weekday_reviews = [0_i64; 7];
-    for day in &days {
-        let date = parse_date(&day.local_date)?;
+    for (date, day) in &calendar {
         weekday_reviews[date.weekday().num_days_from_monday() as usize] += day.review_count;
     }
     let busiest_weekday = weekday_reviews
@@ -113,8 +78,8 @@ pub fn load(
         .max_by_key(|(weekday, count)| (**count, std::cmp::Reverse(*weekday)))
         .and_then(|(weekday, _)| u32::try_from(weekday).ok());
 
-    let (current_streak, longest_streak) =
-        streaks(&all_study_dates(connection, time)?, time.local_date);
+    let study_dates = study_activity::learner_study_dates(connection, hour)?;
+    let (current_streak, longest_streak) = streaks(&study_dates, time.local_date);
     Ok(ProgressActivityDto {
         start_local_date: start.to_string(),
         today_local_date: time.local_date.to_string(),
@@ -123,24 +88,6 @@ pub fn load(
         longest_streak,
         busiest_weekday,
     })
-}
-
-/// Every study date with a review, oldest first.
-fn all_study_dates(
-    connection: &Connection,
-    time: &StudyTimeContext,
-) -> Result<Vec<NaiveDate>, CommandError> {
-    let sql = format!(
-        "SELECT DISTINCT {study_date} FROM review_event_attributions a ORDER BY 1",
-        study_date = time.review_study_date_sql("a"),
-    );
-    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let dates = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    dates.iter().map(|date| parse_date(date)).collect()
 }
 
 /// The current and longest runs of consecutive study dates. `dates` is sorted
@@ -174,10 +121,6 @@ fn streak_dto((start, end): (NaiveDate, NaiveDate)) -> StreakDto {
     }
 }
 
-fn parse_date(value: &str) -> Result<NaiveDate, CommandError> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|_| invalid_date())
-}
-
 fn invalid_date() -> CommandError {
     CommandError::new(
         "invalid_analytics_date",
@@ -190,7 +133,7 @@ mod tests {
     use super::*;
 
     fn date(value: &str) -> NaiveDate {
-        parse_date(value).unwrap()
+        study_activity::parse_date(value).unwrap()
     }
 
     fn run(length: i64, start: &str, end: &str) -> Option<StreakDto> {

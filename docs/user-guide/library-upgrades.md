@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 6: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), and schema 6 turns deck folders and document collections into subjects, described below. Libraries at schemas 1–5 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 7: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, and schema 7 keeps your study days when cards are deleted, both described below. Libraries at schemas 1–6 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -36,6 +36,14 @@ A subject is one course: it holds the course's documents, guides and decks. Deck
 Older builds cannot open a schema-6 library. Restoring the pre-upgrade checkpoint returns the schema-5 library as it was. A `.ostudybackup` made before the update still restores, and the restored library gets the same subjects as updating in place.
 
 If you synchronize several devices, update all of them, ideally right after a final sync. A device without the update refuses a package from an updated device and asks to be updated first; an updated device still accepts a package from one that has not updated yet. See [Device sync](device-sync.md).
+
+## The study activity update (schema 7)
+
+Study days, streaks and study time now belong to you rather than to your cards. When deleted cards or decks are cleaned up after the undo window, oStudy keeps how many reviews you made in each hour of each day, how many you remembered, how many were new cards and how long they took. The activity calendar, streaks and day totals count those kept totals with your stored reviews, so deleting a deck no longer shortens a streak. Progress views of your current cards (remembered, subjects, the reviews chart) still count only cards that exist.
+
+Totals are kept by hour, so changing "New day starts at" in Settings regroups past days the same way it regroups stored reviews. The update itself writes no rows: totals are kept from the first deletion after it, and the Progress page builds its saved per-deck summaries the first time it opens.
+
+Older builds cannot open a schema-7 library. Restoring the pre-upgrade checkpoint returns the schema-6 library as it was. Kept totals synchronize between updated devices with flashcards.
 
 ## What happens when migration is required
 

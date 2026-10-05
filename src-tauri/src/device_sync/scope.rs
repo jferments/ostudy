@@ -125,6 +125,7 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
     "review_event_attributions",
     "review_event_tag_attributions",
     "review_event_scheduler_context",
+    "study_activity_retained",
     "question_review_links",
     "question_remediation_attempts",
     "source_citation_snapshots",
@@ -425,7 +426,9 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM editor_draft_assets;
              DELETE FROM editor_drafts;
              DELETE FROM question_note_writes;
-             DELETE FROM subject_filing_reviews;",
+             DELETE FROM subject_filing_reviews;
+             DELETE FROM review_day_rollup_built_decks;
+             DELETE FROM review_day_rollups;",
         )
         .map_err(CommandError::database)?;
 
@@ -472,6 +475,7 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM review_event_attributions;
                  DELETE FROM review_event_scheduler_context;
                  DELETE FROM review_events;
+                 DELETE FROM study_activity_retained;
                  DELETE FROM schedule_action_events;
                  DELETE FROM schedule_action_operations;
                  DELETE FROM practice_session_card_tag_snapshots;

@@ -14,7 +14,10 @@ use crate::{
     studyability,
 };
 
-use super::super::scope::{AnalyticsContext, HistoryPeriod};
+use super::{
+    super::scope::AnalyticsContext,
+    hours::{self, Totals},
+};
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +41,7 @@ pub struct SubjectProgressDto {
 }
 
 pub fn load(
-    connection: &Connection,
+    connection: &mut Connection,
     context: &AnalyticsContext,
 ) -> Result<Vec<SubjectProgressDto>, CommandError> {
     let mut rows = BTreeMap::<Option<String>, SubjectProgressDto>::new();
@@ -78,6 +81,7 @@ pub fn load(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
+    drop(statement);
     for (subject_id, card_count, solid_count, due_today_count) in current {
         let row = rows.entry(subject_id).or_default();
         row.card_count = card_count;
@@ -85,89 +89,44 @@ pub fn load(
         row.due_today_count = due_today_count;
     }
 
-    let mut values = Vec::<SqlValue>::new();
-    let conditions =
-        context.historical_conditions(&mut values, HistoryPeriod::CurrentAndPrevious)?;
-    let current_predicate = context.time.review_study_dates_sql(
-        "a",
-        context
-            .window
-            .current
-            .as_ref()
-            .map(|window| window.start_local_date),
-        None,
-        &mut values,
-    )?;
-    let previous_predicate = match context.previous_window() {
-        Some(window) => context.time.review_study_dates_sql(
-            "a",
-            Some(window.start_local_date),
-            Some(window.end_local_date),
-            &mut values,
-        )?,
-        None => "0 = 1".to_string(),
-    };
-    let sql = format!(
-        "SELECT d.subject_id,
-             COALESCE(SUM(CASE WHEN {current_predicate} THEN 1 ELSE 0 END), 0),
-             {remembered},
-             {retention_reviews},
-             {retention_remembered},
-             COALESCE(SUM(CASE WHEN {current_predicate} THEN r.response_time_ms ELSE 0 END), 0),
-             {previous_retention_reviews},
-             {previous_retention_remembered}
-         FROM {history_from}
-         WHERE {conditions}
-         GROUP BY d.subject_id",
-        remembered = learning_metrics::remembered_count_where_sql("r", &current_predicate),
-        retention_reviews = learning_metrics::retention_review_count_sql("r", &current_predicate),
-        retention_remembered =
-            learning_metrics::retention_remembered_count_sql("r", &current_predicate),
-        previous_retention_reviews =
-            learning_metrics::retention_review_count_sql("r", &previous_predicate),
-        previous_retention_remembered =
-            learning_metrics::retention_remembered_count_sql("r", &previous_predicate),
-        history_from = context.history_from_sql(),
-        conditions = conditions.join(" AND "),
-    );
-    let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let history = statement
-        .query_map(params_from_iter(values.iter()), |row| {
-            Ok((
-                row.get::<_, Option<String>>(0)?,
-                [
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
-                    row.get::<_, i64>(5)?,
-                    row.get::<_, i64>(6)?,
-                    row.get::<_, i64>(7)?,
-                ],
-            ))
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    for (
-        subject_id,
-        [reviews, remembered, retention, retained, time, previous, previous_retained],
-    ) in history
-    {
-        if reviews == 0 && !rows.contains_key(&subject_id) {
+    let current_start = context
+        .window
+        .current
+        .as_ref()
+        .map(|window| window.start_local_date);
+    let mut history = BTreeMap::<Option<String>, (Totals, Totals)>::new();
+    for day in hours::load(connection, context, true)? {
+        let (current, previous) = history.entry(day.subject_id).or_default();
+        if current_start.is_none_or(|start| day.study_date >= start) {
+            current.add(&day.totals);
+        } else {
+            previous.add(&day.totals);
+        }
+    }
+    for (subject_id, (current, previous)) in history {
+        if current.review_count == 0 && !rows.contains_key(&subject_id) {
             continue;
         }
         let row = rows.entry(subject_id).or_default();
-        row.review_count = reviews;
-        row.remembered_count = remembered;
-        row.correct_rate = rate(remembered, reviews);
-        row.retention_review_count = retention;
-        row.retention_remembered_count = retained;
-        row.true_retention = rate(retained, retention);
-        row.study_time_ms = time;
-        if retention >= MIN_TOPIC_RETENTION_REVIEWS && previous >= MIN_TOPIC_RETENTION_REVIEWS {
-            row.retention_delta = rate(retained, retention)
-                .zip(rate(previous_retained, previous))
+        row.review_count = current.review_count;
+        row.remembered_count = current.remembered_count;
+        row.correct_rate = rate(current.remembered_count, current.review_count);
+        row.retention_review_count = current.retention_review_count;
+        row.retention_remembered_count = current.retention_remembered_count;
+        row.true_retention = rate(
+            current.retention_remembered_count,
+            current.retention_review_count,
+        );
+        row.study_time_ms = current.response_time_ms;
+        if current.retention_review_count >= MIN_TOPIC_RETENTION_REVIEWS
+            && previous.retention_review_count >= MIN_TOPIC_RETENTION_REVIEWS
+        {
+            row.retention_delta = row
+                .true_retention
+                .zip(rate(
+                    previous.retention_remembered_count,
+                    previous.retention_review_count,
+                ))
                 .map(|(now, before)| now - before);
         }
     }
