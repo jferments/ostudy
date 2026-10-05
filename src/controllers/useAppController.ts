@@ -159,6 +159,8 @@ export function useAppController() {
   const analyticsRequestSequence = useRef(1);
   const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
   // Library reopens the view the learner used last in this process.
+  /** The subject page Home shows, or null for the subject list. Process-local, never checkpointed. */
+  const [homeSubjectId, setHomeSubjectId] = useState<string | null>(null);
   const lastLibrarySectionRef = useRef<LibrarySection>("decks");
   if (isLibrarySection(section)) lastLibrarySectionRef.current = section;
   const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
@@ -358,15 +360,16 @@ export function useAppController() {
   }, [isLoading]);
 
   useEffect(() => {
-    // Home is the root: Android Back from any other destination returns there.
-    if (section === "home" && !practiceWorkflow) return;
+    // Home's subject list is the root: Android Back from a subject page or
+    // any other destination returns there.
+    if (section === "home" && homeSubjectId === null && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
       void (practiceWorkflow
         ? returnPracticeToOriginRef.current()
         : navigateRef.current("home"));
       return true;
     });
-  }, [practiceWorkflow, section]);
+  }, [homeSubjectId, practiceWorkflow, section]);
 
   useEffect(() => {
     if (!hasUnsavedCard && !hasUnsavedSettings) return;
@@ -532,6 +535,11 @@ export function useAppController() {
     if (next === "review" && practiceWorkflow !== null) return;
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
+    if (next === "home" && section === "home" && homeSubjectId !== null && !leavingPracticeWorkflow) {
+      // Home again from a subject page returns to the subject list.
+      setHomeSubjectId(null);
+      return;
+    }
     const alreadyAtNonFlashcardsRoot = next === section && next !== "decks";
     if (alreadyAtNonFlashcardsRoot && !leavingPracticeWorkflow) return;
     if (!(await canLeaveCurrentSection())) return;
@@ -539,6 +547,7 @@ export function useAppController() {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
     }
+    setHomeSubjectId(null);
     if (
       next !== "decks" &&
       flashcardsRoute.view === "root" &&
@@ -610,20 +619,28 @@ export function useAppController() {
   }
 
   /**
-   * Opens a subject from Home in the Library view that shows it best: Decks
-   * with the subject's folder in view (`null` is No subject's unsorted decks),
-   * or Documents for a subject that has documents and no decks yet. One call,
-   * so the subject page can take its place later.
+   * Opens a subject's page inside Home. No subject has no page of its own, so
+   * it opens Library: its unsorted decks, or Documents when it holds only
+   * documents.
    */
   async function openSubject(
     subjectId: string | null,
-    view: "decks" | "documents" = "decks",
+    noSubjectView: "decks" | "documents" = "decks",
   ): Promise<void> {
-    if (view === "documents") {
-      await navigate("documents");
+    if (subjectId === null) {
+      if (noSubjectView === "documents") await navigate("documents");
+      else await openLibrary({ subjectId: null });
       return;
     }
-    await openLibrary({ subjectId });
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    if (leavingPracticeWorkflow) {
+      practiceCursorRef.current = null;
+      setPracticeWorkflow(null);
+    }
+    setHomeSubjectId(subjectId);
+    setSection("home");
   }
 
   async function navigateFlashcardsWorkspace(
@@ -823,6 +840,8 @@ export function useAppController() {
     openSearch,
     openLibrary,
     openSubject,
+    /** The subject page shown inside Home, or null for the subject list. */
+    homeSubjectId,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
     openAnalyticsTagSearch,

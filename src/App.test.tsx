@@ -313,6 +313,28 @@ vi.mock("./screens/home/HomeScreen", () => ({
     </section>
   ),
 }));
+vi.mock("./screens/subject/SubjectScreen", () => ({
+  SubjectScreen: ({
+    subjectId,
+    onBack,
+    onOpenLibrary,
+  }: {
+    subjectId: string;
+    onBack: () => void;
+    onOpenLibrary: (scope: { subjectId?: string | null; deckId?: string }) => void;
+  }) => (
+    <section>
+      <h1>Subject mock</h1>
+      <output aria-label="Subject page">{subjectId}</output>
+      <button type="button" onClick={onBack}>
+        Back to subjects mock
+      </button>
+      <button type="button" onClick={() => onOpenLibrary({ subjectId })}>
+        Manage subject mock
+      </button>
+    </section>
+  ),
+}));
 vi.mock("./screens/review/ReviewScreen", () => ({
   ReviewScreen: ({
     onStartReview,
@@ -887,13 +909,32 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("decks");
   });
 
-  it("opens a subject from Home in the Library view that shows it", async () => {
+  it("opens a subject's page from Home and manages it in Library", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
     renderApp();
     await screen.findByRole("heading", { name: "Home mock" });
     fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
+    expect(await screen.findByRole("heading", { name: "Subject mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Subject page").textContent).toBe("subject-a");
+    expect(currentDestination()).toBe("Home");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to subjects mock" }));
+    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
+    await screen.findByRole("heading", { name: "Subject mock" });
+    // Choosing Home again, or Android Back, returns to the subject list.
+    fireEvent.click(navButton("Home"));
+    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
+    await screen.findByRole("heading", { name: "Subject mock" });
+    await waitFor(() => expect(dispatchPlatformBack()).toBe(true));
+    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Manage subject mock" }));
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
     expect(screen.getByLabelText("Subject focus").textContent).toMatch(/^\d+\|subject-a$/u);
 
@@ -901,12 +942,6 @@ describe("App shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open unfiled documents mock" }));
     expect(await screen.findByRole("heading", { name: "Documents mock" })).toBeTruthy();
     expect(libraryView("Documents").getAttribute("aria-current")).toBe("page");
-
-    fireEvent.click(navButton("Home"));
-    fireEvent.click(await screen.findByRole("button", { name: "Open subject mock" }));
-    // An ordinary visit to Decks carries no focus request.
-    fireEvent.click(await screen.findByRole("button", { name: "Open Search workspace" }));
-    await waitFor(() => expect(screen.getByLabelText("Subject focus").textContent).toBe("none"));
   });
 
   it("reopens the Library view used last", async () => {

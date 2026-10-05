@@ -81,6 +81,7 @@ function Harness() {
           : "none"}
       </output>
       <output aria-label="library section">{controller.librarySection}</output>
+      <output aria-label="subject page">{controller.homeSubjectId ?? "none"}</output>
       <output aria-label="finished sessions">{controller.finishedPracticeSessions}</output>
       <output aria-label="subject focus">
         {controller.flashcardsRoute.view === "root" && controller.flashcardsRoute.subjectFocus
@@ -494,9 +495,9 @@ describe("application checkpoint lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
     await waitFor(() =>
-      expect(screen.getByLabelText("subject focus").textContent).toBe("c".repeat(32)),
+      expect(screen.getByLabelText("subject page").textContent).toBe("c".repeat(32)),
     );
-    expect(screen.getByLabelText("route view").textContent).toBe("decks");
+    expect(screen.getByLabelText("section").textContent).toBe("home");
     fireEvent.click(screen.getByRole("button", { name: "Open No subject" }));
     await waitFor(() =>
       expect(screen.getByLabelText("subject focus").textContent).toBe("no subject"),
@@ -510,12 +511,15 @@ describe("application checkpoint lifecycle", () => {
     expect(screen.getByLabelText("library section").textContent).toBe("documents");
 
     vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
     lifecycle("background");
     await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
     // The focus request is process-local, like an Analytics launch.
     for (const [saved] of vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls) {
+      // The subject page is process-local too: Home is saved, never the subject.
       expect(JSON.stringify(saved)).not.toContain("subjectFocus");
       expect(JSON.stringify(saved)).not.toContain("c".repeat(32));
     }
