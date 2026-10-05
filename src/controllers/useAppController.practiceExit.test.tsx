@@ -120,7 +120,7 @@ describe("active practice navigation", () => {
       name: "Terminate this practice session?",
     });
     expect(dialog.textContent).toContain("review history");
-    expect(dialog.textContent).toContain("without opening post-review analytics");
+    expect(dialog.textContent).toContain("without showing its summary");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(terminate).not.toHaveBeenCalled();

@@ -304,7 +304,7 @@ describe("PracticeScreen internal workflow", () => {
     fireEvent.click(repeat);
 
     await waitFor(() => expect(repeat.hasAttribute("disabled")).toBe(true));
-    const analytics = screen.getByRole("button", { name: "View analytics" });
+    const analytics = screen.getByRole("button", { name: "View progress" });
     const chooseDecks = screen.getByRole("button", { name: "Choose decks" });
     expect(analytics.hasAttribute("disabled")).toBe(true);
     expect(chooseDecks.hasAttribute("disabled")).toBe(true);
@@ -383,7 +383,7 @@ describe("PracticeScreen internal workflow", () => {
       },
       onViewAnalytics,
     });
-    fireEvent.click(await screen.findByRole("button", { name: "View analytics" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View progress" }));
     expect(onViewAnalytics).toHaveBeenCalledWith(session.id, []);
   });
 
@@ -428,7 +428,7 @@ describe("PracticeScreen internal workflow", () => {
     });
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    fireEvent.click(await screen.findByRole("button", { name: "View analytics" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View progress" }));
     expect(onViewAnalytics).toHaveBeenCalledWith(session.id, [deck.id, secondDeckId]);
   });
 
@@ -450,7 +450,7 @@ describe("PracticeScreen internal workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
     await screen.findByText(/safely retry the same review/u);
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View analytics" });
+    await screen.findByRole("button", { name: "View progress" });
     const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
     expect(calls[1]?.[0]).toEqual(calls[0]?.[0]);
   });
@@ -491,7 +491,7 @@ describe("PracticeScreen internal workflow", () => {
     await screen.findByText(/safely retry the same review/u);
     now += 9_000;
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View analytics" });
+    await screen.findByRole("button", { name: "View progress" });
 
     const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
     expect(calls[0]?.[0].activeTimeMs).toBe(5_500);
@@ -517,7 +517,7 @@ describe("PracticeScreen internal workflow", () => {
     now += 1_000;
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View analytics" });
+    await screen.findByRole("button", { name: "View progress" });
 
     expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
       expect.objectContaining({ activeTimeMs: 3_000 }),

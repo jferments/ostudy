@@ -407,7 +407,7 @@ export function useAppController() {
     const accepted = await confirm({
       title: "Terminate this practice session?",
       description:
-        "Cards you already reviewed are saved and will keep their updated schedules and review history. Leaving now ends this session without opening post-review analytics.",
+        "Cards you already reviewed are saved and will keep their updated schedules and review history. Leaving now ends this session without showing its summary.",
       confirmLabel: "Yes, terminate",
       destructive: true,
     });

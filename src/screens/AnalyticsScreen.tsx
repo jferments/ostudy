@@ -106,7 +106,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
   return (
     <PageScaffold width="full" className="tw:[&>section]:mb-6 tw:[&>div]:mb-6">
       <PageHeader
-        title="Analytics"
+        title="Progress"
         icon="analytics"
         eyebrow="Learning evidence"
         description="Understand your learning progress, find topics that need attention, and choose what to study next."
