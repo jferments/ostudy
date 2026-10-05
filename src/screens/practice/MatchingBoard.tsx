@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { RichTextView } from "../../editor/RichTextView";
 import { extractRichDocumentText } from "../../editor/richText";
 import type { Asset } from "../../ipc/assets";
@@ -6,8 +6,8 @@ import type { PublicQuestion, QuestionEvaluation } from "../../ipc/questionAttem
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
-import { QuestionTile } from "./QuestionTile";
-import { activePointerTile, answerTile, connectedTile, rematchMatching, matchingRows, tileResult, type Placement } from "./questionPresentation";
+import { QuestionTile, tileKeyDown, tileKeyUp } from "./QuestionTile";
+import { activePointerTile, answerTile, connectedTile, rematchMatching, matchingRows, tileContent, tileHandle, tileResult, type Placement } from "./questionPresentation";
 import { usePracticePointerDrop } from "./usePracticePointerDrop";
 
 export function MatchingBoard({ question, assignments, assets, disabled, evaluation, onChange, onError }: {
@@ -64,13 +64,15 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
         const correct = result ? result.selectedTargetId === result.expectedTargetId : undefined;
         const expected = result ? targets.get(result.expectedTargetId) : null;
         const over = pointer.draggingItemId !== null && pointer.overTargetId === target.id;
+        // On a phone each column is narrow, so a long word breaks at a hyphen where the platform can.
         return <div key={target.id} data-practice-drop-target-id={target.id}
-          className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
-          <QuestionTile key={item.id} id={item.id} label={`Select ${extractRichDocumentText(item.content) || `item ${index + 1}`}`}
-            dropTargetId={target.id} pointer={pointer} disabled={disabled || evaluation !== null} connected={linked} selected={selected === item.id}
+          className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1 tw:hyphens-auto">
+          <QuestionTile key={item.id} id={item.id} action="Select"
+            fallbackName={extractRichDocumentText(item.content) ? undefined : `item ${index + 1}`}
+            content={<RichTextView document={item.content} assets={assets} onLinkError={onError} />}
+            dropTargetId={target.id} pointer={pointer} disabled={disabled} locked={evaluation !== null} connected={linked} selected={selected === item.id}
             correct={correct} onSelect={() => setSelection((value) => value?.seed === seed && value.itemId === item.id ? null : { seed, itemId: item.id })}>
-            <RichTextView document={item.content} assets={assets} onLinkError={onError} />
-            {linked && !evaluation ? <span className="tw:text-caption tw:font-medium tw:text-primary">Connected</span> : null}
+            {linked && !evaluation ? <span className="tw:text-caption tw:font-medium tw:text-accent-foreground">Connected</span> : null}
             {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-small", correct ? "tw:text-success" : "tw:text-destructive")}>
               <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : result.selectedTargetId ? "Incorrect match" : "Not matched"}
             </div> : null}
@@ -86,26 +88,38 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
               <Icon name="close" size={16} />
             </Button> : linked ? <span aria-label="Connected pair">↔</span> : null}
           </div>
-          <div data-match-target={target.id} data-practice-drop-target-id={target.id} data-connected={linked || undefined}
-            data-drop-active={over || undefined}
-            className={cn(answerTile, correct === undefined && linked ? connectedTile : tileResult(correct), "tw:grid tw:content-center tw:gap-2",
-              over && [activePointerTile, "tw:ring-2 tw:ring-primary"])}
-            role="button" tabIndex={disabled || evaluation !== null ? -1 : 0} aria-label={`Match with ${extractRichDocumentText(target.content) || `target ${index + 1}`}`}
-            aria-disabled={disabled || evaluation !== null}
-            onClick={(event) => {
-              if (event.target instanceof Element && event.target.closest("a,button,audio,video,input")) return;
-              if (!pointer.shouldSuppressClick() && selected) assign(selected, target.id);
-            }}
-            onKeyDown={(event) => {
-              if (event.target !== event.currentTarget || event.nativeEvent.isComposing || (event.key !== " " && event.key !== "Enter")) return;
-              event.preventDefault(); event.stopPropagation(); if (selected) assign(selected, target.id);
+          <MatchTarget id={target.id} fallbackName={extractRichDocumentText(target.content) ? undefined : `target ${index + 1}`}
+            connected={linked} correct={correct} over={over} disabled={disabled} locked={evaluation !== null}
+            onActivate={(pointerClick) => {
+              if (pointerClick && pointer.shouldSuppressClick()) return;
+              if (selected) assign(selected, target.id);
             }}>
             <RichTextView document={target.content} assets={assets} onLinkError={onError} />
-          </div>
+          </MatchTarget>
         </div>;
       })}
       {evaluation ? <MatchingCorrections root={root} evaluation={evaluation} /> : null}
     </div>
+  </div>;
+}
+
+/** A right-hand tile. Like a left tile it is readable content under a real button named by
+ * "Match with" and what the tile says, and a checked board leaves it plain content. */
+function MatchTarget({ id, fallbackName, connected, correct, over, disabled, locked, onActivate, children }: {
+  id: string; fallbackName?: string; connected: boolean; correct?: boolean; over: boolean;
+  disabled: boolean; locked: boolean; onActivate: (pointerClick: boolean) => void; children: ReactNode;
+}) {
+  const ids = useId().replaceAll(":", "");
+  return <div data-match-target={id} data-practice-drop-target-id={id} data-connected={connected || undefined}
+    data-drop-active={over || undefined} data-drop-disabled={disabled || locked || undefined}
+    className={cn(answerTile, correct === undefined && connected ? connectedTile : tileResult(correct), "tw:relative tw:grid tw:content-center tw:gap-2",
+      over && [activePointerTile, "tw:ring-2 tw:ring-primary"])}>
+    {!locked ? <Button variant="ghost" className={tileHandle} disabled={disabled}
+      aria-labelledby={`${ids}-action ${ids}-content`}
+      onClick={() => onActivate(true)} onKeyDown={(event) => tileKeyDown(event, () => onActivate(false))} onKeyUp={tileKeyUp}>
+      <span id={`${ids}-action`} className="tw:sr-only">{fallbackName ? `Match with ${fallbackName}` : "Match with"}</span>
+    </Button> : null}
+    <div id={`${ids}-content`} className={cn(tileContent, !locked && "tw:pointer-events-none")}>{children}</div>
   </div>;
 }
 

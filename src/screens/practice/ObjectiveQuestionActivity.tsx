@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { Asset } from "../../ipc/assets";
 import { createMutationId, getErrorMessage } from "../../ipc/common";
@@ -12,6 +13,7 @@ import type {
 } from "../../ipc/questionAttempts";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
+import { practiceStyles } from "./presentation";
 import { QuestionBody } from "./QuestionBody";
 import { emptyQuestionResponse, responseReady } from "./questionPresentation";
 
@@ -26,10 +28,12 @@ interface InteractiveQuestionActivityProps {
   onAttempt: (attempt: QuestionAttemptView) => void;
   onChecked: (attempt: QuestionAttemptView) => void | Promise<void>;
   onError: (message: string) => void;
+  /** Where the host keeps its main action. Without one the button follows the question. */
+  actionSlot?: HTMLElement | null;
 }
 
 export function InteractiveQuestionActivity({
-  sessionId, cardId, attempt, assets, disabled, onSave, onCheck, onAttempt, onChecked, onError,
+  sessionId, cardId, attempt, assets, disabled, onSave, onCheck, onAttempt, onChecked, onError, actionSlot = null,
 }: InteractiveQuestionActivityProps) {
   const target = useMemo<QuestionAttemptTarget>(() => ({
     sessionId, cardId, instanceId: attempt.instanceId,
@@ -128,15 +132,16 @@ export function InteractiveQuestionActivity({
     finally { setIsChecking(false); }
   }
   const progress = attempt.progress;
+  const checkButton = <Button variant="primary" size="large" className={actionSlot ? practiceStyles.primaryAction : undefined}
+    disabled={busy || !responseReady(response)} onClick={() => void checkAnswer()}>
+    {isChecking ? "Checking…" : isSaving ? "Saving…" : "Check answer"}
+  </Button>;
   return <div className="tw:grid tw:gap-5">
     <QuestionBody question={attempt.question} response={progress.phase === "checked" ? progress.firstAnswer.response : response}
       evaluation={progress.phase === "checked" ? progress.evaluation : null} assets={assets} disabled={busy || checked}
       onChange={changeResponse} onError={onError} />
-    {!checked ? <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-3">
-      <Button variant="primary" size="large" disabled={busy || !responseReady(response)} onClick={() => void checkAnswer()}>
-        {isChecking ? "Checking…" : isSaving ? "Saving…" : "Check answer"}
-      </Button>
-    </div> : null}
+    {checked ? null : actionSlot ? createPortal(checkButton, actionSlot)
+      : <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-center tw:gap-3">{checkButton}</div>}
   </div>;
 }
 
