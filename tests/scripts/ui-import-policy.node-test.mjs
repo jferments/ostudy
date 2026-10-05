@@ -21,3 +21,10 @@ test("approved adapters may consume vendor implementations without leaking to fe
   assert.equal(importViolation("src/screens/Tutor.tsx", "../ui/primitives/Button"), null);
   assert.match(importViolation("src/ui/primitivesExtra/Leaky.tsx", "../vendor/shadcn/button"), /Only oStudy/u);
 });
+test("TanStack Virtual stays behind the VirtualList pattern", () => {
+  assert.equal(importViolation("src/ui/patterns/VirtualList.tsx", "@tanstack/react-virtual"), null);
+  for (const owner of ["src/screens/library/LibraryWorkbench.tsx", "src/ui/primitives/ListRow.tsx"]) {
+    assert.match(importViolation(owner, "@tanstack/react-virtual"), /VirtualList/u);
+    assert.match(importViolation(owner, "@tanstack/virtual-core"), /VirtualList/u);
+  }
+});
