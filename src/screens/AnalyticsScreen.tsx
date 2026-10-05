@@ -9,11 +9,13 @@ import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
 import { QuestionTypeBreakdown } from "./analytics/QuestionTypeBreakdown";
 import { PageScaffold, PageHeader } from "../ui/patterns/WorkspacePatterns";
-import { MetricTile } from "../ui/patterns/Metrics";
 import { Button } from "../ui/primitives/Button";
 import { Badge } from "../ui/primitives/Badge";
+import { StatDelta, StatTile } from "../ui/primitives/StatTile";
 import { Surface } from "../ui/primitives/Surface";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { SectionHeading } from "../ui/primitives/SectionHeading";
+import { ListRow, ListRows } from "../ui/primitives/ListRow";
 import { LoadingState } from "../ui/primitives/EmptyState";
 import { cn } from "../ui/internal/cn";
 import { styles, outcomeColors } from "./analytics/presentation";
@@ -140,19 +142,13 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         aria-labelledby="progress-heading"
         aria-busy={isLoading || undefined}
       >
-        <div className={styles.panelHeadingRowAnalyticsChartHeading}>
-          <div>
-            <h2 id="progress-heading">Learning progress</h2>
-            <p className={styles.analyticsPanelNote}>Buckets use the local review dates captured when each answer was submitted.</p>
-          </div>
-          {analytics ? (
-            <div className={styles.analyticsChartActions}>
-              <Button variant="text" aria-expanded={showChartData} disabled={isLoading} onClick={() => setShowChartData((value) => !value)}>
-                {showChartData ? "Hide chart data" : "View chart data"}
-              </Button>
-            </div>
-          ) : null}
-        </div>
+        <SectionHeading id="progress-heading" title="Learning progress"
+          description="Buckets use the local review dates captured when each answer was submitted."
+          actions={analytics ? (
+            <Button variant="text" aria-expanded={showChartData} disabled={isLoading} onClick={() => setShowChartData((value) => !value)}>
+              {showChartData ? "Hide chart data" : "View chart data"}
+            </Button>
+          ) : undefined} />
         {isLoading ? (
           <div className="tw:grid tw:min-h-72 tw:place-items-center">
             <LoadingState label="Analyzing data…" />
@@ -169,12 +165,12 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
 
       {analytics ? <>
         <section className={styles.metricsGridAnalyticsMetrics} aria-label="Learning summary">
-          <MetricTile label="Cards practiced" value={analytics.history.cardsPracticed} detail={`${analytics.history.reviewCount} total reviews`} />
-          <MetricTile label="Remembered" value={formatPercent(analytics.history.correctRate)} detail={`${analytics.history.correctCount} remembered answers`} />
-          <MetricTile label="Focused study" value={formatStudyTime(analytics.history.totalStudyTimeMs)} detail={`${analytics.history.sessionCount} session${analytics.history.sessionCount === 1 ? "" : "s"}`} />
-          <MetricTile label="Average confidence" value={formatConfidence(analytics.history.averageConfidence)} detail="0 Wrong · 3 Easy" />
-          <MetricTile label="Ready now" value={analytics.currentInventory.studyableDueCount} detail={`${analytics.currentInventory.studyableCardCount} studyable generated cards`} />
-          <MetricTile label="Needs more practice" value={analytics.currentInventory.needsMorePracticeCount} detail="Repeatedly missed current cards" />
+          <StatTile label="Cards practiced" value={analytics.history.cardsPracticed} hint={`${analytics.history.reviewCount} total reviews`} />
+          <StatTile label="Remembered" value={formatPercent(analytics.history.correctRate)} hint={`${analytics.history.correctCount} remembered answers`} />
+          <StatTile label="Focused study" value={formatStudyTime(analytics.history.totalStudyTimeMs)} hint={`${analytics.history.sessionCount} session${analytics.history.sessionCount === 1 ? "" : "s"}`} />
+          <StatTile label="Average confidence" value={formatConfidence(analytics.history.averageConfidence)} hint="0 Wrong · 3 Easy" />
+          <StatTile label="Ready now" value={analytics.currentInventory.studyableDueCount} hint={`${analytics.currentInventory.studyableCardCount} studyable generated cards`} />
+          <StatTile label="Needs more practice" value={analytics.currentInventory.needsMorePracticeCount} hint="Repeatedly missed current cards" />
         </section>
         <section className={styles.analyticsWorkloadStrip} aria-label="Today's workload">
           <div><strong>Today</strong><span>{analytics.dailyLimits.reviewsCompleted} / {analytics.dailyLimits.reviewLimit} reviews</span>
@@ -183,9 +179,8 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         </section>
         <QuestionTypeBreakdown rows={analytics.questionTypes} />
         <Surface as="section" className={styles.analyticsPanelTagInsightsPanel}>
-          <div className={styles.panelHeadingRow}><div><h2>Topic insights</h2>
-            <p className={styles.analyticsPanelNote}>Current counts use current tags. Review evidence uses captured tag identity and displays the current tag name after renames.</p>
-          </div></div>
+          <SectionHeading title="Topic insights"
+            description="Current counts use current tags. Review evidence uses captured tag identity and displays the current tag name after renames." />
           {analytics.tagStats.length === 0 ? <p className={styles.mutedCopy}>Add tags and complete reviews to see topic-level patterns.</p> : (
             <div className={styles.analyticsTableWrap}><table className={styles.analyticsTableTopicTable}>
               <thead><tr><th>Topic</th><th>Last practiced</th><th>Practice</th><th>Remembered</th><th>Trend</th><th>Ready</th><th>Needs practice</th><th>Status</th><th /></tr></thead>
@@ -203,7 +198,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         </Surface>
         <div className={styles.analyticsGridAnalyticsDetailGrid}>
           <Surface as="section" className={styles.analyticsPanel}>
-            <div className={styles.panelHeadingRow}><h2>Deck performance</h2></div>
+            <SectionHeading title="Deck performance" />
             {analytics.deckStats.length === 0 ? <p className={styles.mutedCopy}>No current inventory or history in this scope.</p> : (
               <div className={styles.analyticsTableWrap}><table className={styles.analyticsTable}>
                 <thead><tr><th>Deck</th><th>Ready</th><th>Practice</th><th>Remembered</th><th>Time</th></tr></thead>
@@ -217,34 +212,36 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
             )}
           </Surface>
           <Surface as="section" className={styles.analyticsPanel}>
-            <div className={styles.panelHeadingRow}><h2>Recent sessions</h2></div>
+            <SectionHeading title="Recent sessions" />
             {analytics.recentSessions.length === 0 ? <p className={styles.mutedCopy}>Complete a practice session to track session time.</p> : (
-              <div className={styles.analyticsSessionList}>{analytics.recentSessions.map((session) => <article key={session.id} className={cn(session.highlighted && styles.highlighted)}>
-                <div><strong>{session.deckNames.join(", ") || "Custom selection"}</strong><span>{session.mode} · {dateTimeFormatter.format(new Date(session.startedAt))}</span></div>
-                <div><strong>{formatStudyTime(session.studyTimeMs)}</strong><span>{session.ratedCount} reviewed · {formatPercent(session.correctRate)}</span><small>{formatStudyTime(session.durationMs)} elapsed</small></div>
-              </article>)}</div>
+              <ListRows>{analytics.recentSessions.map((session) => <ListRow key={session.id} density="dense" className="tw:items-start" selected={session.highlighted}
+                title={session.deckNames.join(", ") || "Custom selection"}
+                meta={`${session.mode} · ${dateTimeFormatter.format(new Date(session.startedAt))}`}
+                trailing={<div className={styles.recentFigures}>
+                  <strong>{formatStudyTime(session.studyTimeMs)}</strong><span>{session.ratedCount} reviewed · {formatPercent(session.correctRate)}</span><small>{formatStudyTime(session.durationMs)} elapsed</small>
+                </div>} />)}</ListRows>
             )}
           </Surface>
         </div>
         <Surface as="section" className={styles.analyticsPanelRecentReviewPanel}>
-          <div className={styles.panelHeadingRow}><h2>Recent reviews</h2></div>
+          <SectionHeading title="Recent reviews" />
           {analytics.recentReviews.length === 0 ? <div className={styles.compactEmptyState}><p>Complete a practice session to begin tracking review results.</p></div> : (
-            <div className={styles.recentReviewList}>{analytics.recentReviews.map((review) => <article key={review.id} className={styles.recentReviewRow}>
-              <span className={cn(styles.reviewDot, outcomeColors[(review.rating - 1) as keyof typeof outcomeColors])} aria-hidden="true" />
-              <div className={styles.recentReviewCopy}>
-                <strong>{summarize(review.questionExcerpt)}</strong><span>{review.deckName} · {outcomeLabel(review.outcome)}</span>
+            <ListRows>{analytics.recentReviews.map((review) => <ListRow key={review.id} density="dense" className="tw:items-start"
+              leading={<span className={cn(styles.reviewDot, outcomeColors[(review.rating - 1) as keyof typeof outcomeColors])} aria-hidden="true" />}
+              title={summarize(review.questionExcerpt)}
+              meta={<>
+                <span>{review.deckName} · {outcomeLabel(review.outcome)}</span>
                 {review.capturedDeckName !== review.deckName ? <small>Reviewed while named “{review.capturedDeckName}”</small> : null}
                 {review.tags.length > 0 ? <small className={styles.recentReviewTags}>{review.tags.map((tag, index) => <span key={tag.tagId}>
                   {index > 0 ? " · " : null}{tag.isCurrent ? <Button variant="text" className={styles.recentReviewTagAction}
                     aria-label={`Search cards tagged ${tag.tagName}`} onClick={() => void onSearchTag(tag.tagId)}>{tag.tagName}</Button> : tag.tagName}
                 </span>)}</small> : null}
-              </div>
-              <div className={styles.recentReviewMeta}>
+              </>}
+              trailing={<div className={styles.recentFigures}>
                 <strong>{formatDuration(review.responseTimeMs)}</strong><span>{dateTimeFormatter.format(new Date(review.reviewedAt))}</span>
                 <small>Next: {formatDueDate(review.dueAfter)}</small>
                 {review.attributionSource === "legacy_current_state_backfill" ? <small>Legacy attribution reconstructed</small> : null}
-              </div>
-            </article>)}</div>
+              </div>} />)}</ListRows>
           )}
         </Surface>
         {analytics.attributionCoverage.legacyBackfilledReviewCount > 0 ? <InlineNotice>
@@ -268,11 +265,10 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
 }
 
 function Trend({ value }: { value: number | null }) {
-  if (value === null) return <span className={cn(styles.trend, styles.neutral)}>—</span>;
+  if (value === null) return <span className={styles.neutral}>—</span>;
   const points = Math.round(value * 100);
-  return <span className={cn(styles.trend, points > 0 ? styles.positive : points < 0 ? styles.negative : styles.neutral)}>
-    {points > 0 ? "↑" : points < 0 ? "↓" : "→"} {Math.abs(points)} pt
-  </span>;
+  return <StatDelta label={`${Math.abs(points)} pt`} direction={points > 0 ? "up" : points < 0 ? "down" : "flat"}
+    tone={points > 0 ? "positive" : points < 0 ? "negative" : "neutral"} />;
 }
 
 function StatusBadge({ status }: { status: TagAnalytics["status"] }) {

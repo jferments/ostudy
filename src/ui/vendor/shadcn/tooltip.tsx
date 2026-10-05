@@ -8,7 +8,7 @@ export function TooltipView({ content, children, delay }: { content: string; chi
   return <Tooltip.Provider delay={delay}><Tooltip.Root open={open} onOpenChange={setOpen}>
     <Tooltip.Trigger render={cloneElement(children, { "aria-describedby": description })} aria-describedby={description} />
     <Tooltip.Portal><Tooltip.Positioner side="top" sideOffset={7} className="tw:isolate tw:z-(--ostudy-layer-popover)">
-      <Tooltip.Popup role="tooltip" id={id} data-slot="tooltip-content" className="tw:max-w-xs tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-foreground tw:px-3 tw:py-2 tw:font-sans tw:text-caption tw:leading-relaxed tw:text-background tw:shadow-panel">{content}</Tooltip.Popup>
+      <Tooltip.Popup role="tooltip" id={id} data-slot="tooltip-content" className="tw:max-w-xs tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-foreground tw:px-3 tw:py-2 tw:font-sans tw:text-caption tw:leading-relaxed tw:text-background tw:shadow-overlay">{content}</Tooltip.Popup>
     </Tooltip.Positioner></Tooltip.Portal>
   </Tooltip.Root></Tooltip.Provider>;
 }

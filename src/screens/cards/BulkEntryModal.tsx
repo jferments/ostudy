@@ -8,7 +8,7 @@ import { Textarea } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Dialog } from "../../ui/overlays/Dialog";
 import { Panel } from "../../ui/primitives/Panel";
 import { cn } from "../../ui/internal/cn";
 import styles from "./browserPresentation";
@@ -109,7 +109,15 @@ export function BulkEntryModal({ decks, defaultDeckId, fixedDeckId, onClose, onS
 
   return (
     <Dialog title="Bulk add cards" description="Enter several plain-text cards at once. Empty rows are ignored."
-      width="large" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!isSaving) onClose(); }}>
+      width="large" busy={isSaving} dismissible={!isSaving} onClose={() => { if (!isSaving) onClose(); }}
+      actions={<>
+        <Button variant="dangerGhost" className="tw:mr-auto" disabled={isSaving} onClick={() => void durableDraft.discard().then(onClose)}>Discard draft</Button>
+        <Button variant="secondary" disabled={isSaving} onClick={() => void durableDraft.flush().finally(onClose)}>Close</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={() => void reviewOrSave()}>
+          {isSaving ? "Checking…" : analysis ? `Remove duplicates and add ${uniqueCount}`
+            : `Add ${populatedRows.length} ${populatedRows.length === 1 ? "card" : "cards"}`}
+        </Button>
+      </>}>
       <div className={styles.screen} aria-busy={isSaving}>
         <div className={styles.bulkEntryControls}>
           {fixedDeck ? (
@@ -164,14 +172,6 @@ export function BulkEntryModal({ decks, defaultDeckId, fixedDeckId, onClose, onS
           <InlineNotice kind="info">Every populated row is already present. Change or remove the highlighted rows before saving.</InlineNotice>
         ) : null}
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-        <DialogActions className={styles.bulkEntryActions}>
-          <Button variant="dangerGhost" disabled={isSaving} onClick={() => void durableDraft.discard().then(onClose)}>Discard draft</Button>
-          <Button variant="secondary" disabled={isSaving} onClick={() => void durableDraft.flush().finally(onClose)}>Close</Button>
-          <Button variant="primary" disabled={!canSubmit} onClick={() => void reviewOrSave()}>
-            {isSaving ? "Checking…" : analysis ? `Remove duplicates and add ${uniqueCount}`
-              : `Add ${populatedRows.length} ${populatedRows.length === 1 ? "card" : "cards"}`}
-          </Button>
-        </DialogActions>
       </div>
     </Dialog>
   );

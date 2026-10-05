@@ -52,9 +52,9 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
     {triggerPresentation === "icon"
       ? <IconButton ref={triggerRef} icon={triggerIcon} label={label} tooltip={false} className={iconTriggerClassName} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)} />
       : <Button ref={triggerRef} className={className} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)}>{label}</Button>}
-    {open ? <Sheet title={label} width="small" onClose={() => setOpen(false)}><div className="tw:grid tw:gap-1 tw:p-3" aria-label={label}>
+    {open ? <Sheet title={label} width="small" onClose={() => setOpen(false)}><div className="tw:-mx-3 tw:grid tw:gap-1" aria-label={label}>
       {groups.map((group, index) => <div key={index} className={index === 1 && standardItems.length > 0 && group.length > 0 ? "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-2" : undefined}>
-        {group.map((item) => <Button key={item.id} variant={item.destructive ? "dangerGhost" : "ghost"} className="tw:w-full tw:justify-start tw:px-4 tw:py-3 tw:text-body" disabled={item.disabled} onClick={() => select(item)}>{item.label}</Button>)}
+        {group.map((item) => <Button key={item.id} variant={item.destructive ? "dangerGhost" : "ghost"} className="tw:w-full tw:justify-start tw:px-3 tw:py-3 tw:text-body" disabled={item.disabled} onClick={() => select(item)}>{item.label}</Button>)}
       </div>)}
     </div></Sheet> : null}
   </>;

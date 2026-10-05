@@ -1,6 +1,9 @@
+import { useState } from "react";
+
 import type { AnalyticsDeckOption, AnalyticsRange, AnalyticsTagOption } from "../../ipc/analytics";
 import type { DeckSummary } from "../../ipc/decks";
-import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
+import { Icon } from "../../ui/icons/Icon";
+import { SegmentedControl, type SegmentedOptions } from "../../ui/primitives/SegmentedControl";
 import { Button } from "../../ui/primitives/Button";
 import { TextField } from "../../ui/primitives/TextField";
 import { Checkbox, Disclosure } from "../../ui/primitives/FormControls";
@@ -17,10 +20,11 @@ interface AnalyticsFiltersProps {
   onDeckIdsChange: (next: Set<string>) => void; onTagIdsChange: (next: Set<string>) => void;
   onClearHighlightedSession: () => void; onClearScope: () => void;
 }
-const RANGE_OPTIONS: ReadonlyArray<{ value: AnalyticsRange; label: string }> = [
+type PresetRange = Exclude<AnalyticsRange, "custom">;
+const RANGE_OPTIONS = [
   { value: "7d", label: "7 days" }, { value: "30d", label: "30 days" }, { value: "90d", label: "90 days" },
-  { value: "1y", label: "1 year" }, { value: "all", label: "All time" }, { value: "custom", label: "Custom" },
-];
+  { value: "1y", label: "1 year" }, { value: "all", label: "All time" },
+] as const satisfies SegmentedOptions<PresetRange>;
 /** Pure scope controls: native reads and stale-response policy stay in the controller. */
 export function AnalyticsFilters({ range, customStartLocalDate, customEndLocalDate, selectedDeckIds, selectedTagIds,
   highlightedSessionId, deckOptions, tagOptions, decks, onRangeChange, onCustomStartLocalDateChange,
@@ -30,8 +34,19 @@ export function AnalyticsFilters({ range, customStartLocalDate, customEndLocalDa
   const selectedDeckNames = deckIds.map((id) => deckOptions.find((deck) => deck.id === id)?.name ?? decks.find((deck) => deck.id === id)?.name)
     .filter((name): name is string => Boolean(name));
   const selectedTagNames = tagIds.map((id) => tagOptions.find((tag) => tag.id === id)?.name).filter((name): name is string => Boolean(name));
+  // Custom dates sit beside the presets as a toggle; turning it off returns to the last preset.
+  const [lastPreset, setLastPreset] = useState<PresetRange>(range === "custom" ? "7d" : range);
+  if (range !== "custom" && range !== lastPreset) setLastPreset(range);
+  function changeRange(next: AnalyticsRange) { onRangeChange(next); onClearHighlightedSession(); }
   return <Surface as="section" className={styles.analyticsFilterPanel} aria-label="Analytics filters">
-    <SegmentedControl label="Time range" value={range} options={RANGE_OPTIONS} onChange={(value) => { onRangeChange(value); onClearHighlightedSession(); }} />
+    <div className={styles.analyticsRangeRow}>
+      <SegmentedControl label="Time range" className="tw:compact:w-full" value={range === "custom" ? null : range}
+        options={RANGE_OPTIONS} onChange={changeRange} />
+      <Button aria-pressed={range === "custom"} className={styles.analyticsCustomToggle}
+        onClick={() => changeRange(range === "custom" ? lastPreset : "custom")}>
+        <Icon name="calendar" size={16} />Custom dates
+      </Button>
+    </div>
     {range === "custom" ? <div className={styles.analyticsCustomRange} aria-label="Custom analytics date range">
       <label><span>Start date</span><TextField type="date" value={customStartLocalDate} max={customEndLocalDate} onChange={(event) => onCustomStartLocalDateChange(event.currentTarget.value)} /></label>
       <label><span>End date</span><TextField type="date" value={customEndLocalDate} min={customStartLocalDate} max={localToday()} onChange={(event) => onCustomEndLocalDateChange(event.currentTarget.value)} /></label>

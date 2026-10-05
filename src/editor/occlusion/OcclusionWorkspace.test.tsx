@@ -55,7 +55,7 @@ describe("image occlusion workspace", () => {
   it.each(["mouse", "touch", "pen"])("draws with %s and publishes one edit only when released", (pointerType) => {
     const options = props();
     render(<OcclusionWorkspace {...options} />);
-    fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Draw rectangle" }));
     const canvas = svg();
     fireEvent.pointerDown(canvas, point(0.1, 0.1, 1, pointerType));
     fireEvent.pointerMove(canvas, point(0.5, 0.5, 1, pointerType));
@@ -69,7 +69,7 @@ describe("image occlusion workspace", () => {
     const options = props({ masks: [], selectedMaskId: null });
     render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
-    fireEvent.click(screen.getByRole("button", { name: "Tap two corners" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Tap two corners" }));
     fireEvent.pointerDown(canvas, point(0.2, 0.2));
     fireEvent.pointerUp(canvas, point(0.2, 0.2));
     expect(screen.getByText(/Tap the opposite corner/)).toBeTruthy();
@@ -85,7 +85,7 @@ describe("image occlusion workspace", () => {
     const options = props();
     render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
-    fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Draw rectangle" }));
     fireEvent.pointerDown(canvas, point(0.1, 0.1));
     fireEvent.pointerMove(canvas, point(0.6, 0.6));
     fireEvent.pointerCancel(canvas, point(0.6, 0.6));
@@ -102,7 +102,7 @@ describe("image occlusion workspace", () => {
     const options = props();
     render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
-    fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Draw rectangle" }));
     fireEvent.pointerDown(canvas, point(0.2, 0.2, 1, "touch"));
     fireEvent.pointerMove(canvas, point(0.3, 0.3, 1, "touch"));
     fireEvent.pointerDown(canvas, point(0.6, 0.6, 2, "touch"));
@@ -144,7 +144,7 @@ describe("image occlusion workspace", () => {
     const options = props();
     render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
-    fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Draw rectangle" }));
     fireEvent.pointerDown(canvas, point(0.1, 0.1));
     fireEvent.pointerMove(canvas, point(0.6, 0.6));
     act(() => {
@@ -179,7 +179,7 @@ describe("image occlusion workspace", () => {
     const options = props();
     const result = render(<OcclusionWorkspace {...options} />);
     const canvas = svg();
-    fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Draw rectangle" }));
     fireEvent.pointerDown(canvas, point(0.1, 0.1));
     fireEvent.pointerMove(canvas, point(0.6, 0.6));
     result.rerender(<OcclusionWorkspace {...options} disabled />);

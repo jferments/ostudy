@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
-import { Dialog, DialogActions } from "./Dialog";
+import { Dialog } from "./Dialog";
 import {
   type ConfirmOptions,
   type OverlayEntry,
@@ -69,12 +69,11 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
   return <OverlayActionsContext.Provider value={actions}>
     <OverlayContext.Provider value={value}>
     {children}
-    {pending ? <Dialog title={pending.title} description={pending.description} role="alertdialog" width="small" onClose={() => settleConfirmation(pending.id, false)}>
-      <div className="tw:p-6"><DialogActions>
+    {pending ? <Dialog title={pending.title} description={pending.description} role="alertdialog" width="small" onClose={() => settleConfirmation(pending.id, false)}
+      actions={<>
         <Button variant="secondary" data-autofocus="true" onClick={() => settleConfirmation(pending.id, false)}>{pending.cancelLabel ?? "Cancel"}</Button>
         <Button variant={pending.destructive ? "danger" : "primary"} onClick={() => settleConfirmation(pending.id, true)}>{pending.confirmLabel ?? "Continue"}</Button>
-      </DialogActions></div>
-    </Dialog> : null}
+      </>} /> : null}
     </OverlayContext.Provider>
   </OverlayActionsContext.Provider>;
 }

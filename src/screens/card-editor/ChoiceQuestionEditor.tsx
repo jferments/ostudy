@@ -117,7 +117,7 @@ export function ChoiceQuestionEditor({
         ))}
       </div>
 
-      <section className="tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-muted/20 tw:p-4"
+      <section className="tw:grid tw:gap-3 tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-muted/20 tw:p-4"
         aria-label="Answer key preview">
         <div className="tw:grid tw:gap-1">
           <h3 className="tw:m-0">Answer key preview</h3>

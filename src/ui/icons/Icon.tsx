@@ -7,6 +7,9 @@ import type { CSSProperties, ReactNode, SVGAttributes } from "react";
 export const ICON_NAMES = [
   "analytics",
   "archive",
+  "arrow-down",
+  "arrow-right",
+  "arrow-up",
   "back",
   "book",
   "brain",
@@ -116,6 +119,27 @@ function iconPath(name: IconName): ReactNode {
           <rect x="2" y="3" width="20" height="5" rx="1" />
           <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
           <path d="M10 12h4" />
+        </>
+      );
+    case "arrow-down": // Lucide: arrow-down
+      return (
+        <>
+          <path d="M12 5v14" />
+          <path d="m19 12-7 7-7-7" />
+        </>
+      );
+    case "arrow-right": // Lucide: arrow-right
+      return (
+        <>
+          <path d="M5 12h14" />
+          <path d="m12 5 7 7-7 7" />
+        </>
+      );
+    case "arrow-up": // Lucide: arrow-up
+      return (
+        <>
+          <path d="m5 12 7-7 7 7" />
+          <path d="M12 19V5" />
         </>
       );
     case "back": // Lucide: arrow-left

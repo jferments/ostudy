@@ -1,5 +1,5 @@
 // Adapted from shadcn/ui's Nova Item composition. See README.md for provenance.
-import type { HTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes } from "react";
 
 import { cn } from "../../internal/cn";
 
@@ -95,4 +95,19 @@ export function ItemHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
 
 export function ItemFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div data-slot="item-footer" className={cn("tw:flex tw:basis-full tw:items-center tw:justify-between tw:gap-3", className)} {...props} />;
+}
+
+/** One native button over an item's media and text, for a row that opens what it names. */
+export function ItemTrigger({ className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      {...props}
+      type={type}
+      data-slot="item-trigger"
+      className={cn(
+        "tw:flex tw:min-w-0 tw:cursor-pointer tw:items-center tw:rounded-md tw:border-0 tw:bg-transparent tw:p-0 tw:text-start tw:text-inherit tw:disabled:cursor-not-allowed tw:coarse:min-h-touch",
+        className,
+      )}
+    />
+  );
 }

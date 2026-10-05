@@ -54,7 +54,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe("rectangle-first image occlusion editor", () => {
   it("starts in continuous Draw mode and saves several cards without opening prose controls", () => {
     render(<Harness />);
-    expect(screen.getByRole("button", { name: "Draw rectangle" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("radio", { name: "Draw rectangle" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.queryByRole("region", { name: "Image question inspector" })).toBeNull();
     expect(mocks.inspector).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Save test card" })).toHaveProperty("disabled", true);
@@ -62,7 +62,7 @@ describe("rectangle-first image occlusion editor", () => {
     draw(svg, 0.1, 0.1);
     draw(svg, 0.5, 0.5);
     expect(screen.getByText("2 regions · 2 study cards")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Draw rectangle" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("radio", { name: "Draw rectangle" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Save test card" }));
     const question = mocks.save.mock.calls[0]?.[0].question;
     expect(question.masks).toHaveLength(2);

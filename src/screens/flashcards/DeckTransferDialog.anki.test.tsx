@@ -15,10 +15,9 @@ vi.mock("../../controllers/deckTransferController", () => ({
 vi.mock("../../platform/PlatformProvider", () => ({ usePlatformCapabilities: () => ({ native: null }) }));
 vi.mock("../../ui/icons/Icon", () => ({ Icon: () => null }));
 vi.mock("../../ui/overlays/Dialog", () => ({
-  Dialog: ({ title, children }: { title: string; children: ReactNode }) => (
-    <div role="dialog" aria-label={title}>{children}</div>
+  Dialog: ({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) => (
+    <div role="dialog" aria-label={title}>{children}<div>{actions}</div></div>
   ),
-  DialogActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../ui/primitives/Button", () => ({
   Button: ({ children, onClick, disabled }: {
