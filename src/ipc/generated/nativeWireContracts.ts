@@ -35,6 +35,7 @@ export interface NativeAppSettings {
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
+  newDayStartHour: number;
 }
 
 export interface NativeCompletedLibraryRestore {

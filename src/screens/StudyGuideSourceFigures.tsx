@@ -16,10 +16,13 @@ export function StudyGuideSourceFigures({
   documentId,
   locator,
   explanations,
+  sectionNumber = null,
 }: {
   documentId: string | null;
   locator: SourceLocator | null;
   explanations: StudyGuideVisualExplanation[];
+  /** Numbers the figures "Figure N.1", "Figure N.2"… after their section; plain "Figure 1" otherwise. */
+  sectionNumber?: number | null;
 }) {
   const assetIds = useMemo(
     () => selectFigureAssetIds(locator?.assetIds ?? [], explanations.length),
@@ -57,32 +60,43 @@ export function StudyGuideSourceFigures({
 
   if (explanations.length === 0) return null;
   return (
-    <div className="tw:grid tw:gap-4">
+    <div className="tw:grid tw:gap-4 tw:font-sans">
       {explanations.map((visual, index) => {
         const figure = figures[index] ?? null;
+        const number = sectionNumber === null ? `Figure ${index + 1}` : `Figure ${sectionNumber}.${index + 1}`;
+        const caption = (
+          <>
+            <span className="tw:block">
+              <strong className="tw:font-semibold tw:text-foreground">{number}</strong>
+              {" · "}
+              <StudyMarkdown text={visual.title} inline />
+            </span>
+            <StudyMarkdown text={visual.explanation} />
+          </>
+        );
         return figure ? (
           <figure
             key={`${figure.assetId}-${visual.title}`}
-            className="tw:m-0 tw:grid tw:gap-2 tw:rounded-lg tw:border tw:border-border tw:bg-muted/20 tw:p-3"
+            className="tw:m-0 tw:grid tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:compact:p-3"
           >
             <img
               src={figure.url}
               alt={visual.title}
-              className="tw:max-h-[32rem] tw:w-full tw:object-contain"
+              className="tw:max-h-[32rem] tw:w-full tw:rounded-sm tw:bg-page tw:object-contain"
             />
-            <figcaption className="tw:grid tw:gap-1 tw:text-small">
-              <strong><StudyMarkdown text={visual.title} inline /></strong>
-              <StudyMarkdown text={visual.explanation} />
+            <figcaption className="tw:grid tw:gap-1 tw:text-small tw:text-(--ostudy-color-text-secondary)">
+              {caption}
             </figcaption>
           </figure>
         ) : (
-          <aside
+          <div
             key={`fallback-${visual.title}-${index}`}
-            className="tw:grid tw:gap-1 tw:rounded-lg tw:border tw:border-border tw:bg-muted/20 tw:p-3"
+            role="note"
+            aria-label={number}
+            className="tw:grid tw:gap-1 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:text-small tw:text-(--ostudy-color-text-secondary) tw:compact:p-3"
           >
-            <strong><StudyMarkdown text={visual.title} inline /></strong>
-            <StudyMarkdown text={visual.explanation} />
-          </aside>
+            {caption}
+          </div>
         );
       })}
     </div>

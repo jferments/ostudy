@@ -38,6 +38,7 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
   const [range, setRange] = useState<AnalyticsRange>("7d");
   const [customStartLocalDate, setCustomStartLocalDate] = useState(() => localDateDaysAgo(6));
   const [customEndLocalDate, setCustomEndLocalDate] = useState(() => localDateDaysAgo(0));
+  const [customDatesChosen, setCustomDatesChosen] = useState(false);
   const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [highlightedSessionId, setHighlightedSessionId] = useState<string | undefined>();
@@ -102,6 +103,17 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
 
   const deckOptions = analytics?.dimensionOptions.decks ?? [];
   const tagOptions = analytics?.dimensionOptions.tags ?? [];
+  // The study date comes from native: it starts at the "New day starts at"
+  // hour, so this device's calendar date can be a day ahead after midnight.
+  const todayLocalDate = analytics?.scope.todayLocalDate ?? null;
+
+  function changeRange(next: AnalyticsRange): void {
+    if (next === "custom" && !customDatesChosen && todayLocalDate !== null) {
+      setCustomStartLocalDate(shiftLocalDate(todayLocalDate, -6));
+      setCustomEndLocalDate(todayLocalDate);
+    }
+    setRange(next);
+  }
 
   return (
     <PageScaffold width="full" className="tw:[&>section]:mb-6 tw:[&>div]:mb-6">
@@ -116,15 +128,22 @@ export function AnalyticsScreen({ decks, launchRequest, onLaunchConsumed, onPrac
         range={range}
         customStartLocalDate={customStartLocalDate}
         customEndLocalDate={customEndLocalDate}
+        todayLocalDate={todayLocalDate ?? localDateDaysAgo(0)}
         selectedDeckIds={selectedDeckIds}
         selectedTagIds={selectedTagIds}
         highlightedSessionId={highlightedSessionId}
         deckOptions={deckOptions}
         tagOptions={tagOptions}
         decks={decks}
-        onRangeChange={setRange}
-        onCustomStartLocalDateChange={setCustomStartLocalDate}
-        onCustomEndLocalDateChange={setCustomEndLocalDate}
+        onRangeChange={changeRange}
+        onCustomStartLocalDateChange={(value) => {
+          setCustomDatesChosen(true);
+          setCustomStartLocalDate(value);
+        }}
+        onCustomEndLocalDateChange={(value) => {
+          setCustomDatesChosen(true);
+          setCustomEndLocalDate(value);
+        }}
         onDeckIdsChange={setSelectedDeckIds}
         onTagIdsChange={setSelectedTagIds}
         onClearHighlightedSession={() => setHighlightedSessionId(undefined)}
@@ -317,6 +336,12 @@ function filteredSet(current: Set<string>, available: Set<string>): Set<string> 
 }
 function sameSet(left: Set<string>, right: Set<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
+}
+/** A `YYYY-MM-DD` date moved by whole dates, independent of any time zone. */
+function shiftLocalDate(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 function localDateDaysAgo(days: number): string {
   const value = new Date();

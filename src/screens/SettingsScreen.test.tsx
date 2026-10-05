@@ -75,6 +75,7 @@ const settings: settingsIpc.AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
+  newDayStartHour: 4,
 };
 
 function renderSettings(showToast = vi.fn()) {
@@ -249,19 +250,43 @@ describe("SettingsScreen", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "Reviews per day" }), {
       target: { value: "80" },
     });
+    const newDayStart = screen.getByRole("combobox", { name: "New day starts at" }) as HTMLSelectElement;
+    expect(schedulingPanel.contains(newDayStart)).toBe(true);
+    expect(newDayStart.selectedOptions[0]?.textContent).toBe("4 a.m.");
+    fireEvent.change(newDayStart, { target: { value: "0" } });
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(
-        expect.objectContaining({ dailyNewLimit: 12, dailyReviewLimit: 80 }),
+        expect.objectContaining({ dailyNewLimit: 12, dailyReviewLimit: 80, newDayStartHour: 0 }),
       );
     });
+    expect(newDayStart.selectedOptions[0]?.textContent).toBe("12 a.m.");
     fireEvent.click(restoreDefaults);
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(
-        expect.objectContaining({ desiredRetention: 0.9, dailyNewLimit: 20, dailyReviewLimit: 200 }),
+        expect.objectContaining({
+          desiredRetention: 0.9,
+          dailyNewLimit: 20,
+          dailyReviewLimit: 200,
+          newDayStartHour: 4,
+        }),
       );
     });
     expect(screen.queryByRole("checkbox", { name: /shuffle/iu })).toBeNull();
     expect(screen.getByText(/shuffling, are chosen on the Practice screen/u)).toBeTruthy();
+  });
+
+  it("saves the hour a new study day starts", async () => {
+    const { onSavedSettings } = renderSettings();
+    fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "New day starts at" }), {
+      target: { value: "6" },
+    });
+    expect(screen.getByText("Reviews before this time count toward the previous day.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+    await waitFor(() => {
+      expect(settingsIpc.saveSettings).toHaveBeenCalledWith({ ...settings, newDayStartHour: 6 });
+      expect(onSavedSettings).toHaveBeenCalledWith(expect.objectContaining({ newDayStartHour: 6 }));
+    });
   });
 
   it("separates provider connections from the three default model assignments", async () => {

@@ -79,7 +79,7 @@ describe("CardsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(cardsIpc.listTags).mockResolvedValue([{ id: "d".repeat(32), name: "Anticoagulants", sourceNoteCount: 1, generatedCardCount: 1, studyableDueCount: 1 }]);
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 1 });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 1, todayStartAt: 0 });
     vi.mocked(cardsIpc.listMatchingCards).mockResolvedValue([selection]);
     vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult());
   });
@@ -91,6 +91,25 @@ describe("CardsScreen", () => {
     const dialog = await screen.findByRole("dialog", { name: "Filter flashcards" });
     fireEvent.change(within(dialog).getByLabelText("Status"), { target: { value: "suspended" } });
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(expect.objectContaining({ statusFilter: "suspended" })));
+  });
+
+  it("labels a card studied today from the native study-day start, not the calendar date", async () => {
+    const todayStartAt = new Date(2026, 10, 3, 4, 0).getTime();
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
+      cards: [
+        { ...browserCard, lastReviewedAt: new Date(2026, 10, 3, 5, 0).getTime() },
+        { ...reverseCard, lastReviewedAt: new Date(2026, 10, 3, 1, 30).getTime() },
+      ],
+      totalCount: 2,
+      todayStartAt,
+    });
+    renderScreen();
+    const rows = await screen.findAllByRole("row");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText("Studied today")).toBeTruthy();
+    // 01:30 is the same calendar date but still the previous study day.
+    expect(within(rows[1]!).queryByText("Studied today")).toBeNull();
+    expect(within(rows[1]!).getByText(/^Studied \S/u)).toBeTruthy();
   });
 
   it("gates an Analytics launch until its exact stable tag ID is verified", async () => {
@@ -163,7 +182,7 @@ describe("CardsScreen", () => {
   });
 
   it("submits every selected presentation in one transactional request", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2 });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2, todayStartAt: 0 });
     vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult(1, 2));
     const { showToast } = renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
@@ -190,7 +209,7 @@ describe("CardsScreen", () => {
   });
 
   it("selects reverse and forward presentations independently", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2 });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2, todayStartAt: 0 });
     renderScreen();
     const reverse = await screen.findByRole("checkbox", { name: "Select Vitamin K" });
     fireEvent.click(reverse);
@@ -203,7 +222,7 @@ describe("CardsScreen", () => {
   });
 
   it("selects all filtered results through the backend", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 12 });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 12, todayStartAt: 0 });
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Select all (12)" }));
     await waitFor(() => expect(cardsIpc.listMatchingCards).toHaveBeenCalled());

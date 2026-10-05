@@ -69,15 +69,21 @@ Unsaved authoring changes opened during a workflow still need to be saved or del
 
 Scheduling controls are deliberate administrative actions, not review outcomes:
 
-**Suspend** removes a card from ordinary practice until resumed. **Bury** temporarily removes it according to the app's study-day policy. **Reset** returns current scheduling state to a fresh state while preserving retained review history. **Reschedule** changes the next due time without inventing a successful recall event.
+**Suspend** removes a card from ordinary practice until resumed. **Bury** removes it until the next study day starts. **Reset** returns current scheduling state to a fresh state while preserving retained review history. **Reschedule** changes the next due time without inventing a successful recall event; **Tomorrow** or a later date makes the card due when that study day starts.
 
 Archived decks remain retained but unavailable for normal practice until restored. Deletion has a different lifecycle and eventually removes the history owned by the deleted material after its recovery window is finalized.
 
 Configure defaults in **Settings → Review/Scheduling**. Daily limits and due calculations use the app's native study-calendar rules; they are not recomputed independently by each screen. Bulk schedule actions validate their requested scope and commit as a unit.
 
+### When a new day starts
+
+A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review/Scheduling**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, the Today counts in Progress and its timeline days, weeks and months, Search/Filter's reviewed-today and recent filters, burial, and rescheduling to tomorrow or a later date.
+
+Changing the hour re-groups all of your existing history by the new boundary; nothing stored is changed, so you can switch back at any time. Each review keeps the time-zone offset of the place where you made it, so travelling does not move your earlier reviews to different days.
+
 ## Read Progress
 
-**Progress** presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, tag, and question-type controls to identify the question a chart answers. An empty scope means no matching evidence, not necessarily no material in the whole library.
+**Progress** presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, tag, and question-type controls to identify the question a chart answers. Dates are study days, which start at the **New day starts at** hour. An empty scope means no matching evidence, not necessarily no material in the whole library.
 
 Basic/Fill in the blank recall ratings are **self-assessment**. Objective interactive kinds have a distinct **first-attempt correctness** signal (correct, incorrect, or incomplete). Progress does not collapse those into one pretend accuracy metric. It also keeps **assistance**, **rating overrides**, and **remediation attempts** separate: an assisted correct response, a learner override, and a post-feedback retry are different evidence.
 

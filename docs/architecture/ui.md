@@ -39,7 +39,7 @@ Independent reads use independent request lanes. An obsolete success/error must 
 | Templates | Card templates tab in Settings; lazy activation and retained editor state |
 | Transfers | Contextual deck import/export; library recovery and device sync in Backup/Sync |
 | Practice | Internal contextual session, not a standing navigation destination |
-| Study Guide reader | Inline workspace preserving navigation, not a modal |
+| Study Guide reader | Inline workspace page preserving navigation, not a modal; one page per section |
 | Tutor | Shared top-level/contextual controller; general chat does not require source material or embeddings |
 
 Choosing Library or its Decks view returns to the deck list, and All decks returns from deck detail. Choosing Library or its Study guides view returns to the guide list. Android Back returns to Home from any other destination. Unsaved content retains save/discard protection. The native OS owns desktop window chrome; the frontend does not reintroduce a duplicate maximize/window manager.
@@ -80,7 +80,7 @@ Transfer UI presents native import/export/share operations. Anki completion is a
 
 ## Study Guides, Documents and Tutor
 
-StudyGuidesScreen owns bounded paginated summaries; opening one guide hydrates its reader. StudyGuideDialog is internally named a dialog but uses InlineWorkspace with contents/article, learner notes/overrides, practice and PDF export.
+StudyGuidesScreen owns bounded paginated summaries; opening one guide hydrates its reader and hands it what the row knows about the source file (format, file name, unit kind and count) for its file-kind badge and length. StudyGuideDialog is internally named a dialog but is the Chapter reader: an InlineWorkspace in its page presentation, with an overview page and one page per section. The outline (a nav landmark with `aria-current` on the current page and the current section opened to its headed blocks) sits beside the reading column on wide screens and opens from Contents in a Sheet on medium and compact ones. A margin rail holds the section's note, important terms, source and cards on wide screens; narrower layouts place those blocks after the section, and compact adds a sticky bottom bar with the neighbors and Practice that gives way while the section's end, with its own practice and next links, is on screen. The reading column uses the card font on the type scale. Guide-level actions sit in the top bar and its overflow menu; section-level ones in the section's menu. Notes, section rewrites and the PDF export open in the shared Sheet. Check-yourself progress is in-memory reader state, not stored. The `study-guides/` folder holds the reader's pages, outline, dialogs, the pure guide model (reading order, effective titles, reading time, locator ranges, file kinds, outline blocks) and StudyGuideStructuredContent, which the collection guide also renders.
 
 Generated revisions differ from learner-owned notes/overrides. Generation belongs to the retained document's action; its single active control becomes Stop. Internal revision badges and redundant regeneration controls are not ordinary reader UI. Conflicts remain visible.
 
@@ -96,7 +96,7 @@ Every Dialog and Sheet, including confirmations and MetadataDialog, shares one s
 
 Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Feature workflows import the shared Dialog/Sheet owners directly; the retired compatibility Modal wrapper is not another lifecycle. Features use semantic confirmation/overflow APIs rather than ordinary `window.confirm` or handwritten backdrops.
 
-An inline workspace stays nonmodal. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
+An inline workspace stays nonmodal. Its card presentation frames a workspace with a title heading and a close button; its page presentation makes the workspace the page, with a top bar that sticks to the top of the scroll area (back button, title over description, and actions) and leaves the gutters and the page's own h1 to the content, so render it in a PageScaffold without the inset. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
 
 ## Styles, tokens and typography
 

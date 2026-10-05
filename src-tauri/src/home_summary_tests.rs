@@ -1,5 +1,9 @@
-//! The Home summary's counts, its daily-limit arithmetic, the time estimate,
-//! and the plans of every statement that reads review history.
+//! The Home summary's counts, its daily-limit arithmetic, the study day it
+//! counts by, the time estimate, and the plans of every statement that reads
+//! review history.
+//!
+//! The library is read at a fixed time in the synthetic 2026 Pacific zone, so
+//! no result depends on when or where the tests run.
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -9,8 +13,22 @@ use super::*;
 use crate::{collections::test_support::seed_document, database::Database};
 
 const MINUTE: i64 = 60_000;
+/// Noon on Wednesday 10 June 2026, Pacific daylight time. Every review the
+/// tests make falls in daylight time too, so each carries the clock's offset.
+const NOW: &str = "2026-06-10T12:00:00-07:00";
 const RICH_TEXT: &str =
     r#"{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"q"}]}]}"#;
+
+fn millis(value: &str) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .expect("test time should parse")
+        .timestamp_millis()
+}
+
+/// The tests' clock at `now`, with the study day starting at `hour`.
+fn study_time(now: &str, hour: u32) -> StudyTimeContext {
+    StudyTimeContext::pacific_2026_at(millis(now), hour).expect("study time should resolve")
+}
 
 /// Builds a current-schema library row by row.
 struct Library<'a> {
@@ -21,10 +39,18 @@ struct Library<'a> {
 }
 
 impl<'a> Library<'a> {
+    /// A library read at [`NOW`], with the study day starting at 4 a.m.
     fn new(connection: &'a Connection) -> Self {
+        Self::at(
+            connection,
+            study_time(NOW, crate::study_calendar::DEFAULT_NEW_DAY_START_HOUR),
+        )
+    }
+
+    fn at(connection: &'a Connection, time: StudyTimeContext) -> Self {
         Self {
             connection,
-            time: StudyTimeContext::capture().unwrap(),
+            time,
             next: 0,
             documents: 0,
         }
@@ -32,10 +58,6 @@ impl<'a> Library<'a> {
 
     fn now(&self) -> i64 {
         self.time.now_utc_millis
-    }
-
-    fn today(&self) -> String {
-        self.time.local_date.to_string()
     }
 
     fn id(&mut self, kind: u8) -> String {
@@ -126,16 +148,11 @@ impl<'a> Library<'a> {
         self.card(deck, 0, due)
     }
 
-    /// A review of `card` at `at`, attributed to the study date `date`, with
-    /// the active time the practice screen measured.
-    fn review(
-        &mut self,
-        card: &str,
-        at: i64,
-        date: &str,
-        state_before: i64,
-        active_time_ms: Option<i64>,
-    ) {
+    /// A review of `card` at `at`, with the active time the practice screen
+    /// measured. Like a saved review, its attribution keeps the local calendar
+    /// date, zone and offset of the moment it was made.
+    fn review(&mut self, card: &str, at: i64, state_before: i64, active_time_ms: Option<i64>) {
+        let date = self.time.calendar_date_string_for_timestamp(at).unwrap();
         let id = self.id(0xee);
         let submission = self.id(0x5b);
         let (note, deck): (String, String) = self
@@ -162,9 +179,19 @@ impl<'a> Library<'a> {
                  note_revision, owner_deck_id_at_review, captured_deck_name, direction,
                  card_type, card_label, presentation_variant, question_excerpt,
                  question_text_hash, question_was_truncated, attribution_source)
-             VALUES (?1, ?2, ?3, 'UTC', 0, ?4, ?5, 1, ?6, 'Deck', 'forward', 'basic',
+             VALUES (?1, ?2, ?3, ?8, ?9, ?4, ?5, 1, ?6, 'Deck', 'forward', 'basic',
                      'Basic', 'forward', 'q', ?7, 0, 'captured')",
-            params![id, at, date, card, note, deck, "0".repeat(64)],
+            params![
+                id,
+                at,
+                date,
+                card,
+                note,
+                deck,
+                "0".repeat(64),
+                self.time.time_zone_id,
+                self.time.utc_offset_minutes
+            ],
         );
         self.exec(
             "INSERT INTO review_event_scheduler_context(review_event_id, elapsed_days,
@@ -175,11 +202,10 @@ impl<'a> Library<'a> {
         );
     }
 
-    /// A timed review made `ago` before now, attributed to today.
+    /// A timed review made `ago` before now.
     fn timed_review(&mut self, card: &str, ago: i64, active_time_ms: Option<i64>) {
         let at = self.now() - ago;
-        let today = self.today();
-        self.review(card, at, &today, 2, active_time_ms);
+        self.review(card, at, 2, active_time_ms);
     }
 
     fn overview_guide(&mut self, subject: &str, state: &str) {
@@ -381,7 +407,7 @@ fn an_empty_library_has_nothing_due_and_no_estimate() {
     Database::open_in_memory()
         .unwrap()
         .with_connection(|connection| {
-            let time = StudyTimeContext::capture()?;
+            let time = study_time(NOW, 4);
             let summary = summary(connection, &time);
             assert!(summary.subjects.is_empty());
             assert_eq!(summary.no_subject, empty_group(None));
@@ -457,13 +483,11 @@ fn todays_reviews_use_up_the_daily_limits_start_review_applies() {
             // Today one review and one new card were studied; yesterday's
             // reviews do not count against today's limits.
             let studied = library.card(&scales, 2, library.now() + 86_400_000);
-            let today = library.today();
             let at = library.now() - MINUTE;
-            library.review(&studied, at, &today, 2, Some(9_000));
-            library.review(&studied, at, &today, 0, Some(9_000));
-            let yesterday = library.time.local_date.pred_opt().unwrap().to_string();
+            library.review(&studied, at, 2, Some(9_000));
+            library.review(&studied, at, 0, Some(9_000));
             for _ in 0..3 {
-                library.review(&studied, at - 86_400_000, &yesterday, 2, None);
+                library.review(&studied, at - DAY_MS, 2, None);
             }
             let time = library.time.clone();
 
@@ -685,10 +709,13 @@ fn assert_reads_history_through_indexes(connection: &Connection, statements: &[S
         .find(|sql| sql.contains("review_event_attributions"))
         .unwrap();
     let completed = plan(connection, completed);
+    // The study date's calendar dates bound the search, through the local-date
+    // index or, with statistics showing few decks, a skip-scan of the deck
+    // index; either way the read follows the reviews of those dates.
     assert!(
         completed[0].starts_with("SEARCH a ")
-            && completed[0].contains("review_event_attributions_local_date_idx"),
-        "today's reviews start from the study-date index: {completed:#?}"
+            && completed[0].contains("review_local_date>? AND review_local_date<?"),
+        "today's reviews start from the reviews of the study date: {completed:#?}"
     );
     let estimate = history
         .iter()
@@ -724,12 +751,11 @@ fn review_history_is_read_through_indexes_with_and_without_statistics() {
                 let deck = if index % 4 == 0 { &loose } else { &deck };
                 cards.push(library.due_review(deck));
             }
-            let yesterday = library.time.local_date.pred_opt().unwrap().to_string();
             for (index, card) in cards.iter().enumerate() {
                 let ago = i64::try_from(index).unwrap() * 37 * MINUTE;
                 library.timed_review(card, ago + MINUTE, Some(5_000 + ago % 7_000));
-                let at = library.now() - 86_400_000 - ago;
-                library.review(card, at, &yesterday, 2, Some(4_000));
+                let at = library.now() - DAY_MS - ago;
+                library.review(card, at, 2, Some(4_000));
             }
             let time = library.time.clone();
 

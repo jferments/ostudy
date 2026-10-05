@@ -158,6 +158,8 @@ export interface CardBrowserRow {
 export interface CardSearchPage {
   cards: CardBrowserRow[];
   totalCount: number;
+  /** When the current study day began, so "Studied today" matches the reviewed-today filter. */
+  todayStartAt: number;
 }
 
 export interface SelectionCard {

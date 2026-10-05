@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { StudyMarkdown } from "../components/StudyMarkdown";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
@@ -8,71 +7,124 @@ import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuideSectionContent, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
 } from "../ipc/studyGuides";
-import type { TutorTarget } from "../ipc/tutor";
-import { StudyGuideSourceFigures } from "./StudyGuideSourceFigures";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
-import { useOptionalTutor } from "./tutor/TutorContext";
 import { Icon } from "../ui/icons/Icon";
+import { IconButton } from "../ui/icons/IconButton";
+import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
+import { InlineWorkspace, Sheet } from "../ui/overlays/Dialog";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
-import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { Checkbox, Disclosure, Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
-import { guideReaderStyles as styles } from "./documents/presentation";
+import { GuideExportDialog, GuideTextDialog } from "./study-guides/GuideDialogs";
+import { type GuideDestination, GuideOutline, guidePageId } from "./study-guides/GuideOutline";
+import { GuideOverviewPage, type GuidePageLink, GuideSectionPage } from "./study-guides/GuideReaderPages";
+import {
+  type EditingMode, findEditingOverlay, type GuideSectionEntry, type GuideSourceSummary, guideReadingOrder,
+  plainTextRichDocument, sectionBlocks,
+} from "./study-guides/guideModel";
+import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
 
 interface StudyGuideDialogProps {
-  documentId: string; documentTitle: string; showToast: ShowToast;
+  documentId: string; documentTitle: string;
+  /** What the library knows about the source file, for its kind badge and length. */
+  source?: GuideSourceSummary | null;
+  showToast: ShowToast;
   onPracticeCards: (cardIds: string[]) => Promise<void>; onClose: () => void;
 }
-type EditingMode = "note" | "override";
-interface EditingState { topicId: string | null; mode: EditingMode; value: string; }
+interface EditingState { topicId: string | null; mode: EditingMode; initialValue: string; }
 
-export function StudyGuideDialog({ documentId, documentTitle, showToast, onPracticeCards, onClose }: StudyGuideDialogProps) {
+/**
+ * The Chapter reader for one document's study guide: an overview page and one page per section,
+ * with the outline beside them on wide screens and in a Contents sheet on narrower ones.
+ */
+export function StudyGuideDialog({ documentId, documentTitle, source = null, showToast, onPracticeCards, onClose }: StudyGuideDialogProps) {
   const confirm = useConfirm();
+  const { layoutMode } = useLayoutMode();
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [includeAnnotations, setIncludeAnnotations] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [contentsOpen, setContentsOpen] = useState(false);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
+  const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
+  // Check-yourself answers last while the guide is open; nothing is stored.
+  const [checkProgress, setCheckProgress] = useState<Record<string, CheckProgressMap>>({});
+  const [navigation, setNavigation] = useState<{ scrollId: string; focusId: string; sequence: number } | null>(null);
+  const loadSequence = useRef(0);
   const refresh = useCallback(async () => {
     const loaded = await getDocumentStudyGuide(documentId);
-    setGuide(loaded); setErrorMessage(null); return loaded;
+    setGuide(loaded); setErrorMessage(null); setLoadFailed(false); return loaded;
   }, [documentId]);
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(() => {
+    const sequence = ++loadSequence.current;
     setIsLoading(true);
-    void refresh().catch((error: unknown) => { if (active) setErrorMessage(getErrorMessage(error)); })
-      .finally(() => { if (active) setIsLoading(false); });
-    return () => { active = false; };
+    void refresh().catch((error: unknown) => {
+      if (sequence !== loadSequence.current) return;
+      setErrorMessage(getErrorMessage(error)); setLoadFailed(true);
+    }).finally(() => { if (sequence === loadSequence.current) setIsLoading(false); });
   }, [refresh]);
+  useEffect(() => {
+    load();
+    return () => { loadSequence.current += 1; };
+  }, [load]);
   useEffect(() => {
     if (!guide) { setTopicCards({}); return; }
     let active = true;
-    void Promise.all(guide.sections.map(async (section) => {
-      const projection = await getDocumentTopicCardProjection(documentId, section.topicId);
-      return [section.topicId, projection] as const;
-    })).then((entries) => { if (active) setTopicCards(Object.fromEntries(entries)); })
-      .catch(() => { if (active) setTopicCards({}); });
+    const topicIds = guide.sections.map((section) => section.topicId);
+    void Promise.allSettled(topicIds.map((topicId) => getDocumentTopicCardProjection(documentId, topicId))).then((results) => {
+      if (!active) return;
+      setTopicCards(Object.fromEntries(results.flatMap((result, index) => {
+        const topicId = topicIds[index];
+        return result.status === "fulfilled" && topicId ? [[topicId, result.value] as const] : [];
+      })));
+    });
     return () => { active = false; };
   }, [documentId, guide]);
-  const guideNote = useMemo(() => guide?.overlays.find((overlay) => overlay.overlayKind === "guide_note") ?? null, [guide]);
-  const guideTitle = guide?.editorial?.title ?? documentTitle;
+  // A page change scrolls back to the top of the page and focuses its title; a block jump scrolls to
+  // its heading and focuses that. The focus waits a microtask, until a closing Contents sheet has
+  // returned focus to its button.
+  useEffect(() => {
+    if (!navigation) return;
+    queueMicrotask(() => {
+      document.getElementById(navigation.scrollId)?.scrollIntoView?.({ block: "start" });
+      document.getElementById(navigation.focusId)?.focus({ preventScroll: true });
+    });
+  }, [navigation]);
 
+  const order = useMemo(() => guide ? guideReadingOrder(guide) : null, [guide]);
+  const guideNote = useMemo(() => guide ? findEditingOverlay(guide.overlays, null, "note") : null, [guide]);
+  const guideTitle = guide?.editorial?.title?.trim() || documentTitle;
+  const currentEntry = order?.entries.find((entry) => entry.section.topicId === currentTopicId) ?? null;
+  const currentOverride = guide && currentEntry ? findEditingOverlay(guide.overlays, currentEntry.section.topicId, "override", guide.id) : null;
+  const blocks = currentEntry && !currentOverride ? sectionBlocks(currentEntry.section.content) : [];
+  const busy = isSaving || isExporting;
+  const actionsDisabled = isSaving || editing !== null;
+
+  function navigate(destination: GuideDestination): void {
+    setContentsOpen(false);
+    const target = destination.kind === "page"
+      ? { scrollId: guidePageId(destination.topicId), focusId: `${guidePageId(destination.topicId)}-title` }
+      : { scrollId: destination.id, focusId: destination.id };
+    if (destination.kind === "page") setCurrentTopicId(destination.topicId);
+    setNavigation((current) => ({ ...target, sequence: (current?.sequence ?? 0) + 1 }));
+  }
   async function generate(): Promise<void> {
     if (guide || isGenerating || isSaving || isExporting) return;
     setIsGenerating(true); setErrorMessage(null);
     try {
       const generated = await generateDocumentStudyGuide(documentId);
-      setGuide(generated); setEditing(null); showToast("success", "Study guide created.");
+      setGuide(generated); setLoadFailed(false); setEditing(null); setCurrentTopicId(null);
+      showToast("success", "Study guide created.");
     } catch (error: unknown) {
       const code = getErrorCode(error);
       if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
@@ -89,10 +141,11 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     try { await cancelDocumentStudyGuideGeneration(documentId); showToast("info", "Stopping study-guide generation…"); }
     catch (error: unknown) { setIsCanceling(false); showToast("error", getErrorMessage(error)); }
   }
-  async function exportPdf(): Promise<void> {
+  async function exportPdf(includeAnnotations: boolean): Promise<void> {
     if (!guide || isExporting || isGenerating || isSaving) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
+    let failed = false;
     try {
       const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations);
       preparedExportId = prepared.preparedExport.id;
@@ -107,10 +160,11 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
         const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";
         showToast("success", `Exported study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${annotationSummary}.`);
       }
-    } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
+    } catch (error: unknown) { failed = true; showToast("error", getErrorMessage(error)); }
     finally {
       if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
+      if (!failed) setExportOpen(false);
     }
   }
   async function openSource(): Promise<void> {
@@ -125,11 +179,11 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
     finally { setIsSaving(false); }
   }
-  async function saveEditing(): Promise<void> {
+  async function saveEditing(value: string): Promise<void> {
     if (!editing || isSaving || !guide) return;
     const topic = editing.topicId ? guide.sections.find((section) => section.topicId === editing.topicId) ?? null : null;
     const existing = findEditingOverlay(guide.overlays, editing.topicId, editing.mode, guide.id);
-    const isBlank = editing.value.trim().length === 0;
+    const isBlank = value.trim().length === 0;
     setIsSaving(true);
     try {
       if (isBlank) {
@@ -144,7 +198,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
         topicId: editing.topicId ?? undefined,
         overlayKind: editing.mode === "override" ? "body_override" : editing.topicId ? "topic_note" : "guide_note",
         baseContentHash: editing.mode === "override" ? topic?.contentHash : undefined,
-        richDoc: plainTextRichDocument(editing.value), plainText: editing.value, expectedRevision: existing?.revision,
+        richDoc: plainTextRichDocument(value), plainText: value, expectedRevision: existing?.revision,
       });
       await refresh(); setEditing(null); showToast("success", editing.mode === "override" ? "Section edit saved." : "Note saved.");
     } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
@@ -157,248 +211,145 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
       await onPracticeCards(cardIds);
     } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
   }
-  function beginGuideNote(): void { setEditing({ topicId: null, mode: "note", value: guideNote?.plainText ?? "" }); }
+  function beginGuideNote(): void { setEditing({ topicId: null, mode: "note", initialValue: guideNote?.plainText ?? "" }); }
   function beginTopicNote(section: DocumentStudyGuideSection): void {
     const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "note", guide?.id);
-    setEditing({ topicId: section.topicId, mode: "note", value: overlay?.plainText ?? "" });
+    setEditing({ topicId: section.topicId, mode: "note", initialValue: overlay?.plainText ?? "" });
   }
   function beginSectionOverride(section: DocumentStudyGuideSection): void {
     const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "override", guide?.id);
-    setEditing({ topicId: section.topicId, mode: "override", value: overlay?.plainText ?? section.contentText });
+    setEditing({ topicId: section.topicId, mode: "override", initialValue: overlay?.plainText ?? section.contentText });
   }
 
-  return <InlineWorkspace title={`Study guide · ${guideTitle}`}
-    description="Source-grounded sections, learner notes, and topic-linked flashcards."
-    onClose={onClose} closeLabel="Close study guide" className={styles.workspace}
-    dismissible={!isGenerating && !isSaving && !isExporting} busy={isSaving || isExporting}>
-    <header className={styles.header}>
-      <div><p className={styles.eyebrow}>Document learning artifact</p>
-        <strong>{guide
-          ? guide.editorial
-            ? `${guide.editorial.chapters.length} chapter${guide.editorial.chapters.length === 1 ? "" : "s"} · ${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}`
-            : `${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}`
-          : "Not generated yet"}</strong>
-      </div>
-      <div className={styles.headerActions}>
-        {guide ? <TutorEntryButton disabled={isGenerating || isSaving || isExporting || editing !== null}
-          target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
-            focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} /> : null}
-        {guide ? <label className={styles.annotationToggle}><Checkbox checked={includeAnnotations} disabled={isExporting} onCheckedChange={setIncludeAnnotations} />Include my notes in PDF</label> : null}
-        {guide ? <Button variant="secondary" disabled={isExporting || isGenerating || isSaving} onClick={() => void exportPdf()}>{isExporting ? "Exporting…" : "Export PDF"}</Button> : null}
-        <Button variant="secondary" onClick={() => void openSource()}>Open source</Button>
-        {isGenerating ? <Button variant="dangerSecondary" className={styles.generationButton} disabled={isCanceling}
-          aria-label={isCanceling ? "Stopping study guide generation" : "Generating study guide; click to stop"}
-          onClick={() => void stopGeneration()}>
-          <span className={styles.stopSign} aria-hidden="true"><Icon name="stop" size={18} /></span>
-          {isCanceling ? "Stopping study guide…" : "Generating study guide…"}
-        </Button> : !guide ? <Button variant="primary" disabled={isSaving || isExporting} onClick={() => void generate()}>Generate study guide</Button> : null}
-      </div>
-    </header>
-    {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
-    {isLoading ? <LoadingState label="Loading study guide…" /> : !guide ? <EmptyState title="No study guide yet" description="Create a structured guide from the document’s shared learning plan. The same stable topic identities organize generated flashcards and future learning tools." /> : (
-      <div className={styles.layout}>
-        <nav className={styles.contents} aria-label="Study guide contents"><strong>Contents</strong><a href="#guide-overview">Overview</a>
-          {guide.editorial
-            ? guide.editorial.chapters.map((chapter) => <a key={chapter.id} href={`#chapter-${chapter.id}`}>{chapter.title}</a>)
-            : guide.sections.map((section) => <a key={section.topicId} href={`#topic-${section.topicId}`}>{section.title}</a>)}
-        </nav>
-        <article className={styles.guide}>
-          {guide.editorial ? <h1 className={styles.guideTitle}><StudyMarkdown text={guide.editorial.title} inline /></h1> : null}
-          <section id="guide-overview" className={styles.overview}>
-            <h2>Overview</h2><StudyMarkdown text={guide.overview.summary} />
-            <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
-            <GuideConceptList values={guide.overview.keyConcepts} />
-            {guideNote?.plainText ? <aside className={styles.personalNote}><strong>My guide note</strong><StudyMarkdown text={guideNote.plainText} /></aside> : null}
-            <div className={styles.editorActions}>
-              <Button variant="secondary" onClick={beginGuideNote}>{guideNote ? "Edit guide note" : "Add guide note"}</Button>
-              {guideNote ? <Button variant="secondary" disabled={isSaving} onClick={() => void discardOverlay(guideNote, "Guide note removed.")}>Remove guide note</Button> : null}
+  const guideMenuItems: OverflowMenuItem[] = guide ? [
+    { id: "export", label: "Export as PDF…", disabled: isExporting || isGenerating || isSaving, onSelect: () => setExportOpen(true) },
+    { id: "guide-note", label: guideNote ? "Edit guide note" : "Add guide note", disabled: actionsDisabled, onSelect: beginGuideNote },
+    ...(guideNote ? [{ id: "remove-guide-note", label: "Remove guide note", destructive: true, disabled: actionsDisabled,
+      onSelect: () => void discardOverlay(guideNote, "Guide note removed.") }] : []),
+  ] : [];
+  const topBarActions = guide ? <>
+    {layoutMode === "compact" ? (
+      <IconButton icon="contents" label="Contents" tooltip={false} className="tw:size-11" aria-haspopup="dialog" aria-expanded={contentsOpen}
+        onClick={() => setContentsOpen(true)} />
+    ) : layoutMode === "medium" ? (
+      <Button variant="ghost" aria-haspopup="dialog" aria-expanded={contentsOpen} onClick={() => setContentsOpen(true)}>
+        <Icon name="contents" size={18} />Contents
+      </Button>
+    ) : null}
+    {/* Wider bars name the action as the mockups do; a phone's bar keeps to quiet icons. */}
+    <TutorEntryButton showLabel={layoutMode !== "compact"} variant={layoutMode === "compact" ? "ghost" : "secondary"}
+      className={layoutMode === "compact" ? "tw:size-11" : undefined} disabled={isGenerating || busy || editing !== null}
+      target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
+        focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} />
+    <OverflowMenu label="Study guide actions" items={guideMenuItems} className="tw:compact:size-11" />
+  </> : null;
+
+  return <>
+    <InlineWorkspace presentation="page" title={guideTitle} description="Study guide"
+      onClose={onClose} closeLabel="Back to Study Guides" actions={topBarActions}
+      dismissible={!isGenerating && !isSaving && !isExporting} busy={busy}>
+      {isLoading ? (
+        <div className="tw:px-page tw:py-10"><LoadingState label="Loading study guide…" /></div>
+      ) : !guide || !order ? (
+        <div className="tw:mx-auto tw:grid tw:w-full tw:max-w-[42rem] tw:gap-5 tw:px-page tw:py-8 tw:compact:px-4">
+          {errorMessage ? (
+            <InlineNotice kind="error">
+              <p className="tw:mt-0">{errorMessage}</p>
+              {loadFailed ? <Button variant="secondary" onClick={load}>Try again</Button> : null}
+            </InlineNotice>
+          ) : null}
+          {loadFailed ? null : (
+            <EmptyState icon={<Icon name="study-guide" size={30} />} title="No study guide yet"
+              description="Create a structured guide from the document’s shared learning plan. The same stable topic identities organize generated flashcards and future learning tools."
+              actions={<>
+                {isGenerating ? (
+                  <Button variant="dangerSecondary" className="tw:border-destructive/30 tw:bg-destructive-soft tw:text-destructive" disabled={isCanceling}
+                    aria-label={isCanceling ? "Stopping study guide generation" : "Generating study guide; click to stop"}
+                    onClick={() => void stopGeneration()}>
+                    <span className="tw:grid tw:size-5 tw:place-items-center tw:text-destructive" aria-hidden="true"><Icon name="stop" size={18} /></span>
+                    {isCanceling ? "Stopping study guide…" : "Generating study guide…"}
+                  </Button>
+                ) : <Button variant="primary" disabled={busy} onClick={() => void generate()}>Generate study guide</Button>}
+                <Button variant="secondary" onClick={() => void openSource()}>Open source</Button>
+              </>} />
+          )}
+        </div>
+      ) : (
+        <div className={layoutMode === "wide"
+          ? "tw:mx-auto tw:grid tw:w-full tw:max-w-[80rem] tw:grid-cols-[clamp(10rem,13vw,14rem)_minmax(0,1fr)_clamp(11rem,15vw,15.5rem)] tw:items-start tw:gap-x-[clamp(1.5rem,2.5vw,3rem)] tw:px-page tw:pt-8 tw:pb-[calc(4rem+var(--safe-bottom))]"
+          : "tw:w-full tw:px-page tw:pt-7 tw:pb-[calc(4rem+var(--safe-bottom))] tw:compact:px-4 tw:compact:pt-5 tw:compact:pb-6"}>
+          {layoutMode === "wide" ? (
+            <div className="tw:sticky tw:top-20 tw:max-h-[calc(100dvh-7rem)] tw:min-w-0 tw:overflow-y-auto tw:overscroll-contain tw:pb-4">
+              <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} blocks={blocks} onNavigate={navigate} />
             </div>
-          </section>
-          {guide.editorial ? guide.editorial.chapters.map((chapter) => {
-            const chapterSections = chapter.topics.flatMap((topic) => {
-              const section = guide.sections.find((candidate) => candidate.topicId === topic.topicId);
-              return section ? [{ section, editorialTitle: topic.title }] : [];
-            });
-            return <section key={chapter.id} id={`chapter-${chapter.id}`} className={styles.chapter}>
-              <header className={styles.chapterHeader}>
-                <h2><StudyMarkdown text={chapter.title} inline /></h2>
-                <div className={styles.chapterIntro}><StudyMarkdown text={chapter.introduction} /></div>
-              </header>
-              <div className={styles.chapterSections}>
-                {chapterSections.map(({ section, editorialTitle }) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
-                  guideId={guide.id} documentId={documentId} projection={topicCards[section.topicId]} actionsDisabled={isSaving || editing !== null}
-                  headingLevel={3} displayTitle={editorialTitle} onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
-                  onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
-                  onStudy={() => void studyTopic(section)} onOpenSource={() => void openSource()} />)}
-              </div>
-            </section>;
-          }) : guide.sections.map((section) => <StudyGuideSectionView key={section.topicId} section={section} overlays={guide.overlays}
-            guideId={guide.id} documentId={documentId} projection={topicCards[section.topicId]} actionsDisabled={isSaving || editing !== null}
-            onEditNote={() => beginTopicNote(section)} onEditSection={() => beginSectionOverride(section)}
-            onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
-            onStudy={() => void studyTopic(section)} onOpenSource={() => void openSource()} />)}
-        </article>
-      </div>
-    )}
-    {editing ? <div className={styles.editor}>
-      <label><strong>{editing.mode === "override" ? "Edit generated section" : "Personal note"}</strong>
-        <Textarea value={editing.value} rows={10} onChange={(event) => {
-          const value = event.currentTarget.value; setEditing((current) => current ? { ...current, value } : current);
-        }} />
-      </label>
-      <p>{editing.mode === "override" ? "This non-destructive edit is tied to the current generated section. Clear the text and save to reset an existing section edit." : "Personal notes attach to the document or stable learning topic. Clear the text and save to remove an existing note."}</p>
-      <div className={styles.editorActions}>
-        <Button variant="primary" disabled={isSaving} onClick={() => void saveEditing()}>{isSaving ? "Saving…" : "Save"}</Button>
-        <Button variant="secondary" disabled={isSaving} onClick={() => setEditing(null)}>Cancel</Button>
-      </div>
-    </div> : null}
-  </InlineWorkspace>;
+          ) : null}
+          {currentEntry ? (
+            <GuideSectionPage key={currentEntry.section.topicId} guide={guide} entry={currentEntry} sectionCount={order.entries.length} layoutMode={layoutMode}
+              documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
+              projection={topicCards[currentEntry.section.topicId]}
+              previous={neighbor(order.entries, currentEntry, -1)} next={neighbor(order.entries, currentEntry, 1)}
+              checkProgress={checkProgress[checkKey(currentEntry)] ?? {}}
+              onCheckProgressChange={(next) => setCheckProgress((current) => ({ ...current, [checkKey(currentEntry)]: next }))}
+              actionsDisabled={actionsDisabled} onNavigate={navigate}
+              onPractice={() => void studyTopic(currentEntry.section)}
+              onEditNote={() => beginTopicNote(currentEntry.section)}
+              onRemoveNote={(note) => void discardOverlay(note, "Topic note removed.")}
+              onEditSection={() => beginSectionOverride(currentEntry.section)}
+              onResetSection={(override) => void discardOverlay(override, "Section edit reset.")}
+              onDiscardConflict={(conflict) => void discardOverlay(conflict, "Older section edit discarded.")} />
+          ) : (
+            <GuideOverviewPage guide={guide} guideTitle={guideTitle} order={order} layoutMode={layoutMode}
+              documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
+              guideNote={guideNote} actionsDisabled={actionsDisabled} onNavigate={navigate}
+              onEditNote={beginGuideNote} onRemoveNote={(note) => void discardOverlay(note, "Guide note removed.")} />
+          )}
+        </div>
+      )}
+    </InlineWorkspace>
+    {contentsOpen && order ? (
+      <Sheet title="Contents" width="small" onClose={() => setContentsOpen(false)}>
+        <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} blocks={blocks} onNavigate={navigate} showLabel={false} />
+      </Sheet>
+    ) : null}
+    {editing && guide ? (
+      <GuideTextDialog key={`${editing.mode}-${editing.topicId ?? "guide"}`} saving={isSaving} initialValue={editing.initialValue}
+        width={editing.mode === "override" ? "large" : "medium"}
+        {...editingCopy(editing, guide, order?.entries ?? [])}
+        onSave={(value) => void saveEditing(value)} onClose={() => setEditing(null)} />
+    ) : null}
+    {exportOpen && guide ? (
+      <GuideExportDialog exporting={isExporting} onExport={(includeNotes) => void exportPdf(includeNotes)} onClose={() => setExportOpen(false)} />
+    ) : null}
+  </>;
 }
-interface StudyGuideSectionViewProps {
-  section: DocumentStudyGuideSection; overlays: StudyGuideOverlay[]; guideId: string; documentId: string;
-  projection?: TopicCardProjection; actionsDisabled: boolean; headingLevel?: 2 | 3; displayTitle?: string; onEditNote: () => void; onEditSection: () => void;
-  onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void; onStudy: () => void; onOpenSource: () => void;
+
+function neighbor(entries: GuideSectionEntry[], entry: GuideSectionEntry, step: -1 | 1): GuidePageLink | null {
+  const index = entries.indexOf(entry) + step;
+  if (index < 0) return { topicId: null, number: null, title: "Overview" };
+  const next = entries[index];
+  return next ? { topicId: next.section.topicId, number: next.number, title: next.title } : null;
 }
-function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, headingLevel = 2, displayTitle, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
-  const tutor = useOptionalTutor();
-  const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
-  const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
-  const titleOverride = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "title_override"
-    && overlay.state === "active" && overlay.guideId === guideId && overlay.plainText.trim() !== "");
-  const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
-  const effectiveTitle = titleOverride?.plainText.trim() || displayTitle || section.title;
-  const tutorTarget: TutorTarget = { title: effectiveTitle, scope: { kind: "guide", id: documentId },
-    focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" };
-  const menuItems: OverflowMenuItem[] = [
-    { id: "study", label: `Study linked cards${projection ? ` (${projection.cardCount})` : ""}`, disabled: !projection || projection.cardCount === 0, onSelect: onStudy },
-    ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
-      onSelect: () => tutor.openContext(tutorTarget) }] : []),
-    { id: "source", label: "Open source", onSelect: onOpenSource },
-    { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
-    { id: "edit", label: override ? "Edit section override" : "Edit section", disabled: actionsDisabled, onSelect: onEditSection },
-    ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled,
-      onSelect: () => onDiscardOverlay(note, "Topic note removed.") }] : []),
-    ...(override ? [{ id: "reset-section", label: "Reset section edit", destructive: true, disabled: actionsDisabled,
-      onSelect: () => onDiscardOverlay(override, "Section edit reset.") }] : []),
-  ];
-  const Heading: "h2" | "h3" = headingLevel === 3 ? "h3" : "h2";
-  return <section id={`topic-${section.topicId}`} className={styles.section}>
-    <header className={styles.sectionHeader}>
-      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><Heading><StudyMarkdown text={effectiveTitle} inline /></Heading></div>
-      <OverflowMenu label={`Section actions for ${effectiveTitle}`} items={menuItems} className={styles.sectionMenu} />
-    </header>
-    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent
-          content={section.content}
-          figureSource={{ documentId, locator: section.sourceLocator }}
-          headingLevel={headingLevel === 3 ? 4 : 3}
-        />}
-    {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
-    {conflict ? <InlineNotice kind="warning">
-      <strong>Older section edit needs review.</strong>
-      <p>The generated base changed, so ostudy did not silently apply the old override to new source-grounded content. The prior edit remains preserved below as a conflict.</p>
-      <div className={styles.overrideText}><StudyMarkdown text={conflict.plainText} /></div>
-      <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(conflict, "Older section edit discarded.")}>Discard older edit</Button>
-    </InlineNotice> : null}
-  </section>;
+
+function checkKey(entry: GuideSectionEntry): string {
+  return `${entry.section.topicId}:${entry.section.contentHash}`;
 }
-export function StudyGuideStructuredContent({
-  content,
-  figureSource = null,
-  headingLevel = 3,
-}: {
-  content: StudyGuideSectionContent;
-  figureSource?: { documentId: string; locator: import("../ipc/studyGuides").SourceLocator } | null;
-  headingLevel?: 3 | 4;
-}) {
-  const Heading: "h3" | "h4" = headingLevel === 4 ? "h4" : "h3";
-  const Subheading: "h4" | "h5" = headingLevel === 4 ? "h5" : "h4";
-  return <div className={styles.structuredSection}>
-    <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} headingLevel={headingLevel} />
-    {content.callouts.length > 0 ? <div className={styles.callouts}>
-      {content.callouts.map((callout) => <aside key={`${callout.kind}-${callout.title}`} className={styles.callout} data-kind={callout.kind}>
-        <strong><StudyMarkdown text={callout.title} inline /></strong><StudyMarkdown text={callout.body} />
-      </aside>)}
-    </div> : null}
-    {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><Heading><StudyMarkdown text={explanation.heading} inline /></Heading><StudyMarkdown text={explanation.body} /></section>)}
-    {content.importantTerms.length > 0 ? <section><Heading>Important terms</Heading><dl className={styles.terms}>
-      {content.importantTerms.map((term) => <div key={term.term}><dt><StudyMarkdown text={term.term} inline /></dt><dd><StudyMarkdown text={term.explanation} /></dd></div>)}
-    </dl></section> : null}
-    <GuideList title="Process" values={content.processSteps} ordered headingLevel={headingLevel} />
-    {content.tables.map((table) => <section key={`${table.title}-${table.columns.join("|")}`} className={styles.tableSection}>
-      <Heading><StudyMarkdown text={table.title} inline /></Heading>
-      <div className={styles.tableWrap}><table className={styles.table}>
-        <thead><tr>{table.columns.map((column) => <th key={column} scope="col"><StudyMarkdown text={column} inline /></th>)}</tr></thead>
-        <tbody>{table.rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join("|")}`}>
-          {row.map((cell, cellIndex) => <td key={`${cellIndex}-${cell}`}><StudyMarkdown text={cell} /></td>)}
-        </tr>)}</tbody>
-      </table></div>
-      {table.caption ? <p className={styles.tableCaption}><StudyMarkdown text={table.caption} inline /></p> : null}
-    </section>)}
-    {content.comparisons.length > 0 ? <section><Heading>Comparisons and relationships</Heading><div className={styles.comparisons}>
-      {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong><StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline /></strong><StudyMarkdown text={comparison.relationship} /></article>)}
-    </div></section> : null}
-    {content.workedExamples.length > 0 ? <section><Heading>Worked examples</Heading><div className={styles.workedExamples}>
-      {content.workedExamples.map((example) => <article key={example.title} className={styles.workedExample}>
-        <Subheading><StudyMarkdown text={example.title} inline /></Subheading><StudyMarkdown text={example.prompt} />
-        <GuideList title="Reasoning" values={example.steps} ordered headingLevel={headingLevel === 4 ? 4 : 3} />
-        <div className={styles.exampleAnswer}><strong>Answer</strong><StudyMarkdown text={example.answer} /></div>
-        {example.takeaway ? <div className={styles.exampleTakeaway}><strong>Takeaway</strong><StudyMarkdown text={example.takeaway} /></div> : null}
-      </article>)}
-    </div></section> : null}
-    <GuideList title="Common misconceptions" values={content.commonMisconceptions} headingLevel={headingLevel} />
-    <StudyGuideSourceFigures
-      documentId={figureSource?.documentId ?? null}
-      locator={figureSource?.locator ?? null}
-      explanations={content.visualExplanations}
-    />
-    {content.retrievalChecks.length > 0 ? <section><Heading>Check yourself</Heading><div className={styles.retrievalChecks}>
-      {content.retrievalChecks.map((check) => <Disclosure key={check.prompt} className={styles.retrievalCheck}
-        title={<StudyMarkdown text={check.prompt} inline />}>
-        <div className={styles.retrievalAnswer}><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
-      </Disclosure>)}
-    </div></section> : null}
-  </div>;
+
+function editingCopy(editing: EditingState, guide: DocumentStudyGuide, entries: GuideSectionEntry[]): { title: string; description: string; label: string } {
+  const existing = findEditingOverlay(guide.overlays, editing.topicId, editing.mode, guide.id) !== null;
+  const sectionTitle = entries.find((entry) => entry.section.topicId === editing.topicId)?.title ?? "";
+  if (editing.mode === "override") return {
+    title: "Edit or rewrite this section",
+    description: "Your version replaces the generated text in the reader. The generated section is kept, so you can reset to it at any time. Clear the text and save to reset it now.",
+    label: "Section text",
+  };
+  if (editing.topicId === null) return {
+    title: existing ? "Edit guide note" : "Add a guide note",
+    description: "A note about the whole guide. It stays with this document when the guide is regenerated. Clear the text and save to remove it.",
+    label: "Note",
+  };
+  return {
+    title: existing ? "Edit note" : "Add a note",
+    description: `A note on “${sectionTitle}”. It stays with this topic when the guide is regenerated. Clear the text and save to remove it.`,
+    label: "Note",
+  };
 }
-function GuideConceptList({ values }: { values: string[] }) {
-  if (values.length === 0) return null;
-  return <section><h3>Key concepts</h3><dl className={styles.keyConcepts}>
-    {values.slice(0, 6).map((value) => {
-      const [title, caption] = splitOverviewConcept(value);
-      return <div key={value}>
-        <dt><StudyMarkdown text={title} inline /></dt>
-        {caption ? <dd><StudyMarkdown text={caption} /></dd> : null}
-      </div>;
-    })}
-  </dl></section>;
-}
-function splitOverviewConcept(value: string): [string, string] {
-  const separator = value.indexOf(" — ");
-  if (separator < 0) return [value, ""];
-  return [value.slice(0, separator).trim(), value.slice(separator + 3).trim()];
-}
-function GuideList({ title, values, ordered = false, headingLevel = 3 }: {
-  title: string; values: string[]; ordered?: boolean; headingLevel?: 3 | 4;
-}) {
-  if (values.length === 0) return null;
-  const List = ordered ? "ol" : "ul";
-  const Heading: "h3" | "h4" = headingLevel === 4 ? "h4" : "h3";
-  return <section><Heading>{title}</Heading><List>{values.map((value) => <li key={value}><StudyMarkdown text={value} /></li>)}</List></section>;
-}
-function findEditingOverlay(overlays: StudyGuideOverlay[], topicId: string | null, mode: EditingMode, guideId?: string): StudyGuideOverlay | null {
-  const kind = mode === "override" ? "body_override" : topicId ? "topic_note" : "guide_note";
-  return overlays.find((overlay) => overlay.overlayKind === kind && overlay.topicId === topicId && overlay.state === "active" && (mode !== "override" || overlay.guideId === guideId)) ?? null;
-}
-function plainTextRichDocument(value: string): Record<string, unknown> {
-  return { type: "doc", content: value.split(/\n{2,}/u).map((paragraph) => paragraph.trim()).filter(Boolean)
-    .map((paragraph) => ({ type: "paragraph", content: [{ type: "text", text: paragraph }] })) };
-}
-function formatSourceLocator(locator: { unitKind: string; unitNumbers: number[] }): string {
-  const numbers = locator.unitNumbers;
-  const kind = locator.unitKind.replaceAll("_", " ");
-  if (numbers.length === 0) return kind;
-  const first = numbers[0], last = numbers[numbers.length - 1];
-  if (first === undefined || last === undefined) return kind;
-  const label = first === last ? `${first}` : `${first}–${last}`;
-  return `${capitalize(kind)} ${label}`;
-}
-function capitalize(value: string): string { return value.length === 0 ? value : `${value.charAt(0).toUpperCase()}${value.slice(1)}`; }

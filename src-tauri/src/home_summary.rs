@@ -4,15 +4,16 @@
 //! One read-only command serves Home's Today strip and subject tiles and the
 //! Review destination. It reuses the study rules instead of restating them:
 //! "studyable" and "due" come from [`studyability`], today's completed reviews
-//! from [`workload::completed_today`], the study date from
-//! [`StudyTimeContext`], and the daily limits from [`DailyAllowance`], the same
-//! rule a scheduled practice session applies when it starts.
+//! from [`workload::completed_today`], the study date (which starts at the
+//! learner's "New day starts at" hour) from [`StudyTimeContext`], and the daily
+//! limits from [`DailyAllowance`], the same rules a scheduled practice session
+//! applies when it starts.
 //!
 //! Home is the landing page and every native command waits in one queue, so the
 //! summary avoids the learning-signal projection (which reads every review) and
-//! reads review history only through indexes: today's completed reviews through
-//! the local-date index, and the recent study time through the review-time
-//! index with a bounded window.
+//! reads review history only through indexes: today's completed reviews by the
+//! stored calendar dates the study date spans, and the recent study time
+//! through the review-time index with a bounded window.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -112,7 +113,7 @@ pub struct HomeSummaryDto {
 #[tauri::command]
 pub fn get_home_summary(database: State<'_, Database>) -> Result<HomeSummaryDto, CommandError> {
     database.with_connection(|connection| {
-        let time = StudyTimeContext::capture()?;
+        let time = StudyTimeContext::capture(connection)?;
         load_home_summary(connection, &time)
     })
 }

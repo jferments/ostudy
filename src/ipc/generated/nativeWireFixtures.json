@@ -11,6 +11,7 @@
     "displayQuestionOnAnswer": false,
     "materialPreference": "automatic",
     "motionPreference": "system",
+    "newDayStartHour": 4,
     "practiceShuffle": true,
     "theme": "dark",
     "tutorialsEnabled": false,
