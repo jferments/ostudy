@@ -35,7 +35,7 @@ export function ArchivedDecksSection({
     <section className="tw:grid tw:min-w-0 tw:gap-3">
       <Button variant="ghost"
         type="button"
-        className="tw:w-full tw:justify-between tw:py-4 tw:text-start tw:[&>span]:flex tw:[&>span]:w-full tw:[&>span]:items-center tw:[&>span]:justify-between tw:[&_strong]:block tw:[&_strong]:text-sm tw:[&_small]:block tw:[&_small]:text-xs tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground"
+        className="tw:w-full tw:justify-between tw:py-4 tw:text-start tw:[&>span]:flex tw:[&>span]:w-full tw:[&>span]:items-center tw:[&>span]:justify-between tw:[&_strong]:block tw:[&_strong]:text-small tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground"
         aria-expanded={expanded}
         onClick={onToggle}
       >

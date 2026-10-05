@@ -22,6 +22,11 @@ export interface ModalViewProps {
   busy: boolean;
   className?: string;
 }
+/** Nested dialogs stack inside the dialog layer band: each depth adds a backdrop and a popup step. */
+function dialogLayer(depth: number, offset = 0): string {
+  return `calc(var(--ostudy-layer-dialog) + ${Math.max(0, depth) * 2 + offset})`;
+}
+
 const widths = {
   small: "tw:max-w-md",
   medium: "tw:max-w-xl",
@@ -69,11 +74,11 @@ export function ModalView({
       <Dialog.Portal>
         <Dialog.Backdrop
           data-slot="dialog-overlay"
-          style={{ zIndex: 200 + depth * 10 }}
-          className="tw:fixed tw:inset-0 tw:bg-(--ostudy-color-overlay-scrim) tw:backdrop-blur-xs tw:simple-material:backdrop-blur-none tw:forced-colors:bg-[Canvas]"
+          style={{ zIndex: dialogLayer(depth) }}
+          className="tw:fixed tw:inset-0 tw:bg-(--ostudy-color-overlay-scrim) tw:forced-colors:bg-[Canvas]"
         />
         <div
-          style={{ zIndex: 201 + depth * 10 }}
+          style={{ zIndex: dialogLayer(depth, 1) }}
           className={cn(
             "tw:pointer-events-none tw:fixed tw:inset-0 tw:flex tw:justify-center tw:p-4",
             sheet ? "tw:items-end tw:p-0" : "tw:items-center",
@@ -96,18 +101,18 @@ export function ModalView({
             className={cn(
               "tw:pointer-events-auto tw:flex tw:max-h-[calc(100dvh-2rem)] tw:w-full tw:min-w-0 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:bg-popover tw:font-sans tw:text-foreground tw:shadow-lg tw:ring-1 tw:ring-border tw:outline-none",
               widths[width],
-              sheet && "tw:max-h-[calc(100dvh-var(--safe-top)-1rem)] tw:max-w-none tw:rounded-b-none tw:pb-[calc(var(--safe-bottom)+var(--android-ime-bottom))]",
+              sheet && "tw:max-h-[calc(100dvh-var(--safe-top)-1rem)] tw:max-w-none tw:rounded-b-none tw:shadow-xl tw:pb-[calc(var(--safe-bottom)+var(--android-ime-bottom))]",
               presentation === "fullscreen" && "tw:h-full tw:max-h-none tw:max-w-none tw:rounded-none tw:pt-(--safe-top) tw:pb-[calc(var(--safe-bottom)+var(--android-ime-bottom))] tw:ring-0",
               className,
             )}
           >
             <header className="tw:flex tw:shrink-0 tw:items-start tw:justify-between tw:gap-3 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-4 tw:py-3.5">
               <div className="tw:min-w-0 tw:space-y-1">
-                <Dialog.Title render={<h2 />} className="tw:m-0 tw:break-words tw:text-base tw:font-medium tw:leading-snug">
+                <Dialog.Title render={<h2 />} className="tw:m-0 tw:break-words tw:text-body tw:font-medium tw:leading-snug">
                   {title}
                 </Dialog.Title>
                 {description ? (
-                  <Dialog.Description className="tw:m-0 tw:break-words tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
+                  <Dialog.Description className="tw:m-0 tw:break-words tw:text-small tw:leading-relaxed tw:text-muted-foreground">
                     {description}
                   </Dialog.Description>
                 ) : null}

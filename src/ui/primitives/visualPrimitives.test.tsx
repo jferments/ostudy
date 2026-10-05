@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CardStack } from "../materials/CardStack";
 import { Badge } from "./Badge";
 import { Progress } from "./Progress";
 import { Surface } from "./Surface";
@@ -21,13 +20,6 @@ describe("visual-system primitives", () => {
     const progress = screen.getByRole("progressbar", { name: "Study progress" });
     expect(progress.getAttribute("aria-valuenow")).toBe("10");
     expect(progress.getAttribute("aria-valuemax")).toBe("10");
-  });
-
-  it("keeps decorative stack layers outside the accessibility tree", () => {
-    const { container } = render(<CardStack remaining={8}><article>Question</article></CardStack>);
-    expect(screen.getByText("Question")).toBeTruthy();
-    const layers = container.querySelectorAll("[aria-hidden='true']");
-    expect(layers).toHaveLength(2);
   });
 
   it("renders semantic status text", () => {

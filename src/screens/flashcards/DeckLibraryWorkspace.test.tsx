@@ -10,6 +10,7 @@ import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRou
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 
 const deckControllerMocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -150,12 +151,7 @@ function renderLibrary({
 
 function setLayout(mode: "wide" | "compact"): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches:
-      query.includes("760")
-        ? mode === "compact"
-        : query.includes("1180")
-          ? mode === "compact"
-          : false,
+    matches: matchesLayoutQuery(query, layoutWidths[mode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),

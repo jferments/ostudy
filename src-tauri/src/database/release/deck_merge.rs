@@ -76,7 +76,8 @@ mod tests {
         let comparison = connection.transaction().unwrap();
         comparison
             .execute_batch(
-                "DROP TABLE study_target_generation_instructions;
+                "DROP TABLE review_event_scheduler_context;
+                 DROP TABLE study_target_generation_instructions;
                  DROP TABLE deck_merge_operations;",
             )
             .unwrap();

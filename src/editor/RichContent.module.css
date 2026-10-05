@@ -1,3 +1,5 @@
+@reference "../ui/tokens/generated/viewport-variants.css";
+
 @layer components {
   .view {
     min-width: 0;
@@ -21,6 +23,8 @@
   .content h2 { margin: 0.7em 0 0.35em; font-size: 1.6em; line-height: 1.2; }
   .content h3 { margin: 0.7em 0 0.35em; font-size: 1.3em; }
   .content h4 { margin: 0.7em 0 0.35em; font-size: 1.1em; }
+  /* Card headings follow the card font, not the interface heading style. */
+  .content :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; font-weight: bold; letter-spacing: normal; }
 
   .content sub,
   .content sup {
@@ -184,12 +188,8 @@
 
   .inlinePlaceholder { margin-inline: 0.12rem; vertical-align: baseline; }
 
-  @media (max-width: 760px) {
-    .content table { width: max-content; min-width: 100%; }
-    .content [data-indent="4"],
-    .content [data-indent="5"],
-    .content [data-indent="6"] { margin-left: 3rem; }
-  }
+  .content table { @variant compact { width: max-content; min-width: 100%; } }
+  .content :is([data-indent="4"], [data-indent="5"], [data-indent="6"]) { @variant compact { margin-left: 3rem; } }
 
   @media (forced-colors: active) {
     .content [data-task-item]::before,

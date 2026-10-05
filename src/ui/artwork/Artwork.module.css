@@ -8,7 +8,7 @@
     color: var(--ostudy-color-text-accent);
   }
 
-  .artwork svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 14px 22px color-mix(in srgb, var(--ostudy-color-ambient-vignette) 28%, transparent)); }
+  .artwork svg { display: block; width: 100%; height: auto; }
   .fallback { min-height: 92px; border: 1px dashed var(--ostudy-color-border-strong); border-radius: var(--ostudy-radius-large); background: var(--ostudy-color-surface-soft); }
   .brand { --ostudy-artwork-max: 220px; }
   .empty { --ostudy-artwork-max: 280px; }

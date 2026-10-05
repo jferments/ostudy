@@ -20,7 +20,7 @@
   .folder[data-drag-insertion="after"]::after,
   .folder[data-drag-insertion="empty"]::after {
     position: absolute;
-    z-index: 1;
+    z-index: var(--ostudy-layer-raised);
     inset-inline: var(--ostudy-space-3);
     height: 3px;
     border-radius: 999px;

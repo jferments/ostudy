@@ -28,48 +28,21 @@
     animation-iteration-count: 1 !important;
   }
 
-  :root[data-material="simple"],
-  :root[data-contrast="forced"] {
-    --ostudy-material-blur-low: 0px;
-    --ostudy-material-blur-medium: 0px;
-    --ostudy-material-blur-high: 0px;
-    --ostudy-material-noise-opacity: 0;
-  }
-
-  :root[data-material="simple"] {
-    --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
-    --ostudy-material-chrome-saturation: 1;
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    :root {
-      --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
-      --ostudy-material-blur-low: 0px;
-      --ostudy-material-blur-medium: 0px;
-      --ostudy-material-blur-high: 0px;
-      --ostudy-material-noise-opacity: 0;
+  /* Compact layout (see viewport-variants.css). */
+  :root {
+    @variant compact {
+      --touch-target-min: max(48px, 3rem);
     }
   }
 
-  @media (forced-colors: active) {
-    :root {
-      --ostudy-material-noise-opacity: 0;
-      --ostudy-material-blur-low: 0px;
-      --ostudy-material-blur-medium: 0px;
-      --ostudy-material-blur-high: 0px;
-    }
-  }
-
-  @media (max-width: 760px) {
-    :root {
-      --touch-target-min: 48px;
-    }
-
-    body {
+  body {
+    @variant compact {
       overflow: auto;
     }
+  }
 
-    :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+  :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+    @variant compact {
       visibility: hidden;
       pointer-events: none;
     }

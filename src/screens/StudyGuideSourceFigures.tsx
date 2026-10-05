@@ -70,7 +70,7 @@ export function StudyGuideSourceFigures({
               alt={visual.title}
               className="tw:max-h-[32rem] tw:w-full tw:object-contain"
             />
-            <figcaption className="tw:grid tw:gap-1 tw:text-sm">
+            <figcaption className="tw:grid tw:gap-1 tw:text-small">
               <strong><StudyMarkdown text={visual.title} inline /></strong>
               <StudyMarkdown text={visual.explanation} />
             </figcaption>

@@ -140,7 +140,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
             addImages?.(key, savedId, files, instructions);
           }} />
         <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
-          <span className="tw:text-sm tw:text-muted-foreground">{total} image{total === 1 ? "" : "s"}</span>
+          <span className="tw:text-small tw:text-muted-foreground">{total} image{total === 1 ? "" : "s"}</span>
           <div className="tw:flex tw:items-center tw:gap-2">
             <Button disabled={!collections || instructionError !== null}
               onClick={() => pasteSession.current?.paste()}>Paste images</Button>
@@ -157,7 +157,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
             return <li key={member.id}
               className="tw:grid tw:min-w-0 tw:gap-2 tw:border-x-0 tw:border-t-0 tw:border-b tw:border-solid tw:border-border tw:py-2">
               <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
-                <span className="tw:min-w-0 tw:break-all tw:text-sm">{member.originalFilename}</span>
+                <span className="tw:min-w-0 tw:break-all tw:text-small">{member.originalFilename}</span>
                 <Button size="small" variant="ghost"
                   aria-label={`${selected ? "Hide" : "View"} ${member.originalFilename}`}
                   onClick={() => setPreviewId((current) => current === member.id ? null : member.id)}>
@@ -165,7 +165,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
                 </Button>
               </div>
               {selected && previewLoading ? <p role="status"
-                className="tw:m-0 tw:text-sm tw:text-muted-foreground">Loading retained original…</p> : null}
+                className="tw:m-0 tw:text-small tw:text-muted-foreground">Loading retained original…</p> : null}
               {selected && previewError ? <InlineNotice kind="error">{previewError}</InlineNotice> : null}
               {selected && preview ? <img src={preview.dataUrl} alt="Retained original image"
                 className="tw:mx-auto tw:max-h-[70vh] tw:max-w-full tw:object-contain" /> : null}
@@ -173,12 +173,12 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
           })}
           {pending.map((item) => <li key={item.id} className="tw:grid tw:min-w-0 tw:gap-1 tw:border-x-0 tw:border-t-0 tw:border-b tw:border-solid tw:border-border tw:py-2">
             <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
-              <span className="tw:min-w-0 tw:break-all tw:text-sm">{item.name}</span>
+              <span className="tw:min-w-0 tw:break-all tw:text-small">{item.name}</span>
               {item.status === "failed" ? <Button size="small" variant="ghost"
                 aria-label={`Remove ${item.name}`} onClick={() => collections?.removeFailedImage(key, item.id)}>Remove</Button>
-                : <span className="tw:text-xs tw:text-muted-foreground">{item.status === "saved" ? "Saved" : "Adding…"}</span>}
+                : <span className="tw:text-caption tw:text-muted-foreground">{item.status === "saved" ? "Saved" : "Adding…"}</span>}
             </div>
-            {item.error ? <span className="tw:text-sm tw:text-destructive">{item.error}</span> : null}
+            {item.error ? <span className="tw:text-small tw:text-destructive">{item.error}</span> : null}
           </li>)}
         </ul> : null}
         <Textarea ref={pasteTarget} data-image-paste-target="" aria-label="Paste images here"
@@ -188,7 +188,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
           className="tw:min-h-32 tw:resize-none tw:border-dashed tw:p-5 tw:text-center" />
         {pasteError ? <InlineNotice kind="warning">{pasteError}</InlineNotice> : null}
         {job ? <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
-          <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">{phaseLabels[job.phase]}</p>
+          <p role="status" className="tw:m-0 tw:text-small tw:text-muted-foreground">{phaseLabels[job.phase]}</p>
           {retryable ? <Button size="small" disabled={instructionError !== null}
             onClick={() => collections?.retryImages(key, instructions)}>
             {changedInstructions ? "Generate with new instructions" : "Retry processing"}

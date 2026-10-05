@@ -11,4 +11,12 @@ describe("namespaced Tailwind class composition", () => {
     expect(result).toContain("tw:text-body");
     expect(result).not.toContain("tw:text-label");
   });
+  it("treats every type-scale size as a font size", () => {
+    expect(cn("tw:text-small tw:text-muted-foreground", "tw:text-body-large")).toBe("tw:text-muted-foreground tw:text-body-large");
+    expect(cn("tw:text-title-small", "tw:text-display")).toBe("tw:text-display");
+  });
+  it("lets a caller replace theme-owned radius and shadow utilities", () => {
+    expect(cn("tw:rounded-button tw:shadow-glow", "tw:rounded-lg tw:shadow-none")).toBe("tw:rounded-lg tw:shadow-none");
+    expect(cn("tw:shadow-panel tw:shadow-primary/20", "tw:shadow-overlay")).toBe("tw:shadow-primary/20 tw:shadow-overlay");
+  });
 });

@@ -9,7 +9,6 @@ export type HelpTopicId =
   | "documents.processing"
   | "practice.confidence"
   | "practice.dailyLimits"
-  | "settings.materialEffects"
   | "settings.motion";
 
 export interface HelpTopic {
@@ -90,14 +89,6 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     details:
       "Select the decks you want to study first. The workload summary below the selection shows what the scheduled session will include. Scheduled study respects the limits; extra practice remains available when you intentionally choose a deck or custom scope.",
     documentation: "Practice, confidence, and scheduling",
-  },
-  "settings.materialEffects": {
-    id: "settings.materialEffects",
-    title: "Material effects",
-    summary: "Material effects control depth, translucency, blur, and texture independently from motion.",
-    details:
-      "Automatic uses restrained effects and follows reduced-transparency or forced-color preferences. Simple materials use opaque surfaces and no grain.",
-    documentation: "Themes, motion, typography, and visual accessibility",
   },
   "settings.motion": {
     id: "settings.motion",

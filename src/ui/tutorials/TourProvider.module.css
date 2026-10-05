@@ -1,5 +1,5 @@
 /* Guided spotlight geometry remains custom; actions and text use shared UI/Tailwind. */
-@layer overlays {
+@layer components {
   .layer {
     position: fixed;
     z-index: var(--ostudy-layer-effects);
@@ -32,18 +32,13 @@
     padding: var(--ostudy-space-5);
     background: var(--ostudy-color-surface-overlay);
     color: var(--ostudy-color-text-primary);
-    box-shadow: var(--ostudy-shadow-level-5), var(--ostudy-glow-subtle);
+    box-shadow: var(--ostudy-shadow-level-5);
     pointer-events: auto;
-    backdrop-filter: blur(var(--ostudy-material-blur-high));
     animation: tourEnter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter);
   }
   @keyframes tourEnter {
     from { opacity: 0; transform: translate3d(0, 8px, 0) scale(.985); }
     to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-  }
-  :root[data-material="simple"] .popover {
-    background: var(--ostudy-color-surface-raised);
-    backdrop-filter: none;
   }
   :root[data-motion="reduced"] .spotlight,
   :root[data-motion="none"] .spotlight { transition: none; }
@@ -52,9 +47,6 @@
   @media (prefers-reduced-motion: reduce) {
     .spotlight { transition: none; }
     .popover { animation: none; }
-  }
-  @media (prefers-reduced-transparency: reduce) {
-    .popover { background: var(--ostudy-color-surface-raised); backdrop-filter: none; }
   }
   @media (max-width: 560px) {
     .popover {

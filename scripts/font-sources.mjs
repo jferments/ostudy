@@ -18,6 +18,25 @@ export const localFontSources = Object.freeze([
     ],
   },
   {
+    id: "plex-mono",
+    family: "IBM Plex Mono",
+    // Console's heading and wordmark face (theme-owned, not a selectable preset).
+    // Google Fonts ships it as static faces; headings use 600 and the wordmark 700.
+    selectable: false,
+    googleWeights: "600;700",
+    license: {
+      spdx: "OFL-1.1",
+      // One OFL notice covers the whole IBM Plex family.
+      noticePath: "public/licenses/IBM-Plex-Sans-OFL-1.1.txt",
+      copyright:
+        "Copyright 2017 The IBM Plex Project Authors (https://github.com/IBM/plex)",
+    },
+    faces: [
+      { googleWeight: "600", cssWeight: "600", filename: "ibm-plex-mono-latin-600.woff2" },
+      { googleWeight: "700", cssWeight: "700", filename: "ibm-plex-mono-latin-700.woff2" },
+    ],
+  },
+  {
     id: "albert",
     family: "Albert Sans",
     googleWeights: "300..700",

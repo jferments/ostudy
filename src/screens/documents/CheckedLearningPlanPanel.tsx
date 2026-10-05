@@ -17,28 +17,28 @@ export function CheckedLearningPlanPanel({
     <Disclosure
       className="tw:mt-3 tw:border-primary/20 tw:bg-accent/20"
       title={(
-        <span className="tw:text-sm tw:font-medium tw:text-primary">
+        <span className="tw:text-small tw:font-medium tw:text-primary">
           Checked learning plan ready · {plan.topics.length} topic{plan.topics.length === 1 ? "" : "s"}
         </span>
       )}
     >
       <div className="tw:grid tw:min-w-0 tw:gap-4 tw:px-3 tw:pb-3">
-        <p className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
+        <p className="tw:m-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground">
           This read-only plan has already passed native source-grounding checks. Flashcard authoring
           and final curation are still running; nothing shown here is a provisional learner card.
         </p>
-        <p className="tw:m-0 tw:text-sm tw:font-medium tw:tabular-nums">
+        <p className="tw:m-0 tw:text-small tw:font-medium tw:tabular-nums">
           {total > 0
             ? `Card authoring: ${completed} of ${total} windows finished · ${remaining} remaining.`
             : "Card authoring is still preparing its source windows."}
         </p>
         <section className="tw:grid tw:gap-2">
-          <h3 className="tw:m-0 tw:text-base tw:font-semibold">Summary</h3>
+          <h3 className="tw:m-0 tw:text-body tw:font-semibold">Summary</h3>
           <p className="tw:m-0 tw:leading-relaxed">{plan.summary}</p>
         </section>
         {plan.learningObjectives.length > 0 ? (
           <section className="tw:grid tw:gap-2">
-            <h3 className="tw:m-0 tw:text-base tw:font-semibold">Learning objectives</h3>
+            <h3 className="tw:m-0 tw:text-body tw:font-semibold">Learning objectives</h3>
             <ul className="tw:m-0 tw:grid tw:gap-1 tw:pl-5">
               {plan.learningObjectives.map((objective, index) => (
                 <li key={`objective:${index}`}>{objective}</li>
@@ -48,12 +48,12 @@ export function CheckedLearningPlanPanel({
         ) : null}
         {plan.keyConcepts.length > 0 ? (
           <section className="tw:grid tw:gap-2">
-            <h3 className="tw:m-0 tw:text-base tw:font-semibold">Key concepts</h3>
+            <h3 className="tw:m-0 tw:text-body tw:font-semibold">Key concepts</h3>
             <div className="tw:flex tw:flex-wrap tw:gap-2">
               {plan.keyConcepts.map((concept, index) => (
                 <span
                   key={`concept:${index}`}
-                  className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-1 tw:text-sm"
+                  className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-1 tw:text-small"
                 >
                   {concept}
                 </span>
@@ -63,12 +63,12 @@ export function CheckedLearningPlanPanel({
         ) : null}
         {plan.topics.length > 0 ? (
           <section className="tw:grid tw:gap-2">
-            <h3 className="tw:m-0 tw:text-base tw:font-semibold">Topics</h3>
+            <h3 className="tw:m-0 tw:text-body tw:font-semibold">Topics</h3>
             <ol className="tw:m-0 tw:grid tw:gap-3 tw:pl-5">
               {plan.topics.map((topic) => (
                 <li key={topic.id} className="tw:min-w-0">
                   <strong className="tw:block tw:break-words">{topic.title}</strong>
-                  <span className="tw:text-xs tw:text-muted-foreground">
+                  <span className="tw:text-caption tw:text-muted-foreground">
                     {sourceLabel(topic.sourceLocator)}
                   </span>
                   <p className="tw:my-1 tw:break-words tw:leading-relaxed">{topic.summary}</p>

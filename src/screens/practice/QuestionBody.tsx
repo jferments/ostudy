@@ -65,7 +65,7 @@ export function QuestionBody({ question, response, evaluation, assets, disabled,
           kind: "choice", itemId: option.id, selected: String(booleanFeedback.selected) === option.id,
           expected: String(booleanFeedback.expected) === option.id, rationale: null,
         })) : []} onChange={(ids) => onChange({ kind: "true_false", selected: ids[0] === "true" })} />
-      {!checked ? <div className="tw:flex tw:gap-5 tw:text-sm tw:text-muted-foreground" aria-label="Keyboard shortcuts">
+      {!checked ? <div className="tw:flex tw:gap-5 tw:text-small tw:text-muted-foreground" aria-label="Keyboard shortcuts">
         <span><Keycap>T</Keycap>: True</span><span><Keycap>F</Keycap>: False</span>
       </div> : null}
       {booleanFeedback?.correctedStatement ? <RichTextView document={booleanFeedback.correctedStatement} assets={assets} onLinkError={onError} /> : null}
@@ -86,5 +86,5 @@ export function QuestionBody({ question, response, evaluation, assets, disabled,
 }
 
 function Keycap({ children }: { children: string }) {
-  return <kbd className="tw:inline-flex tw:min-h-6 tw:min-w-6 tw:items-center tw:justify-center tw:rounded tw:border tw:border-solid tw:border-border tw:bg-background tw:px-1 tw:font-mono tw:text-xs tw:shadow-sm">{children}</kbd>;
+  return <kbd className="tw:inline-flex tw:min-h-6 tw:min-w-6 tw:items-center tw:justify-center tw:rounded tw:border tw:border-solid tw:border-border tw:bg-background tw:px-1 tw:font-mono tw:text-caption tw:shadow-sm">{children}</kbd>;
 }

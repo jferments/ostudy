@@ -874,3 +874,6 @@ mod tests {
         assert_eq!(error.code, "invalid_reschedule_days");
     }
 }
+
+#[cfg(test)]
+include!("schedule_controls/extended_tests.rs");

@@ -11,6 +11,7 @@ import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../../ui/overlays/OverlayProvider";
 import { PracticeSetupSheet } from "./PracticeSetupSheet";
 import type { PracticeDeckScope } from "./practiceSetupModel";
+import { matchesLayoutQuery, layoutWidths } from "../../../test/viewport";
 
 vi.mock("../../../ipc/practice", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../ipc/practice")>();
@@ -150,7 +151,7 @@ describe("PracticeSetupSheet", () => {
 
   it("opens compact setup at the top, closes with Escape, and restores the opener", async () => {
     window.matchMedia = vi.fn((query: string) => ({
-      matches: query.includes("760"), media: query, onchange: null,
+      matches: matchesLayoutQuery(query, layoutWidths.compact), media: query, onchange: null,
       addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
     }));
     function Harness() {
@@ -198,7 +199,7 @@ describe("PracticeSetupSheet", () => {
   it("exposes explicit wide, medium, and compact setup layouts", async () => {
     for (const [mode, width] of [["wide", 1400], ["medium", 900], ["compact", 390]] as const) {
       window.matchMedia = vi.fn((query: string) => ({
-        matches: query.includes("760") ? width <= 760 : query.includes("1180") ? width <= 1180 : false,
+        matches: matchesLayoutQuery(query, width),
         media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(),
         addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
       }));

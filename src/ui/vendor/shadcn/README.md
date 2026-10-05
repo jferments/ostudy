@@ -5,7 +5,7 @@ License: MIT; the distributed notice is [SHADCN-MIT.txt](../../../../public/lice
 
 This directory is oStudy's owned shadcn implementation boundary. Features import application facades from `src/ui`, not Base UI, copied vendor modules or vendor prop types. Base UI remains the generic interaction layer where it adds behavior; ordinary structural composition stays React/DOM plus Tailwind.
 
-`components.json` selects the `base-nova` family. The visual-refresh rule is **stock first**: follow Nova's ordinary component vocabulary, geometry, spacing and hierarchy unless oStudy has a concrete product, accessibility or platform reason to differ. oStudy remains the authority for semantic colors, four themes, capability state, safe areas, coarse-pointer touch targets, reduced motion/materials and domain behavior.
+`components.json` selects the `base-nova` family. The visual-refresh rule is **stock first**: follow Nova's ordinary component vocabulary, geometry, spacing and hierarchy unless oStudy has a concrete product, accessibility or platform reason to differ. oStudy remains the authority for semantic colors, four themes, capability state, safe areas, coarse-pointer touch targets, reduced motion and domain behavior.
 
 ## Current component vocabulary
 

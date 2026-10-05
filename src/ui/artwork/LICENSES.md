@@ -10,4 +10,4 @@ The artwork registered in this directory is part of the ostudy interface source 
 - A third-party illustration may be added only with its source, author, license, modification status, and required attribution recorded alongside the registry entry before it is committed.
 - Theme variants must represent the same semantic state and must not change the available actions or accessibility description.
 
-The initial U0–U9 artwork is project-authored or programmatically assembled from project-owned vector shapes and app-owned icons. No external font files are bundled as artwork assets.
+The initial U0–U9 artwork is project-authored or programmatically assembled from project-owned vector shapes and app-owned icons. The brand mark's raster files under `images/` are cropped from the project's own mascot art; ARTWORK-LICENSES.md records the crop. No external font files are bundled as artwork assets.

@@ -728,3 +728,40 @@ fn moving_masks_or_reordering_questions_never_renumbers_occlusion_presentations(
         vec![id(1)]
     );
 }
+
+#[test]
+fn answer_summaries_put_each_kind_of_key_on_one_line() {
+    let summary = |definition: QuestionDefinition| {
+        ValidatedQuestion::validate(definition)
+            .unwrap()
+            .answer_summary("main")
+            .unwrap()
+    };
+    assert_eq!(summary(single()), "Option 2");
+    assert_eq!(
+        summary(select_all(vec![id(1), id(3)])),
+        "Option 1; Option 3"
+    );
+    assert_eq!(summary(true_false(false)), "False: Private correction");
+    assert_eq!(summary(true_false(true)), "True");
+    assert_eq!(
+        summary(matching()),
+        "Item 1 → Item 4; Item 2 → Item 5; Item 3 → Item 6"
+    );
+    assert_eq!(
+        summary(grouping()),
+        "Item 4: Item 1, Item 2; Item 5: Item 3"
+    );
+    assert_eq!(summary(ordering()), "Item 1 → Item 2 → Item 3");
+
+    let occluded = ValidatedQuestion::validate(occlusion(OcclusionMode::HideTarget)).unwrap();
+    assert_eq!(
+        occluded.answer_summary(&id(10)).unwrap(),
+        "Private identification"
+    );
+    assert_eq!(
+        occluded.answer_summary(&id(11)).unwrap(),
+        "Private comparison"
+    );
+    assert!(occluded.answer_summary("main").is_err());
+}

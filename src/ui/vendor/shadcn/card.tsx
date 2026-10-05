@@ -18,7 +18,7 @@ export function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        "tw:group/card tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:overflow-hidden tw:rounded-xl tw:bg-card tw:py-4 tw:text-sm tw:text-card-foreground tw:ring-1 tw:ring-border",
+        "tw:group/card tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:overflow-hidden tw:rounded-xl tw:bg-card tw:py-4 tw:text-small tw:text-card-foreground tw:ring-1 tw:ring-border",
         size === "sm" && "tw:gap-3 tw:rounded-lg tw:py-3",
         className,
       )}
@@ -50,7 +50,7 @@ export function CardTitle({
       {...props}
       data-slot="card-title"
       className={cn(
-        "tw:m-0 tw:min-w-0 tw:text-base tw:font-medium tw:leading-snug tw:group-data-[size=sm]/card:text-sm",
+        "tw:m-0 tw:min-w-0 tw:text-title-small tw:font-semibold tw:tracking-tight tw:group-data-[size=sm]/card:text-body",
         className,
       )}
     />
@@ -62,7 +62,7 @@ export function CardDescription({ className, ...props }: HTMLAttributes<HTMLPara
     <p
       {...props}
       data-slot="card-description"
-      className={cn("tw:col-start-1 tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground", className)}
+      className={cn("tw:col-start-1 tw:m-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground", className)}
     />
   );
 }

@@ -23,11 +23,11 @@ function NotificationContent({ id, message, tone, timeout, busy, action, onDismi
     return () => { active = false; };
   }, [id, message, tone, timeout, add]);
   useEffect(() => { update(id, { timeout: busy ? 0 : timeout }); }, [id, busy, timeout, update]);
-  return <Toast.Portal><Toast.Viewport data-slot="toast-viewport" className="tw:fixed tw:right-4 tw:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+1rem)] tw:z-[700] tw:w-[calc(100vw-2rem)] tw:max-w-sm tw:outline-none tw:max-[760px]:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+5rem)]">
+  return <Toast.Portal><Toast.Viewport data-slot="toast-viewport" className="tw:fixed tw:right-4 tw:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+1rem)] tw:z-(--ostudy-layer-toast) tw:w-[calc(100vw-2rem)] tw:max-w-sm tw:outline-none tw:compact:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+5rem)]">
     {toasts.map((item) => <Toast.Root key={item.id} toast={item} role={tone === "error" ? "alert" : "status"} data-slot="toast" className={cn("tw:relative tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-popover tw:font-sans tw:text-popover-foreground tw:shadow-overlay tw:outline-none tw:focus-visible:outline-2 tw:focus-visible:outline-ring", tone === "error" && "tw:border-destructive/40")}>
       <Toast.Content className="tw:flex tw:items-start tw:gap-3 tw:p-4">
         <span className={cn("tw:mt-0.5 tw:shrink-0", tone === "error" ? "tw:text-destructive" : tone === "success" ? "tw:text-success" : "tw:text-primary")} aria-hidden="true"><Icon name={tone === "error" ? "warning" : tone === "success" ? "check" : "information"} size={20} /></span>
-        <div className="tw:min-w-0 tw:flex-1 tw:space-y-3"><Toast.Description className="tw:text-sm tw:leading-relaxed tw:break-words" />{action}</div>
+        <div className="tw:min-w-0 tw:flex-1 tw:space-y-3"><Toast.Description className="tw:text-small tw:leading-relaxed tw:break-words" />{action}</div>
         <Toast.Close aria-label="Dismiss notification" aria-hidden={false} render={<Button variant="ghost" size="icon" className="tw:-mr-2 tw:-mt-2" />}><Icon name="close" size={16} /></Toast.Close>
       </Toast.Content>
     </Toast.Root>)}

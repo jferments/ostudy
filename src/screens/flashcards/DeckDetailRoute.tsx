@@ -187,7 +187,7 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
 
   // Keep the same wrapper element and browser key in list/editor mode. Swapping
   // layout components here would unmount the browser and lose an unsaved editor.
-  return <div className={cn("tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0", browserView === "list" && "tw:max-w-(--ostudy-layout-wide-width) tw:px-page tw:py-8 tw:max-[760px]:px-4 tw:max-[760px]:py-5")}>
+  return <div className={cn("tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0", browserView === "list" && "tw:max-w-(--ostudy-layout-wide-width) tw:px-page tw:py-8 tw:compact:px-4 tw:compact:py-5")}>
     {browserView === "list" ? <>
       <Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button>
       <PageHeader title={deck.name} description={visibleDeckDescription(deck.description)}

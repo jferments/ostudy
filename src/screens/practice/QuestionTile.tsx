@@ -21,7 +21,7 @@ export function QuestionTile({ id, label, children, pointer, disabled, selected 
     className={cn(answerTile, correct === undefined && connected ? connectedTile : tileResult(correct), "tw:relative tw:grid tw:min-h-14 tw:gap-2 tw:outline-none tw:focus-visible:ring-2 tw:focus-visible:ring-primary",
       !disabled && "tw:touch-none tw:select-none tw:cursor-grab",
       selected && "tw:ring-2 tw:ring-primary",
-      dragging && [activePointerTile, "tw:pointer-events-none tw:z-20 tw:cursor-grabbing tw:opacity-100 tw:shadow-lg tw:[&_*]:select-none"])}
+      dragging && [activePointerTile, "tw:pointer-events-none tw:z-(--ostudy-layer-drag) tw:cursor-grabbing tw:opacity-100 tw:shadow-lg tw:[&_*]:select-none"])}
     style={dragging ? { transform: `translate(${pointer.offset.x}px, ${pointer.offset.y}px)` } : undefined}
     onPointerDown={(event) => { if (!disabled) pointer.pointerDown(event, id); }}
     onPointerMove={pointer.pointerMove} onPointerUp={pointer.pointerUp}

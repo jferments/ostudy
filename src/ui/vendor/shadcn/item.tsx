@@ -78,11 +78,11 @@ export function ItemContent({ className, ...props }: HTMLAttributes<HTMLDivEleme
 }
 
 export function ItemTitle({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="item-title" className={cn("tw:min-w-0 tw:truncate tw:text-sm tw:font-medium tw:text-foreground", className)} {...props} />;
+  return <div data-slot="item-title" className={cn("tw:min-w-0 tw:truncate tw:text-small tw:font-medium tw:text-foreground", className)} {...props} />;
 }
 
 export function ItemDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
-  return <p data-slot="item-description" className={cn("tw:m-0 tw:line-clamp-2 tw:text-sm tw:font-normal tw:leading-relaxed tw:text-muted-foreground", className)} {...props} />;
+  return <p data-slot="item-description" className={cn("tw:m-0 tw:line-clamp-2 tw:text-small tw:font-normal tw:leading-relaxed tw:text-muted-foreground", className)} {...props} />;
 }
 
 export function ItemActions({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

@@ -68,8 +68,8 @@ it("keeps mount failures and responsive actions inside the padded dialog body", 
   expect(body.classList.contains("tw:box-border")).toBe(true);
   expect(body.classList.contains("tw:min-w-0")).toBe(true);
   expect(body.contains(alert)).toBe(true);
-  expect(actions.classList.contains("tw:max-[760px]:flex-col-reverse")).toBe(true);
-  expect(actions.classList.contains("tw:max-[760px]:[&>button]:w-full")).toBe(true);
+  // The shared dialog action row owns compact stacking and full-width buttons.
+  expect(actions.getAttribute("data-slot")).toBe("dialog-actions");
   expect(save.disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());

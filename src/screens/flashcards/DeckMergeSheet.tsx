@@ -77,7 +77,7 @@ export function DeckMergeSheet({
         </InlineNotice>
 
         {attempted && !busy ? (
-          <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+          <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
             If the previous response was interrupted, Retry merge reuses the same operation
             identity and destination instead of moving cards twice.
           </p>

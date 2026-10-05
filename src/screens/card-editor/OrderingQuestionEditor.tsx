@@ -32,7 +32,7 @@ export function OrderingQuestionEditor({
     <Surface className="tw:grid tw:gap-5 tw:p-5">
       <div className="tw:grid tw:gap-1">
         <h2>Ordering</h2>
-        <p className="tw:text-sm tw:text-muted-foreground">
+        <p className="tw:text-small tw:text-muted-foreground">
           State the ordering criterion clearly, then enter the items below in the one accepted correct order.
           Practice shuffles them before the learner answers.
         </p>

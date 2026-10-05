@@ -771,6 +771,29 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
             );
             connection
                 .execute(
+                    "INSERT INTO review_event_scheduler_context (
+                         review_event_id, previous_review_at, elapsed_days, retrievability,
+                         reps_before, lapses_before, desired_retention,
+                         scheduler_parameters_sha256, active_time_ms
+                     ) VALUES (?1, ?2, 1, 0.9, 1, 0, 0.9, ?3, 4000)",
+                    params![
+                        card.review_id,
+                        time.now_utc_millis.saturating_sub(86_400_000),
+                        "a".repeat(64),
+                    ],
+                )
+                .expect("review scheduler context should insert");
+            let scheduler_context_count = |connection: &Connection| -> i64 {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM review_event_scheduler_context",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .expect("scheduler context count should load")
+            };
+            connection
+                .execute(
                     "UPDATE notes SET deck_id = ?1 WHERE id = ?2",
                     params![deck_b, card.note_id],
                 )
@@ -800,6 +823,7 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                 )
                 .expect("review count should load");
             assert_eq!(review_count, 1);
+            assert_eq!(scheduler_context_count(connection), 1);
             let current_owner: String = connection
                 .query_row(
                     "SELECT deck_id FROM cards WHERE id = ?1",
@@ -830,6 +854,8 @@ fn deleting_old_owner_preserves_moved_history_and_deleting_new_owner_purges_it()
                 .expect("card count should load");
             assert_eq!(remaining_reviews, 0);
             assert_eq!(remaining_cards, 0);
+            // Purging a review removes its scheduler context with it.
+            assert_eq!(scheduler_context_count(connection), 0);
             Ok(())
         })
         .expect("deletion ownership should remain coherent");

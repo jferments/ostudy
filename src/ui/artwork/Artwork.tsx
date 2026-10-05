@@ -48,7 +48,6 @@ export function Artwork({
             <stop offset="1" stopColor="var(--ostudy-color-status-info)" stopOpacity=".5" />
           </linearGradient>
         </defs>
-        <ellipse cx="160" cy="207" rx="105" ry="16" fill="var(--ostudy-color-ambient-vignette)" opacity=".2" />
         <rect x="64" y="48" width="192" height="134" rx="22" fill="var(--ostudy-color-surface-raised)" stroke="var(--ostudy-color-border-subtle)" />
         <rect x="82" y="66" width="156" height="98" rx="16" fill={`url(#art-${slot.replaceAll(".", "-")})`} opacity=".2" />
         <circle cx="152" cy="112" r="42" fill="var(--ostudy-color-text-muted)" opacity=".2" />

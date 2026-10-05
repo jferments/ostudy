@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { requiredTestValue as required } from "../../test/factories";
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { ResponsiveActionGroup, type ResponsiveAction } from "./ResponsiveActionGroup";
+import { matchesLayoutQuery, layoutWidths } from "../../test/viewport";
 
 const originalMatchMedia = window.matchMedia;
 afterEach(() => {
@@ -13,11 +14,7 @@ afterEach(() => {
 
 function setLayout(mode: "wide" | "medium" | "compact") {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("760")
-      ? mode === "compact"
-      : query.includes("1180")
-        ? mode !== "wide"
-        : false,
+    matches: matchesLayoutQuery(query, layoutWidths[mode]),
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),

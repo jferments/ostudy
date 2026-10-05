@@ -148,6 +148,13 @@ export interface SubmitReviewInput {
   outcome: ReviewOutcome;
   responseTimeMs: number;
   scheduleRevision: number;
+  /**
+   * Milliseconds the card was visible before this rating, excluding time with
+   * the app hidden or paused, from 0 to 86,400,000. `null` or absent when it
+   * was not measured. It is stored with the review but is not part of the
+   * retry identity: a retry must resend the original input unchanged.
+   */
+  activeTimeMs?: number | null;
 }
 
 export interface ReviewResult {

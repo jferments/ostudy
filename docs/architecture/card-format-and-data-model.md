@@ -62,7 +62,7 @@ A revision checks freshness, an operation ID identifies a retryable intent, and 
 
 `card_schedules` is mutable current state. `review_events` is append-only evidence while its owning material is retained. `scheduler.rs` adapts `rs-fsrs`; React displays native previews rather than computing a second authoritative schedule.
 
-A review validates the session/card/submission and previewed schedule revision, records the event, updates the schedule, and advances session progress transactionally. Suspend/bury/reset/reschedule are administrative actions; they do not fabricate review outcomes. Resetting current scheduling does not imply erasing retained review history.
+A review validates the session/card/submission and previewed schedule revision, records the event, updates the schedule, and advances session progress transactionally. In the same transaction it records what the scheduler knew in `review_event_scheduler_context`: the previous review time, the elapsed days and recall prediction FSRS used, the counts before the review, the retention target, a hash of the other scheduler parameters, and the visible study time the client measured. Reviews recorded before schema 5 have no such row; see [ADR 0053](../decisions/0053-review-scheduler-context-and-active-time.md). Suspend/bury/reset/reschedule are administrative actions; they do not fabricate review outcomes. Resetting current scheduling does not imply erasing retained review history.
 
 Studyability includes lifecycle, availability, scope, calendar, and applicable daily limits—not only due timestamps. Current workload, current inventory, historical review totals, and remembered percentages are different read models and must not be used as substitutes for each other.
 

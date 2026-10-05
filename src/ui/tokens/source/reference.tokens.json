@@ -5,171 +5,9 @@
         "$type": "color",
         "$value": "#ffffff"
       },
-      "25": {
-        "$type": "color",
-        "$value": "#fbfcfe"
-      },
-      "50": {
-        "$type": "color",
-        "$value": "#f5f7fb"
-      },
-      "100": {
-        "$type": "color",
-        "$value": "#e9edf5"
-      },
-      "200": {
-        "$type": "color",
-        "$value": "#d5dbe7"
-      },
-      "300": {
-        "$type": "color",
-        "$value": "#b7c0d0"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#8e9aaf"
-      },
-      "500": {
-        "$type": "color",
-        "$value": "#68758b"
-      },
-      "600": {
-        "$type": "color",
-        "$value": "#4b5669"
-      },
-      "700": {
-        "$type": "color",
-        "$value": "#343d4d"
-      },
-      "800": {
-        "$type": "color",
-        "$value": "#232a36"
-      },
-      "875": {
-        "$type": "color",
-        "$value": "#1a202a"
-      },
-      "900": {
-        "$type": "color",
-        "$value": "#141922"
-      },
       "950": {
         "$type": "color",
         "$value": "#0d1118"
-      },
-      "975": {
-        "$type": "color",
-        "$value": "#090c12"
-      }
-    },
-    "indigo": {
-      "100": {
-        "$type": "color",
-        "$value": "#e7e9ff"
-      },
-      "200": {
-        "$type": "color",
-        "$value": "#cfd3ff"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#8b91ff"
-      },
-      "500": {
-        "$type": "color",
-        "$value": "#6d72f6"
-      },
-      "600": {
-        "$type": "color",
-        "$value": "#5559d9"
-      },
-      "700": {
-        "$type": "color",
-        "$value": "#4246b3"
-      }
-    },
-    "cyan": {
-      "300": {
-        "$type": "color",
-        "$value": "#67e8f9"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#22d3ee"
-      },
-      "500": {
-        "$type": "color",
-        "$value": "#06b6d4"
-      }
-    },
-    "green": {
-      "100": {
-        "$type": "color",
-        "$value": "#dcfce7"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#4ade80"
-      },
-      "600": {
-        "$type": "color",
-        "$value": "#16a34a"
-      },
-      "700": {
-        "$type": "color",
-        "$value": "#15803d"
-      }
-    },
-    "amber": {
-      "100": {
-        "$type": "color",
-        "$value": "#fef3c7"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#fbbf24"
-      },
-      "600": {
-        "$type": "color",
-        "$value": "#d97706"
-      }
-    },
-    "red": {
-      "100": {
-        "$type": "color",
-        "$value": "#fee2e2"
-      },
-      "400": {
-        "$type": "color",
-        "$value": "#f87171"
-      },
-      "600": {
-        "$type": "color",
-        "$value": "#dc2626"
-      },
-      "700": {
-        "$type": "color",
-        "$value": "#b91c1c"
-      }
-    },
-    "pink": {
-      "400": {
-        "$type": "color",
-        "$value": "#f472b6"
-      },
-      "500": {
-        "$type": "color",
-        "$value": "#ec4899"
-      }
-    },
-    "violet": {
-      "400": {
-        "$type": "color",
-        "$value": "#a78bfa"
-      },
-      "500": {
-        "$type": "color",
-        "$value": "#8b5cf6"
       }
     }
   },
@@ -224,22 +62,6 @@
       "$type": "dimension",
       "$value": "0px"
     },
-    "small": {
-      "$type": "dimension",
-      "$value": "8px"
-    },
-    "medium": {
-      "$type": "dimension",
-      "$value": "12px"
-    },
-    "large": {
-      "$type": "dimension",
-      "$value": "18px"
-    },
-    "xlarge": {
-      "$type": "dimension",
-      "$value": "26px"
-    },
     "pill": {
       "$type": "dimension",
       "$value": "999px"
@@ -248,23 +70,23 @@
   "size": {
     "control": {
       "$type": "dimension",
-      "$value": "42px"
+      "$value": "2.625rem"
     },
     "touchTarget": {
       "$type": "dimension",
-      "$value": "44px"
+      "$value": "max(44px, 2.75rem)"
     },
     "iconSmall": {
       "$type": "dimension",
-      "$value": "16px"
+      "$value": "1rem"
     },
     "iconMedium": {
       "$type": "dimension",
-      "$value": "20px"
+      "$value": "1.25rem"
     },
     "iconLarge": {
       "$type": "dimension",
-      "$value": "24px"
+      "$value": "1.5rem"
     },
     "contentReading": {
       "$type": "dimension",
@@ -369,6 +191,10 @@
         "$type": "dimension",
         "$value": "0.8125rem"
       },
+      "small": {
+        "$type": "dimension",
+        "$value": "0.875rem"
+      },
       "body": {
         "$type": "dimension",
         "$value": "1rem"
@@ -377,17 +203,21 @@
         "$type": "dimension",
         "$value": "1.125rem"
       },
+      "titleSmall": {
+        "$type": "dimension",
+        "$value": "1.1875rem"
+      },
       "section": {
         "$type": "dimension",
-        "$value": "1.375rem"
+        "$value": "1.5rem"
       },
       "title": {
         "$type": "dimension",
-        "$value": "clamp(1.75rem, 3vw, 2.5rem)"
+        "$value": "clamp(1.75rem, 1.2rem + 1.6vw, 2.125rem)"
       },
       "display": {
         "$type": "dimension",
-        "$value": "clamp(2.5rem, 6vw, 4.5rem)"
+        "$value": "clamp(2.25rem, 1.5rem + 2.5vw, 2.75rem)"
       }
     },
     "lineHeight": {
@@ -402,41 +232,154 @@
       "reading": {
         "$type": "number",
         "$value": "1.65"
+      },
+      "caption": {
+        "$type": "number",
+        "$value": "calc(1 / 0.75)"
+      },
+      "label": {
+        "$type": "number",
+        "$value": "calc(1.125 / 0.8125)"
+      },
+      "small": {
+        "$type": "number",
+        "$value": "calc(1.25 / 0.875)"
+      },
+      "body": {
+        "$type": "number",
+        "$value": "1.5"
+      },
+      "bodyLarge": {
+        "$type": "number",
+        "$value": "calc(1.75 / 1.125)"
+      },
+      "titleSmall": {
+        "$type": "number",
+        "$value": "1.3"
+      },
+      "section": {
+        "$type": "number",
+        "$value": "calc(2 / 1.5)"
+      },
+      "title": {
+        "$type": "number",
+        "$value": "1.2"
+      },
+      "display": {
+        "$type": "number",
+        "$value": "1.1"
+      }
+    },
+    "weight": {
+      "regular": {
+        "$type": "number",
+        "$value": "400"
+      },
+      "medium": {
+        "$type": "number",
+        "$value": "500"
+      },
+      "semibold": {
+        "$type": "number",
+        "$value": "600"
+      },
+      "bold": {
+        "$type": "number",
+        "$value": "700"
+      }
+    },
+    "letterSpacing": {
+      "normal": {
+        "$type": "dimension",
+        "$value": "0em"
+      },
+      "tight": {
+        "$type": "dimension",
+        "$value": "-0.01em"
+      },
+      "tighter": {
+        "$type": "dimension",
+        "$value": "-0.025em"
       }
     }
   },
   "layer": {
+    "$description": "The one stacking order, lowest first. Layers up to drag apply inside the application frame, which sits on the base layer, so every in-app layer stays below body-level portals (dialog and above). Nested dialogs stack inside the dialog band at +2 per depth.",
+    "behind": {
+      "$type": "number",
+      "$value": "-1",
+      "$description": "Decorative layers behind their own isolated component."
+    },
     "base": {
       "$type": "number",
-      "$value": "0"
+      "$value": "0",
+      "$description": "The application frame and ordinary content."
     },
     "selected": {
       "$type": "number",
-      "$value": "1"
+      "$value": "1",
+      "$description": "A selected item above its siblings."
     },
     "focus": {
       "$type": "number",
-      "$value": "2"
+      "$value": "2",
+      "$description": "A focused item above selected siblings."
+    },
+    "raised": {
+      "$type": "number",
+      "$value": "10",
+      "$description": "Local overlap inside a component: icons over inputs, drawn connectors, drop indicators."
     },
     "sticky": {
       "$type": "number",
-      "$value": "100"
+      "$value": "20",
+      "$description": "Sticky headers and toolbars in a scroll area; +1 floats a toolbar above other sticky content."
     },
-    "popover": {
+    "chrome": {
       "$type": "number",
-      "$value": "500"
+      "$value": "30",
+      "$description": "Fixed app bars and the compact bottom navigation."
+    },
+    "floating": {
+      "$type": "number",
+      "$value": "40",
+      "$description": "Non-modal floating panels such as USB sync."
+    },
+    "drag": {
+      "$type": "number",
+      "$value": "50",
+      "$description": "Pointer drag previews and dragged items."
     },
     "dialog": {
       "$type": "number",
-      "$value": "1000"
+      "$value": "100",
+      "$description": "Modal backdrops and dialogs; nested dialogs add 2 per depth."
+    },
+    "popover": {
+      "$type": "number",
+      "$value": "200",
+      "$description": "Menus, select lists and tooltips, above the dialogs that open them."
     },
     "toast": {
       "$type": "number",
-      "$value": "1200"
+      "$value": "300",
+      "$description": "Notifications."
     },
     "effects": {
       "$type": "number",
-      "$value": "1300"
+      "$value": "400",
+      "$description": "The guided-tour spotlight and celebrations."
+    }
+  },
+  "breakpoint": {
+    "$description": "Viewport widths where the medium and wide layouts begin. Generated into viewport.ts media queries and Tailwind compact/medium/wide variants, not CSS variables.",
+    "medium": {
+      "$type": "dimension",
+      "$value": "760px"
+    },
+    "wide": {
+      "$type": "dimension",
+      "$value": "1180px"
     }
   }
 }
