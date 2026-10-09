@@ -79,6 +79,9 @@ fn kept(connection: &Connection) -> Kept {
         "document_study_ranges",
         "card_merges",
         "subject_filing_reviews",
+        "study_activity_retained",
+        "review_day_rollups",
+        "review_day_rollup_built_decks",
         "document_annotations",
     ] {
         if let Some((_, values)) = rows.remove(table) {

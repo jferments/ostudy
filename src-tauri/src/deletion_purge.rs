@@ -18,6 +18,7 @@ use crate::{
     error::CommandError,
     learning_metrics,
     projections::scope::{chunks, push_value},
+    study_activity,
 };
 
 struct FinalizedDeletion {
@@ -119,6 +120,8 @@ fn purge_operation(
     let (retired_note_ids, card_ids) = with_retired_copies(connection, card_ids)?;
 
     let affected_sessions = load_session_ids(connection, &card_ids)?;
+    // Study days, streaks and study time outlive the cards.
+    study_activity::retain_purged_reviews(connection, &operation.id, &card_ids)?;
     delete_by_card_ids(connection, "review_events", "card_id", &card_ids)?;
     delete_by_card_ids(connection, "schedule_action_events", "card_id", &card_ids)?;
     delete_session_snapshots(connection, &card_ids)?;
@@ -492,7 +495,7 @@ mod tests {
     fn upgraded() -> (Connection, SubjectsLibrary) {
         let connection = release_library(5);
         let library = seed(&connection);
-        advance_release_library(&connection, 5, 6);
+        advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
         (connection, library)
     }
 

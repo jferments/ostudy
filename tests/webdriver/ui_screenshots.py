@@ -114,6 +114,8 @@ SCREENS: tuple[Screen, ...] = (
     Screen("home", "Home", "Home", shells=(DESTINATIONS_SHELL,)),
     # The landing page of a library with nothing in it.
     Screen("first-run", "First run: empty library", "Home", None, "first-run"),
+    # A subject's page; builds before it existed open Library from a tile and record a failure.
+    Screen("subject", "Subject page", "Home", shells=(DESTINATIONS_SHELL,)),
     Screen("review", "Review", "Review", shells=(DESTINATIONS_SHELL,)),
     Screen("library", "Library: Decks", "Library"),
     Screen("deck", "Deck card list", "Library"),
@@ -666,6 +668,17 @@ def open_home(ctx: Context) -> None:
     )
 
 
+def open_subject(ctx: Context) -> None:
+    open_home(ctx)
+    name = seed.SUBJECT_PAGE
+    click(
+        ctx,
+        f"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={xpath_literal(name)}]]//button",
+    )
+    find(ctx, f"//main//*[@data-testid='subject-screen']//h1[normalize-space(.)={xpath_literal(name)}]")
+    find(ctx, "//main//*[@data-testid='subject-sources']//*[@data-testid='subject-source']")
+
+
 def open_first_run(ctx: Context) -> None:
     """A library with nothing in it opens on Home's welcome, or on the empty deck library before Home existed."""
     if ctx.shell == DESTINATIONS_SHELL:
@@ -882,6 +895,7 @@ MASKS: dict[str, str] = {
 
 OPENERS: dict[str, Callable[[Context], None]] = {
     "home": open_home,
+    "subject": open_subject,
     "review": open_review,
     "library": open_library,
     "deck": lambda ctx: open_deck(ctx, seed.DETAIL_DECK),

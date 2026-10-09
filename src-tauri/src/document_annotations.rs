@@ -5,7 +5,7 @@
 //! annotation over them, so the webview never parses a document file and the
 //! document itself is never rewritten.
 //!
-//! Each annotation is one `document_annotations` row (release schema 7): an ink
+//! Each annotation is one `document_annotations` row (release schema 8): an ink
 //! or highlighter stroke, a line, an arrow, a rectangle, an ellipse or a typed
 //! text note, in PDF points from the top-left corner of its page. A write
 //! carries the whole new state of every annotation it changes, so repeating a

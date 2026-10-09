@@ -6,7 +6,7 @@ The pre-release consolidation is complete. Future changes use reviewed forward m
 
 ## 106-D current release baseline
 
-The `ostudy-release-v1` **baseline is schema 1**. Its canonical SQL is generated from the exact qualified `ostudy-public-v1` schema-30 result and protected by SHA-256. The current writer is **schema 7** after the forward release migrations `selection_deck_operations` (2), `deck_merge_operations` (3), `study_target_generation_instructions` (4), `review_event_scheduler_context` (5), `subjects` (6) and `document_annotations` (7); fresh libraries execute the baseline and then ordinary release migrations instead of replaying thirty pre-release public-v1 migrations.
+The `ostudy-release-v1` **baseline is schema 1**. Its canonical SQL is generated from the exact qualified `ostudy-public-v1` schema-30 result and protected by SHA-256. The current writer is **schema 8** after the forward release migrations `selection_deck_operations` (2), `deck_merge_operations` (3), `study_target_generation_instructions` (4), `review_event_scheduler_context` (5), `subjects` (6), `study_activity` (7) and `document_annotations` (8); fresh libraries execute the baseline and then ordinary release migrations instead of replaying thirty pre-release public-v1 migrations.
 
 Legacy `ostudy-public-v1` schemas **10–30** remain supported complete-backup inputs. They are admitted by their immutable migration/repair ledgers, normalized through schema 30 and legacy repair versions **1–3**, then converted only after an isolated SQLite backup proves canonical-schema equality and a typed preservation receipt for every non-ledger SQLite value. The live conversion is one atomic metadata transaction: learner tables and managed files are not rewritten.
 
@@ -33,7 +33,7 @@ The explicit source-checkout recovery path for final pre-public v26 remains sepa
 
 ## 106-C findings and final disposition
 
-1. **Schema 30 is the terminal pre-0.1 public-v1 registry, not the current writer.** Older stage documents naming 17/18/21 describe historical checkpoints; current runtime writes release-v1 schema 7 from the immutable schema-1 baseline plus forward migrations 2–7.
+1. **Schema 30 is the terminal pre-0.1 public-v1 registry, not the current writer.** Older stage documents naming 17/18/21 describe historical checkpoints; current runtime writes release-v1 schema 8 from the immutable schema-1 baseline plus forward migrations 2–8.
 2. **The public-v1 repair registry is retained compatibility evidence.** Three repairs remain required for supported legacy admission/normalization even though fresh release-v1 does not replay that ledger. Clearing a pre-public ledger did not authorize deleting the compatibility framework.
 3. **The backup schema-10 floor is intentional.** Historical Tutor backup tests construct real schema-10/11 snapshots. Current release-v1 backups are a separate admitted lineage, not a reduction of that compatibility floor.
 4. **Rich-content docs were stale.** Native admission supports rich-root schema 3 for math/media while preserving the transport-envelope version 1.

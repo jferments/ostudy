@@ -24,11 +24,17 @@ mod document_annotations;
 #[path = "release/generation_instructions.rs"]
 mod generation_instructions;
 
+#[path = "release/object_delta.rs"]
+mod object_delta;
+
 #[path = "release/review_scheduler_context.rs"]
 mod review_scheduler_context;
 
 #[path = "release/staging.rs"]
 mod staging;
+
+#[path = "release/study_activity.rs"]
+mod study_activity;
 
 #[path = "release/subjects.rs"]
 mod subjects;
@@ -39,7 +45,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 7;
+pub(crate) const SCHEMA_VERSION: i64 = 8;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -86,9 +92,15 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     },
     ReleaseMigration {
         version: 7,
+        name: "study_activity",
+        checksum: "01614ecab4fca2e86a8c7f307c430615a781cc473c901b4e465fa39ba08cc5ce",
+        sql: include_str!("../../schema/0007_study_activity.sql"),
+    },
+    ReleaseMigration {
+        version: 8,
         name: "document_annotations",
         checksum: "aef233f14b0d9830abc51dfecb31d4d627a6cc39917659eef4d85090854c7254",
-        sql: include_str!("../../schema/0007_document_annotations.sql"),
+        sql: include_str!("../../schema/0008_document_annotations.sql"),
     },
 ];
 
@@ -297,6 +309,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     generation_instructions::validate_schema(connection, user_version)?;
     review_scheduler_context::validate_schema(connection, user_version)?;
     subjects::validate_schema(connection, user_version)?;
+    study_activity::validate_schema(connection, user_version)?;
     document_annotations::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)

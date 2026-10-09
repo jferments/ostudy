@@ -298,3 +298,72 @@ fn scheduler_context_is_scoped_and_sanitized_like_review_attributions() {
     assert_eq!(violations, 0);
     assert_eq!(sender.context_rows().len(), 1, "the sender keeps its own rows");
 }
+
+/// Kept totals of purged reviews are learner history and travel with
+/// flashcards; the rollup cache is local and each device rebuilds its own.
+#[test]
+fn kept_study_activity_travels_with_flashcards_and_rollups_stay_local() {
+    let sender = Sender::reviewed();
+    sender
+        .database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "INSERT INTO study_activity_retained(operation_id, wall_date, wall_hour,
+                         review_count, remembered_count, new_card_count, study_time_ms)
+                     VALUES (?1, '2026-09-01', 9, 3, 2, 1, 12000)",
+                    [id(55)],
+                )
+                .map_err(CommandError::database)?;
+            crate::study_activity::refresh_rollups(connection)
+        })
+        .unwrap();
+    assert!(selection_includes_ledger(SyncSelection::default()));
+    assert!(!selection_includes_ledger(SyncSelection {
+        flashcards: false,
+        ..SyncSelection::default()
+    }));
+    assert!(crate::device_sync::merge::table_spec("study_activity_retained").is_some());
+    assert!(crate::device_sync::merge::table_spec("review_day_rollups").is_none());
+
+    let (remote, selection) = sender.send("ledger", SyncSelection::default());
+    assert_eq!(count(&remote, "study_activity_retained"), 1);
+    assert_eq!(count(&remote, "review_day_rollups"), 0);
+    assert_eq!(count(&remote, "review_day_rollup_built_decks"), 0);
+
+    let receiver_paths = AppPaths::new(sender.root.join("ledger-receiver")).unwrap();
+    let receiver = Database::open_in_memory().unwrap();
+    let store = SyncStore::open(&receiver_paths).unwrap();
+    store
+        .upsert_peer(&id(101), "sender", "public-key", &"b".repeat(64), "")
+        .unwrap();
+    receiver
+        .with_connection(|local| {
+            merge_remote_database(local, &remote, &store, &id(100), &id(101), selection)?;
+            merge_remote_database(local, &remote, &store, &id(100), &id(101), selection)?;
+            assert_eq!(count(local, "study_activity_retained"), 1);
+            crate::study_activity::refresh_rollups(local)?;
+            let reviews: i64 = local
+                .query_row("SELECT SUM(review_count) FROM review_day_rollups", [], |row| {
+                    row.get(0)
+                })
+                .map_err(CommandError::database)?;
+            assert_eq!(reviews, 1);
+            Ok(())
+        })
+        .unwrap();
+
+    let (documents, _) = sender.send(
+        "ledger-documents-only",
+        SyncSelection {
+            flashcards: false,
+            ..SyncSelection::default()
+        },
+    );
+    assert_eq!(count(&documents, "study_activity_retained"), 0);
+    assert_eq!(count(&documents, "review_day_rollups"), 0);
+}
+
+fn selection_includes_ledger(selection: SyncSelection) -> bool {
+    selection.includes_table("study_activity_retained")
+}

@@ -99,6 +99,7 @@ mod schedule_controls;
 mod scheduler;
 mod settings;
 mod startup;
+mod study_activity;
 mod study_calendar;
 mod study_materials;
 mod studyability;
@@ -427,6 +428,14 @@ pub fn run() {
             practice::complete_practice_session,
             schedule_controls::apply_schedule_action,
             analytics::get_analytics,
+            analytics::progress::get_progress_overview,
+            analytics::progress::get_progress_forecast,
+            analytics::progress::get_progress_card_strength,
+            analytics::progress::get_progress_activity,
+            analytics::progress::get_progress_subjects,
+            analytics::progress::get_progress_question_types,
+            analytics::progress::get_progress_sessions,
+            analytics::progress::get_review_log,
             analytics::get_recent_practice_reviews,
             studydeck::prepare_deck_export,
             library_session::commands::leased_import_deck

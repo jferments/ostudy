@@ -56,7 +56,7 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. Deleting a document deletes its annotations.
 
-Storing annotations needs library schema 7. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-7).
+Storing annotations needs library schema 8. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 
 ## Not available yet
 

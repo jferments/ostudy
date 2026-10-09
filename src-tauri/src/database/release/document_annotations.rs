@@ -1,54 +1,20 @@
-//! Additive release-v7 admission for document annotations.
+//! Additive release-v8 admission for document annotations.
 //!
+//! Migration 8 adds the document_annotations table and its page index.
 //! Learners create annotations in the annotator; an upgrade writes none, so
-//! the table starts empty. Its page index is part of the registered schema.
+//! the table starts empty.
 
-use rusqlite::{Connection, OptionalExtension};
+use std::sync::OnceLock;
 
-const VERSION: i64 = 7;
-const INDEX: &str = "document_annotations_by_page";
+use rusqlite::Connection;
+
+use super::object_delta::{self, Delta};
+
+const VERSION: i64 = 8;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
-    super::validate_additive_table(
-        connection,
-        version,
-        VERSION,
-        "document_annotations",
-        "document annotation",
-    )?;
-    let actual = index_sql(connection)?;
-    if version < VERSION {
-        if actual.is_some() {
-            return Err(
-                "An unregistered release-v7 document annotation index is present.".to_string(),
-            );
-        }
-        return Ok(());
-    }
-    let expected = Connection::open_in_memory().map_err(|error| error.to_string())?;
-    expected
-        .execute_batch(super::migration_sql(VERSION))
-        .map_err(|error| error.to_string())?;
-    let expected = index_sql(&expected)?;
-    match (actual, expected) {
-        (Some(actual), Some(expected))
-            if super::normalize_schema_sql(&actual) == super::normalize_schema_sql(&expected) =>
-        {
-            Ok(())
-        }
-        _ => Err("The document annotation index does not match this build.".to_string()),
-    }
-}
-
-fn index_sql(connection: &Connection) -> Result<Option<String>, String> {
-    connection
-        .query_row(
-            "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = ?1",
-            [INDEX],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())
+    static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
+    object_delta::validate(connection, version, VERSION, "document annotation", &DELTA)
 }
 
 #[cfg(test)]
@@ -62,11 +28,11 @@ mod tests {
 
     const DOCUMENT: &str = "11111111111111111111111111111111";
 
-    /// A schema-6 library as the previous release left it, with one document.
-    fn schema_six() -> Connection {
-        let connection = release_library(6);
+    /// A schema-7 library as the previous release left it, with one document.
+    fn schema_seven() -> Connection {
+        let connection = release_library(7);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 6);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 7);
         connection
     }
 
@@ -75,8 +41,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_six_upgrades_additively_with_no_annotations() {
-        let mut connection = schema_six();
+    fn schema_seven_upgrades_additively_with_no_annotations() {
+        let mut connection = schema_seven();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
@@ -99,21 +65,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_seventh_migration_rolls_back_to_schema_six_and_retries() {
-        let mut connection = schema_six();
+    fn interrupted_eighth_migration_rolls_back_to_schema_seven_and_retries() {
+        let mut connection = schema_seven();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_annotation_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=7
+                 WHEN NEW.version=8
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 6);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 7);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 6).unwrap();
+        validate_schema(&connection, 7).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_annotation_migration;")
@@ -127,7 +93,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_annotation_schemas_fail_read_only() {
-        let mut connection = schema_six();
+        let mut connection = schema_seven();
         for unregistered in [
             migration_sql(VERSION),
             "CREATE INDEX document_annotations_by_page ON documents(id);",
