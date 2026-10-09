@@ -98,6 +98,7 @@ mod schedule_controls;
 mod scheduler;
 mod settings;
 mod startup;
+mod study_activity;
 mod study_calendar;
 mod study_materials;
 mod studyability;

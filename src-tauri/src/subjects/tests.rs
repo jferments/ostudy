@@ -521,7 +521,7 @@ fn study_ranges_need_a_subject_and_follow_the_document_between_subjects() {
 fn the_check_these_list_names_live_items_and_dismisses_idempotently() {
     let mut connection = release_library(5);
     let l = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
 
     let listed = load_filing_reviews(&connection).unwrap();
     assert_eq!(listed.len(), 15);

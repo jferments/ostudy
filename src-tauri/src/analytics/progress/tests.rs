@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration};
 use rusqlite::{params, Connection};
 
 use super::{
-    activity, forecast, load_overview, review_log, strength, subjects, ProgressQueryDto,
+    activity, forecast, hours, load_overview, review_log, strength, subjects, ProgressQueryDto,
     ReviewLogCursorDto,
 };
 use crate::{
@@ -453,13 +453,13 @@ fn the_overview_compares_with_the_previous_period_and_counts_study_days() {
         library.review(connection, &card, "2026-10-30T10:00:00-07:00", true);
         library.review(connection, &card, "2026-11-03T09:00:00-08:00", false);
 
-        let overview = load_overview(connection, context("7d", Vec::new()))?;
+        let overview = load_overview(connection, &context("7d", Vec::new()))?;
         assert_eq!(overview.summary.review_count, 3);
         assert_eq!(overview.study_day_count, 2);
         let previous = overview
             .previous_summary
             .expect("a 7-day range has a previous one");
-        assert_eq!((previous.review_count, previous.correct_count), (2, 1));
+        assert_eq!((previous.review_count, previous.remembered_count), (2, 1));
         assert_eq!(overview.timeline.len(), 7);
         Ok(())
     });
@@ -473,13 +473,13 @@ fn weekly_buckets_end_with_a_whole_week_ending_today() {
         library.review(connection, &card, "2026-11-03T09:00:00-08:00", true);
         library.review(connection, &card, "2026-10-28T09:00:00-07:00", true);
         library.review(connection, &card, "2026-10-27T09:00:00-07:00", true);
-        let overview = load_overview(connection, context("90d", Vec::new()))?;
+        let overview = load_overview(connection, &context("90d", Vec::new()))?;
         let last = overview.timeline.last().expect("90 days has buckets");
         assert_eq!(
             (last.start_local_date.as_str(), last.end_local_date.as_str()),
             ("2026-10-28", "2026-11-03")
         );
-        assert_eq!(last.review_count, 2);
+        assert_eq!(last.totals.review_count, 2);
         let first = overview.timeline.first().unwrap();
         assert_eq!(
             first.start_local_date,
@@ -605,6 +605,303 @@ fn review_reads_start_from_an_index_on_review_time_or_study_date() {
             first_loop(plan).contains("a USING INDEX review_event_attributions_local_date_idx"),
             "{plan:#?}"
         );
+        Ok(())
+    });
+}
+
+fn context_at(range: &str, hour: u32, tag_ids: Vec<String>) -> AnalyticsContext {
+    ProgressQueryDto {
+        range: range.to_string(),
+        subject_ids: Vec::new(),
+        deck_ids: Vec::new(),
+        tag_ids,
+        custom_start_local_date: None,
+        custom_end_local_date: None,
+    }
+    .context(StudyTimeContext::pacific_2026_at(millis(NOW), hour).unwrap())
+    .unwrap()
+}
+
+/// The rollup rows and the history rows for the same scope, sorted.
+fn both_sources(
+    connection: &mut Connection,
+    context: &AnalyticsContext,
+    by_subject: bool,
+) -> (Vec<hours::HourRow>, Vec<hours::HourRow>) {
+    crate::study_activity::refresh_rollups(connection).unwrap();
+    let first = context
+        .previous_window()
+        .or(context.window.current.as_ref())
+        .map(|window| window.start_local_date);
+    let end = context.window.end_local_date;
+    let mut rollups = hours::rollup_rows(connection, context, by_subject, first, end).unwrap();
+    let mut history = hours::history_rows(connection, context, by_subject).unwrap();
+    // The rollup read spans whole wall dates; keep only what the period's
+    // study dates hold, as `hours::load` does.
+    let hour = context.time.new_day_start_hour();
+    let in_period = |row: &hours::HourRow| {
+        let date = crate::study_activity::study_date(
+            crate::study_activity::parse_date(&row.1).unwrap(),
+            row.2,
+            hour,
+        );
+        first.is_none_or(|first| date >= first) && date <= end
+    };
+    rollups.retain(in_period);
+    history.retain(in_period);
+    rollups.sort_by(|left, right| (&left.0, &left.1, left.2).cmp(&(&right.0, &right.1, right.2)));
+    history.sort_by(|left, right| (&left.0, &left.1, left.2).cmp(&(&right.0, &right.1, right.2)));
+    (rollups, history)
+}
+
+fn assert_rollups_match_history(connection: &mut Connection, step: &str) {
+    for range in ["all", "30d", "7d"] {
+        for hour in [0, 4, 23] {
+            for by_subject in [false, true] {
+                let context = context_at(range, hour, Vec::new());
+                let (rollups, history) = both_sources(connection, &context, by_subject);
+                assert_eq!(rollups, history, "{step}: {range}, {hour}:00, {by_subject}");
+            }
+        }
+    }
+}
+
+#[test]
+fn rollups_follow_every_change_to_the_history_they_summarize() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let cards: Vec<String> = (0..6)
+            .map(|index| library.card(connection, index % 3, 2, now, 5.0))
+            .collect();
+        let mut at = millis("2026-09-01T00:30:00-07:00");
+        for (index, card) in cards.iter().cycle().take(60).enumerate() {
+            let instant = DateTime::from_timestamp_millis(at)
+                .unwrap()
+                .with_timezone(&chrono::FixedOffset::west_opt(7 * 3600).unwrap());
+            library.review(connection, card, &instant.to_rfc3339(), index % 4 != 0);
+            at += 25 * HOUR + 17 * 60_000;
+        }
+        // Built from scratch, then kept up to date one review at a time.
+        assert_rollups_match_history(connection, "first build");
+        library.review(connection, &cards[0], "2026-11-03T03:30:00-08:00", true);
+        library.review(connection, &cards[4], "2026-11-03T09:00:00-08:00", false);
+        let built: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM review_day_rollup_built_decks",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(built, 3, "a new review keeps its deck built");
+        assert_rollups_match_history(connection, "new reviews");
+
+        let step = |connection: &mut Connection, step: &str, sql: &str, card: &str| {
+            connection.execute(sql, params![card, now]).unwrap();
+            assert_rollups_match_history(connection, step);
+        };
+        step(
+            connection,
+            "move a card",
+            "UPDATE cards SET deck_id = (SELECT id FROM decks WHERE id <> cards.deck_id
+                 ORDER BY id LIMIT 1), updated_at = ?2 WHERE id = ?1",
+            &cards[1],
+        );
+        step(
+            connection,
+            "delete a card",
+            "UPDATE cards SET deleted_at = ?2 WHERE id = ?1",
+            &cards[2],
+        );
+        step(
+            connection,
+            "restore it",
+            "UPDATE cards SET deleted_at = NULL WHERE id = ?1 AND ?2 > 0",
+            &cards[2],
+        );
+        step(
+            connection,
+            "delete a note",
+            "UPDATE notes SET deleted_at = ?2 WHERE id = (SELECT note_id FROM cards
+                 WHERE id = ?1)",
+            &cards[3],
+        );
+        // A retired copy's reviews count under its surviving card.
+        connection
+            .execute(
+                "INSERT INTO card_merges(retired_card_id, surviving_card_id, retired_note_id,
+                     surviving_note_id, reason, copied_at)
+                 SELECT r.id, s.id, r.note_id, s.note_id, 'collection_copy', ?3
+                 FROM cards r, cards s WHERE r.id = ?1 AND s.id = ?2",
+                params![cards[5], cards[0], now],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE cards SET deleted_at = ?2 WHERE id = ?1",
+                params![cards[5], now],
+            )
+            .unwrap();
+        assert_rollups_match_history(connection, "retire a copy");
+        step(
+            connection,
+            "delete a review",
+            "DELETE FROM review_events WHERE id = (SELECT review_event_id
+                 FROM review_event_attributions WHERE card_id = ?1 AND ?2 > 0
+                 ORDER BY reviewed_at LIMIT 1)",
+            &cards[4],
+        );
+        step(
+            connection,
+            "delete a deck",
+            "UPDATE decks SET deleted_at = ?2 WHERE id = (SELECT deck_id FROM cards
+                 WHERE id = ?1)",
+            &cards[4],
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn the_overview_reads_the_same_totals_with_or_without_a_tag_filter() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let card = library.card(connection, 0, 2, now, 5.0);
+        let other = library.card(connection, 1, 2, now, 5.0);
+        library.review(connection, &card, "2026-10-21T09:00:00-07:00", false);
+        library.review(connection, &card, "2026-10-30T09:00:00-07:00", true);
+        library.review(connection, &other, "2026-11-02T02:00:00-08:00", true);
+        library.review(connection, &card, "2026-11-03T09:00:00-08:00", false);
+        let tag = id(8, 0);
+        connection
+            .execute(
+                "INSERT INTO tags(id, name, normalized_name, created_at, updated_at)
+                 VALUES (?1, 'all', 'all', ?2, ?2)",
+                params![tag, now],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO review_event_tag_attributions(review_event_id, tag_id, tag_name)
+                 SELECT review_event_id, ?1, 'all' FROM review_event_attributions",
+                [&tag],
+            )
+            .unwrap();
+        for range in ["7d", "30d", "90d", "1y", "all"] {
+            let plain = load_overview(connection, &context_at(range, 4, Vec::new()))?;
+            let tagged = load_overview(connection, &context_at(range, 4, vec![tag.clone()]))?;
+            assert_eq!(plain.summary, tagged.summary, "{range}");
+            assert_eq!(plain.previous_summary, tagged.previous_summary, "{range}");
+            assert_eq!(plain.timeline, tagged.timeline, "{range}");
+            assert_eq!(plain.study_day_count, tagged.study_day_count, "{range}");
+        }
+        let all = load_overview(connection, &context_at("all", 4, Vec::new()))?;
+        assert_eq!(all.summary.review_count, 4);
+        assert_eq!(all.scope.start_local_date.as_deref(), Some("2026-10-21"));
+        let months: Vec<&str> = all
+            .timeline
+            .iter()
+            .map(|bucket| bucket.start_local_date.as_str())
+            .collect();
+        assert_eq!(months, ["2026-10-01", "2026-11-01"]);
+        // The 2 a.m. review on 2 November belongs to 1 November's study day.
+        assert_eq!(all.study_day_count, 4);
+        Ok(())
+    });
+}
+
+#[test]
+fn purged_history_keeps_its_days_streaks_and_study_time() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let kept = library.card(connection, 0, 2, now, 5.0);
+        let gone = library.card(connection, 1, 2, now, 5.0);
+        library.review(connection, &kept, "2026-11-03T09:00:00-08:00", true);
+        for at in [
+            "2026-10-31T09:00:00-07:00",
+            "2026-11-01T09:00:00-08:00",
+            "2026-11-02T03:30:00-08:00",
+            "2026-11-02T09:00:00-08:00",
+        ] {
+            library.review(connection, &gone, at, true);
+        }
+        let before = activity::load(connection, &time())?;
+        assert_eq!(before.current_streak.as_ref().unwrap().length, 4);
+
+        let note: String = connection
+            .query_row("SELECT note_id FROM cards WHERE id = ?1", [&gone], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let deleted_at = now - HOUR;
+        connection
+            .execute(
+                "UPDATE notes SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
+                params![note, deleted_at],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE cards SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
+                params![gone, deleted_at],
+            )
+            .unwrap();
+        let operation = id(9, 0);
+        connection
+            .execute(
+                "INSERT INTO deletion_operations(id, entity_kind, subject_label, deck_id,
+                     note_ids_json, card_ids_json, deleted_at, expires_at, finalized_at,
+                     created_at)
+                 VALUES (?1, 'cards', 'one card', NULL, ?2, ?3, ?4, ?4, ?4, ?4)",
+                params![
+                    operation,
+                    serde_json::to_string(&[&note]).unwrap(),
+                    serde_json::to_string(&[&gone]).unwrap(),
+                    deleted_at
+                ],
+            )
+            .unwrap();
+        crate::deletion_purge::purge_finalized_in_connection(connection)?;
+        let left: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM review_events WHERE card_id = ?1",
+                [&gone],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0, "the purge removed the card's history");
+
+        let after = activity::load(connection, &time())?;
+        assert_eq!(after.current_streak, before.current_streak);
+        assert_eq!(after.longest_streak, before.longest_streak);
+        let totals = |result: &activity::ProgressActivityDto| {
+            result
+                .days
+                .iter()
+                .map(|day| (day.local_date.clone(), day.review_count, day.study_time_ms))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(totals(&after), totals(&before));
+        // Moving the new-day hour regroups kept history like stored history:
+        // at midnight the 3:30 a.m. review belongs to 2 November.
+        let midnight = StudyTimeContext::pacific_2026_at(now, 0).unwrap();
+        let regrouped = activity::load(connection, &midnight)?;
+        let dates: Vec<(String, i64)> = regrouped
+            .days
+            .iter()
+            .map(|day| (day.local_date.clone(), day.review_count))
+            .collect();
+        assert_eq!(
+            dates,
+            [
+                ("2026-10-31".to_string(), 1),
+                ("2026-11-01".to_string(), 1),
+                ("2026-11-02".to_string(), 2),
+                ("2026-11-03".to_string(), 1),
+            ]
+        );
+        // The overview counts only cards that still exist.
+        let overview = load_overview(connection, &context("7d", Vec::new()))?;
+        assert_eq!(overview.summary.review_count, 1);
         Ok(())
     });
 }

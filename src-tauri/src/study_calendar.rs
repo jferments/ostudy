@@ -157,6 +157,11 @@ impl StudyTimeContext {
         })
     }
 
+    /// The local hour (0 to 23) at which a study date begins.
+    pub fn new_day_start_hour(&self) -> u32 {
+        self.new_day_start_hour
+    }
+
     /// The instant study date `date` begins: local wall time `H:00` on `date`.
     /// A wall time skipped by a daylight-saving change resolves to the first
     /// instant after it, a repeated one to its first occurrence.

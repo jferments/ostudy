@@ -8,106 +8,17 @@
 //! schema at the stored version, so a library that half-applied the migration,
 //! or applied a different one, is refused before anything writes to it.
 
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::sync::OnceLock;
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
-use super::{normalize_schema_sql, BASELINE_SQL, RELEASE_MIGRATIONS};
+use super::object_delta::{self, Delta};
 
 const VERSION: i64 = 6;
 
-/// (type, name) of a schema object.
-type ObjectKey = (String, String);
-
-/// Every object migration 6 adds, changes or drops, with its normalized SQL
-/// before (schema 5) and after (schema 6). `None` means the object is absent.
-type Delta = Vec<(ObjectKey, Option<String>, Option<String>)>;
-
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
-    let delta = bundled_delta()?;
-    for ((kind, name), before, after) in delta {
-        let actual: Option<String> = connection
-            .query_row(
-                "SELECT sql FROM sqlite_schema WHERE type = ?1 AND name = ?2",
-                [kind, name],
-                |row| row.get::<_, Option<String>>(0),
-            )
-            .optional()
-            .map_err(|error| format!("Could not inspect the subjects schema: {error}"))?
-            .flatten()
-            .map(|sql| normalize_schema_sql(&sql));
-        if version < VERSION {
-            if actual != *before {
-                return Err(
-                    "An unregistered release-v6 subjects change is present. The database was not modified."
-                        .to_string(),
-                );
-            }
-        } else if actual != *after {
-            return Err(format!(
-                "The subjects schema does not match this build ({kind} {name}). The database was not modified."
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// The schema objects migration 6 touches, computed once from the bundled SQL.
-fn bundled_delta() -> Result<&'static Delta, String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
-    DELTA
-        .get_or_init(|| {
-            let before = bundled_objects(VERSION - 1)?;
-            let after = bundled_objects(VERSION)?;
-            let mut keys: Vec<&ObjectKey> = before.keys().chain(after.keys()).collect();
-            keys.sort();
-            keys.dedup();
-            Ok(keys
-                .into_iter()
-                .filter(|key| before.get(*key) != after.get(*key))
-                .map(|key| {
-                    (
-                        (*key).clone(),
-                        before.get(key).cloned(),
-                        after.get(key).cloned(),
-                    )
-                })
-                .collect())
-        })
-        .as_ref()
-        .map_err(Clone::clone)
-}
-
-/// Normalized SQL of every named schema object in a fresh bundled library at
-/// `version`. SQLite's own automatic indexes have no SQL and are skipped.
-fn bundled_objects(version: i64) -> Result<BTreeMap<ObjectKey, String>, String> {
-    let connection = Connection::open_in_memory()
-        .map_err(|error| format!("Could not open the subjects schema verifier: {error}"))?;
-    connection
-        .execute_batch(BASELINE_SQL)
-        .map_err(|error| format!("Could not load the subjects schema verifier: {error}"))?;
-    for migration in RELEASE_MIGRATIONS.iter().filter(|m| m.version <= version) {
-        connection
-            .execute_batch(migration.sql)
-            .map_err(|error| format!("Could not load the subjects schema verifier: {error}"))?;
-    }
-    let mut statement = connection
-        .prepare(
-            "SELECT type, name, sql FROM sqlite_schema
-             WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'",
-        )
-        .map_err(|error| format!("Could not inspect the subjects schema verifier: {error}"))?;
-    let objects = statement
-        .query_map([], |row| {
-            Ok((
-                (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
-                normalize_schema_sql(&row.get::<_, String>(2)?),
-            ))
-        })
-        .map_err(|error| format!("Could not read the subjects schema verifier: {error}"))?
-        .collect::<Result<BTreeMap<_, _>, _>>()
-        .map_err(|error| format!("Could not decode the subjects schema verifier: {error}"))?;
-    Ok(objects)
+    object_delta::validate(connection, version, VERSION, "subjects", &DELTA)
 }
 
 #[cfg(test)]
@@ -120,7 +31,7 @@ mod tests {
         },
         validate_backup_input, validate_input, validate_supported_input, SCHEMA_VERSION,
     };
-    use rusqlite::types::Value;
+    use rusqlite::{types::Value, OptionalExtension};
     use serde_json::json;
 
     /// The fixture library at `version`, seeded, then upgraded to schema 6.
@@ -856,7 +767,7 @@ mod tests {
             transaction.rollback().unwrap();
         }
 
-        assert!(apply_migrations_through(&mut connection, 6).unwrap());
+        assert!(apply_migrations_through(&mut connection, SCHEMA_VERSION).unwrap());
         for damage in [
             "DROP TABLE subject_filing_reviews;",
             "DROP TRIGGER card_merges_one_level_insert;",

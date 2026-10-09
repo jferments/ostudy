@@ -170,7 +170,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        advance_release_library(&connection, 5, 6);
+        advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
 
         // The two latest answers were wrong: one direct, one through a copy.
         assert_eq!(signal(&connection, library.o_mech[0].card()), 1);

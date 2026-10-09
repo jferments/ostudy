@@ -272,7 +272,7 @@ fn reviewed_filters_count_a_merged_copy_s_reviews_for_its_original() {
 
     let connection = release_library(5);
     let library = seed(&connection);
-    advance_release_library(&connection, 5, 6);
+    advance_release_library(&connection, 5, crate::database::CURRENT_SCHEMA_VERSION);
     let optics = |reviewed_filter: &str| -> Vec<String> {
         card_commands::search_cards_in_connection_for_tests(
             &connection,

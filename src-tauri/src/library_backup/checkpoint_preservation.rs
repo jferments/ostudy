@@ -121,6 +121,26 @@ const CONTRACTS: &[Contract] = &[
         setup: subjects::SETUP,
         rules: subjects::RULES,
     },
+    // The ledger fills only as later purges retain review totals, and every
+    // deck's rollups are built on first use, so all three tables arrive empty.
+    Contract {
+        version: 7,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "study_activity_retained",
+                description: "study activity ledger",
+            },
+            Rule::AddedEmpty {
+                table: "review_day_rollups",
+                description: "review rollup",
+            },
+            Rule::AddedEmpty {
+                table: "review_day_rollup_built_decks",
+                description: "review rollup",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
@@ -135,6 +155,7 @@ const ALWAYS_IDENTICAL: &[(&str, i64)] = &[
     ("review_event_attributions", 1),
     ("review_event_tag_attributions", 1),
     ("review_event_scheduler_context", 5),
+    ("study_activity_retained", 7),
     ("question_attempts", 1),
     ("question_review_links", 1),
     ("practice_session_cards", 1),

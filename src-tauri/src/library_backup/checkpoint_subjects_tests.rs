@@ -6,7 +6,7 @@
 use super::followup::refused_upgrade;
 use super::*;
 use crate::database::subjects_fixture::{self, SubjectsLibrary, DAY, T0};
-use crate::database::CURRENT_SCHEMA_LINEAGE;
+use crate::database::{CURRENT_SCHEMA_LINEAGE, CURRENT_SCHEMA_VERSION};
 
 /// Tutor rows that retiring a collection copy invalidates through every
 /// knowledge trigger, beyond the fixture's own sources and checkpoints.
@@ -229,7 +229,7 @@ fn the_subjects_upgrade_passes_its_preservation_contract_and_activates() {
     let active = read_database(fixture.0.database_path()).unwrap();
     assert_eq!(
         validate_database(&active).unwrap(),
-        (CURRENT_SCHEMA_LINEAGE.to_string(), 6)
+        (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
     );
     let after = preservation::rows(&active).unwrap();
     for table in [
@@ -324,7 +324,7 @@ fn the_subjects_upgrade_passes_its_preservation_contract_and_activates() {
     commit_upgrade(&fixture.0, &mut guard).unwrap();
     drop(guard);
     admit_startup(&fixture.0).unwrap();
-    assert_eq!(fixture.version(), 6);
+    assert_eq!(fixture.version(), CURRENT_SCHEMA_VERSION);
     fixture.original_managed_files_are_present();
 }
 
@@ -342,7 +342,7 @@ fn the_checkpoint_restores_the_schema_five_library_for_an_older_build() {
     .unwrap();
     guard.try_commit().unwrap();
     drop(guard);
-    assert_eq!(fixture.version(), 6);
+    assert_eq!(fixture.version(), CURRENT_SCHEMA_VERSION);
 
     restore_checkpoint(&fixture.0, &fixture.operation(), &mut |_| {}).unwrap();
     assert_eq!(fixture.version(), 5);

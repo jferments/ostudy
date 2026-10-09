@@ -214,6 +214,7 @@ fn imported_studydeck_gets_fresh_schedules_and_no_learner_history() {
                 "review_event_attributions",
                 "review_event_tag_attributions",
                 "review_event_scheduler_context",
+                "study_activity_retained",
                 "schedule_action_events",
             ] {
                 let count: i64 = connection

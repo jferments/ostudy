@@ -3,11 +3,9 @@ import { invoke } from "./transport";
 import type {
   AnalyticsRange,
   AnalyticsScope,
-  HistoricalReviewSummary,
   QuestionTypeAnalytics,
   RecentReview,
   SessionAnalytics,
-  TimelineBucket,
 } from "./analytics";
 
 /** The scope every scoped Progress section shares. Each non-empty filter narrows it further. */
@@ -20,15 +18,34 @@ export interface ProgressQuery {
   customEndLocalDate?: string;
 }
 
+/** Review totals for a period of current cards, with their rates. */
+export interface ProgressSummary {
+  reviewCount: number;
+  newCardCount: number;
+  rememberedCount: number;
+  correctRate: number | null;
+  averageConfidence: number | null;
+  averageResponseTimeMs: number | null;
+  studyTimeMs: number;
+  retentionReviewCount: number;
+  retentionRememberedCount: number;
+  trueRetention: number | null;
+}
+
+export interface ProgressBucket extends ProgressSummary {
+  startLocalDate: string;
+  endLocalDate: string;
+}
+
 export interface ProgressOverview {
   scope: AnalyticsScope;
-  summary: HistoricalReviewSummary;
+  summary: ProgressSummary;
   /** The equal-length period just before; null for all time. */
-  previousSummary: HistoricalReviewSummary | null;
+  previousSummary: ProgressSummary | null;
   /** Study dates in the range with at least one review. */
   studyDayCount: number;
-  /** Buckets are cut back from today, so only the first can be partial. */
-  timeline: TimelineBucket[];
+  /** Buckets are cut back from today, so only the first can be partial. All time has one per month. */
+  timeline: ProgressBucket[];
   desiredRetention: number;
 }
 
