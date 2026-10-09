@@ -12,6 +12,7 @@ import {
   getProgressSubjects,
   getProgressTopics,
   getReviewLog,
+  getSessionSummary,
   type ProgressQuery,
 } from "./progress";
 
@@ -68,5 +69,10 @@ describe("progress IPC", () => {
       ["get_review_log", { input, before: null }],
       ["get_review_log", { input, before }],
     ]);
+  });
+
+  it("reads one finished session's summary by its id", async () => {
+    await getSessionSummary("d".repeat(32));
+    expect(vi.mocked(invoke).mock.calls).toEqual([["get_session_summary", { sessionId: "d".repeat(32) }]]);
   });
 });

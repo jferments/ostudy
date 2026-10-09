@@ -6,6 +6,7 @@ import * as commonIpc from "../ipc/common";
 import type { DeckSummary } from "../ipc/decks";
 import * as platformIpc from "../ipc/platform";
 import * as practiceIpc from "../ipc/practice";
+import * as progressIpc from "../ipc/progress";
 import * as schedulingIpc from "../ipc/scheduling";
 import {
   resetPracticeExitGuardForTests,
@@ -44,6 +45,7 @@ vi.mock("../ipc/practice", () => ({
   submitPracticeReview: vi.fn(),
 }));
 vi.mock("../ipc/scheduling", () => ({ applyScheduleAction: vi.fn() }));
+vi.mock("../ipc/progress", () => ({ getSessionSummary: vi.fn() }));
 vi.mock("../ipc/platform", () => ({ listenToLifecycle: vi.fn() }));
 vi.mock("../ipc/cards", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ipc/cards")>()),
@@ -113,6 +115,26 @@ const previews: practiceIpc.ReviewPreviewSet = {
   ],
 };
 
+const missedCardId = "e".repeat(32);
+
+function sessionSummary(sessionId: string): progressIpc.SessionSummary {
+  return {
+    sessionId,
+    mode: "scheduled",
+    ratedCount: 1,
+    rememberedCount: 1,
+    studyTimeMs: 90_000,
+    nowSolidCount: 0,
+    missedCardIds: [missedCardId],
+    missedTopic: null,
+    dueTodayCount: 3,
+    today: { localDate: "2026-11-03", reviewCount: 1, studyTimeMs: 90_000 },
+    currentStreak: { length: 1, startLocalDate: "2026-11-03", endLocalDate: "2026-11-03" },
+    longestStreak: { length: 1, startLocalDate: "2026-11-03", endLocalDate: "2026-11-03" },
+    lastAsLongStreak: null,
+  };
+}
+
 function selectedLaunch(
   overrides: Partial<Extract<practiceIpc.SelectedPracticeRequest, object>> = {},
 ) {
@@ -173,6 +195,7 @@ describe("PracticeScreen internal workflow", () => {
     vi.mocked(practiceIpc.markPracticeCardViewed).mockResolvedValue(undefined);
     vi.mocked(practiceIpc.markPracticeCardRevealed).mockResolvedValue(previews);
     vi.mocked(practiceIpc.completePracticeSession).mockResolvedValue(undefined);
+    vi.mocked(progressIpc.getSessionSummary).mockImplementation(async (sessionId) => sessionSummary(sessionId));
     vi.mocked(practiceIpc.submitPracticeReview).mockResolvedValue({
       cardId: card.presentation.cardId,
       rating: 2,
@@ -295,11 +318,11 @@ describe("PracticeScreen internal workflow", () => {
     renderPractice();
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "Practice this scope again" });
+    await screen.findByRole("button", { name: /Keep going/u });
     expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
       expect.objectContaining({ scheduleRevision: 4 }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Practice this scope again" }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep going/u }));
     await waitFor(() => expect(practiceIpc.startSelectedPractice).toHaveBeenCalledTimes(2));
     const calls = vi.mocked(practiceIpc.startSelectedPractice).mock.calls;
     expect({ ...calls[1]?.[0], operationId: undefined }).toEqual({
@@ -318,12 +341,12 @@ describe("PracticeScreen internal workflow", () => {
     renderPractice({ onViewAnalytics, onChooseDecks });
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    const repeat = await screen.findByRole("button", { name: "Practice this scope again" });
+    const repeat = await screen.findByRole("button", { name: /Keep going/u });
     fireEvent.click(repeat);
 
     await waitFor(() => expect(repeat.hasAttribute("disabled")).toBe(true));
-    const analytics = screen.getByRole("button", { name: "View progress" });
-    const chooseDecks = screen.getByRole("button", { name: "Choose decks" });
+    const analytics = screen.getByRole("button", { name: "See your progress" });
+    const chooseDecks = screen.getByRole("button", { name: "Done" });
     expect(analytics.hasAttribute("disabled")).toBe(true);
     expect(chooseDecks.hasAttribute("disabled")).toBe(true);
     fireEvent.click(analytics);
@@ -334,6 +357,17 @@ describe("PracticeScreen internal workflow", () => {
 
     repeatedStart.resolve(session);
     await screen.findByRole("button", { name: "Show answer" });
+  });
+
+  it("practices the session's missed cards from the completion screen", async () => {
+    renderPractice();
+    await reveal();
+    fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
+    expect(await screen.findByText("You missed 1 card")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Practice 1" }));
+    await waitFor(() => expect(practiceIpc.startCardPractice).toHaveBeenCalledWith(
+      expect.objectContaining({ cardIds: [missedCardId] }),
+    ));
   });
 
   it("guards the registered exit path while the initial start is in flight", async () => {
@@ -401,7 +435,7 @@ describe("PracticeScreen internal workflow", () => {
       },
       onViewAnalytics,
     });
-    fireEvent.click(await screen.findByRole("button", { name: "View progress" }));
+    fireEvent.click(await screen.findByRole("button", { name: "See your progress" }));
     expect(onViewAnalytics).toHaveBeenCalledWith(session.id, []);
   });
 
@@ -446,7 +480,7 @@ describe("PracticeScreen internal workflow", () => {
     });
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    fireEvent.click(await screen.findByRole("button", { name: "View progress" }));
+    fireEvent.click(await screen.findByRole("button", { name: "See your progress" }));
     expect(onViewAnalytics).toHaveBeenCalledWith(session.id, [deck.id, secondDeckId]);
   });
 
@@ -468,7 +502,7 @@ describe("PracticeScreen internal workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
     await screen.findByText(/safely retry the same review/u);
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View progress" });
+    await screen.findByRole("button", { name: "See your progress" });
     const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
     expect(calls[1]?.[0]).toEqual(calls[0]?.[0]);
   });
@@ -509,7 +543,7 @@ describe("PracticeScreen internal workflow", () => {
     await screen.findByText(/safely retry the same review/u);
     now += 9_000;
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View progress" });
+    await screen.findByRole("button", { name: "See your progress" });
 
     const calls = vi.mocked(practiceIpc.submitPracticeReview).mock.calls;
     expect(calls[0]?.[0].activeTimeMs).toBe(5_500);
@@ -537,7 +571,7 @@ describe("PracticeScreen internal workflow", () => {
     now += 1_000;
     await reveal();
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
-    await screen.findByRole("button", { name: "View progress" });
+    await screen.findByRole("button", { name: "See your progress" });
 
     expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
       expect.objectContaining({ activeTimeMs: 3_000 }),

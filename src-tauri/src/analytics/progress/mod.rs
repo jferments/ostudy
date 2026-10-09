@@ -9,6 +9,7 @@ mod activity;
 mod forecast;
 mod hours;
 mod review_log;
+mod session;
 mod strength;
 mod subjects;
 
@@ -36,6 +37,7 @@ pub use forecast::ProgressForecastDto;
 pub use hours::ProgressSummaryDto;
 use hours::{DayRow, Totals};
 pub use review_log::{ReviewLogCursorDto, ReviewLogPageDto};
+pub use session::SessionSummaryDto;
 pub use strength::CardStrengthDto;
 pub use subjects::SubjectProgressDto;
 
@@ -248,6 +250,19 @@ pub fn get_progress_activity(
     database.with_connection(|connection| {
         let time = StudyTimeContext::capture(connection)?;
         activity::load(connection, &time)
+    })
+}
+
+/// What a finished practice session changed, with today's totals and streak.
+#[tauri::command]
+pub fn get_session_summary(
+    database: State<'_, Database>,
+    session_id: String,
+) -> Result<SessionSummaryDto, CommandError> {
+    crate::util::validate_entity_id(&session_id, "practice session")?;
+    database.with_connection(|connection| {
+        let time = StudyTimeContext::capture(connection)?;
+        session::load(connection, time, &session_id)
     })
 }
 

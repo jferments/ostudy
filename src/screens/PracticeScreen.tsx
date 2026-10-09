@@ -702,10 +702,14 @@ export function PracticeScreen({
       : practiceRequest?.kind === "cards"
         ? [...new Set(sessionCards.map((card) => card.presentation.deckId))]
         : [];
-    return <PracticeComplete ratedCount={ratedCount} confidenceCounts={confidenceCounts} isStarting={isStarting}
+    return <PracticeComplete sessionId={session.id} ratedCount={ratedCount} confidenceCounts={confidenceCounts} isStarting={isStarting}
       canRestart={practiceRequest !== null} errorMessage={errorMessage}
-      onViewAnalytics={() => { if (!startingRef.current) onViewAnalytics(session.id, sessionDeckIds); }}
-      onChooseDecks={() => { if (!startingRef.current) void onChooseDecks(); }}
+      onDone={() => {
+        if (startingRef.current) return;
+        void (returnTarget ? onEndEarly(returnTarget) : onChooseDecks());
+      }}
+      onViewProgress={() => { if (!startingRef.current) onViewAnalytics(session.id, sessionDeckIds); }}
+      onPracticeCards={(cardIds) => void beginPractice({ kind: "cards", cardIds, shuffle: settings.practiceShuffle })}
       onRestart={() => { if (practiceRequest) void beginPractice(practiceRequest); }} />;
   }
 

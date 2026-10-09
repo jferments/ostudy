@@ -1230,7 +1230,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     view_progress = find_element(
         session_id,
         "xpath",
-        "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='View progress']",
+        "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='See your progress']",
         deadline,
     )
     click(session_id, view_progress)

@@ -7,7 +7,7 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 | Slot family | Purpose | Source and license |
 | --- | --- | --- |
 | `empty.*` | Empty libraries, folders, documents, search results, and configuration states | Original ostudy vector artwork; MIT |
-| `practice.*` | Practice preparation and completion states | Original ostudy vector artwork; MIT |
+| `practice.*` | Practice preparation and completion states | Original ostudy vector artwork, and the project mascot for completion (see below); MIT |
 | `brand.*` | Responsive ostudy brand and mascot treatments | Original ostudy mascot artwork (see below); MIT |
 | `status.*` | Nonessential success and milestone decoration | Original ostudy vector artwork; MIT |
 
@@ -18,6 +18,8 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 ## First-run welcome
 
 `empty.library` is the whole mascot from the same file, unchanged in content: the 1254 x 1254 image downscaled to `images/raccoon-logo-160.webp` and `images/raccoon-logo-320.webp` (transparent WebP, Lanczos, quality 88 with lossless alpha, metadata stripped). Home shows it when the library is empty. It is decorative artwork, so it follows the decorative-artwork preference, and a plain icon takes its place when the preference is off.
+
+`progress.coach` reuses the head files beside the Progress summary, and `practice.complete` reuses the whole-mascot files on Session complete. Both are decorative and follow the same preference.
 
 Functional icons are not decorative artwork. They come from the app's icon registry (`src/ui/icons/Icon.tsx`, Lucide glyphs under the ISC notice in `public/licenses/LUCIDE-ISC.txt`) and remain visible when decorative artwork is disabled.
 

@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration};
 use rusqlite::{params, Connection};
 
 use super::{
-    activity, forecast, hours, load_overview, load_topics, review_log, strength, subjects,
+    activity, forecast, hours, load_overview, load_topics, review_log, session, strength, subjects,
     ProgressQueryDto, ReviewLogCursorDto,
 };
 use crate::{
@@ -460,6 +460,97 @@ fn topics_count_only_the_reviews_in_the_chosen_subject() {
                 .collect::<Vec<_>>(),
             [(1, 1, 1)]
         );
+        Ok(())
+    });
+}
+
+#[test]
+fn a_session_summary_reports_its_misses_new_solid_cards_and_what_is_still_due() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let session = id(9, 0);
+        connection
+            .execute(
+                "INSERT INTO practice_sessions (id, selected_deck_ids_json, shuffle, card_count,
+                     started_at, completed_at, rated_count, correct_count, mode)
+                 VALUES (?1, ?2, 0, 2, ?3, ?3, 2, 1, 'scheduled')",
+                params![session, format!("[\"{}\"]", library.decks[0]), now - HOUR],
+            )
+            .unwrap();
+        let tag = id(8, 0);
+        connection
+            .execute(
+                "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+                 VALUES (?1, 'Muscarinic antagonists', 'muscarinic antagonists', ?2, ?2)",
+                params![tag, now],
+            )
+            .unwrap();
+        let solid = library.card(connection, 0, 2, now + 3 * DAY, 30.0);
+        let missed = library.card(connection, 0, 2, now + 3 * DAY, 2.0);
+        let still_due = library.card(connection, 0, 2, now - HOUR, 3.0);
+        connection
+            .execute(
+                "INSERT INTO note_tags (note_id, tag_id) SELECT note_id, ?2 FROM cards WHERE id = ?1",
+                params![missed, tag],
+            )
+            .unwrap();
+        // Yesterday's review keeps a two-day streak going.
+        library.review(connection, &still_due, "2026-11-02T09:00:00-08:00", true);
+        let made_solid = library.review(connection, &solid, "2026-11-03T10:00:00-08:00", true);
+        let forgotten = library.review(connection, &missed, "2026-11-03T10:01:00-08:00", false);
+        connection
+            .execute(
+                "UPDATE review_events SET session_id = ?1 WHERE id IN (?2, ?3)",
+                params![session, made_solid, forgotten],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE review_events SET stability_before = 10.0, stability_after = 30.0
+                 WHERE id = ?1",
+                params![made_solid],
+            )
+            .unwrap();
+
+        let summary = session::load(connection, time(), &session)?;
+        assert_eq!(
+            (
+                summary.rated_count,
+                summary.remembered_count,
+                summary.study_time_ms
+            ),
+            (2, 1, 8_000)
+        );
+        assert_eq!(summary.now_solid_count, 1);
+        assert_eq!(summary.missed_card_ids, [missed]);
+        let topic = summary
+            .missed_topic
+            .expect("the missed card's tag should be named");
+        assert_eq!(
+            (topic.name.as_str(), topic.card_count),
+            ("Muscarinic antagonists", 1)
+        );
+        assert_eq!(summary.due_today_count, Some(1));
+        assert_eq!(
+            (
+                summary.today.local_date.as_str(),
+                summary.today.review_count
+            ),
+            ("2026-11-03", 2)
+        );
+        assert_eq!(summary.current_streak.map(|streak| streak.length), Some(2));
+        assert!(summary.last_as_long_streak.is_none());
+
+        // A session filtered to that tag names no topic: every card has it.
+        connection
+            .execute(
+                "UPDATE practice_sessions SET selected_tag_ids_json = ?2 WHERE id = ?1",
+                params![session, format!("[\"{tag}\"]")],
+            )
+            .unwrap();
+        assert!(session::load(connection, time(), &session)?
+            .missed_topic
+            .is_none());
         Ok(())
     });
 }
