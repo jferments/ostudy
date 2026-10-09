@@ -558,7 +558,7 @@ export function useAppController() {
     if (next === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
-      const analytics = { range: "7d" as const, deckIds: [], tagIds: [] };
+      const analytics = { range: "30d" as const, deckIds: [], tagIds: [] };
       analyticsCheckpointRef.current = analytics;
       setAnalyticsLaunch({ requestId, ...analytics });
     }
@@ -777,7 +777,7 @@ export function useAppController() {
       );
     } else if (restoredTarget.section === "analytics") {
       const analytics = analyticsCheckpointRef.current ?? {
-        range: "7d",
+        range: "30d",
         deckIds: [],
         tagIds: [],
       };

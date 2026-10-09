@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getProgressActivity,
   getProgressCardStrength,
+  getProgressFilterOptions,
   getProgressForecast,
   getProgressOverview,
   getProgressQuestionTypes,
   getProgressSessions,
   getProgressSubjects,
+  getProgressTopics,
   getReviewLog,
   type ProgressQuery,
 } from "./progress";
@@ -37,6 +39,7 @@ describe("progress IPC", () => {
     await getProgressSubjects(input);
     await getProgressQuestionTypes(input);
     await getProgressSessions(input);
+    await getProgressTopics(input);
     expect(vi.mocked(invoke).mock.calls).toEqual([
       ["get_progress_overview", { input }],
       ["get_progress_forecast", { input }],
@@ -44,12 +47,17 @@ describe("progress IPC", () => {
       ["get_progress_subjects", { input }],
       ["get_progress_question_types", { input }],
       ["get_progress_sessions", { input }],
+      ["get_progress_topics", { input }],
     ]);
   });
 
-  it("reads the library-wide calendar without a scope", async () => {
+  it("reads the library-wide calendar and filter options without a scope", async () => {
     await getProgressActivity();
-    expect(invoke).toHaveBeenCalledWith("get_progress_activity");
+    await getProgressFilterOptions();
+    expect(vi.mocked(invoke).mock.calls).toEqual([
+      ["get_progress_activity"],
+      ["get_progress_filter_options"],
+    ]);
   });
 
   it("pages the review log with the previous page's cursor", async () => {

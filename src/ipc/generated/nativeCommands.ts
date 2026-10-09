@@ -130,11 +130,13 @@ export interface NativeCommandGatewayMap {
   "get_practice_workload": readonly [typeof GatewayModule24.getPracticeWorkload];
   "get_progress_activity": readonly [typeof GatewayModule25.getProgressActivity];
   "get_progress_card_strength": readonly [typeof GatewayModule25.getProgressCardStrength];
+  "get_progress_filter_options": readonly [typeof GatewayModule25.getProgressFilterOptions];
   "get_progress_forecast": readonly [typeof GatewayModule25.getProgressForecast];
   "get_progress_overview": readonly [typeof GatewayModule25.getProgressOverview];
   "get_progress_question_types": readonly [typeof GatewayModule25.getProgressQuestionTypes];
   "get_progress_sessions": readonly [typeof GatewayModule25.getProgressSessions];
   "get_progress_subjects": readonly [typeof GatewayModule25.getProgressSubjects];
+  "get_progress_topics": readonly [typeof GatewayModule25.getProgressTopics];
   "get_question_generation_policy": readonly [typeof GatewayModule27.getQuestionGenerationPolicy];
   "get_question_note": readonly [typeof GatewayModule28.getQuestionNote];
   "get_recent_practice_reviews": readonly [typeof GatewayModule2.getRecentPracticeReviews];

@@ -1245,7 +1245,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(
         session_id,
         "xpath",
-        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
+        "//main//section[.//h2[normalize-space(.)='Every answer']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
@@ -1290,7 +1290,7 @@ def verify_persistence_after_restart(
     find_element(
         session_id,
         "xpath",
-        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
+        "//main//section[.//h2[normalize-space(.)='Every answer']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )

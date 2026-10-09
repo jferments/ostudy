@@ -406,7 +406,7 @@
             "assertionFragments": [
               "webdriver.wait_for_main_heading(session_id, \"Progress\", deadline)",
               "webdriver.ANALYTICS_SCREEN_SELECTOR",
-              "Recent reviews"
+              "Every answer"
             ]
           },
           {
