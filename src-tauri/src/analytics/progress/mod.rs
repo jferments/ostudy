@@ -22,10 +22,13 @@ use crate::{
 };
 
 use super::{
+    aggregates,
     question_types::{self, QuestionTypeAnalyticsDto},
     recent,
     scope::AnalyticsContext,
-    AnalyticsQueryDto, AnalyticsScopeDto, SessionAnalyticsDto,
+    signals::RequestSignals,
+    AnalyticsDimensionOptionsDto, AnalyticsQueryDto, AnalyticsScopeDto, SessionAnalyticsDto,
+    TagAnalyticsDto,
 };
 
 pub use activity::ProgressActivityDto;
@@ -279,6 +282,35 @@ pub fn get_progress_sessions(
         let time = StudyTimeContext::capture(connection)?;
         recent::load_sessions(connection, &input.context(time)?)
     })
+}
+
+/// Every tag in scope, the ones that need attention first.
+#[tauri::command]
+pub fn get_progress_topics(
+    database: State<'_, Database>,
+    input: ProgressQueryDto,
+) -> Result<Vec<TagAnalyticsDto>, CommandError> {
+    database.with_connection(|connection| {
+        let time = StudyTimeContext::capture(connection)?;
+        load_topics(connection, &input.context(time)?)
+    })
+}
+
+fn load_topics(
+    connection: &mut rusqlite::Connection,
+    context: &AnalyticsContext,
+) -> Result<Vec<TagAnalyticsDto>, CommandError> {
+    let settings = load_settings(connection)?;
+    let signals = RequestSignals::materialize(connection)?;
+    aggregates::load_tags(connection, context, &signals, settings.desired_retention)
+}
+
+/// The decks and tags the scope filter offers.
+#[tauri::command]
+pub fn get_progress_filter_options(
+    database: State<'_, Database>,
+) -> Result<AnalyticsDimensionOptionsDto, CommandError> {
+    database.with_connection(|connection| recent::load_dimension_options(connection))
 }
 
 /// One page of the review log, newest first. `before` is the previous page's

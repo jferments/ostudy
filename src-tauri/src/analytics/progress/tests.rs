@@ -5,8 +5,8 @@ use chrono::{DateTime, Duration};
 use rusqlite::{params, Connection};
 
 use super::{
-    activity, forecast, hours, load_overview, review_log, strength, subjects, ProgressQueryDto,
-    ReviewLogCursorDto,
+    activity, forecast, hours, load_overview, load_topics, review_log, strength, subjects,
+    ProgressQueryDto, ReviewLogCursorDto,
 };
 use crate::{
     analytics::scope::AnalyticsContext, database::Database, error::CommandError,
@@ -396,6 +396,69 @@ fn subjects_report_cards_now_and_reviews_in_the_range() {
         assert_eq!(
             (rows[2].subject_id.as_deref(), rows[2].card_count),
             (None, 1)
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn topics_count_only_the_reviews_in_the_chosen_subject() {
+    with_library(|connection, library| {
+        let now = millis(NOW);
+        let tag = id(8, 0);
+        connection
+            .execute(
+                "INSERT INTO tags (id, name, normalized_name, created_at, updated_at)
+                 VALUES (?1, 'Membranes', 'membranes', ?2, ?2)",
+                params![tag, now],
+            )
+            .unwrap();
+        let biology = library.card(connection, 0, 2, now - HOUR, 3.0);
+        let chemistry = library.card(connection, 1, 2, now - HOUR, 3.0);
+        for (card, remembered) in [(&biology, true), (&chemistry, false)] {
+            connection
+                .execute(
+                    "INSERT INTO note_tags (note_id, tag_id)
+                     SELECT note_id, ?2 FROM cards WHERE id = ?1",
+                    params![card, tag],
+                )
+                .unwrap();
+            let review = library.review(connection, card, "2026-11-02T09:00:00-08:00", remembered);
+            connection
+                .execute(
+                    "INSERT INTO review_event_tag_attributions (review_event_id, tag_id, tag_name)
+                     VALUES (?1, ?2, 'Membranes')",
+                    params![review, tag],
+                )
+                .unwrap();
+        }
+
+        let everywhere = load_topics(connection, &context("7d", Vec::new()))?;
+        assert_eq!(
+            everywhere
+                .iter()
+                .map(|topic| (
+                    topic.tag_name.as_str(),
+                    topic.review_count,
+                    topic.studyable_due_count
+                ))
+                .collect::<Vec<_>>(),
+            [("Membranes", 2, 2)]
+        );
+        let biology_only = load_topics(
+            connection,
+            &context("7d", vec![library.subjects[0].clone()]),
+        )?;
+        assert_eq!(
+            biology_only
+                .iter()
+                .map(|topic| (
+                    topic.review_count,
+                    topic.correct_count,
+                    topic.studyable_due_count
+                ))
+                .collect::<Vec<_>>(),
+            [(1, 1, 1)]
         );
         Ok(())
     });

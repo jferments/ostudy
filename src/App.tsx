@@ -41,7 +41,7 @@ const loadLibraryWorkbench = () => import("./screens/library/workbench/LibraryWo
 const loadDocumentsSection = () => import("./screens/DocumentsSection");
 const loadStudyGuidesRoute = () => import("./screens/StudyGuidesRoute");
 const loadPracticeScreen = () => import("./screens/PracticeScreen");
-const loadAnalyticsScreen = () => import("./screens/AnalyticsScreen");
+const loadProgressScreen = () => import("./screens/progress/ProgressScreen");
 const loadTutorScreen = () => import("./screens/tutor/TutorWorkspace");
 const loadSettingsScreen = () => import("./screens/SettingsScreen");
 
@@ -57,8 +57,8 @@ const StudyGuidesRoute = lazy(() =>
 const PracticeScreen = lazy(() =>
   loadPracticeScreen().then((module) => ({ default: module.PracticeScreen })),
 );
-const AnalyticsScreen = lazy(() =>
-  loadAnalyticsScreen().then((module) => ({ default: module.AnalyticsScreen })),
+const ProgressScreen = lazy(() =>
+  loadProgressScreen().then((module) => ({ default: module.ProgressScreen })),
 );
 const TutorScreen = lazy(() =>
   loadTutorScreen().then((module) => ({ default: module.TutorScreen })),
@@ -72,7 +72,7 @@ const FEATURE_PRELOADERS = [
   loadDocumentsSection,
   loadStudyGuidesRoute,
   loadPracticeScreen,
-  loadAnalyticsScreen,
+  loadProgressScreen,
   loadTutorScreen,
   loadSettingsScreen,
 ] as const;
@@ -262,13 +262,12 @@ function App() {
                             ) : controller.section === "tutor" ? (
                               <TutorScreen />
                             ) : controller.section === "analytics" ? (
-                              <AnalyticsScreen
+                              <ProgressScreen
                                 decks={controller.decks}
                                 launchRequest={controller.analyticsLaunch}
                                 onLaunchConsumed={controller.consumeAnalyticsLaunch}
                                 onPracticeScope={controller.practiceScope}
                                 onSearchTag={controller.openAnalyticsTagSearch}
-                                showToast={controller.showToast}
                               />
                             ) : controller.section === "settings" ? (
                               <SettingsScreen

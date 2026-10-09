@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { deferred } from "../test/factories";
-import * as analyticsIpc from "../ipc/analytics";
 import * as cardsIpc from "../ipc/cards";
 import * as decksIpc from "../ipc/decks";
 import * as practiceIpc from "../ipc/practice";
 import * as templatesIpc from "../ipc/templates";
-import { AnalyticsController } from "./analyticsController";
 import { CardEditorController } from "./cardEditorController";
 import { CardsController } from "./cardsController";
 import { DecksController } from "./decksController";
@@ -68,23 +66,6 @@ describe("domain controllers ignore obsolete read completions", () => {
     newer.resolve(expected);
     expect(await newResult).toEqual(expected);
     older.resolve({ cards: [], totalCount: 99, todayStartAt: 0 });
-    expect(await oldResult).toBeUndefined();
-  });
-
-  it("keeps the newest analytics scope when requests resolve backwards", async () => {
-    const controller = new AnalyticsController();
-    const older = deferred<analyticsIpc.Analytics>();
-    const newer = deferred<analyticsIpc.Analytics>();
-    vi.mocked(analyticsIpc.getAnalytics)
-      .mockReturnValueOnce(older.promise)
-      .mockReturnValueOnce(newer.promise);
-
-    const oldResult = controller.load({ range: "7d", deckIds: [], tagIds: [] });
-    const newResult = controller.load({ range: "90d", deckIds: [], tagIds: [] });
-    const expected = { scope: { range: "90d" } } as analyticsIpc.Analytics;
-    newer.resolve(expected);
-    expect(await newResult).toBe(expected);
-    older.resolve({ scope: { range: "7d" } } as analyticsIpc.Analytics);
     expect(await oldResult).toBeUndefined();
   });
 
