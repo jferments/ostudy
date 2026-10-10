@@ -438,6 +438,7 @@ pub fn run() {
             analytics::progress::get_progress_topics,
             analytics::progress::get_progress_filter_options,
             analytics::progress::get_review_log,
+            analytics::progress::get_session_summary,
             analytics::get_recent_practice_reviews,
             studydeck::prepare_deck_export,
             library_session::commands::leased_import_deck

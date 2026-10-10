@@ -35,7 +35,7 @@ export interface SectionState<T> {
  * One independent latest-request lane: a newer key supersedes an older read,
  * whose value or error is then dropped. Sections never wait on each other.
  */
-function useLatestRead<T>(key: string, read: () => Promise<T>): SectionState<T> {
+export function useLatestRead<T>(key: string, read: () => Promise<T>): SectionState<T> {
   const lane = useRequestLane();
   const readRef = useRef(read);
   readRef.current = read;

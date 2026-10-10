@@ -49,7 +49,11 @@ export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> =
   "empty.search": { slot: "empty.search", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No matching flashcards", category: "empty" },
   "empty.documents": { slot: "empty.documents", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No documents", category: "empty" },
   "empty.templates": { slot: "empty.templates", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No templates", category: "empty" },
-  "practice.complete": { slot: "practice.complete", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Practice complete", category: "completion" },
+  "practice.complete": {
+    slot: "practice.complete", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "Practice complete", category: "completion",
+    // The whole mascot at its desk, the same files as Home's first run.
+    image: { src: raccoonLogo160, srcSet: `${raccoonLogo160} 1x, ${raccoonLogo320} 2x` },
+  },
   "progress.coach": {
     slot: "progress.coach", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "The ostudy raccoon", category: "status",
     // The brand mark's raccoon, here as decoration the mascot-art setting can hide.

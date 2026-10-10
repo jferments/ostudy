@@ -127,6 +127,36 @@ export interface ReviewLogPage {
   next: ReviewLogCursor | null;
 }
 
+export interface MissedTopic {
+  tagId: string;
+  name: string;
+  /** Missed cards carrying this tag. */
+  cardCount: number;
+}
+
+/** What one finished practice session changed, with today's totals and streak. */
+export interface SessionSummary {
+  sessionId: string;
+  mode: "scheduled" | "extra" | "custom";
+  ratedCount: number;
+  rememberedCount: number;
+  /** Active answering time over the session's reviews. */
+  studyTimeMs: number;
+  /** Cards this session moved into Solid. */
+  nowSolidCount: number;
+  /** Studyable cards forgotten at least once in the session, first missed first. */
+  missedCardIds: string[];
+  /** The tag the most missed cards share, other than the session's own tag filter. */
+  missedTopic: MissedTopic | null;
+  /** Reviews still due today in the session's decks and tags; null for chosen cards. */
+  dueTodayCount: number | null;
+  today: { localDate: string; reviewCount: number; studyTimeMs: number };
+  currentStreak: Streak | null;
+  longestStreak: Streak | null;
+  /** The most recent earlier streak at least as long as the current one; null when the current one is the longest yet. */
+  lastAsLongStreak: Streak | null;
+}
+
 export async function getProgressOverview(input: ProgressQuery): Promise<ProgressOverview> {
   return invoke<ProgressOverview>("get_progress_overview", { input });
 }
@@ -166,4 +196,8 @@ export async function getProgressFilterOptions(): Promise<AnalyticsDimensionOpti
 
 export async function getReviewLog(input: ProgressQuery, before: ReviewLogCursor | null = null): Promise<ReviewLogPage> {
   return invoke<ReviewLogPage>("get_review_log", { input, before });
+}
+
+export async function getSessionSummary(sessionId: string): Promise<SessionSummary> {
+  return invoke<SessionSummary>("get_session_summary", { sessionId });
 }
