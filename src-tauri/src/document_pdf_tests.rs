@@ -1,11 +1,6 @@
 use std::fs;
 
-use crate::{
-    paths::AppPaths,
-    pdf_backend,
-    pdf_render_backend::{self, PdfRenderRuntime},
-    util::unix_time_millis,
-};
+use crate::{paths::AppPaths, pdf_backend, pdf_render_backend, util::unix_time_millis};
 
 fn temporary_paths(label: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!(
@@ -52,8 +47,8 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
         "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
     );
 
-    let runtime = PdfRenderRuntime::new(None).expect("provisioned PDFium should initialize");
-    let pdfium_text = pdf_render_backend::extract_native_text_pages(&runtime, &source, &[1])
+    let runtime = pdf_render_backend::shared_test_runtime();
+    let pdfium_text = pdf_render_backend::extract_native_text_pages(runtime, &source, &[1])
         .expect("PDFium should expose native text before OCR is considered");
     assert_eq!(pdfium_text.len(), 1);
     assert_eq!(pdfium_text[0].0, 1);
@@ -67,7 +62,7 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     );
 
     let mut rendered = 0_usize;
-    let page_count = pdf_render_backend::render_pages(&runtime, &source, |page_number, png| {
+    let page_count = pdf_render_backend::render_pages(runtime, &source, |page_number, png| {
         rendered += 1;
         assert_eq!(page_number, 1);
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]));

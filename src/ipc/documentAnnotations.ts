@@ -110,3 +110,25 @@ export async function applyDocumentAnnotationChanges(
     input: { documentId, changes },
   });
 }
+
+/** One rectangle of a page drawn at `pageWidth` by `pageHeight` pixels; every number is a whole pixel. */
+export interface DocumentPageTileRequest {
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The longest side of a whole page drawn for tiles; one tile is at most 1,024 pixels a side. */
+export const MAX_TILED_PAGE_SIDE = 16_384;
+
+/** A PNG of part of a PDF page, drawn again from the PDF for a zoomed-in view. */
+export async function renderDocumentPageTile(
+  documentId: string,
+  tile: DocumentPageTileRequest,
+): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("render_document_page_tile", { input: { documentId, ...tile } });
+}

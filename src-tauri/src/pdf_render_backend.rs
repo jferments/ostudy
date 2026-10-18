@@ -28,7 +28,9 @@ use pdfium_render::prelude::{PdfPageIndex, PdfRenderConfig, Pdfium};
 #[cfg(target_os = "android")]
 use tauri::{AppHandle, Manager};
 #[cfg(target_os = "android")]
-use tauri_plugin_ostudy_platform::{OpenPdfRequest, OstudyPlatformExt, RenderPdfPageRequest};
+use tauri_plugin_ostudy_platform::{
+    OpenPdfRequest, OstudyPlatformExt, RenderPdfPageRequest, RenderPdfTileRequest,
+};
 
 const PAGE_RENDER_DPI: f64 = 120.0;
 pub(crate) const OCR_RENDER_DPI: f64 = 300.0;
@@ -494,6 +496,99 @@ where
     }
 }
 
+/// A rectangle of one page drawn at a chosen size, in that drawing's pixels.
+/// The whole page is stretched to `page_width` by `page_height`, so a tile
+/// lines up with the page render it sharpens even where rounding made that
+/// render's aspect ratio differ slightly from the page's own.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PageTile {
+    pub page_width: u32,
+    pub page_height: u32,
+    pub left: u32,
+    pub top: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The longest side of one tile.
+pub(crate) const MAX_TILE_SIDE: u32 = 1_024;
+/// The longest side of a page drawn for tiling: a 200-inch page side at 82 dpi,
+/// or a letter page side at 1,500 dpi.
+pub(crate) const MAX_TILED_PAGE_SIDE: u32 = 16_384;
+#[cfg(target_os = "android")]
+const ANDROID_TILE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+impl PageTile {
+    /// Whether the tile has a size within the limits and lies on its page.
+    pub(crate) fn is_valid(&self) -> bool {
+        (1..=MAX_TILED_PAGE_SIDE).contains(&self.page_width)
+            && (1..=MAX_TILED_PAGE_SIDE).contains(&self.page_height)
+            && (1..=MAX_TILE_SIDE).contains(&self.width)
+            && (1..=MAX_TILE_SIDE).contains(&self.height)
+            && self
+                .left
+                .checked_add(self.width)
+                .is_some_and(|right| right <= self.page_width)
+            && self
+                .top
+                .checked_add(self.height)
+                .is_some_and(|bottom| bottom <= self.page_height)
+    }
+}
+
+/// One tile of one page as a PNG, for showing a page sharply when zoomed in.
+pub(crate) fn render_page_tile(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    page_number: usize,
+    tile: PageTile,
+) -> Result<Vec<u8>, PdfRenderError> {
+    if runtime.backend_id != active_backend_id() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        ));
+    }
+    if !tile.is_valid() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            "The requested page tile is outside the supported size or the page.",
+        ));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(source_path, None)
+            .map_err(|error| {
+                PdfRenderError::new(PdfRenderErrorKind::Open, None, error.to_string())
+            })?;
+        let total_pages = page_count(&document)?;
+        validated_page_numbers(&[page_number], total_pages)?;
+        render_tile_of_page(&document, page_number - 1, tile)
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        let session = open_android_pdf(runtime, source_path)?;
+        validated_page_numbers(&[page_number], session.page_count)?;
+        render_android_tile(runtime, &session, page_number, tile)
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (source_path, page_number, tile);
+        Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "This iOS build does not yet include the platform PDF rendering adapter.",
+        ))
+    }
+}
+
 fn validated_page_numbers(
     page_numbers: &[usize],
     page_count: usize,
@@ -649,6 +744,81 @@ fn render_android_page(
 }
 
 #[cfg(target_os = "android")]
+fn render_android_tile(
+    runtime: &PdfRenderRuntime,
+    session: &AndroidPdfSession,
+    page_number: usize,
+    tile: PageTile,
+) -> Result<Vec<u8>, PdfRenderError> {
+    let sequence = ANDROID_RENDER_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let target = runtime.scratch_dir.join(format!(
+        "tile-{}-{page_number}-{sequence}.png",
+        std::process::id()
+    ));
+    let target_path = target.to_str().ok_or_else(|| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::EncodePage,
+            Some(page_number),
+            "The Android PDF render cache path is not valid UTF-8.",
+        )
+    })?;
+    let request = RenderPdfTileRequest {
+        token: session.token.clone(),
+        page_number: u32::try_from(page_number).map_err(|_| {
+            PdfRenderError::new(
+                PdfRenderErrorKind::RenderPage,
+                Some(page_number),
+                "The Android PDF page index exceeded the supported range.",
+            )
+        })?,
+        page_width: tile.page_width,
+        page_height: tile.page_height,
+        left: tile.left,
+        top: tile.top,
+        width: tile.width,
+        height: tile.height,
+        target_path: target_path.to_string(),
+        maximum_bytes: ANDROID_TILE_MAX_BYTES,
+    };
+    let rendered = runtime
+        .app
+        .ostudy_platform()
+        .render_pdf_tile(request)
+        .map_err(|error| {
+            PdfRenderError::new(
+                PdfRenderErrorKind::RenderPage,
+                Some(page_number),
+                format!("Android PDF rendering failed: {error}"),
+            )
+        });
+    let outcome = rendered.and_then(|metadata| {
+        let bytes = fs::read(&target).map_err(|error| {
+            PdfRenderError::new(
+                PdfRenderErrorKind::EncodePage,
+                Some(page_number),
+                format!("Android did not return a readable PNG tile: {error}"),
+            )
+        })?;
+        if metadata.page_number != u32::try_from(page_number).unwrap_or(u32::MAX)
+            || bytes.is_empty()
+            || bytes.len() as u64 != metadata.byte_size
+            || metadata.byte_size > ANDROID_TILE_MAX_BYTES
+            || metadata.width != tile.width
+            || metadata.height != tile.height
+        {
+            return Err(PdfRenderError::new(
+                PdfRenderErrorKind::EncodePage,
+                Some(page_number),
+                "Android returned inconsistent PDF tile metadata.",
+            ));
+        }
+        Ok(bytes)
+    });
+    let _ = fs::remove_file(&target);
+    outcome
+}
+
+#[cfg(target_os = "android")]
 struct AndroidPdfSession {
     app: AppHandle,
     token: String,
@@ -725,6 +895,72 @@ fn render_page_at_dpi(
     Ok(output.into_inner())
 }
 
+/// Draws the page at the tile's page size into a bitmap only the tile's size,
+/// with the page shifted so the tile's corner lands on the bitmap's.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn render_tile_of_page(
+    document: &pdfium_render::prelude::PdfDocument<'_>,
+    index: usize,
+    tile: PageTile,
+) -> Result<Vec<u8>, PdfRenderError> {
+    use pdfium_render::prelude::{PdfBitmap, PdfBitmapFormat};
+
+    let page_number = index + 1;
+    let render_error = |error: pdfium_render::prelude::PdfiumError| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            error.to_string(),
+        )
+    };
+    let page_index = PdfPageIndex::try_from(index).map_err(|_| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            "The PDF page index exceeded the renderer's supported range.",
+        )
+    })?;
+    let page = document.pages().get(page_index).map_err(render_error)?;
+    // Every side was checked against MAX_TILED_PAGE_SIDE, so each fits an i32.
+    let pixels = |value: u32| value as i32;
+    let config = PdfRenderConfig::new()
+        .set_fixed_size(pixels(tile.page_width), pixels(tile.page_height))
+        .set_origin(-pixels(tile.left), -pixels(tile.top))
+        .disable_native_text_rendering(true)
+        .use_print_quality(true)
+        .set_text_smoothing(true)
+        .set_image_smoothing(true)
+        .set_path_smoothing(true);
+    let mut bitmap = PdfBitmap::empty(
+        pixels(tile.width),
+        pixels(tile.height),
+        PdfBitmapFormat::default(),
+    )
+    .map_err(render_error)?;
+    page.render_into_bitmap_with_config(&mut bitmap, &config)
+        .map_err(render_error)?;
+    let image = bitmap.as_image().map_err(render_error)?;
+    let mut output = Cursor::new(Vec::new());
+    image
+        .write_to(&mut output, ImageFormat::Png)
+        .map_err(|error| {
+            PdfRenderError::new(
+                PdfRenderErrorKind::EncodePage,
+                Some(page_number),
+                error.to_string(),
+            )
+        })?;
+    Ok(output.into_inner())
+}
+
+/// PDFium binds once per process, so tests share one desktop runtime.
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+pub(crate) fn shared_test_runtime() -> &'static PdfRenderRuntime {
+    static RUNTIME: std::sync::OnceLock<PdfRenderRuntime> = std::sync::OnceLock::new();
+    RUNTIME
+        .get_or_init(|| PdfRenderRuntime::new(None).expect("provisioned PDFium should initialize"))
+}
+
 #[derive(Debug)]
 pub(crate) enum RenderProcessError<E> {
     Backend(PdfRenderError),
@@ -763,5 +999,80 @@ mod tests {
         );
         assert!(validated_page_numbers(&[0], 3).is_err());
         assert!(validated_page_numbers(&[4], 3).is_err());
+    }
+
+    fn tile(left: u32, top: u32, width: u32, height: u32) -> PageTile {
+        PageTile {
+            page_width: 2_000,
+            page_height: 3_000,
+            left,
+            top,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn page_tiles_stay_on_their_page_and_within_limits() {
+        assert!(tile(0, 0, 1_024, 1_024).is_valid());
+        assert!(tile(976, 1_976, 1_024, 1_024).is_valid());
+        assert!(!tile(977, 0, 1_024, 10).is_valid());
+        assert!(!tile(0, 2_999, 10, 2).is_valid());
+        assert!(!tile(0, 0, 0, 10).is_valid());
+        assert!(!tile(0, 0, 1_025, 10).is_valid());
+        assert!(!tile(u32::MAX, 0, 10, 10).is_valid());
+        let mut huge = tile(0, 0, 10, 10);
+        huge.page_width = MAX_TILED_PAGE_SIDE + 1;
+        assert!(!huge.is_valid());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn a_page_tile_matches_the_same_part_of_a_whole_page_render() {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/document-generation/simple-text.pdf");
+        let runtime = shared_test_runtime();
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(&source, None)
+            .expect("fixture should open");
+        let whole = image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
+            .unwrap()
+            .to_luma8();
+        // Center the tile on the first ink, so it holds some text.
+        let (ink_x, ink_y) = whole
+            .enumerate_pixels()
+            .find(|(_, _, pixel)| pixel.0[0] < 128)
+            .map(|(x, y, _)| (x, y))
+            .expect("the fixture page has text");
+        let (width, height) = (240, 120);
+        let tile = PageTile {
+            page_width: whole.width(),
+            page_height: whole.height(),
+            left: ink_x.saturating_sub(width / 2).min(whole.width() - width),
+            top: ink_y
+                .saturating_sub(height / 2)
+                .min(whole.height() - height),
+            width,
+            height,
+        };
+        let drawn = image::load_from_memory(&render_page_tile(runtime, &source, 1, tile).unwrap())
+            .unwrap()
+            .to_luma8();
+        assert_eq!((drawn.width(), drawn.height()), (width, height));
+        let mut difference = 0_u64;
+        let mut ink = 0_u32;
+        for (x, y, pixel) in drawn.enumerate_pixels() {
+            let expected = whole.get_pixel(tile.left + x, tile.top + y).0[0];
+            difference += u64::from(pixel.0[0].abs_diff(expected));
+            ink += u32::from(pixel.0[0] < 128);
+        }
+        assert!(ink > 20, "the tile should show the page's text");
+        let mean = difference as f64 / f64::from(width * height);
+        assert!(
+            mean < 1.0,
+            "tile differs from the page render by {mean} on average"
+        );
+        assert!(render_page_tile(runtime, &source, 2, tile).is_err());
     }
 }

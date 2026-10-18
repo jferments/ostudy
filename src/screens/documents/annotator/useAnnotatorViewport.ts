@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import { usePlatformCapabilities } from "../../../platform/PlatformProvider";
 import type { ZoomAnchor } from "./gestures";
+import type { PageRegion } from "./pageTiles";
 
 /** CSS pixels per PDF point: a fifth of print size up to three times it. */
 export const MIN_SCALE = 0.25;
@@ -20,7 +21,22 @@ const MIN_VIEWPORT_HEIGHT = 240;
 /** Pages this far beyond the visible area (in viewport heights) load their images. */
 const NEAR_MARGIN = "150% 0px";
 
+/** How long the view rests after scrolling or zooming before sharp tiles are drawn. */
+const SETTLE_MS = 150;
+/** Tiles are drawn this far (CSS pixels) beyond the visible area, ready for a short scroll. */
+const REGION_MARGIN = 256;
+
 type Zoom = { mode: "fit" } | { mode: "manual"; scale: number };
+
+/**
+ * Where the view came to rest: its zoom, the screen's density, and the part
+ * of each page in view (with a margin), in points.
+ */
+export interface SettledView {
+  scale: number;
+  pixelRatio: number;
+  regions: ReadonlyMap<number, PageRegion>;
+}
 
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -29,8 +45,9 @@ function clampScale(scale: number): number {
 /**
  * The scrolling page area: its height (the rest of the screen, above an
  * Android keyboard), its zoom (automatic, fitting the window up to 125%,
- * until the learner zooms), which pages are near enough to draw, and
- * scrolling that keeps a chosen spot of a page in place while the zoom changes.
+ * until the learner zooms), which pages are near enough to draw, what is in
+ * view once the view rests, and scrolling that keeps a chosen spot of a page
+ * in place while the zoom changes.
  */
 export function useAnnotatorViewport(
   pages: readonly AnnotatedPage[],
@@ -43,6 +60,7 @@ export function useAnnotatorViewport(
   const [fitWidth, setFitWidth] = useState(0);
   const [zoom, setZoom] = useState<Zoom>({ mode: "fit" });
   const [near, setNear] = useState<ReadonlySet<number>>(() => new Set(pages.slice(0, 3).map((page) => page.pageNumber)));
+  const [settled, setSettled] = useState<SettledView | null>(null);
   const pendingAnchor = useRef<{ anchor: ZoomAnchor; clientX: number; clientY: number } | null>(null);
   const fling = useRef<number | null>(null);
 
@@ -107,6 +125,47 @@ export function useAnnotatorViewport(
     content.querySelectorAll<HTMLElement>("[data-annotator-page]").forEach((page) => observer.observe(page));
     return () => observer.disconnect();
   }, [contentRef, pages, viewportRef]);
+
+  // Once scrolling and zooming rest, record what is in view, for sharp tiles.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const measure = () => {
+      timer = undefined;
+      const view = viewport.getBoundingClientRect();
+      const current = scaleRef.current;
+      const regions = new Map<number, PageRegion>();
+      for (const element of content.querySelectorAll<HTMLElement>("[data-annotator-page]")) {
+        const rect = element.getBoundingClientRect();
+        const left = Math.max(rect.left, view.left - REGION_MARGIN);
+        const right = Math.min(rect.right, view.right + REGION_MARGIN);
+        const top = Math.max(rect.top, view.top - REGION_MARGIN);
+        const bottom = Math.min(rect.bottom, view.bottom + REGION_MARGIN);
+        if (right <= left || bottom <= top) continue;
+        regions.set(Number(element.dataset.annotatorPage), {
+          x: (left - rect.left) / current,
+          y: (top - rect.top) / current,
+          width: (right - left) / current,
+          height: (bottom - top) / current,
+        });
+      }
+      setSettled({ scale: current, pixelRatio: window.devicePixelRatio || 1, regions });
+    };
+    const schedule = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(measure, SETTLE_MS);
+    };
+    schedule();
+    viewport.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      viewport.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [contentRef, height, pages, scale, viewportRef]);
 
   const pageElement = useCallback((pageNumber: number) => (
     contentRef.current?.querySelector<HTMLElement>(`[data-annotator-page="${pageNumber}"]`) ?? null
@@ -227,6 +286,7 @@ export function useAnnotatorViewport(
     scale,
     fit: zoom.mode === "fit",
     near,
+    settled,
     zoomTo,
     zoomIn: () => zoomBy(ZOOM_STEP),
     zoomOut: () => zoomBy(1 / ZOOM_STEP),

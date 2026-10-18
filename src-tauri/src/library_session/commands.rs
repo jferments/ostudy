@@ -304,6 +304,24 @@ pub(crate) async fn leased_read_document_source_asset(
     .await
 }
 
+#[tauri::command(rename = "render_document_page_tile")]
+pub(crate) async fn leased_render_document_page_tile(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input: crate::document_annotations::RenderDocumentPageTileInput =
+        serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::document_annotations::render_document_page_tile(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
+        app.state::<crate::pdf_render_backend::PdfRenderRuntime>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "stream_select_and_stage_external_import")]
 pub(crate) async fn leased_stream_select_and_stage_external_import(
     app: AppHandle,
