@@ -66,31 +66,36 @@ pub fn import_document(
     paths: State<'_, AppPaths>,
     input: ImportDocumentInput,
 ) -> Result<ImportedDocumentDto, CommandError> {
-    validate_entity_id(&input.staged_file_id, "staged document")?;
+    import_staged_document(database.inner(), paths.inner(), &input.staged_file_id)
+}
+
+pub(crate) fn import_staged_document(
+    database: &Database,
+    paths: &AppPaths,
+    staged_file_id: &str,
+) -> Result<ImportedDocumentDto, CommandError> {
+    validate_entity_id(staged_file_id, "staged document")?;
     if let Some(result) = database.with_connection(|connection| {
-        external_files::consumed_import_result::<ImportedDocumentDto>(
-            connection,
-            &input.staged_file_id,
-        )
+        external_files::consumed_import_result::<ImportedDocumentDto>(connection, staged_file_id)
     })? {
         return Ok(result);
     }
     let staged = database.with_connection(|connection| {
         external_files::resolve_staged_import(
             connection,
-            paths.inner(),
-            &input.staged_file_id,
+            paths,
+            staged_file_id,
             ExternalImportPurpose::Document,
             DOCUMENT_KINDS,
         )
     })?;
     let format = staged_document_format(&staged.path)?;
     import_managed_document(
-        database.inner(),
-        paths.inner(),
+        database,
+        paths,
         &staged.path,
         &staged.display_name,
-        &input.staged_file_id,
+        staged_file_id,
         format,
     )
 }

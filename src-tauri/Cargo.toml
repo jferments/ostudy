@@ -13,6 +13,14 @@ publish = false
 name = "ostudy_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Headless study-guide evaluation runner; never part of the application build.
+guide-eval = []
+
+[[bin]]
+name = "guide-eval"
+required-features = ["guide-eval"]
+
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
 
