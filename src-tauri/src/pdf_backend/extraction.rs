@@ -10,7 +10,7 @@ use std::{
 
 use oxidize_pdf::{
     parser::PdfDocument,
-    pipeline::{ExtractionProfile, HybridChunker, RagChunk},
+    pipeline::{Element, ExtractionProfile, HybridChunker, RagChunk},
 };
 
 use super::contracts::{
@@ -27,6 +27,14 @@ const MAX_CHUNK_ELEMENT_TYPES: usize = 128;
 const MAX_CHUNK_ELEMENT_TYPE_CHARS: usize = 80;
 const MAX_HEADING_CONTEXT_CHARS: usize = 2_000;
 const TEXT_EXTRACTION_WORKER_MEMORY_BYTES: u64 = 96 * 1024 * 1024;
+// A "table" whose long cells already appear in the page's other elements is a
+// layout misreading (two text columns read as a grid), not a table. Short
+// cells such as numbers or drug names are too common in prose to count, and
+// small label grids stay because they often mark a figure on the page.
+const SHADOW_TABLE_MIN_CELL_CHARS: usize = 12;
+const SHADOW_TABLE_MIN_REPEATED_CHARS: usize = 200;
+const SHADOW_TABLE_MIN_LONG_CELL_SHARE: f64 = 0.5;
+const SHADOW_TABLE_MIN_COVERED_SHARE: f64 = 0.9;
 
 pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, PdfBackendError> {
     let document = PdfDocument::open(source_path).map_err(|error| {
@@ -46,7 +54,7 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     let (pages, native_text_failed_pages) = extract_page_texts(source_path, &document, page_count)?;
     let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
     let (elements, semantic_analysis_degraded) = match partitioned {
-        Ok(elements) => (elements, false),
+        Ok(elements) => (drop_shadow_tables(elements), false),
         Err(error) => {
             crate::logging::info(
                 "pdf_semantic_analysis_native_fallback",
@@ -289,6 +297,71 @@ fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
     }
 }
 
+fn drop_shadow_tables(elements: Vec<Element>) -> Vec<Element> {
+    let shadows = elements
+        .iter()
+        .enumerate()
+        .filter(|(_, element)| matches!(element, Element::Table(_)))
+        .filter(|(index, element)| {
+            let page_text = elements
+                .iter()
+                .enumerate()
+                .filter(|(other, candidate)| {
+                    other != index
+                        && candidate.page() == element.page()
+                        && !matches!(candidate, Element::Table(_))
+                })
+                .map(|(_, candidate)| collapse_whitespace(&candidate.display_text()))
+                .collect::<Vec<_>>()
+                .join(" ");
+            table_repeats_page_text(&element.display_text(), &page_text)
+        })
+        .map(|(index, _)| index)
+        .collect::<HashSet<_>>();
+    if shadows.is_empty() {
+        return elements;
+    }
+    crate::logging::info(
+        "pdf_shadow_tables_dropped",
+        format!("count={}", shadows.len()),
+    );
+    elements
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| !shadows.contains(index))
+        .map(|(_, element)| element)
+        .collect()
+}
+
+fn table_repeats_page_text(table_text: &str, page_text: &str) -> bool {
+    let cells = table_text
+        .lines()
+        .flat_map(|row| row.split(" | "))
+        .map(collapse_whitespace)
+        .filter(|cell| !cell.is_empty())
+        .collect::<Vec<_>>();
+    let total = cells.iter().map(|cell| cell.chars().count()).sum::<usize>();
+    let long = cells
+        .iter()
+        .filter(|cell| cell.chars().count() >= SHADOW_TABLE_MIN_CELL_CHARS)
+        .collect::<Vec<_>>();
+    let long_chars = long.iter().map(|cell| cell.chars().count()).sum::<usize>();
+    if total == 0 || (long_chars as f64) < total as f64 * SHADOW_TABLE_MIN_LONG_CELL_SHARE {
+        return false;
+    }
+    let covered = long
+        .iter()
+        .filter(|cell| page_text.contains(cell.as_str()))
+        .map(|cell| cell.chars().count())
+        .sum::<usize>();
+    covered >= SHADOW_TABLE_MIN_REPEATED_CHARS
+        && covered as f64 >= long_chars as f64 * SHADOW_TABLE_MIN_COVERED_SHARE
+}
+
+fn collapse_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 pub(crate) fn cover_unstructured_pages(
     mut chunks: Vec<ExtractedSemanticChunk>,
     pages: &[ExtractedTextPage],
@@ -407,6 +480,34 @@ mod tests {
         let covered = cover_unstructured_pages(chunks, &pages);
         assert_eq!(covered.len(), 2);
         assert_eq!(covered[1].element_types, vec!["image"]);
+    }
+
+    #[test]
+    fn a_table_repeating_its_page_columns_is_a_shadow() {
+        let column = "The cardiac cycle is the sequence of mechanical\nand electrical events that repeats with every\nheartbeat. Each cycle consists of a period of\nventricular contraction, called systole, followed\nby a period of relaxation, called diastole. At a\nresting heart rate of 75 beats per minute, one";
+        let table = format!("3.2 The cardiac cycle | an atrial septal defect.\n{column}");
+        let page = collapse_whitespace(&format!(
+            "3.2 The cardiac cycle {column} more prose an atrial septal defect."
+        ));
+        assert!(table_repeats_page_text(&table, &page));
+    }
+
+    #[test]
+    fn a_small_label_grid_is_kept_even_when_repeated() {
+        let table = "Saliva Plasma | Na+ | 150";
+        assert!(!table_repeats_page_text(
+            table,
+            "Saliva Plasma Na+ 150 mEq/L"
+        ));
+    }
+
+    #[test]
+    fn a_real_table_survives_prose_that_names_its_cells() {
+        let table = "Drug | Class | Half-life (h)\nDigoxin | Cardiac glycoside | 36-48\nWarfarin | Anticoagulant | 40";
+        let page = "Digoxin has a narrow therapeutic index. Warfarin is an anticoagulant with a half-life of 40 hours.";
+        assert!(!table_repeats_page_text(table, page));
+        let unrelated = "Lisinopril blocks angiotensin II formation | Amlodipine blocks L-type calcium channels";
+        assert!(!table_repeats_page_text(unrelated, page));
     }
 
     #[test]
