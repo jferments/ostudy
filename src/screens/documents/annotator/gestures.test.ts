@@ -132,6 +132,36 @@ describe("drawing", () => {
     expect(gestures.up(at(2, "mouse", 100, 100), surface, ctx)).toEqual([{ kind: "draft", draft: null }]);
   });
 
+  it("snaps a highlight dragged across the page's text to its lines, and keeps the words", () => {
+    const characters = Array.from("heart rate output");
+    const boxes = Float64Array.from(characters.flatMap((_, index) => index < 11
+      ? [72 + index * 6, 100, 6, 10]
+      : [72 + (index - 11) * 6, 114, 6, 10]));
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "highlighter", pageText: (pageNumber) => (pageNumber === 1 ? { characters, boxes } : null) });
+
+    // Nothing shows for a press, and a tap on the text marks nothing.
+    expect(gestures.down(at(1, "mouse", 105, 105), surface, ctx)).toEqual([]);
+    expect(gestures.up(at(1, "mouse", 105, 105), surface, ctx)).toEqual([{ kind: "draft", draft: null }]);
+
+    gestures.down(at(2, "mouse", 111, 105), surface, ctx);
+    const moved = gestures.move(at(2, "mouse", 400, 118), surface, ctx);
+    expect(only(moved, "draft")[0]?.draft?.shape).toMatchObject({ kind: "highlight", points: [], text: "rate output" });
+    expect(created(gestures.up(at(2, "mouse", 400, 118), surface, ctx))[0]).toEqual({
+      kind: "highlight",
+      points: [],
+      rects: [108, 100, 30, 10, 72, 114, 36, 10],
+      text: "rate output",
+      color: "#fde047",
+      strokeWidth: 16,
+    });
+
+    // Away from the text, and on a page without text, the highlighter draws freely.
+    gestures.down(at(3, "mouse", 300, 400), surface, ctx);
+    expect(only(gestures.move(at(3, "mouse", 340, 400), surface, ctx), "draft")[0]?.draft?.shape).toMatchObject({ points: [300, 400, 340, 400] });
+    gestures.up(at(3, "mouse", 340, 400), surface, ctx);
+  });
+
   it("draws boxes and arrows by dragging, squares them with Shift and drops slips", () => {
     const gestures = new AnnotatorGestures();
     const boxes = context({ tool: "rectangle" });

@@ -33,6 +33,7 @@ export function isShapeTool(tool: AnnotatorTool): tool is ShapeTool {
 const MAX_COORDINATE = 14_400;
 export const MAX_STROKE_POINTS = 10_000;
 export const MAX_TEXT_CHARS = 5_000;
+const MAX_TEXT_RECTS = 2_000;
 const STROKE_WIDTH_RANGE = [0.25, 64] as const;
 const FONT_SIZE_RANGE = [6, 96] as const;
 
@@ -159,6 +160,27 @@ function pointBounds(points: readonly number[], stride: number): Bounds {
   return Number.isFinite(left) ? { left, top, right, bottom } : { left: 0, top: 0, right: 0, bottom: 0 };
 }
 
+function rectBounds(rects: readonly number[]): Bounds {
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (let index = 0; index + 3 < rects.length; index += 4) {
+    const x = rects[index] ?? 0;
+    const y = rects[index + 1] ?? 0;
+    left = Math.min(left, x);
+    top = Math.min(top, y);
+    right = Math.max(right, x + (rects[index + 2] ?? 0));
+    bottom = Math.max(bottom, y + (rects[index + 3] ?? 0));
+  }
+  return Number.isFinite(left) ? { left, top, right, bottom } : { left: 0, top: 0, right: 0, bottom: 0 };
+}
+
+/** Whether a highlight covers the page's text with boxes rather than following a free stroke. */
+export function isTextHighlight(shape: AnnotationShape): shape is HighlightShape & { rects: number[]; text: string } {
+  return shape.kind === "highlight" && shape.rects !== undefined;
+}
+
 function pad(bounds: Bounds, amount: number): Bounds {
   return {
     left: bounds.left - amount,
@@ -172,7 +194,7 @@ function pad(bounds: Bounds, amount: number): Bounds {
 export function shapeExtent(shape: AnnotationShape, textHeight: number): Bounds {
   switch (shape.kind) {
     case "ink": return pointBounds(shape.points, 3);
-    case "highlight": return pointBounds(shape.points, 2);
+    case "highlight": return shape.rects ? rectBounds(shape.rects) : pointBounds(shape.points, 2);
     case "line":
     case "arrow":
       return {
@@ -196,6 +218,7 @@ export function shapeBounds(shape: AnnotationShape, textHeight: number): Bounds 
     case "ink": return pad(extent, shape.strokeWidth * 0.75);
     case "arrow": return pad(extent, Math.max(shape.strokeWidth / 2, arrowHeadLength(shape)));
     case "text": return extent;
+    case "highlight": return shape.rects ? extent : pad(extent, shape.strokeWidth / 2);
     default: return pad(extent, shape.strokeWidth / 2);
   }
 }
@@ -233,8 +256,14 @@ export function distanceToShape(shape: AnnotationShape, point: Point, textHeight
   switch (shape.kind) {
     case "ink":
       return Math.max(0, distanceToPolyline(point, shape.points, 3) - shape.strokeWidth / 2);
-    case "highlight":
-      return Math.max(0, distanceToPolyline(point, shape.points, 2) - shape.strokeWidth / 2);
+    case "highlight": {
+      if (!shape.rects) return Math.max(0, distanceToPolyline(point, shape.points, 2) - shape.strokeWidth / 2);
+      let best = Infinity;
+      for (let index = 0; index + 3 < shape.rects.length; index += 4) {
+        best = Math.min(best, distanceToBox(point, rectBounds(shape.rects.slice(index, index + 4))));
+      }
+      return best;
+    }
     case "line":
     case "arrow":
       return Math.max(0, distanceToSegment(point, shape.x1, shape.y1, shape.x2, shape.y2) - shape.strokeWidth / 2);
@@ -305,7 +334,10 @@ export function moveWithinPage(
   const y = clamp(dy, -extent.top, Math.max(-extent.top, bottom - extent.bottom));
   switch (shape.kind) {
     case "ink": return { ...shape, points: mapPoints(shape.points, 3, x, y) };
-    case "highlight": return { ...shape, points: mapPoints(shape.points, 2, x, y) };
+    case "highlight":
+      return shape.rects
+        ? { ...shape, rects: mapPoints(shape.rects, 4, x, y) }
+        : { ...shape, points: mapPoints(shape.points, 2, x, y) };
     case "line":
     case "arrow":
       return { ...shape, x1: round(shape.x1 + x), y1: round(shape.y1 + y), x2: round(shape.x2 + x), y2: round(shape.y2 + y) };
@@ -505,6 +537,20 @@ function pointsAllowed(points: readonly number[], stride: number): boolean {
     : coordinate(value));
 }
 
+function rectsAllowed(rects: readonly number[] | undefined): boolean {
+  if (!rects || rects.length === 0 || rects.length % 4 !== 0 || rects.length / 4 > MAX_TEXT_RECTS) return false;
+  for (let index = 0; index < rects.length; index += 4) {
+    const [x = NaN, y = NaN, width = NaN, height = NaN] = rects.slice(index, index + 4);
+    if (!coordinate(x) || !coordinate(y) || !(width > 0) || !(height > 0)
+      || x + width > MAX_COORDINATE || y + height > MAX_COORDINATE) return false;
+  }
+  return true;
+}
+
+function quotedTextAllowed(text: string | undefined): boolean {
+  return text !== undefined && text.trim().length > 0 && [...text].length <= MAX_TEXT_CHARS && !/\p{Cc}/u.test(text);
+}
+
 /** Whether the native owner will accept the shape, so a save never fails on it. */
 export function isStorable(shape: AnnotationShape): boolean {
   if (!COLOR.test(shape.color)) return false;
@@ -512,7 +558,11 @@ export function isStorable(shape: AnnotationShape): boolean {
     case "ink":
       return pointsAllowed(shape.points, 3) && strokeWidthAllowed(shape.strokeWidth);
     case "highlight":
-      return pointsAllowed(shape.points, 2) && strokeWidthAllowed(shape.strokeWidth);
+      if (shape.rects === undefined && shape.text === undefined) {
+        return pointsAllowed(shape.points, 2) && strokeWidthAllowed(shape.strokeWidth);
+      }
+      return shape.points.length === 0 && rectsAllowed(shape.rects) && quotedTextAllowed(shape.text)
+        && strokeWidthAllowed(shape.strokeWidth);
     case "line":
     case "arrow":
       return [shape.x1, shape.y1, shape.x2, shape.y2].every(coordinate)
@@ -553,8 +603,10 @@ const KIND_NAMES: Readonly<Record<AnnotationShape["kind"], string>> = {
 /** A short name for an annotation, for assistive technology. */
 export function describeAnnotation(annotation: Annotation): string {
   const name = `${KIND_NAMES[annotation.shape.kind]} on page ${annotation.pageNumber}`;
-  if (annotation.shape.kind !== "text") return name;
-  const text = annotation.shape.text.replace(/\s+/g, " ").trim();
+  const quoted = annotation.shape.kind === "text" ? annotation.shape.text
+    : annotation.shape.kind === "highlight" ? annotation.shape.text : undefined;
+  if (quoted === undefined) return name;
+  const text = quoted.replace(/\s+/g, " ").trim();
   return `${name}: ${text.length > 60 ? `${text.slice(0, 59)}…` : text}`;
 }
 

@@ -17,7 +17,7 @@ import {
 } from "./annotationModel";
 import { usePageImage, type PageImageCache } from "./pageImages";
 import { tileDensity, tilesFor, usePageTiles, type PageRegion, type PageTile, type ShownTile } from "./pageTiles";
-import { highlightPath, inkPath } from "./strokeOutline";
+import { highlightPath, inkPath, textHighlightPath } from "./strokeOutline";
 import type { TextEditing } from "./useDocumentAnnotator";
 
 export interface PageDraft {
@@ -173,6 +173,7 @@ const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { sh
     case "ink":
       return <path d={inkPath(shape, complete)} fill={shape.color} />;
     case "highlight":
+      if (shape.rects) return <path d={textHighlightPath(shape.rects)} fill={shape.color} fillOpacity={0.75} />;
       return (
         <path d={highlightPath(shape)} fill="none" stroke={shape.color} strokeWidth={shape.strokeWidth}
           strokeLinecap="butt" strokeLinejoin="round" strokeOpacity={0.75} />

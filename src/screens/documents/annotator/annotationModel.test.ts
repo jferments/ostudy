@@ -150,6 +150,24 @@ describe("stored shapes", () => {
     expect(isStorable({ ...note, fontSize: 5 })).toBe(false);
   });
 
+  it("hits, moves and checks a text highlight by its boxes", () => {
+    const marked: AnnotationShape = {
+      kind: "highlight", points: [], rects: [100, 100, 60, 10, 72, 114, 30, 10], text: "heart rate", color: "#fde047", strokeWidth: 16,
+    };
+    expect(distanceToShape(marked, { x: 80, y: 120 }, 0)).toBe(0);
+    expect(distanceToShape(marked, { x: 130, y: 120 }, 0)).toBeCloseTo(10);
+    expect(moveWithinPage(marked, 10, -200, page, 0)).toMatchObject({ rects: [110, 0, 60, 10, 82, 14, 30, 10] });
+
+    expect(isStorable(marked)).toBe(true);
+    expect(isStorable({ ...marked, points: [1, 2] })).toBe(false);
+    expect(isStorable({ ...marked, rects: [100, 100, 0, 10] })).toBe(false);
+    expect(isStorable({ ...marked, rects: [100, 100, 60] })).toBe(false);
+    expect(isStorable({ ...marked, text: " " })).toBe(false);
+    expect(isStorable({ ...marked, text: "a\nb" })).toBe(false);
+    expect(isStorable({ ...marked, text: undefined })).toBe(false);
+    expect(describeAnnotation(annotation("m", marked, 1))).toBe("Highlight on page 1: heart rate");
+  });
+
   it("cleans typed text and names annotations for assistive technology", () => {
     expect(cleanNoteText("a\r\nb\u0007c\td")).toBe("a\nbc\td");
     expect(describeAnnotation(annotation("box", box, 1))).toBe("Box on page 1");

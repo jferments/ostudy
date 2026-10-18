@@ -14,6 +14,7 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   getDocumentAnnotations: vi.fn(),
   applyDocumentAnnotationChanges: vi.fn(),
   renderDocumentPageTile: vi.fn(),
+  getDocumentPageText: vi.fn(),
 }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mockResolvedValue({ annotations: [], deletedIds: [] });
   vi.mocked(studyGuideIpc.readDocumentSourceAsset).mockResolvedValue(new ArrayBuffer(8));
   vi.mocked(annotationIpc.renderDocumentPageTile).mockResolvedValue(new ArrayBuffer(8));
+  vi.mocked(annotationIpc.getDocumentPageText).mockRejectedValue(new Error("This page has no text."));
   Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function rect(this: HTMLElement) {
@@ -173,6 +175,27 @@ describe("document annotator", () => {
     drag(canvas, [[300, 340], [160, 500]]);
     await waitFor(() => expect(savedChanges(1)).toHaveLength(2));
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
+  });
+
+  it("snaps the highlighter to the page's text and keeps the words it covers", async () => {
+    vi.mocked(annotationIpc.getDocumentPageText).mockImplementation((_documentId, pageNumber) => pageNumber === 1
+      ? Promise.resolve({
+        pageNumber, width: 612, height: 792, characters: "Stroke volume",
+        boxes: Array.from("Stroke volume").flatMap((_, index) => [72 + index * 6, 200, 6, 10]),
+      })
+      : Promise.reject(new Error("This page has no text.")));
+    const { canvas } = await openAnnotator();
+    expect(annotationIpc.getDocumentPageText).not.toHaveBeenCalled();
+    fireEvent.keyDown(canvas, { key: "h" });
+    await waitFor(() => expect(annotationIpc.getDocumentPageText).toHaveBeenCalledWith(documentId, 1));
+    await act(async () => {});
+
+    drag(canvas, [[75, 205], [100, 206], [147, 205]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    expect(savedChanges()[0]).toMatchObject({
+      op: "put",
+      shape: { kind: "highlight", points: [], rects: [72, 200, 78, 10], text: "Stroke volume" },
+    });
   });
 
   it("zooms with the keyboard and with two fingers, without drawing", async () => {

@@ -17,6 +17,7 @@ import { AnnotatorPage, type PageDraft } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
+import { createPageTextCache, type PageTextCache } from "./textSelection";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, MIN_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -90,6 +91,15 @@ export function AnnotatorCanvas({
       tileCache.dispose();
     };
   }, [documentId]);
+  const pageText = useRef<PageTextCache | null>(null);
+  useEffect(() => {
+    const cache = createPageTextCache(documentId);
+    pageText.current = cache;
+    return () => {
+      cache.dispose();
+      if (pageText.current === cache) pageText.current = null;
+    };
+  }, [documentId]);
   const [draft, setDraft] = useState<PageDraft | null>(null);
   const [preview, setPreview] = useState<Annotation | null>(null);
   const [erasing, setErasing] = useState<ReadonlyMap<number, ReadonlySet<string>>>(() => new Map());
@@ -101,6 +111,16 @@ export function AnnotatorCanvas({
   const { scale, near, settled } = viewport;
   const latest = useRef({ controller, scale, viewport });
   latest.current = { controller, scale, viewport };
+
+  // The highlighter snaps to text, so it reads the text of the pages near the view.
+  const highlighting = controller.tool === "highlighter";
+  useEffect(() => {
+    if (!highlighting) return;
+    for (const pageNumber of near) {
+      const page = pageSizes.get(pageNumber);
+      if (page) pageText.current?.request(page);
+    }
+  }, [highlighting, near, pageSizes]);
 
   // Page positions only change with scrolling, zoom and resizing.
   useEffect(() => { rects.current = null; }, [scale, near, pages]);
@@ -155,6 +175,7 @@ export function AnnotatorCanvas({
       selected: current.selected,
       annotationsOn: (pageNumber) => current.annotationsRef.current.get(pageNumber) ?? EMPTY,
       textHeight: current.textHeight,
+      pageText: (pageNumber) => pageText.current?.get(pageNumber) ?? null,
       newId: createAnnotationId,
       now: current.now,
     };

@@ -116,6 +116,7 @@ export interface NativeCommandGatewayMap {
   "get_document_collection_organization": readonly [typeof GatewayModule6.getDocumentCollectionOrganization];
   "get_document_generation_progress": readonly [typeof GatewayModule13.getDocumentGenerationProgress];
   "get_document_learning_plan": readonly [typeof GatewayModule32.getDocumentLearningPlan];
+  "get_document_page_text": readonly [typeof GatewayModule11.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule32.getDocumentStudyGuide];
   "get_document_topic_card_ids": readonly [typeof GatewayModule32.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule32.getDocumentTopicCardProjection];
