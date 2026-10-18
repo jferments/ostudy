@@ -3,7 +3,7 @@ use serde_json::json;
 
 use super::{
     authoring::{add_authored_revision, create_authored_lesson, MAX_LESSONS_PER_SUBJECT},
-    content::{LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS},
+    content::{canonical_json, LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS},
     fixture::{loop_of_henle, CORRECT_OPTION},
     list_lessons, read_lesson, save_progress, GetLessonInput, SaveLessonProgressInput,
     SourceStatus,
@@ -179,22 +179,19 @@ fn the_fixture_lesson_opens_with_its_steps_and_without_check_answers() {
 #[test]
 fn stored_content_round_trips_and_refuses_a_newer_version() {
     let validated = ValidatedLesson::validate(loop_of_henle(&[UNIT])).unwrap();
-    let parsed = ValidatedLesson::parse(&validated.json).unwrap();
+    let json = canonical_json(&validated.content).unwrap();
+    let parsed = ValidatedLesson::parse(&json).unwrap();
     assert!(parsed.content == validated.content);
-    assert_eq!(parsed.json, validated.json);
+    assert_eq!(canonical_json(&parsed.content).unwrap(), json);
 
-    let newer = validated
-        .json
-        .replacen("\"schemaVersion\":1", "\"schemaVersion\":2", 1);
+    let newer = json.replacen("\"schemaVersion\":1", "\"schemaVersion\":2", 1);
     assert_eq!(
-        ValidatedLesson::parse(&newer).unwrap_err().code,
+        ValidatedLesson::parse(&newer).err().unwrap().code,
         "lesson_version_unsupported"
     );
-    let unknown = validated
-        .json
-        .replacen("\"summary\"", "\"extra\":1,\"summary\"", 1);
+    let unknown = json.replacen("\"summary\"", "\"extra\":1,\"summary\"", 1);
     assert_eq!(
-        ValidatedLesson::parse(&unknown).unwrap_err().code,
+        ValidatedLesson::parse(&unknown).err().unwrap().code,
         "lesson_invalid"
     );
 }

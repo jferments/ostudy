@@ -4,11 +4,13 @@
 //! the first production caller; until then these writers serve the tests and
 //! the hand-written fixture lesson.
 
+use std::collections::BTreeSet;
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use super::{
-    content::{LessonContent, ValidatedLesson},
+    content::{canonical_json, LessonContent, ValidatedLesson},
     require_lesson, require_subject, summary, LessonSummaryDto,
 };
 use crate::{error::CommandError, util::generate_id};
@@ -109,7 +111,8 @@ fn write_revision(
     validated: &ValidatedLesson,
     now: i64,
 ) -> Result<bool, CommandError> {
-    let content_hash = format!("{:x}", Sha256::digest(validated.json.as_bytes()));
+    let json = canonical_json(&validated.content)?;
+    let content_hash = format!("{:x}", Sha256::digest(json.as_bytes()));
     let latest: Option<(i64, String, String)> = connection
         .query_row(
             "SELECT revision_number, origin, content_hash FROM lesson_revisions
@@ -132,16 +135,17 @@ fn write_revision(
                  lesson_id, revision_number, origin, content_json, content_hash,
                  provenance_json, created_at
              ) VALUES (?1, ?2, 'authored', ?3, ?4, NULL, ?5)",
-            params![
-                lesson_id,
-                revision_number,
-                validated.json,
-                content_hash,
-                now
-            ],
+            params![lesson_id, revision_number, json, content_hash, now],
         )
         .map_err(CommandError::database)?;
-    for unit_id in validated.knowledge_unit_ids() {
+    // Every knowledge unit the lesson explains, once each.
+    let unit_ids = validated
+        .content
+        .steps
+        .iter()
+        .flat_map(|step| step.knowledge_unit_ids.iter().map(String::as_str))
+        .collect::<BTreeSet<_>>();
+    for unit_id in unit_ids {
         let unit_hash: String = connection
             .query_row(
                 "SELECT content_hash FROM knowledge_units WHERE id = ?1",

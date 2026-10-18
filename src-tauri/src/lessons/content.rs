@@ -128,10 +128,9 @@ pub(crate) enum LessonBlock {
     },
 }
 
-/// Content that passed validation, with its canonical JSON.
+/// Content that passed validation.
 pub(crate) struct ValidatedLesson {
     pub content: LessonContent,
-    pub json: String,
 }
 
 impl ValidatedLesson {
@@ -158,16 +157,10 @@ impl ValidatedLesson {
                 return Err(invalid("Two steps of a lesson have the same key."));
             }
         }
-        let json = serde_json::to_string(&content).map_err(|error| {
-            CommandError::new(
-                "lesson_invalid",
-                format!("Could not save the lesson: {error}"),
-            )
-        })?;
-        if json.len() > MAX_CONTENT_BYTES {
+        if canonical_json(&content)?.len() > MAX_CONTENT_BYTES {
             return Err(invalid("The lesson is too long to save."));
         }
-        Ok(Self { content, json })
+        Ok(Self { content })
     }
 
     /// Reads a stored revision, refusing anything validation would refuse.
@@ -189,15 +182,6 @@ impl ValidatedLesson {
         Self::validate(content)
     }
 
-    /// Every knowledge unit the lesson explains, once each.
-    pub(crate) fn knowledge_unit_ids(&self) -> BTreeSet<&str> {
-        self.content
-            .steps
-            .iter()
-            .flat_map(|step| step.knowledge_unit_ids.iter().map(String::as_str))
-            .collect()
-    }
-
     /// Reading time at an ordinary pace, at least one minute.
     pub(crate) fn estimated_minutes(&self) -> u32 {
         let words: usize = self
@@ -208,6 +192,16 @@ impl ValidatedLesson {
             .sum();
         u32::try_from(words.div_ceil(WORDS_PER_MINUTE).max(1)).unwrap_or(u32::MAX)
     }
+}
+
+/// The stored form of a lesson: its fields in declaration order.
+pub(crate) fn canonical_json(content: &LessonContent) -> Result<String, CommandError> {
+    serde_json::to_string(content).map_err(|error| {
+        CommandError::new(
+            "lesson_invalid",
+            format!("Could not save the lesson: {error}"),
+        )
+    })
 }
 
 fn validate_step(step: &LessonStep) -> Result<(), CommandError> {
