@@ -13,6 +13,7 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Choose a practice scope, rate answers, control schedules, and interpret results | [Practice and analytics](user-guide/practice-and-analytics.md) |
 | Configure provider credentials and task-specific models/reasoning | [AI providers](user-guide/ai-providers.md) |
 | Import source material and generate learning artifacts | [Documents and AI generation](user-guide/documents-and-ai-generation.md) |
+| Write, highlight, draw and type notes on a PDF's pages | [Annotating PDF pages](user-guide/pdf-annotation.md) |
 | Read, annotate, export, delete, and practice from generated guides | [Study guides](user-guide/study-guides.md) |
 | Use optional source-grounded chat, projects and learner-controlled memory | [Tutor memory and privacy](user-guide/tutor-memory-and-privacy.md) |
 | Adjust themes, fonts, motion, help, and explicitly started tutorials | [Appearance and guidance](user-guide/appearance-and-guidance.md) |

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as collectionIpc from "../ipc/collections";
 import * as artifactIpc from "../ipc/documentArtifactProgress";
+import * as annotationIpc from "../ipc/documentAnnotations";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
@@ -17,6 +18,11 @@ vi.mock("../ipc/collections", async (importOriginal) => ({
 }));
 vi.mock("../ipc/documentArtifactProgress", () => ({
   listLatestDocumentStudyGuideJobs: vi.fn(),
+}));
+vi.mock("../ipc/documentAnnotations", () => ({
+  getDocumentAnnotations: vi.fn(),
+  applyDocumentAnnotationChanges: vi.fn(),
+  MAX_ANNOTATION_CHANGES_PER_REQUEST: 500,
 }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
@@ -34,6 +40,7 @@ vi.mock("../ipc/studyGuides", () => ({
   getDocumentStudyGuide: vi.fn(),
   cancelDocumentStudyGuideGeneration: vi.fn(),
   getDocumentLearningPlan: vi.fn(),
+  readDocumentSourceAsset: vi.fn(),
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
@@ -536,12 +543,13 @@ describe("DocumentsScreen", () => {
     expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
 
-  it("keeps the ready tile limited to view, delete, and an overflow menu", async () => {
+  it("keeps the ready tile limited to view, annotate, delete, and an overflow menu", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Annotate" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete document" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "More actions for Cardiac physiology" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
@@ -610,6 +618,33 @@ describe("DocumentsScreen", () => {
     fireEvent.dragStart(source, { dataTransfer: transfer });
     expect(transfer.getData(DOCUMENT_FOLDER_DRAG_TYPE)).toBe(documentId);
     expect(transfer.effectAllowed).toBe("copy");
+  });
+
+  it("opens a PDF's pages for annotation and returns to the list", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages: [], annotations: [] });
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "Annotate" }));
+
+    expect(await screen.findByText("No pages to annotate")).toBeTruthy();
+    expect(annotationIpc.getDocumentAnnotations).toHaveBeenCalledWith(documentId);
+    fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
+    expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
+    expect(annotationIpc.applyDocumentAnnotationChanges).not.toHaveBeenCalled();
+  });
+
+  it("offers annotation only for PDFs whose pages were drawn", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({ originalFilename: "cardiac-physiology.docx", sourceFormat: "docx", renderedPageCount: 0 }),
+      makeDocument({ id: "c".repeat(32), title: "Renal physiology", lifecycleState: "processing", renderedPageCount: 4 }),
+    ]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await screen.findByRole("heading", { name: "Renal physiology" });
+    expect(screen.queryByRole("button", { name: "Annotate" })).toBeNull();
   });
 
   it("opens the managed source through the compact View action", async () => {

@@ -259,6 +259,27 @@ describe("Document collections workspace", () => {
     });
   });
 
+  it("annotates a PDF from its collection row once its pages are drawn", async () => {
+    const onAnnotateDocument = vi.fn();
+    const { rerender } = render(
+      <OverlayProvider>
+        <DocumentCollectionsWorkspace documents={[document]} onAnnotateDocument={onAnnotateDocument} />
+      </OverlayProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Annotate" }));
+    expect(onAnnotateDocument).toHaveBeenCalledWith(document);
+
+    rerender(
+      <OverlayProvider>
+        <DocumentCollectionsWorkspace
+          documents={[{ ...document, lifecycleState: "processing", renderedPageCount: 2 }]}
+          onAnnotateDocument={onAnnotateDocument}
+        />
+      </OverlayProvider>,
+    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Annotate" })).toBeNull());
+  });
+
   it("shows determinate collection-generation progress from durable artifact status", async () => {
     let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
     const running = {

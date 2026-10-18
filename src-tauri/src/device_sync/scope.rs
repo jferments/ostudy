@@ -410,6 +410,7 @@ pub(crate) fn sanitize_snapshot(
     // A sync package is not a complete-library backup. Remove private learning
     // state before deleting selected-domain parents, including serialized source
     // projections which can otherwise carry unselected material as plain text.
+    // Document annotations stay on the device that made them for now.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -428,7 +429,8 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM question_note_writes;
              DELETE FROM subject_filing_reviews;
              DELETE FROM review_day_rollup_built_decks;
-             DELETE FROM review_day_rollups;",
+             DELETE FROM review_day_rollups;
+             DELETE FROM document_annotations;",
         )
         .map_err(CommandError::database)?;
 
@@ -701,5 +703,38 @@ mod tests {
         assert!(all_learning.includes_table("document_decks"));
         assert!(all_learning.includes_table("document_note_topics"));
         assert!(all_learning.includes_table("study_target_card_origins"));
+    }
+
+    #[test]
+    fn document_annotations_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let document = "d".repeat(32);
+                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+                connection
+                    .execute(
+                        "INSERT INTO document_annotations(
+                             id, document_id, page_number, kind, payload_json,
+                             revision, created_at, updated_at
+                         ) VALUES (?1, ?2, 1, 'text', ?3, 1, 1, 1)",
+                        rusqlite::params![
+                            "a".repeat(32),
+                            document,
+                            r##"{"x":1,"y":1,"width":90,"text":"Margin note","color":"#111111","fontSize":12}"##
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row("SELECT COUNT(*) FROM document_annotations", [], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        assert!(!selection.includes_table("document_annotations"));
     }
 }

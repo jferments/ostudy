@@ -333,8 +333,8 @@ fn packages_carry_the_release_schema_so_older_builds_ask_for_the_update() {
         .parse()
         .unwrap();
     // Builds before release schema 6 refuse any number above 30 with
-    // "Update this device first"; schema 7 packages say 37.
-    assert_eq!(recorded, 37);
+    // "Update this device first"; schema 8 packages say 38.
+    assert_eq!(recorded, 38);
     assert!(recorded > crate::database::LEGACY_PUBLIC_SCHEMA_VERSION);
 
     // This build refuses a package from a later release the same way.

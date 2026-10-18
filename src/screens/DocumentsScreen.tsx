@@ -21,6 +21,8 @@ import { GenerationSummary } from "./documents/GenerationSummary";
 import { GenerationInstructionsField } from "./documents/GenerationInstructionsField";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
+import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
+import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
 import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { beginDocumentFolderDrag, isInteractiveDocumentDragOrigin } from "./documents/documentFolderDrag";
@@ -74,6 +76,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     string | null | undefined
   >(undefined);
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
+  const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
+  const closeAnnotator = useCallback(() => setAnnotating(null), []);
   const [generationInfoDocumentId, setGenerationInfoDocumentId] = useState<string | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
   const handleContainedDocumentIdsChange = useCallback((next: string[]) => {
@@ -96,6 +100,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           onClose={() => setCollectionGuide(null)}
         />
       </PageScaffold>
+    );
+  }
+
+  if (annotating) {
+    return (
+      <DocumentAnnotator
+        documentId={annotating.id}
+        title={annotating.title}
+        onClose={closeAnnotator}
+        showToast={props.showToast}
+      />
     );
   }
 
@@ -139,6 +154,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         refreshDecks={props.refreshDecks}
         onStudyCollection={props.onStudyCollection}
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
+        onAnnotateDocument={(document) => setAnnotating({ id: document.id, title: document.title })}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
       />
       <div className={styles.toolbar}>
@@ -181,6 +197,16 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
               disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
             }];
+            if (canAnnotateDocument(document)) actions.push({
+              id: "annotate",
+              label: "Annotate",
+              description: "Draw, highlight and type notes on the pages.",
+              placement: "always-visible",
+              presentation: "icon",
+              icon: "annotate",
+              onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+              disabled: deleting,
+            });
             if (document.lifecycleState !== "processing") actions.push({
               id: "delete",
               label: "Delete document",

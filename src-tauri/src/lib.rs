@@ -31,6 +31,7 @@ mod deletion_purge;
 mod device_sync;
 mod device_sync_qr_commands;
 mod diagnostics;
+mod document_annotations;
 mod document_artifacts;
 mod document_backup;
 mod document_canonical;
@@ -386,6 +387,8 @@ pub fn run() {
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
             document_operations::delete_document,
+            document_annotations::get_document_annotations,
+            document_annotations::apply_document_annotation_changes,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,

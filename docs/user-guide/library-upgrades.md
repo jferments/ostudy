@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 7: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, and schema 7 keeps your study days when cards are deleted, both described below. Libraries at schemas 1–6 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 8: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, and schema 8 stores what you draw and type on your documents, the last three described below. Libraries at schemas 1–7 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -44,6 +44,12 @@ Study days, streaks and study time now belong to you rather than to your cards. 
 Totals are kept by hour, so changing "New day starts at" in Settings regroups past days the same way it regroups stored reviews. The update itself writes no rows: totals are kept from the first deletion after it, and the Progress page builds its saved per-deck summaries the first time it opens.
 
 Older builds cannot open a schema-7 library. Restoring the pre-upgrade checkpoint returns the schema-6 library as it was. Kept totals synchronize between updated devices with flashcards.
+
+## The document annotations update (schema 8)
+
+Schema 8 adds a place for the ink, highlights, shapes and text notes you add to a document's pages in the annotator. The update itself writes nothing: the table starts empty, and your documents and their files are unchanged.
+
+Older builds cannot open a schema-8 library. Restoring the pre-upgrade checkpoint returns the schema-7 library as it was. Annotations are part of whole-library backups but stay on the device that made them: device sync does not carry them yet.
 
 ## What happens when migration is required
 
