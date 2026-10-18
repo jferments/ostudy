@@ -70,6 +70,8 @@ The semantic/native extraction path and page-rendering path solve different prob
 
 The PDF backend uses native text/semantic extraction with quality checks and page-text fallback where structure is bad but text remains usable. Desktop PDFium native-text rescue can try an independent extraction engine before resorting to OCR. Android PdfRenderer does not provide that same native-text rescue layer.
 
+The layout partitioner sometimes reads two text columns as a table. A table element whose long cells (at least 12 characters, at least half of the table, together at least 200 characters) already appear at least 90% in the same page's other elements is dropped before chunking, so the knowledge extractor does not read the page twice. Short label grids and tables that name values also found in prose stay tables.
+
 Ordinary document preparation and higher-resolution selective OCR rendering are separate. The pipeline should not OCR every page merely because a source is large, a page is short, or a few scientific glyphs are unmapped. Credible native text is retained; only unusable pages become rescue candidates. If required pages remain unusable, generation fails with a bounded explanation rather than sending noise and calling it grounded content.
 
 Desktop rendering uses a reviewed PDFium runtime provisioned by the native-dependency installer and verified against a committed manifest/hash. The runtime lookup supports explicit configuration, packaged resources, and installed runtime locations. PDFium access is serialized under its safety boundary; more CPU cores do not authorize concurrent unsafe renderer handles.
