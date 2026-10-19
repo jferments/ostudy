@@ -26,6 +26,7 @@ use super::{
 
 mod completion;
 mod content;
+mod coverage;
 mod dedupe;
 mod editorial;
 mod policy;
@@ -90,6 +91,60 @@ pub(crate) async fn generate_study_guide_topic_section(
         None,
     )
     .await
+}
+
+/// Ask once for explanations of the core knowledge units a written section did
+/// not mark as taught. Best effort: on any failure the section is returned as
+/// written, so this step can never cost a section.
+pub(crate) async fn complete_study_guide_section_coverage(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    topic: &LearningTopic,
+    knowledge: &KnowledgeCatalog,
+    section: GroundedStudyGuideSection,
+) -> GroundedStudyGuideSection {
+    let Some(plan) = coverage::plan(&section, knowledge) else {
+        return section;
+    };
+    let outcome = async {
+        let system = coverage::system_prompt();
+        let user = coverage::user_prompt(document_title, topic, &section.content, &plan)?;
+        let schema = coverage::schema(&section.content, &plan);
+        let request = JsonTaskRequest {
+            system_prompt: &system,
+            user_text: &user,
+            schema: &schema,
+            max_tokens: task.completion_token_ceiling(coverage::visible_tokens(&plan)),
+            images: &[],
+        };
+        ensure_context_budget(task, &request)?;
+        let value = request_json(runtime, task, request).await?;
+        coverage::admit(&section, knowledge, &plan, value)
+    }
+    .await;
+    match outcome {
+        Ok(admitted) => {
+            crate::logging::debug_target(
+                "ai.document.study_guide",
+                "study_guide_coverage_completed",
+                "Added explanations and links for core units the section had not marked as taught; content is not logged.",
+                json!({"missingUnits": plan.missing.units.len(),
+                    "addedExplanations": admitted.added_explanations,
+                    "addedLinks": admitted.added_links}),
+            );
+            admitted.section
+        }
+        Err(error) => {
+            crate::logging::warn_target(
+                "ai.document.study_guide",
+                "study_guide_coverage_skipped",
+                "Kept the section as written after its coverage follow-up failed.",
+                json!({"missingUnits": plan.missing.units.len(), "code": error.code}),
+            );
+            section
+        }
+    }
 }
 
 /// Run the exact document-guide request constructor and context admission before

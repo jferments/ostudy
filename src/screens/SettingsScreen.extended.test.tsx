@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as aiIpc from "../ipc/aiProfiles";
@@ -291,12 +291,20 @@ describe("SettingsScreen AI provider/model behavior", () => {
     const first = profile();
     const second = profile({ id: secondId, displayName: "OpenRouter 2" });
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(first), summary(second)]);
-    vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(first);
+    // The selected profile's details arrive only after Add provider is
+    // clicked; they must not replace the new connection's draft.
+    let loadFirst: (value: typeof first) => void = () => undefined;
+    vi.mocked(aiIpc.getAiProviderProfile).mockReturnValue(
+      new Promise((resolve) => {
+        loadFirst = resolve;
+      }),
+    );
 
     renderSettings();
     await openAiTab();
     fireEvent.click(await readyAddProviderButton());
     fireEvent.click(await screen.findByText("Advanced settings"));
+    await act(async () => loadFirst(first));
     expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
       "OpenRouter 3",
     );

@@ -187,8 +187,8 @@
             ],
             "assertionFragments": [
               "main [data-testid='library-workbench'] nav[aria-label='Library']",
-              "button.textContent?.trim() === 'Import deck…'",
-              "assertEquals(\"Views|Subjects|More\", snapshot.getString(\"sections\"))",
+              "label(button) === 'Import deck'",
+              "assertEquals(\"Subjects\", snapshot.getString(\"sections\"))",
               "assertEquals(1, snapshot.getInt(\"createActions\"))"
             ]
           }
@@ -276,7 +276,7 @@
             ],
             "assertionFragments": [
               "=== 'Documents'",
-              "Upload document"
+              "=== 'Upload'"
             ]
           }
         ]
