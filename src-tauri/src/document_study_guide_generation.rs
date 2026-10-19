@@ -41,6 +41,7 @@ use crate::{
 };
 
 mod gaps;
+mod ownership;
 mod partition_checkpoints;
 mod preservation;
 
@@ -122,6 +123,7 @@ pub(crate) async fn execute_study_guide_generation(
                 )
             })
             .collect::<Result<Vec<_>, CommandError>>()
+            .map(|catalogs| ownership::assign(execution.plan, catalogs))
     }
     .await;
     let catalogs = match knowledge {
@@ -1009,7 +1011,7 @@ mod tests {
         SourceLocator::new(SourceUnitKind::Page, vec![unit], None).unwrap()
     }
 
-    fn plan() -> DocumentLearningPlan {
+    pub(super) fn plan() -> DocumentLearningPlan {
         DocumentLearningPlan {
             id: "a".repeat(32),
             document_id: "b".repeat(32),
