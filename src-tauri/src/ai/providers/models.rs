@@ -8,8 +8,9 @@ use crate::ai::{
 };
 
 use super::{
+    claude,
     dialect::{command_to_gateway, ProviderDialect, DEFAULT_MAX_MODEL_LIST_BYTES},
-    llama_cpp, openrouter, ProviderModel, ProviderProperties,
+    llama_cpp, openrouter, provider_access, ProviderModel, ProviderProperties,
 };
 
 pub(crate) async fn list_models(
@@ -20,6 +21,7 @@ pub(crate) async fn list_models(
     let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
     let url = dialect.model_endpoint(profile)?;
     let (maximum_bytes, maximum_models) = dialect.model_limits();
+    let access = provider_access(profile, bearer);
     crate::logging::debug_target(
         "ai.provider",
         "provider_model_discovery_started",
@@ -31,7 +33,7 @@ pub(crate) async fn list_models(
         }),
     );
     let value = match gateway
-        .get_json(url, bearer, profile.request_timeout_ms, maximum_bytes)
+        .get_json(url, access, profile.request_timeout_ms, maximum_bytes)
         .await
     {
         Ok(value) => value,
@@ -50,7 +52,7 @@ pub(crate) async fn list_models(
             gateway
                 .get_json(
                     public_url,
-                    bearer,
+                    access,
                     profile.request_timeout_ms,
                     maximum_bytes,
                 )
@@ -76,6 +78,26 @@ pub(crate) async fn load_properties(
     profile: &ProfileSnapshot,
     bearer: Option<&str>,
 ) -> Result<ProviderProperties, AiGatewayError> {
+    if profile.provider_kind == ProviderKind::Claude {
+        let url = claude::model_endpoint(profile, &profile.model_id)?;
+        return match gateway
+            .get_json(
+                url,
+                provider_access(profile, bearer),
+                profile.request_timeout_ms,
+                DEFAULT_MAX_MODEL_LIST_BYTES,
+            )
+            .await
+        {
+            Ok(value) => Ok(claude::parse_properties(&value)),
+            // Model details only enrich the probe; the text and schema probes
+            // still decide whether the model works.
+            Err(error_value) if error_value.safe.code == "ai_provider_protocol_error" => {
+                Ok(ProviderProperties::default())
+            }
+            Err(error_value) => Err(error_value),
+        };
+    }
     if profile.provider_kind != ProviderKind::LlamaCpp {
         return Ok(ProviderProperties::default());
     }
@@ -129,9 +151,12 @@ fn parse_model_list(
     let mut models = Vec::with_capacity(data.len());
     let mut declared_incompatible = 0_usize;
     for item in data {
-        if dialect == ProviderDialect::Openrouter
-            && openrouter::model_structured_outputs_declared(item) == Some(false)
-        {
+        let structured_outputs = match dialect {
+            ProviderDialect::Openrouter => openrouter::model_structured_outputs_declared(item),
+            ProviderDialect::Claude => claude::model_structured_outputs_declared(item),
+            ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => None,
+        };
+        if structured_outputs == Some(false) {
             declared_incompatible = declared_incompatible.saturating_add(1);
             continue;
         }
@@ -151,25 +176,29 @@ fn parse_model_list(
                 None,
             ));
         }
-        let (display_name, owned_by, context_window_tokens, reasoning) =
-            if dialect == ProviderDialect::Openrouter {
-                (
-                    openrouter::model_display_name(item, id),
-                    openrouter::model_owner(item, id),
-                    openrouter::model_context_window_tokens(item),
-                    openrouter::model_reasoning(item),
-                )
-            } else {
-                (
-                    id.to_string(),
-                    item.get("owned_by")
-                        .and_then(Value::as_str)
-                        .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
-                        .map(ToString::to_string),
-                    None,
-                    None,
-                )
-            };
+        let (display_name, owned_by, context_window_tokens, reasoning) = match dialect {
+            ProviderDialect::Openrouter => (
+                openrouter::model_display_name(item, id),
+                openrouter::model_owner(item, id),
+                openrouter::model_context_window_tokens(item),
+                openrouter::model_reasoning(item),
+            ),
+            ProviderDialect::Claude => (
+                claude::model_display_name(item, id),
+                Some("Anthropic".to_string()),
+                claude::model_context_window_tokens(item),
+                claude::model_reasoning(item),
+            ),
+            ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => (
+                id.to_string(),
+                item.get("owned_by")
+                    .and_then(Value::as_str)
+                    .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
+                    .map(ToString::to_string),
+                None,
+                None,
+            ),
+        };
         models.push(ProviderModel {
             id: id.to_string(),
             display_name,
@@ -180,10 +209,10 @@ fn parse_model_list(
     }
     if declared_incompatible > 0 {
         crate::logging::debug_target(
-            "ai.provider.openrouter",
-            "openrouter_models_without_structured_output_hidden",
-            "OpenRouter models that explicitly lack structured outputs were excluded from the selectable catalog.",
-            json!({"modelCount": declared_incompatible}),
+            "ai.provider",
+            "models_without_structured_output_hidden",
+            "Models that explicitly lack structured outputs were excluded from the selectable catalog.",
+            json!({"providerKind": profile_kind_label(dialect), "modelCount": declared_incompatible}),
         );
     }
     models.sort_by(|left, right| {
@@ -194,6 +223,15 @@ fn parse_model_list(
     });
     models.dedup_by(|left, right| left.id == right.id);
     Ok(models)
+}
+
+fn profile_kind_label(dialect: ProviderDialect) -> &'static str {
+    match dialect {
+        ProviderDialect::LlamaCpp => "llama_cpp",
+        ProviderDialect::Deepseek => "deepseek",
+        ProviderDialect::Openrouter => "openrouter",
+        ProviderDialect::Claude => "claude",
+    }
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub const MIN_TIMEOUT_MS: i64 = 1_000;
 pub const MAX_TIMEOUT_MS: i64 = 300_000;
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
 pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1/";
+pub const CLAUDE_BASE_URL: &str = "https://api.anthropic.com/v1/";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -50,13 +51,24 @@ impl ProviderKind {
     }
 
     pub fn implemented(self) -> bool {
-        matches!(self, Self::LlamaCpp | Self::Deepseek | Self::Openrouter)
+        matches!(
+            self,
+            Self::LlamaCpp | Self::Deepseek | Self::Openrouter | Self::Claude
+        )
+    }
+
+    /// Providers whose model catalog declares reasoning controls, so a
+    /// profile's effort is resolved against the selected model instead of
+    /// being forced off.
+    pub fn declares_reasoning(self) -> bool {
+        matches!(self, Self::Openrouter | Self::Claude)
     }
 
     pub fn fixed_base_url(self) -> Option<&'static str> {
         match self {
             Self::Deepseek => Some(DEEPSEEK_BASE_URL),
             Self::Openrouter => Some(OPENROUTER_BASE_URL),
+            Self::Claude => Some(CLAUDE_BASE_URL),
             _ => None,
         }
     }
@@ -69,7 +81,7 @@ impl ProviderKind {
             Self::Ollama => "http://127.0.0.1:11434/",
             Self::Openai => "https://api.openai.com/",
             Self::Gemini => "https://generativelanguage.googleapis.com/",
-            Self::Claude => "https://api.anthropic.com/",
+            Self::Claude => CLAUDE_BASE_URL,
         }
     }
 
@@ -185,7 +197,9 @@ pub fn provider_catalog() -> Vec<ProviderCatalogEntryDto> {
             ProviderKind::Ollama => "Native Ollama support is planned for a later AI stage.",
             ProviderKind::Openai => "OpenAI Responses support is planned for a later AI stage.",
             ProviderKind::Gemini => "Gemini support is planned for a later AI stage.",
-            ProviderKind::Claude => "Claude support is planned for a later AI stage.",
+            ProviderKind::Claude => {
+                "Connect to Anthropic's Claude API with your own API key."
+            }
         },
         implementation_status: if kind.implemented() {
             "available"

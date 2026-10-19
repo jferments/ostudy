@@ -148,3 +148,63 @@ async fn document_stream_failures_keep_reported_usage_without_inventing_totals()
             .unwrap();
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn anthropic_streams_record_billed_input_including_cache_reads() {
+    let body = [
+        json!({"type":"message_start","message":{"id":"msg_1","model":"claude-haiku-5-5",
+            "usage":{"input_tokens":12,"cache_read_input_tokens":300,
+                "cache_creation_input_tokens":40,"output_tokens":1}}}),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"{}"}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}),
+        json!({"type":"message_stop"}),
+    ]
+    .into_iter()
+    .map(event)
+    .collect::<String>();
+    let (url, server) = serve(body);
+    let database = Database::open_in_memory().unwrap();
+    let mut operation =
+        Operation::begin(&database, None, None, None, "anthropic_usage_fixture").unwrap();
+    let gateway = AiGateway::new().unwrap();
+    let request = json!({"model":"claude-haiku-5-5","max_tokens":400,"messages":[]});
+    let signal = task_cancellation::CancellationSignal::new();
+    let access = crate::ai::gateway::ProviderAccess::new(
+        crate::ai::gateway::ProviderWire::AnthropicMessages,
+        Some("sentinel"),
+    );
+    let response = scoped_request(
+        Some(operation.context()),
+        "guide_authoring",
+        Some("usage-window"),
+        "claude",
+        gateway.post_task_json(url, access, &request, 5_000, 32_000, &signal),
+    )
+    .await
+    .unwrap();
+    server.join().unwrap();
+    operation.finish(true);
+    assert_eq!(response["choices"][0]["message"]["content"], "{}");
+    assert_eq!(response["choices"][0]["finish_reason"], "stop");
+    database
+        .with_connection(|connection| {
+            let recorded = connection
+                .query_row(
+                    "SELECT input_tokens,output_tokens,total_tokens FROM generation_requests",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<i64>>(0)?,
+                            row.get::<_, Option<i64>>(1)?,
+                            row.get::<_, Option<i64>>(2)?,
+                        ))
+                    },
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(recorded, (Some(352), Some(9), Some(361)));
+            Ok(())
+        })
+        .unwrap();
+}
