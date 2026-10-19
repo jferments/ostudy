@@ -269,8 +269,9 @@ class AndroidSmokeTest {
                 webView,
                 "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
             )
-            // Library reopens the page used last. Step to the Workbench's tree from
-            // another Library page or from a deck's card list, then open the deck.
+            // Library reopens the page used last. Step to the Flashcards tab from
+            // another Library page, then back from a card list to the tree, and
+            // open the deck.
             waitUntil(
                 webView,
                 predicate = { it == "true" },
@@ -279,7 +280,7 @@ class AndroidSmokeTest {
                         "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'); " +
                         "if (deck) return true; " +
                         "const page = document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-decks\"]'); " +
-                        "if (page) { page.click(); return false; } " +
+                        "if (page && page.getAttribute('aria-current') !== 'page') { page.click(); return false; } " +
                         "document.querySelector('main [data-testid=\"library-workbench\"] button[aria-label=\"Library\"]')?.click(); " +
                         "return false; " +
                         "})()"
