@@ -13,8 +13,9 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_document_study_guide_editorial, generate_study_guide_topic_section,
-            AuthoringEvidence, DocumentTaskContext, SourcePageImage,
+            complete_study_guide_section_coverage, generate_document_study_guide_editorial,
+            generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
+            SourcePageImage,
         },
         AiRuntimeState,
     },
@@ -40,6 +41,7 @@ use crate::{
 };
 
 mod gaps;
+mod ownership;
 mod partition_checkpoints;
 mod preservation;
 
@@ -121,6 +123,7 @@ pub(crate) async fn execute_study_guide_generation(
                 )
             })
             .collect::<Result<Vec<_>, CommandError>>()
+            .map(|catalogs| ownership::assign(execution.plan, catalogs))
     }
     .await;
     let catalogs = match knowledge {
@@ -651,6 +654,21 @@ async fn author_topic(
         )
         .await?;
         root_task.ensure_current(execution.database)?;
+        let mut coverage_task = child_task.clone();
+        coverage_task.diagnostic_window_key = child_task
+            .diagnostic_window_key
+            .as_deref()
+            .map(|key| hash(&format!("document-guide-coverage-v1|{key}")));
+        let section = complete_study_guide_section_coverage(
+            execution.runtime,
+            &coverage_task,
+            execution.document_title,
+            topic,
+            knowledge,
+            section,
+        )
+        .await;
+        root_task.ensure_current(execution.database)?;
         if partitions.len() > 1 {
             persist_checkpoint_best_effort(
                 execution.database,
@@ -993,7 +1011,7 @@ mod tests {
         SourceLocator::new(SourceUnitKind::Page, vec![unit], None).unwrap()
     }
 
-    fn plan() -> DocumentLearningPlan {
+    pub(super) fn plan() -> DocumentLearningPlan {
         DocumentLearningPlan {
             id: "a".repeat(32),
             document_id: "b".repeat(32),

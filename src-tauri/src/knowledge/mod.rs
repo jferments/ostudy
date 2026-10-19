@@ -11,6 +11,7 @@ pub(crate) mod annotation_demand;
 pub(crate) mod assessment;
 pub(crate) mod authoring;
 pub(crate) mod authoring_plan;
+mod back_matter;
 pub(crate) mod collection_scope;
 pub(crate) mod collection_view;
 pub(crate) mod commands;

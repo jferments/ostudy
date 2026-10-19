@@ -9,6 +9,7 @@
         "width": 1280,
         "height": 760,
         "center": true,
+        "maximized": true,
         "minWidth": 380,
         "minHeight": 520,
         "backgroundColor": "#0d1117",

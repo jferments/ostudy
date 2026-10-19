@@ -69,7 +69,7 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
   );
   return (
     <PageScaffold width="full" aria-label="Study Guides">
-      <PageHeader title="Study Guides" icon="study-guide" description="Open source-grounded guides, annotate important topics, and practice linked flashcards." />
+      <PageHeader title="Study Guides" compact />
       <PerformanceProfiler id="guide-library">
         <Surface as="section" level={2} className={styles.workspace}>
           <div className={styles.toolbar}>
