@@ -96,8 +96,6 @@ def load_corpus(path: Path) -> list[dict[str, Any]]:
         if not isinstance(entry, dict) or not entry.get("id") or not entry.get("file"):
             raise SystemExit(f"{path}: every document needs an id and a file")
         entry["path"] = (path.parent / entry["file"]).resolve()
-        if not entry["path"].is_file():
-            raise SystemExit(f"{entry['path']}: missing corpus file")
     return entries
 
 
@@ -106,6 +104,11 @@ def command_generate(args: argparse.Namespace) -> int:
     if args.only:
         wanted = set(args.only.split(","))
         corpus = [entry for entry in corpus if entry["id"] in wanted]
+    # Private documents may live outside the corpus folder until fetched, so
+    # only the documents this run uses must be present.
+    for entry in corpus:
+        if not entry["path"].is_file():
+            raise SystemExit(f"{entry['path']}: missing corpus file")
     run = args.out
     run.mkdir(parents=True, exist_ok=True)
     meta = {
