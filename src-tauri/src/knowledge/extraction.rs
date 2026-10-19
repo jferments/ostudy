@@ -4,7 +4,7 @@ pub(crate) mod decode;
 mod schema;
 mod shared;
 use super::{
-    analysis_store,
+    analysis_store, back_matter,
     contracts::{
         hash, invalid, EvidenceImage, KnowledgeUnit, SourceKind, SourceRecord,
         EXTRACTION_PROMPT_VERSION,
@@ -141,6 +141,8 @@ async fn analyze(
     );
     let mut ready = HashMap::new();
     let mut pending = Vec::new();
+    let mut back_matter = HashMap::<&str, HashSet<i64>>::new();
+    let mut skipped_back_matter = 0_usize;
     for source in sources {
         source.validate()?;
         let linked = database.with_connection(|c| {
@@ -149,8 +151,25 @@ async fn analyze(
             }
             repository::linked_units(c, source)
         })?;
+        let is_back_matter = match back_matter::source_chunk(source) {
+            Some((document, index)) => {
+                if !back_matter.contains_key(document) {
+                    let chunks = database
+                        .with_connection(|c| back_matter::document_back_matter(c, document))?;
+                    back_matter.insert(document, chunks);
+                }
+                back_matter[document].contains(&index)
+            }
+            None => false,
+        };
         if !linked.is_empty() {
             ready.insert(source.id.clone(), linked);
+        } else if is_back_matter {
+            skipped_back_matter += 1;
+            ready.insert(
+                source.id.clone(),
+                repository::publish_units(database, source, &contract, vec![])?,
+            );
         } else if source.kind == SourceKind::Conversation {
             ready.insert(
                 source.id.clone(),
@@ -159,6 +178,14 @@ async fn analyze(
         } else {
             pending.push(source.clone());
         }
+    }
+    if skipped_back_matter > 0 {
+        crate::logging::debug_target(
+            "ai.knowledge.extraction",
+            "knowledge_back_matter_skipped",
+            "End-of-chapter sources were recorded as having nothing to learn.",
+            json!({"sourceCount":skipped_back_matter}),
+        );
     }
     if pending.is_empty() {
         return Ok(ready);
