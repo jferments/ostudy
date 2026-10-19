@@ -346,9 +346,14 @@ pub(super) async fn test_profile(
 
     let document_started = Instant::now();
     let document_probe_visible_tokens = 768_usize;
-    let document_probe_max_tokens = if profile.provider_kind == ProviderKind::Openrouter {
+    let document_probe_max_tokens = if profile.provider_kind.declares_reasoning() {
+        // "automatic" only reaches here for Claude, whose default reasons.
+        let budgeted_effort = match request_profile.reasoning_effort.as_str() {
+            "automatic" => "medium",
+            effort => effort,
+        };
         super::super::reasoning::structured_completion_token_ceiling(
-            &request_profile.reasoning_effort,
+            budgeted_effort,
             document_probe_visible_tokens,
         )
     } else {
@@ -513,15 +518,21 @@ fn classify_model_match(profile: &ProfileSnapshot, models: &[ProviderModel]) -> 
 }
 
 fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderModel]>) -> String {
-    if profile.provider_kind != ProviderKind::Openrouter {
+    if !profile.provider_kind.declares_reasoning() {
         return profile.reasoning_effort.clone();
     }
     let Some(reasoning) = models
         .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
         .and_then(|model| model.reasoning.as_ref())
     else {
-        // Production treats absent reasoning evidence conservatively as none.
-        return "none".to_string();
+        // Production treats absent reasoning evidence conservatively: none,
+        // or the model's own default for Claude, whose newest models refuse
+        // to turn thinking off.
+        return if profile.provider_kind == ProviderKind::Claude {
+            "automatic".to_string()
+        } else {
+            "none".to_string()
+        };
     };
     super::super::reasoning::resolve_declared_effort(
         &profile.reasoning_effort,

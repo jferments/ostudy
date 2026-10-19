@@ -7,6 +7,7 @@ use std::{
     path::{Component, Path},
 };
 
+use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, ImageFormat, Rgb, RgbImage};
 use rusqlite::{params, OptionalExtension};
 use sha2::{Digest, Sha256};
 
@@ -19,6 +20,11 @@ use super::contracts::{invalid, EvidenceImage, SourceRecord};
 
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES: usize = 24 * 1024 * 1024;
+/// Managed renders stay lossless on disk; a provider gets a legible JPEG copy
+/// sized near what vision models read natively, which keeps requests small.
+const UPLOAD_LONG_EDGE: u32 = 1568;
+const UPLOAD_JPEG_QUALITY: u8 = 85;
+const REENCODE_ABOVE_BYTES: usize = 384 * 1024;
 
 struct ManagedImage {
     path: String,
@@ -128,6 +134,7 @@ pub(crate) fn load_images(
                 "This evidence image is not a supported PNG, JPEG, GIF, or WebP file.",
             ));
         }
+        let bytes = upload_copy(bytes);
         total_bytes = total_bytes.saturating_add(bytes.len());
         if total_bytes > MAX_TOTAL_IMAGE_BYTES {
             return Err(invalid(
@@ -140,6 +147,42 @@ pub(crate) fn load_images(
         });
     }
     Ok(images)
+}
+
+/// Re-encodes a large PNG as a JPEG no wider than `UPLOAD_LONG_EDGE`, flattening
+/// transparency onto white. Anything else, or a copy that would not be smaller,
+/// is sent as stored.
+fn upload_copy(bytes: Vec<u8>) -> Vec<u8> {
+    if bytes.len() <= REENCODE_ABOVE_BYTES
+        || image::guess_format(&bytes).ok() != Some(ImageFormat::Png)
+    {
+        return bytes;
+    }
+    let Ok(decoded) = image::load_from_memory_with_format(&bytes, ImageFormat::Png) else {
+        return bytes;
+    };
+    let decoded = if decoded.width().max(decoded.height()) > UPLOAD_LONG_EDGE {
+        decoded.resize(UPLOAD_LONG_EDGE, UPLOAD_LONG_EDGE, FilterType::Triangle)
+    } else {
+        decoded
+    };
+    let rgba = decoded.to_rgba8();
+    let flattened = RgbImage::from_fn(rgba.width(), rgba.height(), |x, y| {
+        let [r, g, b, a] = rgba.get_pixel(x, y).0;
+        let over_white = |channel: u8| {
+            ((u16::from(channel) * u16::from(a) + 255 * (255 - u16::from(a)) + 127) / 255) as u8
+        };
+        Rgb([over_white(r), over_white(g), over_white(b)])
+    });
+    let mut jpeg = Vec::new();
+    if JpegEncoder::new_with_quality(&mut jpeg, UPLOAD_JPEG_QUALITY)
+        .encode_image(&flattened)
+        .is_err()
+        || jpeg.len() >= bytes.len()
+    {
+        return bytes;
+    }
+    jpeg
 }
 
 fn supported_image_bytes(bytes: &[u8]) -> bool {
@@ -161,5 +204,48 @@ mod tests {
             b"<svg><script>not evidence</script></svg>"
         ));
         assert!(!supported_image_bytes(b"named-image.png"));
+    }
+
+    fn png(image: &image::RgbaImage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut bytes), ImageFormat::Png)
+            .unwrap();
+        bytes
+    }
+
+    #[test]
+    fn large_page_renders_are_sent_as_bounded_jpegs_on_white() {
+        // Noise defeats PNG compression, like a scanned page does.
+        let mut seed = 0x2545_f491_u32;
+        let page = image::RgbaImage::from_fn(1700, 2000, |x, _| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            let alpha = if x < 200 { 0 } else { 255 };
+            image::Rgba([seed as u8, (seed >> 8) as u8, (seed >> 16) as u8, alpha])
+        });
+        let stored = png(&page);
+        assert!(stored.len() > REENCODE_ABOVE_BYTES);
+
+        let sent = upload_copy(stored.clone());
+        assert!(sent.len() < stored.len() / 2);
+        assert!(supported_image_bytes(&sent));
+        let sent = image::load_from_memory_with_format(&sent, ImageFormat::Jpeg).unwrap();
+        assert_eq!((sent.width(), sent.height()), (1333, 1568));
+        let margin = sent.to_rgb8().get_pixel(10, 10).0;
+        assert!(margin.iter().all(|channel| *channel > 240), "{margin:?}");
+    }
+
+    #[test]
+    fn small_or_non_png_images_are_sent_as_stored() {
+        let small = png(&image::RgbaImage::from_pixel(
+            40,
+            40,
+            image::Rgba([0, 0, 0, 0]),
+        ));
+        assert_eq!(upload_copy(small.clone()), small);
+        let gif = [b"GIF89a".as_slice(), &vec![0; REENCODE_ABOVE_BYTES]].concat();
+        assert_eq!(upload_copy(gif.clone()), gif);
     }
 }

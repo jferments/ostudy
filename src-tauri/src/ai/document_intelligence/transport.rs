@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 
 use crate::{
     ai::{
-        gateway::{normalized_usage, AiGatewayError, SafeAiError},
+        gateway::{normalized_usage, AiGatewayError, ProviderAccess, SafeAiError},
         generation::{self, RecoveryReason},
         providers,
     },
@@ -88,6 +88,7 @@ async fn request_json_inner(
         .as_ref()
         .map(|secret| secret.as_utf8())
         .transpose()?;
+    let access = providers::provider_access(profile, bearer);
 
     let user_content = if request.images.is_empty() {
         Value::String(request.user_text.to_string())
@@ -124,7 +125,7 @@ async fn request_json_inner(
         task,
         &prepared.body,
         prepared.url.clone(),
-        bearer,
+        access,
         cancellation,
         stage,
     )
@@ -146,7 +147,7 @@ async fn request_json_inner(
                         task,
                         compatibility,
                         prepared.url.clone(),
-                        bearer,
+                        access,
                         cancellation,
                         stage,
                     )
@@ -176,7 +177,7 @@ async fn execute_request(
     task: &DocumentTaskContext,
     body: &Value,
     url: url::Url,
-    bearer: Option<&str>,
+    access: ProviderAccess<'_>,
     cancellation: Option<&CancellationSignal>,
     stage: &str,
 ) -> Result<Value, CommandError> {
@@ -188,7 +189,7 @@ async fn execute_request(
                 .gateway
                 .post_task_json(
                     url,
-                    bearer,
+                    access,
                     body,
                     task.profile().request_timeout_ms,
                     MAX_COMPLETION_BYTES,
@@ -200,7 +201,7 @@ async fn execute_request(
                 .gateway
                 .post_document_json(
                     url,
-                    bearer,
+                    access,
                     body,
                     task.profile().request_timeout_ms,
                     MAX_COMPLETION_BYTES,

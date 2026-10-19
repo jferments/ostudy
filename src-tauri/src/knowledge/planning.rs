@@ -5,7 +5,7 @@ use super::{
     contracts::MAX_SOURCE_CHARS,
     extraction::{
         extraction_complexity_units, EXTRACTION_BATCH_CHARS, EXTRACTION_BATCH_COMPLEXITY_UNITS,
-        EXTRACTION_BATCH_SOURCES,
+        EXTRACTION_BATCH_SOURCES, MAX_WINDOW_PAGE_IMAGES,
     },
 };
 use crate::document_semantics::SemanticChunk;
@@ -19,9 +19,7 @@ pub(crate) struct SemanticWorkEstimate {
 
 pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> SemanticWorkEstimate {
     let mut result = SemanticWorkEstimate::default();
-    let mut packed_chars = 0usize;
-    let mut packed_complexity = 0usize;
-    let mut packed_sources = 0usize;
+    let mut window = Window::default();
     for chunk in chunks {
         let parts = split_text(&chunk.full_text, MAX_SOURCE_CHARS);
         let parts = if parts.is_empty() && !chunk.source_locator.asset_ids.is_empty() {
@@ -29,46 +27,81 @@ pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> Semanti
         } else {
             parts
         };
-        let image_groups = chunk.source_locator.asset_ids.len().div_ceil(6).max(1);
+        let assets = &chunk.source_locator.asset_ids;
+        let image_groups = assets.chunks(6).collect::<Vec<_>>();
+        let image_groups = if image_groups.is_empty() {
+            vec![&assets[..]]
+        } else {
+            image_groups
+        };
         for part in parts {
             let chars = part.chars().count();
-            for _ in 0..image_groups {
+            for images in &image_groups {
                 result.characters = result.characters.saturating_add(chars);
-                if !chunk.source_locator.asset_ids.is_empty() {
-                    if packed_sources > 0 {
-                        result.requests += 1;
-                        packed_sources = 0;
-                        packed_chars = 0;
-                        packed_complexity = 0;
-                    }
-                    result.requests += 1;
-                } else {
-                    let complexity = extraction_complexity_units(&part, 0);
-                    if packed_sources > 0
-                        && (packed_sources == EXTRACTION_BATCH_SOURCES
-                            || packed_chars + chars > EXTRACTION_BATCH_CHARS
-                            || packed_complexity.saturating_add(complexity)
-                                > EXTRACTION_BATCH_COMPLEXITY_UNITS)
-                    {
-                        result.requests += 1;
-                        packed_sources = 0;
-                        packed_chars = 0;
-                        packed_complexity = 0;
-                    }
-                    packed_sources += 1;
-                    packed_chars += chars;
-                    packed_complexity = packed_complexity.saturating_add(complexity);
+                if !window.admits(&part, images) {
+                    window.flush(&mut result, attach_images);
                 }
-            }
-            if attach_images {
-                result.images += chunk.source_locator.asset_ids.len();
+                window.push(&part, images);
             }
         }
     }
-    if packed_sources > 0 {
-        result.requests += 1;
-    }
+    window.flush(&mut result, attach_images);
     result
+}
+
+/// Mirrors `extraction::batch_ranges`: neighbouring sources share a window
+/// while its text, complexity and distinct page images stay within budget.
+#[derive(Default)]
+struct Window<'a> {
+    sources: usize,
+    chars: usize,
+    complexity: usize,
+    images: Vec<&'a String>,
+}
+
+impl<'a> Window<'a> {
+    fn new_images(&self, images: &'a [String]) -> usize {
+        images
+            .iter()
+            .filter(|image| !self.images.contains(image))
+            .count()
+    }
+
+    fn admits(&self, part: &str, images: &'a [String]) -> bool {
+        let new_images = self.new_images(images);
+        self.sources == 0
+            || (self.sources < EXTRACTION_BATCH_SOURCES
+                && self.images.len() + new_images <= MAX_WINDOW_PAGE_IMAGES
+                && self.chars + part.chars().count() <= EXTRACTION_BATCH_CHARS
+                && self
+                    .complexity
+                    .saturating_add(extraction_complexity_units(part, new_images))
+                    <= EXTRACTION_BATCH_COMPLEXITY_UNITS)
+    }
+
+    fn push(&mut self, part: &str, images: &'a [String]) {
+        let new_images = self.new_images(images);
+        self.sources += 1;
+        self.chars += part.chars().count();
+        self.complexity = self
+            .complexity
+            .saturating_add(extraction_complexity_units(part, new_images));
+        for image in images {
+            if !self.images.contains(&image) {
+                self.images.push(image);
+            }
+        }
+    }
+
+    fn flush(&mut self, result: &mut SemanticWorkEstimate, attach_images: bool) {
+        if self.sources > 0 {
+            result.requests += 1;
+            if attach_images {
+                result.images += self.images.len();
+            }
+        }
+        *self = Self::default();
+    }
 }
 
 #[cfg(test)]
@@ -93,5 +126,29 @@ mod tests {
         assert_eq!(work.requests, 69);
         assert_eq!(work.characters, 690000);
         assert_eq!(work.images, 0);
+    }
+
+    #[test]
+    fn chunks_of_one_rendered_page_are_one_request_with_one_image() {
+        let chunk = |index: i64, page: i64| SemanticChunk {
+            chunk_index: index,
+            text: String::new(),
+            full_text: "x".repeat(500),
+            source_locator: SourceLocator::with_evidence(
+                SourceUnitKind::Page,
+                vec![page],
+                None,
+                vec![format!("unit-{page}-render")],
+                None,
+            )
+            .unwrap(),
+            element_types: vec![],
+            heading_context: None,
+            token_estimate: 125,
+        };
+        let chunks = [chunk(0, 3), chunk(1, 3), chunk(2, 4), chunk(3, 5)];
+        let work = estimate(&chunks, true);
+        assert_eq!(work.requests, 2);
+        assert_eq!(work.images, 3);
     }
 }
