@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,10 +38,20 @@ vi.mock("../../../ipc/subjects", () => ({
   dismissSubjectFilingReview: vi.fn(),
 }));
 vi.mock("../../CardEditorScreen", () => ({
-  CardEditorScreen: ({ deck, card, onCancel }: { deck: DeckSummary; card: { noteId: string } | null; onCancel: () => void }) => (
+  CardEditorScreen: ({ deck, card, onCancel, details, moreActions = [] }: {
+    deck: DeckSummary;
+    card: { noteId: string } | null;
+    onCancel: () => void;
+    details?: ReactNode;
+    moreActions?: Array<{ id: string; label: string; onSelect: () => void }>;
+  }) => (
     <div>
       <span>Editing {card ? card.noteId : "a new card"} in {deck.name}</span>
       <button type="button" onClick={onCancel}>Close editor</button>
+      <div role="group" aria-label="Card actions">
+        {moreActions.map((action) => <button key={action.id} type="button" onClick={action.onSelect}>{action.label}</button>)}
+      </div>
+      {details}
     </div>
   ),
 }));
@@ -187,14 +198,14 @@ describe("LibraryWorkbench", () => {
     await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id, lab.id], sort: "source_order" }));
   });
 
-  it("opens a card in the editor beside the list with its schedule", async () => {
+  it("opens a card in the editor beside the list with its schedule and Suspend in its menu", async () => {
     renderWorkbench();
     fireEvent.click(await screen.findByRole("button", { name: /During which two phases/u }));
     expect(await screen.findByText(`Editing ${"9".repeat(32)} in ${lecture.name}`)).toBeTruthy();
     const schedule = screen.getByRole("region", { name: "Schedule" });
     expect(within(schedule).getByText("5.1 / 10")).toBeTruthy();
     expect(screen.getByRole("list", { name: "Cards" })).toBeTruthy();
-    fireEvent.click(within(schedule).getByRole("button", { name: "Suspend" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Card actions" })).getByRole("button", { name: "Suspend" }));
     await waitFor(() => expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "suspend", cardIds: ["c".repeat(32)] }),
     ));

@@ -69,7 +69,7 @@ An archived deck is still readable, but practice and new cards are unavailable u
 
 ## Add or edit cards
 
-In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. Above an existing card's editor, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Suspend** (or **Resume**) and **Reset** act on that one card. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
+In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. The editor's top bar keeps **Cancel**, **Preview card** and **Save card** in reach while you scroll; its **…** menu holds **Move / copy**, **Suspend** (or **Resume**) and **Reset schedule…** for that one card. Below the fields, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
 
 Basic questions and answers support the editor's allowed formatting, lists, links, and managed images. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 

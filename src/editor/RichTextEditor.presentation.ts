@@ -1,10 +1,10 @@
 // Editor chrome uses semantic utilities; RichContent owns document descendants.
 export const editorStyles = {
   "field": "tw:min-w-0",
-  "heading": "tw:mb-2 tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-2 tw:[&_h3]:m-0 tw:[&_h3]:text-body tw:[&_h3]:font-medium tw:[&_p]:mt-0.5 tw:[&_p]:mb-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground",
-  "shell": "tw:min-w-0 tw:overflow-hidden tw:rounded-lg tw:bg-card tw:ring-1 tw:ring-border tw:focus-within:ring-2 tw:focus-within:ring-primary",
-  "surface": "tw:cursor-text tw:overflow-x-auto tw:bg-background tw:p-4",
-  "loading": "tw:min-h-24 tw:rounded-lg tw:bg-muted/30 tw:p-4 tw:text-muted-foreground tw:ring-1 tw:ring-border",
+  "heading": "tw:flex tw:min-h-9 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:bg-muted tw:px-4 tw:pt-2 tw:[&_h3]:m-0 tw:[&_h3]:text-caption tw:[&_h3]:font-semibold tw:[&_h3]:tracking-wide tw:[&_h3]:text-muted-foreground tw:[&_h3]:uppercase tw:[&_p]:mt-0.5 tw:[&_p]:mb-0 tw:[&_p]:text-small tw:[&_p]:text-muted-foreground",
+  "shell": "tw:min-w-0 tw:overflow-hidden tw:rounded-lg tw:bg-card tw:shadow-sm tw:ring-1 tw:ring-border tw:focus-within:ring-2 tw:focus-within:ring-primary",
+  "surface": "tw:cursor-text tw:overflow-x-auto tw:bg-card tw:p-4",
+  "loading": "tw:min-h-24 tw:p-4 tw:text-muted-foreground",
   "insertGrid": "tw:grid tw:gap-3 tw:sm:grid-cols-2 tw:[&_label]:grid tw:[&_label]:gap-1.5 tw:[&_label]:text-small tw:[&_label]:font-medium",
   "insertCheckbox": "tw:flex tw:items-center tw:gap-2.5 tw:text-small",
   "insertHelp": "tw:m-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground",

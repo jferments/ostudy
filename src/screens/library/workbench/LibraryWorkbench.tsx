@@ -901,7 +901,7 @@ interface WorkbenchEditorProps {
   onSaved: (message: string, closed: boolean) => Promise<void>;
 }
 
-/** The open card: its schedule above today's card editor, which keeps its own Save. */
+/** The open card in today's card editor, with its schedule below the fields and Suspend and Reset in its menu. */
 function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyChange, onClose, onSchedule, onMoveCopy, onSaved }: WorkbenchEditorProps) {
   const deckId = editor.kind === "card" ? editor.note.deckId : editor.deckId;
   const deck = decks.find((candidate) => candidate.id === deckId);
@@ -916,16 +916,19 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
   const card = editor.kind === "card" ? editor.note : null;
   return (
     <section aria-label="Card editor" className="tw:grid tw:min-w-0 tw:content-start tw:gap-3 tw:pb-6" data-testid="workbench-editor">
-      {editor.kind === "card" ? (
-        <CardScheduleSummary
-          row={editor.row}
-          todayStartAt={todayStartAt}
-          busy={scheduleBusy}
-          onSuspendToggle={() => onSchedule(editor.row.suspendedAt !== null ? "resume" : "suspend")}
-          onReset={() => onSchedule("reset")}
-        />
-      ) : null}
       <CardEditorScreen
+        details={editor.kind === "card" ? <CardScheduleSummary row={editor.row} todayStartAt={todayStartAt} /> : undefined}
+        moreActions={editor.kind === "card" ? [
+          {
+            id: "suspend",
+            label: editor.row.suspendedAt !== null ? "Resume" : "Suspend",
+            disabled: scheduleBusy,
+            onSelect: () => onSchedule(editor.row.suspendedAt !== null ? "resume" : "suspend"),
+          },
+          ...(editor.row.reviewCount > 0
+            ? [{ id: "reset", label: "Reset schedule…", destructive: true, disabled: scheduleBusy, onSelect: () => onSchedule("reset") }]
+            : []),
+        ] : undefined}
         key={editor.kind === "card" ? editor.row.noteId : `new-${editor.deckId}`}
         deck={deck}
         decks={decks}
