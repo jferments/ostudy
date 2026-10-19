@@ -16,6 +16,53 @@ use crate::{
 };
 
 const MAX_GAP_EXPLANATIONS: usize = 48;
+/// A guide section's source links at most this many knowledge units
+/// (`repository::link_artifact_units` and `linked_units` share the bound).
+pub(super) const MAX_SECTION_SUPPORT: usize = 64;
+
+/// Keep at most `MAX_SECTION_SUPPORT` items, preferring the document's core
+/// units, in their original order. A topic split into halves, or listed as a
+/// gap, can otherwise cite more units than one section may link.
+pub(super) fn bounded<T>(
+    items: Vec<T>,
+    catalog: &KnowledgeCatalog,
+    id: impl Fn(&T) -> &str,
+) -> Vec<T> {
+    if items.len() <= MAX_SECTION_SUPPORT {
+        return items;
+    }
+    let core = items
+        .iter()
+        .filter(|item| catalog.document_core_units.contains(id(item)))
+        .count()
+        .min(MAX_SECTION_SUPPORT);
+    let mut other_room = MAX_SECTION_SUPPORT - core;
+    let mut core_room = core;
+    let total = items.len();
+    let kept = items
+        .into_iter()
+        .filter(|item| {
+            if catalog.document_core_units.contains(id(item)) {
+                core_room
+                    .checked_sub(1)
+                    .map(|left| core_room = left)
+                    .is_some()
+            } else {
+                other_room
+                    .checked_sub(1)
+                    .map(|left| other_room = left)
+                    .is_some()
+            }
+        })
+        .collect::<Vec<_>>();
+    crate::logging::debug_target(
+        "ai.document.study_guide",
+        "study_guide_section_support_bounded",
+        "Kept the section's knowledge links within the per-section bound.",
+        serde_json::json!({"selected": total, "kept": kept.len()}),
+    );
+    kept
+}
 
 /// A topic-local failure: a model output problem, or a topic the knowledge
 /// pass left empty. Anything else still stops the guide.
@@ -40,9 +87,12 @@ pub(super) fn section(
     } else {
         format!("This part of the source covers {}.", topic.title.trim())
     };
+    let units = bounded(catalog.units.iter().collect(), catalog, |unit| {
+        unit.id.as_str()
+    });
     let mut explanations = Vec::new();
     let mut key_points = Vec::new();
-    for unit in &catalog.units {
+    for unit in &units {
         let mut body = unit.content.statement.trim().to_string();
         for qualification in &unit.content.qualifications {
             let qualification = qualification.trim();
@@ -79,11 +129,7 @@ pub(super) fn section(
         }],
         ..StudyGuideSectionContent::default()
     })?;
-    let ids = catalog
-        .units
-        .iter()
-        .map(|unit| unit.id.clone())
-        .collect::<Vec<_>>();
+    let ids = units.iter().map(|unit| unit.id.clone()).collect::<Vec<_>>();
     let knowledge_support = if ids.is_empty() {
         Vec::new()
     } else {
@@ -130,6 +176,19 @@ mod tests {
         assert_eq!(section.knowledge_support.len(), catalog.units.len());
         assert_eq!(section.content.callouts.len(), 1);
         assert!(catalog.validates(&section.knowledge_support, catalog.units.len()));
+    }
+
+    #[test]
+    fn section_support_stays_within_the_link_bound_and_keeps_core_units() {
+        let mut catalog = KnowledgeCatalog::default();
+        catalog.document_core_units.insert("u99".to_string());
+        let ids = (0..100)
+            .map(|index| format!("u{index}"))
+            .collect::<Vec<_>>();
+        let kept = bounded(ids, &catalog, String::as_str);
+        assert_eq!(kept.len(), MAX_SECTION_SUPPORT);
+        assert_eq!(kept.last().map(String::as_str), Some("u99"));
+        assert_eq!(kept[0], "u0");
     }
 
     #[test]

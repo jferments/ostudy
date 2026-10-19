@@ -778,6 +778,9 @@ fn merge_topic_sections(
             }
         }
     }
+    let knowledge_support = gaps::bounded(knowledge_support, catalog, |support| {
+        support.unit_id.as_str()
+    });
     if knowledge_support.is_empty()
         || !catalog.validates(&knowledge_support, catalog.units.len().max(1))
     {
