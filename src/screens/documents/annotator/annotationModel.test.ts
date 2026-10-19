@@ -6,7 +6,9 @@ import {
   distanceToShape,
   estimateTextHeight,
   isDeliberateShape,
+  handlesFor,
   isStorable,
+  MAX_STICKY_CHARS,
   MAX_STROKE_POINTS,
   MAX_TEXT_CHARS,
   MIN_TEXT_WIDTH,
@@ -150,6 +152,24 @@ describe("stored shapes", () => {
     expect(isStorable({ ...note, fontSize: 5 })).toBe(false);
   });
 
+  it("hits, moves and checks a text highlight by its boxes", () => {
+    const marked: AnnotationShape = {
+      kind: "highlight", points: [], rects: [100, 100, 60, 10, 72, 114, 30, 10], text: "heart rate", color: "#fde047", strokeWidth: 16,
+    };
+    expect(distanceToShape(marked, { x: 80, y: 120 }, 0)).toBe(0);
+    expect(distanceToShape(marked, { x: 130, y: 120 }, 0)).toBeCloseTo(10);
+    expect(moveWithinPage(marked, 10, -200, page, 0)).toMatchObject({ rects: [110, 0, 60, 10, 82, 14, 30, 10] });
+
+    expect(isStorable(marked)).toBe(true);
+    expect(isStorable({ ...marked, points: [1, 2] })).toBe(false);
+    expect(isStorable({ ...marked, rects: [100, 100, 0, 10] })).toBe(false);
+    expect(isStorable({ ...marked, rects: [100, 100, 60] })).toBe(false);
+    expect(isStorable({ ...marked, text: " " })).toBe(false);
+    expect(isStorable({ ...marked, text: "a\nb" })).toBe(false);
+    expect(isStorable({ ...marked, text: undefined })).toBe(false);
+    expect(describeAnnotation(annotation("m", marked, 1))).toBe("Highlight on page 1: heart rate");
+  });
+
   it("cleans typed text and names annotations for assistive technology", () => {
     expect(cleanNoteText("a\r\nb\u0007c\td")).toBe("a\nbc\td");
     expect(describeAnnotation(annotation("box", box, 1))).toBe("Box on page 1");
@@ -157,6 +177,17 @@ describe("stored shapes", () => {
     const description = describeAnnotation(long);
     expect(description.startsWith("Text note on page 1: Remember the heart")).toBe(true);
     expect(description.endsWith("…")).toBe(true);
+  });
+
+  it("keeps sticky notes a fixed size and lets them hold long text", () => {
+    const sticky: TextShape = { ...note, width: 120, fontSize: 10, color: "#fde047", sticky: true, text: "x".repeat(5_000) };
+    expect(isStorable(sticky)).toBe(true);
+    expect(isStorable({ ...sticky, text: "x".repeat(MAX_STICKY_CHARS + 1) })).toBe(false);
+    expect(isStorable({ ...sticky, sticky: false } as unknown as TextShape)).toBe(false);
+    expect(estimateTextHeight(sticky)).toBe(72);
+    expect(handlesFor(sticky, 72)).toEqual([]);
+    expect(describeAnnotation(annotation("sticky", { ...sticky, text: "Ask in office hours" }, 1)))
+      .toBe("Sticky note on page 1: Ask in office hours");
   });
 
   it("estimates a note's height from its lines before it is laid out", () => {

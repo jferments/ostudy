@@ -607,6 +607,64 @@ pub(crate) fn render_page_tile(
     }
 }
 
+/// The characters of one page in reading order, each with its box in points
+/// from the top-left corner of the page as displayed (after any page rotation).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageCharacters {
+    pub width: f64,
+    pub height: f64,
+    pub characters: Vec<PageCharacter>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageCharacter {
+    pub text: char,
+    /// `x, y, width, height`; `None` for a space or line break the PDF only implies.
+    pub bounds: Option<[f64; 4]>,
+}
+
+/// The most characters one page reports; a page past it reports the first ones.
+pub(crate) const MAX_PAGE_CHARACTERS: usize = 50_000;
+
+/// The text layer of one page, for highlighting and selecting text.
+pub(crate) fn page_characters(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    page_number: usize,
+) -> Result<PageCharacters, PdfRenderError> {
+    if runtime.backend_id != active_backend_id() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        ));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _pdfium = runtime.exclusive();
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(source_path, None)
+            .map_err(|error| {
+                PdfRenderError::new(PdfRenderErrorKind::Open, None, error.to_string())
+            })?;
+        let total_pages = page_count(&document)?;
+        validated_page_numbers(&[page_number], total_pages)?;
+        characters_of_page(&document, page_number - 1)
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (source_path, page_number);
+        Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "This platform's PDF renderer does not expose page text positions yet.",
+        ))
+    }
+}
+
 fn validated_page_numbers(
     page_numbers: &[usize],
     page_count: usize,
@@ -971,6 +1029,76 @@ fn render_tile_of_page(
     Ok(output.into_inner())
 }
 
+/// Character boxes through PDFium's own page-to-device mapping, which applies
+/// the page's rotation and crop box. The mapping works in whole device pixels,
+/// so the page is mapped at 16 pixels to the point and scaled back.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn characters_of_page(
+    document: &pdfium_render::prelude::PdfDocument<'_>,
+    index: usize,
+) -> Result<PageCharacters, PdfRenderError> {
+    use pdfium_render::prelude::PdfPoints;
+
+    const PRECISION: f32 = 16.0;
+    let page_number = index + 1;
+    let render_error = |error: pdfium_render::prelude::PdfiumError| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            error.to_string(),
+        )
+    };
+    let page_index = PdfPageIndex::try_from(index).map_err(|_| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            "The PDF page index exceeded the renderer's supported range.",
+        )
+    })?;
+    let page = document.pages().get(page_index).map_err(render_error)?;
+    let (width, height) = (page.width().value, page.height().value);
+    let device = PdfRenderConfig::new().set_fixed_size(
+        (width * PRECISION).round().max(1.0) as i32,
+        (height * PRECISION).round().max(1.0) as i32,
+    );
+    let to_page = |x: PdfPoints, y: PdfPoints| {
+        page.points_to_pixels(x, y, &device).map(|(px, py)| {
+            (
+                f64::from(px) / f64::from(PRECISION),
+                f64::from(py) / f64::from(PRECISION),
+            )
+        })
+    };
+    let text = page.text().map_err(render_error)?;
+    let mut characters = Vec::new();
+    for character in text.chars().iter().take(MAX_PAGE_CHARACTERS) {
+        let Some(value) = character.unicode_char() else {
+            continue;
+        };
+        let generated = character.is_generated().unwrap_or(false);
+        let bounds = if generated {
+            None
+        } else {
+            character.loose_bounds().ok().and_then(|rect| {
+                let (x1, y1) = to_page(rect.left(), rect.top()).ok()?;
+                let (x2, y2) = to_page(rect.right(), rect.bottom()).ok()?;
+                let (left, right) = (x1.min(x2), x1.max(x2));
+                let (top, bottom) = (y1.min(y2), y1.max(y2));
+                (right > left && bottom > top).then_some([left, top, right - left, bottom - top])
+            })
+        };
+        characters.push(PageCharacter {
+            text: value,
+            bounds,
+        });
+    }
+    Ok(PageCharacters {
+        width: f64::from(width),
+        height: f64::from(height),
+        characters,
+    })
+}
+
 /// PDFium binds once per process, so tests share one desktop runtime.
 #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
 pub(crate) fn shared_test_runtime() -> &'static PdfRenderRuntime {
@@ -1096,5 +1224,39 @@ mod tests {
             "tile differs from the page render by {mean} on average"
         );
         assert!(render_page_tile(runtime, &source, 2, tile).is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[test]
+    fn page_characters_sit_where_the_page_render_draws_them() {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/document-generation/simple-text.pdf");
+        let runtime = shared_test_runtime();
+        let page = page_characters(runtime, &source, 1).unwrap();
+        assert!(page.characters.len() > 10);
+        let render = {
+            let _pdfium = runtime.exclusive();
+            let document = runtime.pdfium.load_pdf_from_file(&source, None).unwrap();
+            image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
+                .unwrap()
+                .to_luma8()
+        };
+        let scale = f64::from(render.width()) / page.width;
+        // Every letter's box holds some ink in the page render.
+        let mut letters = 0;
+        for character in page.characters.iter().filter(|c| c.text.is_alphanumeric()) {
+            let [x, y, width, height] = character.bounds.expect("a drawn letter has a box");
+            let ink = (0..(width * scale).ceil() as u32).any(|dx| {
+                (0..(height * scale).ceil() as u32).any(|dy| {
+                    let px = ((x * scale) as u32 + dx).min(render.width() - 1);
+                    let py = ((y * scale) as u32 + dy).min(render.height() - 1);
+                    render.get_pixel(px, py).0[0] < 128
+                })
+            });
+            assert!(ink, "no ink under {:?}", character.text);
+            letters += 1;
+        }
+        assert!(letters > 10);
+        assert!(page_characters(runtime, &source, 2).is_err());
     }
 }
