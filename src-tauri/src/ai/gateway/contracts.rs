@@ -24,6 +24,9 @@ pub(crate) enum ProviderWire {
     /// Anthropic's Messages API: `x-api-key`, a pinned API version, and
     /// typed `message_*` / `content_block_*` events.
     AnthropicMessages,
+    /// Google's Gemini API: `x-goog-api-key`, `generateContent` bodies, and
+    /// `streamGenerateContent` chunks that are whole partial responses.
+    GeminiGenerateContent,
 }
 
 #[derive(Clone, Copy, Debug)]

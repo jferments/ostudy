@@ -60,6 +60,11 @@ pub(super) fn streaming_request(
 
 fn authenticate(mut request: RequestBuilder, access: ProviderAccess<'_>) -> RequestBuilder {
     match access.wire {
+        ProviderWire::GeminiGenerateContent => {
+            if let Some(secret) = access.secret {
+                request = api_key_header(request, "x-goog-api-key", secret);
+            }
+        }
         ProviderWire::OpenAiCompatible => {
             if let Some(secret) = access.secret {
                 request = request.bearer_auth(secret);
@@ -68,21 +73,38 @@ fn authenticate(mut request: RequestBuilder, access: ProviderAccess<'_>) -> Requ
         ProviderWire::AnthropicMessages => {
             request = request.header("anthropic-version", ANTHROPIC_VERSION);
             if let Some(secret) = access.secret {
-                // Mark it sensitive like bearer_auth does, so it never shows
-                // up in reqwest's Debug output.
-                match reqwest::header::HeaderValue::from_str(secret) {
-                    Ok(mut value) => {
-                        value.set_sensitive(true);
-                        request = request.header("x-api-key", value);
-                    }
-                    // reqwest reports the invalid header when the request is
-                    // sent; never echo the secret itself.
-                    Err(_) => request = request.header("x-api-key", "\u{0}"),
-                }
+                request = api_key_header(request, "x-api-key", secret);
             }
         }
     }
     request
+}
+
+/// Mark an API-key header sensitive like bearer_auth does, so it never shows
+/// up in reqwest's Debug output.
+fn api_key_header(request: RequestBuilder, name: &'static str, secret: &str) -> RequestBuilder {
+    match reqwest::header::HeaderValue::from_str(secret) {
+        Ok(mut value) => {
+            value.set_sensitive(true);
+            request.header(name, value)
+        }
+        // reqwest reports the invalid header when the request is sent; never
+        // echo the secret itself.
+        Err(_) => request.header(name, "\u{0}"),
+    }
+}
+
+/// Gemini streams from a sibling method of the one-shot endpoint; the other
+/// wires stream from the same URL.
+pub(super) fn streaming_url(mut url: Url, wire: ProviderWire) -> Url {
+    if wire == ProviderWire::GeminiGenerateContent {
+        if let Some(path) = url.path().strip_suffix(":generateContent") {
+            let path = format!("{path}:streamGenerateContent");
+            url.set_path(&path);
+            url.query_pairs_mut().append_pair("alt", "sse");
+        }
+    }
+    url
 }
 
 pub(super) fn prepare_streaming_body(
@@ -98,6 +120,10 @@ pub(super) fn prepare_streaming_body(
             None,
         )
     })?;
+    // Gemini chooses streaming by method and rejects unknown fields.
+    if wire == ProviderWire::GeminiGenerateContent {
+        return Ok(streaming_body);
+    }
     object.insert("stream".to_string(), Value::Bool(true));
     // Anthropic always reports usage in message_start/message_delta and
     // rejects unknown request fields.

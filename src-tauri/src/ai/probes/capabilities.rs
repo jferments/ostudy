@@ -85,7 +85,8 @@ pub(super) fn build_capabilities(
         ProviderKind::LlamaCpp
         | ProviderKind::Openrouter
         | ProviderKind::Claude
-        | ProviderKind::Openai => {
+        | ProviderKind::Openai
+        | ProviderKind::Gemini => {
             set_capability(
                 &mut capabilities,
                 "json_schema_output",

@@ -10,7 +10,7 @@ use crate::ai::{
 use super::{
     claude, deepseek,
     dialect::{command_to_gateway, ProviderDialect},
-    llama_cpp, openai, openai_compatible, openrouter, schema as schema_support,
+    gemini, llama_cpp, openai, openai_compatible, openrouter, schema as schema_support,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,6 +172,33 @@ pub(crate) fn prepare_document_request(
                 url: openai::completion_endpoint(profile)?,
                 body: openai::lower_chat_body(&strict, reasoning_effort),
                 compatibility_body: Some(openai::lower_chat_body(&compatible, "automatic")),
+                decoder: DocumentOutputDecoder::ContentJson,
+                schema: schema.clone(),
+            })
+        }
+        ProviderDialect::Gemini => {
+            // The schema is enforced with responseJsonSchema. If Gemini still
+            // refuses the request, one retry keeps the schema in the
+            // instructions with JSON output and the model's default thinking;
+            // native admission decides either way.
+            Ok(PreparedDocumentRequest {
+                url: gemini::generate_endpoint(profile)?,
+                body: gemini::lower_chat_body(
+                    &base,
+                    reasoning_effort,
+                    Some(gemini::strict_schema(schema)),
+                ),
+                compatibility_body: Some(gemini::lower_chat_body(
+                    &json!({
+                        "model": base["model"],
+                        "messages": base["messages"],
+                        "max_tokens": base["max_tokens"],
+                        "temperature": base["temperature"],
+                        "response_format": {"type": "json_object"},
+                    }),
+                    "automatic",
+                    None,
+                )),
                 decoder: DocumentOutputDecoder::ContentJson,
                 schema: schema.clone(),
             })

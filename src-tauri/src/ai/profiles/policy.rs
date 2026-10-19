@@ -125,6 +125,7 @@ pub(super) fn validate_provider_configuration(
             | ProviderKind::Openrouter
             | ProviderKind::Claude
             | ProviderKind::Openai
+            | ProviderKind::Gemini
     ) && auth_mode != AuthMode::Bearer
     {
         return Err(CommandError::new(

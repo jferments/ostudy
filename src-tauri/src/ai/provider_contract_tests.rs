@@ -537,6 +537,195 @@ fn assert_openai_document_request(body: &str) {
     assert_eq!(value["response_format"]["json_schema"]["strict"], true);
 }
 
+#[test]
+fn gemini_adapter_uses_generate_content_for_models_and_probes() {
+    let echo = "gemini-contract-echo";
+    let gemini_headers = vec!["x-goog-api-key: sentinel-key", "!authorization"];
+    let (base_url, server) = spawn_mock_server(vec![
+        ExpectedExchange {
+            method: "GET",
+            path: "/v1beta/models?pageSize=1000",
+            assert_body: assert_empty_body,
+            status: 200,
+            response_body: json!({"models": [
+                gemini_model("gemini-2.5-flash", "Gemini 2.5 Flash"),
+                {"name": "models/gemini-embedding-001", "displayName": "Gemini Embedding",
+                    "supportedGenerationMethods": ["embedContent"]}
+            ]})
+            .to_string(),
+            extra_headers: Vec::new(),
+            request_headers: gemini_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "GET",
+            path: "/v1beta/models/gemini-2.5-flash",
+            assert_body: assert_empty_body,
+            status: 200,
+            response_body: gemini_model("gemini-2.5-flash", "Gemini 2.5 Flash").to_string(),
+            extra_headers: Vec::new(),
+            request_headers: gemini_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1beta/models/gemini-2.5-flash:generateContent",
+            assert_body: assert_gemini_text_request,
+            status: 200,
+            response_body: gemini_response("OSTUDY_OK"),
+            extra_headers: Vec::new(),
+            request_headers: gemini_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1beta/models/gemini-2.5-flash:generateContent",
+            assert_body: assert_gemini_structured_request,
+            status: 200,
+            response_body: gemini_response(&json!({ "ok": true, "echo": echo }).to_string()),
+            extra_headers: Vec::new(),
+            request_headers: gemini_headers,
+        },
+    ]);
+    let mut profile = profile(
+        ProviderKind::Gemini,
+        format!("{base_url}v1beta/"),
+        "gemini-2.5-flash",
+        AuthMode::Bearer,
+    );
+    profile.reasoning_effort = "none".to_string();
+    let gateway = AiGateway::new().expect("gateway should initialize");
+
+    tauri::async_runtime::block_on(async {
+        let models = providers::list_models(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("models should load");
+        assert_eq!(
+            models.len(),
+            1,
+            "only content-generating chat models are listed"
+        );
+        assert_eq!(models[0].id, "gemini-2.5-flash");
+        assert_eq!(models[0].display_name, "Gemini 2.5 Flash");
+        assert_eq!(models[0].context_window_tokens, Some(1_048_576));
+        assert!(models[0]
+            .reasoning
+            .as_ref()
+            .is_some_and(|value| !value.mandatory));
+        let properties = providers::load_properties(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("model details should load");
+        assert_eq!(properties.image_input_declared, Some(true));
+        let text = providers::run_text_probe(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("text probe should pass");
+        assert_eq!(text.prompt_tokens, Some(21));
+        assert_eq!(text.completion_tokens, Some(4));
+        providers::run_structured_probe(&gateway, &profile, Some("sentinel-key"), echo)
+            .await
+            .expect("schema-constrained JSON should pass local validation");
+    });
+    server.join().expect("mock server should finish");
+}
+
+#[test]
+fn gemini_document_probe_enforces_the_contract_with_a_json_schema() {
+    let (base_url, server) = spawn_mock_server(vec![ExpectedExchange {
+        method: "POST",
+        path: "/v1beta/models/gemini-3-flash:generateContent",
+        assert_body: assert_gemini_document_request,
+        status: 200,
+        response_body: gemini_response(
+            &json!({"cards": [
+                {"type":"basic","front":"Probe question","back":"Probe answer","tags":["probe"]},
+                {"type":"cloze","text":"The probe value is stable.","blanks":["stable"],
+                    "mode":"one_at_a_time","tags":["probe"]}
+            ]})
+            .to_string(),
+        ),
+        extra_headers: Vec::new(),
+        request_headers: vec!["x-goog-api-key: sentinel-key"],
+    }]);
+    let profile = profile(
+        ProviderKind::Gemini,
+        format!("{base_url}v1beta/"),
+        "gemini-3-flash",
+        AuthMode::Bearer,
+    );
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    tauri::async_runtime::block_on(async {
+        providers::run_document_schema_probe(&gateway, &profile, Some("sentinel-key"), 1_280, None)
+            .await
+            .expect("document contract should pass");
+    });
+    server.join().expect("mock server should finish");
+}
+
+fn gemini_model(id: &str, name: &str) -> Value {
+    json!({
+        "name": format!("models/{id}"),
+        "baseModelId": id,
+        "version": "001",
+        "displayName": name,
+        "inputTokenLimit": 1_048_576,
+        "outputTokenLimit": 65_536,
+        "supportedGenerationMethods": ["generateContent", "countTokens", "createCachedContent"],
+        "temperature": 1.0,
+        "maxTemperature": 2.0,
+        "thinking": true
+    })
+}
+
+fn gemini_response(text: &str) -> String {
+    json!({
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": text}]},
+            "finishReason": "STOP",
+            "index": 0
+        }],
+        "usageMetadata": {"promptTokenCount": 21, "candidatesTokenCount": 4, "totalTokenCount": 25},
+        "modelVersion": "gemini-2.5-flash",
+        "responseId": "contract"
+    })
+    .to_string()
+}
+
+fn assert_gemini_text_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert!(value.get("model").is_none());
+    assert!(value.get("messages").is_none());
+    assert!(value["systemInstruction"]["parts"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("connectivity test"));
+    assert_eq!(value["contents"][0]["role"], "user");
+    assert_eq!(value["generationConfig"]["maxOutputTokens"], 64);
+    assert_eq!(
+        value["generationConfig"]["thinkingConfig"]["thinkingBudget"],
+        0
+    );
+}
+
+fn assert_gemini_structured_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(
+        value["generationConfig"]["responseMimeType"],
+        "application/json"
+    );
+    assert_eq!(
+        value["generationConfig"]["responseJsonSchema"]["additionalProperties"],
+        false
+    );
+}
+
+fn assert_gemini_document_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    let config = &value["generationConfig"];
+    // Gemini 3 cannot stop thinking; "low" is a thinking level.
+    assert_eq!(config["thinkingConfig"]["thinkingLevel"], "LOW");
+    assert!(config.get("temperature").is_none());
+    assert!(config
+        .pointer("/responseJsonSchema/properties/cards/items/anyOf")
+        .is_some());
+}
+
 fn claude_model(id: &str, name: &str, structured_outputs: bool, image_input: bool) -> Value {
     json!({
         "type": "model",
