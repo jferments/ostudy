@@ -276,7 +276,7 @@ def assert_search_list(session_id: str, question: str, deadline: float) -> None:
     webdriver.find_card_row(session_id, question, deadline)
     sort = ui.execute(
         session_id,
-        "return document.querySelector(\"main [data-testid='library-workbench'] select\")?.value || '';",
+        "return document.querySelector(\"main [data-testid='library-workbench'] select[data-testid='workbench-sort']\")?.value || '';",
     )
     if sort != "relevance":
         raise AssertionError(f"Searching did not sort by relevance: {sort!r}")

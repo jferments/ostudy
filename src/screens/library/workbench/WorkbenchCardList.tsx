@@ -140,7 +140,7 @@ export function WorkbenchCardList({
           </label>
           <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
             <span className={compact ? "sr-only" : undefined}>Sort</span>
-            <NativeSelect value={sort} onChange={(event) => onSortChange(event.currentTarget.value as CardSort)}>
+            <NativeSelect data-testid="workbench-sort" value={sort} onChange={(event) => onSortChange(event.currentTarget.value as CardSort)}>
               {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </NativeSelect>
           </label>
