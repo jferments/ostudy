@@ -49,7 +49,7 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     assert!(extracted.chunks[0].page_numbers.contains(&1));
     assert_eq!(
         pdf_backend::active_backend_id(),
-        "oxidize-pdf-5.5.0-rag-native-first-ocr-v8"
+        "oxidize-pdf-5.5.0-rag-native-first-ocr-v9"
     );
 
     let runtime = PdfRenderRuntime::new(None).expect("provisioned PDFium should initialize");
@@ -140,4 +140,31 @@ fn a_ruled_table_between_paragraphs_stays_a_table() {
     assert!(tables[0]
         .text
         .contains("Digoxin | Cardiac glycoside | Inhibits Na+/K+ ATPase | 36-48"));
+}
+
+#[test]
+fn wrapped_rows_of_drawn_tables_keep_their_values_together() {
+    let extracted = extract_fixture(
+        "ruled-tables-wrapped",
+        "ruled-tables-wrapped.pdf",
+        include_bytes!("../tests/fixtures/document-generation/ruled-tables-wrapped.pdf"),
+    );
+    let tables = extracted
+        .elements
+        .iter()
+        .filter(|element| element.element_type == "table")
+        .map(|element| element.text.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(tables.len(), 2, "{tables:?}");
+    assert!(tables[0].contains(
+        "Vitamin C | Citrus fruit, peppers, berries, tomatoes | 75-90 mg | Collagen synthesis and wound healing | Bleeding gums, slow healing"
+    ));
+    assert!(tables[1].contains(
+        "Zinc | Shellfish, seeds, nuts, dairy | 8-11 mg | Immunity and growth | Poor wound healing, hair loss"
+    ));
+    assert!(extracted
+        .elements
+        .iter()
+        .any(|element| element.element_type == "paragraph"
+            && element.text.contains("Table 2 Example minerals")));
 }
