@@ -183,6 +183,9 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   useEffect(() => {
     const profileId = selectedProfileId;
     if (!profileId || profileId.startsWith("new:")) {
+      // A profile still loading from the previous selection must not replace
+      // the new connection's draft when it arrives.
+      detailLane.invalidate();
       setSelectedProfile(null);
       setModels([]);
       setModelsLoaded(false);
