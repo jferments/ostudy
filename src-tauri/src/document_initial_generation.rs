@@ -44,7 +44,7 @@ pub(crate) struct InitialGenerationResult {
 }
 
 #[derive(Clone, Debug)]
-struct InitialDocumentContext {
+pub(crate) struct InitialDocumentContext {
     title: String,
     original_filename: String,
     source_relative_path: String,
@@ -131,85 +131,7 @@ async fn process_initial_flashcards(
     if !processing_reserved {
         document_store::mark_document_processing(database, document_id)?;
     }
-    let mut stored = load_context(database, document_id)?;
-    let source_path = paths.resolve_relative(&stored.source_relative_path);
-    if !source_path.is_file() {
-        return Err(CommandError::new(
-            "document_source_missing",
-            "The managed source document is missing. Restore the library from backup or import it again.",
-        ));
-    }
-
-    let format = DocumentFormat::from_db(&stored.source_format)?;
-    let active_adapter_backend = document_ingestion::active_adapter_backend(format)?;
-    let active_extraction_backend = document_ingestion::active_extraction_backend(format)?;
-    let active_render_backend = document_ingestion::active_render_backend(format)?;
-    let backend_changed = stored.adapter_backend != active_adapter_backend
-        || stored.extraction_backend != active_extraction_backend
-        || stored.render_backend != active_render_backend;
-    let incomplete_derivatives = stored.source_unit_count == 0
-        || stored.extracted_source_unit_count != stored.source_unit_count
-        || (format == DocumentFormat::Pdf
-            && stored.rendered_source_unit_count != stored.source_unit_count)
-        || stored.semantic_chunk_count == 0;
-    if backend_changed || incomplete_derivatives {
-        let database_owned = database.clone();
-        let paths_owned = paths.clone();
-        let source_owned = source_path.clone();
-        let id_owned = document_id.to_string();
-        let (progress_sender, mut progress_receiver) =
-            tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
-        let processing_task = tauri::async_runtime::spawn_blocking(move || {
-            let report_progress = move |progress| {
-                progress_sender.send(progress).map_err(|_| {
-                    CommandError::new(
-                        "document_processing_stopped",
-                        "The document-processing progress channel closed unexpectedly.",
-                    )
-                })
-            };
-            if format == DocumentFormat::ImageBundle {
-                document_ingestion::ingest_image_set(
-                    &database_owned,
-                    &paths_owned,
-                    &id_owned,
-                    &source_owned,
-                    MAX_SUPPORTED_SOURCE_UNITS,
-                    report_progress,
-                )
-            } else if format == DocumentFormat::Pdf {
-                document_ingestion::ingest_pdf(
-                    &paths_owned,
-                    &render_runtime,
-                    &id_owned,
-                    &source_owned,
-                    MAX_SUPPORTED_SOURCE_UNITS,
-                    report_progress,
-                )
-            } else {
-                document_ingestion::ingest_document(
-                    format,
-                    &paths_owned,
-                    &render_runtime,
-                    &id_owned,
-                    &source_owned,
-                    MAX_SUPPORTED_SOURCE_UNITS,
-                    report_progress,
-                )
-            }
-        });
-        while let Some(progress) = progress_receiver.recv().await {
-            document_ingestion::update_ingestion_progress(database, document_id, progress)?;
-        }
-        let processed = processing_task.await.map_err(|error| {
-            CommandError::new(
-                "document_processing_failed",
-                format!("The document-processing task stopped unexpectedly: {error}"),
-            )
-        })??;
-        document_ingestion::persist_ingested_document(database, document_id, &processed)?;
-        stored = load_context(database, document_id)?;
-    }
+    let stored = ensure_document_derivatives(database, paths, render_runtime, document_id).await?;
 
     let source = stored.source_descriptor()?;
     source.validate()?;
@@ -620,6 +542,96 @@ async fn process_initial_flashcards(
         ),
     }
     cards
+}
+
+/// Extract, render and chunk the managed source when its derivatives are missing
+/// or were made by an older backend. No provider is contacted.
+pub(crate) async fn ensure_document_derivatives(
+    database: &Database,
+    paths: &AppPaths,
+    render_runtime: PdfRenderRuntime,
+    document_id: &str,
+) -> Result<InitialDocumentContext, CommandError> {
+    let mut stored = load_context(database, document_id)?;
+    let source_path = paths.resolve_relative(&stored.source_relative_path);
+    if !source_path.is_file() {
+        return Err(CommandError::new(
+            "document_source_missing",
+            "The managed source document is missing. Restore the library from backup or import it again.",
+        ));
+    }
+
+    let format = DocumentFormat::from_db(&stored.source_format)?;
+    let active_adapter_backend = document_ingestion::active_adapter_backend(format)?;
+    let active_extraction_backend = document_ingestion::active_extraction_backend(format)?;
+    let active_render_backend = document_ingestion::active_render_backend(format)?;
+    let backend_changed = stored.adapter_backend != active_adapter_backend
+        || stored.extraction_backend != active_extraction_backend
+        || stored.render_backend != active_render_backend;
+    let incomplete_derivatives = stored.source_unit_count == 0
+        || stored.extracted_source_unit_count != stored.source_unit_count
+        || (format == DocumentFormat::Pdf
+            && stored.rendered_source_unit_count != stored.source_unit_count)
+        || stored.semantic_chunk_count == 0;
+    if backend_changed || incomplete_derivatives {
+        let database_owned = database.clone();
+        let paths_owned = paths.clone();
+        let source_owned = source_path.clone();
+        let id_owned = document_id.to_string();
+        let (progress_sender, mut progress_receiver) =
+            tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
+        let processing_task = tauri::async_runtime::spawn_blocking(move || {
+            let report_progress = move |progress| {
+                progress_sender.send(progress).map_err(|_| {
+                    CommandError::new(
+                        "document_processing_stopped",
+                        "The document-processing progress channel closed unexpectedly.",
+                    )
+                })
+            };
+            if format == DocumentFormat::ImageBundle {
+                document_ingestion::ingest_image_set(
+                    &database_owned,
+                    &paths_owned,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            } else if format == DocumentFormat::Pdf {
+                document_ingestion::ingest_pdf(
+                    &paths_owned,
+                    &render_runtime,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            } else {
+                document_ingestion::ingest_document(
+                    format,
+                    &paths_owned,
+                    &render_runtime,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            }
+        });
+        while let Some(progress) = progress_receiver.recv().await {
+            document_ingestion::update_ingestion_progress(database, document_id, progress)?;
+        }
+        let processed = processing_task.await.map_err(|error| {
+            CommandError::new(
+                "document_processing_failed",
+                format!("The document-processing task stopped unexpectedly: {error}"),
+            )
+        })??;
+        document_ingestion::persist_ingested_document(database, document_id, &processed)?;
+        stored = load_context(database, document_id)?;
+    }
+    Ok(stored)
 }
 
 fn load_context(

@@ -14,6 +14,14 @@ pub(crate) use contracts::{ProfileRequestSnapshot, ProfileSnapshot};
 pub(crate) use policy::validate_model_id;
 pub(crate) use repository::load_profile_snapshot;
 pub(crate) use service::{load_default_profile_request, load_profile_request};
+// The study-guide evaluation runner configures its isolated library through
+// the same service validation as Settings.
+#[cfg(feature = "guide-eval")]
+pub(crate) use contracts::{
+    CreateAiProviderProfileInput, SetAiProviderCredentialInput, SetAiTaskDefaultInput,
+};
+#[cfg(feature = "guide-eval")]
+pub(crate) use service::{create_profile, set_credential, set_task_default};
 
 pub(crate) fn load_task_profile_request(
     database: &crate::database::Database,

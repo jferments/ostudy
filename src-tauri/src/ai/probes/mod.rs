@@ -10,8 +10,12 @@ mod phases;
 mod repository;
 mod runner;
 
+#[cfg(feature = "guide-eval")]
+pub(crate) use contracts::AiProfileReferenceInput;
 pub(crate) use contracts::CapabilityStatus;
 pub(crate) use repository::{load_capability_records, load_document_probe_evidence};
+#[cfg(feature = "guide-eval")]
+pub(crate) use runner::test_profile;
 
 pub(crate) fn sanitize_for_device_transfer(
     connection: &rusqlite::Connection,
