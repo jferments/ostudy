@@ -46,6 +46,7 @@ export interface NativeCommandGatewayMap {
   "add_document_collection_membership": readonly [typeof GatewayModule6.addDocumentCollectionMembership];
   "amend_image_set": readonly [typeof GatewayModule20.amendImageSet];
   "analyze_bulk_cards": readonly [typeof GatewayModule5.analyzeBulkCards];
+  "answer_lesson_check": readonly [typeof GatewayModule22.answerLessonCheck];
   "apply_document_annotation_changes": readonly [typeof GatewayModule11.applyDocumentAnnotationChanges];
   "apply_schedule_action": readonly [typeof GatewayModule31.applyScheduleAction];
   "begin_asset_draft": readonly [typeof GatewayModule3.beginAssetDraft];
