@@ -815,25 +815,25 @@ def open_guide_reader(ctx: Context) -> None:
 
 
 def open_documents(ctx: Context) -> None:
-    """Documents lists each subject as a collection with its sources, then the documents in no subject."""
+    """Documents shows each subject as a collection with its documents, then the documents in no subject."""
     go(ctx, "documents")
     for subject in seed.SUBJECTS:
-        find(ctx, f"//main//section[@aria-label='Document collections']//h3[normalize-space(.)={xpath_literal(subject)}]")
+        find(ctx, f"//main//article[@data-testid='document-collection']//h3[normalize-space(.)={xpath_literal(subject)}]")
     for document in seed.DOCUMENTS:
         if document.subject is None:
-            find(ctx, f"//main//h2[normalize-space(.)={xpath_literal(document.title)}]")
+            find(ctx, f"//main//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]")
         else:
-            find(ctx, f"//main//section[@aria-label='Collection sources']//*[normalize-space(text())={xpath_literal(document.title)}]")
+            find(ctx, f"//main//ul[starts-with(@aria-label, 'Documents in ')]//*[normalize-space(text())={xpath_literal(document.title)}]")
 
 
 def open_document_info(ctx: Context) -> None:
     open_documents(ctx)
-    # Generation info is an action of a document in no subject.
+    # Details is an action of a document in no subject.
     document = seed.INFO_DOCUMENT
     click(ctx, f"//main//button[@aria-label={xpath_literal('More actions for ' + document.title)}]")
     # Wide layouts open a dropdown menu; compact layouts open a sheet of buttons.
-    click(ctx, "(//*[@role='menuitem'] | //*[@role='dialog']//button)[normalize-space(.)='Generation info']")
-    find(ctx, f"//*[@role='dialog']//*[normalize-space(.)={xpath_literal(document.title + ' generation info')}]")
+    click(ctx, "(//*[@role='menuitem'] | //*[@role='dialog']//button)[normalize-space(.)='Details']")
+    find(ctx, f"//*[@role='dialog']//*[normalize-space(.)={xpath_literal(document.title)}]")
 
 
 def open_analytics(ctx: Context) -> None:
