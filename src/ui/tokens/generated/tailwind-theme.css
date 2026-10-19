@@ -34,6 +34,12 @@
   --color-sidebar-accent-foreground: var(--ostudy-color-text-accent);
   --color-sidebar-border: var(--ostudy-color-border-subtle);
   --color-sidebar-ring: var(--ostudy-color-focus-ring);
+  --color-navigation: var(--ostudy-color-navigation-base);
+  --color-navigation-foreground: var(--ostudy-color-navigation-text);
+  --color-navigation-hover: var(--ostudy-color-navigation-hover);
+  --color-navigation-selected: var(--ostudy-color-navigation-selected);
+  --color-navigation-selected-foreground: var(--ostudy-color-navigation-selected-text);
+  --color-navigation-border: var(--ostudy-color-navigation-border);
   --color-success: var(--ostudy-color-status-success);
   --color-success-soft: var(--ostudy-color-status-success-soft);
   --color-warning: var(--ostudy-color-status-warning);

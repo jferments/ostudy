@@ -1,21 +1,17 @@
 import type { CardBrowserRow } from "../../../ipc/cards";
-import { Button } from "../../../ui/primitives/Button";
 import { dueLabel, intervalLabel } from "./workbenchModel";
 
 interface CardScheduleSummaryProps {
   row: CardBrowserRow;
   todayStartAt: number;
-  busy: boolean;
-  onSuspendToggle: () => void;
-  onReset: () => void;
 }
 
 /**
- * The open card's schedule beside its editor: when it is due and what the
+ * The open card's schedule below its editor: when it is due and what the
  * scheduler knows about it, read from the card list's own row. Suspend and
- * Reset act on this one card.
+ * Reset live in the editor's card menu.
  */
-export function CardScheduleSummary({ row, todayStartAt, busy, onSuspendToggle, onReset }: CardScheduleSummaryProps) {
+export function CardScheduleSummary({ row, todayStartAt }: CardScheduleSummaryProps) {
   const due = dueLabel(row, todayStartAt);
   const studied = row.reviewCount > 0;
   const facts: Array<[string, string]> = studied
@@ -29,18 +25,8 @@ export function CardScheduleSummary({ row, todayStartAt, busy, onSuspendToggle, 
       ]
     : [["Due", row.suspendedAt !== null ? "Suspended" : "New, not studied yet"]];
   return (
-    <section aria-label="Schedule" className="tw:grid tw:gap-2 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-3">
-      <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-        <h2 className="tw:m-0 tw:text-small tw:font-semibold">Schedule</h2>
-        <span className="tw:flex tw:flex-wrap tw:gap-1.5">
-          <Button size="small" variant="secondary" disabled={busy} onClick={onSuspendToggle}>
-            {row.suspendedAt !== null ? "Resume" : "Suspend"}
-          </Button>
-          {studied ? (
-            <Button size="small" variant="secondary" disabled={busy} onClick={onReset}>Reset</Button>
-          ) : null}
-        </span>
-      </div>
+    <section aria-label="Schedule" className="tw:grid tw:gap-2 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-4 tw:py-3">
+      <h2 className="tw:m-0 tw:text-caption tw:font-semibold tw:tracking-wide tw:text-muted-foreground tw:uppercase">Schedule</h2>
       <dl className="tw:m-0 tw:grid tw:grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] tw:gap-x-4 tw:gap-y-1.5">
         {facts.map(([label, value]) => (
           <div key={label} className="tw:grid tw:min-w-0">
