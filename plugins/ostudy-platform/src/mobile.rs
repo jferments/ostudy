@@ -246,6 +246,14 @@ impl<R: Runtime> OstudyPlatform<R> {
             .map_err(Into::into)
     }
 
+    pub fn render_pdf_tile(&self, request: RenderPdfTileRequest) -> Result<RenderPdfPageResult> {
+        let documents = self.app.state::<OstudyDocuments<R>>();
+        documents
+            .0
+            .run_mobile_plugin("renderPdfTile", request)
+            .map_err(Into::into)
+    }
+
     pub fn close_pdf(&self, token: String) -> Result<()> {
         let documents = self.app.state::<OstudyDocuments<R>>();
         documents
