@@ -10,7 +10,7 @@ import type { LayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowMenu";
 import { Badge } from "../../ui/primitives/Badge";
 import { Button } from "../../ui/primitives/Button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../ui/primitives/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "../../ui/primitives/Card";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ListRowMedia } from "../../ui/primitives/ListRow";
 import { useOptionalTutor } from "../tutor/TutorContext";
@@ -52,6 +52,8 @@ interface GuideSourceProps {
  */
 const columnClass = "tw:mx-auto tw:flex tw:w-full tw:max-w-[42rem] tw:min-w-0 tw:scroll-mt-24 tw:flex-col tw:gap-7 tw:compact:gap-6";
 const railClass = "tw:flex tw:min-w-0 tw:flex-col tw:gap-7 tw:pt-1 tw:font-sans";
+// On wide screens the margin is a shaded panel, apart from the reading column.
+const wideRailClass = "tw:flex tw:min-w-0 tw:flex-col tw:gap-6 tw:rounded-xl tw:bg-foreground/4 tw:p-4 tw:font-sans";
 const railHeading = "tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground";
 const pageHeading = "tw:m-0 tw:min-w-0 tw:scroll-mt-24 tw:break-words tw:text-title tw:font-semibold tw:tracking-tighter tw:text-foreground tw:outline-none tw:wide:text-display";
 
@@ -80,7 +82,6 @@ export function GuideOverviewPage({
   const wide = layoutMode === "wide";
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={guideNote} disabled={actionsDisabled}
-      emptyText="Add a note for the whole guide: what to focus on, or what the exam covers."
       onEdit={onEditNote} onRemove={onRemoveNote} />
     <GuideSourceBlock {...sourceProps} detail={formatSourceLength(sourceProps.source)} />
   </>;
@@ -151,7 +152,7 @@ export function GuideOverviewPage({
       <GuidePageNav onNavigate={onNavigate} previous={null} nextLabel="Start reading"
         next={first ? { topicId: first.section.topicId, number: first.number, title: first.title } : null} />
     </article>
-    {wide ? <aside aria-label="About this guide" className={railClass}>{aboutBlocks}</aside> : null}
+    {wide ? <aside aria-label="About this guide" className={wideRailClass}>{aboutBlocks}</aside> : null}
   </>;
 }
 
@@ -206,7 +207,6 @@ export function GuideSectionPage({
   const endOnScreen = useOnScreen(endRef, layoutMode === "compact");
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={note} disabled={actionsDisabled}
-      emptyText="Add your own words, a mnemonic, or a question to come back to."
       onEdit={onEditNote} onRemove={onRemoveNote} />
     {section.content.importantTerms.length > 0 && !override ? (
       <RailSection title="Important terms">
@@ -274,13 +274,12 @@ export function GuideSectionPage({
       ) : null}
     </article>
     {wide ? (
-      <aside aria-label="About this section" className={railClass}>
+      <aside aria-label="About this section" className={wideRailClass}>
         {aboutBlocks}
         {cardCount !== null && cardCount > 0 ? (
           <Card as="section" size="sm" aria-labelledby={`${headingId}-rail-cards`}>
             <CardHeader>
               <CardTitle as="h2" id={`${headingId}-rail-cards`}>{plural(cardCount, "card")} from this section</CardTitle>
-              <CardDescription>Practice them now and come back to read on.</CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="secondary" className="tw:w-full" disabled={actionsDisabled} onClick={onPractice}>
@@ -304,10 +303,9 @@ function RailSection({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function GuideNoteBlock({ label, note, emptyText, disabled, onEdit, onRemove }: {
+function GuideNoteBlock({ label, note, disabled, onEdit, onRemove }: {
   label: string;
   note: StudyGuideOverlay | null;
-  emptyText: string;
   disabled: boolean;
   onEdit: () => void;
   onRemove: (note: StudyGuideOverlay) => void;
@@ -323,7 +321,6 @@ function GuideNoteBlock({ label, note, emptyText, disabled, onEdit, onRemove }: 
           <Button variant="dangerGhost" size="small" disabled={disabled} onClick={() => onRemove(note)}>Remove note</Button>
         </div>
       </> : <>
-        <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{emptyText}</p>
         <Button variant="secondary" size="small" className="tw:justify-self-start" disabled={disabled} onClick={onEdit}>
           <Icon name="edit" size={16} />Add note
         </Button>
@@ -363,22 +360,27 @@ function SourceChip({ documentTitle, source, detail, onOpenSource }: GuideSource
   );
 }
 
-function PageLink({ link, label, align = "start", onNavigate }: {
+function PageLink({ link, label, align = "start", primary = false, onNavigate }: {
   link: GuidePageLink;
   label?: string;
   align?: "start" | "end";
+  /** The way on through the guide is the page's main action. */
+  primary?: boolean;
   onNavigate: (destination: GuideDestination) => void;
 }) {
   return (
     <a href={`#${guidePageId(link.topicId)}`}
       className={cn(
-        "tw:grid tw:min-w-0 tw:max-w-full tw:gap-0.5 tw:rounded-md tw:px-2 tw:py-1.5 tw:no-underline tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:hover:bg-muted tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none",
-        align === "end" ? "tw:-mr-2 tw:ml-auto tw:justify-items-end tw:text-right" : "tw:-ml-2",
+        "tw:grid tw:min-w-0 tw:max-w-full tw:gap-0.5 tw:no-underline tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none",
+        primary
+          ? "tw:rounded-xl tw:bg-primary tw:px-4 tw:py-2.5 tw:text-primary-foreground tw:shadow-sm tw:hover:bg-primary/90"
+          : "tw:rounded-md tw:px-2 tw:py-1.5 tw:hover:bg-muted",
+        align === "end" ? cn("tw:ml-auto tw:justify-items-end tw:text-right", !primary && "tw:-mr-2") : "tw:-ml-2",
       )}
       onClick={(event) => { event.preventDefault(); onNavigate({ kind: "page", topicId: link.topicId }); }}>
       {/* The space keeps "Next" and the title apart in the link's name; the grid does not draw it. */}
-      {label ? <><span className="tw:text-label tw:text-muted-foreground">{label}</span>{" "}</> : null}
-      <span className="tw:break-words tw:font-semibold tw:text-foreground">
+      {label ? <><span className={cn("tw:text-label", primary ? "tw:text-primary-foreground/85" : "tw:text-muted-foreground")}>{label}</span>{" "}</> : null}
+      <span className={cn("tw:break-words tw:font-semibold", primary ? "tw:text-primary-foreground" : "tw:text-foreground")}>
         {link.number === null ? null : <><span className="tw:tabular-nums">{link.number}</span>{" · "}</>}
         <StudyMarkdown text={link.title} inline />
       </span>
@@ -396,7 +398,7 @@ function GuidePageNav({ previous, next, nextLabel = "Next", onNavigate }: {
   return (
     <nav aria-label="Previous and next" className="tw:flex tw:flex-wrap tw:items-start tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-5 tw:font-sans">
       {previous ? <PageLink link={previous} label="Previous" onNavigate={onNavigate} /> : null}
-      {next ? <PageLink link={next} label={nextLabel} align="end" onNavigate={onNavigate} /> : null}
+      {next ? <PageLink link={next} label={nextLabel} align="end" primary onNavigate={onNavigate} /> : null}
     </nav>
   );
 }

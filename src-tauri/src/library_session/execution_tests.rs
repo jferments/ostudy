@@ -267,6 +267,7 @@ fn only_explicit_control_commands_use_the_reserved_lane() {
         "cancel_document_study_guide_generation",
         "cancel_learning_task",
         "cancel_study_target_bundle",
+        "cancel_subject_course_writing",
         "cancel_device_sync_session",
     ] {
         assert!(is_control(command));

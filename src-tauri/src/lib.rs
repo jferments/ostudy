@@ -394,6 +394,8 @@ pub fn run() {
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::save_lesson_progress,
+            library_session::commands::leased_write_subject_course,
+            lessons::writing::cancel_subject_course_writing,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,

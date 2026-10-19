@@ -1,3 +1,4 @@
+import { createOperationId } from "./common";
 import type { QuestionKind } from "./questions";
 import { invoke } from "./transport";
 
@@ -135,5 +136,30 @@ export async function saveLessonProgress(
 ): Promise<LessonProgress> {
   return invoke<LessonProgress>("save_lesson_progress", {
     input: { lessonId, revisionNumber, currentStep, finished },
+  });
+}
+
+/**
+ * Writes the subject's course with the default document model: one lesson for
+ * each top-level topic of its documents' learning plans, saved together when
+ * every one is written. A subject that already has lessons, or a document
+ * still being processed, is refused. Keep the operation id to stop the run
+ * with `cancelSubjectCourseWriting`.
+ */
+export async function writeSubjectCourse(
+  subjectId: string,
+  operationId: string = createOperationId(),
+): Promise<SubjectLessons> {
+  return invoke<SubjectLessons>("write_subject_course", {
+    input: { subjectId, operationId },
+  });
+}
+
+/** Stops a course being written; nothing from the stopped run is saved. */
+export async function cancelSubjectCourseWriting(
+  operationId: string,
+): Promise<void> {
+  return invoke<void>("cancel_subject_course_writing", {
+    input: { operationId },
   });
 }

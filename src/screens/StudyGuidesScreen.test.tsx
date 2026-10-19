@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -215,8 +215,8 @@ describe("StudyGuidesScreen", () => {
     renderScreen();
 
     expect(await screen.findByText("Week 1 physiology")).toBeTruthy();
-    expect(screen.getByText("Document collection · 2 source documents")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Delete Week 1 physiology study guide" })).toBeNull();
+    expect(screen.getByText("Collection · 2 documents")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More actions for Week 1 physiology" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(screen.getByRole("dialog", { name: "Collection guide Week 1 physiology" })).toBeTruthy();
@@ -227,11 +227,8 @@ describe("StudyGuidesScreen", () => {
     renderScreen({ showToast });
     await screen.findByText("Distributive shock");
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Delete Distributive shock study guide",
-      }),
-    );
+    const menu = await openGuideActions("Distributive shock");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete study guide" }));
     const confirmation = await screen.findByRole("alertdialog", {
       name: "Delete “Distributive shock” study guide?",
     });
@@ -283,4 +280,20 @@ function setLayoutMode(layoutMode: "wide" | "medium" | "compact"): void {
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+}
+
+async function openGuideActions(title: string): Promise<HTMLElement> {
+  const label = `More actions for ${title}`;
+  const trigger = screen.getByRole("button", { name: label });
+  // Base UI wires a menu trigger in a passive effect, so a click before it runs
+  // is dropped; clicking until the menu reports open never toggles it shut.
+  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+  }
+  await waitFor(() => {
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
+  return screen.findByRole("menu", { name: label });
 }
