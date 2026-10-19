@@ -425,7 +425,7 @@ def show_workbench_tree(ctx: Context) -> None:
             return
         close_editor = (
             f"{workbench}//*[@data-testid='workbench-editor']"
-            "//button[normalize-space(.)='Cancel' or normalize-space(.)='Close']"
+            "//button[normalize-space(.)='Cancel' or @aria-label='Close editor' or normalize-space(.)='Close']"
         )
         back = f"{workbench}//button[@aria-label='Library']"
         click(ctx, close_editor if exists(ctx, close_editor) else back)
@@ -755,6 +755,10 @@ def open_card_editor(ctx: Context) -> None:
     open_deck(ctx, seed.DETAIL_DECK)
     question = seed.question_text(seed.note_spec(seed.EDITOR_NOTE))
     if exists(ctx, WORKBENCH):
+        # An editor left open by an earlier capture covers the list; close it first.
+        close_editor = "//main//*[@data-testid='workbench-editor']//button[@aria-label='Close editor']"
+        if exists(ctx, close_editor):
+            click(ctx, close_editor)
         click(ctx, f"//main//*[@data-card-id]//button[contains(normalize-space(.), {xpath_literal(question[:60])})]")
         find(ctx, "//main//*[@data-testid='workbench-editor']//h1[normalize-space(.)='Edit card']")
         find(ctx, "//main//*[@contenteditable='true'][contains(normalize-space(.), 'Heart rate')]")

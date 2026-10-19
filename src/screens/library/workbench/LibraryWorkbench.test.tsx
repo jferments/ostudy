@@ -198,17 +198,22 @@ describe("LibraryWorkbench", () => {
     await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id, lab.id], sort: "source_order" }));
   });
 
-  it("opens a card in the editor beside the list with its schedule and Suspend in its menu", async () => {
+  it("opens a card in a panel over the list with its schedule and Suspend in its menu", async () => {
     renderWorkbench();
     fireEvent.click(await screen.findByRole("button", { name: /During which two phases/u }));
     expect(await screen.findByText(`Editing ${"9".repeat(32)} in ${lecture.name}`)).toBeTruthy();
     const schedule = screen.getByRole("region", { name: "Schedule" });
     expect(within(schedule).getByText("5.1 / 10")).toBeTruthy();
-    expect(screen.getByRole("list", { name: "Cards" })).toBeTruthy();
+    // The list stays mounted under the panel, hidden and inert, so closing returns to it as it was.
+    expect(screen.queryByRole("list", { name: "Cards" })).toBeNull();
+    const list = screen.getByRole("list", { name: "Cards", hidden: true });
+    expect(list.closest("[inert]")).toBeTruthy();
     fireEvent.click(within(screen.getByRole("group", { name: "Card actions" })).getByRole("button", { name: "Suspend" }));
     await waitFor(() => expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "suspend", cardIds: ["c".repeat(32)] }),
     ));
+    fireEvent.click(screen.getByRole("button", { name: "Close editor" }));
+    expect(screen.getByRole("list", { name: "Cards" })).toBe(list);
   });
 
   it("suspends the selected cards from the selection bar", async () => {

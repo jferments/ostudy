@@ -38,6 +38,7 @@ import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
+import { IconButton } from "../ui/icons/IconButton";
 import { FormField } from "../ui/primitives/FormField";
 import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
@@ -98,6 +99,8 @@ interface CardEditorScreenProps {
   moreActions?: OverflowMenuItem[];
   /** Read-only facts below the fields, such as the card's schedule. */
   details?: ReactNode;
+  /** Close with an × at the end of the header instead of a Cancel button, for an editor shown as a panel. */
+  closeButton?: boolean;
 }
 
 export function CardEditorScreen({
@@ -112,6 +115,7 @@ export function CardEditorScreen({
   onMoveCopy,
   moreActions = [],
   details,
+  closeButton = false,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
   const questionNote = card && isQuestionNote(card) ? card : null;
@@ -804,7 +808,7 @@ export function CardEditorScreen({
           <h1 className="tw:m-0 tw:text-title-small tw:font-semibold">{title}</h1>
         </div>
         <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2">
-          <Button variant="text" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
+          {closeButton ? null : <Button variant="text" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>}
           {canPreview ? <Button variant="secondary" disabled={isSaving || isPreparingPreview}
             onClick={() => void openCardPreview()}>Preview card</Button> : null}
           {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
@@ -814,6 +818,7 @@ export function CardEditorScreen({
             {isSaving ? activeQuestionDraft ? "Saving question…" : selectedCustomTemplate ? "Generating…" : "Saving…" : saveLabel}
           </Button>
           {cardMenu.length > 0 ? <OverflowMenu label="Card actions" items={cardMenu} disabled={isSaving} /> : null}
+          {closeButton ? <IconButton icon="close" label="Close editor" disabled={isSaving} onClick={() => void cancel()} /> : null}
         </div>
       </header>
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}

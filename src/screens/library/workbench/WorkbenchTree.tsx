@@ -180,7 +180,7 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
                 <OverflowMenu label={`${node.name} actions`} items={menu} className="tw:shrink-0" />
               </div>
               {open ? (
-                <div role="group" aria-label={node.name} className="tw:ml-8 tw:grid tw:min-w-0 tw:gap-px tw:border-l tw:border-solid tw:border-border tw:pl-1.5">
+                <div role="group" aria-label={node.name} className="tw:ml-8 tw:grid tw:min-w-0 tw:gap-px tw:border-0 tw:border-l tw:border-solid tw:border-border tw:pl-1.5">
                   {node.decks.map((deck) => (
                     <div key={deck.id} className="tw:flex tw:min-w-0 tw:items-center">
                       <TreeEntry

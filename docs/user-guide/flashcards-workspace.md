@@ -15,7 +15,7 @@ Choosing All cards, a subject, a deck, or a tag shows its cards in the list. Cho
 
 ## Screen sizes and going back
 
-On a wide window the tree, the card list, and the editor sit side by side, and you can drag the dividers between them to resize the panes. On a medium window the tree and the list sit side by side, and an open card's editor takes the list's place until you close it. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
+On a tablet or desktop window the tree and the card list sit side by side, and you can drag the divider between them. Opening a card shows its editor as a panel over the card list; close it with **×** and the list is exactly as you left it, scrolled to the same place with the same search, filter and selection. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
 
 Android Back steps back inside the Workbench before leaving Library: on a phone from the card list to the tree, and on wider screens from a deck, subject, or tag to **All cards**. An open editor handles Back itself. Unsaved editor changes still ask before you discard them when you choose another place or another card.
 
@@ -69,7 +69,7 @@ An archived deck is still readable, but practice and new cards are unavailable u
 
 ## Add or edit cards
 
-In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. The editor's top bar keeps **Cancel**, **Preview card** and **Save card** in reach while you scroll; its **…** menu holds **Move / copy**, **Suspend** (or **Resume**) and **Reset schedule…** for that one card. Below the fields, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
+In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. The editor's top bar keeps **Preview card**, **Save card** and **×** (close) in reach while you scroll; its **…** menu holds **Move / copy**, **Suspend** (or **Resume**) and **Reset schedule…** for that one card. Below the fields, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
 
 Basic questions and answers support the editor's allowed formatting, lists, links, and managed images. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 

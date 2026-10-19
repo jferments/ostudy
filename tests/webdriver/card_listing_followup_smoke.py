@@ -175,7 +175,7 @@ def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
 
 
 def assert_editor_replaces_list(session_id: str, question: str, deadline: float) -> None:
-    """Medium screens open a card in place of the list, then return to it."""
+    """Medium screens open a card in a panel over the list, then return to it."""
     webdriver.click(session_id, webdriver.find_card_row(session_id, question, deadline))
     webdriver.find_element(
         session_id,
@@ -189,8 +189,8 @@ def assert_editor_replaces_list(session_id: str, question: str, deadline: float)
         "main [data-testid='workbench-editor'] section[aria-label='Schedule']",
         deadline,
     )
-    if webdriver.element_exists(session_id, "css selector", "main section[aria-label='Cards']"):
-        raise AssertionError("Medium Workbench kept the card list beside the editor")
+    if not webdriver.element_exists(session_id, "css selector", "main [inert] section[aria-label='Cards']"):
+        raise AssertionError("Medium Workbench left the card list usable beside the editor")
     ui.assert_no_horizontal_overflow(session_id, "medium Workbench card editor")
     close_open_editor(session_id, deadline)
     webdriver.find_card_row(session_id, question, deadline)

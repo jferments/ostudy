@@ -17,7 +17,8 @@ import type { OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../../ui/overlays/overlayContext";
 import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
-import { ResizablePanes, type ResizablePane } from "../../../ui/patterns/ResizablePanes";
+import { cn } from "../../../ui/internal/cn";
+import { ResizablePanes } from "../../../ui/patterns/ResizablePanes";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
 import { IconButton } from "../../../ui/icons/IconButton";
 import { Button } from "../../../ui/primitives/Button";
@@ -678,30 +679,37 @@ export function LibraryWorkbench({
   let body;
   if (compact) {
     body = page === "editor" && editorPane ? editorPane : page === "cards" ? list : tree;
-  } else if (layoutMode === "medium") {
+  } else {
+    // The editor opens as a panel over the cards. The list stays mounted
+    // underneath (hidden, which keeps its layout), so closing the editor
+    // returns to the same scroll position, search, filter and selection.
+    const editing = editorPane !== null && (layoutMode !== "medium" || page === "editor");
+    const main = (
+      <div className="tw:relative tw:flex tw:h-full tw:min-h-0 tw:min-w-0 tw:flex-col">
+        <div className={cn("tw:isolate tw:flex tw:h-full tw:min-h-0 tw:min-w-0 tw:flex-col", editing && "tw:invisible")} inert={editing} aria-hidden={editing || undefined}>
+          {list}
+        </div>
+        {editing ? (
+          <div
+            data-slot="workbench-editor-panel"
+            className="tw:absolute tw:inset-0 tw:z-(--ostudy-layer-raised) tw:overflow-y-auto tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-background tw:shadow-lg"
+          >
+            {editorPane}
+          </div>
+        ) : null}
+      </div>
+    );
+    const wide = layoutMode !== "medium";
     body = (
       <ResizablePanes
         sizes={paneSizes}
-        onSizesChange={(next) => setPaneSizes(savePaneSizes(next))}
+        onSizesChange={(next) => setPaneSizes(savePaneSizes({ ...paneSizes, ...next }))}
         panes={[
-          { id: "tree", label: "library list", defaultSize: 240, minSize: 200, maxSize: 360, content: tree },
-          { id: "main", label: "cards", minSize: 400, content: page === "editor" && editorPane ? editorPane : list },
+          { id: "tree", label: "library list", defaultSize: wide ? 260 : 240, minSize: 200, maxSize: wide ? 400 : 360, content: tree, className: "tw:pr-1" },
+          { id: "list", label: "cards", minSize: 400, content: main, className: "tw:pl-3" },
         ]}
       />
     );
-  } else {
-    const panes: ResizablePane[] = [
-      { id: "tree", label: "library list", defaultSize: 260, minSize: 200, maxSize: 400, content: tree },
-    ];
-    if (editorPane) {
-      panes.push(
-        { id: "list", label: "cards", defaultSize: 460, minSize: 320, maxSize: 720, content: list },
-        { id: "editor", label: "card editor", minSize: 520, content: editorPane, className: "tw:overflow-y-auto tw:pl-2" },
-      );
-    } else {
-      panes.push({ id: "list", label: "cards", minSize: 420, content: list });
-    }
-    body = <ResizablePanes sizes={paneSizes} onSizesChange={(next) => setPaneSizes(savePaneSizes({ ...paneSizes, ...next }))} panes={panes} />;
   }
 
   return (
@@ -934,6 +942,7 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
         decks={decks}
         card={card}
         onDirtyChange={onDirtyChange}
+        closeButton
         onCancel={() => { onDirtyChange(false); onClose(); }}
         onMoveCopy={card && !isQuestionNote(card) ? onMoveCopy : undefined}
         onSaved={(saved, continueAdding) => onSaved(

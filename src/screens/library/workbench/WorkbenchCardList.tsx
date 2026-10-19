@@ -160,7 +160,7 @@ export function WorkbenchCardList({
       {cards.error ? <InlineNotice kind="error">{cards.error}</InlineNotice> : null}
 
       <div className="tw:flex tw:min-h-0 tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card">
-        <div className="tw:flex tw:min-h-10 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:border-b tw:border-solid tw:border-border tw:px-3 tw:py-1.5 tw:text-small tw:text-muted-foreground">
+        <div className="tw:flex tw:min-h-10 tw:flex-wrap tw:items-center tw:justify-between tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-3 tw:py-1.5 tw:text-small tw:text-muted-foreground">
           <span aria-live="polite" className="tw:tabular-nums">
             {cards.loading ? "Loading cards…" : `${cards.rows.length.toLocaleString()} of ${cards.totalCount.toLocaleString()} shown`}
           </span>
@@ -184,7 +184,7 @@ export function WorkbenchCardList({
           ) : null}
         </div>
         {!compact && cards.rows.length > 0 ? (
-          <div aria-hidden="true" className={cn(COLUMNS, "tw:border-b tw:border-solid tw:border-border tw:px-3 tw:py-1.5 tw:text-caption tw:font-semibold tw:text-muted-foreground")}>
+          <div aria-hidden="true" className={cn(COLUMNS, "tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-3 tw:py-1.5 tw:text-caption tw:font-semibold tw:text-muted-foreground")}>
             <span />
             <span>{sourceColumn}</span>
             <span>Front</span>
@@ -259,7 +259,7 @@ function CardRow({ row, todayStartAt, selected, open, compact, onShift, onCheck,
     </span>
   );
   const rowClass = cn(
-    "tw:border-b tw:border-solid tw:border-border tw:px-3",
+    "tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-3",
     selected && "tw:bg-accent/50",
     open && "tw:bg-accent tw:shadow-[inset_3px_0_0_var(--ostudy-color-accent-base)]",
   );
