@@ -179,18 +179,18 @@ Open **Settings → AI/LLM** at desktop width.
 
 The Documents header should remain compact:
 
-- it displays only **Current Flashcard Generation model** and the configured model name;
-- it does not repeat provider kind/network/transmission explanatory copy;
+- it shows no model, provider or instructions panel; the model lives in Settings and appears only in a document's **Details** during a run, and a warning appears only when no provider is set up;
+- each document row carries its status, **Open** and one **…** menu, and live request statistics stay in **Details**;
 - selecting a PDF shows **Large documents can take several minutes.** as a toast;
 - no old persistent long-document paragraph returns;
 - small processing phase labels remain visible during active work.
 
-## Generate more cards acceptance
+## Make more cards acceptance
 
 After a document has a successful generated deck:
 
 1. Record initial card count and representative topics.
-2. Select **Generate more cards**.
+2. Select **Make more cards…** from the document's **…** menu and choose **Make cards**.
 3. Confirm Documents changes to Processing and shows **Generating additional cards**.
 4. Confirm the second pass reuses retained outline/source.
 5. Verify cards append to the **same deck**.

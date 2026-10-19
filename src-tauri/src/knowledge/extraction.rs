@@ -4,9 +4,10 @@ pub(crate) mod decode;
 mod schema;
 mod shared;
 use super::{
-    analysis_store,
+    analysis_store, back_matter,
     contracts::{
-        hash, invalid, KnowledgeUnit, SourceKind, SourceRecord, EXTRACTION_PROMPT_VERSION,
+        hash, invalid, EvidenceImage, KnowledgeUnit, SourceKind, SourceRecord,
+        EXTRACTION_PROMPT_VERSION,
     },
     evidence::EvidenceCatalog,
     images::load_images,
@@ -15,7 +16,9 @@ use super::{
 };
 use crate::{
     ai::{
-        document_intelligence::{request_json_cancellable, DocumentTaskContext, JsonTaskRequest},
+        document_intelligence::{
+            request_json_cancellable, DocumentTaskContext, JsonTaskRequest, SourcePageImage,
+        },
         AiRuntimeState,
     },
     database::Database,
@@ -39,6 +42,8 @@ const DENSE_EXTRACTION_COMPLEXITY_UNITS: usize = 9_000;
 const LARGE_CONTEXT_WINDOW_TOKENS: usize = 64_000;
 const EVIDENCE_SPAN_COMPLEXITY_UNITS: usize = 160;
 const IMAGE_COMPLEXITY_UNITS: usize = 2_500;
+/// Page renders one extraction window may attach.
+pub(crate) const MAX_WINDOW_PAGE_IMAGES: usize = 2;
 
 pub(crate) fn extraction_complexity_units(text: &str, image_count: usize) -> usize {
     let characters = text.chars().count();
@@ -116,7 +121,7 @@ async fn analyze(
                 .map(|s| s.text.chars().count())
                 .sum::<usize>()
                 > EXTRACTION_BATCH_CHARS)
-        || (sources.len() > 1 && sources.iter().any(|s| !s.images.is_empty()))
+        || (sources.len() > 1 && window_page_images(sources).len() > MAX_WINDOW_PAGE_IMAGES)
     {
         return Err(invalid(
             "The semantic extraction window exceeds its source budget.",
@@ -136,6 +141,8 @@ async fn analyze(
     );
     let mut ready = HashMap::new();
     let mut pending = Vec::new();
+    let mut back_matter = HashMap::<&str, HashSet<i64>>::new();
+    let mut skipped_back_matter = 0_usize;
     for source in sources {
         source.validate()?;
         let linked = database.with_connection(|c| {
@@ -144,8 +151,25 @@ async fn analyze(
             }
             repository::linked_units(c, source)
         })?;
+        let is_back_matter = match back_matter::source_chunk(source) {
+            Some((document, index)) => {
+                if !back_matter.contains_key(document) {
+                    let chunks = database
+                        .with_connection(|c| back_matter::document_back_matter(c, document))?;
+                    back_matter.insert(document, chunks);
+                }
+                back_matter[document].contains(&index)
+            }
+            None => false,
+        };
         if !linked.is_empty() {
             ready.insert(source.id.clone(), linked);
+        } else if is_back_matter {
+            skipped_back_matter += 1;
+            ready.insert(
+                source.id.clone(),
+                repository::publish_units(database, source, &contract, vec![])?,
+            );
         } else if source.kind == SourceKind::Conversation {
             ready.insert(
                 source.id.clone(),
@@ -154,6 +178,14 @@ async fn analyze(
         } else {
             pending.push(source.clone());
         }
+    }
+    if skipped_back_matter > 0 {
+        crate::logging::debug_target(
+            "ai.knowledge.extraction",
+            "knowledge_back_matter_skipped",
+            "End-of-chapter sources were recorded as having nothing to learn.",
+            json!({"sourceCount":skipped_back_matter}),
+        );
     }
     if pending.is_empty() {
         return Ok(ready);
@@ -188,8 +220,8 @@ async fn analyze(
         }
     }
     task.ensure_current(database)?;
-    let images = if pending.len() == 1 && task.include_page_images {
-        load_images(database, paths, &pending[0])?
+    let images = if task.include_page_images {
+        load_window_images(database, paths, &pending)?
     } else {
         vec![]
     };
@@ -644,35 +676,74 @@ fn recoverable_envelope(error: &CommandError) -> bool {
             | "ai_empty_response"
     )
 }
+/// Page images a window attaches: every distinct image its sources cite, in
+/// first-cited order. Neighbouring chunks of one page cite the same render, so
+/// they can share a window and the image is sent once.
+fn window_page_images(sources: &[SourceRecord]) -> Vec<&EvidenceImage> {
+    let mut images = Vec::<&EvidenceImage>::new();
+    for image in sources.iter().flat_map(|source| &source.images) {
+        if !images.contains(&image) {
+            images.push(image);
+        }
+    }
+    images
+}
+
+fn load_window_images(
+    database: &Database,
+    paths: &AppPaths,
+    sources: &[SourceRecord],
+) -> Result<Vec<SourcePageImage>, CommandError> {
+    let mut loaded = Vec::<&EvidenceImage>::new();
+    let mut images = Vec::new();
+    for source in sources {
+        if source.images.iter().all(|image| loaded.contains(&image)) {
+            continue;
+        }
+        for (reference, image) in source
+            .images
+            .iter()
+            .zip(load_images(database, paths, source)?)
+        {
+            if !loaded.contains(&reference) {
+                loaded.push(reference);
+                images.push(image);
+            }
+        }
+    }
+    Ok(images)
+}
+
 pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usize>> {
     let mut result = Vec::new();
     let mut start = 0;
     while start < sources.len() {
         let mut end = start + 1;
         let mut chars = sources[start].text.chars().count();
-        let mut complexity =
-            extraction_complexity_units(&sources[start].text, sources[start].images.len());
-        if sources[start].images.is_empty() {
-            while end < sources.len() && end - start < EXTRACTION_BATCH_SOURCES {
-                let next = &sources[end];
-                let next_chars = next.text.chars().count();
-                let next_complexity = extraction_complexity_units(&next.text, next.images.len());
-                let same = next.id == sources[start].id
-                    || (next.kind == SourceKind::Document
-                        && sources[start].kind == SourceKind::Document
-                        && next.owner_id == sources[start].owner_id);
-                if !same
-                    || !next.images.is_empty()
-                    || chars.saturating_add(next_chars) > EXTRACTION_BATCH_CHARS
-                    || complexity.saturating_add(next_complexity)
-                        > EXTRACTION_BATCH_COMPLEXITY_UNITS
-                {
-                    break;
-                }
-                chars += next_chars;
-                complexity = complexity.saturating_add(next_complexity);
-                end += 1;
+        let mut images = window_page_images(&sources[start..end]).len();
+        let mut complexity = extraction_complexity_units(&sources[start].text, images);
+        while end < sources.len() && end - start < EXTRACTION_BATCH_SOURCES {
+            let next = &sources[end];
+            let next_chars = next.text.chars().count();
+            let next_images = window_page_images(&sources[start..=end]).len();
+            // An image already attached for an earlier source costs nothing more.
+            let next_complexity =
+                extraction_complexity_units(&next.text, next_images.saturating_sub(images));
+            let same = next.id == sources[start].id
+                || (next.kind == SourceKind::Document
+                    && sources[start].kind == SourceKind::Document
+                    && next.owner_id == sources[start].owner_id);
+            if !same
+                || next_images > MAX_WINDOW_PAGE_IMAGES
+                || chars.saturating_add(next_chars) > EXTRACTION_BATCH_CHARS
+                || complexity.saturating_add(next_complexity) > EXTRACTION_BATCH_COMPLEXITY_UNITS
+            {
+                break;
             }
+            chars += next_chars;
+            images = next_images;
+            complexity = complexity.saturating_add(next_complexity);
+            end += 1;
         }
         result.push(start..end);
         start = end;

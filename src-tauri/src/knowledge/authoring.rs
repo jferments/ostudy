@@ -257,7 +257,17 @@ pub(crate) struct DocumentPreparation<'a> {
     pub retry_partial: bool,
 }
 
-pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(), CommandError> {
+/// Source records whose extraction window failed on its output this run. They
+/// stay unextracted (nothing durable records "no knowledge here"), so the next
+/// preparation asks the model again; until then catalogs skip them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PreparationGaps {
+    pub sources: BTreeSet<String>,
+}
+
+pub(crate) async fn prepare_document(
+    input: DocumentPreparation<'_>,
+) -> Result<PreparationGaps, CommandError> {
     let DocumentPreparation {
         database,
         paths,
@@ -287,6 +297,9 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
         })
         .collect::<Vec<_>>();
     let mut pending = Vec::new();
+    let mut gaps = PreparationGaps::default();
+    let mut extracted_windows = 0usize;
+    let mut first_gap: Option<CommandError> = None;
     let mut completed = 0;
     let mut remaining = std::collections::HashMap::<String, usize>::new();
     let mut source_parents = std::collections::HashMap::<String, String>::new();
@@ -366,6 +379,26 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
             },
             |(index, outcome)| {
                 let group = groups[index];
+                // One window's bad output must not sink the document: keep its
+                // sources as gaps and let the rest of the document finish.
+                let outcome = match outcome {
+                    Err(error) if crate::ai::document_intelligence::is_output_failure(&error) => {
+                        crate::logging::warn_target(
+                            "ai.knowledge.extraction",
+                            "knowledge_extraction_window_gap",
+                            "Kept a failed extraction window as a gap; the next preparation retries it.",
+                            json!({"document":document_id,"sources":group.len(),"code":error.code}),
+                        );
+                        gaps.sources.extend(group.iter().map(|source| source.id.clone()));
+                        first_gap.get_or_insert(error);
+                        Ok(())
+                    }
+                    Ok(_) => {
+                        extracted_windows += 1;
+                        Ok(())
+                    }
+                    Err(error) => Err(error),
+                };
                 let result = outcome.and_then(|_| {
                     for source in group {
                         let parent = source_parents
@@ -416,7 +449,21 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
         pending.drain(..consumed);
     }
     check_canceled(&cancellation)?;
-    task.ensure_current(database)
+    task.ensure_current(database)?;
+    if let Some(error) = first_gap {
+        // Nothing extracted at all means the model cannot do this task.
+        if extracted_windows == 0 {
+            return Err(error);
+        }
+        crate::logging::warn_target(
+            "ai.knowledge.extraction",
+            "knowledge_extraction_finished_with_gaps",
+            "Prepared the document with some windows left as gaps.",
+            json!({"document":document_id,"gapSources":gaps.sources.len(),
+                "extractedWindows":extracted_windows}),
+        );
+    }
+    Ok(gaps)
 }
 
 pub(crate) fn catalog_for_chunks(
@@ -424,12 +471,17 @@ pub(crate) fn catalog_for_chunks(
     document_id: &str,
     chunk_indices: &[i64],
     task: &DocumentTaskContext,
+    gaps: &PreparationGaps,
 ) -> Result<KnowledgeCatalog, CommandError> {
     let contract = extraction_contract(task)?;
     task.ensure_current(database)?;
     database.with_connection(|connection| {
-        let context =
-            super::learning_context::for_document_chunks(connection, document_id, chunk_indices)?;
+        let context = super::learning_context::for_document_chunks_with_gaps(
+            connection,
+            document_id,
+            chunk_indices,
+            &gaps.sources,
+        )?;
         let document_core_units =
             super::document_view::core_ids(connection, document_id, &contract)?;
         Ok(KnowledgeCatalog {

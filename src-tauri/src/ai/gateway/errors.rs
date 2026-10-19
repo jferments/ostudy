@@ -163,6 +163,44 @@ pub(super) fn classify_stream_event_error(
     )
 }
 
+/// Anthropic sends mid-stream failures as `event: error` with a typed body,
+/// for example `overloaded_error`, which would be HTTP 529 before streaming.
+pub(super) fn classify_anthropic_stream_error(
+    value: &Value,
+    retry_after_seconds: Option<u64>,
+) -> AiGatewayError {
+    let kind = value
+        .pointer("/error/type")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    match kind {
+        "overloaded_error" | "api_error" => error(
+            "ai_server_unavailable",
+            "The AI provider is temporarily unavailable. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+        "rate_limit_error" => error(
+            "ai_http_rate_limited",
+            "The AI provider rate limit was reached. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+        "invalid_request_error" => error(
+            "ai_http_bad_request",
+            "The AI provider rejected this request as unsupported or invalid. Partial output was discarded.",
+            false,
+            None,
+        ),
+        _ => error(
+            "ai_stream_interrupted",
+            "The AI provider ended the streaming response with an error event. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+    }
+}
+
 pub(super) fn stream_inactivity_error(timeout_ms: i64) -> AiGatewayError {
     let timeout_seconds = (timeout_ms.max(1) as f64 / 1_000.0).max(0.001);
     error(

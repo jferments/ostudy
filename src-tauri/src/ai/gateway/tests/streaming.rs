@@ -1,6 +1,9 @@
 use serde_json::json;
 
-use super::super::streaming::{sse::SseChatAccumulator, usage::safe_usage_envelope};
+use super::super::{
+    contracts::ProviderWire,
+    streaming::{sse::SseChatAccumulator, usage::safe_usage_envelope},
+};
 
 #[test]
 fn accepts_keepalive_progress_and_json_split_across_arbitrary_chunks() {
@@ -231,4 +234,95 @@ fn ambiguous_indices_and_changed_ids_are_rejected_without_content_in_errors() {
             assert!(!failure.safe.message.contains("PRIVATE"));
         }
     }
+}
+
+fn anthropic_stream() -> SseChatAccumulator {
+    SseChatAccumulator::for_request(
+        4_096,
+        65_536,
+        false,
+        ProviderWire::AnthropicMessages,
+        None,
+        None,
+    )
+}
+
+/// Recorded shape of a Messages stream with thinking omitted, as Claude sends
+/// it by default: an empty thinking block, then the text.
+const ANTHROPIC_STREAM: &str = concat!(
+    "event: message_start\n",
+    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-5-5\",\"stop_reason\":null,\"usage\":{\"input_tokens\":12,\"cache_read_input_tokens\":2000,\"cache_creation_input_tokens\":0,\"output_tokens\":1}}}\n\n",
+    "event: ping\n",
+    "data: {\"type\":\"ping\"}\n\n",
+    "event: content_block_start\n",
+    "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n",
+    "event: content_block_delta\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\"}}\n\n",
+    "event: content_block_delta\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"EqQB\"}}\n\n",
+    "event: content_block_stop\n",
+    "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    "event: content_block_start\n",
+    "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+    "event: content_block_delta\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"ok\\\":\"}}\n\n",
+    "event: content_block_delta\n",
+    "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"true}\"}}\n\n",
+    "event: content_block_stop\n",
+    "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+    "event: message_delta\n",
+    "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":40}}\n\n",
+    "event: message_stop\n",
+    "data: {\"type\":\"message_stop\"}\n\n",
+);
+
+#[test]
+fn anthropic_events_reconstruct_text_finish_and_billed_usage() {
+    let mut stream = anthropic_stream();
+    for chunk in ANTHROPIC_STREAM.as_bytes().chunks(11) {
+        stream.push_bytes(chunk).unwrap();
+    }
+    stream.finish().unwrap();
+    assert!(stream.done);
+    assert_eq!(stream.content, "{\"ok\":true}");
+    assert_eq!(stream.finish_reason.as_deref(), Some("stop"));
+    assert_eq!(stream.model.as_deref(), Some("claude-sonnet-5-5"));
+    assert_eq!(stream.generation_id.as_deref(), Some("msg_01"));
+    assert_eq!(stream.comment_events, 1);
+    let usage = stream.usage.as_ref().expect("usage should be reported");
+    // input_tokens excludes cache reads, which are billed separately.
+    assert_eq!(usage["prompt_tokens"], 2_012);
+    assert_eq!(usage["completion_tokens"], 40);
+    assert_eq!(usage["total_tokens"], 2_052);
+    assert_eq!(usage["prompt_tokens_details"]["cached_tokens"], 2_000);
+    assert_eq!(usage["prompt_tokens_details"]["cache_write_tokens"], 0);
+}
+
+#[test]
+fn anthropic_length_and_refusal_stops_map_to_shared_finish_reasons() {
+    for (stop, expected) in [("max_tokens", "length"), ("refusal", "content_filter")] {
+        let mut stream = anthropic_stream();
+        stream
+            .push_bytes(
+                format!(
+                    "data: {}\n\n",
+                    json!({"type":"message_delta","delta":{"stop_reason":stop},"usage":{"output_tokens":3}})
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        assert_eq!(stream.finish_reason.as_deref(), Some(expected));
+    }
+}
+
+#[test]
+fn anthropic_overload_mid_stream_is_a_retryable_failure() {
+    let mut stream = anthropic_stream();
+    let failure = stream
+        .push_bytes(
+            b"event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+        )
+        .expect_err("an error event should fail the stream");
+    assert_eq!(failure.safe.code, "ai_server_unavailable");
+    assert!(failure.safe.retryable);
 }

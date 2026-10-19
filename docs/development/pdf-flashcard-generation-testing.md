@@ -56,7 +56,7 @@ Use PDFs with headings, paragraphs, lists, tables, multi-column content, rotated
 6. pages with no recoverable structure remain represented by visual-evidence chunks;
 7. source windows remain bounded by both estimated tokens and physical-page count.
 
-The active extraction backend ID should identify `oxidize-pdf-4.2.2-rag`; the active renderer should independently identify `justpdf-render-0.1.2/pure-rust`.
+The active extraction backend ID should identify `oxidize-pdf-5.5.0-rag`; the active renderer should independently identify `justpdf-render-0.1.2/pure-rust`.
 
 ## Study-quality acceptance
 

@@ -146,8 +146,8 @@ def workbench_snapshot(session_id: str, deadline: float) -> dict[str, Any]:
               sideBySide: treeRect.right <= listRect.left + 1,
               rowText: (open?.textContent || "").trim(),
               rowFits: row.scrollWidth <= row.clientWidth + 1,
-              filters: [...workbench.querySelectorAll("[role='group'][aria-label='Filter cards'] button")]
-                .map((button) => (button.textContent || "").replace(/\s+/g, " ").trim()),
+              filters: [...workbench.querySelectorAll("select[data-testid='workbench-filter'] option")]
+                .map((option) => (option.textContent || "").replace(/\s+/g, " ").trim()),
             };
             """,
         )
@@ -158,7 +158,7 @@ def workbench_snapshot(session_id: str, deadline: float) -> dict[str, Any]:
 
 
 def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
-    """A deck shows the tree and its card list side by side, with quick filters."""
+    """A deck shows the tree and its card list side by side, with the Show filter."""
     measurement = workbench_snapshot(session_id, deadline)
     if measurement.get("separators") != 1 or measurement.get("sideBySide") is not True:
         raise AssertionError(f"Medium Workbench did not show tree and list side by side: {measurement!r}")
@@ -167,13 +167,15 @@ def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
     if measurement.get("rowFits") is not True:
         raise AssertionError(f"Card row overflowed its pane: {measurement!r}")
     filters = measurement.get("filters")
-    if not isinstance(filters, list) or [re.sub(r"[\d,]+$", "", label).strip() for label in filters] != ["All", "Due", "New", "Suspended"]:
-        raise AssertionError(f"Deck quick filters drifted: {measurement!r}")
+    if not isinstance(filters, list) or [re.sub(r"\s*·\s*[\d,]+$", "", label).strip() for label in filters] != [
+        "All cards", "Due today", "New", "Often missed", "Suspended"
+    ]:
+        raise AssertionError(f"Deck Show filter drifted: {measurement!r}")
     ui.assert_no_horizontal_overflow(session_id, "medium Workbench deck list")
 
 
 def assert_editor_replaces_list(session_id: str, question: str, deadline: float) -> None:
-    """Medium screens open a card in place of the list, then return to it."""
+    """Medium screens open a card in a panel over the list, then return to it."""
     webdriver.click(session_id, webdriver.find_card_row(session_id, question, deadline))
     webdriver.find_element(
         session_id,
@@ -187,8 +189,8 @@ def assert_editor_replaces_list(session_id: str, question: str, deadline: float)
         "main [data-testid='workbench-editor'] section[aria-label='Schedule']",
         deadline,
     )
-    if webdriver.element_exists(session_id, "css selector", "main section[aria-label='Cards']"):
-        raise AssertionError("Medium Workbench kept the card list beside the editor")
+    if not webdriver.element_exists(session_id, "css selector", "main [inert] section[aria-label='Cards']"):
+        raise AssertionError("Medium Workbench left the card list usable beside the editor")
     ui.assert_no_horizontal_overflow(session_id, "medium Workbench card editor")
     close_open_editor(session_id, deadline)
     webdriver.find_card_row(session_id, question, deadline)
@@ -274,7 +276,7 @@ def assert_search_list(session_id: str, question: str, deadline: float) -> None:
     webdriver.find_card_row(session_id, question, deadline)
     sort = ui.execute(
         session_id,
-        "return document.querySelector(\"main [data-testid='library-workbench'] select\")?.value || '';",
+        "return document.querySelector(\"main [data-testid='library-workbench'] select[data-testid='workbench-sort']\")?.value || '';",
     )
     if sort != "relevance":
         raise AssertionError(f"Searching did not sort by relevance: {sort!r}")
@@ -314,7 +316,7 @@ def main() -> int:
         assert_search_list(session_id, question, deadline)
         tutor_smoke.verify_tutor_and_contextual_return(session_id, deck_name)
         print(
-            "Native Workbench card-list smoke passed: 928px header navigation labels fit; the tree "
+            "Native Workbench card-list smoke passed: 928px side rail navigation labels fit; the tree "
             "and card list sit side by side; a card opens in place of the list; search ranks by "
             "relevance with one icon/input surface."
         )

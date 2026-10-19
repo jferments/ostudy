@@ -1,28 +1,6 @@
 // Static semantic presentation recipes; data, source identities and async jobs stay with their owners.
-export const documentStyles = {
-  "screen": "tw:min-w-0",
-  "toolbar": "tw:mb-3 tw:flex tw:items-center tw:justify-between tw:gap-3",
-  "count": "tw:text-small tw:text-muted-foreground tw:tabular-nums",
-  "list": "tw:grid tw:min-w-0 tw:gap-2",
-  "card": "tw:flex tw:min-w-0 tw:flex-col tw:gap-3 tw:p-4",
-  "cardMain": "tw:min-w-0 tw:flex-1",
-  "titleRow": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:[&_h2]:m-0 tw:[&_h2]:break-words tw:[&_h2]:text-body tw:[&_h2]:font-medium",
-  "processingPhase": "tw:text-small tw:text-muted-foreground",
-  "metadataButton": "tw:ml-auto tw:shrink-0",
-  "sourceSummary": "tw:mt-1.5 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground",
-  "filename": "tw:min-w-0 tw:break-all",
-  "cardCount": "tw:shrink-0 tw:font-medium tw:tabular-nums tw:text-foreground",
-  "actions": "tw:border-0 tw:border-t tw:border-solid tw:border-border/70 tw:pt-3",
-  "deckNote": "tw:mt-3 tw:mb-0 tw:text-small tw:leading-relaxed tw:text-muted-foreground"
-} as const;
-
 export const providerStyles = {
-  "section": "tw:min-w-0",
-  "providerPanel": "tw:mb-5 tw:flex tw:min-w-0 tw:items-center tw:gap-3 tw:p-4",
-  "icon": "tw:grid tw:size-8 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-muted tw:text-muted-foreground",
-  "providerCopy": "tw:grid tw:min-w-0 tw:flex-1 tw:gap-0.5 tw:[&_strong]:break-words tw:[&_strong]:text-small tw:[&_small]:text-small tw:[&_small]:leading-relaxed tw:[&_small]:text-muted-foreground",
-  "label": "tw:m-0 tw:text-caption tw:font-medium tw:text-muted-foreground",
-  "providerActions": "tw:shrink-0"
+  "section": "tw:min-w-0"
 } as const;
 
 export const guideLibraryStyles = {

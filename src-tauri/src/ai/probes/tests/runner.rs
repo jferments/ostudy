@@ -40,6 +40,7 @@ fn model(id: &str, reasoning: Option<ProviderModelReasoning>) -> ProviderModel {
         owned_by: None,
         context_window_tokens: None,
         reasoning,
+        image_input: None,
     }
 }
 
@@ -52,6 +53,7 @@ fn sole_llama_model_mismatch_uses_server_reported_id_for_probe() {
         owned_by: Some("llamacpp".to_string()),
         context_window_tokens: None,
         reasoning: None,
+        image_input: None,
     }];
     assert_eq!(
         classify_model_match_for_test(&profile, &models),
@@ -68,6 +70,7 @@ fn cloud_model_mismatch_remains_a_hard_failure() {
         owned_by: Some("deepseek".to_string()),
         context_window_tokens: None,
         reasoning: None,
+        image_input: None,
     }];
     assert_eq!(classify_model_match_for_test(&profile, &models), "missing");
 }
@@ -81,6 +84,7 @@ fn exact_model_match_remains_exact() {
         owned_by: Some("openai".to_string()),
         context_window_tokens: Some(128_000),
         reasoning: None,
+        image_input: None,
     }];
     assert_eq!(classify_model_match_for_test(&profile, &models), "exact");
 }

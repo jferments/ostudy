@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -9,10 +10,23 @@ use crate::ai::{
 use super::{
     dialect::ProviderDialect,
     document::{decode_document_output, prepare_document_request, PreparedDocumentRequest},
-    openai_compatible, CompletionOutcome,
+    openai_compatible, provider_access, CompletionOutcome,
 };
 
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
+
+/// A 64×32 PNG whose left half is red and right half is blue. A model that
+/// really receives the image names both colors; a text-only route cannot.
+const IMAGE_PROBE_PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x20, 0x08, 0x02, 0x00, 0x00, 0x00, 0x2d, 0xff, 0xe9,
+    0xd3, 0x00, 0x00, 0x00, 0x3a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0xed, 0xcf, 0x31, 0x0d, 0x00,
+    0x00, 0x08, 0x03, 0x30, 0xa4, 0x4c, 0x0a, 0xfe, 0x2f, 0x24, 0xa1, 0x81, 0x83, 0xaf, 0x49, 0x0d,
+    0xb4, 0x26, 0x79, 0x95, 0x9e, 0x57, 0x25, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+    0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x70, 0xb5, 0x73,
+    0x82, 0x00, 0x88, 0x72, 0x65, 0xc6, 0x79, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +88,63 @@ pub(crate) async fn run_text_probe(
         ));
     }
     Ok(outcome)
+}
+
+/// Send one small image through the same Chat Completions image part that
+/// document work uses, and require the model to describe it. A catalog that
+/// declares image input is a claim; this checks the routed endpoint honors it.
+pub(crate) async fn run_image_probe(
+    gateway: &AiGateway,
+    profile: &ProfileSnapshot,
+    bearer: Option<&str>,
+    max_tokens: usize,
+) -> Result<CompletionOutcome, AiGatewayError> {
+    let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
+    let messages = json!([
+        {
+            "role": "system",
+            "content": "You are performing an image input test. Follow the user's exact output instruction."
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Name the color of the left half and of the right half of this image. Reply with exactly two lowercase color words separated by one space, left first, and no other text."
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:image/png;base64,{}", STANDARD.encode(IMAGE_PROBE_PNG))
+                    }
+                }
+            ]
+        }
+    ]);
+    let mut body = openai_compatible::chat_body(&profile.model_id, messages, 0.0, max_tokens);
+    dialect.apply_probe_nonthinking(&mut body, profile);
+    let outcome = send_completion(gateway, profile, bearer, dialect, body).await?;
+    if !image_probe_answer_matches(&outcome.content) {
+        let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+        return Err(crate::ai::gateway::error(
+            "ai_image_probe_invalid",
+            &format!(
+                "The model responded, but it did not describe the test image correctly (finish: {finish})."
+            ),
+            false,
+            None,
+        ));
+    }
+    Ok(outcome)
+}
+
+fn image_probe_answer_matches(content: &str) -> bool {
+    let words = content
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    words == ["red", "blue"]
 }
 
 pub(crate) async fn run_structured_probe(
@@ -260,6 +331,7 @@ async fn send_completion(
     body: Value,
 ) -> Result<CompletionOutcome, AiGatewayError> {
     let url = dialect.completion_endpoint(profile)?;
+    let access = provider_access(profile, bearer);
     crate::logging::debug_target(
         "ai.provider",
         "provider_probe_request_started",
@@ -272,12 +344,13 @@ async fn send_completion(
     let value = gateway
         .post_json(
             url,
-            bearer,
+            access,
             &body,
             profile.request_timeout_ms,
             MAX_COMPLETION_BYTES,
         )
         .await?;
+    let value = dialect.normalize_response(value)?;
     let outcome = openai_compatible::parse_completion(&value)?;
     crate::logging::debug_target(
         "ai.provider",
@@ -299,10 +372,12 @@ async fn send_prepared_probe(
     bearer: Option<&str>,
     prepared: &PreparedDocumentRequest,
 ) -> Result<Value, AiGatewayError> {
+    let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
+    let access = provider_access(profile, bearer);
     let first = gateway
         .post_json(
             prepared.url.clone(),
-            bearer,
+            access,
             &prepared.body,
             profile.request_timeout_ms,
             MAX_COMPLETION_BYTES,
@@ -314,7 +389,7 @@ async fn send_prepared_probe(
                 gateway
                     .post_json(
                         prepared.url.clone(),
-                        bearer,
+                        access,
                         compatibility,
                         profile.request_timeout_ms,
                         MAX_COMPLETION_BYTES,
@@ -326,6 +401,7 @@ async fn send_prepared_probe(
         }
         other => other,
     }
+    .and_then(|value| dialect.normalize_response(value))
 }
 
 fn outcome_from_response(response: &Value, content: String) -> CompletionOutcome {
@@ -355,6 +431,24 @@ fn nonnegative_i64(value: &Value) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_probe_accepts_only_the_two_colors_in_order() {
+        assert!(image_probe_answer_matches("red blue"));
+        assert!(image_probe_answer_matches("Red, Blue."));
+        assert!(!image_probe_answer_matches("blue red"));
+        assert!(!image_probe_answer_matches("red"));
+        assert!(!image_probe_answer_matches("I cannot see images."));
+    }
+
+    #[test]
+    fn image_probe_fixture_is_red_on_the_left_and_blue_on_the_right() {
+        let image = image::load_from_memory(IMAGE_PROBE_PNG).unwrap().to_rgb8();
+        let left = image.get_pixel(4, 16).0;
+        let right = image.get_pixel(60, 16).0;
+        assert!(left[0] > 180 && left[2] < 80);
+        assert!(right[2] > 180 && right[0] < 80);
+    }
 
     #[test]
     fn representative_document_contract_validation_is_provider_neutral() {

@@ -17,8 +17,10 @@ import type { OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../../ui/overlays/overlayContext";
 import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
-import { ResizablePanes, type ResizablePane } from "../../../ui/patterns/ResizablePanes";
+import { cn } from "../../../ui/internal/cn";
+import { ResizablePanes } from "../../../ui/patterns/ResizablePanes";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
+import { IconButton } from "../../../ui/icons/IconButton";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "../../CardEditorScreen";
@@ -34,6 +36,7 @@ import { DeckTransferDialog, type DeckTransferDialogRequest } from "../../flashc
 import { PracticeSetupSheet } from "../../flashcards/deck-library/PracticeSetupSheet";
 import type { PracticeDeckScope } from "../../flashcards/deck-library/practiceSetupModel";
 import { CheckTheseSheet } from "../../home/CheckTheseSheet";
+import { LibraryTabs } from "../LibraryTabs";
 import { NewSubjectSheet } from "../../home/NewSubjectSheet";
 import { CardScheduleSummary } from "./CardScheduleSummary";
 import { useWorkbenchCards, PAGE_SIZE } from "./useWorkbenchCards";
@@ -158,7 +161,6 @@ export function LibraryWorkbench({
     [filter, library, query, scope, sort],
   );
   const countInputs = useMemo(() => {
-    if (scope.kind === "view") return null;
     const entries = CARD_FILTERS.map((option) => [option.value, searchInputFor(scope, option.value, query, sort, library, 1)] as const)
       .filter((entry): entry is readonly [CardFilter, NonNullable<(typeof entry)[1]>] => entry[1] !== null);
     return entries.length > 0 ? Object.fromEntries(entries) : null;
@@ -607,9 +609,6 @@ export function LibraryWorkbench({
         deckMenu={deckMenu}
         documentMenu={documentMenu}
         onOpenDocument={() => onOpenDocuments()}
-        onImportDeck={() => setSheet({ kind: "transfer", request: { kind: "import" } })}
-        onOpenDocuments={onOpenDocuments}
-        onOpenStudyGuides={onOpenStudyGuides}
         onCheckThese={() => setSheet({ kind: "check-these" })}
       />
     </div>
@@ -621,7 +620,6 @@ export function LibraryWorkbench({
       eyebrow={eyebrow}
       title={title}
       actions={headerActions}
-      showFilters={scope.kind !== "view"}
       filter={filter}
       onFilterChange={setFilter}
       query={query}
@@ -681,30 +679,37 @@ export function LibraryWorkbench({
   let body;
   if (compact) {
     body = page === "editor" && editorPane ? editorPane : page === "cards" ? list : tree;
-  } else if (layoutMode === "medium") {
+  } else {
+    // The editor opens as a panel over the cards. The list stays mounted
+    // underneath (hidden, which keeps its layout), so closing the editor
+    // returns to the same scroll position, search, filter and selection.
+    const editing = editorPane !== null && (layoutMode !== "medium" || page === "editor");
+    const main = (
+      <div className="tw:relative tw:flex tw:h-full tw:min-h-0 tw:min-w-0 tw:flex-col">
+        <div className={cn("tw:isolate tw:flex tw:h-full tw:min-h-0 tw:min-w-0 tw:flex-col", editing && "tw:invisible")} inert={editing} aria-hidden={editing || undefined}>
+          {list}
+        </div>
+        {editing ? (
+          <div
+            data-slot="workbench-editor-panel"
+            className="tw:absolute tw:inset-0 tw:z-(--ostudy-layer-raised) tw:overflow-y-auto tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-background tw:shadow-lg"
+          >
+            {editorPane}
+          </div>
+        ) : null}
+      </div>
+    );
+    const wide = layoutMode !== "medium";
     body = (
       <ResizablePanes
         sizes={paneSizes}
-        onSizesChange={(next) => setPaneSizes(savePaneSizes(next))}
+        onSizesChange={(next) => setPaneSizes(savePaneSizes({ ...paneSizes, ...next }))}
         panes={[
-          { id: "tree", label: "library list", defaultSize: 240, minSize: 200, maxSize: 360, content: tree },
-          { id: "main", label: "cards", minSize: 400, content: page === "editor" && editorPane ? editorPane : list },
+          { id: "tree", label: "library list", defaultSize: wide ? 260 : 240, minSize: 200, maxSize: wide ? 400 : 360, content: tree, className: "tw:pr-1" },
+          { id: "list", label: "cards", minSize: 400, content: main, className: "tw:pl-3" },
         ]}
       />
     );
-  } else {
-    const panes: ResizablePane[] = [
-      { id: "tree", label: "library list", defaultSize: 260, minSize: 200, maxSize: 400, content: tree },
-    ];
-    if (editorPane) {
-      panes.push(
-        { id: "list", label: "cards", defaultSize: 460, minSize: 320, maxSize: 720, content: list },
-        { id: "editor", label: "card editor", minSize: 520, content: editorPane, className: "tw:overflow-y-auto tw:pl-2" },
-      );
-    } else {
-      panes.push({ id: "list", label: "cards", minSize: 420, content: list });
-    }
-    body = <ResizablePanes sizes={paneSizes} onSizesChange={(next) => setPaneSizes(savePaneSizes({ ...paneSizes, ...next }))} panes={panes} />;
   }
 
   return (
@@ -714,6 +719,24 @@ export function LibraryWorkbench({
         ? "tw:min-w-0 tw:px-4 tw:pt-4 tw:pb-[calc(5rem+var(--safe-bottom))]"
         : "tw:flex tw:h-full tw:min-h-0 tw:flex-col tw:px-5 tw:pt-5 tw:pb-4"}
     >
+      {compact && page === "editor" ? null : (
+        <LibraryTabs
+          view="decks"
+          onSelectView={(view) => {
+            if (view === "documents") onOpenDocuments();
+            else if (view === "study-guides") onOpenStudyGuides();
+            else void chooseScope(DEFAULT_SCOPE);
+          }}
+          actions={compact ? (
+            <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
+          ) : (
+            <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
+              Import deck
+            </Button>
+          )}
+          className="tw:mb-4 tw:shrink-0"
+        />
+      )}
       {opening ? <span className="sr-only" role="status">Opening card…</span> : null}
       {libraryState.loading && !library.organization ? <InlineProgress>Loading your library…</InlineProgress> : null}
       <div className={compact ? "tw:min-w-0" : "tw:flex tw:min-h-0 tw:flex-1"}>{body}</div>
@@ -886,7 +909,7 @@ interface WorkbenchEditorProps {
   onSaved: (message: string, closed: boolean) => Promise<void>;
 }
 
-/** The open card: its schedule above today's card editor, which keeps its own Save. */
+/** The open card in today's card editor, with its schedule below the fields and Suspend and Reset in its menu. */
 function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyChange, onClose, onSchedule, onMoveCopy, onSaved }: WorkbenchEditorProps) {
   const deckId = editor.kind === "card" ? editor.note.deckId : editor.deckId;
   const deck = decks.find((candidate) => candidate.id === deckId);
@@ -901,21 +924,25 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
   const card = editor.kind === "card" ? editor.note : null;
   return (
     <section aria-label="Card editor" className="tw:grid tw:min-w-0 tw:content-start tw:gap-3 tw:pb-6" data-testid="workbench-editor">
-      {editor.kind === "card" ? (
-        <CardScheduleSummary
-          row={editor.row}
-          todayStartAt={todayStartAt}
-          busy={scheduleBusy}
-          onSuspendToggle={() => onSchedule(editor.row.suspendedAt !== null ? "resume" : "suspend")}
-          onReset={() => onSchedule("reset")}
-        />
-      ) : null}
       <CardEditorScreen
+        details={editor.kind === "card" ? <CardScheduleSummary row={editor.row} todayStartAt={todayStartAt} /> : undefined}
+        moreActions={editor.kind === "card" ? [
+          {
+            id: "suspend",
+            label: editor.row.suspendedAt !== null ? "Resume" : "Suspend",
+            disabled: scheduleBusy,
+            onSelect: () => onSchedule(editor.row.suspendedAt !== null ? "resume" : "suspend"),
+          },
+          ...(editor.row.reviewCount > 0
+            ? [{ id: "reset", label: "Reset schedule…", destructive: true, disabled: scheduleBusy, onSelect: () => onSchedule("reset") }]
+            : []),
+        ] : undefined}
         key={editor.kind === "card" ? editor.row.noteId : `new-${editor.deckId}`}
         deck={deck}
         decks={decks}
         card={card}
         onDirtyChange={onDirtyChange}
+        closeButton
         onCancel={() => { onDirtyChange(false); onClose(); }}
         onMoveCopy={card && !isQuestionNote(card) ? onMoveCopy : undefined}
         onSaved={(saved, continueAdding) => onSaved(
@@ -934,7 +961,7 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
 
 function emptyCopy(scope: WorkbenchScope, filter: CardFilter, query: string, deck: DeckSummary | null): { title: string; description: string } {
   if (query.trim() !== "") return { title: "No matching cards", description: "Try other words or clear the search." };
-  if (filter !== "all") return { title: "No cards here", description: "No cards match this filter. Choose All to see every card." };
+  if (filter !== "all") return { title: "No cards here", description: "No cards match this filter." };
   if (scope.kind === "deck") {
     return deck?.archivedAt
       ? { title: "This deck is archived", description: "Restore it from its menu to study or edit its cards." }

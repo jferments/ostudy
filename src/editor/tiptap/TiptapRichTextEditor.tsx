@@ -294,32 +294,33 @@ export function TiptapRichTextEditor({
   if (!adapter) {
     return (
       <section className={styles.field}>
-        <div className={styles.heading}>
-          <div>
-            <h3>{label}</h3>
-            {description ? <p>{description}</p> : null}
+        <div className={styles.shell}>
+          <div className={styles.heading}>
+            <div>
+              <h3>{label}</h3>
+              {description ? <p>{description}</p> : null}
+            </div>
           </div>
+          <div className={styles.loading} role="status">Loading editor…</div>
         </div>
-        <div className={styles.loading} role="status">Loading editor…</div>
       </section>
     );
   }
 
   return (
     <section className={styles.field}>
-      <div className={styles.heading}>
-        <div>
-          <h3>{label}</h3>
-          {description ? <p>{description}</p> : null}
-        </div>
-        {pairSide === "question" && pairId && cardEditorPairCanCopy(pairId) ? (
-          <Button type="button" variant="secondary" size="small" disabled={disabled} onClick={copyChecklist}>
-            Copy checklist to answer
-          </Button>
-        ) : null}
-      </div>
-
       <div className={styles.shell}>
+        <div className={styles.heading}>
+          <div>
+            <h3>{label}</h3>
+            {description ? <p>{description}</p> : null}
+          </div>
+          {pairSide === "question" && pairId && cardEditorPairCanCopy(pairId) ? (
+            <Button type="button" variant="secondary" size="small" disabled={disabled} onClick={copyChecklist}>
+              Copy checklist to answer
+            </Button>
+          ) : null}
+        </div>
         <EditorToolbar
           adapter={adapter}
           onAddImage={() => void addImage()}

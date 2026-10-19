@@ -153,6 +153,98 @@ fn deepseek_node_compatible(value: &Value) -> bool {
     true
 }
 
+/// Anthropic's documented structured-output limits: at most this many
+/// parameters may use a union (`anyOf` or a type array) across a request.
+const CLAUDE_MAX_UNION_PARAMETERS: usize = 16;
+
+/// Lower a contract to Claude's grammar-constrained JSON-Schema subset, or
+/// return `None` when it falls outside that subset. Every portable object
+/// already lists all properties as required, so the optional-parameter limit
+/// never applies. References are refused outright because Claude rejects
+/// recursive schemas, and complex enum values because enums must be scalar.
+pub(super) fn claude_strict_schema(value: &Value) -> Option<Value> {
+    let schema = portable_strict_schema(value);
+    let mut unions = 0_usize;
+    claude_node_compatible(&schema, &mut unions)
+        .then_some(())
+        .filter(|()| unions <= CLAUDE_MAX_UNION_PARAMETERS)
+        .map(|()| schema)
+}
+
+fn claude_node_compatible(value: &Value, unions: &mut usize) -> bool {
+    let Some(object) = value.as_object() else {
+        return true;
+    };
+    if [
+        "$ref",
+        "not",
+        "if",
+        "then",
+        "else",
+        "patternProperties",
+        "prefixItems",
+        "contains",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
+    {
+        return false;
+    }
+    if object.contains_key("anyOf") || object.get("type").is_some_and(Value::is_array) {
+        *unions = unions.saturating_add(1);
+    }
+    if object
+        .get("enum")
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| value.is_object() || value.is_array())
+        })
+    {
+        return false;
+    }
+    if object
+        .get("additionalProperties")
+        .is_some_and(|value| value != &Value::Bool(false))
+    {
+        return false;
+    }
+    for group in ["properties", "$defs", "definitions"] {
+        if object
+            .get(group)
+            .and_then(Value::as_object)
+            .is_some_and(|entries| {
+                entries
+                    .values()
+                    .any(|child| !claude_node_compatible(child, unions))
+            })
+        {
+            return false;
+        }
+    }
+    if object
+        .get("items")
+        .is_some_and(|child| !claude_node_compatible(child, unions))
+    {
+        return false;
+    }
+    for group in ["anyOf", "allOf"] {
+        if object
+            .get(group)
+            .and_then(Value::as_array)
+            .is_some_and(|variants| {
+                variants
+                    .iter()
+                    .any(|child| !claude_node_compatible(child, unions))
+            })
+        {
+            return false;
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +295,27 @@ mod tests {
         assert!(!deepseek_strict_schema_compatible(&json!({
             "type":"object","properties":{"value":{"const":null}}
         })));
+    }
+    #[test]
+    fn claude_strict_schema_accepts_portable_contracts_and_refuses_its_unsupported_subset() {
+        let schema = claude_strict_schema(&json!({
+            "type":"object","properties":{"name":{"type":"string","maxLength":20},
+            "kind":{"oneOf":[{"const":"a"},{"const":"b"}]}},"required":["name"]
+        }))
+        .expect("simple contracts are enforced");
+        assert!(schema.pointer("/properties/name/maxLength").is_none());
+        assert_eq!(schema["additionalProperties"], json!(false));
+        assert!(claude_strict_schema(&json!({
+            "type":"object","properties":{"node":{"$ref":"#"}}
+        }))
+        .is_none());
+        assert!(claude_strict_schema(&json!({
+            "type":"object","properties":{"value":{"const":{"nested":true}}}
+        }))
+        .is_none());
+        let many_unions = (0..17)
+            .map(|index| (format!("p{index}"), json!({"type":["string","null"]})))
+            .collect::<serde_json::Map<_, _>>();
+        assert!(claude_strict_schema(&json!({"type":"object","properties":many_unions})).is_none());
     }
 }
