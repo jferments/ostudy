@@ -41,7 +41,7 @@ use crate::{
 };
 
 mod gaps;
-mod ownership;
+pub(crate) mod ownership;
 mod partition_checkpoints;
 mod preservation;
 

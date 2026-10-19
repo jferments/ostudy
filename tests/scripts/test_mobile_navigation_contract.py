@@ -38,18 +38,15 @@ class MobileNavigationContractTests(unittest.TestCase):
         launch_failure_block = runner.split("if ((launch_ok == 0)); then", 1)[1].split("else", 1)[0]
         self.assertIn("a1_freshLibraryUsesQuietNavigation", launch_failure_block)
 
-    def test_compact_study_guide_search_resets_desktop_flex_bases(self) -> None:
+    def test_study_guide_search_can_shrink_on_compact_screens(self) -> None:
         source = (ROOT / "src/screens/documents/presentation.ts").read_text()
         match = re.search(r"export const guideLibraryStyles = (\{.*?\}) as const;", source, re.S)
         self.assertIsNotNone(match)
-        recipe = json.loads(match.group(1))["search"]
-        for utility in (
-            "tw:min-w-0", "tw:flex-wrap", "tw:max-sm:w-full", "tw:max-sm:flex-[0_1_auto]",
-            "tw:max-sm:[&>label]:w-full", "tw:max-sm:[&>label]:max-w-none",
-            "tw:max-sm:[&>label]:flex-[0_1_auto]",
-        ):
-            self.assertIn(utility, recipe.split())
-
+        styles = json.loads(match.group(1))
+        for utility in ("tw:min-w-0", "tw:flex-[1_1_14rem]"):
+            self.assertIn(utility, styles["search"].split())
+        for utility in ("tw:min-w-0", "tw:flex-wrap"):
+            self.assertIn(utility, styles["toolbar"].split())
 
 if __name__ == "__main__":
     unittest.main()

@@ -59,6 +59,7 @@ export interface NativeCommandGatewayMap {
   "cancel_document_study_guide_generation": readonly [typeof GatewayModule34.cancelDocumentStudyGuideGeneration];
   "cancel_learning_task": readonly [typeof GatewayModule22.cancelLearningTask];
   "cancel_study_target_bundle": readonly [typeof GatewayModule35.cancelStudyTargetBundle];
+  "cancel_subject_course_writing": readonly [typeof GatewayModule23.cancelSubjectCourseWriting];
   "change_tutor_memory": readonly [typeof GatewayModule39.changeTutorMemory];
   "check_practice_question_answer": readonly [typeof GatewayModule29.checkPracticeQuestionAnswer];
   "clear_ai_provider_credential": readonly [typeof GatewayModule0.clearAiProviderCredential];
@@ -283,6 +284,7 @@ export interface NativeCommandGatewayMap {
   "update_device_sync_name": readonly [typeof GatewayModule10.updateDeviceSyncName];
   "update_document_collection": readonly [typeof GatewayModule7.updateDocumentCollection];
   "update_tutor_project": readonly [typeof GatewayModule38.updateTutorProject];
+  "write_subject_course": readonly [typeof GatewayModule23.writeSubjectCourse];
 }
 
 export type NativeCommandName = keyof NativeCommandGatewayMap;

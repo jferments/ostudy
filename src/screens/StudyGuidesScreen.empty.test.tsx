@@ -38,7 +38,7 @@ describe("Study Guides empty library", () => {
     );
 
     expect(await screen.findByText("No study guides yet")).toBeTruthy();
-    expect(screen.getByText(/Generate a guide from Documents/u)).toBeTruthy();
+    expect(screen.getByText(/Make guides from Documents/u)).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Study Guides pages" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
     expect(studyGuides.listStudyGuidePage).toHaveBeenCalledWith({

@@ -1,26 +1,38 @@
 //! Writing lessons and their revisions.
 //!
-//! Lesson authoring from a subject's knowledge comes in a later change and is
-//! the first production caller; until then these writers serve the tests and
-//! the hand-written fixture lesson.
+//! A course written with AI is saved whole by `create_generated_course`. The
+//! hand-written writers serve the tests and the fixture lesson until lessons
+//! can be edited in the app.
 
 use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::{
     content::{canonical_json, LessonContent, ValidatedLesson},
-    require_lesson, require_subject, summary, LessonSummaryDto,
+    require_subject,
 };
+#[cfg(test)]
+use super::{require_lesson, summary, LessonSummaryDto};
 use crate::{error::CommandError, util::generate_id};
 
 /// A course holds at most this many lessons.
 pub(crate) const MAX_LESSONS_PER_SUBJECT: i64 = 200;
 const ORDER_STEP: i64 = 1_000;
 
+/// How a revision came to be: written by hand, or by AI with a record of
+/// the request that wrote it.
+pub(crate) enum Origin<'a> {
+    #[cfg(test)]
+    Authored,
+    Generated(&'a Value),
+}
+
 /// Adds a lesson at the end of the subject's course with `content` as its
 /// first revision.
+#[cfg(test)]
 pub(crate) fn create_authored_lesson(
     connection: &mut Connection,
     subject_id: &str,
@@ -32,7 +44,77 @@ pub(crate) fn create_authored_lesson(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     require_subject(&transaction, subject_id)?;
-    let (count, last_order): (i64, Option<i64>) = transaction
+    let id = insert_lesson(&transaction, subject_id, &validated, Origin::Authored, now)?;
+    let lesson = summary(&transaction, &id)?;
+    transaction.commit().map_err(CommandError::database)?;
+    Ok(lesson)
+}
+
+/// Saves a whole course written with AI, in order, or nothing. A subject
+/// that already has lessons is left as it is, so writing a course twice
+/// cannot add a second copy.
+pub(crate) fn create_generated_course(
+    connection: &mut Connection,
+    subject_id: &str,
+    lessons: &[(LessonContent, Value)],
+    now: i64,
+) -> Result<Vec<String>, CommandError> {
+    let validated = lessons
+        .iter()
+        .map(|(content, provenance)| {
+            ValidatedLesson::validate(content.clone()).map(|lesson| (lesson, provenance))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
+    require_subject(&transaction, subject_id)?;
+    ensure_course_empty(&transaction, subject_id)?;
+    let ids = validated
+        .iter()
+        .map(|(lesson, provenance)| {
+            insert_lesson(
+                &transaction,
+                subject_id,
+                lesson,
+                Origin::Generated(provenance),
+                now,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    transaction.commit().map_err(CommandError::database)?;
+    Ok(ids)
+}
+
+/// Refuses when the subject's course already has lessons.
+pub(crate) fn ensure_course_empty(
+    connection: &Connection,
+    subject_id: &str,
+) -> Result<(), CommandError> {
+    let existing: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM lessons WHERE subject_id = ?1",
+            [subject_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if existing > 0 {
+        return Err(CommandError::new(
+            "lesson_course_exists",
+            "This subject already has lessons.",
+        ));
+    }
+    Ok(())
+}
+
+fn insert_lesson(
+    connection: &Connection,
+    subject_id: &str,
+    validated: &ValidatedLesson,
+    origin: Origin<'_>,
+    now: i64,
+) -> Result<String, CommandError> {
+    let (count, last_order): (i64, Option<i64>) = connection
         .query_row(
             "SELECT COUNT(*), MAX(sort_order) FROM lessons WHERE subject_id = ?1",
             [subject_id],
@@ -45,9 +127,9 @@ pub(crate) fn create_authored_lesson(
             format!("A subject can hold up to {MAX_LESSONS_PER_SUBJECT} lessons."),
         ));
     }
-    let id = generate_id(&transaction)?;
+    let id = generate_id(connection)?;
     let sort_order = last_order.map_or(Some(ORDER_STEP), |last| last.checked_add(ORDER_STEP));
-    transaction
+    connection
         .execute(
             "INSERT INTO lessons(id, subject_id, sort_order, title, revision, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
@@ -63,14 +145,13 @@ pub(crate) fn create_authored_lesson(
             ],
         )
         .map_err(CommandError::database)?;
-    write_revision(&transaction, &id, &validated, now)?;
-    let lesson = summary(&transaction, &id)?;
-    transaction.commit().map_err(CommandError::database)?;
-    Ok(lesson)
+    write_revision(connection, &id, validated, origin, now)?;
+    Ok(id)
 }
 
 /// Adds `content` as the lesson's next revision. The same content as the
 /// latest revision adds nothing, so a repeated request changes nothing.
+#[cfg(test)]
 pub(crate) fn add_authored_revision(
     connection: &mut Connection,
     lesson_id: &str,
@@ -82,7 +163,7 @@ pub(crate) fn add_authored_revision(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     require_lesson(&transaction, lesson_id)?;
-    if write_revision(&transaction, lesson_id, &validated, now)? {
+    if write_revision(&transaction, lesson_id, &validated, Origin::Authored, now)? {
         let created_at: i64 = transaction
             .query_row(
                 "SELECT created_at FROM lessons WHERE id = ?1",
@@ -109,8 +190,17 @@ fn write_revision(
     connection: &Connection,
     lesson_id: &str,
     validated: &ValidatedLesson,
+    origin: Origin<'_>,
     now: i64,
 ) -> Result<bool, CommandError> {
+    let (origin, provenance) = match origin {
+        #[cfg(test)]
+        Origin::Authored => ("authored", None),
+        Origin::Generated(provenance) => (
+            "generated",
+            Some(serde_json::to_string(provenance).map_err(CommandError::serialization)?),
+        ),
+    };
     let json = canonical_json(&validated.content)?;
     let content_hash = format!("{:x}", Sha256::digest(json.as_bytes()));
     let latest: Option<(i64, String, String)> = connection
@@ -122,10 +212,9 @@ fn write_revision(
         )
         .optional()
         .map_err(CommandError::database)?;
-    if latest
-        .as_ref()
-        .is_some_and(|(_, origin, hash)| origin == "authored" && *hash == content_hash)
-    {
+    if latest.as_ref().is_some_and(|(_, latest_origin, hash)| {
+        origin == "authored" && latest_origin == "authored" && *hash == content_hash
+    }) {
         return Ok(false);
     }
     let revision_number = latest.map_or(1, |(number, _, _)| number + 1);
@@ -134,8 +223,16 @@ fn write_revision(
             "INSERT INTO lesson_revisions(
                  lesson_id, revision_number, origin, content_json, content_hash,
                  provenance_json, created_at
-             ) VALUES (?1, ?2, 'authored', ?3, ?4, NULL, ?5)",
-            params![lesson_id, revision_number, json, content_hash, now],
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                lesson_id,
+                revision_number,
+                origin,
+                json,
+                content_hash,
+                provenance,
+                now
+            ],
         )
         .map_err(CommandError::database)?;
     // Every knowledge unit the lesson explains, once each.

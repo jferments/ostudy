@@ -23,10 +23,10 @@ use crate::{
     util::{unix_time_millis, validate_entity_id},
 };
 
-mod content;
-
-#[cfg(test)]
 pub(crate) mod authoring;
+pub(crate) mod content;
+pub(crate) mod writing;
+
 #[cfg(test)]
 pub(crate) mod fixture;
 #[cfg(test)]

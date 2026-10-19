@@ -298,6 +298,7 @@ fn document_authoring_observer_stage_matches_original_request_owners() {
         ("flashcards.rs", Kind::Flashcards),
         ("study_guide.rs", Kind::GuideSection),
         ("curation.rs", Kind::CurationSelection),
+        ("lesson.rs", Kind::Lesson),
     ] {
         assert_eq!(generation::stage(file), kind.stage());
     }
