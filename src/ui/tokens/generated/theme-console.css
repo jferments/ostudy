@@ -25,6 +25,12 @@
     --ostudy-color-confidence-on: #03100A;
     --ostudy-color-focus-ring: var(--ostudy-color-accent-base);
     --ostudy-color-highlight: rgb(242 193 78 / 22%);
+    --ostudy-color-navigation-base: #0A130D;
+    --ostudy-color-navigation-border: var(--ostudy-color-border-subtle);
+    --ostudy-color-navigation-hover: #12201A;
+    --ostudy-color-navigation-selected: #163322;
+    --ostudy-color-navigation-selected-text: var(--ostudy-color-text-accent);
+    --ostudy-color-navigation-text: #8FB89A;
     --ostudy-color-overlay-scrim: rgb(0 0 0 / 78%);
     --ostudy-color-page: #0D1610;
     --ostudy-color-page-ink: #A4CCAF;

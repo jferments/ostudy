@@ -425,7 +425,7 @@ def show_workbench_tree(ctx: Context) -> None:
             return
         close_editor = (
             f"{workbench}//*[@data-testid='workbench-editor']"
-            "//button[normalize-space(.)='Cancel' or normalize-space(.)='Close']"
+            "//button[normalize-space(.)='Cancel' or @aria-label='Close editor' or normalize-space(.)='Close']"
         )
         back = f"{workbench}//button[@aria-label='Library']"
         click(ctx, close_editor if exists(ctx, close_editor) else back)
@@ -444,15 +444,15 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
-            # Library opens its last page: the Workbench, or a page with the view switcher.
-            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library']")
+            # Library opens its last page; every page carries Library's tabs.
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages']")
             show_workbench_tree(ctx)
             if section == "decks" and exists(ctx, WORKBENCH):
-                # The Workbench is Library's first page; it has no view switcher.
+                # The Workbench is Library's first page.
                 pass
             else:
                 # Choosing the open view again returns it to its first page.
-                click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
+                click(ctx, f"//main//nav[@aria-label='Library pages']//button[@data-testid='library-view-{section}']")
         else:
             click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
     elif section == "settings" and ctx.layout == "compact":
@@ -755,6 +755,10 @@ def open_card_editor(ctx: Context) -> None:
     open_deck(ctx, seed.DETAIL_DECK)
     question = seed.question_text(seed.note_spec(seed.EDITOR_NOTE))
     if exists(ctx, WORKBENCH):
+        # An editor left open by an earlier capture covers the list; close it first.
+        close_editor = "//main//*[@data-testid='workbench-editor']//button[@aria-label='Close editor']"
+        if exists(ctx, close_editor):
+            click(ctx, close_editor)
         click(ctx, f"//main//*[@data-card-id]//button[contains(normalize-space(.), {xpath_literal(question[:60])})]")
         find(ctx, "//main//*[@data-testid='workbench-editor']//h1[normalize-space(.)='Edit card']")
         find(ctx, "//main//*[@contenteditable='true'][contains(normalize-space(.), 'Heart rate')]")

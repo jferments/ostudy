@@ -66,7 +66,7 @@ describe("AppHeaderBar", () => {
     ).toBeNull();
   });
 
-  it("carries the navigation inside the header on wider screens and below it on a phone", () => {
+  it("carries the navigation inside the side rail on wider screens and below the header on a phone", () => {
     const wide = renderHeader({ width: 1440 });
     expect(within(screen.getByTestId("app-header")).getByRole("navigation", { name: "Main navigation" })).toBeTruthy();
     wide.unmount();
@@ -108,17 +108,22 @@ describe("AppHeaderBar", () => {
     expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-current")).toBeNull();
   });
 
-  it("shows the brand: the lockup on wide screens and phones, the mark alone at medium width", () => {
-    const wide = renderHeader({ width: 1440 });
-    expect(wide.container.querySelector('[data-artwork-slot="brand.logo.sidebar"]')).not.toBeNull();
-    wide.unmount();
-
-    const medium = renderHeader({ width: 1000 });
-    expect(medium.container.querySelector('[data-artwork-slot="brand.logo.sidebar"]')).toBeNull();
-    expect(medium.container.querySelector('[data-artwork-slot="brand.logo.compact"]')).not.toBeNull();
-    medium.unmount();
+  it("shows the brand: the raccoon alone in the side rail, the lockup on a phone", () => {
+    for (const width of [1440, 1000]) {
+      const view = renderHeader({ width });
+      expect(view.container.querySelector('[data-artwork-slot="brand.logo.sidebar"]')).toBeNull();
+      expect(view.container.querySelector('[data-artwork-slot="brand.logo.compact"]')).not.toBeNull();
+      view.unmount();
+    }
 
     const phone = renderHeader({ width: 390 });
     expect(phone.container.querySelector('[data-artwork-slot="brand.logo.sidebar"]')).not.toBeNull();
+  });
+
+  it("labels Search and Settings in the side rail", () => {
+    renderHeader({ width: 1000 });
+    const header = screen.getByTestId("app-header");
+    expect(within(header).getByTestId("app-search").textContent).toBe("Search");
+    expect(within(header).getByTestId("app-settings").textContent).toBe("Settings");
   });
 });
