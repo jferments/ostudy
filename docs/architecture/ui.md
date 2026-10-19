@@ -140,7 +140,7 @@ Interface/card font and scale preferences remain independent. Current React appe
 
 ## Responsive and accessible presentation
 
-Wide and medium widths put the brand, the five labeled destinations, Search and Settings in one header (at large interface scales the destinations move to a second header row); compact keeps the brand, the page title, Search and Settings in a top bar and the five destinations in a bottom bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
+Wide and medium widths draw the header as a side rail on the left, in its own `navigation` colour (grey on the light theme, a step darker than the content on the dark ones): the raccoon mark, the five labeled destinations, then Search and Settings at the bottom; compact keeps the brand, the page title, Search and Settings in a top bar and the five destinations in a bottom bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
 
 Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion and artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress. Surfaces are flat and opaque in every theme, so nothing depends on blur or translucency; the stored material preference is kept for settings compatibility but is no longer shown or styled. Educational images and functional status/icons are not decorative artwork.
 

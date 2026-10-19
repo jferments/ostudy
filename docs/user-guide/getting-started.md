@@ -4,7 +4,7 @@ ostudy keeps your study library on your device. You can create cards, organize d
 
 ## Find your way around
 
-The main navigation has five destinations: **Home**, **Library**, **Review**, **Tutor**, and **Progress**. On a wide or medium window they sit in the header beside **Search** and the **Settings** gear. On a phone they are in the bottom bar, and the top bar keeps Search and Settings. There is no separate mobile More menu.
+The main navigation has five destinations: **Home**, **Library**, **Review**, **Tutor**, and **Progress**. On a wide or medium window they sit in a rail down the left side, with **Search** and **Settings** at its bottom. On a phone they are in the bottom bar, and the top bar keeps Search and Settings. There is no separate mobile More menu.
 
 **Home** opens first. It shows how many cards are due today with **Start review**, then your subjects: each subject's tile shows what is due, its sources and cards, and opens the subject's page. A subject's page has its own **Review** for what is due in it, **Manage**, which opens Library with only that subject, the overview guide across its sources, its sources and how far each has been prepared, and its decks. **Library** opens the **Workbench**, where you browse, search, edit, and organize cards; **Documents** and **Study guides** are pages linked from it. **Review** lists what is due today by subject, with a **Start** for each and **Choose decks** for a custom practice. **Progress** shows your study activity, review outcomes, and workload.
 

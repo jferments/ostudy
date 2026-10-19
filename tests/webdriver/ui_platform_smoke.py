@@ -375,7 +375,7 @@ def assert_viewport_consumption(
         const routeLayer = main?.firstElementChild;
         const route = routeSelector ? routeLayer?.querySelector(routeSelector) : null;
         const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null;
-        // Wider screens stack the header above main; a phone's header is fixed over the padding.
+        // Wider screens put the header beside main as a side rail; a phone's header is fixed over the padding.
         const header = shell?.querySelector(":scope > header[data-slot='app-header']");
         const headerInFlow = header instanceof HTMLElement && getComputedStyle(header).position !== "fixed";
         const contentBox = main instanceof HTMLElement ? {
@@ -403,7 +403,7 @@ def assert_viewport_consumption(
           shellPaddingBottom: Number.parseFloat(shellStyle?.paddingBottom || "0") || 0,
           shellPaddingRight: Number.parseFloat(shellStyle?.paddingRight || "0") || 0,
           shellPaddingLeft: Number.parseFloat(shellStyle?.paddingLeft || "0") || 0,
-          headerBottom: headerInFlow ? header.getBoundingClientRect().bottom : null,
+          headerRight: headerInFlow ? header.getBoundingClientRect().right : null,
           contentBox,
           shell: rect(shell),
           main: rect(main),
@@ -427,7 +427,7 @@ def assert_viewport_consumption(
     shell_padding_bottom = float(measurements.get("shellPaddingBottom", 0))
     shell_padding_right = float(measurements.get("shellPaddingRight", 0))
     shell_padding_left = float(measurements.get("shellPaddingLeft", 0))
-    header_bottom = measurements.get("headerBottom")
+    header_right = measurements.get("headerRight")
     tolerance = 2
     if (
         abs(float(shell["left"])) > tolerance
@@ -436,15 +436,16 @@ def assert_viewport_consumption(
         or abs(float(shell["bottom"]) - viewport_height) > tolerance
     ):
         raise AssertionError(f"Application shell did not consume {label}: {measurements!r}")
-    # Main starts below an in-flow header, or at the shell's padding when the header is fixed.
-    expected_main_top = (
-        float(header_bottom)
-        if header_bottom is not None
-        else float(shell["top"]) + shell_padding_top
+    # Main starts beside the in-flow side rail, or at the shell's padding when the header is fixed.
+    expected_main_left = (
+        float(header_right)
+        if header_right is not None
+        else float(shell["left"]) + shell_padding_left
     )
+    expected_main_top = float(shell["top"]) + shell_padding_top
     if (
         float(main["width"]) <= 0
-        or abs(float(main["left"]) - (float(shell["left"]) + shell_padding_left)) > tolerance
+        or abs(float(main["left"]) - expected_main_left) > tolerance
         or abs(float(main["right"]) - (float(shell["right"]) - shell_padding_right)) > tolerance
         or abs(float(main["top"]) - expected_main_top) > tolerance
         or abs(float(main["bottom"]) - (float(shell["bottom"]) - shell_padding_bottom)) > tolerance
@@ -523,7 +524,7 @@ def assert_navigation_labels(
 
 
 def assert_shell_placement(session_id: str, layout: str) -> None:
-    """A phone has a bottom bar; wider screens carry the navigation in the header."""
+    """A phone has a bottom bar; wider screens carry the navigation in the header's side rail."""
     placement = execute(
         session_id,
         """
@@ -557,7 +558,7 @@ def assert_shell_placement(session_id: str, layout: str) -> None:
 def assert_brand_and_fresh_font_defaults(
     session_id: str, label: str, *, mark_only: bool = False
 ) -> None:
-    # Medium widths show the raccoon mark alone in the header, without the wordmark.
+    # The side rail on wider screens shows the raccoon mark alone, without the wordmark.
     measurement = execute(
         session_id,
         """
@@ -980,7 +981,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
-    assert_brand_and_fresh_font_defaults(session_id, "wide layout")
+    assert_brand_and_fresh_font_defaults(session_id, "wide layout", mark_only=True)
     assert_utilities_restyle_document_defaults(session_id)
     assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "wide")
     assert_shell_placement(session_id, "wide")
@@ -1103,7 +1104,7 @@ def verify_medium_workbench_layout(session_id: str, deadline: float) -> None:
     )
     if not isinstance(navigation, dict):
         raise AssertionError(f"Could not measure medium navigation: {navigation!r}")
-    # Medium widths keep the labeled top bar rather than collapsing to icons.
+    # Medium widths keep labels under the rail icons rather than icons alone.
     if navigation.get("visibleLabels") != MAIN_NAVIGATION_LABELS or navigation.get("clipped"):
         raise AssertionError(f"Medium navigation labels are not all visible: {navigation!r}")
     assert_no_horizontal_overflow(session_id, "medium Workbench")
@@ -1368,9 +1369,9 @@ def main() -> int:
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
             "Native UI platform smoke passed: fresh-library Home; the same five destinations in the "
-            "phone bottom bar and the labeled medium and wide header, with Search and Settings in the header; "
+            "phone bottom bar and the labeled medium and wide side rail, with Search and Settings in it; "
             "Library's Workbench, Documents and Study guides pages; Review; "
-            "compact, labeled medium, and wide branding; "
+            "compact lockup and side-rail mark branding; "
             "fresh-profile IBM Plex interface/card defaults; "
             "the Workbench's tree and card panes; responsive deck header actions; "
             "deck-scoped authoring; no horizontal overflow; "

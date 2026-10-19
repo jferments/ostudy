@@ -48,18 +48,18 @@ class Phase8NativeSelectorTests(unittest.TestCase):
 
 class Phase8ViewportTests(unittest.TestCase):
     def setUp(self):
-        # Desktop main below the in-flow header, with a 1px border: the route fills its
+        # Desktop main beside the in-flow side rail, with a 1px border: the route fills its
         # usable client area.
         self.measurement = {
             "viewportWidth": 1280, "viewportHeight": 800,
             "shellPaddingTop": 0, "shellPaddingBottom": 0, "shellPaddingRight": 0,
-            "shellPaddingLeft": 0, "headerBottom": 76,
+            "shellPaddingLeft": 0, "headerRight": 88,
             "shell": {"left": 0, "top": 0, "right": 1280, "bottom": 800},
-            "main": {"left": 0, "top": 76, "right": 1280, "bottom": 800,
-                     "width": 1280, "height": 724},
-            "contentBox": {"left": 1, "top": 77, "width": 1278, "height": 722},
-            "routeLayer": {"left": 1, "top": 77, "width": 1278, "height": 722},
-            "route": {"width": 1278, "height": 722},
+            "main": {"left": 88, "top": 0, "right": 1280, "bottom": 800,
+                     "width": 1192, "height": 800},
+            "contentBox": {"left": 89, "top": 1, "width": 1190, "height": 798},
+            "routeLayer": {"left": 89, "top": 1, "width": 1190, "height": 798},
+            "route": {"width": 1190, "height": 798},
         }
 
     def check(self, measurement):
@@ -68,12 +68,12 @@ class Phase8ViewportTests(unittest.TestCase):
             ui.assert_viewport_consumption("session", "desktop", "[data-testid='library']")
             overflow.assert_called_once_with("session", "desktop")
 
-    def test_main_fills_the_space_below_the_header(self):
+    def test_main_fills_the_space_beside_the_side_rail(self):
         self.check(self.measurement)
 
-    def test_main_cannot_slide_under_the_header(self):
+    def test_main_cannot_slide_under_the_side_rail(self):
         measurement = copy.deepcopy(self.measurement)
-        measurement["main"]["top"] = 0
+        measurement["main"]["left"] = 0
         with self.assertRaisesRegex(AssertionError, "Main route layer"):
             self.check(measurement)
 
@@ -82,7 +82,7 @@ class Phase8ViewportTests(unittest.TestCase):
         measurement = copy.deepcopy(self.measurement)
         measurement.update({
             "viewportWidth": 390, "viewportHeight": 700,
-            "shellPaddingTop": 56, "shellPaddingBottom": 73, "headerBottom": None,
+            "shellPaddingTop": 56, "shellPaddingBottom": 73, "headerRight": None,
             "shell": {"left": 0, "top": 0, "right": 390, "bottom": 700},
             "main": {"left": 0, "top": 56, "right": 390, "bottom": 627,
                      "width": 390, "height": 571},

@@ -314,7 +314,7 @@ def main() -> int:
         assert_search_list(session_id, question, deadline)
         tutor_smoke.verify_tutor_and_contextual_return(session_id, deck_name)
         print(
-            "Native Workbench card-list smoke passed: 928px header navigation labels fit; the tree "
+            "Native Workbench card-list smoke passed: 928px side rail navigation labels fit; the tree "
             "and card list sit side by side; a card opens in place of the list; search ranks by "
             "relevance with one icon/input surface."
         )
