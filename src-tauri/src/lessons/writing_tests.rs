@@ -121,11 +121,18 @@ fn lesson_answer() -> String {
     .to_string()
 }
 
+/// The collection fixture gives every test the same subject id, and one
+/// writer runs per subject, so tests that write a course take turns.
+static WRITING: Mutex<()> = Mutex::new(());
+
 fn write(
     database: &Database,
     subject_id: &str,
     operation_id: &str,
 ) -> Result<SubjectLessonsDto, CommandError> {
+    let _turn = WRITING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     tauri::async_runtime::block_on(write_course(
         database,
         &runtime(),
@@ -300,4 +307,29 @@ fn one_writer_per_subject_and_stopping_an_unknown_run_says_so() {
         .code,
         "lesson_writing_not_running"
     );
+}
+
+#[test]
+fn every_lesson_sees_the_whole_course_with_itself_marked() {
+    let window = |title: &str, context: String| CollectionGuideWindow {
+        block_key: title.to_string(),
+        title: title.to_string(),
+        topic_ids: Vec::new(),
+        topic_context: context,
+        catalog: crate::knowledge::authoring::tests::catalog_fixture(),
+    };
+    let windows = vec![
+        window("First part", "Heart rate".to_string()),
+        window(
+            "Second part",
+            format!("Long   context\n{}", "x".repeat(500)),
+        ),
+    ];
+    let outline = course_outline(&windows, 1);
+    let lines = outline.lines().collect::<Vec<_>>();
+    assert_eq!(lines, [lines[0], lines[1]]);
+    assert_eq!(lines[0], "1. First part: Heart rate");
+    assert!(lines[1].starts_with("2. Second part: Long context x"));
+    assert!(lines[1].ends_with("<- this lesson"));
+    assert!(lines[1].len() < 300);
 }

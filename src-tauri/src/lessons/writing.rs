@@ -41,6 +41,8 @@ use crate::{
 };
 
 const PURPOSE: &str = "lesson_authoring";
+/// How much of each part's concepts the course outline shows.
+const OUTLINE_CONTEXT_CHARS: usize = 200;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -152,6 +154,7 @@ async fn write_lessons(
         subject_title: &subject_title,
         view: &view,
         operation_id: &input.operation_id,
+        windows: &windows,
         signal,
     };
     let parallelism = document_request_parallelism(&task.network_scope).clamp(1, windows.len());
@@ -162,8 +165,7 @@ async fn write_lessons(
         parallelism,
         |index| {
             let course = &course;
-            let window = &windows[index];
-            async move { (index, course.write(window).await) }
+            async move { (index, course.write(index).await) }
         },
         |(index, result)| {
             Ok::<_, CommandError>(match result {
@@ -214,14 +216,13 @@ struct CourseRequest<'a> {
     subject_title: &'a str,
     view: &'a CollectionViewState,
     operation_id: &'a str,
+    windows: &'a [CollectionGuideWindow],
     signal: &'a CancellationSignal,
 }
 
 impl CourseRequest<'_> {
-    async fn write(
-        &self,
-        window: &CollectionGuideWindow,
-    ) -> Result<(LessonContent, Value), CommandError> {
+    async fn write(&self, index: usize) -> Result<(LessonContent, Value), CommandError> {
+        let window = &self.windows[index];
         ensure_running(self.signal)?;
         self.task.ensure_current(self.database)?;
         let catalog = window.catalog.fingerprint()?;
@@ -231,6 +232,7 @@ impl CourseRequest<'_> {
             Sha256::digest(format!("lesson|{}|{catalog}", window.block_key).as_bytes())
         ));
         let relationships = relationship_context(self.view, &window.topic_ids);
+        let outline = course_outline(self.windows, index);
         let lesson = generate_lesson(
             self.runtime,
             &task,
@@ -239,6 +241,7 @@ impl CourseRequest<'_> {
                 topic_title: &window.title,
                 topic_summary: &window.topic_context,
                 relationship_context: &relationships,
+                course_outline: &outline,
                 knowledge: &window.catalog,
             },
             self.signal,
@@ -258,6 +261,33 @@ impl CourseRequest<'_> {
         });
         Ok((lesson, provenance))
     }
+}
+
+/// Each lesson's title and the start of what its part covers, one per line,
+/// with the lesson being written marked.
+fn course_outline(windows: &[CollectionGuideWindow], current: usize) -> String {
+    windows
+        .iter()
+        .enumerate()
+        .map(|(index, window)| {
+            let covers = window
+                .topic_context
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let covers = covers
+                .chars()
+                .take(OUTLINE_CONTEXT_CHARS)
+                .collect::<String>();
+            let marker = if index == current {
+                " <- this lesson"
+            } else {
+                ""
+            };
+            format!("{}. {}: {covers}{marker}", index + 1, window.title)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn ensure_running(signal: &CancellationSignal) -> Result<(), CommandError> {
