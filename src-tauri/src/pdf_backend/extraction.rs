@@ -18,6 +18,7 @@ use super::contracts::{
     PdfBackendError, PdfBackendErrorKind, SemanticBBox,
 };
 use super::quality::is_undecodable_noise;
+use super::ruled_tables::rebuild_ruled_tables;
 
 const MAX_PARENT_HEADING_CHARS: usize = 1_000;
 const MAX_HEADING_PATH_ITEMS: usize = 32;
@@ -55,7 +56,10 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     let (pages, native_text_failed_pages) = extract_page_texts(source_path, &document, page_count)?;
     let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
     let (elements, semantic_analysis_degraded) = match partitioned {
-        Ok(elements) => (drop_shadow_tables(drop_undecodable_noise(elements)), false),
+        Ok(elements) => {
+            let elements = drop_shadow_tables(drop_undecodable_noise(elements));
+            (rebuild_ruled_tables(&document, page_count, elements), false)
+        }
         Err(error) => {
             crate::logging::info(
                 "pdf_semantic_analysis_native_fallback",
