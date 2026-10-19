@@ -17,6 +17,7 @@ use super::contracts::{
     ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage,
     PdfBackendError, PdfBackendErrorKind, SemanticBBox,
 };
+use super::quality::is_undecodable_noise;
 
 const MAX_PARENT_HEADING_CHARS: usize = 1_000;
 const MAX_HEADING_PATH_ITEMS: usize = 32;
@@ -54,7 +55,7 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
     let (pages, native_text_failed_pages) = extract_page_texts(source_path, &document, page_count)?;
     let partitioned = document.partition_with_profile(ExtractionProfile::Rag);
     let (elements, semantic_analysis_degraded) = match partitioned {
-        Ok(elements) => (drop_shadow_tables(elements), false),
+        Ok(elements) => (drop_shadow_tables(drop_undecodable_noise(elements)), false),
         Err(error) => {
             crate::logging::info(
                 "pdf_semantic_analysis_native_fallback",
@@ -297,6 +298,39 @@ fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {
     }
 }
 
+// Figure labels set in a font that cannot be decoded come out as runs of
+// replacement and control characters. They carry nothing to read, and left in
+// place they would mark the whole page as damaged and send it to the raw-text
+// fallback, which throws away every heading and paragraph on it.
+fn drop_undecodable_noise(elements: Vec<Element>) -> Vec<Element> {
+    let before = elements.len();
+    let mut kept = elements
+        .into_iter()
+        .filter(|element| !is_undecodable_noise(&element.display_text()))
+        .collect::<Vec<_>>();
+    if kept.len() == before {
+        return kept;
+    }
+    for element in &mut kept {
+        let metadata = element.metadata_mut();
+        if metadata
+            .parent_heading
+            .as_deref()
+            .is_some_and(is_undecodable_noise)
+        {
+            metadata.parent_heading = None;
+        }
+        metadata
+            .heading_path
+            .retain(|heading| !is_undecodable_noise(heading));
+    }
+    crate::logging::info(
+        "pdf_undecodable_elements_dropped",
+        format!("count={}", before - kept.len()),
+    );
+    kept
+}
+
 fn drop_shadow_tables(elements: Vec<Element>) -> Vec<Element> {
     let shadows = elements
         .iter()
@@ -448,6 +482,52 @@ fn bounded_text(value: &str, maximum: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxidize_pdf::pipeline::{ElementData, ElementMetadata};
+
+    fn element(kind: fn(ElementData) -> Element, text: &str, heading: Option<&str>) -> Element {
+        kind(ElementData {
+            text: text.to_string(),
+            metadata: ElementMetadata {
+                parent_heading: heading.map(str::to_string),
+                heading_path: heading.map(str::to_string).into_iter().collect(),
+                ..ElementMetadata::default()
+            },
+        })
+    }
+
+    #[test]
+    fn undecodable_figure_labels_are_dropped_with_their_headings() {
+        let label = "\u{8f}\n \u{ad}\u{fffd}\n\r \u{fffd}\u{fffd}";
+        let kept = drop_undecodable_noise(vec![
+            element(
+                Element::Paragraph,
+                "The trachea divides at the carina.",
+                None,
+            ),
+            element(Element::Title, label, None),
+            element(
+                Element::Paragraph,
+                "Each main bronchus enters a lung.",
+                Some(label),
+            ),
+            element(Element::Paragraph, "Lobar bronchi follow.", Some("Bronchi")),
+        ]);
+        let texts = kept.iter().map(Element::display_text).collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            vec![
+                "The trachea divides at the carina.",
+                "Each main bronchus enters a lung.",
+                "Lobar bronchi follow.",
+            ]
+        );
+        assert_eq!(kept[1].metadata().parent_heading, None);
+        assert!(kept[1].metadata().heading_path.is_empty());
+        assert_eq!(
+            kept[2].metadata().parent_heading.as_deref(),
+            Some("Bronchi")
+        );
+    }
 
     #[test]
     fn worker_memory_estimate_remains_conservative() {
