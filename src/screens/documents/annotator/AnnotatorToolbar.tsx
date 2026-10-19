@@ -22,6 +22,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   pen: { label: "Pen", icon: "pen", shortcut: "P" },
   highlighter: { label: "Highlighter", icon: "highlighter", shortcut: "H" },
   text: { label: "Text", icon: "text", shortcut: "T" },
+  sticky: { label: "Sticky note", icon: "sticky-note", shortcut: "S" },
   line: { label: "Line", icon: "shape-line", shortcut: "L" },
   arrow: { label: "Arrow", icon: "shape-arrow", shortcut: "A" },
   rectangle: { label: "Box", icon: "shape-rectangle", shortcut: "R" },
@@ -29,7 +30,8 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
 };
 
-const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "pen", "highlighter", "text"];
+const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "pen", "highlighter"];
+const NOTE_TOOLS: readonly AnnotatorTool[] = ["text", "sticky"];
 
 interface AnnotatorToolbarProps {
   compact: boolean;
@@ -37,11 +39,13 @@ interface AnnotatorToolbarProps {
   tool: AnnotatorTool;
   /** The shape the compact Shapes menu shows when no shape tool is active. */
   lastShape: ShapeTool;
+  /** The note tool the compact Notes menu shows when neither note tool is active. */
+  lastNote: "text" | "sticky";
   onTool: (tool: AnnotatorTool) => void;
   /** The style the color and size choices change: the selection's, or the tool's. */
   style: { family: StyleFamily; style: ToolStyle } | null;
   onStyle: (patch: Partial<ToolStyle>) => void;
-  selection: { isText: boolean } | null;
+  selection: { isText: boolean; isSticky: boolean } | null;
   onDeleteSelection: () => void;
   onEditSelection: () => void;
   canUndo: boolean;
@@ -64,7 +68,7 @@ interface AnnotatorToolbarProps {
 /**
  * Tools, undo and zoom on the first row; the color and size of what is drawn
  * next (or of the selected annotation) on the second. A phone keeps each row
- * within one screen width: the shape tools and zoom fold into menus, undo moves
+ * within one screen width: the note tools, shape tools and zoom fold into menus, undo moves
  * to the second row, and color and size open in a sheet.
  */
 export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
@@ -77,6 +81,8 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
     </ToolbarAction>
   );
   const shownShape = shapeActive ? tool : props.lastShape;
+  const noteActive = NOTE_TOOLS.includes(tool);
+  const shownNote = noteActive ? tool : props.lastNote;
   const history = [
     <ToolbarAction key="undo" label="Undo" disabled={!props.canUndo} aria-keyshortcuts="Control+Z Meta+Z" onClick={props.onUndo}>
       <Icon name="undo" />
@@ -97,6 +103,17 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
         <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-nowrap tw:gap-3 tw:compact:gap-1">
           <ToolbarGroup label="Tools" className="tw:flex-nowrap">
             {MAIN_TOOLS.map(toolButton)}
+            {compact ? (
+              <OverflowMenu
+                label={noteActive ? `Notes: ${TOOLS[tool].label}` : "Notes"}
+                triggerIcon={TOOLS[shownNote].icon}
+                className={cn(noteActive && "tw:border-primary tw:bg-accent tw:text-accent-foreground")}
+                disabled={props.disabled}
+                items={NOTE_TOOLS.map((note) => ({
+                  id: note, label: TOOLS[note].label, onSelect: () => props.onTool(note),
+                }))}
+              />
+            ) : NOTE_TOOLS.map(toolButton)}
             {compact ? (
               <OverflowMenu
                 label={shapeActive ? `Shapes: ${TOOLS[tool].label}` : "Shapes"}
@@ -179,7 +196,7 @@ function sizeActions(style: ActiveStyle, choices: StyleChoices, onStyle: Annotat
   return choices.sizes.map((choice, index) => (
     <ToolbarAction key={choice.size} label={choice.label} pressed={style.style.size === choice.size}
       onClick={() => onStyle({ size: choice.size })}>
-      {style.family === "text" ? (
+      {isLetterFamily(style.family) ? (
         <span aria-hidden="true" className={cn("tw:font-semibold tw:leading-none", LETTER_SIZES[index])}>A</span>
       ) : (
         <span aria-hidden="true" className={cn("tw:rounded-full tw:bg-foreground", DOT_SIZES[index])} />
@@ -188,7 +205,8 @@ function sizeActions(style: ActiveStyle, choices: StyleChoices, onStyle: Annotat
   ));
 }
 
-const sizeGroupLabel = (style: ActiveStyle) => style.family === "text" ? "Text size" : "Line width";
+const isLetterFamily = (family: StyleFamily) => family === "text" || family === "sticky";
+const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "Text size" : "Line width";
 
 /** Always one row high, so the pages never jump when the tool changes. */
 function StyleRow(props: AnnotatorToolbarProps) {
@@ -204,7 +222,9 @@ function StyleRow(props: AnnotatorToolbarProps) {
   const selectionActions = selection ? (
     <ToolbarGroup label="Selection" className="tw:flex-nowrap">
       {selection.isText ? (
-        <ToolbarAction label="Edit text" onClick={onEditSelection}><Icon name="edit" /></ToolbarAction>
+        <ToolbarAction label={selection.isSticky ? "Open note" : "Edit text"} onClick={onEditSelection}>
+          <Icon name="edit" />
+        </ToolbarAction>
       ) : null}
       <ToolbarAction label="Delete" aria-keyshortcuts="Delete Backspace" onClick={onDeleteSelection}
         className="tw:text-destructive">
@@ -252,7 +272,7 @@ function StyleSheetButton({ style, choices, onStyle }: {
     <>
       <ToolbarAction label={summary ? `Color and size: ${summary}` : "Color and size"} aria-haspopup="dialog"
         aria-expanded={open} onClick={() => setOpen(true)}>
-        {style.family === "text" ? (
+        {isLetterFamily(style.family) ? (
           <span aria-hidden="true" className={cn("tw:font-semibold tw:leading-none", LETTER_SIZES[Math.max(0, sizeIndex)])}
             style={{ color: style.style.color }}>A</span>
         ) : (
