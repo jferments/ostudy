@@ -20,7 +20,9 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) use document::{decode_document_output, prepare_document_request};
 pub(crate) use models::{list_models, load_properties};
-pub(crate) use probes::{run_document_schema_probe, run_structured_probe, run_text_probe};
+pub(crate) use probes::{
+    run_document_schema_probe, run_image_probe, run_structured_probe, run_text_probe,
+};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +42,9 @@ pub struct ProviderModel {
     pub owned_by: Option<String>,
     pub context_window_tokens: Option<i64>,
     pub reasoning: Option<ProviderModelReasoning>,
+    /// Whether the provider's catalog declares image input for this model.
+    /// `None` means the catalog says nothing either way.
+    pub image_input: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
