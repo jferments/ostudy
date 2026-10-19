@@ -48,6 +48,8 @@ interface AnnotatorToolbarProps {
   selection: { isText: boolean; isSticky: boolean } | null;
   onDeleteSelection: () => void;
   onEditSelection: () => void;
+  /** Opens a new card made from the selected annotation. */
+  onMakeCard?: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -210,7 +212,7 @@ const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "T
 
 /** Always one row high, so the pages never jump when the tool changes. */
 function StyleRow(props: AnnotatorToolbarProps) {
-  const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, disabled } = props;
+  const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, onMakeCard, disabled } = props;
   const choices = style ? STYLE_CHOICES[style.family] : null;
   if (!choices && !selection) {
     return (
@@ -224,6 +226,11 @@ function StyleRow(props: AnnotatorToolbarProps) {
       {selection.isText ? (
         <ToolbarAction label={selection.isSticky ? "Open note" : "Edit text"} onClick={onEditSelection}>
           <Icon name="edit" />
+        </ToolbarAction>
+      ) : null}
+      {onMakeCard ? (
+        <ToolbarAction label="Make a card" onClick={onMakeCard}>
+          <Icon name="cards" />
         </ToolbarAction>
       ) : null}
       <ToolbarAction label="Delete" aria-keyshortcuts="Delete Backspace" onClick={onDeleteSelection}

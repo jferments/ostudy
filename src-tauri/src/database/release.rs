@@ -27,6 +27,9 @@ mod generation_instructions;
 #[path = "release/lessons.rs"]
 mod lessons;
 
+#[path = "release/note_annotation_sources.rs"]
+mod note_annotation_sources;
+
 #[path = "release/object_delta.rs"]
 mod object_delta;
 
@@ -48,7 +51,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 9;
+pub(crate) const SCHEMA_VERSION: i64 = 10;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -110,6 +113,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "lessons",
         checksum: "781c7040dd19f12cdff7d740338dc55b149293d6dcaf7323aa03b916dd1b591e",
         sql: include_str!("../../schema/0009_lessons.sql"),
+    },
+    ReleaseMigration {
+        version: 10,
+        name: "note_annotation_sources",
+        checksum: "69892f363d21be49cc42612be0efc9e780dd718c72ed8dc4f6e989a0e6423af1",
+        sql: include_str!("../../schema/0010_note_annotation_sources.sql"),
     },
 ];
 
@@ -321,6 +330,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     study_activity::validate_schema(connection, user_version)?;
     document_annotations::validate_schema(connection, user_version)?;
     lessons::validate_schema(connection, user_version)?;
+    note_annotation_sources::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
