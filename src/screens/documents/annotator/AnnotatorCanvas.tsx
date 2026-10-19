@@ -12,11 +12,12 @@ import {
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import { cn } from "../../../ui/internal/cn";
-import { createAnnotationId, type Annotation, type AnnotatorTool } from "./annotationModel";
-import { AnnotatorPage, type PageDraft } from "./AnnotatorPage";
+import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
+import { AnnotatorPage, StickyNoteEditor, type PageDraft } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
+import { createPageTextCache, type PageTextCache } from "./textSelection";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, MIN_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -30,6 +31,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   pen: "tw:cursor-crosshair",
   highlighter: "tw:cursor-crosshair",
   text: "tw:cursor-text",
+  sticky: "tw:cursor-copy",
   line: "tw:cursor-crosshair",
   arrow: "tw:cursor-crosshair",
   rectangle: "tw:cursor-crosshair",
@@ -90,6 +92,15 @@ export function AnnotatorCanvas({
       tileCache.dispose();
     };
   }, [documentId]);
+  const pageText = useRef<PageTextCache | null>(null);
+  useEffect(() => {
+    const cache = createPageTextCache(documentId);
+    pageText.current = cache;
+    return () => {
+      cache.dispose();
+      if (pageText.current === cache) pageText.current = null;
+    };
+  }, [documentId]);
   const [draft, setDraft] = useState<PageDraft | null>(null);
   const [preview, setPreview] = useState<Annotation | null>(null);
   const [erasing, setErasing] = useState<ReadonlyMap<number, ReadonlySet<string>>>(() => new Map());
@@ -101,6 +112,16 @@ export function AnnotatorCanvas({
   const { scale, near, settled } = viewport;
   const latest = useRef({ controller, scale, viewport });
   latest.current = { controller, scale, viewport };
+
+  // The highlighter snaps to text, so it reads the text of the pages near the view.
+  const highlighting = controller.tool === "highlighter";
+  useEffect(() => {
+    if (!highlighting) return;
+    for (const pageNumber of near) {
+      const page = pageSizes.get(pageNumber);
+      if (page) pageText.current?.request(page);
+    }
+  }, [highlighting, near, pageSizes]);
 
   // Page positions only change with scrolling, zoom and resizing.
   useEffect(() => { rects.current = null; }, [scale, near, pages]);
@@ -155,6 +176,7 @@ export function AnnotatorCanvas({
       selected: current.selected,
       annotationsOn: (pageNumber) => current.annotationsRef.current.get(pageNumber) ?? EMPTY,
       textHeight: current.textHeight,
+      pageText: (pageNumber) => pageText.current?.get(pageNumber) ?? null,
       newId: createAnnotationId,
       now: current.now,
     };
@@ -212,7 +234,7 @@ export function AnnotatorCanvas({
           break;
         case "new-text": {
           const size = pageSizes.get(effect.pageNumber);
-          if (size) current.newText(effect.pageNumber, effect.point, size);
+          if (size) current.newText(effect.pageNumber, effect.point, size, effect.sticky);
           break;
         }
         case "scroll-by": {
@@ -308,7 +330,7 @@ export function AnnotatorCanvas({
       <p id={helpId} className="tw:sr-only">
         Choose a tool in the toolbar, then draw on a page. Two fingers scroll and zoom. With the Select tool, Tab
         moves through the annotations on the pages in view, arrow keys move the selected one, Delete removes it and
-        Enter edits a text note. Ctrl+Z undoes.
+        Enter opens a text or sticky note. Ctrl+Z undoes.
       </p>
       <div
         ref={viewportRef}
@@ -364,6 +386,10 @@ export function AnnotatorCanvas({
           })}
         </div>
       </div>
+      {/* Outside the pages, so pointers in the dialog never reach the drawing gestures. */}
+      {controller.editing && isStickyNote(controller.editing.annotation.shape) ? (
+        <StickyNoteEditor editing={controller.editing} onType={controller.typeText} onFinish={controller.finishEditing} />
+      ) : null}
     </>
   );
 }

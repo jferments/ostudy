@@ -13,10 +13,14 @@ export interface InkShape {
 
 export interface HighlightShape {
   kind: "highlight";
-  /** `x, y` pairs. */
+  /** `x, y` pairs of a free stroke; empty for a highlight of the page's text. */
   points: number[];
   color: string;
   strokeWidth: number;
+  /** A text highlight's `x, y, width, height` boxes, one per line it covers. */
+  rects?: number[];
+  /** The words a text highlight covers. */
+  text?: string;
 }
 
 /** A line, or an arrow whose head is at the second point. */
@@ -50,6 +54,8 @@ export interface TextShape {
   text: string;
   color: string;
   fontSize: number;
+  /** A sticky note: a small note of `width` showing the start of its text; `color` is its paper. */
+  sticky?: true;
 }
 
 export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape;
@@ -131,4 +137,22 @@ export async function renderDocumentPageTile(
   tile: DocumentPageTileRequest,
 ): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("render_document_page_tile", { input: { documentId, ...tile } });
+}
+
+/**
+ * A PDF page's characters in reading order. `characters` holds one Unicode
+ * character per four numbers of `boxes` (`x, y, width, height` in points of a
+ * page `width` by `height`); an all-zero box is a space or line break the PDF
+ * only implies.
+ */
+export interface DocumentPageText {
+  pageNumber: number;
+  width: number;
+  height: number;
+  characters: string;
+  boxes: number[];
+}
+
+export async function getDocumentPageText(documentId: string, pageNumber: number): Promise<DocumentPageText> {
+  return invoke<DocumentPageText>("get_document_page_text", { input: { documentId, pageNumber } });
 }
