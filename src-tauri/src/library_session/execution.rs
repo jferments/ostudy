@@ -117,6 +117,7 @@ fn is_control(command: &str) -> bool {
             | "cancel_study_target_bundle"
             | "cancel_document_flashcard_generation"
             | "cancel_document_study_guide_generation"
+            | "cancel_subject_course_writing"
     )
 }
 

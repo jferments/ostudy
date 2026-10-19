@@ -810,7 +810,10 @@ async fn author_collection_guide_window(
     })
 }
 
-fn collection_title(database: &Database, collection_id: &str) -> Result<String, CommandError> {
+pub(crate) fn collection_title(
+    database: &Database,
+    collection_id: &str,
+) -> Result<String, CommandError> {
     database.with_connection(|connection| {
         connection
             .query_row(

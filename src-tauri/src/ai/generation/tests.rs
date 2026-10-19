@@ -200,6 +200,10 @@ fn document_generation_payload_parts_are_content_free_and_owner_stages_are_expli
         stage("src-tauri/src/ai/document_intelligence/study_guide.rs"),
         "guide_authoring"
     );
+    assert_eq!(
+        stage("src-tauri/src/ai/document_intelligence/lesson.rs"),
+        "lesson_authoring"
+    );
     assert_eq!(stage("unrecognized.rs"), "unclassified");
 }
 

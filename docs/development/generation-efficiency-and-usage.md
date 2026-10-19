@@ -52,6 +52,7 @@ Representative stages include:
 - `flashcard_authoring`
 - `flashcard_curation`
 - `guide_authoring`
+- `lesson_authoring`
 - `artifact_metadata`
 - `embedding_indexing`
 - `embedding_query`
