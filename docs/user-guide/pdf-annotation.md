@@ -14,7 +14,7 @@ The pages scroll in one column. **Back to documents** returns to the list, and s
 | --- | --- | --- |
 | Select | V | Tap an annotation to select it, drag it to move it, and drag its handles to reshape it |
 | Pen | P | Handwriting and drawing; a pen with pressure draws thicker when pressed harder |
-| Highlighter | H | A wide, see-through stroke that keeps the text under it readable |
+| Highlighter | H | Drag across the PDF's text to mark whole lines of it; anywhere else, a wide, see-through stroke that keeps the text under it readable |
 | Text | T | Tap where a note should go and type |
 | Line, Arrow, Box, Ellipse | L, A, R, O | Drag from one corner or end to the other |
 | Eraser | E | Drag across annotations to remove each one it touches. A stylus's eraser end, if it has one, erases with any tool |
@@ -24,6 +24,10 @@ The row under the tools sets the color and size of what you draw next. With an a
 Hold Shift while dragging a line or arrow to keep it at a multiple of 45 degrees, or while dragging a box or ellipse to make a square or circle.
 
 **Undo** and **Redo** take back or repeat each stroke, move, restyle or erase while the annotator is open (Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y; Cmd on a Mac keyboard).
+
+## Highlighting text
+
+On a PDF with real text, a highlighter drag that starts on a word marks the text from there to wherever the drag ends, following the lines the way selecting text does, and the highlight keeps the words it covers so a screen reader can read them back. A tap on the text marks nothing. A drag that starts beside the text, a scanned page with no text in it, and the Android app draw an ordinary highlighter stroke instead.
 
 ## Text notes
 
@@ -54,14 +58,14 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 ## Where annotations are kept
 
-Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. Deleting a document deletes its annotations.
+Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations.
 
 Storing annotations needs library schema 8. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 
 ## Not available yet
 
 - Handwriting recognition, and turning handwriting into searchable text.
-- Highlighting that snaps to the PDF's own text lines.
+- Highlighting that snaps to text on Android.
 - Saving or exporting a copy of the PDF with its annotations.
 - Erasing part of a stroke, and selecting several annotations at once.
 - Annotating documents other than PDFs, such as Word or PowerPoint files and image collections.

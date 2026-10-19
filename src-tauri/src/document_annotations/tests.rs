@@ -144,7 +144,13 @@ fn every_kind() -> Vec<AnnotationShape> {
             points: vec![10.0, 12.0, 80.0, 12.5],
             color: "#facc15".into(),
             stroke_width: 12.0,
+            rects: None,
+            text: None,
         }),
+        text_highlight(
+            vec![72.0, 100.0, 200.5, 11.0, 72.0, 113.0, 90.0, 11.0],
+            "cardiac output equals",
+        ),
         AnnotationShape::Line(Segment {
             x1: 0.0,
             y1: 0.0,
@@ -650,4 +656,78 @@ fn page_tiles_draw_only_from_a_stored_pdf() {
             Ok(())
         })
         .unwrap();
+}
+
+fn text_highlight(rects: Vec<f64>, text: &str) -> AnnotationShape {
+    AnnotationShape::Highlight(HighlightStroke {
+        points: Vec::new(),
+        color: "#facc15".into(),
+        stroke_width: 12.0,
+        rects: Some(rects),
+        text: Some(text.into()),
+    })
+}
+
+#[test]
+fn text_highlights_carry_boxes_and_the_words_they_cover() {
+    assert!(text_highlight(vec![1.0, 2.0, 30.0, 10.0], "heart rate")
+        .validate()
+        .is_ok());
+    for bad in [
+        text_highlight(Vec::new(), "heart rate"),
+        text_highlight(vec![1.0, 2.0, 30.0], "heart rate"),
+        text_highlight(vec![1.0, 2.0, 0.0, 10.0], "heart rate"),
+        text_highlight(vec![1.0, 2.0, 30.0, 10.0], "  "),
+        text_highlight(vec![1.0, 2.0, 30.0, 10.0], "heart\nrate"),
+    ] {
+        assert_eq!(
+            bad.validate().unwrap_err().code,
+            "document_annotation_invalid"
+        );
+    }
+    // A highlight is a free stroke or a text highlight, never half of each.
+    let AnnotationShape::Highlight(mut both) = text_highlight(vec![1.0, 2.0, 30.0, 10.0], "rate")
+    else {
+        unreachable!()
+    };
+    both.points = vec![1.0, 2.0, 3.0, 4.0];
+    assert!(AnnotationShape::Highlight(both.clone()).validate().is_err());
+    both.points.clear();
+    both.text = None;
+    assert!(AnnotationShape::Highlight(both).validate().is_err());
+    // A free stroke stores no text fields, so its payload is unchanged.
+    let free = &every_kind()[1];
+    assert!(!free.payload_json().unwrap().contains("rects"));
+}
+
+#[test]
+fn page_text_pairs_each_character_with_its_box() {
+    use crate::pdf_render_backend::{PageCharacter, PageCharacters};
+    let dto = page_text::to_dto(
+        3,
+        PageCharacters {
+            width: 612.0,
+            height: 792.0,
+            characters: vec![
+                PageCharacter {
+                    text: 'é',
+                    bounds: Some([72.004, 100.0, 5.5, 11.0]),
+                },
+                PageCharacter {
+                    text: ' ',
+                    bounds: None,
+                },
+                PageCharacter {
+                    text: '𝑥',
+                    bounds: Some([90.0, 100.0, 6.0, 11.0]),
+                },
+            ],
+        },
+    );
+    assert_eq!(dto.characters.chars().count(), 3);
+    assert_eq!(
+        dto.boxes,
+        vec![72.0, 100.0, 5.5, 11.0, 0.0, 0.0, 0.0, 0.0, 90.0, 100.0, 6.0, 11.0]
+    );
+    assert_eq!((dto.page_number, dto.width), (3, 612.0));
 }
