@@ -390,6 +390,8 @@ pub fn run() {
             document_operations::delete_document,
             document_annotations::get_document_annotations,
             document_annotations::apply_document_annotation_changes,
+            library_session::commands::leased_render_document_page_tile,
+            library_session::commands::leased_get_document_page_text,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::save_lesson_progress,

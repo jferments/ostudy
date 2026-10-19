@@ -144,7 +144,13 @@ fn every_kind() -> Vec<AnnotationShape> {
             points: vec![10.0, 12.0, 80.0, 12.5],
             color: "#facc15".into(),
             stroke_width: 12.0,
+            rects: None,
+            text: None,
         }),
+        text_highlight(
+            vec![72.0, 100.0, 200.5, 11.0, 72.0, 113.0, 90.0, 11.0],
+            "cardiac output equals",
+        ),
         AnnotationShape::Line(Segment {
             x1: 0.0,
             y1: 0.0,
@@ -177,6 +183,16 @@ fn every_kind() -> Vec<AnnotationShape> {
             text: "Mitral valve\n\tcloses first".into(),
             color: "#111111".into(),
             font_size: 12.0,
+            sticky: None,
+        }),
+        AnnotationShape::Text(TextNote {
+            x: 300.0,
+            y: 40.0,
+            width: 120.0,
+            text: "Ask about the second heart sound.\n\nIt splits on inspiration.".into(),
+            color: "#fde047".into(),
+            font_size: 10.0,
+            sticky: Some(true),
         }),
     ]
 }
@@ -265,6 +281,7 @@ fn shapes_outside_their_limits_are_refused() {
             text: text.into(),
             color: "#000000".into(),
             font_size,
+            sticky: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -582,4 +599,171 @@ fn deleting_the_document_removes_its_annotations() {
         })
         .unwrap();
     assert_eq!(remaining, 0);
+}
+
+fn tile_request(page_number: i64, left: u32, width: u32) -> RenderDocumentPageTileInput {
+    RenderDocumentPageTileInput {
+        document_id: DOCUMENT.to_string(),
+        page_number,
+        page_width: 2_000,
+        page_height: 2_600,
+        left,
+        top: 0,
+        width,
+        height: 512,
+    }
+}
+
+#[test]
+fn page_tile_requests_name_a_page_and_a_tile_on_it() {
+    let (page, tile) = page_tiles::validated_request(&tile_request(2, 1_488, 512)).unwrap();
+    assert_eq!(page, 2);
+    assert_eq!(
+        (tile.left, tile.width, tile.page_width),
+        (1_488, 512, 2_000)
+    );
+    assert_eq!(
+        page_tiles::validated_request(&tile_request(0, 0, 512))
+            .unwrap_err()
+            .code,
+        "document_annotation_page_missing"
+    );
+    assert_eq!(
+        page_tiles::validated_request(&tile_request(1, 1_489, 512))
+            .unwrap_err()
+            .code,
+        "document_annotation_invalid"
+    );
+    let mut bad_id = tile_request(1, 0, 512);
+    bad_id.document_id = "../x".to_string();
+    assert!(page_tiles::validated_request(&bad_id).is_err());
+}
+
+#[test]
+fn page_tiles_draw_only_from_a_stored_pdf() {
+    let fixture = fixture("tiles", &[Some((1_020, 1_320))]);
+    fixture
+        .database
+        .with_connection(|connection| {
+            assert!(page_tiles::pdf_source_path(connection, DOCUMENT)?.ends_with(".pdf"));
+            connection
+                .execute(
+                    "UPDATE documents SET source_format = 'docx' WHERE id = ?1",
+                    [OTHER_DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                page_tiles::pdf_source_path(connection, OTHER_DOCUMENT)
+                    .unwrap_err()
+                    .code,
+                "document_annotation_invalid"
+            );
+            assert_eq!(
+                page_tiles::pdf_source_path(connection, "ffffffffffffffffffffffffffffffff")
+                    .unwrap_err()
+                    .code,
+                "document_not_found"
+            );
+            Ok(())
+        })
+        .unwrap();
+}
+
+fn text_highlight(rects: Vec<f64>, text: &str) -> AnnotationShape {
+    AnnotationShape::Highlight(HighlightStroke {
+        points: Vec::new(),
+        color: "#facc15".into(),
+        stroke_width: 12.0,
+        rects: Some(rects),
+        text: Some(text.into()),
+    })
+}
+
+#[test]
+fn text_highlights_carry_boxes_and_the_words_they_cover() {
+    assert!(text_highlight(vec![1.0, 2.0, 30.0, 10.0], "heart rate")
+        .validate()
+        .is_ok());
+    for bad in [
+        text_highlight(Vec::new(), "heart rate"),
+        text_highlight(vec![1.0, 2.0, 30.0], "heart rate"),
+        text_highlight(vec![1.0, 2.0, 0.0, 10.0], "heart rate"),
+        text_highlight(vec![1.0, 2.0, 30.0, 10.0], "  "),
+        text_highlight(vec![1.0, 2.0, 30.0, 10.0], "heart\nrate"),
+    ] {
+        assert_eq!(
+            bad.validate().unwrap_err().code,
+            "document_annotation_invalid"
+        );
+    }
+    // A highlight is a free stroke or a text highlight, never half of each.
+    let AnnotationShape::Highlight(mut both) = text_highlight(vec![1.0, 2.0, 30.0, 10.0], "rate")
+    else {
+        unreachable!()
+    };
+    both.points = vec![1.0, 2.0, 3.0, 4.0];
+    assert!(AnnotationShape::Highlight(both.clone()).validate().is_err());
+    both.points.clear();
+    both.text = None;
+    assert!(AnnotationShape::Highlight(both).validate().is_err());
+    // A free stroke stores no text fields, so its payload is unchanged.
+    let free = &every_kind()[1];
+    assert!(!free.payload_json().unwrap().contains("rects"));
+}
+
+#[test]
+fn page_text_pairs_each_character_with_its_box() {
+    use crate::pdf_render_backend::{PageCharacter, PageCharacters};
+    let dto = page_text::to_dto(
+        3,
+        PageCharacters {
+            width: 612.0,
+            height: 792.0,
+            characters: vec![
+                PageCharacter {
+                    text: 'é',
+                    bounds: Some([72.004, 100.0, 5.5, 11.0]),
+                },
+                PageCharacter {
+                    text: ' ',
+                    bounds: None,
+                },
+                PageCharacter {
+                    text: '𝑥',
+                    bounds: Some([90.0, 100.0, 6.0, 11.0]),
+                },
+            ],
+        },
+    );
+    assert_eq!(dto.characters.chars().count(), 3);
+    assert_eq!(
+        dto.boxes,
+        vec![72.0, 100.0, 5.5, 11.0, 0.0, 0.0, 0.0, 0.0, 90.0, 100.0, 6.0, 11.0]
+    );
+    assert_eq!((dto.page_number, dto.width), (3, 612.0));
+}
+
+#[test]
+fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
+    let note = |text: String, sticky: Option<bool>| {
+        AnnotationShape::Text(TextNote {
+            x: 1.0,
+            y: 1.0,
+            width: 120.0,
+            text,
+            color: "#fde047".into(),
+            font_size: 10.0,
+            sticky,
+        })
+    };
+    let long = "a".repeat(MAX_TEXT_CHARS + 1);
+    assert!(note(long.clone(), None).validate().is_err());
+    note(long, Some(true)).validate().unwrap();
+    assert!(note("a".repeat(MAX_STICKY_CHARS + 1), Some(true))
+        .validate()
+        .is_err());
+    assert!(note("Marked false".into(), Some(false)).validate().is_err());
+    // A plain note stores no marker, so builds before sticky notes still read it.
+    let plain = note("Plain".into(), None).payload_json().unwrap();
+    assert!(!plain.contains("sticky"), "{plain}");
 }
