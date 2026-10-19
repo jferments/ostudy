@@ -16,7 +16,31 @@ pub(super) fn assign(
     plan: &DocumentLearningPlan,
     catalogs: Vec<KnowledgeCatalog>,
 ) -> Vec<KnowledgeCatalog> {
-    let rank = |index: usize| (plan.topics[index].evidence_chunk_indices.len(), index);
+    let sizes = plan
+        .topics
+        .iter()
+        .map(|topic| topic.evidence_chunk_indices.len())
+        .collect::<Vec<_>>();
+    let (assigned, moved) = by_size(&sizes, catalogs);
+    if moved > 0 {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_shared_units_assigned",
+            "Left shared knowledge units to the most specific topic that holds them.",
+            serde_json::json!({"removedFromBroaderTopics": moved}),
+        );
+    }
+    assigned
+}
+
+/// Gives each unit that several catalogs share to the one drawn from the
+/// fewest evidence chunks (`sizes`, one per catalog), ties to the earliest.
+/// Returns the catalogs and how many units left a broader one.
+pub(crate) fn by_size(
+    sizes: &[usize],
+    catalogs: Vec<KnowledgeCatalog>,
+) -> (Vec<KnowledgeCatalog>, usize) {
+    let rank = |index: usize| (sizes[index], index);
     let mut owner = HashMap::<&str, usize>::new();
     for (index, catalog) in catalogs.iter().enumerate() {
         for unit in &catalog.units {
@@ -66,15 +90,7 @@ pub(super) fn assign(
             }
         })
         .collect();
-    if moved > 0 {
-        crate::logging::debug_target(
-            "ai.document.study_guide",
-            "study_guide_shared_units_assigned",
-            "Left shared knowledge units to the most specific topic that holds them.",
-            serde_json::json!({"removedFromBroaderTopics": moved}),
-        );
-    }
-    assigned
+    (assigned, moved)
 }
 
 #[cfg(test)]
