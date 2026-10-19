@@ -91,6 +91,10 @@ pub(crate) struct PdfRenderRuntime {
     backend_id: &'static str,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pdfium: Arc<Pdfium>,
+    /// PDFium is not thread-safe (pdfium-render's `thread_safe` feature only
+    /// marks it Send and Sync), so one PDF is open at a time across clones.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    access: Arc<std::sync::Mutex<()>>,
     #[cfg(target_os = "android")]
     app: AppHandle,
     #[cfg(target_os = "android")]
@@ -107,6 +111,15 @@ impl fmt::Debug for PdfRenderRuntime {
 }
 
 impl PdfRenderRuntime {
+    /// Held for as long as a PDF is open: concurrent PDFium calls corrupt its
+    /// shared font state. A panic while holding it leaves nothing to repair.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn exclusive(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.access
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     pub(crate) fn new(resource_dir: Option<PathBuf>) -> Result<Self, PdfRenderError> {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
@@ -114,6 +127,7 @@ impl PdfRenderRuntime {
             Ok(Self {
                 backend_id: active_backend_id(),
                 pdfium: Arc::new(pdfium),
+                access: Arc::new(std::sync::Mutex::new(())),
             })
         }
 
@@ -324,6 +338,7 @@ pub(crate) fn extract_native_text_pages(
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -385,6 +400,7 @@ where
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -446,6 +462,7 @@ where
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -560,6 +577,7 @@ pub(crate) fn render_page_tile(
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -624,6 +642,7 @@ pub(crate) fn page_characters(
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -1159,13 +1178,17 @@ mod tests {
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/document-generation/simple-text.pdf");
         let runtime = shared_test_runtime();
-        let document = runtime
-            .pdfium
-            .load_pdf_from_file(&source, None)
-            .expect("fixture should open");
-        let whole = image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
-            .unwrap()
-            .to_luma8();
+        // Release the PDFium lock before render_page_tile takes it.
+        let whole = {
+            let _pdfium = runtime.exclusive();
+            let document = runtime
+                .pdfium
+                .load_pdf_from_file(&source, None)
+                .expect("fixture should open");
+            image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
+                .unwrap()
+                .to_luma8()
+        };
         // Center the tile on the first ink, so it holds some text.
         let (ink_x, ink_y) = whole
             .enumerate_pixels()
@@ -1211,10 +1234,13 @@ mod tests {
         let runtime = shared_test_runtime();
         let page = page_characters(runtime, &source, 1).unwrap();
         assert!(page.characters.len() > 10);
-        let document = runtime.pdfium.load_pdf_from_file(&source, None).unwrap();
-        let render = image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
-            .unwrap()
-            .to_luma8();
+        let render = {
+            let _pdfium = runtime.exclusive();
+            let document = runtime.pdfium.load_pdf_from_file(&source, None).unwrap();
+            image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
+                .unwrap()
+                .to_luma8()
+        };
         let scale = f64::from(render.width()) / page.width;
         // Every letter's box holds some ink in the page render.
         let mut letters = 0;
