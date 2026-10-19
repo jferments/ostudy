@@ -804,13 +804,13 @@ def open_guides(ctx: Context) -> None:
     go(ctx, "study-guides")
     for document in seed.DOCUMENTS:
         if document.topics:
-            find(ctx, f"//main//strong[normalize-space(.)={xpath_literal(document.title)}]")
+            find(ctx, f"//main//li[@data-testid='guide-card']//h3[normalize-space(.)={xpath_literal(document.title)}]")
 
 
 def open_guide_reader(ctx: Context) -> None:
     open_guides(ctx)
     document = seed.DOCUMENTS[0]
-    click(ctx, f"//main//article[.//strong[normalize-space(.)={xpath_literal(document.title)}]]//button[normalize-space(.)='Open']")
+    click(ctx, f"//main//li[@data-testid='guide-card'][.//h3[normalize-space(.)={xpath_literal(document.title)}]]//button[normalize-space(.)='Open']")
     wait_for_text(ctx, document.topics[0].title, seconds=30)
 
 
