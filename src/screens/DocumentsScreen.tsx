@@ -16,6 +16,7 @@ import { Badge, type BadgeTone } from "../ui/primitives/Badge";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { Textarea } from "../ui/primitives/FormControls";
+import { TextField } from "../ui/primitives/TextField";
 import { FormField } from "../ui/primitives/FormField";
 import {
   GenerationDiagnostics, GenerationProgressPanel, statusLabel, processingPhaseLabel, formatDocumentType,
@@ -69,7 +70,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     documents, generationProgress, learningPlans, clockNow, isLoading, isUploading, busyDocumentIds,
     cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,
     cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
-    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
+    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, renameDocument, deleteDocument,
   } = jobs;
   const artifactProgress = useDocumentArtifactProgress(
     isUploading || documents.some((document) => document.lifecycleState === "processing")
@@ -90,6 +91,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
   const handleContainedDocumentIdsChange = useCallback((next: string[]) => {
     setContainedDocumentIds((current) => (
@@ -180,6 +182,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
         onOpenDocument={openDocument}
         onAnnotateDocument={(document) => setAnnotating({ id: document.id, title: document.title })}
+        onRenameDocument={setRenaming}
         onUploadInto={uploadInto}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
       />
@@ -236,6 +239,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
                 onSelect: () => void stopGeneration(document),
               });
+              items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
               items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
               if (!processing) items.push({
                 id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
@@ -316,6 +320,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           onClose={() => setDetailsDocumentId(null)}
         />
       ) : null}
+      {renaming ? (
+        <RenameDocumentDialog
+          document={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(title) => renameDocument(renaming, title)}
+        />
+      ) : null}
       {moreCards ? (
         <MoreCardsDialog
           title={moreCards.document.title}
@@ -393,6 +404,39 @@ function DocumentDetails({ document, progress, now, onClose }: {
       {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
       <GenerationSummary report={document.generationSummary} />
     </MetadataDialog>
+  );
+}
+
+function RenameDocumentDialog({ document, onClose, onSave }: {
+  document: DocumentSummary;
+  onClose: () => void;
+  onSave: (title: string) => Promise<string | null>;
+}) {
+  const [title, setTitle] = useState(document.title);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const trimmed = title.trim();
+  const unchanged = trimmed === document.title;
+  return (
+    <Dialog title="Rename document" width="small" busy={saving} onClose={onClose}
+      onSubmit={() => void (async () => {
+        if (!trimmed || saving) return;
+        if (unchanged) { onClose(); return; }
+        setSaving(true);
+        const failure = await onSave(trimmed);
+        setSaving(false);
+        if (failure) setError(failure);
+        else onClose();
+      })()}
+      actions={<>
+        <Button onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={!trimmed} loading={saving}>Save</Button>
+      </>}>
+      <FormField label="Title" error={error}>
+        <TextField value={title} maxLength={200} autoFocus
+          onChange={(event) => { setTitle(event.currentTarget.value); setError(null); }} />
+      </FormField>
+    </Dialog>
   );
 }
 
