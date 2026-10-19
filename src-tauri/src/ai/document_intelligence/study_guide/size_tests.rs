@@ -37,6 +37,9 @@ fn reported_4553_character_overview_survives_admission_normalization_and_checkpo
 #[test]
 fn longer_explanations_and_visuals_are_not_misclassified_as_invalid_prose() {
     let body = narrative_at_length(6_000, false);
+    // A callout repeating the explanation word for word would be dropped as a
+    // restatement, so it carries its own long text.
+    let caution = narrative_at_length(6_000, true);
     let section = StudyGuideSectionContent {
         overview: narrative_at_length(4_553, false),
         explanations: vec![StudyGuideExplanation {
@@ -46,7 +49,7 @@ fn longer_explanations_and_visuals_are_not_misclassified_as_invalid_prose() {
         callouts: vec![StudyGuideCallout {
             kind: StudyGuideCalloutKind::Warning,
             title: "Qualification".into(),
-            body: body.clone(),
+            body: caution.clone(),
         }],
         visual_explanations: vec![StudyGuideVisualExplanation {
             title: "Attached geometry".into(),
@@ -57,7 +60,7 @@ fn longer_explanations_and_visuals_are_not_misclassified_as_invalid_prose() {
     let value = json!({"content": section, "knowledgeUnitIds": ["K0"]});
     let parsed = parse_section_with_images(value, &catalog_fixture(), true).unwrap();
     assert_eq!(parsed.content.explanations[0].body, body);
-    assert_eq!(parsed.content.callouts[0].body, body);
+    assert_eq!(parsed.content.callouts[0].body, caution);
     assert_eq!(parsed.content.visual_explanations[0].explanation, body);
 }
 

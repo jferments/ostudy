@@ -156,6 +156,8 @@ fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
+    assert!(prompt.contains("Each fact appears once in the section"));
+    assert!(prompt.contains("overview: orients the learner in 2 to 4 sentences"));
     assert!(prompt.contains(&format!(
         "Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}"
     )));
