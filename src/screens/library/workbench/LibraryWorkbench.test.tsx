@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,10 +38,20 @@ vi.mock("../../../ipc/subjects", () => ({
   dismissSubjectFilingReview: vi.fn(),
 }));
 vi.mock("../../CardEditorScreen", () => ({
-  CardEditorScreen: ({ deck, card, onCancel }: { deck: DeckSummary; card: { noteId: string } | null; onCancel: () => void }) => (
+  CardEditorScreen: ({ deck, card, onCancel, details, moreActions = [] }: {
+    deck: DeckSummary;
+    card: { noteId: string } | null;
+    onCancel: () => void;
+    details?: ReactNode;
+    moreActions?: Array<{ id: string; label: string; onSelect: () => void }>;
+  }) => (
     <div>
       <span>Editing {card ? card.noteId : "a new card"} in {deck.name}</span>
       <button type="button" onClick={onCancel}>Close editor</button>
+      <div role="group" aria-label="Card actions">
+        {moreActions.map((action) => <button key={action.id} type="button" onClick={action.onSelect}>{action.label}</button>)}
+      </div>
+      {details}
     </div>
   ),
 }));
@@ -159,7 +170,27 @@ describe("LibraryWorkbench", () => {
     expect(screen.getByText("14")).toBeTruthy();
     expect(screen.getByText("today")).toBeTruthy();
     expect(screen.getByText("5 d")).toBeTruthy();
-    expect(within(screen.getByRole("group", { name: "Filter cards" })).getByRole("button", { name: /^Due/u })).toBeTruthy();
+    expect(within(screen.getByRole("combobox", { name: "Show cards" })).getByRole("option", { name: /^Due today/u })).toBeTruthy();
+  });
+
+  it("filters any scope with Show, including Often missed", async () => {
+    renderWorkbench();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(await within(tree).findByRole("button", { name: /^Lecture 7: The cardiac cycle\s*\d/u }));
+    await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id] }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Show cards" }), { target: { value: "often_missed" } });
+    await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id], statusFilter: "needs_more_practice" }));
+  });
+
+  it("puts Library's pages in tabs above the tree, with Import deck beside them", async () => {
+    renderWorkbench();
+    const tabs = screen.getByRole("navigation", { name: "Library pages" });
+    expect(within(tabs).getAllByRole("button").map((button) => button.textContent)).toEqual(["Flashcards", "Documents", "Study guides"]);
+    expect(within(tabs).getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    expect(within(tree).queryByRole("button", { name: "Documents" })).toBeNull();
+    expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
   });
 
   it("scopes a subject to its own decks", async () => {
@@ -167,17 +198,22 @@ describe("LibraryWorkbench", () => {
     await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id, lab.id], sort: "source_order" }));
   });
 
-  it("opens a card in the editor beside the list with its schedule", async () => {
+  it("opens a card in a panel over the list with its schedule and Suspend in its menu", async () => {
     renderWorkbench();
     fireEvent.click(await screen.findByRole("button", { name: /During which two phases/u }));
     expect(await screen.findByText(`Editing ${"9".repeat(32)} in ${lecture.name}`)).toBeTruthy();
     const schedule = screen.getByRole("region", { name: "Schedule" });
     expect(within(schedule).getByText("5.1 / 10")).toBeTruthy();
-    expect(screen.getByRole("list", { name: "Cards" })).toBeTruthy();
-    fireEvent.click(within(schedule).getByRole("button", { name: "Suspend" }));
+    // The list stays mounted under the panel, hidden and inert, so closing returns to it as it was.
+    expect(screen.queryByRole("list", { name: "Cards" })).toBeNull();
+    const list = screen.getByRole("list", { name: "Cards", hidden: true });
+    expect(list.closest("[inert]")).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("group", { name: "Card actions" })).getByRole("button", { name: "Suspend" }));
     await waitFor(() => expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "suspend", cardIds: ["c".repeat(32)] }),
     ));
+    fireEvent.click(screen.getByRole("button", { name: "Close editor" }));
+    expect(screen.getByRole("list", { name: "Cards" })).toBe(list);
   });
 
   it("suspends the selected cards from the selection bar", async () => {

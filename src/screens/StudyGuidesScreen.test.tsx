@@ -166,7 +166,7 @@ describe("StudyGuidesScreen", () => {
     expect(reader.textContent).toContain("Source shock.pdf pdf 12 page");
   });
 
-  it("gives an open guide Library's whole page, then brings the view switcher back", async () => {
+  it("gives an open guide Library's whole page, then brings the tabs back", async () => {
     render(
       <LayoutModeProvider>
         <OverlayProvider>
@@ -177,18 +177,18 @@ describe("StudyGuidesScreen", () => {
       </LayoutModeProvider>,
     );
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(screen.getByRole("dialog", { name: "Guide Distributive shock" })).toBeTruthy();
     // The reader's sticky top bar starts at the edges, right under the app header.
-    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Library pages" })).toBeNull();
     expect(screen.getByTestId("library").className).toContain("tw:p-0");
 
     fireEvent.click(screen.getByRole("button", { name: "Close guide" }));
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
-    expect(screen.getByTestId("library").className).toContain("tw:px-page");
+    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
+    expect(screen.getByTestId("library").className).toContain("tw:px-5");
   });
 
   it("lists and opens collection study guides from the main Study Guides page", async () => {
