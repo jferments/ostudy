@@ -4,6 +4,7 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.webkit.WebView
@@ -41,6 +42,9 @@ private const val MAX_RENDER_DPI = 300
 private const val MAX_RENDER_DIMENSION = 12_000
 private const val MAX_RENDER_PIXELS = 50_000_000L
 private const val MAX_RENDER_BYTES = 64L * 1024L * 1024L
+private const val MAX_TILE_DIMENSION = 1_024
+private const val MAX_TILED_PAGE_DIMENSION = 16_384
+private const val MAX_TILE_BYTES = 8L * 1024L * 1024L
 private const val MAX_OCR_SOURCE_BYTES = 64L * 1024L * 1024L
 private const val MIN_OCR_TIMEOUT_SECONDS = 1
 private const val MAX_OCR_TIMEOUT_SECONDS = 180
@@ -57,6 +61,20 @@ class RenderPdfPageArgs {
     lateinit var token: String
     var pageNumber: Int = 0
     var dpi: Int = 0
+    lateinit var targetPath: String
+    var maximumBytes: Long = 0
+}
+
+@InvokeArg
+class RenderPdfTileArgs {
+    lateinit var token: String
+    var pageNumber: Int = 0
+    var pageWidth: Int = 0
+    var pageHeight: Int = 0
+    var left: Int = 0
+    var top: Int = 0
+    var width: Int = 0
+    var height: Int = 0
     lateinit var targetPath: String
     var maximumBytes: Long = 0
 }
@@ -259,6 +277,90 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 withContext(Dispatchers.Main) {
                     invoke.reject(
                         "Android could not render PDF page ${args.pageNumber}: ${safeMessage(error)}",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * One rectangle of a page drawn at pageWidth by pageHeight pixels: the page
+     * is scaled to that size and shifted so the tile's corner is the bitmap's,
+     * so only the tile is ever allocated.
+     */
+    @Command
+    fun renderPdfTile(invoke: Invoke) {
+        val args = invoke.parseArgs(RenderPdfTileArgs::class.java)
+        ioScope.launch {
+            var target: File? = null
+            try {
+                validateToken(args.token)
+                require(
+                    args.pageWidth in 1..MAX_TILED_PAGE_DIMENSION &&
+                        args.pageHeight in 1..MAX_TILED_PAGE_DIMENSION &&
+                        args.width in 1..MAX_TILE_DIMENSION &&
+                        args.height in 1..MAX_TILE_DIMENSION &&
+                        args.left >= 0 && args.top >= 0 &&
+                        args.left.toLong() + args.width <= args.pageWidth &&
+                        args.top.toLong() + args.height <= args.pageHeight
+                ) {
+                    "The requested page tile is outside the supported size or the page."
+                }
+                require(args.maximumBytes in 1..MAX_TILE_BYTES) {
+                    "The requested PDF tile size limit is invalid."
+                }
+                val session = sessions[args.token]
+                    ?: throw IllegalArgumentException("The PDF rendering session has expired.")
+                target = validatePrivatePath(args.targetPath)
+                target.parentFile?.mkdirs()
+                val response = synchronized(session.lock) {
+                    require(args.pageNumber in 1..session.renderer.pageCount) {
+                        "The requested page is outside the PDF page range."
+                    }
+                    session.renderer.openPage(args.pageNumber - 1).use { page ->
+                        val transform = Matrix().apply {
+                            setScale(
+                                args.pageWidth.toFloat() / page.width.toFloat(),
+                                args.pageHeight.toFloat() / page.height.toFloat(),
+                            )
+                            postTranslate(-args.left.toFloat(), -args.top.toFloat())
+                        }
+                        val bitmap = Bitmap.createBitmap(args.width, args.height, Bitmap.Config.ARGB_8888)
+                        try {
+                            bitmap.eraseColor(Color.WHITE)
+                            page.render(
+                                bitmap,
+                                null,
+                                transform,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
+                            )
+                            FileOutputStream(target, false).use { output ->
+                                require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                                    "Android could not encode the rendered PDF tile."
+                                }
+                                output.fd.sync()
+                            }
+                        } finally {
+                            bitmap.recycle()
+                        }
+                        val byteSize = target.length()
+                        require(byteSize in 1..args.maximumBytes) {
+                            "The rendered PDF tile exceeds ostudy's image safety limit."
+                        }
+                        JSObject().apply {
+                            put("pageNumber", args.pageNumber)
+                            put("width", args.width)
+                            put("height", args.height)
+                            put("byteSize", byteSize)
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main) { invoke.resolve(response) }
+            } catch (error: Exception) {
+                target?.delete()
+                withContext(Dispatchers.Main) {
+                    invoke.reject(
+                        "Android could not render part of PDF page ${args.pageNumber}: ${safeMessage(error)}",
                     )
                 }
             }

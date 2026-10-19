@@ -6,9 +6,9 @@ import { useLayoutMode } from "./LayoutModeProvider";
 
 /**
  * Layout alone: navigation, workflows and provider lifetimes remain app-owned.
- * Wider screens stack the header above one scrolling main area. A phone keeps
- * the header and the bottom navigation fixed and pads the main area between
- * them.
+ * Wider screens put the header, as a side rail, beside one scrolling main area.
+ * A phone keeps the header and the bottom navigation fixed and pads the main
+ * area between them.
  */
 export function AppFrame({ children }: { children: ReactNode }) {
   const { layoutMode } = useLayoutMode();
@@ -23,7 +23,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
         // safe area, as AppNavigation draws it), so it follows the interface scale.
         layoutMode === "compact"
           ? "tw:block tw:pt-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:pb-[calc(1px+4rem+max(0.5rem,var(--safe-bottom)))] tw:[[data-android-ime-visible=true]_&]:pb-(--android-ime-bottom)"
-          : "tw:grid tw:grid-rows-[auto_minmax(0,1fr)]",
+          : "tw:grid tw:grid-cols-[auto_minmax(0,1fr)]",
       )}
     >
       {children}
@@ -39,17 +39,16 @@ interface AppHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   brand: ReactNode;
   /** A phone's header names the current place between the brand and the actions. */
   title?: ReactNode;
-  /** Wider screens carry the main navigation in the header, centered. */
+  /** Wider screens carry the main navigation in the side rail. */
   navigation?: ReactNode;
   actions: ReactNode;
 }
 
 /**
- * The application header: the brand at the start and the header actions at the
- * end. On wider screens the main navigation sits between them, and moves to a
- * second row when a large interface scale leaves no room for one; on a phone
- * the header is a fixed bar and the navigation moves to the bottom of the
- * screen.
+ * The application header. On wider screens it is a side rail: the brand at the
+ * top, the main navigation below it and the header actions at the bottom. On a
+ * phone it is a fixed bar with the brand, the current place and the actions,
+ * and the navigation moves to the bottom of the screen.
  */
 export function AppHeader({ brand, title, navigation, actions, className, ...props }: AppHeaderProps) {
   const { layoutMode } = useLayoutMode();
@@ -71,45 +70,18 @@ export function AppHeader({ brand, title, navigation, actions, className, ...pro
       </header>
     );
   }
-  const layout = layoutMode === "medium" ? MEDIUM_HEADER : WIDE_HEADER;
   return (
     <header
       {...props}
       data-slot="app-header"
       className={cn(
-        "tw:@container/app-header tw:relative tw:z-(--ostudy-layer-chrome) tw:pt-[max(1.125rem,var(--safe-top))] tw:pb-2.5",
-        layout.header,
+        "tw:relative tw:z-(--ostudy-layer-chrome) tw:flex tw:h-full tw:min-h-0 tw:w-22 tw:flex-col tw:items-center tw:gap-3 tw:overflow-y-auto tw:border-0 tw:border-r tw:border-solid tw:border-navigation-border tw:bg-navigation tw:pt-[max(0.875rem,var(--safe-top))] tw:pb-[max(0.875rem,var(--safe-bottom))] tw:pl-[max(0.5rem,var(--safe-left))] tw:pr-2 tw:text-navigation-foreground",
         className,
       )}
     >
-      <div className={cn("tw:grid tw:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] tw:items-center tw:gap-x-4 tw:gap-y-3", layout.grid)}>
-        <div className="tw:col-start-1 tw:row-start-1 tw:flex tw:min-w-0 tw:justify-start">{brand}</div>
-        <div className={cn("tw:col-start-2 tw:row-start-1 tw:flex tw:min-w-0 tw:justify-center", layout.navigation)}>
-          {navigation}
-        </div>
-        <div className={cn("tw:col-start-3 tw:row-start-1 tw:flex tw:min-w-0 tw:items-center tw:justify-end tw:gap-2", layout.actions)}>
-          {actions}
-        </div>
-      </div>
+      <div className="tw:flex tw:shrink-0 tw:justify-center tw:pb-1">{brand}</div>
+      {navigation}
+      <div className="tw:mt-auto tw:flex tw:flex-col tw:items-center tw:gap-1">{actions}</div>
     </header>
   );
 }
-
-/*
- * One row needs about 38rem in the medium layout (the brand mark alone and
- * tighter items) and 50rem in the wide one. Below that, at a large interface
- * scale, the navigation takes a second row under the brand and the actions.
- */
-const MEDIUM_HEADER = {
-  header: "tw:pr-[max(1.25rem,var(--safe-right))] tw:pl-[max(1.25rem,var(--safe-left))]",
-  grid: "tw:@max-[38rem]/app-header:grid-cols-[minmax(0,1fr)_auto]",
-  navigation: "tw:@max-[38rem]/app-header:col-span-2 tw:@max-[38rem]/app-header:col-start-1 tw:@max-[38rem]/app-header:row-start-2",
-  actions: "tw:@max-[38rem]/app-header:col-start-2",
-};
-
-const WIDE_HEADER = {
-  header: "tw:pr-[max(2rem,var(--safe-right))] tw:pl-[max(2rem,var(--safe-left))]",
-  grid: "tw:@max-[50rem]/app-header:grid-cols-[minmax(0,1fr)_auto]",
-  navigation: "tw:@max-[50rem]/app-header:col-span-2 tw:@max-[50rem]/app-header:col-start-1 tw:@max-[50rem]/app-header:row-start-2",
-  actions: "tw:@max-[50rem]/app-header:col-start-2",
-};

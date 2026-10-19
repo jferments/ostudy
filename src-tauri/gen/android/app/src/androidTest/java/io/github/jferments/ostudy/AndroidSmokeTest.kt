@@ -116,6 +116,7 @@ class AndroidSmokeTest {
                 (() => {
                   const tree = document.querySelector("main [data-testid='library-workbench'] nav[aria-label='Library']");
                   const sections = [...(tree?.querySelectorAll('section[aria-label]') ?? [])];
+                  const pages = document.querySelector("main nav[aria-label='Library pages']");
                   const buttons = [...document.querySelectorAll('main button')];
                   const label = (button) => (button.getAttribute('aria-label') || button.textContent || '').trim();
                   return {
@@ -123,9 +124,9 @@ class AndroidSmokeTest {
                     libraryCurrent: document.querySelector('[data-testid="nav-library"]')?.getAttribute('aria-current') === 'page',
                     settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
                     createActions: buttons.filter((button) => button.textContent?.trim() === 'New deck').length,
-                    importAction: buttons.some((button) => button.textContent?.trim() === 'Import deck…'),
-                    documentsView: Boolean(tree?.querySelector('[data-testid="library-view-documents"]')),
-                    studyGuidesView: Boolean(tree?.querySelector('[data-testid="library-view-study-guides"]')),
+                    importAction: buttons.some((button) => label(button) === 'Import deck'),
+                    documentsView: Boolean(pages?.querySelector('[data-testid="library-view-documents"]')),
+                    studyGuidesView: Boolean(pages?.querySelector('[data-testid="library-view-study-guides"]')),
                     cardList: Boolean(document.querySelector("main section[aria-label='Cards']")),
                     irrelevantControls: buttons.some((button) => {
                       const text = label(button);
@@ -136,7 +137,7 @@ class AndroidSmokeTest {
                 })()
                 """.trimIndent()
             )
-            assertEquals("Views|Subjects|More", snapshot.getString("sections"))
+            assertEquals("Subjects", snapshot.getString("sections"))
             assertTrue(snapshot.getBoolean("libraryCurrent"))
             assertTrue(snapshot.getBoolean("settingsGear"))
             assertEquals(1, snapshot.getInt("createActions"))
@@ -187,19 +188,19 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-documents\"]'))"
+                    "Boolean(document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-documents\"]'))"
                 }
             )
             evaluateSync(
                 webView,
-                "document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-documents\"]')?.click(); true"
+                "document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-documents\"]')?.click(); true"
             )
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Documents' && " +
-                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload document') && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload') && " +
                         "document.querySelector('[data-testid=\"library-view-documents\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
@@ -268,8 +269,9 @@ class AndroidSmokeTest {
                 webView,
                 "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
             )
-            // Library reopens the page used last. Step to the Workbench's tree from
-            // another Library page or from a deck's card list, then open the deck.
+            // Library reopens the page used last. Step to the Flashcards tab from
+            // another Library page, then back from a card list to the tree, and
+            // open the deck.
             waitUntil(
                 webView,
                 predicate = { it == "true" },
@@ -277,8 +279,8 @@ class AndroidSmokeTest {
                     "(() => { " +
                         "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'); " +
                         "if (deck) return true; " +
-                        "const page = document.querySelector('main nav[aria-label=\"Library\"] [data-testid=\"library-view-decks\"]'); " +
-                        "if (page) { page.click(); return false; } " +
+                        "const page = document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-decks\"]'); " +
+                        "if (page && page.getAttribute('aria-current') !== 'page') { page.click(); return false; } " +
                         "document.querySelector('main [data-testid=\"library-workbench\"] button[aria-label=\"Library\"]')?.click(); " +
                         "return false; " +
                         "})()"

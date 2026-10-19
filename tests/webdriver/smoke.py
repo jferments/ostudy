@@ -688,8 +688,8 @@ WORKBENCH_TREE_XPATH = "//main//*[@data-testid='library-workbench']//nav[@aria-l
 def open_library_view(session_id: str, view: str, deadline: float) -> None:
     """Open one of Library's pages: the Workbench ("decks"), Documents or Study guides.
 
-    Library reopens the page used last. The Workbench links to Documents and
-    Study guides from its tree; those pages link back with the switcher.
+    Library reopens the page used last. Every page carries Library's tabs:
+    Flashcards (the Workbench), Documents and Study guides.
     """
     library = find_element(
         session_id,
@@ -705,19 +705,19 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
         deadline,
     )
     if view == "decks":
-        # Whichever Library page opens: the Workbench, or a page whose switcher leads back to it.
+        # Whichever Library page opens, its Flashcards tab leads to the Workbench.
         find_element(
             session_id,
             "xpath",
             "//main//*[@data-testid='library-workbench']"
-            " | //main//nav[@aria-label='Library']//button[@data-testid='library-view-decks']",
+            " | //main//nav[@aria-label='Library pages']//button[@data-testid='library-view-decks']",
             deadline,
         )
         if not element_exists(session_id, "css selector", WORKBENCH_SELECTOR):
             switcher = find_element(
                 session_id,
                 "css selector",
-                "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
+                "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
                 deadline,
             )
             click(session_id, switcher)
@@ -726,7 +726,7 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
     switcher = find_element(
         session_id,
         "css selector",
-        f"main nav[aria-label='Library'] button[data-testid='library-view-{view}']",
+        f"main nav[aria-label='Library pages'] button[data-testid='library-view-{view}']",
         deadline,
     )
     click(session_id, switcher)

@@ -41,7 +41,7 @@ export function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, 
     disabled: disabled || !adapter.canExecute({ command: item.command } as EditorCommandRequest),
     onSelect: () => run({ command: item.command } as EditorCommandRequest),
   }));
-  return <fieldset disabled={disabled} className="tw:m-0 tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-muted/40 tw:p-2 tw:disabled:opacity-60">
+  return <fieldset disabled={disabled} className="tw:m-0 tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-muted tw:p-2 tw:disabled:opacity-60">
     <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
       <Toolbar label="Insert media and links" disabled={disabled}>
         <ToolbarGroup label="Quick insert">

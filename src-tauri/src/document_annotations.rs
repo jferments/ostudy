@@ -794,6 +794,10 @@ fn other_document() -> CommandError {
     )
 }
 
+#[path = "document_annotations/page_tiles.rs"]
+mod page_tiles;
+pub(crate) use page_tiles::{render_document_page_tile, RenderDocumentPageTileInput};
+
 #[cfg(test)]
 #[path = "document_annotations/tests.rs"]
 mod tests;

@@ -301,11 +301,15 @@ pub(super) fn model_reasoning(item: &Value) -> Option<ProviderModelReasoning> {
     })
 }
 
+/// Whether the Models API capability tree declares image input.
+pub(super) fn model_image_input(item: &Value) -> Option<bool> {
+    item.pointer("/capabilities/image_input/supported")
+        .and_then(Value::as_bool)
+}
+
 pub(super) fn parse_properties(value: &Value) -> ProviderProperties {
     ProviderProperties {
-        image_input_declared: value
-            .pointer("/capabilities/image_input/supported")
-            .and_then(Value::as_bool),
+        image_input_declared: model_image_input(value),
         context_window_tokens: model_context_window_tokens(value),
         ..ProviderProperties::default()
     }
