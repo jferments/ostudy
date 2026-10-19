@@ -118,7 +118,7 @@ mod tests {
              CREATE TABLE note_annotation_sources(
                  note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
                  document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
-                 annotation_id TEXT REFERENCES document_annotations(id) ON DELETE SET NULL,
+                 annotation_id TEXT,
                  page_number INTEGER NOT NULL, quote TEXT NOT NULL,
                  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
              ) STRICT;

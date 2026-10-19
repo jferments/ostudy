@@ -305,7 +305,8 @@ fn study_what_i_marked_lists_this_documents_cards_and_survives_erasing_the_mark(
         .card_ids
         .is_empty());
 
-    // Erasing a mark keeps its card, which still counts as marked here.
+    // Erasing a mark keeps its card and its link, which still counts as marked
+    // here; undoing the erase restores the mark under the same id.
     database
         .with_connection(|connection| {
             connection
@@ -320,7 +321,7 @@ fn study_what_i_marked_lists_this_documents_cards_and_survives_erasing_the_mark(
         stored_link(&database, NOTE).unwrap(),
         (
             Some(DOCUMENT.to_string()),
-            None,
+            Some(HIGHLIGHT.to_string()),
             2,
             "The SA node sets the heart rate.".to_string()
         )
@@ -397,11 +398,12 @@ fn deleting_the_document_keeps_the_card_and_its_words() {
                 .map_err(CommandError::database)
         })
         .unwrap();
+    // The mark's id stays as a plain id; only the document link is cleared.
     assert_eq!(
         stored_link(&database, NOTE).unwrap(),
         (
             None,
-            None,
+            Some(HIGHLIGHT.to_string()),
             2,
             "The SA node sets the heart rate.".to_string()
         )

@@ -4,14 +4,16 @@
 -- flashcard from it. Each such note keeps one row here: the document, the
 -- annotation and the page it came from, and a copy of the marked words, so the
 -- source still reads correctly after the mark or the document is deleted. The
--- note owns the row; deleting the mark or the document clears that link and
--- keeps the card. The upgrade creates the table and writes no rows.
+-- note owns the row; deleting the document clears its link and keeps the card.
+-- annotation_id is a plain id, not a foreign key: erasing a mark leaves it, so
+-- undoing the erase, which restores the mark under the same id, restores the
+-- link too. The upgrade creates the table and writes no rows.
 CREATE TABLE note_annotation_sources (
     note_id        TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE
                    CHECK(length(note_id) = 32),
     document_id    TEXT REFERENCES documents(id) ON DELETE SET NULL
                    CHECK(document_id IS NULL OR length(document_id) = 32),
-    annotation_id  TEXT REFERENCES document_annotations(id) ON DELETE SET NULL
+    annotation_id  TEXT
                    CHECK(annotation_id IS NULL OR length(annotation_id) = 32),
     page_number    INTEGER NOT NULL CHECK(page_number >= 1),
     quote          TEXT NOT NULL CHECK(length(quote) <= 20000),
