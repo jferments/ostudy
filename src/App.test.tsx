@@ -110,7 +110,7 @@ vi.mock("./screens/library/workbench/LibraryWorkbench", () => ({
     return (
       <section>
         <h1>Decks mock</h1>
-        <nav aria-label="Library">
+        <nav aria-label="Library pages">
           <button type="button" onClick={onOpenDocuments}>Documents</button>
           <button type="button" onClick={onOpenStudyGuides}>Study guides</button>
         </nav>
@@ -353,7 +353,7 @@ function currentDestination(): string | null {
 }
 
 function libraryView(name: string): HTMLElement {
-  return within(screen.getByRole("navigation", { name: "Library" })).getByRole("button", { name });
+  return within(screen.getByRole("navigation", { name: "Library pages" })).getByRole("button", { name });
 }
 
 /** Opens the app on a fresh library (Home), then Library's Decks view. */

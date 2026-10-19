@@ -39,20 +39,20 @@ function renderLibrary(view: LibrarySection, width = 1440) {
 }
 
 function views() {
-  return within(screen.getByRole("navigation", { name: "Library" })).getAllByRole("button");
+  return within(screen.getByRole("navigation", { name: "Library pages" })).getAllByRole("button");
 }
 
 describe("LibraryFrame", () => {
   it.each([390, 1000, 1440])("names the three views in order at %s px", (width) => {
     renderLibrary("decks", width);
-    expect(views().map((button) => button.textContent)).toEqual(["Workbench", "Documents", "Study guides"]);
+    expect(views().map((button) => button.textContent)).toEqual(["Flashcards", "Documents", "Study guides"]);
   });
 
   it.each([
-    ["decks", "Workbench"],
+    ["decks", "Flashcards"],
     ["documents", "Documents"],
     ["study-guides", "Study guides"],
-  ] as const)("marks %s as the current view and hosts it below the switcher", (view, label) => {
+  ] as const)("marks %s as the current view and hosts it below the tabs", (view, label) => {
     renderLibrary(view);
     const current = views().filter((button) => button.getAttribute("aria-current") === "page");
     expect(current.map((button) => button.textContent)).toEqual([label]);
@@ -63,13 +63,13 @@ describe("LibraryFrame", () => {
     const { onSelectView } = renderLibrary("study-guides", 390);
     fireEvent.click(screen.getByRole("button", { name: "Documents" }));
     fireEvent.click(screen.getByRole("button", { name: "Study guides" }));
-    fireEvent.click(screen.getByRole("button", { name: "Workbench" }));
+    fireEvent.click(screen.getByRole("button", { name: "Flashcards" }));
     expect(onSelectView.mock.calls.map(([view]) => view)).toEqual(["documents", "study-guides", "decks"]);
   });
 
-  it("keeps the switcher in place while the hosted view changes", () => {
+  it("keeps the tabs in place while the hosted view changes", () => {
     const { rerender, onSelectView } = renderLibrary("decks");
-    const switcher = screen.getByRole("navigation", { name: "Library" });
+    const tabs = screen.getByRole("navigation", { name: "Library pages" });
     rerender(
       <LayoutModeProvider>
         <LibraryFrame view="documents" onSelectView={onSelectView}>
@@ -77,7 +77,7 @@ describe("LibraryFrame", () => {
         </LibraryFrame>
       </LayoutModeProvider>,
     );
-    expect(screen.getByRole("navigation", { name: "Library" })).toBe(switcher);
+    expect(screen.getByRole("navigation", { name: "Library pages" })).toBe(tabs);
     expect(screen.getByRole("heading", { name: "Hosted documents" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Hosted decks" })).toBeNull();
   });
@@ -96,21 +96,21 @@ describe("LibraryFrame", () => {
       </LayoutModeProvider>
     );
     const { rerender } = render(frame(<Guides open />));
-    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Library pages" })).toBeNull();
     // Without the frame's inset, the page's own sticky top bar reaches the edges.
     expect(screen.getByTestId("library").className).toContain("tw:p-0");
     const heading = screen.getByRole("heading", { name: "Open guide" });
 
     rerender(frame(<Guides open={false} />));
-    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
     expect(screen.getByTestId("library").className).toContain("tw:px-page");
-    // The view stays mounted while the switcher comes and goes.
+    // The view stays mounted while the tabs come and go.
     expect(screen.getByRole("heading", { name: "Study Guides" })).toBe(heading);
 
-    // A view that leaves with its page open brings the switcher back too.
+    // A view that leaves with its page open brings the tabs back too.
     rerender(frame(<Guides open />));
-    expect(screen.queryByRole("navigation", { name: "Library" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Library pages" })).toBeNull();
     rerender(frame(<h1>Hosted decks</h1>));
-    expect(screen.getByRole("navigation", { name: "Library" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
   });
 });

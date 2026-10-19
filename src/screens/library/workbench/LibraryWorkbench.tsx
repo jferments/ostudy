@@ -19,6 +19,7 @@ import { useConfirm } from "../../../ui/overlays/overlayContext";
 import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { ResizablePanes, type ResizablePane } from "../../../ui/patterns/ResizablePanes";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
+import { IconButton } from "../../../ui/icons/IconButton";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "../../CardEditorScreen";
@@ -34,6 +35,7 @@ import { DeckTransferDialog, type DeckTransferDialogRequest } from "../../flashc
 import { PracticeSetupSheet } from "../../flashcards/deck-library/PracticeSetupSheet";
 import type { PracticeDeckScope } from "../../flashcards/deck-library/practiceSetupModel";
 import { CheckTheseSheet } from "../../home/CheckTheseSheet";
+import { LibraryTabs } from "../LibraryTabs";
 import { NewSubjectSheet } from "../../home/NewSubjectSheet";
 import { CardScheduleSummary } from "./CardScheduleSummary";
 import { useWorkbenchCards, PAGE_SIZE } from "./useWorkbenchCards";
@@ -158,7 +160,6 @@ export function LibraryWorkbench({
     [filter, library, query, scope, sort],
   );
   const countInputs = useMemo(() => {
-    if (scope.kind === "view") return null;
     const entries = CARD_FILTERS.map((option) => [option.value, searchInputFor(scope, option.value, query, sort, library, 1)] as const)
       .filter((entry): entry is readonly [CardFilter, NonNullable<(typeof entry)[1]>] => entry[1] !== null);
     return entries.length > 0 ? Object.fromEntries(entries) : null;
@@ -607,9 +608,6 @@ export function LibraryWorkbench({
         deckMenu={deckMenu}
         documentMenu={documentMenu}
         onOpenDocument={() => onOpenDocuments()}
-        onImportDeck={() => setSheet({ kind: "transfer", request: { kind: "import" } })}
-        onOpenDocuments={onOpenDocuments}
-        onOpenStudyGuides={onOpenStudyGuides}
         onCheckThese={() => setSheet({ kind: "check-these" })}
       />
     </div>
@@ -621,7 +619,6 @@ export function LibraryWorkbench({
       eyebrow={eyebrow}
       title={title}
       actions={headerActions}
-      showFilters={scope.kind !== "view"}
       filter={filter}
       onFilterChange={setFilter}
       query={query}
@@ -714,6 +711,24 @@ export function LibraryWorkbench({
         ? "tw:min-w-0 tw:px-4 tw:pt-4 tw:pb-[calc(5rem+var(--safe-bottom))]"
         : "tw:flex tw:h-full tw:min-h-0 tw:flex-col tw:px-5 tw:pt-5 tw:pb-4"}
     >
+      {compact && page === "editor" ? null : (
+        <LibraryTabs
+          view="decks"
+          onSelectView={(view) => {
+            if (view === "documents") onOpenDocuments();
+            else if (view === "study-guides") onOpenStudyGuides();
+            else void chooseScope(DEFAULT_SCOPE);
+          }}
+          actions={compact ? (
+            <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
+          ) : (
+            <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
+              Import deck
+            </Button>
+          )}
+          className="tw:mb-4 tw:shrink-0"
+        />
+      )}
       {opening ? <span className="sr-only" role="status">Opening card…</span> : null}
       {libraryState.loading && !library.organization ? <InlineProgress>Loading your library…</InlineProgress> : null}
       <div className={compact ? "tw:min-w-0" : "tw:flex tw:min-h-0 tw:flex-1"}>{body}</div>
@@ -934,7 +949,7 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
 
 function emptyCopy(scope: WorkbenchScope, filter: CardFilter, query: string, deck: DeckSummary | null): { title: string; description: string } {
   if (query.trim() !== "") return { title: "No matching cards", description: "Try other words or clear the search." };
-  if (filter !== "all") return { title: "No cards here", description: "No cards match this filter. Choose All to see every card." };
+  if (filter !== "all") return { title: "No cards here", description: "No cards match this filter." };
   if (scope.kind === "deck") {
     return deck?.archivedAt
       ? { title: "This deck is archived", description: "Restore it from its menu to study or edit its cards." }

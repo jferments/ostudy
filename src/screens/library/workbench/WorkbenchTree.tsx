@@ -15,7 +15,6 @@ import {
   archivedDecks,
   sameScope,
   subjectNodes,
-  VIEWS,
   type SubjectNode,
   type WorkbenchLibrary,
   type WorkbenchScope,
@@ -34,9 +33,6 @@ export interface WorkbenchTreeActions {
   deckMenu: (deck: DeckSummary) => OverflowMenuItem[];
   documentMenu: (document: DocumentSummary) => OverflowMenuItem[];
   onOpenDocument: (document: DocumentSummary) => void;
-  onImportDeck: () => void;
-  onOpenDocuments: () => void;
-  onOpenStudyGuides: () => void;
   onCheckThese: () => void;
 }
 
@@ -50,7 +46,7 @@ interface WorkbenchTreeProps extends WorkbenchTreeActions {
 }
 
 /**
- * The Workbench's left side: library-wide views, subjects with their decks and
+ * The Workbench's left side: All cards, subjects with their decks and
  * documents, and tags. Choosing an entry scopes the card list; each subject,
  * deck and document carries its own actions menu.
  */
@@ -58,10 +54,10 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
   const nodes = useMemo(() => subjectNodes(library), [library]);
   const archived = useMemo(() => archivedDecks(library), [library]);
   const colors = useMemo(() => subjectColorIndexes(library.subjects), [library.subjects]);
-  const totals = useMemo(() => library.decks.filter((deck) => deck.archivedAt === null).reduce(
-    (sum, deck) => ({ cards: sum.cards + deck.generatedCardCount, due: sum.due + deck.studyableDueCount }),
-    { cards: 0, due: 0 },
-  ), [library.decks]);
+  const totalCards = useMemo(
+    () => library.decks.filter((deck) => deck.archivedAt === null).reduce((sum, deck) => sum + deck.generatedCardCount, 0),
+    [library.decks],
+  );
   const activeSubjectId = scope.kind === "subject"
     ? scope.subjectId
     : scope.kind === "deck"
@@ -101,19 +97,16 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
 
   return (
     <nav aria-label="Library" data-tour-anchor="library.workbench" className="tw:grid tw:min-w-0 tw:content-start tw:gap-5 tw:pb-4">
-      <TreeSection title="Views">
-        {VIEWS.map((entry) => (
-          <TreeEntry
-            key={entry.view}
-            icon={entry.icon}
-            label={entry.label}
-            count={entry.view === "all" ? totals.cards : entry.view === "due" ? totals.due : undefined}
-            current={sameScope(scope, { kind: "view", view: entry.view })}
-            compact={compact}
-            onSelect={() => actions.onSelectScope({ kind: "view", view: entry.view })}
-          />
-        ))}
-      </TreeSection>
+      <div className="tw:grid tw:min-w-0">
+        <TreeEntry
+          icon="cards"
+          label="All cards"
+          count={totalCards}
+          current={sameScope(scope, { kind: "view", view: "all" })}
+          compact={compact}
+          onSelect={() => actions.onSelectScope({ kind: "view", view: "all" })}
+        />
+      </div>
 
       <TreeSection
         title="Subjects"
@@ -265,11 +258,6 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
         </TreeSection>
       ) : null}
 
-      <TreeSection title="More">
-        <TreeEntry icon="document" label="Documents" testId="library-view-documents" compact={compact} onSelect={actions.onOpenDocuments} />
-        <TreeEntry icon="study-guide" label="Study guides" testId="library-view-study-guides" compact={compact} onSelect={actions.onOpenStudyGuides} />
-        <TreeEntry icon="import" label="Import deck…" compact={compact} onSelect={actions.onImportDeck} />
-      </TreeSection>
     </nav>
   );
 }
@@ -298,14 +286,12 @@ interface TreeEntryProps {
   current?: boolean;
   muted?: boolean;
   compact: boolean;
-  testId?: string;
   onSelect: () => void;
 }
 
-function TreeEntry({ label, icon, leading, count, current = false, muted = false, compact, testId, onSelect }: TreeEntryProps) {
+function TreeEntry({ label, icon, leading, count, current = false, muted = false, compact, onSelect }: TreeEntryProps) {
   return (
     <ItemTrigger
-      data-testid={testId}
       aria-current={current ? "true" : undefined}
       onClick={onSelect}
       className={cn(

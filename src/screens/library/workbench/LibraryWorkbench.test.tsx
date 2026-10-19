@@ -159,7 +159,27 @@ describe("LibraryWorkbench", () => {
     expect(screen.getByText("14")).toBeTruthy();
     expect(screen.getByText("today")).toBeTruthy();
     expect(screen.getByText("5 d")).toBeTruthy();
-    expect(within(screen.getByRole("group", { name: "Filter cards" })).getByRole("button", { name: /^Due/u })).toBeTruthy();
+    expect(within(screen.getByRole("combobox", { name: "Show cards" })).getByRole("option", { name: /^Due today/u })).toBeTruthy();
+  });
+
+  it("filters any scope with Show, including Often missed", async () => {
+    renderWorkbench();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(await within(tree).findByRole("button", { name: /^Lecture 7: The cardiac cycle\s*\d/u }));
+    await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id] }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Show cards" }), { target: { value: "often_missed" } });
+    await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id], statusFilter: "needs_more_practice" }));
+  });
+
+  it("puts Library's pages in tabs above the tree, with Import deck beside them", async () => {
+    renderWorkbench();
+    const tabs = screen.getByRole("navigation", { name: "Library pages" });
+    expect(within(tabs).getAllByRole("button").map((button) => button.textContent)).toEqual(["Flashcards", "Documents", "Study guides"]);
+    expect(within(tabs).getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    expect(within(tree).queryByRole("button", { name: "Documents" })).toBeNull();
+    expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
   });
 
   it("scopes a subject to its own decks", async () => {

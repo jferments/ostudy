@@ -8,7 +8,6 @@ import { SelectionToolbar } from "../../../ui/patterns/SelectionToolbar";
 import { VirtualList } from "../../../ui/patterns/VirtualList";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
 import { Button } from "../../../ui/primitives/Button";
-import { ChipButton } from "../../../ui/primitives/Chip";
 import { EmptyState } from "../../../ui/primitives/EmptyState";
 import { Checkbox } from "../../../ui/primitives/FormControls";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
@@ -40,8 +39,6 @@ interface WorkbenchCardListProps {
   title: string;
   /** The deck or subject actions beside the title. */
   actions?: ReactNode;
-  /** Library-wide views set their own filters, so they hide the quick filters. */
-  showFilters: boolean;
   filter: CardFilter;
   onFilterChange: (filter: CardFilter) => void;
   query: string;
@@ -62,7 +59,7 @@ interface WorkbenchCardListProps {
 
 /**
  * The Workbench's card list: a deck, subject, view or tag as dense rows that
- * load as they scroll, with quick filters, search, sort and a selection that
+ * load as they scroll, with search, a Show filter, sort and a selection that
  * bulk actions work on. Choosing a row opens it in the editor beside the list.
  */
 export function WorkbenchCardList({
@@ -70,7 +67,6 @@ export function WorkbenchCardList({
   eyebrow,
   title,
   actions,
-  showFilters,
   filter,
   onFilterChange,
   query,
@@ -125,26 +121,30 @@ export function WorkbenchCardList({
             />
           </label>
           <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+            <span className={compact ? "sr-only" : undefined}>Show</span>
+            <NativeSelect
+              aria-label="Show cards"
+              data-testid="workbench-filter"
+              value={filter}
+              onChange={(event) => onFilterChange(event.currentTarget.value as CardFilter)}
+            >
+              {CARD_FILTERS.map((option) => {
+                const count = cards.filterCounts[option.value];
+                return (
+                  <option key={option.value} value={option.value}>
+                    {count === undefined ? option.label : `${option.label} · ${count.toLocaleString()}`}
+                  </option>
+                );
+              })}
+            </NativeSelect>
+          </label>
+          <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
             <span className={compact ? "sr-only" : undefined}>Sort</span>
             <NativeSelect value={sort} onChange={(event) => onSortChange(event.currentTarget.value as CardSort)}>
               {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </NativeSelect>
           </label>
         </div>
-        {showFilters ? (
-          <div role="group" aria-label="Filter cards" className="tw:flex tw:min-w-0 tw:flex-wrap tw:gap-1.5">
-            {CARD_FILTERS.map((option) => {
-              const count = cards.filterCounts[option.value];
-              const active = filter === option.value;
-              return (
-                <ChipButton key={option.value} selected={active} onClick={() => onFilterChange(option.value)}>
-                  {option.label}
-                  {count !== undefined ? <span className="tw:tabular-nums tw:text-muted-foreground">{count.toLocaleString()}</span> : null}
-                </ChipButton>
-              );
-            })}
-          </div>
-        ) : null}
       </header>
 
       {cards.selected.size > 0 ? (

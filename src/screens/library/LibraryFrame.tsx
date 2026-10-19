@@ -1,25 +1,16 @@
 import { createContext, useContext, useLayoutEffect, useState, type ReactNode } from "react";
 
-import { LIBRARY_SECTIONS, type LibrarySection } from "../../navigation/appDestinations";
-import { Icon, type IconName } from "../../ui/icons/Icon";
-import { cn } from "../../ui/internal/cn";
-import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import type { LibrarySection } from "../../navigation/appDestinations";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
-import { ItemTrigger } from "../../ui/primitives/Item";
-
-const VIEWS: Readonly<Record<LibrarySection, { label: string; icon: IconName }>> = {
-  decks: { label: "Workbench", icon: "cards" },
-  documents: { label: "Documents", icon: "document" },
-  "study-guides": { label: "Study guides", icon: "study-guide" },
-};
+import { LibraryTabs } from "./LibraryTabs";
 
 /** Lets a hosted view hand the whole page to one of its own pages. */
 const LibraryPageContext = createContext<((fullPage: boolean) => void) | null>(null);
 
 /**
  * Hands the Library page to a view's own page while `active`, such as an open
- * study guide: the switcher steps aside and the frame drops its inset, so the
+ * study guide: the tabs step aside and the frame drops its inset, so the
  * page's sticky top bar starts at the edges of the scroll area, right under
  * the app header. The page's own back button returns to the view. Outside a
  * LibraryFrame it does nothing.
@@ -41,66 +32,28 @@ interface LibraryFrameProps {
 }
 
 /**
- * Library's Documents and Study guides pages under one compact switcher whose
- * first item returns to the Workbench. The switcher stays put while the page
- * below it changes, and steps aside while a page shows a view of its own (see
+ * Library's Documents and Study guides pages under Library's tabs, whose first
+ * tab, Flashcards, returns to the Workbench. The tabs stay put while the page
+ * below them changes, and step aside while a page shows a view of its own (see
  * useLibraryFullPage).
  */
 export function LibraryFrame({ view, onSelectView, children }: LibraryFrameProps) {
   const [fullPage, setFullPage] = useState(false);
   return (
     <LibraryPageContext.Provider value={setFullPage}>
-      {/* Documents keeps its own width; the switcher lines up with each view. */}
+      {/* Documents keeps its own width; the tabs line up with each view. */}
       <PageScaffold
         width={view === "documents" ? "wide" : "full"}
         inset={fullPage ? false : undefined}
         data-testid="library"
       >
-        {fullPage ? null : <LibraryViews view={view} onSelectView={onSelectView} />}
+        {fullPage ? null : (
+          <LibraryTabs view={view} onSelectView={onSelectView} className="tw:mb-5 tw:compact:mb-4" />
+        )}
         <RouteTransition routeKey={view} relation="sibling" className="tw:min-w-0">
           {children}
         </RouteTransition>
       </PageScaffold>
     </LibraryPageContext.Provider>
-  );
-}
-
-function LibraryViews({ view, onSelectView }: Omit<LibraryFrameProps, "children">) {
-  const { layoutMode } = useLayoutMode();
-  const compact = layoutMode === "compact";
-  return (
-    <nav
-      aria-label="Library"
-      data-tour-anchor="library.views"
-      className={cn("tw:mb-5 tw:compact:mb-4", compact ? "tw:flex" : "tw:inline-flex")}
-    >
-      <div
-        className={cn(
-          "tw:gap-1 tw:rounded-full tw:border tw:border-solid tw:border-border tw:bg-card tw:p-1 tw:shadow-sm tw:compact:shadow-none",
-          compact ? "tw:grid tw:w-full tw:grid-cols-3" : "tw:flex",
-        )}
-      >
-        {LIBRARY_SECTIONS.map((section) => {
-          const active = section === view;
-          const item = VIEWS[section];
-          return (
-            <ItemTrigger
-              key={section}
-              data-testid={`library-view-${section}`}
-              aria-current={active ? "page" : undefined}
-              onClick={() => onSelectView(section)}
-              className={cn(
-                "tw:justify-center tw:gap-2 tw:rounded-full tw:whitespace-nowrap tw:text-muted-foreground tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none",
-                compact ? "tw:h-9 tw:px-2 tw:text-label" : "tw:h-9 tw:px-4 tw:text-small",
-                active && "tw:bg-accent tw:font-semibold tw:text-accent-foreground tw:hover:text-accent-foreground",
-              )}
-            >
-              {compact ? null : <Icon name={item.icon} size={16} className="tw:shrink-0" />}
-              <span className="tw:min-w-0 tw:truncate">{item.label}</span>
-            </ItemTrigger>
-          );
-        })}
-      </div>
-    </nav>
   );
 }

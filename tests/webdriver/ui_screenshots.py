@@ -444,15 +444,15 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
-            # Library opens its last page: the Workbench, or a page with the view switcher.
-            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library']")
+            # Library opens its last page; every page carries Library's tabs.
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages']")
             show_workbench_tree(ctx)
             if section == "decks" and exists(ctx, WORKBENCH):
-                # The Workbench is Library's first page; it has no view switcher.
+                # The Workbench is Library's first page.
                 pass
             else:
                 # Choosing the open view again returns it to its first page.
-                click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
+                click(ctx, f"//main//nav[@aria-label='Library pages']//button[@data-testid='library-view-{section}']")
         else:
             click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
     elif section == "settings" and ctx.layout == "compact":

@@ -146,8 +146,8 @@ def workbench_snapshot(session_id: str, deadline: float) -> dict[str, Any]:
               sideBySide: treeRect.right <= listRect.left + 1,
               rowText: (open?.textContent || "").trim(),
               rowFits: row.scrollWidth <= row.clientWidth + 1,
-              filters: [...workbench.querySelectorAll("[role='group'][aria-label='Filter cards'] button")]
-                .map((button) => (button.textContent || "").replace(/\s+/g, " ").trim()),
+              filters: [...workbench.querySelectorAll("select[data-testid='workbench-filter'] option")]
+                .map((option) => (option.textContent || "").replace(/\s+/g, " ").trim()),
             };
             """,
         )
@@ -158,7 +158,7 @@ def workbench_snapshot(session_id: str, deadline: float) -> dict[str, Any]:
 
 
 def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
-    """A deck shows the tree and its card list side by side, with quick filters."""
+    """A deck shows the tree and its card list side by side, with the Show filter."""
     measurement = workbench_snapshot(session_id, deadline)
     if measurement.get("separators") != 1 or measurement.get("sideBySide") is not True:
         raise AssertionError(f"Medium Workbench did not show tree and list side by side: {measurement!r}")
@@ -167,8 +167,10 @@ def assert_deck_list(session_id: str, question: str, deadline: float) -> None:
     if measurement.get("rowFits") is not True:
         raise AssertionError(f"Card row overflowed its pane: {measurement!r}")
     filters = measurement.get("filters")
-    if not isinstance(filters, list) or [re.sub(r"[\d,]+$", "", label).strip() for label in filters] != ["All", "Due", "New", "Suspended"]:
-        raise AssertionError(f"Deck quick filters drifted: {measurement!r}")
+    if not isinstance(filters, list) or [re.sub(r"\s*·\s*[\d,]+$", "", label).strip() for label in filters] != [
+        "All cards", "Due today", "New", "Often missed", "Suspended"
+    ]:
+        raise AssertionError(f"Deck Show filter drifted: {measurement!r}")
     ui.assert_no_horizontal_overflow(session_id, "medium Workbench deck list")
 
 

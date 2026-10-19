@@ -20,7 +20,7 @@ TAB_KEY = "\ue004"
 SPACE_KEY = "\ue00d"
 # The same five destinations on every screen size; Search and Settings sit in the header.
 MAIN_NAVIGATION_LABELS = ["Home", "Library", "Review", "Tutor", "Progress"]
-# Library's outer page, which hosts Decks, Documents and Study guides below its view switcher.
+# Library's outer page, which hosts Decks, Documents and Study guides below its tabs.
 LIBRARY_ROUTE_SELECTOR = "[data-testid='library']"
 EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
     {
@@ -840,11 +840,11 @@ def open_study_guides_and_return(
 ) -> None:
     open_study_guides(session_id, deadline, label)
 
-    # Library's switcher returns to the Workbench without leaving Library.
+    # Library's Flashcards tab returns to the Workbench without leaving Library.
     workbench = webdriver.find_element(
         session_id,
         "css selector",
-        "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
+        "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
         deadline,
     )
     webdriver.click(session_id, workbench)
@@ -876,7 +876,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     documents = webdriver.find_element(
         session_id,
         "css selector",
-        "main nav[aria-label='Library'] button[data-testid='library-view-documents']",
+        "main nav[aria-label='Library pages'] button[data-testid='library-view-documents']",
         deadline,
     )
     webdriver.click(session_id, documents)
