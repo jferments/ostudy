@@ -4,8 +4,8 @@ use serde_json::{json, Value};
 
 use super::usage::{merge_usage_snapshot, safe_usage_envelope};
 use crate::ai::gateway::{
-    contracts::AiGatewayError,
-    errors::{classify_stream_event_error, error},
+    contracts::{AiGatewayError, ProviderWire},
+    errors::{classify_anthropic_stream_error, classify_stream_event_error, error},
     metadata::{safe_json_string, MAX_SAFE_PROVIDER_METADATA_CHARS},
 };
 
@@ -22,6 +22,8 @@ pub(crate) struct SseChatAccumulator {
     maximum_wire_bytes: usize,
     pub(crate) done: bool,
     openrouter: bool,
+    wire: ProviderWire,
+    anthropic_usage: AnthropicUsage,
     pub(crate) generation_id: Option<String>,
     retry_after_seconds: Option<u64>,
     pub(crate) upstream_provider: Option<String>,
@@ -43,6 +45,8 @@ impl SseChatAccumulator {
             maximum_wire_bytes,
             done: false,
             openrouter: false,
+            wire: ProviderWire::OpenAiCompatible,
+            anthropic_usage: AnthropicUsage::default(),
             generation_id: None,
             retry_after_seconds: None,
             upstream_provider: None,
@@ -54,11 +58,13 @@ impl SseChatAccumulator {
         maximum_content_bytes: usize,
         maximum_wire_bytes: usize,
         openrouter: bool,
+        wire: ProviderWire,
         generation_id: Option<String>,
         retry_after_seconds: Option<u64>,
     ) -> Self {
         let mut stream = Self::new(maximum_content_bytes, maximum_wire_bytes);
         stream.openrouter = openrouter;
+        stream.wire = wire;
         stream.generation_id = generation_id;
         stream.retry_after_seconds = retry_after_seconds;
         stream
@@ -152,6 +158,9 @@ impl SseChatAccumulator {
                 None,
             )
         })?;
+        if self.wire == ProviderWire::AnthropicMessages {
+            return self.process_anthropic_event(&value);
+        }
         if let Some(usage) = safe_usage_envelope(&value) {
             merge_usage_snapshot(&mut self.usage, usage);
         }
@@ -217,6 +226,128 @@ impl SseChatAccumulator {
             self.append_tools(calls, true)?;
         }
         Ok(())
+    }
+
+    /// Translate one Anthropic Messages event into the same accumulated
+    /// state the OpenAI-compatible decoder builds, so everything after the
+    /// gateway sees one completion shape.
+    fn process_anthropic_event(&mut self, value: &Value) -> Result<(), AiGatewayError> {
+        match value.get("type").and_then(Value::as_str) {
+            Some("message_start") => {
+                let message = value.get("message");
+                if self.model.is_none() {
+                    self.model = safe_json_string(
+                        message.and_then(|message| message.get("model")),
+                        MAX_SAFE_PROVIDER_METADATA_CHARS,
+                    );
+                }
+                if self.generation_id.is_none() {
+                    self.generation_id = safe_json_string(
+                        message.and_then(|message| message.get("id")),
+                        MAX_SAFE_PROVIDER_METADATA_CHARS,
+                    );
+                }
+                if let Some(usage) = message.and_then(|message| message.get("usage")) {
+                    self.record_anthropic_usage(usage);
+                }
+            }
+            Some("content_block_start") => {
+                let index = anthropic_block_index(value)?;
+                let block = value.get("content_block");
+                match block
+                    .and_then(|block| block.get("type"))
+                    .and_then(Value::as_str)
+                {
+                    Some("text") => {
+                        if let Some(text) = block
+                            .and_then(|block| block.get("text"))
+                            .and_then(Value::as_str)
+                        {
+                            self.append_content(text, false)?;
+                        }
+                    }
+                    Some("tool_use") => {
+                        let call = json!([{
+                            "index": index,
+                            "id": block.and_then(|block| block.get("id")),
+                            "type": "function",
+                            "function": {
+                                "name": block.and_then(|block| block.get("name")),
+                                "arguments": ""
+                            }
+                        }]);
+                        self.append_tools(&call, false)?;
+                    }
+                    _ => {}
+                }
+            }
+            Some("content_block_delta") => {
+                let index = anthropic_block_index(value)?;
+                let delta = value.get("delta");
+                match delta
+                    .and_then(|delta| delta.get("type"))
+                    .and_then(Value::as_str)
+                {
+                    Some("text_delta") => {
+                        if let Some(text) = delta
+                            .and_then(|delta| delta.get("text"))
+                            .and_then(Value::as_str)
+                        {
+                            self.append_content(text, false)?;
+                        }
+                    }
+                    Some("thinking_delta") => {
+                        let thinking = delta
+                            .and_then(|delta| delta.get("thinking"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        self.reasoning_bytes = self.reasoning_bytes.saturating_add(thinking.len());
+                    }
+                    Some("input_json_delta") => {
+                        let call = json!([{
+                            "index": index,
+                            "function": {
+                                "arguments": delta.and_then(|delta| delta.get("partial_json"))
+                            }
+                        }]);
+                        self.append_tools(&call, false)?;
+                    }
+                    // Thinking signatures and citations carry no output text.
+                    _ => {}
+                }
+            }
+            Some("message_delta") => {
+                if let Some(reason) = value
+                    .pointer("/delta/stop_reason")
+                    .and_then(Value::as_str)
+                    .filter(|reason| !reason.is_empty())
+                {
+                    self.finish_reason = Some(anthropic_finish_reason(reason).to_string());
+                }
+                if let Some(usage) = value.get("usage") {
+                    self.record_anthropic_usage(usage);
+                }
+            }
+            Some("message_stop") => self.done = true,
+            Some("ping") => self.comment_events = self.comment_events.saturating_add(1),
+            Some("error") => {
+                return Err(classify_anthropic_stream_error(
+                    value,
+                    self.retry_after_seconds,
+                ))
+            }
+            // content_block_stop and event types added later carry no state
+            // ostudy needs.
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn record_anthropic_usage(&mut self, usage: &Value) {
+        self.anthropic_usage.merge(usage);
+        if let Some(envelope) = self.anthropic_usage.envelope() {
+            self.usage = Some(envelope);
+        }
     }
 
     fn append_content(&mut self, content: &str, snapshot: bool) -> Result<(), AiGatewayError> {
@@ -347,6 +478,97 @@ impl SseChatAccumulator {
         }
         Ok(())
     }
+}
+
+/// Anthropic reports cumulative counts; input_tokens excludes cache reads and
+/// cache writes, which are billed separately.
+#[derive(Default)]
+struct AnthropicUsage {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+}
+
+impl AnthropicUsage {
+    fn merge(&mut self, usage: &Value) {
+        let read = |key: &str| usage.get(key).and_then(Value::as_u64);
+        if let Some(value) = read("input_tokens") {
+            self.input_tokens = Some(value);
+        }
+        if let Some(value) = read("output_tokens") {
+            self.output_tokens = Some(value);
+        }
+        if let Some(value) = read("cache_read_input_tokens") {
+            self.cache_read_input_tokens = Some(value);
+        }
+        if let Some(value) = read("cache_creation_input_tokens") {
+            self.cache_creation_input_tokens = Some(value);
+        }
+    }
+
+    fn envelope(&self) -> Option<Value> {
+        anthropic_usage_envelope(
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_read_input_tokens,
+            self.cache_creation_input_tokens,
+        )
+    }
+}
+
+/// Project Anthropic usage onto ostudy's normalized usage: the prompt is every
+/// input token the request was billed for, with cache reads and writes
+/// broken out.
+pub(crate) fn anthropic_usage_envelope(
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+) -> Option<Value> {
+    if input_tokens.is_none() && output_tokens.is_none() {
+        return None;
+    }
+    let prompt_tokens = input_tokens.map(|input| {
+        input
+            .saturating_add(cache_read_input_tokens.unwrap_or(0))
+            .saturating_add(cache_creation_input_tokens.unwrap_or(0))
+    });
+    let total_tokens = prompt_tokens
+        .zip(output_tokens)
+        .map(|(prompt, output)| prompt.saturating_add(output));
+    Some(json!({
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "prompt_tokens_details": {
+            "cached_tokens": cache_read_input_tokens,
+            "cache_write_tokens": cache_creation_input_tokens,
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": Value::Null,
+        },
+        "cost": Value::Null,
+    }))
+}
+
+pub(crate) fn anthropic_finish_reason(stop_reason: &str) -> &'static str {
+    match stop_reason {
+        "end_turn" | "stop_sequence" => "stop",
+        "max_tokens" | "model_context_window_exceeded" => "length",
+        "refusal" => "content_filter",
+        "tool_use" => "tool_calls",
+        "pause_turn" => "pause_turn",
+        _ => "unknown",
+    }
+}
+
+fn anthropic_block_index(value: &Value) -> Result<u64, AiGatewayError> {
+    value
+        .get("index")
+        .and_then(Value::as_u64)
+        .filter(|index| *index < 128)
+        .ok_or_else(|| protocol_error("A streamed content block has no bounded index."))
 }
 
 #[derive(Default)]

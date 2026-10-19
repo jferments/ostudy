@@ -85,10 +85,14 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
             });
             continue;
         }
-        if raw.suspicious
-            || !raw.substantive
-            || structured_is_suspicious
+        // Raw page text comes from the same decoder as the structure, so when the
+        // structure is clean and readable, damage left in the raw text belongs to
+        // parts the structure already dropped, and falling back would only trade
+        // headings and paragraphs for that damage.
+        let raw_is_unusable = raw.suspicious || !raw.substantive;
+        if structured_is_suspicious
             || document.semantic_analysis_degraded
+            || (raw_is_unusable && !has_good_semantic)
         {
             native_semantic_fallback_pages.insert(page.page_number);
         }
@@ -263,6 +267,24 @@ mod tests {
         );
         let plan = plan_text_recovery(&document);
         assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn clean_structure_survives_damage_left_in_the_raw_page_text() {
+        let document = base_document(
+            "The trachea divides into the main bronchi. \u{fffd}\u{fffd}\u{fffd} \u{fffd}\u{fffd}",
+            "The trachea divides into the main bronchi.",
+        );
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert!(plan.native_semantic_fallback_pages.is_empty());
+    }
+
+    #[test]
+    fn damaged_structure_still_falls_back_when_raw_text_is_also_damaged() {
+        let damaged = "The trachea \u{fffd}\u{fffd}\u{fffd} divides into the main bronchi.";
+        let plan = plan_text_recovery(&base_document(damaged, damaged));
         assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
     }
 

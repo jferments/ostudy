@@ -410,7 +410,8 @@ pub(crate) fn sanitize_snapshot(
     // A sync package is not a complete-library backup. Remove private learning
     // state before deleting selected-domain parents, including serialized source
     // projections which can otherwise carry unselected material as plain text.
-    // Document annotations stay on the device that made them for now.
+    // Document annotations stay on the device that made them for now. So do
+    // lessons: the knowledge units they are written from are removed below.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -430,7 +431,11 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM subject_filing_reviews;
              DELETE FROM review_day_rollup_built_decks;
              DELETE FROM review_day_rollups;
-             DELETE FROM document_annotations;",
+             DELETE FROM document_annotations;
+             DELETE FROM lesson_progress;
+             DELETE FROM lesson_revision_units;
+             DELETE FROM lesson_revisions;
+             DELETE FROM lessons;",
         )
         .map_err(CommandError::database)?;
 
@@ -736,5 +741,54 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, 0);
         assert!(!selection.includes_table("document_annotations"));
+    }
+
+    #[test]
+    fn lessons_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let subject = "5".repeat(32);
+                let lesson = "a".repeat(32);
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO document_collections(id, name, sort_order, created_at,
+                             updated_at, revision)
+                         VALUES ('{subject}', 'Renal', 1000, 1, 1, 1);
+                         INSERT INTO lessons(id, subject_id, sort_order, title, revision,
+                             created_at, updated_at)
+                         VALUES ('{lesson}', '{subject}', 1000, 'Loop of Henle', 1, 1, 1);
+                         INSERT INTO lesson_revisions(lesson_id, revision_number, origin,
+                             content_json, content_hash, provenance_json, created_at)
+                         VALUES ('{lesson}', 1, 'authored', '{{}}', '{hash}', NULL, 1);
+                         INSERT INTO lesson_revision_units(lesson_id, revision_number, unit_id,
+                             unit_content_hash)
+                         VALUES ('{lesson}', 1, '{unit}', '{hash}');
+                         INSERT INTO lesson_progress(lesson_id, revision_number, current_step,
+                             furthest_step, checks_json, revision, started_at, updated_at,
+                             finished_at)
+                         VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);",
+                        hash = "b".repeat(64),
+                        unit = "c".repeat(32),
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row(
+                        "SELECT (SELECT COUNT(*) FROM lessons)
+                              + (SELECT COUNT(*) FROM lesson_revisions)
+                              + (SELECT COUNT(*) FROM lesson_revision_units)
+                              + (SELECT COUNT(*) FROM lesson_progress)",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        for table in ["lessons", "lesson_revisions", "lesson_revision_units", "lesson_progress"] {
+            assert!(!selection.includes_table(table));
+        }
     }
 }

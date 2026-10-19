@@ -111,6 +111,7 @@ export interface AiProviderModel {
   ownedBy: string | null;
   contextWindowTokens?: number | null;
   reasoning?: AiProviderModelReasoning | null;
+  imageInput?: boolean | null;
 }
 
 export interface AiProviderModels {

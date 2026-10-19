@@ -1,11 +1,13 @@
 use super::super::super::{
     catalog::{AuthMode, ProviderKind},
     profiles::ProfileSnapshot,
-    providers::ProviderProperties,
+    providers::{ProviderModel, ProviderProperties},
 };
 use super::super::{
-    capabilities::{build_capabilities, default_unknown_capabilities, CapabilityEvidence},
-    contracts::CapabilityStatus,
+    capabilities::{
+        build_capabilities, default_unknown_capabilities, image_input_declared, CapabilityEvidence,
+    },
+    contracts::{AiCapabilityDto, CapabilitySource, CapabilityStatus},
 };
 
 fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
@@ -60,6 +62,7 @@ fn deepseek_document_tool_contract_is_independent_of_json_schema_capability() {
             document_generation_schema: Some(true),
             usage_reported: true,
             properties: &properties,
+            image_input_probe: None,
         },
     );
     assert_eq!(
@@ -102,6 +105,7 @@ fn openrouter_can_report_json_schema_and_document_contract_support() {
             document_generation_schema: Some(true),
             usage_reported: true,
             properties: &properties,
+            image_input_probe: None,
         },
     );
     assert_eq!(
@@ -144,6 +148,7 @@ fn failed_text_probe_does_not_claim_structured_support() {
             document_generation_schema: None,
             usage_reported: false,
             properties: &properties,
+            image_input_probe: None,
         },
     );
     assert_eq!(
@@ -162,4 +167,91 @@ fn failed_text_probe_does_not_claim_structured_support() {
             .status,
         CapabilityStatus::Unknown
     );
+}
+
+fn image_status(capabilities: &[AiCapabilityDto]) -> (CapabilityStatus, CapabilitySource) {
+    let capability = capabilities
+        .iter()
+        .find(|item| item.key == "image_input")
+        .unwrap();
+    (capability.status, capability.source)
+}
+
+fn openrouter_image_capabilities(
+    declared: Option<bool>,
+    probe: Option<bool>,
+) -> Vec<AiCapabilityDto> {
+    let profile = profile(ProviderKind::Openrouter, "deepseek/example");
+    let properties = ProviderProperties::default();
+    let models = vec![ProviderModel {
+        id: "deepseek/example".to_string(),
+        display_name: "Example".to_string(),
+        owned_by: Some("deepseek".to_string()),
+        context_window_tokens: None,
+        reasoning: None,
+        image_input: declared,
+    }];
+    build_capabilities(
+        &profile,
+        CapabilityEvidence {
+            models: Some(&models),
+            model_listing: true,
+            text_completion: true,
+            structured_output: true,
+            document_generation_schema: Some(true),
+            usage_reported: true,
+            properties: &properties,
+            image_input_probe: probe,
+        },
+    )
+}
+
+#[test]
+fn openrouter_image_input_is_supported_only_after_the_image_probe_passes() {
+    assert_eq!(
+        image_status(&openrouter_image_capabilities(Some(true), Some(true))),
+        (CapabilityStatus::Supported, CapabilitySource::Probed)
+    );
+    assert_eq!(
+        image_status(&openrouter_image_capabilities(Some(true), Some(false))),
+        (CapabilityStatus::Unsupported, CapabilitySource::Probed)
+    );
+    assert_eq!(
+        image_status(&openrouter_image_capabilities(Some(false), None)),
+        (CapabilityStatus::Unsupported, CapabilitySource::Declared)
+    );
+    assert_eq!(
+        image_status(&openrouter_image_capabilities(None, None)).0,
+        CapabilityStatus::Unknown
+    );
+}
+
+#[test]
+fn image_probe_runs_only_for_a_declared_image_model() {
+    let profile = profile(ProviderKind::Openrouter, "deepseek/example");
+    let properties = ProviderProperties::default();
+    let model = |image_input| ProviderModel {
+        id: "deepseek/example".to_string(),
+        display_name: "Example".to_string(),
+        owned_by: None,
+        context_window_tokens: None,
+        reasoning: None,
+        image_input,
+    };
+    assert!(image_input_declared(
+        &profile,
+        Some(&[model(Some(true))]),
+        &properties
+    ));
+    assert!(!image_input_declared(
+        &profile,
+        Some(&[model(Some(false))]),
+        &properties
+    ));
+    assert!(!image_input_declared(
+        &profile,
+        Some(&[model(None)]),
+        &properties
+    ));
+    assert!(!image_input_declared(&profile, None, &properties));
 }

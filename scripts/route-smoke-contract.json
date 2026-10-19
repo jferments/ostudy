@@ -8,7 +8,7 @@
     "checkpointGateway": "src/ipc/uiCheckpoint.ts",
     "mainNavigation": "src/components/MainNavigation.tsx",
     "destinationMapping": "src/navigation/appDestinations.ts",
-    "libraryViews": "src/screens/library/LibraryFrame.tsx",
+    "libraryViews": "src/screens/library/LibraryTabs.tsx",
     "headerActions": "src/components/AppHeaderBar.tsx",
     "flashcardsRoutes": "src/navigation/flashcardsRoutes.ts",
     "nativeSmokeRunner": "scripts/smoke-native.sh",
@@ -42,7 +42,7 @@
       "views": [
         {
           "id": "decks",
-          "label": "Workbench"
+          "label": "Flashcards"
         },
         {
           "id": "documents",
@@ -138,7 +138,7 @@
     },
     {
       "id": "decks",
-      "label": "Workbench",
+      "label": "Flashcards",
       "placement": {
         "destination": "library",
         "libraryView": "decks"
@@ -151,7 +151,7 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "main nav[aria-label='Library'] button[data-testid='library-view-decks']",
+              "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
               "webdriver.click(session_id, workbench)"
             ],
             "assertionFragments": [
@@ -187,8 +187,8 @@
             ],
             "assertionFragments": [
               "main [data-testid='library-workbench'] nav[aria-label='Library']",
-              "button.textContent?.trim() === 'Import deck…'",
-              "assertEquals(\"Views|Subjects|More\", snapshot.getString(\"sections\"))",
+              "label(button) === 'Import deck'",
+              "assertEquals(\"Subjects\", snapshot.getString(\"sections\"))",
               "assertEquals(1, snapshot.getInt(\"createActions\"))"
             ]
           }
@@ -255,7 +255,7 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "main nav[aria-label='Library'] button[data-testid='library-view-documents']",
+              "main nav[aria-label='Library pages'] button[data-testid='library-view-documents']",
               "webdriver.click(session_id, documents)"
             ],
             "assertionFragments": [
@@ -276,7 +276,7 @@
             ],
             "assertionFragments": [
               "=== 'Documents'",
-              "Upload document"
+              "=== 'Upload'"
             ]
           }
         ]

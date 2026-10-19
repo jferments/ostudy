@@ -11,7 +11,8 @@ use super::{
         AiRuntimeState,
     },
     capabilities::{
-        build_capabilities, default_unknown_capabilities, set_capability, CapabilityEvidence,
+        build_capabilities, default_unknown_capabilities, image_input_declared, set_capability,
+        CapabilityEvidence,
     },
     contracts::{
         AiProfileReferenceInput, AiProviderModelsDto, AiProviderProbeResultDto, CapabilitySource,
@@ -294,6 +295,7 @@ pub(super) async fn test_profile(
                     document_generation_schema: None,
                     usage_reported: false,
                     properties: &properties,
+                    image_input_probe: None,
                 },
             );
             return repository::finish_and_persist(
@@ -344,9 +346,14 @@ pub(super) async fn test_profile(
 
     let document_started = Instant::now();
     let document_probe_visible_tokens = 768_usize;
-    let document_probe_max_tokens = if profile.provider_kind == ProviderKind::Openrouter {
+    let document_probe_max_tokens = if profile.provider_kind.declares_reasoning() {
+        // "automatic" only reaches here for Claude, whose default reasons.
+        let budgeted_effort = match request_profile.reasoning_effort.as_str() {
+            "automatic" => "medium",
+            effort => effort,
+        };
         super::super::reasoning::structured_completion_token_ceiling(
-            &request_profile.reasoning_effort,
+            budgeted_effort,
             document_probe_visible_tokens,
         )
     } else {
@@ -405,6 +412,55 @@ pub(super) async fn test_profile(
             }
         };
 
+    let image_input_probe = if image_input_declared(profile, models.as_deref(), &properties) {
+        let image_started = Instant::now();
+        let image_probe_visible_tokens = 64_usize;
+        let image_probe_max_tokens = if profile.provider_kind == ProviderKind::Openrouter {
+            super::super::reasoning::structured_completion_token_ceiling(
+                &request_profile.reasoning_effort,
+                image_probe_visible_tokens,
+            )
+        } else {
+            image_probe_visible_tokens
+        };
+        match providers::run_image_probe(
+            &runtime.gateway,
+            &request_profile,
+            bearer,
+            image_probe_max_tokens,
+        )
+        .await
+        {
+            Ok(_) => {
+                phases.push(passed_phase(
+                    "image_input",
+                    "Image input",
+                    "The selected model described a small test image, so ostudy will send page images with document text.",
+                    Some(elapsed_ms(image_started)),
+                ));
+                Some(true)
+            }
+            Err(error_value) => {
+                optional_failure = true;
+                phases.push(failed_phase(
+                    "image_input",
+                    "Image input",
+                    "The model is listed as accepting images, but it did not describe the test image. ostudy will send document text without page images.",
+                    Some(elapsed_ms(image_started)),
+                    error_value.safe,
+                ));
+                Some(false)
+            }
+        }
+    } else {
+        phases.push(skipped_phase(
+            "image_input",
+            "Image input",
+            "The provider does not list image input for this model.",
+        ));
+        None
+    };
+
     let usage_reported = text_outcome.prompt_tokens.is_some()
         || text_outcome.completion_tokens.is_some()
         || structured_outcome.as_ref().is_some_and(|outcome| {
@@ -423,6 +479,7 @@ pub(super) async fn test_profile(
             document_generation_schema: document_schema_supported,
             usage_reported,
             properties: &properties,
+            image_input_probe,
         },
     );
     repository::finish_and_persist(
@@ -461,15 +518,21 @@ fn classify_model_match(profile: &ProfileSnapshot, models: &[ProviderModel]) -> 
 }
 
 fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderModel]>) -> String {
-    if profile.provider_kind != ProviderKind::Openrouter {
+    if !profile.provider_kind.declares_reasoning() {
         return profile.reasoning_effort.clone();
     }
     let Some(reasoning) = models
         .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
         .and_then(|model| model.reasoning.as_ref())
     else {
-        // Production treats absent reasoning evidence conservatively as none.
-        return "none".to_string();
+        // Production treats absent reasoning evidence conservatively: none,
+        // or the model's own default for Claude, whose newest models refuse
+        // to turn thinking off.
+        return if profile.provider_kind == ProviderKind::Claude {
+            "automatic".to_string()
+        } else {
+            "none".to_string()
+        };
     };
     super::super::reasoning::resolve_declared_effort(
         &profile.reasoning_effort,

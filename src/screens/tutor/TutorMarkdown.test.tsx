@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openExternalUrl } from "../../platform/externalLinks";
@@ -121,11 +121,20 @@ describe("Tutor mathematical Markdown", () => {
     expect(container.textContent).toBe(String.raw`\(\secret\)`);
   });
 
-  it("preserves Markdown and renders all equations beyond the old 64-formula cliff", async () => {
-    const text = "**Dense** " + String.raw`\(x\) `.repeat(65);
-    const { container } = render(<TutorMarkdown text={text} />);
-    expect(container.querySelector("strong")?.textContent).toBe("Dense");
-    await waitFor(() => expect(container.querySelectorAll("math")).toHaveLength(65));
-    expect(container.querySelectorAll("math annotation")).toHaveLength(65);
+  it("preserves Markdown and renders all equations beyond the old 64-formula cliff", () => {
+    // The render queue draws a few formulas per animation frame. Step the frames
+    // instead of waiting on the wall clock, which a loaded CI runner can outlast.
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    try {
+      const text = "**Dense** " + String.raw`\(x\) `.repeat(65);
+      const { container } = render(<TutorMarkdown text={text} />);
+      expect(container.querySelector("strong")?.textContent).toBe("Dense");
+      act(() => { vi.advanceTimersByTime(16 * 40); });
+      expect(container.querySelectorAll("math")).toHaveLength(65);
+      expect(container.querySelectorAll("math annotation")).toHaveLength(65);
+      expect(container.querySelector("[aria-busy]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

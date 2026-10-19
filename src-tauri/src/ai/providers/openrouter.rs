@@ -113,6 +113,18 @@ pub(super) fn model_context_window_tokens(item: &Value) -> Option<i64> {
         .filter(|value| (2_048..=16_777_216).contains(value))
 }
 
+/// OpenRouter declares a model's accepted inputs in
+/// `architecture.input_modalities` (for example `["text", "image"]`). A
+/// catalog entry without that list says nothing, so it stays unknown.
+pub(super) fn model_image_input(item: &Value) -> Option<bool> {
+    let modalities = item.pointer("/architecture/input_modalities")?.as_array()?;
+    Some(
+        modalities
+            .iter()
+            .any(|value| value.as_str() == Some("image")),
+    )
+}
+
 pub(super) fn model_reasoning(item: &Value) -> Option<ProviderModelReasoning> {
     let reasoning = item.get("reasoning")?.as_object()?;
     let supported_efforts = match reasoning.get("supported_efforts") {
@@ -151,6 +163,19 @@ pub(super) fn model_reasoning(item: &Value) -> Option<ProviderModelReasoning> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_input_comes_from_the_declared_input_modalities() {
+        let declared =
+            |modalities: Value| json!({"architecture": {"input_modalities": modalities}});
+        assert_eq!(
+            model_image_input(&declared(json!(["text", "image"]))),
+            Some(true)
+        );
+        assert_eq!(model_image_input(&declared(json!(["text"]))), Some(false));
+        assert_eq!(model_image_input(&json!({"architecture": {}})), None);
+        assert_eq!(model_image_input(&json!({})), None);
+    }
 
     #[test]
     fn request_policy_enforces_private_parameter_compatible_routing() {

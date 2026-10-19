@@ -41,5 +41,7 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
         return Ok(());
     }
     let policy = input.task.question_policy.clone();
-    scope(&policy, authoring::prepare_document(input)).await
+    scope(&policy, authoring::prepare_document(input))
+        .await
+        .map(|_| ())
 }
