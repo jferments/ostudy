@@ -17,6 +17,8 @@ pub(super) struct CapabilityEvidence<'a> {
     pub document_generation_schema: Option<bool>,
     pub usage_reported: bool,
     pub properties: &'a ProviderProperties,
+    /// The live image probe's result, when the model declared image input.
+    pub image_input_probe: Option<bool>,
 }
 
 pub(super) fn build_capabilities(
@@ -31,6 +33,7 @@ pub(super) fn build_capabilities(
         document_generation_schema,
         usage_reported,
         properties,
+        image_input_probe,
     } = evidence;
     let mut capabilities = default_unknown_capabilities(profile.provider_kind);
     set_capability(
@@ -155,6 +158,19 @@ pub(super) fn build_capabilities(
                 serde_json::to_value(reasoning).ok(),
             );
         }
+        if let Some(image_input) = model.image_input {
+            set_capability(
+                &mut capabilities,
+                "image_input",
+                if image_input {
+                    CapabilityStatus::Supported
+                } else {
+                    CapabilityStatus::Unsupported
+                },
+                CapabilitySource::Declared,
+                None,
+            );
+        }
     }
 
     if let Some(present) = properties.server_chat_template_present {
@@ -195,7 +211,35 @@ pub(super) fn build_capabilities(
             Some(json!(context_window_tokens)),
         );
     }
+    // A declaration only qualifies images once the routed endpoint has
+    // actually described the probe image.
+    if let Some(passed) = image_input_probe {
+        set_capability(
+            &mut capabilities,
+            "image_input",
+            if passed {
+                CapabilityStatus::Supported
+            } else {
+                CapabilityStatus::Unsupported
+            },
+            CapabilitySource::Probed,
+            None,
+        );
+    }
     capabilities
+}
+
+/// Whether the provider or its catalog declares image input for this model,
+/// which is when the live image probe runs.
+pub(super) fn image_input_declared(
+    profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
+    properties: &ProviderProperties,
+) -> bool {
+    properties.image_input_declared == Some(true)
+        || models
+            .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
+            .is_some_and(|model| model.image_input == Some(true))
 }
 
 pub(super) fn default_unknown_capabilities(provider_kind: ProviderKind) -> Vec<AiCapabilityDto> {

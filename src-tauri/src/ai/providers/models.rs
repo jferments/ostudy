@@ -176,18 +176,21 @@ fn parse_model_list(
                 None,
             ));
         }
-        let (display_name, owned_by, context_window_tokens, reasoning) = match dialect {
+        let (display_name, owned_by, context_window_tokens, reasoning, image_input) = match dialect
+        {
             ProviderDialect::Openrouter => (
                 openrouter::model_display_name(item, id),
                 openrouter::model_owner(item, id),
                 openrouter::model_context_window_tokens(item),
                 openrouter::model_reasoning(item),
+                openrouter::model_image_input(item),
             ),
             ProviderDialect::Claude => (
                 claude::model_display_name(item, id),
                 Some("Anthropic".to_string()),
                 claude::model_context_window_tokens(item),
                 claude::model_reasoning(item),
+                claude::model_image_input(item),
             ),
             ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => (
                 id.to_string(),
@@ -195,6 +198,7 @@ fn parse_model_list(
                     .and_then(Value::as_str)
                     .filter(|value| value.len() <= 200 && !value.chars().any(char::is_control))
                     .map(ToString::to_string),
+                None,
                 None,
                 None,
             ),
@@ -205,6 +209,7 @@ fn parse_model_list(
             owned_by,
             context_window_tokens,
             reasoning,
+            image_input,
         });
     }
     if declared_incompatible > 0 {
@@ -267,6 +272,7 @@ mod tests {
                 "id":"deepseek/example",
                 "name":"DeepSeek Example",
                 "context_length":1_310_720,
+                "architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},
                 "reasoning":{
                     "mandatory":false,
                     "default_enabled":true,
@@ -281,6 +287,7 @@ mod tests {
         assert_eq!(models[0].display_name, "DeepSeek Example");
         assert_eq!(models[0].owned_by.as_deref(), Some("deepseek"));
         assert_eq!(models[0].context_window_tokens, Some(1_310_720));
+        assert_eq!(models[0].image_input, Some(true));
         assert_eq!(
             models[0]
                 .reasoning

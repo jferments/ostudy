@@ -301,3 +301,47 @@ fn guide_shape_errors_never_echo_provider_strings() {
     assert!(!error.message.contains("PRIVATE FIELD"));
     assert!(!error.message.contains("PRIVATE TEXT"));
 }
+
+#[test]
+fn ragged_tables_are_repaired_instead_of_failing_the_section() {
+    let parsed = parse_study_guide_section(json!({
+        "overview": "Minerals differ in their daily intake and in the problems a deficiency causes.",
+        "keyPoints": [],
+        "explanations": [],
+        "importantTerms": [],
+        "processSteps": [],
+        "comparisons": [],
+        "commonMisconceptions": [],
+        "tables": [
+            {"title": "Minerals", "columns": ["Mineral", "Intake", "Deficiency"], "caption": "",
+                "rows": [["Calcium", "1000 mg"], ["Sodium", "1500 mg", "Rare", "cramps"], ["Iron", " ", "Anemia"]]},
+            {"title": "One column", "columns": ["Only"], "rows": [["x"]], "caption": ""}
+        ],
+        "visualExplanations": []
+    }))
+    .unwrap();
+    assert_eq!(parsed.tables.len(), 1);
+    assert_eq!(
+        parsed.tables[0].rows,
+        vec![
+            vec!["Calcium", "1000 mg", "—"],
+            vec!["Sodium", "1500 mg", "Rare; cramps"],
+            vec!["Iron", "—", "Anemia"],
+        ]
+    );
+}
+
+#[test]
+fn repeated_knowledge_targets_are_kept_once() {
+    let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+    let section = parse_grounded_section(
+        json!({"content":{
+            "overview":"A triangle is a polygon with three sides. Its three edges meet at three vertices.",
+            "keyPoints":[],"explanations":[],"importantTerms":[],"processSteps":[],"comparisons":[],
+            "commonMisconceptions":[],"visualExplanations":[]},
+            "knowledgeUnitIds":["K0","K0"]}),
+        &catalog,
+    )
+    .unwrap();
+    assert_eq!(section.knowledge_support.len(), 1);
+}

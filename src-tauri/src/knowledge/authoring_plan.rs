@@ -104,6 +104,19 @@ pub(crate) fn allocate_nonzero_budgets(
     Ok(budgets)
 }
 
+/// Two order-preserving halves for a smaller retry after a request failed on
+/// its output. Each half is still admitted by `partition_catalog` before use.
+pub(crate) fn halve_catalog(catalog: &KnowledgeCatalog) -> Option<[KnowledgeCatalog; 2]> {
+    let length = catalog.units.len();
+    (length >= 2).then(|| {
+        let middle = length / 2;
+        [
+            slice_catalog(catalog, 0..middle),
+            slice_catalog(catalog, middle..length),
+        ]
+    })
+}
+
 fn slice_catalog(catalog: &KnowledgeCatalog, range: Range<usize>) -> KnowledgeCatalog {
     let units = catalog.units[range].to_vec();
     let ids = units
