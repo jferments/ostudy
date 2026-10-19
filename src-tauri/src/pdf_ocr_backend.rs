@@ -58,6 +58,11 @@ const WAIT_INTERVAL_MS: u64 = 25;
 const MAX_TSV_BYTES: u64 = 16 * 1024 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const TESSERACT_INPUT_DPI: u16 = 300;
+/// ostudy already runs one Tesseract per page in parallel. Tesseract's own
+/// OpenMP threads on top of that spin against each other: four pages at once
+/// took over 120 s each instead of about one second.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+const TESSERACT_THREAD_ENV: (&str, &str) = ("OMP_THREAD_LIMIT", "1");
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PRIMARY_PAGE_SEGMENTATION_MODE: u8 = 3;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -359,6 +364,7 @@ impl PlatformOcrProvider {
 
         let output_base = workspace.path.join(format!("result-psm-{psm}"));
         let mut child = Command::new(&self.executable)
+            .env(TESSERACT_THREAD_ENV.0, TESSERACT_THREAD_ENV.1)
             .arg(input)
             .arg(&output_base)
             .arg("-l")

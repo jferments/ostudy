@@ -202,6 +202,28 @@ describe("DefaultAiModelSettings", () => {
     );
   });
 
+  it("asks for no reasoning on document generation and offers no reasoning picker", async () => {
+    const value = controller();
+    render(<DefaultAiModelSettings controller={value} />);
+    const model = await screen.findByRole("combobox", {
+      name: "Flashcard and study-guide generation model",
+    });
+    await waitFor(() => expect((model as HTMLSelectElement).disabled).toBe(false));
+    expect(
+      screen.queryByRole("combobox", { name: "Flashcard and study-guide generation reasoning" }),
+    ).toBeNull();
+
+    fireEvent.change(model, { target: { value: "anthropic/claude-sonnet" } });
+    await waitFor(() => {
+      expect(value.setTaskDefault).toHaveBeenCalledWith(
+        "flashcard_generation",
+        profileId,
+        "anthropic/claude-sonnet",
+        "none",
+      );
+    });
+  });
+
   it("shows a green success check beside Test model after a successful probe", async () => {
     render(<DefaultAiModelSettings controller={controller()} />);
     const tutorModel = await screen.findByRole("combobox", { name: "Interactive tutor model" });

@@ -43,6 +43,32 @@
         "$value": "{color.surface.base}"
       }
     },
+    "navigation": {
+      "base": {
+        "$type": "color",
+        "$value": "#DCE0E7"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "#3B414C"
+      },
+      "hover": {
+        "$type": "color",
+        "$value": "#CFD4DD"
+      },
+      "selected": {
+        "$type": "color",
+        "$value": "#FFFFFF"
+      },
+      "selectedText": {
+        "$type": "color",
+        "$value": "{color.text.accent}"
+      },
+      "border": {
+        "$type": "color",
+        "$value": "#CDD2DA"
+      }
+    },
     "text": {
       "primary": {
         "$type": "color",

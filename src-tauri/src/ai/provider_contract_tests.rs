@@ -23,11 +23,15 @@ struct ExpectedExchange {
     status: u16,
     response_body: String,
     extra_headers: Vec<(&'static str, &'static str)>,
+    /// Lowercase `name: value` request header lines that must be present
+    /// (`!name` means the header must be absent).
+    request_headers: Vec<&'static str>,
 }
 
 struct MockRequest {
     method: String,
     path: String,
+    headers: String,
     body: String,
 }
 
@@ -46,6 +50,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             })
             .to_string(),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
         ExpectedExchange {
             method: "GET",
@@ -59,6 +64,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             })
             .to_string(),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
         ExpectedExchange {
             method: "POST",
@@ -67,6 +73,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             status: 200,
             response_body: completion_response("OSTUDY_OK"),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
         ExpectedExchange {
             method: "POST",
@@ -75,6 +82,7 @@ fn llama_cpp_adapter_discovers_models_and_verifies_server_structured_output() {
             status: 200,
             response_body: completion_response(&json!({ "ok": true, "echo": echo }).to_string()),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
     ]);
     let profile = profile(
@@ -125,6 +133,7 @@ fn llama_cpp_optional_props_tolerates_non_json_metadata_response() {
         status: 200,
         response_body: "optional metadata unavailable".to_string(),
         extra_headers: Vec::new(),
+        request_headers: Vec::new(),
     }]);
     let profile = profile(
         ProviderKind::LlamaCpp,
@@ -160,6 +169,7 @@ fn deepseek_v4_adapter_disables_thinking_for_bounded_connectivity_probes() {
             })
             .to_string(),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
         ExpectedExchange {
             method: "POST",
@@ -168,6 +178,7 @@ fn deepseek_v4_adapter_disables_thinking_for_bounded_connectivity_probes() {
             status: 200,
             response_body: completion_response_with_finish("OSTUDY_OK", "length"),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
         ExpectedExchange {
             method: "POST",
@@ -176,6 +187,7 @@ fn deepseek_v4_adapter_disables_thinking_for_bounded_connectivity_probes() {
             status: 200,
             response_body: completion_response(&json!({ "ok": true, "echo": echo }).to_string()),
             extra_headers: Vec::new(),
+            request_headers: Vec::new(),
         },
     ]);
     let profile = profile(
@@ -211,6 +223,7 @@ fn native_gateway_rejects_redirects_instead_of_forwarding_credentials() {
         status: 302,
         response_body: String::new(),
         extra_headers: vec![("Location", "http://127.0.0.1:9/untrusted")],
+        request_headers: Vec::new(),
     }]);
     let gateway = AiGateway::new().expect("gateway should initialize");
     let url = url::Url::parse(&format!("{base_url}redirect")).expect("URL should parse");
@@ -238,6 +251,7 @@ fn deepseek_structured_probe_rejects_valid_json_with_the_wrong_semantics() {
             &json!({ "ok": true, "echo": "wrong-echo" }).to_string(),
         ),
         extra_headers: Vec::new(),
+        request_headers: Vec::new(),
     }]);
     let profile = profile(
         ProviderKind::Deepseek,
@@ -254,6 +268,216 @@ fn deepseek_structured_probe_rejects_valid_json_with_the_wrong_semantics() {
     });
     assert_eq!(failure.safe.code, "ai_structured_output_invalid");
     server.join().expect("mock server should finish");
+}
+
+#[test]
+fn claude_adapter_uses_the_messages_api_for_models_and_probes() {
+    let echo = "claude-contract-echo";
+    let claude_headers = vec![
+        "x-api-key: sentinel-key",
+        "anthropic-version: 2023-06-01",
+        "!authorization",
+    ];
+    let (base_url, server) = spawn_mock_server(vec![
+        ExpectedExchange {
+            method: "GET",
+            path: "/v1/models?limit=1000",
+            assert_body: assert_empty_body,
+            status: 200,
+            response_body: json!({
+                "data": [
+                    claude_model("claude-haiku-5-5", "Claude Haiku 5.5", true, true),
+                    claude_model("claude-legacy", "Claude Legacy", false, true)
+                ],
+                "has_more": false,
+                "first_id": "claude-haiku-5-5",
+                "last_id": "claude-legacy"
+            })
+            .to_string(),
+            extra_headers: Vec::new(),
+            request_headers: claude_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "GET",
+            path: "/v1/models/claude-haiku-5-5",
+            assert_body: assert_empty_body,
+            status: 200,
+            response_body: claude_model("claude-haiku-5-5", "Claude Haiku 5.5", true, true)
+                .to_string(),
+            extra_headers: Vec::new(),
+            request_headers: claude_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1/messages",
+            assert_body: assert_claude_text_request,
+            status: 200,
+            response_body: claude_message("OSTUDY_OK", "end_turn"),
+            extra_headers: Vec::new(),
+            request_headers: claude_headers.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1/messages",
+            assert_body: assert_claude_structured_request,
+            status: 200,
+            response_body: claude_message(
+                &json!({ "ok": true, "echo": echo }).to_string(),
+                "end_turn",
+            ),
+            extra_headers: Vec::new(),
+            request_headers: claude_headers,
+        },
+    ]);
+    let mut profile = profile(
+        ProviderKind::Claude,
+        format!("{base_url}v1/"),
+        "claude-haiku-5-5",
+        AuthMode::Bearer,
+    );
+    profile.reasoning_effort = "none".to_string();
+    let gateway = AiGateway::new().expect("gateway should initialize");
+
+    tauri::async_runtime::block_on(async {
+        let models = providers::list_models(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("models should load");
+        assert_eq!(
+            models.len(),
+            1,
+            "models without structured outputs are hidden"
+        );
+        assert_eq!(models[0].display_name, "Claude Haiku 5.5");
+        assert_eq!(models[0].context_window_tokens, Some(1_000_000));
+        let reasoning = models[0].reasoning.as_ref().expect("reasoning facts");
+        assert!(!reasoning.mandatory);
+        let properties = providers::load_properties(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("model details should load");
+        assert_eq!(properties.image_input_declared, Some(true));
+        let text = providers::run_text_probe(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("text probe should pass");
+        assert_eq!(text.prompt_tokens, Some(130));
+        assert_eq!(text.completion_tokens, Some(3));
+        providers::run_structured_probe(&gateway, &profile, Some("sentinel-key"), echo)
+            .await
+            .expect("schema-constrained JSON should pass local validation");
+    });
+    server.join().expect("mock server should finish");
+}
+
+#[test]
+fn claude_document_probe_enforces_the_contract_with_output_config() {
+    let (base_url, server) = spawn_mock_server(vec![ExpectedExchange {
+        method: "POST",
+        path: "/v1/messages",
+        assert_body: assert_claude_document_request,
+        status: 200,
+        response_body: claude_message(
+            &json!({"cards": [
+                {"type":"basic","front":"Probe question","back":"Probe answer","tags":["probe"]},
+                {"type":"cloze","text":"The probe value is stable.","blanks":["stable"],
+                    "mode":"one_at_a_time","tags":["probe"]}
+            ]})
+            .to_string(),
+            "end_turn",
+        ),
+        extra_headers: Vec::new(),
+        request_headers: vec!["x-api-key: sentinel-key"],
+    }]);
+    let profile = profile(
+        ProviderKind::Claude,
+        format!("{base_url}v1/"),
+        "claude-opus-5-5",
+        AuthMode::Bearer,
+    );
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    tauri::async_runtime::block_on(async {
+        providers::run_document_schema_probe(&gateway, &profile, Some("sentinel-key"), 1_280, None)
+            .await
+            .expect("document contract should pass");
+    });
+    server.join().expect("mock server should finish");
+}
+
+fn claude_model(id: &str, name: &str, structured_outputs: bool, image_input: bool) -> Value {
+    json!({
+        "type": "model",
+        "id": id,
+        "display_name": name,
+        "created_at": "2026-09-01T00:00:00Z",
+        "max_input_tokens": 1_000_000,
+        "max_tokens": 128_000,
+        "capabilities": {
+            "image_input": {"supported": image_input},
+            "structured_outputs": {"supported": structured_outputs},
+            "thinking": {"supported": true, "types": {
+                "adaptive": {"supported": true},
+                "disabled": {"supported": true},
+                "enabled": {"supported": false}
+            }},
+            "effort": {
+                "supported": true,
+                "low": {"supported": true}, "medium": {"supported": true},
+                "high": {"supported": true}, "xhigh": {"supported": true},
+                "max": {"supported": true}
+            }
+        }
+    })
+}
+
+fn claude_message(text: &str, stop_reason: &str) -> String {
+    json!({
+        "id": "msg_contract",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [{"type": "text", "text": text}],
+        "stop_reason": stop_reason,
+        "usage": {
+            "input_tokens": 10,
+            "cache_read_input_tokens": 120,
+            "cache_creation_input_tokens": 0,
+            "output_tokens": 3
+        }
+    })
+    .to_string()
+}
+
+fn assert_claude_text_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value["model"], "claude-haiku-5-5");
+    assert_eq!(value["max_tokens"], 64);
+    assert!(value.get("temperature").is_none());
+    assert!(value.get("stream_options").is_none());
+    assert_eq!(value["thinking"]["type"], "disabled");
+    assert!(value["system"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("connectivity test"));
+    assert_eq!(value["messages"][0]["role"], "user");
+    assert_eq!(value["messages"].as_array().unwrap().len(), 1);
+}
+
+fn assert_claude_structured_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value["output_config"]["format"]["type"], "json_schema");
+    assert_eq!(
+        value["output_config"]["format"]["schema"]["additionalProperties"],
+        false
+    );
+    assert!(value.get("response_format").is_none());
+}
+
+fn assert_claude_document_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    // Opus at "low" effort reasons adaptively; the probe budget has headroom.
+    assert_eq!(value["thinking"]["type"], "adaptive");
+    assert_eq!(value["output_config"]["effort"], "low");
+    let schema = &value["output_config"]["format"]["schema"];
+    assert!(schema.pointer("/properties/cards/items/anyOf").is_some());
+    assert!(schema.pointer("/properties/cards/minItems").is_none());
 }
 
 fn profile(
@@ -411,6 +635,18 @@ fn spawn_mock_server(exchanges: Vec<ExpectedExchange>) -> (String, thread::JoinH
             assert_eq!(request.method, expected.method);
             assert_eq!(request.path, expected.path);
             (expected.assert_body)(&request.body);
+            for header in &expected.request_headers {
+                match header.strip_prefix('!') {
+                    Some(name) => assert!(
+                        !request.headers.contains(&format!("\n{name}:")),
+                        "request header {name} should be absent"
+                    ),
+                    None => assert!(
+                        request.headers.contains(&format!("\n{header}\r")),
+                        "request header {header} should be present"
+                    ),
+                }
+            }
             write_response(&mut stream, expected);
         }
         assert!(server_queue
@@ -467,7 +703,12 @@ fn read_request(stream: &mut TcpStream) -> MockRequest {
     let path = parts.next().expect("path should exist").to_string();
     let body = String::from_utf8(bytes[header_end..header_end + content_length].to_vec())
         .expect("request body should be UTF-8");
-    MockRequest { method, path, body }
+    MockRequest {
+        method,
+        path,
+        headers: header_text.to_ascii_lowercase(),
+        body,
+    }
 }
 
 fn write_response(stream: &mut TcpStream, expected: ExpectedExchange) {

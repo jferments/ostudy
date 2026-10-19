@@ -49,15 +49,24 @@ struct DocumentUsageAccumulator {
 
 impl DocumentTaskContext {
     pub(crate) fn for_profile(database: &Database, profile_id: &str) -> Result<Self, CommandError> {
-        context_from_request(database, load_profile_request(database, profile_id)?)?
-            .with_saved_capabilities(database)
+        context_from_request(
+            database,
+            load_profile_request(database, profile_id)?,
+            ReasoningPolicy::Off,
+        )?
+        .with_saved_capabilities(database)
     }
 
     pub(crate) fn for_tutor_profile(
         database: &Database,
         profile_id: &str,
     ) -> Result<Self, CommandError> {
-        Self::for_profile(database, profile_id)
+        context_from_request(
+            database,
+            load_profile_request(database, profile_id)?,
+            ReasoningPolicy::Profile,
+        )?
+        .with_saved_capabilities(database)
     }
 
     fn with_saved_capabilities(mut self, database: &Database) -> Result<Self, CommandError> {
@@ -182,7 +191,11 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    let mut task = context_from_request(database, load_default_profile_request(database)?)?;
+    let mut task = context_from_request(
+        database,
+        load_default_profile_request(database)?,
+        ReasoningPolicy::Off,
+    )?;
     task.question_policy = database.with_connection(|connection| {
         crate::knowledge::assessment::settings::load(connection).map(|snapshot| snapshot.policy)
     })?;
@@ -195,13 +208,25 @@ pub(crate) fn load_tutor_task_context(
     context_from_request(
         database,
         load_task_profile_request(database, AiTaskKind::Tutor)?,
+        ReasoningPolicy::Profile,
     )?
     .with_saved_capabilities(database)
+}
+
+/// Only the interactive Tutor reasons. Extraction, outlines, guides, cards and
+/// study material request no reasoning whatever the assignment says: hidden
+/// reasoning shared the output budget and left long chapters with nothing.
+/// A model that cannot turn reasoning off still resolves to its lowest effort.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReasoningPolicy {
+    Off,
+    Profile,
 }
 
 fn context_from_request(
     database: &Database,
     request: ProfileRequestSnapshot,
+    reasoning: ReasoningPolicy,
 ) -> Result<DocumentTaskContext, CommandError> {
     let profile = request.profile;
     profile.validate_for_provider_request()?;
@@ -220,7 +245,10 @@ fn context_from_request(
             "The selected AI model did not pass ostudy's representative document structured-output contract. Test the profile again or choose another model."));
     }
     let include_page_images = evidence.probe_matches && evidence.image_input_supported;
-    let requested_reasoning_effort = profile.reasoning_effort.clone();
+    let requested_reasoning_effort = match reasoning {
+        ReasoningPolicy::Off => "none".to_string(),
+        ReasoningPolicy::Profile => profile.reasoning_effort.clone(),
+    };
     let capabilities = DocumentProviderCapabilities::conservative(
         profile.provider_kind.as_str(),
         &profile.model_id,

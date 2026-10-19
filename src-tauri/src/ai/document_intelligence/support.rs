@@ -15,6 +15,25 @@ pub(super) fn retryable_contract_error(error: &CommandError) -> bool {
     )
 }
 
+/// Failures that belong to one request's output or size rather than to the
+/// provider, profile or task. A document keeps going around one of these: the
+/// failed window or section becomes a gap. Cancellation, a changed profile,
+/// credentials and an unreachable provider stay fatal, because every other
+/// request would fail the same way.
+pub(crate) fn is_output_failure(error: &CommandError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "ai_document_output_invalid"
+            | "ai_document_output_truncated"
+            | "ai_document_output_style"
+            | "ai_document_output_resource"
+            | "ai_document_context_budget"
+            | "ai_empty_response"
+            | "ai_invalid_json"
+            | "ai_structured_output_invalid"
+    )
+}
+
 pub(super) fn collapse_contract_error(error: CommandError, task: &str) -> CommandError {
     if retryable_contract_error(&error) {
         CommandError::new(

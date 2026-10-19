@@ -44,7 +44,7 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     assert!(extracted.chunks[0].page_numbers.contains(&1));
     assert_eq!(
         pdf_backend::active_backend_id(),
-        "oxidize-pdf-4.2.2-rag-native-first-ocr-v6"
+        "oxidize-pdf-5.5.0-rag-native-first-ocr-v9"
     );
 
     let runtime = pdf_render_backend::shared_test_runtime();
@@ -78,4 +78,88 @@ fn structured_extraction_and_pdfium_rendering_process_a_real_fixture() {
     );
 
     fs::remove_dir_all(paths.app_data_dir()).expect("temporary fixture root should clean up");
+}
+
+fn words(text: &str) -> usize {
+    text.split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .count()
+}
+
+fn extract_fixture(label: &str, name: &str, bytes: &[u8]) -> pdf_backend::ExtractedDocument {
+    let paths = temporary_paths(label);
+    let source = paths.app_data_dir().join(name);
+    fs::write(&source, bytes).expect("fixture should be copied to a filesystem path");
+    pdf_backend::extract_document(&source).expect("oxidize-pdf should extract the fixture")
+}
+
+#[test]
+fn two_text_columns_are_not_read_as_a_table_or_sent_twice() {
+    let extracted = extract_fixture(
+        "two-column",
+        "textbook-two-column.pdf",
+        include_bytes!("../tests/fixtures/document-generation/textbook-two-column.pdf"),
+    );
+    assert!(
+        extracted
+            .elements
+            .iter()
+            .all(|element| element.element_type != "table"),
+        "a two-column page must not produce a table element"
+    );
+    let page_words = words(&extracted.pages[0].text);
+    let chunk_words = extracted
+        .chunks
+        .iter()
+        .map(|chunk| words(&chunk.text))
+        .sum::<usize>();
+    assert!(
+        chunk_words * 10 <= page_words * 11,
+        "chunks carry {chunk_words} words for a {page_words}-word page"
+    );
+}
+
+#[test]
+fn a_ruled_table_between_paragraphs_stays_a_table() {
+    let extracted = extract_fixture(
+        "ruled-table",
+        "table-handout.pdf",
+        include_bytes!("../tests/fixtures/document-generation/table-handout.pdf"),
+    );
+    let tables = extracted
+        .elements
+        .iter()
+        .filter(|element| element.element_type == "table")
+        .collect::<Vec<_>>();
+    assert_eq!(tables.len(), 1);
+    assert!(tables[0]
+        .text
+        .contains("Digoxin | Cardiac glycoside | Inhibits Na+/K+ ATPase | 36-48"));
+}
+
+#[test]
+fn wrapped_rows_of_drawn_tables_keep_their_values_together() {
+    let extracted = extract_fixture(
+        "ruled-tables-wrapped",
+        "ruled-tables-wrapped.pdf",
+        include_bytes!("../tests/fixtures/document-generation/ruled-tables-wrapped.pdf"),
+    );
+    let tables = extracted
+        .elements
+        .iter()
+        .filter(|element| element.element_type == "table")
+        .map(|element| element.text.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(tables.len(), 2, "{tables:?}");
+    assert!(tables[0].contains(
+        "Vitamin C | Citrus fruit, peppers, berries, tomatoes | 75-90 mg | Collagen synthesis and wound healing | Bleeding gums, slow healing"
+    ));
+    assert!(tables[1].contains(
+        "Zinc | Shellfish, seeds, nuts, dairy | 8-11 mg | Immunity and growth | Poor wound healing, hair loss"
+    ));
+    assert!(extracted
+        .elements
+        .iter()
+        .any(|element| element.element_type == "paragraph"
+            && element.text.contains("Table 2 Example minerals")));
 }

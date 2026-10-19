@@ -20,7 +20,7 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
 
-Home opens first, with today's review count and your subjects. Library opens the Workbench, which lists views, subjects, decks, and tags beside the chosen cards and links to the Documents and Study guides pages; Review starts today's review; Tutor and Progress are destinations of their own. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
+Home opens first, with today's review count and your subjects. Library opens the Workbench, which lists subjects, decks, and tags beside the chosen cards, under tabs for its Flashcards, Documents and Study guides pages; Review starts today's review; Tutor and Progress are destinations of their own. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
 ## Install, build, and test locally
 

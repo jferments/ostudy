@@ -1,23 +1,21 @@
 # Library Workbench, authoring, and search
 
-**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of views, subjects, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup/Sync.
+**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup/Sync.
 
-Documents and study guides are separate Library pages. Choose them under **More** in the tree; their page switcher's first item, **Workbench**, brings you back.
+Library's pages are tabs along its top: **Flashcards** (the Workbench), **Documents**, and **Study guides**. **Import deck** sits at the end of the tabs on the Flashcards page.
 
 ## The tree
 
-The tree has four sections:
+The tree starts with **All cards**, then has two sections:
 
-- **Views** lists library-wide card lists: **All cards**, **Due today**, **New**, **Often missed**, and **Suspended**.
 - **Subjects** lists your subjects in your order, each with its card count. Expand a subject to see its decks and documents. **No subject** holds decks and documents that are not filed under a subject. Archived decks sit behind **Archived decks (N)** at the end of the section. See [Subjects and deck organization](flashcards-organization.md).
 - **Tags** shows your eight most used tags; **Show all N tags** lists the rest.
-- **More** opens **Documents** and **Study guides**, and **Import deck…** starts a deck import.
 
-Choosing a view, subject, deck, or tag shows its cards in the list. Choosing a document opens Documents.
+Choosing All cards, a subject, a deck, or a tag shows its cards in the list. Choosing a document opens Documents.
 
 ## Screen sizes and going back
 
-On a wide window the tree, the card list, and the editor sit side by side, and you can drag the dividers between them to resize the panes. On a medium window the tree and the list sit side by side, and an open card's editor takes the list's place until you close it. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
+On a tablet or desktop window the tree and the card list sit side by side, and you can drag the divider between them. Opening a card shows its editor as a panel over the card list; close it with **×** and the list is exactly as you left it, scrolled to the same place with the same search, filter and selection. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
 
 Android Back steps back inside the Workbench before leaving Library: on a phone from the card list to the tree, and on wider screens from a deck, subject, or tag to **All cards**. An open editor handles Back itself. Unsaved editor changes still ask before you discard them when you choose another place or another card.
 
@@ -31,13 +29,13 @@ A new deck goes under the subject you created it in, or under No subject when yo
 
 ## The card list
 
-The list shows the cards in the chosen view, subject, deck, or tag as dense rows. Each row shows the source unit when the card cites one (such as a slide or page number), the front, the card type, when it is due (**today**, **in 3 d**, **new**, or **suspended**), and its interval. On a phone each row shows the front with the type, source, and due date below it. More rows load as you scroll.
+The list shows the cards in the chosen place (All cards, a subject, a deck, or a tag) as dense rows. Each row shows the source unit when the card cites one (such as a slide or page number), the front, the card type, when it is due (**today**, **in 3 d**, **new**, or **suspended**), and its interval. On a phone each row shows the front with the type, source, and due date below it. More rows load as you scroll.
 
 Above the list:
 
-- The search box finds questions, answers, and tags within the current view, subject, deck, or tag.
-- **Sort** offers **Source order**, **Due first**, **Recently edited**, and **Recently studied**, plus **Best match** while you are searching. A deck or subject opens in source order and Due today opens due first.
-- For a subject, deck, or tag, the quick filters **All**, **Due**, **New**, and **Suspended** narrow the list and show their counts. Library-wide views set their own filters.
+- The search box finds questions, answers, and tags within the current place.
+- **Show** narrows the list to **All cards**, **Due today**, **New**, **Often missed**, or **Suspended**, with each count beside its name.
+- **Sort** offers **Source order**, **Due first**, **Recently edited**, and **Recently studied**, plus **Best match** while you are searching. A deck or subject opens in source order.
 
 Results describe actual study presentations: a forward and reverse card can appear separately, while a multi-blank cloze note appears once. An image-occlusion note can show several separately scheduled question presentations. Rows show compact question text; open a card to inspect its full rich content rather than treating truncation as missing data.
 
@@ -71,7 +69,7 @@ An archived deck is still readable, but practice and new cards are unavailable u
 
 ## Add or edit cards
 
-In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. Above an existing card's editor, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Suspend** (or **Resume**) and **Reset** act on that one card. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
+In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. The editor's top bar keeps **Preview card**, **Save card** and **×** (close) in reach while you scroll; its **…** menu holds **Move / copy**, **Suspend** (or **Resume**) and **Reset schedule…** for that one card. Below the fields, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
 
 Basic questions and answers support the editor's allowed formatting, lists, links, and managed images. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 
@@ -121,6 +119,6 @@ The Settings template tab is a full normal workspace. Once opened it can retain 
 
 ## Importing content
 
-**Import deck…** under More in the tree (or **Import deck** in an empty library) accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
+**Import deck** beside Library's tabs (or in an empty library) accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
 
 Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. The Workbench opens the new deck, which starts under No subject until you file it. Subject membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.
