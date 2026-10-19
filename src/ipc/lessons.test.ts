@@ -1,7 +1,13 @@
 import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getLesson, listSubjectLessons, saveLessonProgress } from "./lessons";
+import {
+  cancelSubjectCourseWriting,
+  getLesson,
+  listSubjectLessons,
+  saveLessonProgress,
+  writeSubjectCourse,
+} from "./lessons";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
@@ -37,5 +43,22 @@ describe("lesson IPC", () => {
     expect(invoke).toHaveBeenCalledWith("save_lesson_progress", {
       input: { lessonId, revisionNumber: 2, currentStep: 3, finished: true },
     });
+  });
+
+  it("writes a course under one operation that can be stopped", async () => {
+    const operationId = "c".repeat(32);
+    await writeSubjectCourse(subjectId, operationId);
+    expect(invoke).toHaveBeenLastCalledWith("write_subject_course", {
+      input: { subjectId, operationId },
+    });
+    await cancelSubjectCourseWriting(operationId);
+    expect(invoke).toHaveBeenLastCalledWith("cancel_subject_course_writing", {
+      input: { operationId },
+    });
+    await writeSubjectCourse(subjectId);
+    const generated = vi.mocked(invoke).mock.lastCall?.[1] as {
+      input: { operationId: string };
+    };
+    expect(generated.input.operationId).toMatch(/^[0-9a-f]{32}$/);
   });
 });

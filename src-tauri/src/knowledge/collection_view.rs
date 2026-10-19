@@ -1568,7 +1568,7 @@ fn validate_synthesis(synthesis: &CollectionSynthesis) -> Result<(), CommandErro
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::{
         io::{Read, Write},
         net::TcpListener,
@@ -1653,7 +1653,7 @@ mod tests {
         value.to_string().repeat(32)
     }
 
-    fn install_reducer_profile(
+    pub(crate) fn install_reducer_profile(
         database: &Database,
         base_url: &str,
         marker: char,
@@ -1784,7 +1784,7 @@ mod tests {
         Ok((document_id, source_id))
     }
 
-    fn fixture() -> Result<(Database, String, String, String, String), CommandError> {
+    pub(crate) fn fixture() -> Result<(Database, String, String, String, String), CommandError> {
         let database =
             Database::open_in_memory().map_err(|message| CommandError::new("fixture", message))?;
         let collection = id('c');

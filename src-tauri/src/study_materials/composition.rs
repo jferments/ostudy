@@ -810,7 +810,10 @@ async fn author_collection_guide_window(
     })
 }
 
-fn collection_title(database: &Database, collection_id: &str) -> Result<String, CommandError> {
+pub(crate) fn collection_title(
+    database: &Database,
+    collection_id: &str,
+) -> Result<String, CommandError> {
     database.with_connection(|connection| {
         connection
             .query_row(
@@ -829,7 +832,7 @@ fn collection_title(database: &Database, collection_id: &str) -> Result<String, 
     })
 }
 
-fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
+pub(crate) fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
     let wanted = topic_ids
         .iter()
         .map(String::as_str)
