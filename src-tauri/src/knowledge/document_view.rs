@@ -29,7 +29,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-const VIEW_VERSION: i64 = 5;
+const VIEW_VERSION: i64 = 6;
 const MAX_SECTIONS: usize = 160;
 const MAX_DIGEST_BYTES: usize = 24_000;
 const REDUCTION_OUTPUT: usize = crate::document_scale::GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS;
@@ -194,9 +194,8 @@ fn native_outline(
 ) -> Result<DocumentOutline, CommandError> {
     let mut sections = Vec::new();
     let mut seen = HashSet::new();
-    let groups = windows.len().div_ceil(MAX_SECTIONS).max(1);
-    for first in (0..windows.len()).step_by(groups) {
-        let end = (first + groups).min(windows.len());
+    for group in window_groups(windows, catalogs) {
+        let (first, end) = (group.start, group.end);
         let mut units = catalogs[first..end]
             .iter()
             .flat_map(|catalog| &catalog.units)
@@ -279,6 +278,72 @@ fn native_outline(
             .collect(),
         sections,
     })
+}
+
+/// A section is about this many knowledge units...
+const SECTION_TARGET_UNITS: usize = 32;
+/// ...or spans this many source units (pages or slides), whichever comes first.
+const SECTION_TARGET_SOURCE_UNITS: usize = 6;
+
+/// Extraction windows are sized for one request, often a page or two; a
+/// learning topic is larger. Consecutive windows are grouped until a group
+/// holds about `SECTION_TARGET_UNITS` units or spans
+/// `SECTION_TARGET_SOURCE_UNITS` pages. A group whose evidence lies inside the
+/// previous group's pages joins it, and so does a short tail, so a small window
+/// never becomes a topic nested in, and repeating, its neighbour.
+fn window_groups(
+    windows: &[SemanticWindow],
+    catalogs: &[KnowledgeCatalog],
+) -> Vec<std::ops::Range<usize>> {
+    let minimum_windows = windows.len().div_ceil(MAX_SECTIONS).max(1);
+    let evidence_range = |range: &std::ops::Range<usize>| {
+        let pages = catalogs[range.clone()]
+            .iter()
+            .flat_map(|catalog| &catalog.units)
+            .flat_map(|unit| {
+                unit.content
+                    .grounding
+                    .iter()
+                    .flat_map(|g| g.evidence.iter().filter_map(|e| e.locator.as_ref()))
+                    .flat_map(|locator| [locator.first(), locator.last()])
+            })
+            .collect::<Vec<_>>();
+        match (pages.iter().min(), pages.iter().max()) {
+            (Some(first), Some(last)) => (*first, *last),
+            _ => (
+                windows[range.start].source_locator.first(),
+                windows[range.end - 1].source_locator.last(),
+            ),
+        }
+    };
+    let mut groups: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut start = 0;
+    let mut units = 0;
+    let mut pages = BTreeSet::new();
+    for index in 0..windows.len() {
+        units += catalogs[index].units.len();
+        pages.extend(windows[index].source_locator.unit_numbers.iter().copied());
+        let full = units >= SECTION_TARGET_UNITS || pages.len() >= SECTION_TARGET_SOURCE_UNITS;
+        let last = index + 1 == windows.len();
+        if !(last || (full && index + 1 - start >= minimum_windows)) {
+            continue;
+        }
+        let group = start..index + 1;
+        let joins_previous = groups.last().is_some_and(|previous| {
+            let (outer_start, outer_end) = evidence_range(previous);
+            let (inner_start, inner_end) = evidence_range(&group);
+            (outer_start <= inner_start && inner_end <= outer_end)
+                || (last && !full && units < SECTION_TARGET_UNITS / 2)
+        });
+        match groups.last_mut() {
+            Some(previous) if joins_previous => previous.end = group.end,
+            _ => groups.push(group),
+        }
+        start = index + 1;
+        units = 0;
+        pages.clear();
+    }
+    groups
 }
 
 fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
@@ -546,6 +611,60 @@ mod tests {
     fn invented_global_priority_does_not_change_knowledge() {
         assert!(parse_reduction(json!({"summary":"Geometry","learningObjectives":[],"keyConcepts":[],"coreUnitIds":["x"]}),&["a".repeat(32)]).is_err());
     }
+    fn window(index: usize, pages: Vec<i64>) -> SemanticWindow {
+        let locator = crate::document_domain::SourceLocator::new(
+            crate::document_domain::SourceUnitKind::Page,
+            pages,
+            None,
+        )
+        .unwrap();
+        SemanticWindow {
+            window_index: index,
+            partition_index: 0,
+            partition_title: String::new(),
+            first_chunk_index: index as i64,
+            last_chunk_index: index as i64,
+            page_start: locator.first(),
+            page_end: locator.last(),
+            source_locator: locator,
+            token_estimate: 1,
+            source_text: "text".into(),
+        }
+    }
+
+    fn catalog(units: usize) -> KnowledgeCatalog {
+        let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        catalog.units = vec![catalog.units[0].clone(); units];
+        catalog
+    }
+
+    #[test]
+    fn small_windows_group_into_topics_and_a_short_tail_joins_the_last() {
+        let windows = (0..10)
+            .map(|i| window(i, vec![i as i64 + 1]))
+            .collect::<Vec<_>>();
+        let catalogs = (0..10).map(|_| catalog(5)).collect::<Vec<_>>();
+        assert_eq!(window_groups(&windows, &catalogs), [0..6, 6..10]);
+        let catalogs = (0..10)
+            .map(|i| catalog(if i >= 8 { 3 } else { 16 }))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            window_groups(&windows, &catalogs),
+            [0..2, 2..4, 4..6, 6..10]
+        );
+    }
+
+    #[test]
+    fn a_group_inside_the_previous_groups_pages_joins_it() {
+        let windows = vec![
+            window(0, (1..=4).collect()),
+            window(1, vec![3]),
+            window(2, vec![5]),
+        ];
+        let catalogs = vec![catalog(40), catalog(40), catalog(40)];
+        assert_eq!(window_groups(&windows, &catalogs), [0..2, 2..3]);
+    }
+
     #[test]
     fn section_title_collapses_related_prefixed_topics_instead_of_joining_inventory() {
         let base = crate::knowledge::authoring::tests::catalog_fixture().units[0].clone();
