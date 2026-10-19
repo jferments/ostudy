@@ -83,12 +83,33 @@ impl DocumentSnapshot {
     /// Bind the requested canonical plan to the complete prepared projection.
     /// Checking only currently active rows would silently skip a deleted chunk
     /// or a source invalidated earlier in a long-running preparation.
+    #[cfg(test)]
     pub(crate) fn prepared(
         connection: &Connection,
         document_id: &str,
         source_unit_count: usize,
         chunks: &[crate::document_semantics::SemanticChunk],
+        consumer_contract: &str,
+    ) -> Result<Self, CommandError> {
+        Self::prepared_with_gaps(
+            connection,
+            document_id,
+            source_unit_count,
+            chunks,
+            consumer_contract,
+            &std::collections::BTreeSet::new(),
+        )
+    }
+
+    /// Sources the preparation left as gaps may stay unextracted; every other
+    /// source must be extracted and current.
+    pub(crate) fn prepared_with_gaps(
+        connection: &Connection,
+        document_id: &str,
+        source_unit_count: usize,
+        chunks: &[crate::document_semantics::SemanticChunk],
         _consumer_contract: &str,
+        gaps: &std::collections::BTreeSet<String>,
     ) -> Result<Self, CommandError> {
         let counts: (i64, i64) = connection.query_row(
             "SELECT source_unit_count, (SELECT COUNT(*) FROM document_semantic_chunk_sources WHERE document_id=?1)
@@ -130,7 +151,8 @@ impl DocumentSnapshot {
             for mut source in expected {
                 source.refresh_identity()?;
                 if !repository::source_is_current(connection, &source)?
-                    || !repository::extraction_available(connection, &source)?
+                    || (!gaps.contains(&source.id)
+                        && !repository::extraction_available(connection, &source)?)
                 {
                     return Err(repository::stale_source());
                 }

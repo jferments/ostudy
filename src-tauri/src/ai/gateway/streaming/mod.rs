@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     client::AiGateway,
-    contracts::AiGatewayError,
+    contracts::{AiGatewayError, ProviderAccess},
     errors::{
         canceled_error, classify_provider_error_response, classify_reqwest_error,
         empty_stream_failure, error, initial_timeout_error, stream_inactivity_error,
@@ -63,10 +63,10 @@ impl AiGateway {
     /// Interactive tasks supply their own cancellation lifetime rather than
     /// impersonating a document job. The same SSE framing, inactivity limits,
     /// response bounds and redaction remain authoritative for both task types.
-    pub(crate) async fn post_task_json(
+    pub(crate) async fn post_task_json<'a>(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: impl Into<ProviderAccess<'a>>,
         body: &Value,
         inactivity_timeout_ms: i64,
         maximum_content_bytes: usize,
@@ -74,7 +74,7 @@ impl AiGateway {
     ) -> Result<Value, AiGatewayError> {
         self.post_bounded_streaming_json(
             url,
-            bearer,
+            access.into(),
             body,
             inactivity_timeout_ms,
             maximum_content_bytes,
@@ -83,10 +83,10 @@ impl AiGateway {
         .await
     }
 
-    pub(crate) async fn post_document_json(
+    pub(crate) async fn post_document_json<'a>(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: impl Into<ProviderAccess<'a>>,
         body: &Value,
         inactivity_timeout_ms: i64,
         maximum_content_bytes: usize,
@@ -101,7 +101,7 @@ impl AiGateway {
         };
         self.post_bounded_streaming_json(
             url,
-            bearer,
+            access.into(),
             body,
             inactivity_timeout_ms,
             maximum_content_bytes,
@@ -113,7 +113,7 @@ impl AiGateway {
     async fn post_bounded_streaming_json(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: ProviderAccess<'_>,
         body: &Value,
         inactivity_timeout_ms: i64,
         maximum_content_bytes: usize,
@@ -122,7 +122,7 @@ impl AiGateway {
         let first = self
             .post_sse_chat_json(
                 url.clone(),
-                bearer,
+                access,
                 body,
                 inactivity_timeout_ms,
                 maximum_content_bytes,
@@ -160,7 +160,7 @@ impl AiGateway {
                 match self
                     .post_sse_chat_json(
                         url.clone(),
-                        bearer,
+                        access,
                         body,
                         inactivity_timeout_ms,
                         maximum_content_bytes,
@@ -208,7 +208,7 @@ impl AiGateway {
     async fn post_sse_chat_json(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: ProviderAccess<'_>,
         body: &Value,
         inactivity_timeout_ms: i64,
         maximum_content_bytes: usize,
@@ -226,7 +226,7 @@ impl AiGateway {
         let result = self
             .post_sse_chat_json_inner(
                 url,
-                bearer,
+                access,
                 body,
                 inactivity_timeout_ms,
                 &mut capture,
@@ -250,7 +250,7 @@ impl AiGateway {
     async fn post_sse_chat_json_inner(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: ProviderAccess<'_>,
         body: &Value,
         inactivity_timeout_ms: i64,
         capture: &mut StreamCapture,
@@ -261,7 +261,7 @@ impl AiGateway {
         }
         let inactivity_timeout = Duration::from_millis(inactivity_timeout_ms.max(1) as u64);
         let request_started = Instant::now();
-        let streaming_body = prepare_streaming_body(body)?;
+        let streaming_body = prepare_streaming_body(body, access.wire)?;
         let openrouter = is_openrouter_url(&url);
         let endpoint_host = url
             .host_str()
@@ -270,7 +270,7 @@ impl AiGateway {
             .get("model")
             .and_then(Value::as_str)
             .and_then(|value| safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS));
-        let request = streaming_request(&self.streaming_client, url, bearer, &streaming_body);
+        let request = streaming_request(&self.streaming_client, url, access, &streaming_body);
 
         let mut response = wait_initial(
             inactivity_timeout,
@@ -337,6 +337,7 @@ impl AiGateway {
             maximum_content_bytes,
             maximum_wire_bytes,
             openrouter,
+            access.wire,
             generation_id,
             retry_after_seconds,
         ));

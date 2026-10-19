@@ -150,6 +150,29 @@ const CONTRACTS: &[Contract] = &[
             description: "document annotation",
         }],
     },
+    // Lessons are written in the app; the upgrade only creates their tables.
+    Contract {
+        version: 9,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "lessons",
+                description: "lesson",
+            },
+            Rule::AddedEmpty {
+                table: "lesson_revisions",
+                description: "lesson",
+            },
+            Rule::AddedEmpty {
+                table: "lesson_revision_units",
+                description: "lesson",
+            },
+            Rule::AddedEmpty {
+                table: "lesson_progress",
+                description: "lesson progress",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

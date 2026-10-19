@@ -8,7 +8,7 @@ use crate::ai::{
 };
 
 use super::{
-    deepseek,
+    claude, deepseek,
     dialect::{command_to_gateway, ProviderDialect},
     llama_cpp, openai_compatible, openrouter, schema as schema_support,
 };
@@ -117,6 +117,39 @@ pub(crate) fn prepare_document_request(
                     .map_err(command_to_gateway)?,
                 body,
                 compatibility_body: None,
+                decoder: DocumentOutputDecoder::ContentJson,
+                schema: schema.clone(),
+            })
+        }
+        ProviderDialect::Claude => {
+            // The instructions already carry the full schema. When it fits
+            // Claude's grammar subset it is enforced too, and a schema the
+            // API still refuses (for example as too complex to compile) gets
+            // one retry without the grammar; native admission is
+            // authoritative either way.
+            let unconstrained = claude::lower_chat_body(&base, reasoning_effort, None);
+            let (body, compatibility_body) = match claude::strict_schema(schema) {
+                Some(strict) => (
+                    claude::lower_chat_body(&base, reasoning_effort, Some(strict)),
+                    Some(unconstrained),
+                ),
+                None => {
+                    crate::logging::debug_target(
+                        "ai.contract",
+                        "claude_structured_output_prompt_only",
+                        "Sent the schema only in the instructions because it is outside Claude's structured-output subset.",
+                        json!({
+                            "model": profile.model_id,
+                            "schemaFingerprint": crate::ai::structured_output::fingerprint(schema),
+                        }),
+                    );
+                    (unconstrained, None)
+                }
+            };
+            Ok(PreparedDocumentRequest {
+                url: claude::messages_endpoint(profile)?,
+                body,
+                compatibility_body,
                 decoder: DocumentOutputDecoder::ContentJson,
                 schema: schema.clone(),
             })

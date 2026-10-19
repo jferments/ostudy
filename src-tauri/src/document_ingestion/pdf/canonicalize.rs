@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use crate::{
     document_canonical::{
@@ -10,6 +13,7 @@ use crate::{
     document_domain::SourceLocator,
     error::CommandError,
     paths::AppPaths,
+    pdf_backend::ExtractedSemanticElement,
     pdf_document_ingestion::IngestedDocument,
 };
 
@@ -157,6 +161,7 @@ pub(crate) fn canonicalize_pdf(
         *block_ordinal = block_ordinal.saturating_add(1);
     }
 
+    let visual_pages = layout_dependent_pages(&processed.semantic.elements);
     let mut normalized_chunk_count = 0_usize;
     let mut visual_only_chunk_count = 0_usize;
     let mut semantic_chunks = Vec::with_capacity(processed.semantic.chunks.len());
@@ -188,7 +193,11 @@ pub(crate) fn canonicalize_pdf(
             visual_only_chunk_count = visual_only_chunk_count.saturating_add(1);
         }
         let needs_visual_grounding = empty_after_normalization
-            || chunk_needs_visual_grounding(&chunk.element_types, &full_text);
+            || chunk_needs_visual_grounding(&chunk.element_types, &full_text)
+            || chunk
+                .page_numbers
+                .iter()
+                .any(|page| visual_pages.contains(page));
         let visual_asset_ids = if needs_visual_grounding {
             unit_numbers
                 .iter()
@@ -265,14 +274,161 @@ fn chunk_needs_visual_grounding(element_types: &[String], full_text: &str) -> bo
     element_types.iter().any(|element_type| {
         matches!(
             element_type.as_str(),
-            "image" | "table" | "key_value" | "equation" | "chart" | "diagram"
+            "image"
+                | "table"
+                | "key_value"
+                | "equation"
+                | "chart"
+                | "diagram"
+                | "page_text_fallback"
+                | "ocr_text"
         )
     }) || full_text.contains("has no extractable structured text")
+}
+
+// Text extraction often misreads a table or figure as ordinary paragraphs, so
+// element types alone miss the pages where the rendered page matters most. A
+// page whose text names a table or figure, or whose short blocks line up in a
+// grid of at least two rows of three, sends its render with every chunk on it.
+const GRID_ROW_TOLERANCE: f64 = 2.0;
+const GRID_MIN_COLUMNS: usize = 3;
+const GRID_MIN_ROWS: usize = 2;
+
+fn layout_dependent_pages(elements: &[ExtractedSemanticElement]) -> BTreeSet<usize> {
+    let mut by_page = BTreeMap::<usize, Vec<&ExtractedSemanticElement>>::new();
+    for element in elements {
+        by_page
+            .entry(element.page_number)
+            .or_default()
+            .push(element);
+    }
+    by_page
+        .into_iter()
+        .filter(|(_, elements)| {
+            elements
+                .iter()
+                .any(|element| names_table_or_figure(&element.text))
+                || has_grid_layout(elements)
+        })
+        .map(|(page, _)| page)
+        .collect()
+}
+
+fn names_table_or_figure(text: &str) -> bool {
+    let label = text.trim_start_matches(|character: char| {
+        character.is_whitespace() || matches!(character, '•' | '·' | '*' | '-' | '–')
+    });
+    [
+        "Table", "TABLE", "Figure", "FIGURE", "Fig.", "FIG.", "Chart", "Diagram",
+    ]
+    .iter()
+    .any(|prefix| {
+        label.strip_prefix(prefix).is_some_and(|rest| {
+            rest.trim_start_matches([' ', '\u{a0}', '\n'])
+                .starts_with(|character: char| character.is_ascii_digit())
+        })
+    })
+}
+
+fn has_grid_layout(elements: &[&ExtractedSemanticElement]) -> bool {
+    let mut rows = Vec::<Vec<&ExtractedSemanticElement>>::new();
+    for element in elements {
+        if !(element.bbox.width > 0.0 && element.bbox.height > 0.0) {
+            continue;
+        }
+        let top = element.bbox.y + element.bbox.height;
+        match rows
+            .iter_mut()
+            .find(|row| (row[0].bbox.y + row[0].bbox.height - top).abs() <= GRID_ROW_TOLERANCE)
+        {
+            Some(row) => row.push(element),
+            None => rows.push(vec![element]),
+        }
+    }
+    rows.iter()
+        .filter(|row| horizontally_disjoint_count(row) >= GRID_MIN_COLUMNS)
+        .count()
+        >= GRID_MIN_ROWS
+}
+
+fn horizontally_disjoint_count(row: &[&ExtractedSemanticElement]) -> usize {
+    let mut spans = row
+        .iter()
+        .map(|element| (element.bbox.x, element.bbox.x + element.bbox.width))
+        .collect::<Vec<_>>();
+    spans.sort_by(|left, right| left.1.total_cmp(&right.1));
+    let mut count = 0;
+    let mut right_edge = f64::NEG_INFINITY;
+    for (left, right) in spans {
+        if left >= right_edge {
+            count += 1;
+            right_edge = right;
+        }
+    }
+    count
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn element(page: usize, x: f64, y: f64, width: f64, text: &str) -> ExtractedSemanticElement {
+        ExtractedSemanticElement {
+            element_index: 0,
+            page_number: page,
+            element_type: "paragraph".to_string(),
+            text: text.to_string(),
+            parent_heading: None,
+            heading_path: Vec::new(),
+            bbox: crate::pdf_backend::SemanticBBox {
+                x,
+                y,
+                width,
+                height: 20.0,
+            },
+            confidence: 1.0,
+            font_name: None,
+            font_size: None,
+            is_bold: false,
+            is_italic: false,
+        }
+    }
+
+    #[test]
+    fn misread_table_and_captioned_figure_pages_send_their_render() {
+        let table_cells = [45.0, 134.0, 241.0, 442.0].into_iter().flat_map(|x| {
+            [
+                element(3, x, 700.0, 80.0, "cell"),
+                element(3, x, 640.0, 80.0, "cell"),
+            ]
+        });
+        let elements = table_cells
+            .chain([
+                element(
+                    5,
+                    40.0,
+                    500.0,
+                    520.0,
+                    "\u{2022} Fig. 1.3 The normal trachea.",
+                ),
+                element(6, 40.0, 700.0, 250.0, "Left column of prose."),
+                element(6, 320.0, 700.0, 250.0, "Right column of prose."),
+                element(6, 40.0, 600.0, 250.0, "Tables 3 and 4 compare the drugs."),
+            ])
+            .collect::<Vec<_>>();
+        assert_eq!(layout_dependent_pages(&elements), BTreeSet::from([3, 5]));
+    }
+
+    #[test]
+    fn table_and_figure_labels_need_a_number() {
+        assert!(names_table_or_figure("Table 24.5  Major Minerals"));
+        assert!(names_table_or_figure(
+            "TABLE \n1.1 Structural Characteristics"
+        ));
+        assert!(names_table_or_figure("Figure 19.3 The heart"));
+        assert!(!names_table_or_figure("Table salt, milk, beets"));
+        assert!(!names_table_or_figure("Figures show the trend."));
+    }
 
     #[test]
     fn visual_semantic_types_request_grounding() {

@@ -4,13 +4,14 @@ import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { destinationOf, type AppDestination } from "../navigation/appDestinations";
 import { IconButton } from "../ui/icons/IconButton";
 import { AppHeader } from "../ui/layout/AppFrame";
+import { RailAction } from "../ui/layout/AppNavigation";
 import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { BrandLockup, BrandMark } from "./Brand";
 
 interface AppHeaderBarProps {
   section: AppSection;
   activeWorkflow: AppWorkflow | null;
-  /** The main navigation: in the header on wider screens, at the bottom on a phone. */
+  /** The main navigation: in the side rail on wider screens, at the bottom on a phone. */
   navigation: ReactNode;
   onSearch: () => void;
   onSettings: () => void;
@@ -26,8 +27,9 @@ const COMPACT_TITLES: Record<AppDestination, string | null> = {
 };
 
 /**
- * The header on every screen size: the brand, the main navigation on wider
- * screens, then Search and the Settings gear.
+ * The header on every screen size. Wider screens draw it as a side rail: the
+ * raccoon, the main navigation, then Search and Settings at the bottom. A phone
+ * has a top bar with the brand, the current place and the two actions.
  */
 export function AppHeaderBar({
   section,
@@ -39,37 +41,36 @@ export function AppHeaderBar({
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
   const settingsActive = activeWorkflow === null && section === "settings";
-  const actionClassName =
-    "tw:size-11 tw:rounded-full tw:border-border tw:bg-card tw:text-foreground tw:enabled:hover:bg-muted";
-  const actions = (
-    <>
-      <IconButton
-        icon="search"
-        label="Search"
-        tooltip="Search cards"
-        data-testid="app-search"
-        className={actionClassName}
-        onClick={onSearch}
-      />
-      <IconButton
-        icon="settings"
-        label="Settings"
-        tooltip="Settings"
-        data-testid="app-settings"
-        aria-current={settingsActive ? "page" : undefined}
-        className={actionClassName}
-        onClick={onSettings}
-      />
-    </>
-  );
   if (compact) {
+    const actionClassName =
+      "tw:size-11 tw:rounded-full tw:border-border tw:bg-card tw:text-foreground tw:enabled:hover:bg-muted";
     return (
       <>
         <AppHeader
           data-testid="app-header"
           brand={<BrandLockup compact />}
           title={compactTitle(section, activeWorkflow)}
-          actions={actions}
+          actions={
+            <>
+              <IconButton
+                icon="search"
+                label="Search"
+                tooltip="Search cards"
+                data-testid="app-search"
+                className={actionClassName}
+                onClick={onSearch}
+              />
+              <IconButton
+                icon="settings"
+                label="Settings"
+                tooltip="Settings"
+                data-testid="app-settings"
+                aria-current={settingsActive ? "page" : undefined}
+                className={actionClassName}
+                onClick={onSettings}
+              />
+            </>
+          }
         />
         {navigation}
       </>
@@ -78,9 +79,20 @@ export function AppHeaderBar({
   return (
     <AppHeader
       data-testid="app-header"
-      brand={layoutMode === "medium" ? <BrandMark className="tw:size-9" /> : <BrandLockup />}
+      brand={<BrandMark className="tw:size-10" />}
       navigation={navigation}
-      actions={actions}
+      actions={
+        <>
+          <RailAction icon="search" label="Search" data-testid="app-search" onClick={onSearch} />
+          <RailAction
+            icon="settings"
+            label="Settings"
+            data-testid="app-settings"
+            aria-current={settingsActive ? "page" : undefined}
+            onClick={onSettings}
+          />
+        </>
+      }
     />
   );
 }

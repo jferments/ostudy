@@ -167,8 +167,10 @@ function TaskModelRow({
   const selectedProfile = eligibleProfiles.find((profile) => profile.id === profileId) ?? null;
   const selectedModel = models.find((model) => model.id === modelId) ?? null;
   const reasoningOptions = reasoningChoices(selectedModel?.reasoning ?? null);
+  // Only the Tutor reasons; document work always asks for no reasoning.
+  const reasons = task === "tutor";
   const reasoningValidationError =
-    task === "embeddings" || !selectedModel
+    !reasons || !selectedModel
       ? null
       : reasoningValidationMessage(
           reasoning,
@@ -181,7 +183,7 @@ function TaskModelRow({
     if (!profileId || !nextModel) return;
     const nextSelectedModel = models.find((model) => model.id === nextModel) ?? null;
     const nextReasoningError =
-      task === "embeddings" || !nextSelectedModel
+      !reasons || !nextSelectedModel
         ? null
         : reasoningValidationMessage(
             nextReasoning,
@@ -195,7 +197,7 @@ function TaskModelRow({
       task,
       profileId,
       nextModel,
-      task === "embeddings" ? "none" : nextReasoning,
+      reasons ? nextReasoning : "none",
     );
   }
 
@@ -213,7 +215,7 @@ function TaskModelRow({
           selectedProfile.id,
           selectedProfile.revision,
           modelId,
-          reasoning,
+          reasons ? reasoning : "none",
         );
         const probeError = modelProbeError(result, task);
         if (probeError) {
@@ -310,7 +312,7 @@ function TaskModelRow({
           </NativeSelect>
         </label>
 
-        {task !== "embeddings" ? (
+        {reasons ? (
           <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
             <span>Reasoning</span>
             <NativeSelect

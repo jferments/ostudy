@@ -15,8 +15,9 @@ mod retry;
 mod streaming;
 
 pub(crate) use client::AiGateway;
-pub(crate) use contracts::{AiGatewayError, SafeAiError};
+pub(crate) use contracts::{AiGatewayError, ProviderAccess, ProviderWire, SafeAiError};
 pub(crate) use errors::error;
+pub(crate) use streaming::sse::{anthropic_finish_reason, anthropic_usage_envelope};
 pub(crate) use streaming::usage::safe_usage_envelope as normalized_usage;
 
 #[cfg(test)]

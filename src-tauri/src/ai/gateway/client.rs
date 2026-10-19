@@ -5,8 +5,11 @@ use serde_json::Value;
 use url::Url;
 
 use super::{
-    contracts::AiGatewayError, errors::classify_reqwest_error, metadata::is_openrouter_url,
-    request::ordinary_request, response::read_json_response,
+    contracts::{AiGatewayError, ProviderAccess},
+    errors::classify_reqwest_error,
+    metadata::is_openrouter_url,
+    request::ordinary_request,
+    response::read_json_response,
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
@@ -37,21 +40,28 @@ impl AiGateway {
         })
     }
 
-    pub(crate) async fn get_json(
+    pub(crate) async fn get_json<'a>(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: impl Into<ProviderAccess<'a>>,
         timeout_ms: i64,
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
-        self.request_json(Method::GET, url, bearer, None, timeout_ms, maximum_bytes)
-            .await
+        self.request_json(
+            Method::GET,
+            url,
+            access.into(),
+            None,
+            timeout_ms,
+            maximum_bytes,
+        )
+        .await
     }
 
-    pub(crate) async fn post_json(
+    pub(crate) async fn post_json<'a>(
         &self,
         url: Url,
-        bearer: Option<&str>,
+        access: impl Into<ProviderAccess<'a>>,
         body: &Value,
         timeout_ms: i64,
         maximum_bytes: usize,
@@ -59,7 +69,7 @@ impl AiGateway {
         self.request_json(
             Method::POST,
             url,
-            bearer,
+            access.into(),
             Some(body),
             timeout_ms,
             maximum_bytes,
@@ -71,13 +81,13 @@ impl AiGateway {
         &self,
         method: Method,
         url: Url,
-        bearer: Option<&str>,
+        access: ProviderAccess<'_>,
         body: Option<&Value>,
         timeout_ms: i64,
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
         let openrouter = is_openrouter_url(&url);
-        let request = ordinary_request(&self.client, method, url, bearer, body, timeout_ms);
+        let request = ordinary_request(&self.client, method, url, access, body, timeout_ms);
         let response = request.send().await.map_err(classify_reqwest_error)?;
         read_json_response(response, maximum_bytes, openrouter).await
     }

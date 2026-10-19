@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::VecDeque};
 use serde_json::json;
 
 use super::*;
-use crate::knowledge::authoring::tests::fixture;
+use crate::knowledge::{authoring::tests::fixture, contracts::EvidenceImage};
 
 fn proposal(evidence: &str) -> Value {
     json!({"title":"Triangle","kind":"definition","statement":"A triangle has three sides.",
@@ -393,4 +393,32 @@ fn complexity_aware_batching_splits_fragmented_text_without_losing_sources() {
         ranges.iter().map(|range| range.len()).sum::<usize>(),
         sources.len()
     );
+}
+
+#[test]
+fn neighbouring_sources_share_a_window_and_its_page_images() {
+    let (_, source, _, _) = fixture();
+    let on_pages = |segment: &str, assets: &[&str]| {
+        let mut source = source.clone();
+        source.segment_key = segment.to_string();
+        source.images = assets
+            .iter()
+            .map(|asset| EvidenceImage::DocumentAsset {
+                document_id: source.owner_id.clone(),
+                asset_id: asset.to_string(),
+            })
+            .collect();
+        source.refresh_identity().unwrap();
+        source
+    };
+    let sources = [
+        on_pages("table-head", &["unit-3"]),
+        on_pages("table-rows", &["unit-3", "unit-4"]),
+        on_pages("page-four", &["unit-4"]),
+        on_pages("page-five", &["unit-5"]),
+        on_pages("prose", &[]),
+    ];
+    assert_eq!(batch_ranges(&sources), vec![0..3, 3..5]);
+    assert_eq!(window_page_images(&sources[..3]).len(), 2);
+    assert_eq!(window_page_images(&sources).len(), 3);
 }

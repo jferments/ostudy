@@ -110,13 +110,23 @@ fn parse_study_guide_section_mode(
     require_writing_style: bool,
 ) -> Result<StudyGuideSectionContent, CommandError> {
     let value = protocol::normalize_content(value);
-    let section: StudyGuideSectionContent =
+    let mut section: StudyGuideSectionContent =
         serde_json::from_value(value.clone()).map_err(|_| {
             output_error(format!(
                 "The guide content does not match its contract. {}",
                 crate::ai::structured_output::shape_detail(&value, &study_guide_section_schema())
             ))
         })?;
+    repair_table_shapes(&mut section);
+    let restated = super::dedupe::drop_restated_items(&mut section);
+    if restated > 0 {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_restated_items_dropped",
+            "Dropped study-aid items that restated an earlier sentence; content is not logged.",
+            json!({"droppedItems": restated}),
+        );
+    }
     // All resource checks precede the legacy normalizer. Each capacity is below
     // that normalizer's truncation boundary, including table column labels.
     validate_generated_safety(&section)?;
@@ -134,6 +144,69 @@ fn parse_study_guide_section_mode(
     validate_study_guide_section_content(section).map_err(|_| {
         output_error("The generated study-guide content failed native content validation.")
     })
+}
+
+/// Mark a cell the model left blank or short. Readers see a gap, not a shift.
+const MISSING_TABLE_CELL: &str = "—";
+
+/// A ragged table is a common, harmless model slip; failing the whole section
+/// for it threw away good prose. Short rows are padded with a visible gap,
+/// surplus cells join the last column so no text is lost, blank cells are
+/// marked, and a table with no usable grid (under two columns or no rows) is
+/// left out. Every other table limit is still enforced afterwards.
+fn repair_table_shapes(section: &mut StudyGuideSectionContent) {
+    let mut repaired = 0usize;
+    let before = section.tables.len();
+    section
+        .tables
+        .retain(|table| table.columns.len() >= 2 && !table.rows.is_empty());
+    for table in &mut section.tables {
+        let width = table.columns.len();
+        for column in &mut table.columns {
+            if column.trim().is_empty() {
+                *column = MISSING_TABLE_CELL.to_string();
+                repaired += 1;
+            }
+        }
+        for row in &mut table.rows {
+            if row.len() > width {
+                let surplus = row
+                    .split_off(width)
+                    .into_iter()
+                    .filter(|cell| !cell.trim().is_empty())
+                    .collect::<Vec<_>>();
+                if !surplus.is_empty() {
+                    let last = &mut row[width - 1];
+                    let joined = std::iter::once(last.trim())
+                        .filter(|cell| !cell.is_empty())
+                        .chain(surplus.iter().map(|cell| cell.trim()))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    *last = joined;
+                }
+                repaired += 1;
+            }
+            if row.len() < width {
+                row.resize(width, MISSING_TABLE_CELL.to_string());
+                repaired += 1;
+            }
+            for cell in row.iter_mut() {
+                if cell.trim().is_empty() {
+                    *cell = MISSING_TABLE_CELL.to_string();
+                    repaired += 1;
+                }
+            }
+        }
+    }
+    let dropped = before - section.tables.len();
+    if repaired > 0 || dropped > 0 {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_table_shape_repaired",
+            "Repaired ragged guide tables natively; content is not logged.",
+            json!({"repairedCells": repaired, "droppedTables": dropped}),
+        );
+    }
 }
 
 pub(super) fn validate_generated_safety(
