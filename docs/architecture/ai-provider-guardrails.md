@@ -41,7 +41,7 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
 
 ## Provider protocol family
 
-- The implemented llama.cpp, DeepSeek, and OpenRouter integrations share the
+- The implemented llama.cpp, DeepSeek, OpenRouter, and OpenAI integrations share the
   OpenAI-compatible protocol family under `src-tauri/src/ai/providers/`.
   Claude builds the same shared request and lowers it to Anthropic's Messages
   API in `providers/claude.rs`; the gateway picks headers and event decoding
@@ -57,6 +57,9 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
   document contract.
 - `providers/openrouter.rs` owns router/privacy preferences, account-filtered
   model metadata, and OpenRouter-specific document routing policy.
+- `providers/openai.rs` owns OpenAI's parameter differences (output cap,
+  sampling on reasoning models, `reasoning_effort`) and the model-family facts
+  OpenAI's models list does not carry.
 - `providers/claude.rs` owns Messages request lowering and response
   normalization, Models API capability mapping, and Claude's structured-output
   schema subset.

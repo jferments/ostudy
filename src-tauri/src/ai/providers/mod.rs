@@ -3,7 +3,7 @@
 //! Implemented providers share one internal protocol family: OpenAI-style
 //! model catalogs, Chat Completions messages/responses, SSE, and usage.
 //! Dialect modules contain only the differences that cannot be expressed by
-//! the shared protocol helpers. Claude speaks Anthropic's Messages API on the
+//! the shared protocol helpers. OpenAI is that family's reference API. Claude speaks Anthropic's Messages API on the
 //! wire; its dialect lowers requests and normalizes responses at the edge.
 
 mod claude;
@@ -13,6 +13,7 @@ mod document;
 pub(crate) mod embeddings;
 mod llama_cpp;
 mod models;
+mod openai;
 mod openai_compatible;
 mod openrouter;
 mod probes;

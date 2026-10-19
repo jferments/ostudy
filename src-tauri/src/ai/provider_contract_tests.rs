@@ -401,6 +401,142 @@ fn claude_document_probe_enforces_the_contract_with_output_config() {
     server.join().expect("mock server should finish");
 }
 
+#[test]
+fn openai_adapter_lists_chat_models_and_probes_with_reasoning_effort() {
+    let echo = "openai-contract-echo";
+    let bearer = vec!["authorization: bearer sentinel-key", "!x-api-key"];
+    let (base_url, server) = spawn_mock_server(vec![
+        ExpectedExchange {
+            method: "GET",
+            path: "/v1/models",
+            assert_body: assert_empty_body,
+            status: 200,
+            response_body: json!({"object": "list", "data": [
+                {"id": "gpt-5.4-mini", "object": "model", "created": 1, "owned_by": "system"},
+                {"id": "text-embedding-3-small", "object": "model", "created": 1, "owned_by": "system"},
+                {"id": "gpt-4o-mini-tts", "object": "model", "created": 1, "owned_by": "system"}
+            ]})
+            .to_string(),
+            extra_headers: Vec::new(),
+            request_headers: bearer.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1/chat/completions",
+            assert_body: assert_openai_text_request,
+            status: 200,
+            response_body: completion_response("OSTUDY_OK"),
+            extra_headers: Vec::new(),
+            request_headers: bearer.clone(),
+        },
+        ExpectedExchange {
+            method: "POST",
+            path: "/v1/chat/completions",
+            assert_body: assert_openai_structured_request,
+            status: 200,
+            response_body: completion_response(&json!({ "ok": true, "echo": echo }).to_string()),
+            extra_headers: Vec::new(),
+            request_headers: bearer,
+        },
+    ]);
+    let mut profile = profile(
+        ProviderKind::Openai,
+        format!("{base_url}v1/"),
+        "gpt-5.4-mini",
+        AuthMode::Bearer,
+    );
+    profile.reasoning_effort = "none".to_string();
+    let gateway = AiGateway::new().expect("gateway should initialize");
+
+    tauri::async_runtime::block_on(async {
+        let models = providers::list_models(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("models should load");
+        assert_eq!(models.len(), 1, "only chat models are listed");
+        assert_eq!(models[0].owned_by.as_deref(), Some("OpenAI"));
+        assert!(models[0]
+            .reasoning
+            .as_ref()
+            .is_some_and(|value| !value.mandatory));
+        let properties = providers::load_properties(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("model facts need no request");
+        assert_eq!(properties.image_input_declared, Some(true));
+        let text = providers::run_text_probe(&gateway, &profile, Some("sentinel-key"))
+            .await
+            .expect("text probe should pass");
+        assert_eq!(text.prompt_tokens, Some(5));
+        providers::run_structured_probe(&gateway, &profile, Some("sentinel-key"), echo)
+            .await
+            .expect("strict JSON schema output should pass local validation");
+    });
+    server.join().expect("mock server should finish");
+}
+
+#[test]
+fn openai_document_probe_uses_a_strict_schema_on_non_reasoning_models() {
+    let (base_url, server) = spawn_mock_server(vec![ExpectedExchange {
+        method: "POST",
+        path: "/v1/chat/completions",
+        assert_body: assert_openai_document_request,
+        status: 200,
+        response_body: completion_response(
+            &json!({"cards": [
+                {"type":"basic","front":"Probe question","back":"Probe answer","tags":["probe"]},
+                {"type":"cloze","text":"The probe value is stable.","blanks":["stable"],
+                    "mode":"one_at_a_time","tags":["probe"]}
+            ]})
+            .to_string(),
+        ),
+        extra_headers: Vec::new(),
+        request_headers: vec!["authorization: bearer sentinel-key"],
+    }]);
+    let profile = profile(
+        ProviderKind::Openai,
+        format!("{base_url}v1/"),
+        "gpt-4.1-mini",
+        AuthMode::Bearer,
+    );
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    tauri::async_runtime::block_on(async {
+        providers::run_document_schema_probe(&gateway, &profile, Some("sentinel-key"), 1_280, None)
+            .await
+            .expect("document contract should pass");
+    });
+    server.join().expect("mock server should finish");
+}
+
+fn assert_openai_text_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value["model"], "gpt-5.4-mini");
+    assert_eq!(value["max_completion_tokens"], 64);
+    assert!(value.get("max_tokens").is_none());
+    assert!(value.get("temperature").is_none());
+    assert_eq!(value["reasoning_effort"], "none");
+    assert_eq!(value["messages"][0]["role"], "system");
+}
+
+fn assert_openai_structured_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value["response_format"]["type"], "json_schema");
+    assert_eq!(value["response_format"]["json_schema"]["strict"], true);
+    assert_eq!(
+        value["response_format"]["json_schema"]["schema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(value["reasoning_effort"], "none");
+}
+
+fn assert_openai_document_request(body: &str) {
+    let value: Value = serde_json::from_str(body).expect("request should be JSON");
+    assert_eq!(value["model"], "gpt-4.1-mini");
+    assert!(value.get("reasoning_effort").is_none());
+    assert!(value.get("temperature").is_some());
+    assert!(value.get("max_completion_tokens").is_some());
+    assert!(value.get("max_tokens").is_none());
+    assert_eq!(value["response_format"]["json_schema"]["strict"], true);
+}
+
 fn claude_model(id: &str, name: &str, structured_outputs: bool, image_input: bool) -> Value {
     json!({
         "type": "model",

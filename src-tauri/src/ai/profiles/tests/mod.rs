@@ -174,7 +174,7 @@ fn zero_data_retention_is_openrouter_only() {
 
 #[test]
 fn rejects_planned_provider_profiles_and_invalid_cloud_auth() {
-    let planned = default_input(ProviderKind::Openai);
+    let planned = default_input(ProviderKind::Gemini);
     assert_eq!(
         profile_policy::validate_create_profile(&planned)
             .unwrap_err()
