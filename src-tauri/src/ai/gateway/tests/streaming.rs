@@ -326,3 +326,78 @@ fn anthropic_overload_mid_stream_is_a_retryable_failure() {
     assert_eq!(failure.safe.code, "ai_server_unavailable");
     assert!(failure.safe.retryable);
 }
+
+fn gemini_stream() -> SseChatAccumulator {
+    SseChatAccumulator::for_request(
+        4_096,
+        65_536,
+        false,
+        ProviderWire::GeminiGenerateContent,
+        None,
+        None,
+    )
+}
+
+/// Recorded shape of a Gemini `streamGenerateContent?alt=sse` stream: whole
+/// partial responses, a thought part, cumulative usage, no terminator.
+const GEMINI_STREAM: &str = concat!(
+    "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"Weighing the answer\",\"thought\": true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 30,\"totalTokenCount\": 30,\"thoughtsTokenCount\": 25},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"abc\"}\r\n\r\n",
+    "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"{\\\"ok\\\":\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 30,\"candidatesTokenCount\": 2,\"totalTokenCount\": 57,\"thoughtsTokenCount\": 25},\"modelVersion\": \"gemini-2.5-flash\"}\r\n\r\n",
+    "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"true}\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 30,\"candidatesTokenCount\": 4,\"totalTokenCount\": 59,\"cachedContentTokenCount\": 16,\"thoughtsTokenCount\": 25},\"modelVersion\": \"gemini-2.5-flash\"}\r\n\r\n",
+);
+
+#[test]
+fn gemini_chunks_reconstruct_text_finish_and_usage() {
+    let mut stream = gemini_stream();
+    for chunk in GEMINI_STREAM.as_bytes().chunks(13) {
+        stream.push_bytes(chunk).unwrap();
+    }
+    stream.finish().unwrap();
+    assert_eq!(stream.content, "{\"ok\":true}");
+    assert_eq!(stream.finish_reason.as_deref(), Some("stop"));
+    assert_eq!(stream.model.as_deref(), Some("gemini-2.5-flash"));
+    assert_eq!(stream.reasoning_bytes, "Weighing the answer".len());
+    let usage = stream.usage.as_ref().expect("usage should be reported");
+    assert_eq!(usage["prompt_tokens"], 30);
+    // Thinking tokens are billed as output.
+    assert_eq!(usage["completion_tokens"], 29);
+    assert_eq!(usage["total_tokens"], 59);
+    assert_eq!(usage["completion_tokens_details"]["reasoning_tokens"], 25);
+    assert_eq!(usage["prompt_tokens_details"]["cached_tokens"], 16);
+}
+
+#[test]
+fn gemini_length_safety_and_blocked_prompts_map_to_shared_finish_reasons() {
+    for (chunk, expected) in [
+        (
+            json!({"candidates": [{"content": {"parts": [{"text": "partial"}]}, "finishReason": "MAX_TOKENS"}]}),
+            "length",
+        ),
+        (
+            json!({"candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "SAFETY"}]}),
+            "content_filter",
+        ),
+        (
+            json!({"promptFeedback": {"blockReason": "PROHIBITED_CONTENT"}}),
+            "content_filter",
+        ),
+    ] {
+        let mut stream = gemini_stream();
+        stream
+            .push_bytes(format!("data: {chunk}\n\n").as_bytes())
+            .unwrap();
+        assert_eq!(stream.finish_reason.as_deref(), Some(expected));
+    }
+}
+
+#[test]
+fn gemini_error_chunk_mid_stream_is_classified() {
+    let mut stream = gemini_stream();
+    let failure = stream
+        .push_bytes(
+            b"data: {\"error\": {\"code\": 503, \"message\": \"The model is overloaded.\", \"status\": \"UNAVAILABLE\"}}\n\n",
+        )
+        .expect_err("an error chunk should fail the stream");
+    assert_eq!(failure.safe.code, "ai_server_unavailable");
+    assert!(failure.safe.retryable);
+}

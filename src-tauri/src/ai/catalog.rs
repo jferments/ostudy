@@ -9,6 +9,7 @@ pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
 pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1/";
 pub const CLAUDE_BASE_URL: &str = "https://api.anthropic.com/v1/";
 pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1/";
+pub const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -54,7 +55,12 @@ impl ProviderKind {
     pub fn implemented(self) -> bool {
         matches!(
             self,
-            Self::LlamaCpp | Self::Deepseek | Self::Openrouter | Self::Claude | Self::Openai
+            Self::LlamaCpp
+                | Self::Deepseek
+                | Self::Openrouter
+                | Self::Claude
+                | Self::Openai
+                | Self::Gemini
         )
     }
 
@@ -62,7 +68,10 @@ impl ProviderKind {
     /// profile's effort is resolved against the selected model instead of
     /// being forced off.
     pub fn declares_reasoning(self) -> bool {
-        matches!(self, Self::Openrouter | Self::Claude | Self::Openai)
+        matches!(
+            self,
+            Self::Openrouter | Self::Claude | Self::Openai | Self::Gemini
+        )
     }
 
     pub fn fixed_base_url(self) -> Option<&'static str> {
@@ -71,6 +80,7 @@ impl ProviderKind {
             Self::Openrouter => Some(OPENROUTER_BASE_URL),
             Self::Claude => Some(CLAUDE_BASE_URL),
             Self::Openai => Some(OPENAI_BASE_URL),
+            Self::Gemini => Some(GEMINI_BASE_URL),
             _ => None,
         }
     }
@@ -82,7 +92,7 @@ impl ProviderKind {
             Self::Openrouter => OPENROUTER_BASE_URL,
             Self::Ollama => "http://127.0.0.1:11434/",
             Self::Openai => OPENAI_BASE_URL,
-            Self::Gemini => "https://generativelanguage.googleapis.com/",
+            Self::Gemini => GEMINI_BASE_URL,
             Self::Claude => CLAUDE_BASE_URL,
         }
     }
@@ -198,7 +208,7 @@ pub fn provider_catalog() -> Vec<ProviderCatalogEntryDto> {
             }
             ProviderKind::Ollama => "Native Ollama support is planned for a later AI stage.",
             ProviderKind::Openai => "Connect to OpenAI's API with your own API key.",
-            ProviderKind::Gemini => "Gemini support is planned for a later AI stage.",
+            ProviderKind::Gemini => "Connect to Google's Gemini API with your own API key.",
             ProviderKind::Claude => {
                 "Connect to Anthropic's Claude API with your own API key."
             }

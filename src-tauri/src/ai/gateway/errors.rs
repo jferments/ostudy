@@ -201,6 +201,44 @@ pub(super) fn classify_anthropic_stream_error(
     }
 }
 
+/// Gemini reports a mid-stream failure as a chunk holding a Google API error
+/// (`{"error": {"code", "message", "status"}}`).
+pub(super) fn classify_gemini_stream_error(
+    value: &Value,
+    retry_after_seconds: Option<u64>,
+) -> AiGatewayError {
+    let status = value
+        .pointer("/error/status")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    match status {
+        "UNAVAILABLE" | "INTERNAL" | "DEADLINE_EXCEEDED" => error(
+            "ai_server_unavailable",
+            "The AI provider is temporarily unavailable. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+        "RESOURCE_EXHAUSTED" => error(
+            "ai_http_rate_limited",
+            "The AI provider rate limit was reached. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+        "INVALID_ARGUMENT" | "FAILED_PRECONDITION" => error(
+            "ai_http_bad_request",
+            "The AI provider rejected this request as unsupported or invalid. Partial output was discarded.",
+            false,
+            None,
+        ),
+        _ => error(
+            "ai_stream_interrupted",
+            "The AI provider ended the streaming response with an error event. Partial output was discarded.",
+            true,
+            retry_after_seconds,
+        ),
+    }
+}
+
 pub(super) fn stream_inactivity_error(timeout_ms: i64) -> AiGatewayError {
     let timeout_seconds = (timeout_ms.max(1) as f64 / 1_000.0).max(0.001);
     error(

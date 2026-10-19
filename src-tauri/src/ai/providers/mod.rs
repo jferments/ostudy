@@ -3,7 +3,9 @@
 //! Implemented providers share one internal protocol family: OpenAI-style
 //! model catalogs, Chat Completions messages/responses, SSE, and usage.
 //! Dialect modules contain only the differences that cannot be expressed by
-//! the shared protocol helpers. OpenAI is that family's reference API. Claude speaks Anthropic's Messages API on the
+//! the shared protocol helpers. OpenAI is that family's reference API. Claude and Gemini speak their own
+//! APIs on the wire; their dialects lower requests and normalize responses at
+//! the edge. Claude speaks Anthropic's Messages API on the
 //! wire; its dialect lowers requests and normalizes responses at the edge.
 
 mod claude;
@@ -11,6 +13,7 @@ mod deepseek;
 mod dialect;
 mod document;
 pub(crate) mod embeddings;
+mod gemini;
 mod llama_cpp;
 mod models;
 mod openai;
@@ -38,10 +41,10 @@ pub(crate) fn provider_access<'a>(
     profile: &ProfileSnapshot,
     secret: Option<&'a str>,
 ) -> ProviderAccess<'a> {
-    let wire = if profile.provider_kind == ProviderKind::Claude {
-        ProviderWire::AnthropicMessages
-    } else {
-        ProviderWire::OpenAiCompatible
+    let wire = match profile.provider_kind {
+        ProviderKind::Claude => ProviderWire::AnthropicMessages,
+        ProviderKind::Gemini => ProviderWire::GeminiGenerateContent,
+        _ => ProviderWire::OpenAiCompatible,
     };
     ProviderAccess::new(wire, secret)
 }

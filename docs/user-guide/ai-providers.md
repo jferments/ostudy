@@ -13,7 +13,8 @@ ostudy connects to an existing model service. It does not install a local model,
 | OpenRouter | Fixed API, account-visible model discovery, and adapter-specific routing/privacy policy |
 | Claude | Fixed Anthropic API and your API key, model discovery, and enforced structured output |
 | OpenAI | Fixed OpenAI API and your API key, chat model discovery, and strict structured output |
-| Dedicated Ollama, Gemini | Planned catalog entries, not implemented normal Add model choices |
+| Gemini | Fixed Google Gemini API and your API key, chat model discovery, and enforced structured output |
+| Dedicated Ollama | Planned catalog entries, not implemented normal Add model choices |
 
 A model available through OpenRouter is not evidence of a dedicated adapter for its original vendor. Provider/model availability outside the application can change; use the actual model discovery and connection test rather than assuming every model name is usable.
 
@@ -57,13 +58,15 @@ A local server can still be unavailable, misconfigured, too small in context, or
 
 ## Cloud profiles
 
-DeepSeek, OpenRouter, Claude, and OpenAI use their fixed configured provider endpoints rather than accepting an arbitrary cloud URL. API usage is billed by the provider, not by a separate ostudy subscription. Cost depends on workload, model, retries, and current provider terms; inspect those terms before transmitting sensitive material.
+DeepSeek, OpenRouter, Claude, OpenAI, and Gemini use their fixed configured provider endpoints rather than accepting an arbitrary cloud URL. API usage is billed by the provider, not by a separate ostudy subscription. Cost depends on workload, model, retries, and current provider terms; inspect those terms before transmitting sensitive material.
 
 For OpenRouter document requests, the adapter requests parameter-compatible structured output, denies provider data collection, and disables provider-side context compression. **Require zero data retention** adds a stronger routing constraint where supported. This may reduce eligible endpoints or cause a request to fail. The app must report that rather than silently relaxing the profile.
 
 Claude models list only when they support structured output. Some current Claude models cannot turn reasoning off; for them, document work uses the model's lowest effort. Claude does not report cost, so usage shows tokens only, including prompt-cache reads.
 
 OpenAI lists only chat models; embedding, audio, image and search models are left out. Older GPT-5 and o-series models always reason; document work uses their lowest effort. OpenAI does not report cost in its responses, so usage shows tokens only.
+
+Gemini lists only models that generate text. Gemini 3 and Gemini 2.5 Pro always think; document work uses their lowest thinking setting, while Gemini 2.5 Flash can turn thinking off. Thinking tokens count as output tokens. Gemini reports no cost.
 
 These request policies are not an independent audit of the external provider. Choose an appropriate service for the material you intend to process.
 

@@ -9,7 +9,8 @@ use crate::ai::{
 };
 
 use super::{
-    claude, deepseek, llama_cpp, openai, openai_compatible, openrouter, schema as schema_support,
+    claude, deepseek, gemini, llama_cpp, openai, openai_compatible, openrouter,
+    schema as schema_support,
 };
 
 pub(super) const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
@@ -18,7 +19,7 @@ pub(super) const DEFAULT_MAX_MODELS: usize = 500;
 /// Implemented providers are one OpenAI-compatible protocol family with a few
 /// explicit dialect choices; Claude lowers that family to the Messages API.
 /// OpenAI is the family's reference API with its own output-cap and
-/// reasoning parameters.
+/// reasoning parameters. Gemini lowers it to `generateContent`.
 /// This enum is the single dispatch seam for those differences.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ProviderDialect {
@@ -27,6 +28,7 @@ pub(super) enum ProviderDialect {
     Openrouter,
     Claude,
     Openai,
+    Gemini,
 }
 
 impl ProviderDialect {
@@ -37,6 +39,7 @@ impl ProviderDialect {
             ProviderKind::Openrouter => Ok(Self::Openrouter),
             ProviderKind::Claude => Ok(Self::Claude),
             ProviderKind::Openai => Ok(Self::Openai),
+            ProviderKind::Gemini => Ok(Self::Gemini),
             _ => Err(error(
                 "ai_provider_not_implemented",
                 "This AI provider adapter is not implemented.",
@@ -56,6 +59,7 @@ impl ProviderDialect {
                 join_endpoint(&profile.base_url, "models/user").map_err(command_to_gateway)
             }
             Self::Claude => claude::models_endpoint(profile),
+            Self::Gemini => gemini::models_endpoint(profile),
         }
     }
 
@@ -71,13 +75,14 @@ impl ProviderDialect {
             }
             Self::Claude => claude::messages_endpoint(profile),
             Self::Openai => openai::completion_endpoint(profile),
+            Self::Gemini => gemini::generate_endpoint(profile),
         }
     }
 
     pub(super) fn model_limits(self) -> (usize, usize) {
         match self {
             Self::Openrouter => (openrouter::MAX_MODEL_LIST_BYTES, openrouter::MAX_MODELS),
-            Self::LlamaCpp | Self::Deepseek | Self::Claude | Self::Openai => {
+            Self::LlamaCpp | Self::Deepseek | Self::Claude | Self::Openai | Self::Gemini => {
                 (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS)
             }
         }
@@ -105,6 +110,15 @@ impl ProviderDialect {
                     visible
                 ));
                 *body = openai::lower_chat_body(body, &profile.reasoning_effort);
+            }
+            Self::Gemini => {
+                let visible = body["max_tokens"].as_u64().unwrap_or(64) as usize;
+                body["max_tokens"] = json!(gemini::probe_max_tokens(
+                    &profile.model_id,
+                    &profile.reasoning_effort,
+                    visible
+                ));
+                *body = gemini::lower_chat_body(body, &profile.reasoning_effort, None);
             }
         }
     }
@@ -138,6 +152,9 @@ impl ProviderDialect {
             Self::Claude => claude::probe_max_tokens(&profile.reasoning_effort, 128),
             Self::Openai => {
                 openai::probe_max_tokens(&profile.model_id, &profile.reasoning_effort, 256)
+            }
+            Self::Gemini => {
+                gemini::probe_max_tokens(&profile.model_id, &profile.reasoning_effort, 256)
             }
             Self::LlamaCpp | Self::Deepseek => 128,
         };
@@ -183,6 +200,13 @@ impl ProviderDialect {
                 );
                 body = openai::lower_chat_body(&body, &profile.reasoning_effort);
             }
+            Self::Gemini => {
+                body = gemini::lower_chat_body(
+                    &body,
+                    &profile.reasoning_effort,
+                    Some(gemini::strict_schema(schema)),
+                );
+            }
         }
         body
     }
@@ -192,6 +216,7 @@ impl ProviderDialect {
     pub(super) fn normalize_response(self, value: Value) -> Result<Value, AiGatewayError> {
         match self {
             Self::Claude => claude::normalize_message(&value),
+            Self::Gemini => gemini::normalize_response(&value),
             Self::LlamaCpp | Self::Deepseek | Self::Openrouter | Self::Openai => Ok(value),
         }
     }

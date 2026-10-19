@@ -2,7 +2,9 @@ use serde_json::json;
 use url::Url;
 
 use super::super::{
-    contracts::ProviderWire, metadata::is_openrouter_url, request::prepare_streaming_body,
+    contracts::ProviderWire,
+    metadata::is_openrouter_url,
+    request::{prepare_streaming_body, streaming_url},
 };
 
 #[test]
@@ -41,6 +43,36 @@ fn anthropic_streams_report_usage_without_unknown_request_fields() {
     .unwrap();
     assert_eq!(prepared["stream"], true);
     assert!(prepared.get("stream_options").is_none());
+}
+
+#[test]
+fn gemini_streams_from_the_sibling_method_without_a_stream_field() {
+    let prepared = prepare_streaming_body(
+        &json!({"contents": [], "generationConfig": {}}),
+        ProviderWire::GeminiGenerateContent,
+    )
+    .unwrap();
+    assert!(prepared.get("stream").is_none());
+    assert!(prepared.get("stream_options").is_none());
+    let url = streaming_url(
+        url::Url::parse(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        )
+        .unwrap(),
+        ProviderWire::GeminiGenerateContent,
+    );
+    assert_eq!(
+        url.as_str(),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+    );
+    let unchanged = streaming_url(
+        url::Url::parse("https://api.openai.com/v1/chat/completions").unwrap(),
+        ProviderWire::OpenAiCompatible,
+    );
+    assert_eq!(
+        unchanged.as_str(),
+        "https://api.openai.com/v1/chat/completions"
+    );
 }
 
 #[test]

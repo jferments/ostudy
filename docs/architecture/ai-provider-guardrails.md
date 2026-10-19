@@ -60,6 +60,9 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
 - `providers/openai.rs` owns OpenAI's parameter differences (output cap,
   sampling on reasoning models, `reasoning_effort`) and the model-family facts
   OpenAI's models list does not carry.
+- `providers/gemini.rs` owns `generateContent` request lowering and response
+  normalization, model-list filtering, and Gemini's thinking settings by
+  model family.
 - `providers/claude.rs` owns Messages request lowering and response
   normalization, Models API capability mapping, and Claude's structured-output
   schema subset.

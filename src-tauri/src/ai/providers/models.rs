@@ -10,7 +10,7 @@ use crate::ai::{
 use super::{
     claude,
     dialect::{command_to_gateway, ProviderDialect, DEFAULT_MAX_MODEL_LIST_BYTES},
-    llama_cpp, openai, openrouter, provider_access, ProviderModel, ProviderProperties,
+    gemini, llama_cpp, openai, openrouter, provider_access, ProviderModel, ProviderProperties,
 };
 
 pub(crate) async fn list_models(
@@ -60,6 +60,11 @@ pub(crate) async fn list_models(
         }
         Err(error_value) => return Err(error_value),
     };
+    let value = if dialect == ProviderDialect::Gemini {
+        gemini::model_list_as_data(&value)
+    } else {
+        value
+    };
     let models = parse_model_list(&value, dialect, maximum_models)?;
     crate::logging::debug_target(
         "ai.provider",
@@ -92,6 +97,24 @@ pub(crate) async fn load_properties(
             Ok(value) => Ok(claude::parse_properties(&value)),
             // Model details only enrich the probe; the text and schema probes
             // still decide whether the model works.
+            Err(error_value) if error_value.safe.code == "ai_provider_protocol_error" => {
+                Ok(ProviderProperties::default())
+            }
+            Err(error_value) => Err(error_value),
+        };
+    }
+    if profile.provider_kind == ProviderKind::Gemini {
+        let url = gemini::model_endpoint(profile, &profile.model_id)?;
+        return match gateway
+            .get_json(
+                url,
+                provider_access(profile, bearer),
+                profile.request_timeout_ms,
+                DEFAULT_MAX_MODEL_LIST_BYTES,
+            )
+            .await
+        {
+            Ok(value) => Ok(gemini::parse_properties(&value)),
             Err(error_value) if error_value.safe.code == "ai_provider_protocol_error" => {
                 Ok(ProviderProperties::default())
             }
@@ -158,7 +181,10 @@ fn parse_model_list(
         let structured_outputs = match dialect {
             ProviderDialect::Openrouter => openrouter::model_structured_outputs_declared(item),
             ProviderDialect::Claude => claude::model_structured_outputs_declared(item),
-            ProviderDialect::LlamaCpp | ProviderDialect::Deepseek | ProviderDialect::Openai => None,
+            ProviderDialect::LlamaCpp
+            | ProviderDialect::Deepseek
+            | ProviderDialect::Openai
+            | ProviderDialect::Gemini => None,
         };
         if structured_outputs == Some(false) {
             declared_incompatible = declared_incompatible.saturating_add(1);
@@ -204,6 +230,13 @@ fn parse_model_list(
                 claude::model_context_window_tokens(item),
                 claude::model_reasoning(item),
                 claude::model_image_input(item),
+            ),
+            ProviderDialect::Gemini => (
+                gemini::model_display_name(item, id),
+                Some("Google".to_string()),
+                gemini::model_context_window_tokens(item),
+                gemini::model_reasoning(item, id),
+                gemini::model_image_input(id),
             ),
             ProviderDialect::Openai => (
                 id.to_string(),
@@ -257,6 +290,7 @@ fn profile_kind_label(dialect: ProviderDialect) -> &'static str {
         ProviderDialect::Openrouter => "openrouter",
         ProviderDialect::Claude => "claude",
         ProviderDialect::Openai => "openai",
+        ProviderDialect::Gemini => "gemini",
     }
 }
 

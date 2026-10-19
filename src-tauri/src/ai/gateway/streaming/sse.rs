@@ -5,7 +5,10 @@ use serde_json::{json, Value};
 use super::usage::{merge_usage_snapshot, safe_usage_envelope};
 use crate::ai::gateway::{
     contracts::{AiGatewayError, ProviderWire},
-    errors::{classify_anthropic_stream_error, classify_stream_event_error, error},
+    errors::{
+        classify_anthropic_stream_error, classify_gemini_stream_error, classify_stream_event_error,
+        error,
+    },
     metadata::{safe_json_string, MAX_SAFE_PROVIDER_METADATA_CHARS},
 };
 
@@ -161,6 +164,9 @@ impl SseChatAccumulator {
         if self.wire == ProviderWire::AnthropicMessages {
             return self.process_anthropic_event(&value);
         }
+        if self.wire == ProviderWire::GeminiGenerateContent {
+            return self.process_gemini_chunk(&value);
+        }
         if let Some(usage) = safe_usage_envelope(&value) {
             merge_usage_snapshot(&mut self.usage, usage);
         }
@@ -224,6 +230,59 @@ impl SseChatAccumulator {
             .and_then(|message| message.get("tool_calls"))
         {
             self.append_tools(calls, true)?;
+        }
+        Ok(())
+    }
+
+    /// Each Gemini chunk is a partial GenerateContentResponse: new text in
+    /// the first candidate's parts, cumulative usage, and the finish reason
+    /// on the last chunk. The stream ends when the connection closes.
+    fn process_gemini_chunk(&mut self, value: &Value) -> Result<(), AiGatewayError> {
+        if value.get("error").is_some_and(|value| !value.is_null()) {
+            return Err(classify_gemini_stream_error(
+                value,
+                self.retry_after_seconds,
+            ));
+        }
+        if self.model.is_none() {
+            self.model =
+                safe_json_string(value.get("modelVersion"), MAX_SAFE_PROVIDER_METADATA_CHARS);
+        }
+        if let Some(usage) = value.get("usageMetadata").and_then(gemini_usage_envelope) {
+            self.usage = Some(usage);
+        }
+        if value
+            .pointer("/promptFeedback/blockReason")
+            .and_then(Value::as_str)
+            .is_some()
+        {
+            self.finish_reason = Some("content_filter".to_string());
+        }
+        let candidate = value
+            .get("candidates")
+            .and_then(Value::as_array)
+            .and_then(|candidates| candidates.first());
+        if let Some(parts) = candidate
+            .and_then(|candidate| candidate.pointer("/content/parts"))
+            .and_then(Value::as_array)
+        {
+            for part in parts {
+                let Some(text) = part.get("text").and_then(Value::as_str) else {
+                    continue;
+                };
+                if part.get("thought").and_then(Value::as_bool) == Some(true) {
+                    self.reasoning_bytes = self.reasoning_bytes.saturating_add(text.len());
+                } else {
+                    self.append_content(text, false)?;
+                }
+            }
+        }
+        if let Some(reason) = candidate
+            .and_then(|candidate| candidate.get("finishReason"))
+            .and_then(Value::as_str)
+            .and_then(gemini_finish_reason)
+        {
+            self.finish_reason = Some(reason.to_string());
         }
         Ok(())
     }
@@ -550,6 +609,57 @@ pub(crate) fn anthropic_usage_envelope(
         },
         "cost": Value::Null,
     }))
+}
+
+/// Project Gemini usage onto ostudy's normalized usage. Gemini's prompt count
+/// already includes cached tokens; thinking tokens are billed as output.
+pub(crate) fn gemini_usage_envelope(usage: &Value) -> Option<Value> {
+    let read = |key: &str| usage.get(key).and_then(Value::as_u64);
+    let prompt_tokens = read("promptTokenCount");
+    let candidates = read("candidatesTokenCount");
+    let thoughts = read("thoughtsTokenCount");
+    if prompt_tokens.is_none() && candidates.is_none() && thoughts.is_none() {
+        return None;
+    }
+    let completion_tokens = (candidates.is_some() || thoughts.is_some()).then(|| {
+        candidates
+            .unwrap_or(0)
+            .saturating_add(thoughts.unwrap_or(0))
+    });
+    let total_tokens = prompt_tokens
+        .zip(completion_tokens)
+        .map(|(prompt, completion)| prompt.saturating_add(completion));
+    Some(json!({
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "prompt_tokens_details": {
+            "cached_tokens": read("cachedContentTokenCount"),
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": thoughts,
+        },
+        "cost": Value::Null,
+    }))
+}
+
+/// `None` while the candidate is still generating.
+pub(crate) fn gemini_finish_reason(reason: &str) -> Option<&'static str> {
+    match reason {
+        "" | "FINISH_REASON_UNSPECIFIED" => None,
+        "STOP" => Some("stop"),
+        "MAX_TOKENS" => Some("length"),
+        "SAFETY"
+        | "RECITATION"
+        | "LANGUAGE"
+        | "BLOCKLIST"
+        | "PROHIBITED_CONTENT"
+        | "SPII"
+        | "IMAGE_SAFETY"
+        | "IMAGE_PROHIBITED_CONTENT"
+        | "IMAGE_RECITATION" => Some("content_filter"),
+        _ => Some("unknown"),
+    }
 }
 
 pub(crate) fn anthropic_finish_reason(stop_reason: &str) -> &'static str {

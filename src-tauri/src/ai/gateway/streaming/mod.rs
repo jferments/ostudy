@@ -23,7 +23,7 @@ use super::{
         empty_stream_failure, error, initial_timeout_error, stream_inactivity_error,
     },
     metadata::{is_openrouter_url, safe_metadata_string, MAX_SAFE_PROVIDER_METADATA_CHARS},
-    request::{prepare_streaming_body, streaming_request},
+    request::{prepare_streaming_body, streaming_request, streaming_url},
     response::{generation_id, read_bounded_body, retry_after_seconds, MAX_ERROR_BODY_BYTES},
     retry::{document_retry_delay, should_retry_document_stream_error},
 };
@@ -270,6 +270,7 @@ impl AiGateway {
             .get("model")
             .and_then(Value::as_str)
             .and_then(|value| safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS));
+        let url = streaming_url(url, access.wire);
         let request = streaming_request(&self.streaming_client, url, access, &streaming_body);
 
         let mut response = wait_initial(
