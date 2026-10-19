@@ -87,6 +87,12 @@ pub(crate) fn assess_text_quality(text: &str) -> TextQualityAssessment {
     }
 }
 
+/// Text with no letters or digits that still carries unmapped glyphs, such as a
+/// figure label set in a font whose characters cannot be decoded.
+pub(crate) fn is_undecodable_noise(text: &str) -> bool {
+    !text.chars().any(char::is_alphanumeric) && text.chars().any(is_unmapped_pdf_glyph)
+}
+
 fn is_unmapped_pdf_glyph(character: char) -> bool {
     let value = character as u32;
     (character.is_control() && !matches!(character, '\n' | '\t'))
@@ -135,6 +141,17 @@ mod tests {
             "The active blood-gas barrier is around 0.3 \u{001e}m thick and the capillary is under 3 \u{001e}m in scale.",
         );
         assert!(!assessment.suspicious);
+    }
+
+    #[test]
+    fn letterless_glyph_runs_are_noise_but_damaged_words_are_not() {
+        assert!(is_undecodable_noise("\u{fffd}\u{fffd}\u{fffd}"));
+        assert!(is_undecodable_noise(
+            "\u{8f}\n \u{ad}\u{fffd}\n\r \u{fffd}\u{fffd}"
+        ));
+        assert!(!is_undecodable_noise("Bronchi \u{fffd}\u{fffd}\u{fffd}"));
+        assert!(!is_undecodable_noise("\u{2022} \u{2014}"));
+        assert!(!is_undecodable_noise(""));
     }
 
     #[test]
