@@ -1,17 +1,21 @@
 //! Writing a subject's course with AI.
 //!
-//! The course follows the subject's outline: the same bounded windows of
-//! retained knowledge that its study guide sections are written from, one
-//! lesson for each. Lessons are written in parallel within the provider's
-//! limits and saved together once every one of them is valid, so a failed or
-//! stopped run leaves the course as it was. A subject that already has
-//! lessons is refused; rewriting a course is a separate decision.
+//! The course follows the subject's documents in order and, within each, its
+//! learning plan: one lesson for each top-level topic, together with its
+//! subtopics, so lessons match the parts of the study guide the learner
+//! reads. A knowledge unit that two lessons would share is taught by the one
+//! drawn from less of the source, the rule guide sections follow, so lessons
+//! do not repeat each other. Lessons are written in parallel within the
+//! provider's limits and saved together once every one of them is valid, so
+//! a failed or stopped run leaves the course as it was. A subject that
+//! already has lessons is refused; rewriting a course is a separate decision.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     sync::{LazyLock, Mutex},
 };
 
+use rusqlite::{Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -32,16 +36,22 @@ use crate::{
         document_provider, generation, AiRuntimeState,
     },
     database::Database,
+    document_learning::{load_active_document_learning_plan, DocumentLearningPlan, LearningTopic},
+    document_study_guide_generation::ownership,
     error::CommandError,
-    knowledge::collection_view::{self, CollectionGuideWindow, CollectionViewState},
-    study_materials::composition::{collection_title, relationship_context},
+    knowledge::{
+        authoring::{catalog_for_chunks, KnowledgeCatalog, PreparationGaps},
+        collection_scope,
+        contracts::{ScopeKind, StudyScope},
+    },
+    study_materials::composition::collection_title,
     task_activity::ActivityGuard,
     task_cancellation::CancellationSignal,
     util::{unix_time_millis, validate_entity_id},
 };
 
 const PURPOSE: &str = "lesson_authoring";
-/// How much of each part's concepts the course outline shows.
+/// How much of each part's summary the course outline shows.
 const OUTLINE_CONTEXT_CHARS: usize = 200;
 
 #[derive(Debug, Deserialize)]
@@ -120,8 +130,8 @@ async fn write_lessons(
     signal: &CancellationSignal,
 ) -> Result<(), CommandError> {
     let subject_id = input.subject_id.as_str();
-    let native = collection_view::refresh_native(database, subject_id)?;
-    if native.synthesis.topics.is_empty() {
+    let plans = database.with_connection(|connection| subject_plans(connection, subject_id))?;
+    if plans.is_empty() {
         return Err(nothing_to_teach());
     }
     let mut task = load_document_task_context(database)?;
@@ -133,14 +143,18 @@ async fn write_lessons(
     )?;
     task.apply_provider_capabilities(&capabilities);
     task.diagnostics = Some(diagnostics);
-    let view =
-        collection_view::ensure_reduced(database, runtime, &task, subject_id, signal).await?;
+    let mut parts = Vec::new();
+    for (document_id, plan_id) in &plans {
+        let plan = load_active_document_learning_plan(database, document_id)?
+            .filter(|plan| plan.id == *plan_id)
+            .ok_or_else(source_changed)?;
+        parts.extend(document_parts(database, &task, &plan)?);
+    }
     ensure_running(signal)?;
-    let windows = collection_view::guide_section_windows(database, subject_id, &view.synthesis)?;
-    if windows.is_empty() {
+    if parts.is_empty() {
         return Err(nothing_to_teach());
     }
-    if windows.len() > usize::try_from(MAX_LESSONS_PER_SUBJECT).unwrap_or(usize::MAX) {
+    if parts.len() > usize::try_from(MAX_LESSONS_PER_SUBJECT).unwrap_or(usize::MAX) {
         return Err(CommandError::new(
             "lesson_limit",
             format!("A subject can hold up to {MAX_LESSONS_PER_SUBJECT} lessons."),
@@ -152,16 +166,15 @@ async fn write_lessons(
         runtime,
         task: &task,
         subject_title: &subject_title,
-        view: &view,
         operation_id: &input.operation_id,
-        windows: &windows,
+        parts: &parts,
         signal,
     };
-    let parallelism = document_request_parallelism(&task.network_scope).clamp(1, windows.len());
-    let mut lessons = vec![None; windows.len()];
+    let parallelism = document_request_parallelism(&task.network_scope).clamp(1, parts.len());
+    let mut lessons = vec![None; parts.len()];
     let mut first_error: Option<(usize, CommandError)> = None;
     run_bounded_provider_queue(
-        windows.len(),
+        parts.len(),
         parallelism,
         |index| {
             let course = &course;
@@ -203,10 +216,155 @@ async fn write_lessons(
     task.ensure_current(database)?;
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
-        // The source must still be the one the lessons were written from.
-        collection_view::ensure_analysis_current(connection, subject_id, &view.analysis_hash)?;
+        // The documents and their plans must still be the ones the lessons
+        // were written from.
+        if subject_plans(connection, subject_id)? != plans {
+            return Err(source_changed());
+        }
         create_generated_course(connection, subject_id, &lessons, now).map(|_| ())
     })
+}
+
+/// The subject's documents in order, each with its active learning plan.
+/// Every document needs one: a course is never written from part of a subject.
+fn subject_plans(
+    connection: &Connection,
+    subject_id: &str,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let scope = StudyScope::single(ScopeKind::Collection, Some(subject_id.to_string()));
+    collection_scope::documents(connection, &scope)?
+        .into_iter()
+        .map(|document_id| {
+            let plan_id = connection
+                .query_row(
+                    "SELECT id FROM document_learning_plans
+                     WHERE document_id = ?1 AND state = 'active'",
+                    [&document_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(CommandError::database)?
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "lesson_documents_unprepared",
+                        "Finish processing every document in this subject before writing its lessons.",
+                    )
+                })?;
+            Ok((document_id, plan_id))
+        })
+        .collect()
+}
+
+/// One part of the course: a top-level topic of a document's plan with its
+/// subtopics, and the knowledge it teaches.
+struct CoursePart {
+    document_id: String,
+    plan_id: String,
+    topic_ids: Vec<String>,
+    title: String,
+    summary: String,
+    objectives: String,
+    catalog: KnowledgeCatalog,
+}
+
+/// A document's parts in plan order. Parts with no extracted knowledge are
+/// left out; shared units go to the part drawn from fewer source chunks.
+fn document_parts(
+    database: &Database,
+    task: &DocumentTaskContext,
+    plan: &DocumentLearningPlan,
+) -> Result<Vec<CoursePart>, CommandError> {
+    let groups = topic_groups(plan);
+    let chunks = groups
+        .iter()
+        .map(|topics| {
+            topics
+                .iter()
+                .flat_map(|topic| topic.evidence_chunk_indices.iter())
+                .map(|index| i64::try_from(*index).map_err(|_| source_changed()))
+                .collect::<Result<BTreeSet<_>, _>>()
+                .map(|indices| indices.into_iter().collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let gaps = PreparationGaps::default();
+    let catalogs = chunks
+        .iter()
+        .map(|indices| catalog_for_chunks(database, &plan.document_id, indices, task, &gaps))
+        .collect::<Result<Vec<_>, _>>()?;
+    let sizes = chunks.iter().map(Vec::len).collect::<Vec<_>>();
+    let (catalogs, _) = ownership::by_size(&sizes, catalogs);
+    Ok(groups
+        .into_iter()
+        .zip(catalogs)
+        .filter(|(_, catalog)| !catalog.units.is_empty())
+        .map(|(topics, catalog)| {
+            let root = topics[0];
+            let subtopics = topics[1..]
+                .iter()
+                .map(|topic| topic.title.as_str())
+                .collect::<Vec<_>>();
+            let summary = if subtopics.is_empty() {
+                root.summary.clone()
+            } else {
+                format!("{} It also covers: {}.", root.summary, subtopics.join("; "))
+            };
+            let mut seen = BTreeSet::new();
+            let objectives = topics
+                .iter()
+                .flat_map(|topic| topic.learning_objectives.iter())
+                .filter(|objective| seen.insert(objective.as_str()))
+                .map(|objective| format!("- {objective}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            CoursePart {
+                document_id: plan.document_id.clone(),
+                plan_id: plan.id.clone(),
+                topic_ids: topics.iter().map(|topic| topic.id.clone()).collect(),
+                title: root.title.clone(),
+                summary,
+                objectives,
+                catalog,
+            }
+        })
+        .collect())
+}
+
+/// The plan's topics grouped under their top-level topic, in plan order,
+/// each group starting with that top-level topic.
+fn topic_groups(plan: &DocumentLearningPlan) -> Vec<Vec<&LearningTopic>> {
+    let by_id = plan
+        .topics
+        .iter()
+        .map(|topic| (topic.id.as_str(), topic))
+        .collect::<HashMap<_, _>>();
+    let root = |topic: &LearningTopic| {
+        let mut current = topic;
+        // The plan compiler forbids cycles; the bound keeps a damaged plan
+        // from looping.
+        for _ in 0..plan.topics.len() {
+            match current
+                .parent_topic_id
+                .as_deref()
+                .and_then(|id| by_id.get(id))
+            {
+                Some(parent) => current = parent,
+                None => break,
+            }
+        }
+        current.id.clone()
+    };
+    let mut topics = plan.topics.iter().collect::<Vec<_>>();
+    topics.sort_by_key(|topic| topic.sort_index);
+    let mut groups = Vec::<Vec<&LearningTopic>>::new();
+    let mut group_of = HashMap::<String, usize>::new();
+    for topic in topics.iter().filter(|topic| root(topic) == topic.id) {
+        group_of.insert(topic.id.clone(), groups.len());
+        groups.push(vec![*topic]);
+    }
+    for topic in topics.iter().filter(|topic| root(topic) != topic.id) {
+        groups[group_of[&root(topic)]].push(topic);
+    }
+    groups
 }
 
 struct CourseRequest<'a> {
@@ -214,35 +372,35 @@ struct CourseRequest<'a> {
     runtime: &'a AiRuntimeState,
     task: &'a DocumentTaskContext,
     subject_title: &'a str,
-    view: &'a CollectionViewState,
     operation_id: &'a str,
-    windows: &'a [CollectionGuideWindow],
+    parts: &'a [CoursePart],
     signal: &'a CancellationSignal,
 }
 
 impl CourseRequest<'_> {
     async fn write(&self, index: usize) -> Result<(LessonContent, Value), CommandError> {
-        let window = &self.windows[index];
+        let part = &self.parts[index];
         ensure_running(self.signal)?;
         self.task.ensure_current(self.database)?;
-        let catalog = window.catalog.fingerprint()?;
+        let catalog = part.catalog.fingerprint()?;
         let mut task = self.task.fork_usage();
         task.diagnostic_window_key = Some(format!(
             "{:x}",
-            Sha256::digest(format!("lesson|{}|{catalog}", window.block_key).as_bytes())
+            Sha256::digest(
+                format!("lesson|{}|{}|{catalog}", part.plan_id, part.topic_ids[0]).as_bytes()
+            )
         ));
-        let relationships = relationship_context(self.view, &window.topic_ids);
-        let outline = course_outline(self.windows, index);
+        let outline = course_outline(self.parts, index);
         let lesson = generate_lesson(
             self.runtime,
             &task,
             LessonAuthoring {
                 subject_title: self.subject_title,
-                topic_title: &window.title,
-                topic_summary: &window.topic_context,
-                relationship_context: &relationships,
+                topic_title: &part.title,
+                topic_summary: &part.summary,
+                objectives: &part.objectives,
                 course_outline: &outline,
-                knowledge: &window.catalog,
+                knowledge: &part.catalog,
             },
             self.signal,
         )
@@ -254,7 +412,9 @@ impl CourseRequest<'_> {
             "promptVersion": LESSON_PROMPT_VERSION,
             "lessonSchemaVersion": LESSON_CONTENT_VERSION,
             "operationId": self.operation_id,
-            "outlineBlockKey": window.block_key,
+            "documentId": part.document_id,
+            "learningPlanId": part.plan_id,
+            "topicIds": part.topic_ids,
             "catalogFingerprint": catalog,
             "totalTokens": total_tokens,
             "usageComplete": usage_complete,
@@ -265,13 +425,13 @@ impl CourseRequest<'_> {
 
 /// Each lesson's title and the start of what its part covers, one per line,
 /// with the lesson being written marked.
-fn course_outline(windows: &[CollectionGuideWindow], current: usize) -> String {
-    windows
+fn course_outline(parts: &[CoursePart], current: usize) -> String {
+    parts
         .iter()
         .enumerate()
-        .map(|(index, window)| {
-            let covers = window
-                .topic_context
+        .map(|(index, part)| {
+            let covers = part
+                .summary
                 .split_whitespace()
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -284,7 +444,7 @@ fn course_outline(windows: &[CollectionGuideWindow], current: usize) -> String {
             } else {
                 ""
             };
-            format!("{}. {}: {covers}{marker}", index + 1, window.title)
+            format!("{}. {}: {covers}{marker}", index + 1, part.title)
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -299,6 +459,13 @@ fn ensure_running(signal: &CancellationSignal) -> Result<(), CommandError> {
     } else {
         Ok(())
     }
+}
+
+fn source_changed() -> CommandError {
+    CommandError::new(
+        "lesson_source_changed",
+        "This subject's documents changed while its lessons were being written. Try again.",
+    )
 }
 
 fn nothing_to_teach() -> CommandError {

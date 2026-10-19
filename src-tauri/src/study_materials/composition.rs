@@ -832,7 +832,7 @@ pub(crate) fn collection_title(
     })
 }
 
-pub(crate) fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
+fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
     let wanted = topic_ids
         .iter()
         .map(String::as_str)
