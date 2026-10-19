@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, type CSSProperties } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import { Button } from "../../../ui/primitives/Button";
@@ -16,6 +16,7 @@ import {
   type TextShape,
 } from "./annotationModel";
 import { usePageImage, type PageImageCache } from "./pageImages";
+import { tileDensity, tilesFor, usePageTiles, type PageRegion, type PageTile, type ShownTile } from "./pageTiles";
 import { highlightPath, inkPath } from "./strokeOutline";
 import type { TextEditing } from "./useDocumentAnnotator";
 
@@ -32,6 +33,12 @@ interface AnnotatorPageProps {
   /** Near the screen: show the image and annotations, not just the page's place. */
   near: boolean;
   images: PageImageCache | null;
+  /** Sharp tiles for a zoomed-in page, drawn for where the view last rested. */
+  tiles: PageImageCache | null;
+  tileScale: number;
+  pixelRatio: number;
+  /** The part of this page in view, in points; null when none is. */
+  region: PageRegion | null;
   annotations: readonly Annotation[];
   /** The rest of these belong to this page, or are null. */
   draft: PageDraft | null;
@@ -51,9 +58,17 @@ interface AnnotatorPageProps {
 }
 
 /** One page: its render, highlights under it all, strokes and shapes, then text notes and the selection. */
+const NO_TILES: readonly PageTile[] = [];
+
 export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPageProps) {
-  const { page, scale, near } = props;
+  const { page, scale, near, region, tileScale, pixelRatio } = props;
   const image = usePageImage(props.images, page.assetId, near && page.imageAvailable);
+  const density = near && page.imageAvailable && region ? tileDensity(page, tileScale, pixelRatio) : null;
+  const wanted = useMemo(
+    () => (density !== null && region ? tilesFor(page, density, region) : NO_TILES),
+    [density, page, region],
+  );
+  const tiles = usePageTiles(props.tiles, wanted);
   const width = page.width * scale;
   const height = page.height * scale;
   return (
@@ -64,15 +79,15 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
       className="tw:relative tw:mx-auto tw:mb-4 tw:overflow-hidden tw:bg-[var(--ostudy-color-neutral-0)] tw:shadow-md tw:ring-1 tw:ring-border tw:select-none tw:forced-color-adjust-none tw:last:mb-0 tw:compact:mb-3"
       style={{ width, height }}
     >
-      {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} /> : null}
+      {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} sharpTiles={tiles} /> : null}
     </div>
   );
 });
 
 function PageContent({
   page, scale, annotations, draft, preview, erasing, selected, editing, selectable, coarse, textHeight,
-  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed,
-}: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean }) {
+  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
+}: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : annotation);
   const viewBox = `0 0 ${page.width} ${page.height}`;
   const faded = (annotation: Annotation) => erasing?.has(annotation.id) ? 0.25 : undefined;
@@ -88,6 +103,23 @@ function PageContent({
           {imageFailed ? "This page's image could not be read." : null}
         </p>
       )}
+      {/* Drawn again from the PDF at the size shown, over the softer page image. */}
+      {sharpTiles.map((tile) => (
+        <img
+          key={tile.key}
+          src={tile.url}
+          alt=""
+          draggable={false}
+          data-page-tile=""
+          className="tw:pointer-events-none tw:absolute"
+          style={{
+            left: `${(tile.left / tile.pageWidth) * 100}%`,
+            top: `${(tile.top / tile.pageHeight) * 100}%`,
+            width: `${(tile.width / tile.pageWidth) * 100}%`,
+            height: `${(tile.height / tile.pageHeight) * 100}%`,
+          }}
+        />
+      ))}
       {/* Highlights blend into the page, so text under them stays readable. */}
       <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:mix-blend-multiply">
         {highlights.map((annotation) => (

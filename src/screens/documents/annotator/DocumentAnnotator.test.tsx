@@ -13,6 +13,7 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../../ipc/documentAnnotations")>(),
   getDocumentAnnotations: vi.fn(),
   applyDocumentAnnotationChanges: vi.fn(),
+  renderDocumentPageTile: vi.fn(),
 }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 
@@ -31,6 +32,7 @@ beforeEach(() => {
   vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages, annotations: [] });
   vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mockResolvedValue({ annotations: [], deletedIds: [] });
   vi.mocked(studyGuideIpc.readDocumentSourceAsset).mockResolvedValue(new ArrayBuffer(8));
+  vi.mocked(annotationIpc.renderDocumentPageTile).mockResolvedValue(new ArrayBuffer(8));
   Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function rect(this: HTMLElement) {
@@ -194,6 +196,26 @@ describe("document annotator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(annotationIpc.applyDocumentAnnotationChanges).not.toHaveBeenCalled();
+  });
+
+  it("draws the part of a page in view sharply once a zoom comes to rest", async () => {
+    const { canvas } = await openAnnotator();
+    const tiles = () => document.querySelectorAll("img[data-page-tile]");
+    // At 75% the page images are sharp enough, so nothing is drawn again.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(annotationIpc.renderDocumentPageTile).not.toHaveBeenCalled();
+
+    for (let step = 0; step < 3; step += 1) fireEvent.keyDown(canvas, { key: "=", ctrlKey: true });
+    expect(screen.getByRole("button", { name: /^Automatic zoom/ }).textContent).toBe("146%");
+    await waitFor(() => expect(tiles().length).toBeGreaterThan(0));
+    const requests = vi.mocked(annotationIpc.renderDocumentPageTile).mock.calls.map(([, tile]) => tile);
+    // Page 1 fills the view; only the top of page 2 lies within the margin kept ready.
+    expect(requests.filter((tile) => tile.pageNumber === 2).every((tile) => tile.top === 0)).toBe(true);
+    // Tiles are drawn at 170 dpi, the next step above 146%.
+    expect(requests[0]).toMatchObject({ pageWidth: 1442, pageHeight: 1867, left: 0, top: 0, width: 512, height: 512 });
+
+    fireEvent.keyDown(canvas, { key: "0", ctrlKey: true });
+    await waitFor(() => expect(tiles()).toHaveLength(0));
   });
 
   it("reports a failed save and asks before leaving without it", async () => {
