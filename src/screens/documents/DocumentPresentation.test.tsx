@@ -128,7 +128,7 @@ async function openDocumentActions(
 async function waitForCollectionDiscovery(): Promise<void> {
   await waitFor(() => {
     expect(
-      (screen.getByRole("button", { name: "New collection" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 }
@@ -167,14 +167,14 @@ describe("Document job presentation", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     const actions = await openDocumentActions("Cardiac physiology", "dialog");
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
 
     await act(async () => {
       finish({ revision: 1, collections: [], memberships: [], ranges: [] });
       await Promise.resolve();
     });
     expect(actions.isConnected).toBe(true);
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
   });
 
   it("keeps nonfatal analysis details out of cards and successful generation toasts", async () => {
@@ -189,7 +189,7 @@ describe("Document job presentation", () => {
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     await waitForCollectionDiscovery();
     await openDocumentActions();
-    fireEvent.click(await screen.findByText("Retry"));
+    fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => expect(toast).toHaveBeenCalledWith(
       "success",
@@ -226,7 +226,7 @@ describe("Document job presentation", () => {
     expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
 
     await openDocumentActions();
-    fireEvent.click(await screen.findByText("Stop study guide"));
+    fireEvent.click(await screen.findByText("Stop study guide generation"));
     await waitFor(() => expect(
       studyGuideIpc.cancelDocumentStudyGuideGeneration,
     ).toHaveBeenCalledWith(documentId));

@@ -2,7 +2,7 @@ import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/docu
 import type { DocumentArtifactJob } from "../../ipc/studyGuides";
 import { Progress } from "../../ui/primitives/Progress";
 import { isActiveArtifactJob } from "../../controllers/useDocumentArtifactProgress";
-import { activeWindowDetail } from "./DocumentProgress";
+import { activeWindowDetail, GenerationDiagnostics } from "./DocumentProgress";
 import { progressStyles } from "./presentation";
 
 type ArtifactProgress = {
@@ -78,12 +78,13 @@ function ArtifactRow({ label, progress }: { label: string; progress: ArtifactPro
 }
 
 /** Counts come from committed native windows/sections, never an elapsed-time guess. */
-export function LearningArtifactProgressPanel({ document, progress, guideJob, guideStarting, readFailed }: {
+export function LearningArtifactProgressPanel({ document, progress, guideJob, guideStarting, readFailed, now }: {
   document: DocumentSummary;
   progress: DocumentGenerationProgress | null;
   guideJob: DocumentArtifactJob | null;
   guideStarting: boolean;
   readFailed: boolean;
+  now: number;
 }) {
   const activeWindows = progress?.phase === "generating"
     ? activeWindowDetail(progress, document.generationWindowCount, document.sourceUnitKind) : null;
@@ -92,6 +93,7 @@ export function LearningArtifactProgressPanel({ document, progress, guideJob, gu
     <ArtifactRow label="Study Guide" progress={guideProgress(guideJob, guideStarting)} />
     {guideJob ? <div className={progressStyles.detail}>{guideUsageDetail(guideJob)}</div> : null}
     {activeWindows ? <div className={progressStyles.detail}>{activeWindows}</div> : null}
+    {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
     {guideJob?.safeErrorMessage ? <div className="tw:text-small tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}
     {readFailed ? <div className={progressStyles.detail}>Progress unavailable; showing the last saved status.</div> : null}
   </div>;

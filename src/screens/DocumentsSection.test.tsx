@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
@@ -54,7 +54,7 @@ describe("DocumentsSection", () => {
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([profile()]);
   });
 
-  it("leaves the generation model to Settings", async () => {
+  it("keeps the provider panel focused on the selected generation model", async () => {
     render(
       <DocumentsSection
         refreshDecks={vi.fn()}
@@ -63,15 +63,20 @@ describe("DocumentsSection", () => {
       />,
     );
 
-    expect(await screen.findByText("Document library content")).toBeTruthy();
-    await waitFor(() => expect(aiProfiles.listAiProviderProfiles).toHaveBeenCalled());
-    expect(screen.queryByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeNull();
-    expect(screen.queryByText("Local vision model")).toBeNull();
-    expect(screen.queryByText(/model/iu)).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    const heading = screen.getByRole("heading", { name: "Documents" });
+    const model = await screen.findByText("Current Flashcard Generation model");
+    expect(
+      Boolean(heading.compareDocumentPosition(model) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(screen.getByText("unsloth/Qwen3.6-27B-MTP-GGUF")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Study guides" })).toBeNull();
+    expect(screen.queryByText("llama.cpp / Unsloth GGUF")).toBeNull();
+    expect(screen.queryByText(/stay on this computer/u)).toBeNull();
+    expect(screen.queryByText(/Local computer/u)).toBeNull();
+    expect(screen.getByText("Document library content")).toBeTruthy();
   });
 
-  it("says once when no AI provider is set up for documents", async () => {
+  it("shows a compact unconfigured value when no generation model is selected", async () => {
     vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({
       flashcardGenerationProfileId: null,
     });
@@ -83,10 +88,7 @@ describe("DocumentsSection", () => {
       />,
     );
 
-    const heading = screen.getByRole("heading", { name: "Documents" });
-    const notice = await screen.findByText(/Set up an AI provider in Settings/u);
-    expect(
-      Boolean(heading.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING),
-    ).toBe(true);
+    expect(await screen.findByText("Not configured")).toBeTruthy();
+    expect(screen.queryByText(/Settings → AI\/LLM/u)).toBeNull();
   });
 });

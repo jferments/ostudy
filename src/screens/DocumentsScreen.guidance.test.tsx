@@ -51,18 +51,23 @@ function renderDocuments() {
     refreshDecks={vi.fn().mockResolvedValue([])} showToast={vi.fn()} />
   </OverlayProvider>);
 }
-async function openMakeMoreCards(title = "Neurological assessments"): Promise<HTMLElement> {
+function editInstructions(label: string, value: string, root: HTMLElement = documentBody()): void {
+  const queries = within(root);
+  const trigger = queries.getByRole("button", { name: (name) => name.startsWith(label) });
+  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
+  fireEvent.change(queries.getByLabelText(label), { target: { value } });
+}
+function documentBody(): HTMLElement { return globalThis.document.body; }
+async function selectGenerateMore(title = "Neurological assessments") {
   const label = `More actions for ${title}`;
-  const trigger = screen.getByRole("button", { name: label });
-  // Base UI wires the trigger in a passive effect, so an early click can be dropped.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await Promise.resolve();
+  });
   const menu = await screen.findByRole("menu", { name: label });
-  const action = within(menu).getByRole("menuitem", { name: "Make more cards…" });
+  const action = within(menu).getByRole("menuitem", { name: "Generate more cards" });
   await waitFor(() => expect(action.getAttribute("aria-disabled")).not.toBe("true"));
   await act(async () => { fireEvent.click(action); });
-  return screen.findByRole("dialog", { name: "Make more cards" });
 }
 
 beforeEach(() => {
@@ -85,16 +90,15 @@ beforeEach(() => {
 });
 
 describe("Documents guidance through the application controller", () => {
-  it("uploads without asking for flashcard instructions", async () => {
+  it("passes a learner-authored upload prompt into the real initial-generation gateway", async () => {
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: stagedId } as
       NonNullable<Awaited<ReturnType<typeof platformFiles.selectExternalImport>>>);
     renderDocuments();
     await screen.findByRole("heading", { name: "No documents yet" });
-    expect(screen.queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    await act(async () => { fireEvent.click(await screen.findByRole("menuitem", { name: "Document…" })); });
+    editInstructions("Instructions for new document flashcards", "  Nursing cranial nerve assessments  ");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Upload document" })); });
     await waitFor(() => expect(documentIpc.startDocumentFlashcardGeneration)
-      .toHaveBeenCalledWith(documentId, undefined));
+      .toHaveBeenCalledWith(documentId, "Nursing cranial nerve assessments"));
     expect(documentIpc.importDocument).toHaveBeenCalledTimes(1);
     expect(documentIpc.importDocument).toHaveBeenCalledWith(stagedId);
     expect(platformFiles.selectExternalImport).toHaveBeenCalledTimes(1);
@@ -102,40 +106,36 @@ describe("Documents guidance through the application controller", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
-  it("takes a document's instructions when making more cards and supports explicitly clearing them", async () => {
+  it("keeps a document's guidance independent of upload defaults and supports explicitly clearing it", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([document()]);
     renderDocuments();
     await screen.findByRole("heading", { name: "Neurological assessments" });
-    let dialog = await openMakeMoreCards();
-    fireEvent.change(within(dialog).getByLabelText("Instructions (optional)"), {
-      target: { value: "Ask how each nerve is assessed" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Make cards" }));
+    editInstructions("Instructions for new document flashcards", "Future uploads only");
+    const article = screen.getByRole("article");
+    editInstructions("Flashcard instructions (optional)", "Ask how each nerve is assessed", article);
+    await selectGenerateMore();
     await waitFor(() => expect(documentIpc.generateMoreDocumentFlashcards)
       .toHaveBeenLastCalledWith(documentId, "Ask how each nerve is assessed"));
-
-    dialog = await openMakeMoreCards();
-    const field = within(dialog).getByLabelText("Instructions (optional)") as HTMLTextAreaElement;
-    expect(field.value).toBe("Ask how each nerve is assessed");
-    fireEvent.change(field, { target: { value: "" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Make cards" }));
+    await waitFor(() => expect((within(article).getByLabelText("Flashcard instructions (optional)") as HTMLTextAreaElement).disabled).toBe(false));
+    editInstructions("Flashcard instructions (optional)", "", article);
+    await selectGenerateMore();
     await waitFor(() => expect(documentIpc.generateMoreDocumentFlashcards)
       .toHaveBeenLastCalledWith(documentId, undefined));
     expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledTimes(2);
     expect(documentIpc.importDocument).not.toHaveBeenCalled();
     expect(documentIpc.startDocumentFlashcardGeneration).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Instructions for new document flashcards") as HTMLTextAreaElement).value).toBe("Future uploads only");
   });
 
-  it("shows validation before starting any native mutation", async () => {
-    vi.mocked(documentIpc.listDocuments).mockResolvedValue([document()]);
+  it("shows validation before opening a picker or starting any native mutation", async () => {
     renderDocuments();
-    await screen.findByRole("heading", { name: "Neurological assessments" });
-    const dialog = await openMakeMoreCards();
-    const field = within(dialog).getByLabelText("Instructions (optional)");
-    fireEvent.change(field, { target: { value: "x".repeat(MAX_GENERATION_INSTRUCTIONS_BYTES + 1) } });
-    expect(field.getAttribute("aria-invalid")).toBe("true");
-    expect((within(dialog).getByRole("button", { name: "Make cards" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(within(dialog).getByText(/Shorten them before starting; they have not been truncated/)).toBeTruthy();
-    expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
+    await screen.findByRole("heading", { name: "No documents yet" });
+    editInstructions("Instructions for new document flashcards", "x".repeat(MAX_GENERATION_INSTRUCTIONS_BYTES + 1));
+    expect(screen.getByLabelText("Instructions for new document flashcards").getAttribute("aria-invalid")).toBe("true");
+    expect((screen.getByRole("button", { name: "Upload document" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Shorten them before starting; they have not been truncated/)).toBeTruthy();
+    expect(platformFiles.selectExternalImport).not.toHaveBeenCalled();
+    expect(documentIpc.importDocument).not.toHaveBeenCalled();
+    expect(documentIpc.startDocumentFlashcardGeneration).not.toHaveBeenCalled();
   });
 });

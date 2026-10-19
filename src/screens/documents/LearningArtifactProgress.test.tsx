@@ -20,7 +20,7 @@ const job: DocumentArtifactJob = {
 describe("durable learning-artifact progress", () => {
   it("shows separate stacked bars while the guide runs after cards are saved", () => {
     render(<LearningArtifactProgressPanel document={document} progress={null} guideJob={job}
-      guideStarting={true} readFailed={false} />);
+      guideStarting={true} readFailed={false} now={10} />);
     const cards = screen.getByRole("progressbar", { name: "Flashcards generation progress" });
     const guide = screen.getByRole("progressbar", { name: "Study Guide generation progress" });
     expect(cards.getAttribute("aria-valuenow")).toBe("100");
@@ -33,7 +33,7 @@ describe("durable learning-artifact progress", () => {
   it("shows provider-reported study-guide token usage while generation is active", () => {
     const reporting = { ...job, apiTokenCount: 12_345 };
     render(<LearningArtifactProgressPanel document={document} progress={null} guideJob={reporting}
-      guideStarting={true} readFailed={false} />);
+      guideStarting={true} readFailed={false} now={10} />);
     expect(screen.getByText("Study Guide usage · 12,345 reported tokens so far")).toBeTruthy();
     expect(guideUsageDetail({ ...job, apiTokenCount: null }))
       .toBe("Study Guide usage · Awaiting provider usage");
@@ -57,7 +57,7 @@ describe("durable learning-artifact progress", () => {
   it("retains failed progress instead of pretending that the guide completed", () => {
     const failed = { ...job, state: "failed" as const, safeErrorMessage: "Provider unavailable" };
     render(<LearningArtifactProgressPanel document={document} progress={null} guideJob={failed}
-      guideStarting={false} readFailed={false} />);
+      guideStarting={false} readFailed={false} now={10} />);
     expect(screen.getByText("Needs attention")).toBeTruthy();
     expect(screen.getByText("Provider unavailable")).toBeTruthy();
     expect(screen.getAllByText("Complete")).toHaveLength(1);
@@ -67,7 +67,7 @@ describe("durable learning-artifact progress", () => {
   it("shows completion for each independently published artifact", () => {
     render(<LearningArtifactProgressPanel document={document} progress={null}
       guideJob={{ ...job, state: "succeeded", completedUnits: 10, completedAt: 9 }}
-      guideStarting={false} readFailed={false} />);
+      guideStarting={false} readFailed={false} now={10} />);
     expect(screen.getAllByText("Complete")).toHaveLength(2);
     expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["100", "100"]);
   });
@@ -80,7 +80,7 @@ describe("durable learning-artifact progress", () => {
     };
     render(<LearningArtifactProgressPanel document={processing} progress={null}
       guideJob={{ ...job, state: "succeeded", completedUnits: 10, completedAt: 9 }}
-      guideStarting={false} readFailed={false} />);
+      guideStarting={false} readFailed={false} now={10} />);
     expect(screen.getByText("12 / 15 windows")).toBeTruthy();
     expect(screen.queryByText("Needs attention")).toBeNull();
     expect(screen.getAllByText("Complete")).toHaveLength(1);
@@ -95,7 +95,7 @@ describe("durable learning-artifact progress", () => {
     };
     render(<LearningArtifactProgressPanel document={failedCards} progress={null}
       guideJob={{ ...job, state: "succeeded", completedUnits: 10, completedAt: 9 }}
-      guideStarting={false} readFailed={false} />);
+      guideStarting={false} readFailed={false} now={10} />);
     expect(screen.getByText("Needs attention")).toBeTruthy();
     expect(screen.queryByText("12 / 15 windows")).toBeNull();
     expect(screen.getAllByText("Complete")).toHaveLength(1);

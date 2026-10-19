@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
@@ -109,17 +109,6 @@ const progress: DocumentGenerationProgress = {
   lastModelActivityAt: Date.now() - 1_000,
 };
 
-/** Processing statistics live in the document's Details, away from the row. */
-async function openDetails(): Promise<HTMLElement> {
-  const trigger = await screen.findByRole("button", { name: /^More actions for / });
-  // Base UI wires the trigger in a passive effect, so an early click can be dropped.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
-  return screen.findByRole("dialog", { name: "Details" });
-}
-
 describe("DocumentsScreen live generation progress", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,8 +196,7 @@ describe("DocumentsScreen live generation progress", () => {
       </OverlayProvider>,
     );
 
-    const details = await openDetails();
-    expect(await within(details).findByText("Responsive · output 2m ago")).toBeTruthy();
+    expect(await screen.findByText("Responsive · output 2m ago")).toBeTruthy();
   });
 
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
@@ -221,20 +209,15 @@ describe("DocumentsScreen live generation progress", () => {
       </OverlayProvider>,
     );
 
-    expect((await screen.findAllByText("Building outline")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
-    // The row carries the stage only; the statistics and the model wait in Details.
-    expect(screen.queryByText("low · 2.0k")).toBeNull();
-    expect(screen.queryByText(/Receiving output/u)).toBeNull();
-
-    const details = await openDetails();
-    expect(await within(details).findByText("low · 2.0k")).toBeTruthy();
-    expect(within(details).getAllByText("1m 30s").length).toBeGreaterThan(0);
-    expect(within(details).getByText("7")).toBeTruthy();
-    expect(within(details).getByText(/Receiving output/u)).toBeTruthy();
-    expect(within(details).getByText("1")).toBeTruthy();
-    expect(within(details).getByText("12k / 3.0k")).toBeTruthy();
-    expect(within(details).getByText("6.0k (50.0%)")).toBeTruthy();
+    expect(await screen.findByText("low · 2.0k")).toBeTruthy();
+    expect(screen.getAllByText("Building outline").length).toBeGreaterThan(0);
+    expect(screen.getByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
+    expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
+    expect(screen.getByText("7")).toBeTruthy();
+    expect(screen.getByText(/Receiving output/u)).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(screen.getByText("12k / 3.0k")).toBeTruthy();
+    expect(screen.getByText("6.0k (50.0%)")).toBeTruthy();
     expect(documentIpcMocks.getDocumentGenerationProgress).toHaveBeenCalledWith(document.id);
   });
 });

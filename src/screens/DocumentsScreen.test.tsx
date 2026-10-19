@@ -6,7 +6,6 @@ import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as annotationIpc from "../ipc/documentAnnotations";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
-import * as studyMaterialsIpc from "../ipc/studyMaterials";
 import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DOCUMENT_FOLDER_DRAG_TYPE } from "./documents/documentFolderDrag";
@@ -16,10 +15,6 @@ vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/collections", async (importOriginal) => ({
   ...await importOriginal<typeof import("../ipc/collections")>(),
   getDocumentCollectionOrganization: vi.fn(),
-  addDocumentCollectionMembership: vi.fn(),
-}));
-vi.mock("../ipc/studyMaterials", () => ({
-  getStudyTargetBundle: vi.fn(),
 }));
 vi.mock("../ipc/documentArtifactProgress", () => ({
   listLatestDocumentStudyGuideJobs: vi.fn(),
@@ -170,16 +165,6 @@ async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLEl
   return screen.findByRole("menu", { name: label });
 }
 
-async function chooseUpload(item: "Document…" | "Images…"): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
-}
-
-async function chooseDocumentAction(name: string, title = "Cardiac physiology"): Promise<void> {
-  const menu = await openDocumentActions(title);
-  fireEvent.click(within(menu).getByRole("menuitem", { name }));
-}
-
 describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -205,9 +190,8 @@ describe("DocumentsScreen", () => {
   it("shows a simple upload-first empty state without archive controls", async () => {
     renderDocuments();
     expect(await screen.findByRole("heading", { name: "No documents yet" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upload document" })).toBeTruthy();
     expect(screen.queryByText(/show archived documents/iu)).toBeNull();
-    expect(screen.queryByText(/Instructions for new document flashcards/iu)).toBeNull();
     expect(screen.queryByRole("button", { name: /archive|restore/iu })).toBeNull();
     expect(screen.queryByText(/review generated/u)).toBeNull();
     expect(screen.queryByText(/JSON/u)).toBeNull();
@@ -235,7 +219,7 @@ describe("DocumentsScreen", () => {
     const { showToast, refreshDecks } = renderDocuments();
     await screen.findByRole("heading", { name: "No documents yet" });
 
-    await chooseUpload("Document…");
+    fireEvent.click(screen.getByRole("button", { name: "Upload document" }));
 
     await waitFor(() => {
       expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
@@ -249,13 +233,14 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
+    expect(screen.getByText("cardiac-physiology.pdf")).toBeTruthy();
     expect(screen.getByText("7 cards")).toBeTruthy();
-    expect(screen.getByText(/^PDF · 10 pages · added /u)).toBeTruthy();
     expect(screen.queryByText("PDF · 2.0 KB")).toBeNull();
 
-    await chooseDocumentAction("Details");
-    const dialog = await screen.findByRole("dialog", { name: "Details" });
-    expect(within(dialog).getByText("cardiac-physiology.pdf")).toBeTruthy();
+
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Generation info"));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("12 sec")).toBeTruthy();
     expect(within(dialog).getByText("45,678")).toBeTruthy();
@@ -277,8 +262,9 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
 
-    await chooseDocumentAction("Details");
-    const dialog = await screen.findByRole("dialog", { name: "Details" });
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Generation info"));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology generation info" });
     expect(within(dialog).getByText("Word · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("Sections")).toBeTruthy();
     expect(within(dialog).getByText("8")).toBeTruthy();
@@ -332,10 +318,10 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    expect((screen.getByRole("button", { name: "Upload" }) as HTMLButtonElement).disabled)
+    expect((screen.getByRole("button", { name: "Upload document" }) as HTMLButtonElement).disabled)
       .toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    expect((await screen.findByRole("menuitem", { name: "Images…" })).getAttribute("aria-disabled")).not.toBe("true");
+    expect((screen.getByRole("button", { name: "Upload images" }) as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 
   it("keeps a failed document in the library and offers a direct retry", async () => {
@@ -356,11 +342,12 @@ describe("DocumentsScreen", () => {
 
     expect(await screen.findByText(failed.safeErrorMessage)).toBeTruthy();
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "New collection" }) as HTMLButtonElement).disabled)
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
         .toBe(false);
       expect(artifactIpc.listLatestDocumentStudyGuideJobs).toHaveBeenCalled();
     });
-    await chooseDocumentAction("Retry");
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
       expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
@@ -493,7 +480,8 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
 
-    await chooseDocumentAction("Stop processing");
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Stop generation"));
 
     await waitFor(() => {
       expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
@@ -505,7 +493,7 @@ describe("DocumentsScreen", () => {
     const stoppingMenu = await openDocumentActions();
     const stopping = within(stoppingMenu).getByRole("menuitem", { name: "Stopping…" });
     expect(stopping.getAttribute("aria-disabled")).toBe("true");
-    expect(within(stoppingMenu).queryByRole("menuitem", { name: "Delete" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete document" })).toBeNull();
   });
 
   it("generates an additional coverage pass into the existing deck", async () => {
@@ -521,11 +509,10 @@ describe("DocumentsScreen", () => {
     const { showToast, refreshDecks } = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    expect(screen.queryByRole("button", { name: "Make more cards…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    await chooseDocumentAction("Make more cards…");
-    const dialog = await screen.findByRole("dialog", { name: "Make more cards" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Make cards" }));
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Generate more cards"));
 
     await waitFor(() => {
       expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId, undefined);
@@ -544,30 +531,34 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    expect(screen.getByText("7 cards · deck deleted")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    const menu = await openDocumentActions();
-    expect(within(menu).getByRole("menuitem", { name: "Retry" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "Make a study guide" })).toBeTruthy();
-    expect(within(menu).queryByRole("menuitem", { name: "Make more cards…" })).toBeNull();
+    await openDocumentActions();
+    const menu = await screen.findByRole("menu", { name: "More actions for Cardiac physiology" });
+    expect(within(menu).getByRole("menuitem", { name: "Retry generation" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Generate study guide" })).toBeTruthy();
+    expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
+    expect(screen.getByText(/retained document/u)).toBeTruthy();
   });
 
-  it("keeps a ready row to Open and one menu, with no model or instructions on the page", async () => {
+  it("keeps the ready tile limited to view, annotate, delete, and an overflow menu", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    const row = screen.getByTestId("document-row");
-    expect(within(row).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent))
-      .toEqual(["Open", "More actions for Cardiac physiology"]);
-    expect(screen.queryByText(/instructions/iu)).toBeNull();
-    expect(screen.queryByText(/model/iu)).toBeNull();
+    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Annotate" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete document" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More actions for Cardiac physiology" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Generate study guide" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
 
-    const menu = await openDocumentActions();
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Annotate", "Make more cards…", "Make a study guide", "Details", "Delete",
-    ]);
+    await openDocumentActions();
+    expect(await screen.findByText("Generation info")).toBeTruthy();
+    expect(screen.getByText("Generate more cards")).toBeTruthy();
+    expect(screen.getByText("Generate study guide")).toBeTruthy();
   });
 
   it("regenerates a prior study guide without regenerating flashcards", async () => {
@@ -593,7 +584,8 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
     expect(await screen.findByText("Needs attention")).toBeTruthy();
-    await chooseDocumentAction("Remake the study guide");
+    await openDocumentActions();
+    fireEvent.click(await screen.findByText("Regenerate study guide"));
 
     await waitFor(() => {
       expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId);
@@ -634,7 +626,7 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await chooseDocumentAction("Annotate");
+    fireEvent.click(screen.getByRole("button", { name: "Annotate" }));
 
     expect(await screen.findByText("No pages to annotate")).toBeTruthy();
     expect(annotationIpc.getDocumentAnnotations).toHaveBeenCalledWith(documentId);
@@ -655,12 +647,12 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Annotate" })).toBeNull();
   });
 
-  it("opens the managed source from the row's Open button", async () => {
+  it("opens the managed source through the compact View action", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
 
     await waitFor(() => {
       expect(documentIpc.openDocumentSource).toHaveBeenCalledWith(documentId);
@@ -678,7 +670,7 @@ describe("DocumentsScreen", () => {
     const { showToast, refreshDecks } = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await chooseDocumentAction("Delete");
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {
       name: "Delete this document permanently?",
     });
@@ -711,7 +703,7 @@ describe("DocumentsScreen", () => {
     });
     const { showToast } = renderDocuments();
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await chooseDocumentAction("Delete");
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
     const dialog = await screen.findByRole("alertdialog", {
       name: "Delete this document permanently?",
     });
@@ -719,71 +711,6 @@ describe("DocumentsScreen", () => {
 
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith("success", "Document deleted from Documents.");
-    });
-  });
-
-  describe("with a collection", () => {
-    const collectionId = "e".repeat(32);
-    const organization: collectionIpc.DocumentCollectionOrganization = {
-      revision: 4,
-      collections: [{
-        id: collectionId, name: "Week 1", sortOrder: 0, revision: 1, createdAt: 1, updatedAt: 1,
-      } as collectionIpc.DocumentCollection],
-      memberships: [],
-      ranges: [],
-    };
-    const filed = (id: string): collectionIpc.DocumentCollectionOrganization => ({
-      ...organization,
-      revision: 5,
-      memberships: [{ id: "f".repeat(32), collectionId, documentId: id, revision: 1 } as collectionIpc.DocumentCollectionMembership],
-    });
-
-    beforeEach(() => {
-      vi.mocked(collectionIpc.getDocumentCollectionOrganization).mockResolvedValue(organization);
-      vi.mocked(studyMaterialsIpc.getStudyTargetBundle).mockResolvedValue(null);
-    });
-
-    it("moves a loose document into a collection from its menu", async () => {
-      vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
-      vi.mocked(collectionIpc.addDocumentCollectionMembership).mockResolvedValue(filed(documentId));
-      renderDocuments();
-
-      await screen.findByRole("heading", { name: "Week 1" });
-      await screen.findByRole("heading", { name: "Cardiac physiology" });
-      await chooseDocumentAction("Move to a collection…");
-      const dialog = await screen.findByRole("dialog", { name: "Move to a collection" });
-      fireEvent.change(within(dialog).getByRole("combobox", { name: "Collection" }), { target: { value: collectionId } });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-
-      await waitFor(() => {
-        expect(collectionIpc.addDocumentCollectionMembership).toHaveBeenCalledWith(expect.objectContaining({
-          collectionId, documentId, expectedOrganizationRevision: 4,
-        }));
-      });
-      expect(await screen.findByRole("list", { name: "Documents in Week 1" })).toBeTruthy();
-      expect(screen.queryByTestId("document-row")).toBeNull();
-    });
-
-    it("uploads a new document straight into an empty collection", async () => {
-      vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32) } as
-        NonNullable<Awaited<ReturnType<typeof platformFiles.selectExternalImport>>>);
-      vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId });
-      vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
-      vi.mocked(collectionIpc.addDocumentCollectionMembership).mockResolvedValue(filed(documentId));
-      renderDocuments();
-
-      fireEvent.click(await screen.findByRole("button", { name: "Add documents" }));
-      const dialog = await screen.findByRole("dialog", { name: "Add documents" });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Upload a new document" }));
-
-      await waitFor(() => {
-        expect(collectionIpc.addDocumentCollectionMembership).toHaveBeenCalledWith(expect.objectContaining({
-          collectionId, documentId,
-        }));
-        expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
-      });
-      expect(vi.mocked(collectionIpc.addDocumentCollectionMembership).mock.invocationCallOrder[0])
-        .toBeLessThan(vi.mocked(documentIpc.startDocumentFlashcardGeneration).mock.invocationCallOrder[0] ?? 0);
     });
   });
 });

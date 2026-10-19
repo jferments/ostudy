@@ -1,4 +1,3 @@
-import { type ComponentProps, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,8 +6,7 @@ import * as collections from "../../ipc/collections";
 import type { DocumentSummary } from "../../ipc/documents";
 import * as studyMaterials from "../../ipc/studyMaterials";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
-import { type CollectionDialog, DocumentCollectionsWorkspace } from "./DocumentCollectionsWorkspace";
-import { useDocumentCollectionsController } from "./useDocumentCollectionsController";
+import { DocumentCollectionsWorkspace } from "./DocumentCollectionsWorkspace";
 
 vi.mock("../../ipc/collections", () => ({
   getDocumentCollectionOrganization: vi.fn(),
@@ -164,30 +162,18 @@ createdAt: 2, updatedAt: 2, revision: 1,
   vi.mocked(studyMaterials.cancelStudyTargetBundle).mockResolvedValue(undefined);
 });
 
-/** The Documents page owns the collections controller and which dialog is open. */
-function Workspace({ initialDialog = null, ...props }: Omit<ComponentProps<typeof DocumentCollectionsWorkspace>, "controller" | "dialog" | "onDialogChange"> & {
-  initialDialog?: CollectionDialog | null;
-}) {
-  const controller = useDocumentCollectionsController();
-  const [dialog, setDialog] = useState<CollectionDialog | null>(initialDialog);
-  return <DocumentCollectionsWorkspace {...props} controller={controller} dialog={dialog} onDialogChange={setDialog} />;
-}
-
 function renderWorkspace({
   refreshDecks = vi.fn().mockResolvedValue([]),
   onStudyCollection = vi.fn(),
   onOpenGuide = vi.fn(),
-  initialDialog = null,
 }: {
   refreshDecks?: () => Promise<unknown>;
   onStudyCollection?: (collectionId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
-  initialDialog?: CollectionDialog | null;
 } = {}) {
   render(
     <OverlayProvider>
-      <Workspace
-        initialDialog={initialDialog}
+      <DocumentCollectionsWorkspace
         documents={[document]}
         refreshDecks={refreshDecks}
         onStudyCollection={onStudyCollection}
@@ -199,21 +185,40 @@ function renderWorkspace({
 }
 
 describe("Document collections workspace", () => {
-  it("stays out of the page until a collection exists", async () => {
+  it("keeps collection discovery quiet and preserves the empty chrome geometry", async () => {
     let finish!: (value: collections.DocumentCollectionOrganization) => void;
     vi.mocked(collections.getDocumentCollectionOrganization).mockReturnValueOnce(
       new Promise((resolve) => { finish = resolve; }),
     );
     renderWorkspace();
 
-    expect(screen.queryByRole("heading", { name: "Collections" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Document collections" })).toBeNull();
     expect(screen.queryByText("Loading collections…")).toBeNull();
 
     await act(async () => {
       finish({ revision: 3, collections: [], memberships: [], ranges: [] });
       await Promise.resolve();
     });
-    expect(screen.queryByRole("heading", { name: "Collections" })).toBeNull();
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
+        .toBe(false);
+    });
+  });
+
+  it("keeps an empty collection area to the single create action", async () => {
+    vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValueOnce({
+      revision: 3,
+      collections: [],
+      memberships: [],
+      ranges: [],
+    });
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: "+ New collection" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document collections" })).toBeNull();
     expect(screen.queryByText("No collections yet.")).toBeNull();
     expect(screen.queryByText(/Organize related sources/iu)).toBeNull();
     expect(studyMaterials.getStudyTargetBundle).not.toHaveBeenCalled();
@@ -234,8 +239,7 @@ describe("Document collections workspace", () => {
     });
     expect(collections.resolveDocumentSourceSelection).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Reading range…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit range" }));
     const dialog = await screen.findByRole("dialog", { name: "Reading range" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Pages" }), {
       target: { value: "2-4, 7" },
@@ -259,24 +263,21 @@ describe("Document collections workspace", () => {
     const onAnnotateDocument = vi.fn();
     const { rerender } = render(
       <OverlayProvider>
-        <Workspace documents={[document]} onAnnotateDocument={onAnnotateDocument} />
+        <DocumentCollectionsWorkspace documents={[document]} onAnnotateDocument={onAnnotateDocument} />
       </OverlayProvider>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "More actions for Cardiac physiology" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Annotate" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Annotate" }));
     expect(onAnnotateDocument).toHaveBeenCalledWith(document);
 
     rerender(
       <OverlayProvider>
-        <Workspace
+        <DocumentCollectionsWorkspace
           documents={[{ ...document, lifecycleState: "processing", renderedPageCount: 2 }]}
           onAnnotateDocument={onAnnotateDocument}
         />
       </OverlayProvider>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "More actions for Cardiac physiology" }));
-    await screen.findByRole("menuitem", { name: "Reading range…" });
-    expect(screen.queryByRole("menuitem", { name: "Annotate" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Annotate" })).toBeNull());
   });
 
   it("shows determinate collection-generation progress from durable artifact status", async () => {
@@ -303,7 +304,7 @@ describe("Document collections workspace", () => {
     renderWorkspace();
 
     await screen.findByRole("heading", { name: "Week 1" });
-    fireEvent.click(await screen.findByRole("button", { name: "Make study materials" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
 
     expect(await screen.findByText("Writing collection study guide")).toBeTruthy();
     expect(screen.getByText("3 / 8")).toBeTruthy();
@@ -332,9 +333,7 @@ describe("Document collections workspace", () => {
     renderWorkspace();
 
     await screen.findByRole("heading", { name: "Week 1" });
-    const make = await screen.findByRole("button", { name: "Make study materials" });
-    await waitFor(() => expect((make as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(make);
+    fireEvent.click(screen.getByRole("button", { name: "Create study materials" }));
     const stop = await screen.findByRole("button", { name: "Stop collection generation" });
     fireEvent.click(stop);
 
@@ -356,7 +355,7 @@ describe("Document collections workspace", () => {
     renderWorkspace({ refreshDecks, onStudyCollection, onOpenGuide });
 
     await screen.findByRole("heading", { name: "Week 1" });
-    fireEvent.click(await screen.findByRole("button", { name: "Make study materials" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
 
     await waitFor(() => {
       expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
@@ -370,11 +369,14 @@ describe("Document collections workspace", () => {
       });
     });
     expect(refreshDecks).toHaveBeenCalledTimes(1);
-    fireEvent.click(await screen.findByRole("button", { name: "Study" }));
+    const study = await screen.findByRole("button", { name: "Study collection flashcards" });
+    expect(study.textContent).toContain("Ready");
+    fireEvent.click(study);
     expect(onStudyCollection).toHaveBeenCalledWith(folderId);
-    fireEvent.click(screen.getByRole("button", { name: "Read guide" }));
+    const openGuide = screen.getByRole("button", { name: "Open collection study guide" });
+    expect(openGuide.textContent).toContain("Ready");
+    fireEvent.click(openGuide);
     expect(onOpenGuide).toHaveBeenCalledWith(folderId, "Week 1");
-    expect(screen.queryByRole("button", { name: "Make study materials" })).toBeNull();
   });
 
   it("offers no flashcard instructions, because a collection's flashcards are its decks", async () => {
@@ -382,23 +384,29 @@ describe("Document collections workspace", () => {
 
     await screen.findByRole("heading", { name: "Week 1" });
     expect(screen.queryByLabelText("Flashcard instructions (optional)")).toBeNull();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("Flashcards from this collection's decks and one collection study guide."))
+      .toBeTruthy();
   });
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {
-    renderWorkspace({ initialDialog: { kind: "create", name: "" } });
-    await screen.findByRole("heading", { name: "Week 1" });
-    const dialog = await screen.findByRole("dialog", { name: "New collection" });
+    renderWorkspace();
+    await screen.findByRole("button", { name: "+ New collection" });
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
+        .toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+ New collection" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create document collection" });
     expect(dialog.getAttribute("data-width")).toBe("small");
     // The shared dialog structure owns the scrolling body and the pinned actions.
     const body = dialog.querySelector("[data-slot='dialog-body']");
     const actions = dialog.querySelector("[data-slot='dialog-actions']");
     expect(body?.contains(within(dialog).getByRole("textbox", { name: "Name" }))).toBe(true);
-    expect(actions?.contains(within(dialog).getByRole("button", { name: "Create" }))).toBe(true);
+    expect(actions?.contains(within(dialog).getByRole("button", { name: "Save" }))).toBe(true);
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), {
       target: { value: "Week 2" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("heading", { name: "Week 2" })).toBeTruthy();
     expect(collections.createDocumentCollection).toHaveBeenCalledWith(expect.objectContaining({
       operationId: "f".repeat(32),

@@ -314,11 +314,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     showToast,
   });
 
-  async function uploadDocument(
-    generationInstructions?: string,
-    /** Runs once the document is saved, before its processing starts, such as to file it in a collection. */
-    onImported?: (documentId: string) => Promise<unknown>,
-  ): Promise<void> {
+  async function uploadDocument(generationInstructions?: string): Promise<void> {
     if (selectingFile.current) return;
     selectingFile.current = true;
     setIsUploading(true);
@@ -344,7 +340,6 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       const imported = await importDocument(selected.id);
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
-      await onImported?.(documentId);
       await startBackgroundFlashcardGeneration(documentId, captured);
       showToast(
         "info",

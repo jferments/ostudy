@@ -23,18 +23,17 @@ def class_lists(path):
 
 class StudyGuideLayoutContractTests(unittest.TestCase):
     def test_document_actions_do_not_compete_with_the_title_column(self) -> None:
-        source, classes = class_lists("src/screens/DocumentsScreen.tsx")
-        # The title column takes the free width and wraps long names; everything
-        # beside it keeps its own size, and the rest of the actions wait in one menu.
-        title_column = next(tokens for tokens in classes if "tw:flex-1" in tokens and "tw:grid" in tokens)
-        self.assertIn("tw:min-w-0", title_column)
-        title = next(tokens for tokens in classes if "tw:wrap-anywhere" in tokens)
-        self.assertIn("tw:m-0", title)
-        row = next(tokens for tokens in classes if "tw:items-center" in tokens and "tw:cursor-grab" in tokens)
-        self.assertIn("tw:min-w-0", row)
-        self.assertNotIn("tw:flex-nowrap", row)
-        self.assertIn("OverflowMenu", source)
-        self.assertNotIn("ResponsiveActionGroup", source)
+        style = recipes("documentStyles")
+        self.assertIn("tw:flex-col", style["card"].split())
+        self.assertIn("tw:min-w-0", style["cardMain"].split())
+        self.assertIn("tw:flex-wrap", style["titleRow"].split())
+        self.assertIn("tw:[&_h2]:break-words", style["titleRow"].split())
+        self.assertIn("tw:border-t", style["actions"].split())
+        self.assertIn("tw:border-0", style["actions"].split())
+        self.assertNotIn("tw:flex-nowrap", style["titleRow"].split())
+        source = (ROOT / "src/screens/DocumentsScreen.tsx").read_text()
+        self.assertIn("ResponsiveActionGroup", source)
+        self.assertIn("className={styles.actions}", source)
 
     def test_structured_guide_blocks_stay_bounded_and_use_theme_semantics(self) -> None:
         source, classes = class_lists("src/screens/study-guides/StudyGuideContent.tsx")

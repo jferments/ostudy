@@ -118,38 +118,6 @@ export function useDocumentCollectionsController() {
     );
   }
 
-  /** Adds several documents in turn, keeping each one that lands if a later one fails. */
-  async function addDocuments(folderId: string, documentIds: readonly string[]): Promise<boolean> {
-    if (busy || !organization) return false;
-    const pending = documentIds.filter((documentId) => !organization.memberships.some(
-      (membership) => membership.collectionId === folderId && membership.documentId === documentId,
-    ));
-    if (!pending.length) return true;
-    reads.invalidate();
-    setBusy(true);
-    setError(null);
-    let revision = organization.revision;
-    try {
-      for (const documentId of pending) {
-        const key = JSON.stringify(["add", folderId, documentId]);
-        const operationId = receipts.current.get(key) ?? createOperationId();
-        receipts.current.set(key, operationId);
-        const next = await addDocumentCollectionMembership({
-          operationId, collectionId: folderId, documentId, expectedOrganizationRevision: revision,
-        });
-        receipts.current.delete(key);
-        revision = next.revision;
-        setOrganization(next);
-      }
-      return true;
-    } catch (failure: unknown) {
-      setError(getErrorMessage(failure));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function moveDocument(
     membership: DocumentCollectionMembership,
     targetCollectionId: string,
@@ -196,7 +164,7 @@ export function useDocumentCollectionsController() {
 
   return {
     organization, loading, busy, error, load,
-    createFolder, updateFolder, deleteFolder, addDocument, addDocuments, moveDocument, removeDocument, setRanges,
+    createFolder, updateFolder, deleteFolder, addDocument, moveDocument, removeDocument, setRanges,
   };
 }
 
