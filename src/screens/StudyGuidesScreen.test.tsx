@@ -188,7 +188,7 @@ describe("StudyGuidesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close guide" }));
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
-    expect(screen.getByTestId("library").className).toContain("tw:px-page");
+    expect(screen.getByTestId("library").className).toContain("tw:px-5");
   });
 
   it("lists and opens collection study guides from the main Study Guides page", async () => {

@@ -103,7 +103,7 @@ describe("LibraryFrame", () => {
 
     rerender(frame(<Guides open={false} />));
     expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
-    expect(screen.getByTestId("library").className).toContain("tw:px-page");
+    expect(screen.getByTestId("library").className).toContain("tw:px-5");
     // The view stays mounted while the tabs come and go.
     expect(screen.getByRole("heading", { name: "Study Guides" })).toBe(heading);
 

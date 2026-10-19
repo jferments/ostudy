@@ -41,14 +41,15 @@ export function LibraryFrame({ view, onSelectView, children }: LibraryFrameProps
   const [fullPage, setFullPage] = useState(false);
   return (
     <LibraryPageContext.Provider value={setFullPage}>
-      {/* Documents keeps its own width; the tabs line up with each view. */}
+      {/* Every Library page shares the Workbench's frame, so switching tabs moves nothing. */}
       <PageScaffold
-        width={view === "documents" ? "wide" : "full"}
-        inset={fullPage ? false : undefined}
+        width="full"
+        inset={false}
+        className={fullPage ? undefined : "tw:px-5 tw:pt-5 tw:pb-[calc(4rem+var(--safe-bottom))] tw:compact:px-4 tw:compact:pt-4"}
         data-testid="library"
       >
         {fullPage ? null : (
-          <LibraryTabs view={view} onSelectView={onSelectView} className="tw:mb-5 tw:compact:mb-4" />
+          <LibraryTabs view={view} onSelectView={onSelectView} className="tw:mb-4" />
         )}
         <RouteTransition routeKey={view} relation="sibling" className="tw:min-w-0">
           {children}
