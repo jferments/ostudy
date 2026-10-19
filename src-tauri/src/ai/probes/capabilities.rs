@@ -58,7 +58,8 @@ pub(super) fn build_capabilities(
 
     // The basic structured-output probe deliberately exercises the provider's
     // native lightweight structured mode. DeepSeek's Chat Completions dialect
-    // uses JSON-object mode; llama.cpp and OpenRouter exercise JSON Schema.
+    // uses JSON-object mode; llama.cpp, OpenRouter and Claude exercise JSON
+    // Schema.
     // Do not claim both capabilities from one provider-specific probe.
     match profile.provider_kind {
         ProviderKind::Deepseek => {
@@ -81,7 +82,7 @@ pub(super) fn build_capabilities(
                 None,
             );
         }
-        ProviderKind::LlamaCpp | ProviderKind::Openrouter => {
+        ProviderKind::LlamaCpp | ProviderKind::Openrouter | ProviderKind::Claude => {
             set_capability(
                 &mut capabilities,
                 "json_schema_output",

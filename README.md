@@ -20,11 +20,11 @@ Your cards, documents, schedules, and review history live on your device. Ordina
 
 ## Optional AI, without a study-app subscription
 
-Current provider adapters support **llama.cpp / Unsloth GGUF servers**, **DeepSeek**, and **OpenRouter**. A local server may run on this computer or another trusted computer on your network. ostudy connects to an existing server; it does not install or host the model itself.
+Current provider adapters support **llama.cpp / Unsloth GGUF servers**, **DeepSeek**, **OpenRouter**, and **Claude**. A local server may run on this computer or another trusted computer on your network. ostudy connects to an existing server; it does not install or host the model itself.
 
 When you use a paid API, billing is between you and that provider. Cost and capability depend on the chosen model and workload. Provider credentials are handled separately from ordinary library content and are excluded from shared decks and library backups. Credential transfer during trusted-device synchronization requires explicit sender consent.
 
-Dedicated Ollama, OpenAI, Gemini, and Claude adapters remain planned. A model available through OpenRouter is not the same as a dedicated integration with its original provider. See [AI providers](docs/user-guide/ai-providers.md) for configuration and current limitations.
+Dedicated Ollama, OpenAI, and Gemini adapters remain planned. A model available through OpenRouter is not the same as a dedicated integration with its original provider. See [AI providers](docs/user-guide/ai-providers.md) for configuration and current limitations.
 
 ## Availability
 

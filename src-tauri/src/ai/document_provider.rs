@@ -70,11 +70,18 @@ impl DocumentProviderCapabilities {
     }
 
     pub(crate) fn resolve_reasoning_effort(&self, requested: &str) -> String {
-        if self.provider_kind != "openrouter" {
+        if !declares_reasoning(&self.provider_kind) {
             return "none".to_string();
         }
         let Some(reasoning) = self.reasoning.as_ref() else {
-            return "none".to_string();
+            // Some Claude models refuse to turn thinking off. Without the
+            // model's declared capabilities, leave the model's own default
+            // rather than send a setting it may reject.
+            return if self.provider_kind == "claude" {
+                "automatic".to_string()
+            } else {
+                "none".to_string()
+            };
         };
         reasoning::resolve_declared_effort(
             requested,
@@ -90,13 +97,16 @@ impl DocumentProviderCapabilities {
         effective_reasoning_effort: &str,
         visible_completion_tokens: usize,
     ) -> usize {
-        if self.provider_kind != "openrouter" || effective_reasoning_effort == "none" {
+        if !declares_reasoning(&self.provider_kind) || effective_reasoning_effort == "none" {
             return visible_completion_tokens;
         }
-        reasoning::structured_completion_token_ceiling(
-            effective_reasoning_effort,
-            visible_completion_tokens,
-        )
+        // Claude's own default reasons; budget for it like medium effort.
+        let budgeted_effort = if effective_reasoning_effort == "automatic" {
+            "medium"
+        } else {
+            effective_reasoning_effort
+        };
+        reasoning::structured_completion_token_ceiling(budgeted_effort, visible_completion_tokens)
     }
 
     pub(crate) fn reasoning_token_limit(
@@ -182,9 +192,15 @@ pub(crate) fn load_document_provider_capabilities(
     Ok(result)
 }
 
+/// Providers whose model catalog declares reasoning controls. Their hidden
+/// reasoning shares the completion budget, so the budget gets headroom.
+fn declares_reasoning(provider_kind: &str) -> bool {
+    matches!(provider_kind, "openrouter" | "claude")
+}
+
 fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
     match provider_kind {
-        "llama_cpp" | "openrouter" => StructuredOutputStrategy::JsonSchema,
+        "llama_cpp" | "openrouter" | "claude" => StructuredOutputStrategy::JsonSchema,
         "deepseek" => StructuredOutputStrategy::StrictTool,
         _ => StructuredOutputStrategy::Unknown,
     }

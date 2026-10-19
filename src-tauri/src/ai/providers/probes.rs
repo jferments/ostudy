@@ -9,7 +9,7 @@ use crate::ai::{
 use super::{
     dialect::ProviderDialect,
     document::{decode_document_output, prepare_document_request, PreparedDocumentRequest},
-    openai_compatible, CompletionOutcome,
+    openai_compatible, provider_access, CompletionOutcome,
 };
 
 const MAX_COMPLETION_BYTES: usize = 256 * 1024;
@@ -260,6 +260,7 @@ async fn send_completion(
     body: Value,
 ) -> Result<CompletionOutcome, AiGatewayError> {
     let url = dialect.completion_endpoint(profile)?;
+    let access = provider_access(profile, bearer);
     crate::logging::debug_target(
         "ai.provider",
         "provider_probe_request_started",
@@ -272,12 +273,13 @@ async fn send_completion(
     let value = gateway
         .post_json(
             url,
-            bearer,
+            access,
             &body,
             profile.request_timeout_ms,
             MAX_COMPLETION_BYTES,
         )
         .await?;
+    let value = dialect.normalize_response(value)?;
     let outcome = openai_compatible::parse_completion(&value)?;
     crate::logging::debug_target(
         "ai.provider",
@@ -299,10 +301,12 @@ async fn send_prepared_probe(
     bearer: Option<&str>,
     prepared: &PreparedDocumentRequest,
 ) -> Result<Value, AiGatewayError> {
+    let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
+    let access = provider_access(profile, bearer);
     let first = gateway
         .post_json(
             prepared.url.clone(),
-            bearer,
+            access,
             &prepared.body,
             profile.request_timeout_ms,
             MAX_COMPLETION_BYTES,
@@ -314,7 +318,7 @@ async fn send_prepared_probe(
                 gateway
                     .post_json(
                         prepared.url.clone(),
-                        bearer,
+                        access,
                         compatibility,
                         profile.request_timeout_ms,
                         MAX_COMPLETION_BYTES,
@@ -326,6 +330,7 @@ async fn send_prepared_probe(
         }
         other => other,
     }
+    .and_then(|value| dialect.normalize_response(value))
 }
 
 fn outcome_from_response(response: &Value, content: String) -> CompletionOutcome {
