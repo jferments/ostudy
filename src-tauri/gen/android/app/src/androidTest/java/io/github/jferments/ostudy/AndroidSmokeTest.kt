@@ -200,7 +200,7 @@ class AndroidSmokeTest {
                 predicate = { it == "true" },
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Documents' && " +
-                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload document') && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Upload') && " +
                         "document.querySelector('[data-testid=\"library-view-documents\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
