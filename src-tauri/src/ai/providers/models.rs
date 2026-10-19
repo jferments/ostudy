@@ -236,6 +236,7 @@ fn parse_model_list(
                 Some("Google".to_string()),
                 gemini::model_context_window_tokens(item),
                 gemini::model_reasoning(item, id),
+                gemini::model_image_input(id),
             ),
             ProviderDialect::Openai => (
                 id.to_string(),

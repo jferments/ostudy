@@ -304,14 +304,18 @@ pub(super) fn model_reasoning(item: &Value, id: &str) -> Option<ProviderModelRea
     })
 }
 
-/// Model details; every Gemini chat model takes image input.
+/// Every Gemini chat model takes image input; Gemma text models may not.
+pub(super) fn model_image_input(id: &str) -> Option<bool> {
+    Some(id.to_ascii_lowercase().starts_with("gemini-"))
+}
+
 pub(super) fn parse_properties(value: &Value) -> ProviderProperties {
     ProviderProperties {
         image_input_declared: value
             .get("name")
             .and_then(Value::as_str)
             .and_then(|name| name.strip_prefix("models/"))
-            .map(|id| id.starts_with("gemini-")),
+            .and_then(model_image_input),
         context_window_tokens: model_context_window_tokens(value),
         ..ProviderProperties::default()
     }
