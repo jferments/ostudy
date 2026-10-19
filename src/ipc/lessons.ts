@@ -141,9 +141,10 @@ export async function saveLessonProgress(
 
 /**
  * Writes the subject's course with the default document model: one lesson for
- * each part of the subject's outline, saved together when every one is
- * written. A subject that already has lessons is refused. Keep the operation
- * id to stop the run with `cancelSubjectCourseWriting`.
+ * each top-level topic of its documents' learning plans, saved together when
+ * every one is written. A subject that already has lessons, or a document
+ * still being processed, is refused. Keep the operation id to stop the run
+ * with `cancelSubjectCourseWriting`.
  */
 export async function writeSubjectCourse(
   subjectId: string,
