@@ -43,6 +43,9 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
 
 - The implemented llama.cpp, DeepSeek, and OpenRouter integrations share the
   OpenAI-compatible protocol family under `src-tauri/src/ai/providers/`.
+  Claude builds the same shared request and lowers it to Anthropic's Messages
+  API in `providers/claude.rs`; the gateway picks headers and event decoding
+  from the adapter's `ProviderWire`, never from the URL.
 - Shared model-list parsing, Chat Completions fields, response parsing, structured
   output decoding, usage normalization, and representative document probing must
   not be copied into per-provider modules.
@@ -54,6 +57,9 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
   document contract.
 - `providers/openrouter.rs` owns router/privacy preferences, account-filtered
   model metadata, and OpenRouter-specific document routing policy.
+- `providers/claude.rs` owns Messages request lowering and response
+  normalization, Models API capability mapping, and Claude's structured-output
+  schema subset.
 - Document intelligence owns task semantics, source grounding, and output
   validation; it must not branch on provider kind or construct provider wire
   vocabulary.

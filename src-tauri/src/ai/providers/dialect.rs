@@ -8,19 +8,20 @@ use crate::ai::{
     profiles::ProfileSnapshot,
 };
 
-use super::{deepseek, llama_cpp, openai_compatible, openrouter, schema as schema_support};
+use super::{claude, deepseek, llama_cpp, openai_compatible, openrouter, schema as schema_support};
 
 pub(super) const DEFAULT_MAX_MODEL_LIST_BYTES: usize = 512 * 1024;
 pub(super) const DEFAULT_MAX_MODELS: usize = 500;
 
-/// All implemented providers are one OpenAI-compatible protocol family with a
-/// few explicit dialect choices. This enum is the single dispatch seam for
-/// those differences.
+/// Implemented providers are one OpenAI-compatible protocol family with a few
+/// explicit dialect choices; Claude lowers that family to the Messages API.
+/// This enum is the single dispatch seam for those differences.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ProviderDialect {
     LlamaCpp,
     Deepseek,
     Openrouter,
+    Claude,
 }
 
 impl ProviderDialect {
@@ -29,6 +30,7 @@ impl ProviderDialect {
             ProviderKind::LlamaCpp => Ok(Self::LlamaCpp),
             ProviderKind::Deepseek => Ok(Self::Deepseek),
             ProviderKind::Openrouter => Ok(Self::Openrouter),
+            ProviderKind::Claude => Ok(Self::Claude),
             _ => Err(error(
                 "ai_provider_not_implemented",
                 "This AI provider adapter is not implemented.",
@@ -47,6 +49,7 @@ impl ProviderDialect {
             Self::Openrouter => {
                 join_endpoint(&profile.base_url, "models/user").map_err(command_to_gateway)
             }
+            Self::Claude => claude::models_endpoint(profile),
         }
     }
 
@@ -60,13 +63,16 @@ impl ProviderDialect {
             Self::Openrouter => {
                 join_endpoint(&profile.base_url, "chat/completions").map_err(command_to_gateway)
             }
+            Self::Claude => claude::messages_endpoint(profile),
         }
     }
 
     pub(super) fn model_limits(self) -> (usize, usize) {
         match self {
             Self::Openrouter => (openrouter::MAX_MODEL_LIST_BYTES, openrouter::MAX_MODELS),
-            Self::LlamaCpp | Self::Deepseek => (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS),
+            Self::LlamaCpp | Self::Deepseek | Self::Claude => {
+                (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS)
+            }
         }
     }
 
@@ -77,6 +83,12 @@ impl ProviderDialect {
             Self::Openrouter => {
                 openrouter::apply_request_policy(body, true, profile.require_zero_data_retention);
                 openrouter::apply_reasoning_policy(body, &profile.reasoning_effort, None);
+            }
+            Self::Claude => {
+                let visible = body["max_tokens"].as_u64().unwrap_or(64) as usize;
+                body["max_tokens"] =
+                    json!(claude::probe_max_tokens(&profile.reasoning_effort, visible));
+                *body = claude::lower_chat_body(body, &profile.reasoning_effort, None);
             }
         }
     }
@@ -105,7 +117,11 @@ impl ProviderDialect {
                 }
             }
         ]);
-        let max_tokens = if self == Self::Openrouter { 256 } else { 128 };
+        let max_tokens = match self {
+            Self::Openrouter => 256,
+            Self::Claude => claude::probe_max_tokens(&profile.reasoning_effort, 128),
+            Self::LlamaCpp | Self::Deepseek => 128,
+        };
         let mut body = openai_compatible::chat_body(&profile.model_id, messages, 0.0, max_tokens);
         match self {
             Self::LlamaCpp => {
@@ -133,8 +149,24 @@ impl ProviderDialect {
                     schema_support::portable_strict_schema(schema),
                 );
             }
+            Self::Claude => {
+                body = claude::lower_chat_body(
+                    &body,
+                    &profile.reasoning_effort,
+                    claude::strict_schema(schema),
+                );
+            }
         }
         body
+    }
+
+    /// Bring a non-streaming response to the chat-completion shape the
+    /// provider-neutral readers use.
+    pub(super) fn normalize_response(self, value: Value) -> Result<Value, AiGatewayError> {
+        match self {
+            Self::Claude => claude::normalize_message(&value),
+            Self::LlamaCpp | Self::Deepseek | Self::Openrouter => Ok(value),
+        }
     }
 }
 
