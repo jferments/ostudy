@@ -15,6 +15,7 @@ mod outline;
 mod schemas;
 mod study_guide;
 mod support;
+pub(crate) use support::is_output_failure;
 mod transport;
 
 pub(crate) use artifact_metadata::{

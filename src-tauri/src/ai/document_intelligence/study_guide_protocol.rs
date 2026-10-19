@@ -29,10 +29,31 @@ pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Val
         "properties":{"content":content,"knowledgeUnitIds":knowledge_ids}})
 }
 
+/// Resolve aliases to native IDs. A repeated target is a harmless model slip
+/// (two aliases, or an alias and its exact ID, naming one unit), so it is kept
+/// once instead of failing the whole section; unknown targets still fail.
 pub(super) fn resolve(
     ids: &[String],
     knowledge: &KnowledgeCatalog,
 ) -> Result<Vec<String>, CommandError> {
+    let resolved = resolve_each(ids, knowledge)?;
+    let mut seen = std::collections::HashSet::new();
+    let distinct = resolved
+        .into_iter()
+        .filter(|id| seen.insert(id.clone()))
+        .collect::<Vec<_>>();
+    if distinct.len() != ids.len() {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_duplicate_support_merged",
+            "Kept each repeated knowledge target once.",
+            json!({"selected": ids.len(), "distinct": distinct.len()}),
+        );
+    }
+    Ok(distinct)
+}
+
+fn resolve_each(ids: &[String], knowledge: &KnowledgeCatalog) -> Result<Vec<String>, CommandError> {
     ids.iter().map(|id| {
         if let Some(index) = id.strip_prefix('K').and_then(|number| number.parse::<usize>().ok()) {
             if alias(index) == *id {
@@ -41,7 +62,7 @@ pub(super) fn resolve(
             }
         }
         // Exact IDs from older callers remain a lossless compatibility form;
-        // native selection below still rejects unknown and duplicate targets.
+        // native selection below still rejects unknown targets.
         if knowledge.units.iter().any(|unit| unit.id == *id) { Ok(id.clone()) }
         else { Err(output_error("The guide selected a knowledge ID outside its supplied catalog.")) }
     }).collect()
@@ -116,7 +137,7 @@ pub(super) fn bound_context(
 mod tests {
     use super::*;
     #[test]
-    fn aliases_resolve_to_native_ids_and_do_not_accept_guessing_or_duplicate_targets() {
+    fn aliases_resolve_to_native_ids_reject_guessing_and_merge_duplicate_targets() {
         let knowledge = crate::knowledge::authoring::tests::catalog_fixture();
         assert_eq!(
             resolve(&["K0".into()], &knowledge).unwrap(),
@@ -126,7 +147,8 @@ mod tests {
             assert!(resolve(&[id.into()], &knowledge).is_err());
         }
         let ids = resolve(&["K0".into(), knowledge.units[0].id.clone()], &knowledge).unwrap();
-        assert!(knowledge.select(&ids, 64).is_err());
+        assert_eq!(ids, vec![knowledge.units[0].id.clone()]);
+        assert!(knowledge.select(&ids, 64).is_ok());
         let value: Value = serde_json::from_str(&catalog_prompt(&knowledge).unwrap()).unwrap();
         assert_eq!(value["units"][0]["id"], "K0");
         let ids = &schema(&knowledge, false)["properties"]["knowledgeUnitIds"];

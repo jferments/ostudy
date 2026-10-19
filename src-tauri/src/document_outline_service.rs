@@ -61,17 +61,18 @@ pub(crate) async fn ensure_document_outline(
     )?;
     let generated = async {
         let indices = input.chunks.iter().map(|chunk| chunk.chunk_index).collect::<Vec<_>>();
-        authoring::prepare_document(authoring::DocumentPreparation {
+        let gaps = authoring::prepare_document(authoring::DocumentPreparation {
             database: input.database, paths: input.paths, runtime: input.runtime,
             task: input.task, document_id: input.document_id, chunk_indices: &indices, retry_partial: true,
         }).await?;
         let extraction_contract = crate::knowledge::extraction::extraction_contract(input.task)?;
-        let snapshot = input.database.with_connection(|connection| DocumentSnapshot::prepared(
+        let snapshot = input.database.with_connection(|connection| DocumentSnapshot::prepared_with_gaps(
             connection, input.document_id, input.source.unit_count, input.chunks, &extraction_contract,
+            &gaps.sources,
         ))?;
         let catalogs = windows.iter().map(|window| {
             authoring::catalog_for_chunks(input.database, input.document_id,
-                &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(), input.task)
+                &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(), input.task, &gaps)
         }).collect::<Result<Vec<_>, _>>()?;
         let outline = document_view::ensure(document_view::ViewInput {
             database: input.database, runtime: input.runtime, task: input.task,
