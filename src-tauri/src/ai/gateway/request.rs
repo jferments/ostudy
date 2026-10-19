@@ -4,13 +4,20 @@ use reqwest::{Client, Method, RequestBuilder};
 use serde_json::{json, Value};
 use url::Url;
 
-use super::{contracts::AiGatewayError, errors::error, metadata::is_openrouter_url};
+use super::{
+    contracts::{AiGatewayError, ProviderAccess, ProviderWire},
+    errors::error,
+    metadata::is_openrouter_url,
+};
+
+/// Anthropic's stable Messages API version header.
+pub(super) const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 pub(super) fn ordinary_request(
     client: &Client,
     method: Method,
     url: Url,
-    bearer: Option<&str>,
+    access: ProviderAccess<'_>,
     body: Option<&Value>,
     timeout_ms: i64,
 ) -> RequestBuilder {
@@ -24,9 +31,7 @@ pub(super) fn ordinary_request(
             .header("X-OpenRouter-Title", "ostudy")
             .header("X-OpenRouter-Metadata", "enabled");
     }
-    if let Some(secret) = bearer {
-        request = request.bearer_auth(secret);
-    }
+    request = authenticate(request, access);
     if let Some(body) = body {
         request = request.json(body);
     }
@@ -36,7 +41,7 @@ pub(super) fn ordinary_request(
 pub(super) fn streaming_request(
     client: &Client,
     url: Url,
-    bearer: Option<&str>,
+    access: ProviderAccess<'_>,
     body: &Value,
 ) -> RequestBuilder {
     let openrouter = is_openrouter_url(&url);
@@ -50,13 +55,40 @@ pub(super) fn streaming_request(
             .header("X-OpenRouter-Title", "ostudy")
             .header("X-OpenRouter-Metadata", "enabled");
     }
-    if let Some(secret) = bearer {
-        request = request.bearer_auth(secret);
+    authenticate(request, access)
+}
+
+fn authenticate(mut request: RequestBuilder, access: ProviderAccess<'_>) -> RequestBuilder {
+    match access.wire {
+        ProviderWire::OpenAiCompatible => {
+            if let Some(secret) = access.secret {
+                request = request.bearer_auth(secret);
+            }
+        }
+        ProviderWire::AnthropicMessages => {
+            request = request.header("anthropic-version", ANTHROPIC_VERSION);
+            if let Some(secret) = access.secret {
+                // Mark it sensitive like bearer_auth does, so it never shows
+                // up in reqwest's Debug output.
+                match reqwest::header::HeaderValue::from_str(secret) {
+                    Ok(mut value) => {
+                        value.set_sensitive(true);
+                        request = request.header("x-api-key", value);
+                    }
+                    // reqwest reports the invalid header when the request is
+                    // sent; never echo the secret itself.
+                    Err(_) => request = request.header("x-api-key", "\u{0}"),
+                }
+            }
+        }
     }
     request
 }
 
-pub(super) fn prepare_streaming_body(body: &Value) -> Result<Value, AiGatewayError> {
+pub(super) fn prepare_streaming_body(
+    body: &Value,
+    wire: ProviderWire,
+) -> Result<Value, AiGatewayError> {
     let mut streaming_body = body.clone();
     let object = streaming_body.as_object_mut().ok_or_else(|| {
         error(
@@ -67,9 +99,13 @@ pub(super) fn prepare_streaming_body(body: &Value) -> Result<Value, AiGatewayErr
         )
     })?;
     object.insert("stream".to_string(), Value::Bool(true));
-    object.insert(
-        "stream_options".to_string(),
-        json!({ "include_usage": true }),
-    );
+    // Anthropic always reports usage in message_start/message_delta and
+    // rejects unknown request fields.
+    if wire == ProviderWire::OpenAiCompatible {
+        object.insert(
+            "stream_options".to_string(),
+            json!({ "include_usage": true }),
+        );
+    }
     Ok(streaming_body)
 }

@@ -1,10 +1,12 @@
-//! OpenAI-compatible provider protocol family and narrow provider dialects.
+//! Provider protocol family and narrow provider dialects.
 //!
-//! All currently implemented providers share one internal protocol family:
-//! OpenAI-style model catalogs, Chat Completions messages/responses, SSE, and
-//! usage. Dialect modules contain only the differences that cannot be expressed
-//! by the shared protocol helpers.
+//! Implemented providers share one internal protocol family: OpenAI-style
+//! model catalogs, Chat Completions messages/responses, SSE, and usage.
+//! Dialect modules contain only the differences that cannot be expressed by
+//! the shared protocol helpers. Claude speaks Anthropic's Messages API on the
+//! wire; its dialect lowers requests and normalizes responses at the edge.
 
+mod claude;
 mod deepseek;
 mod dialect;
 mod document;
@@ -18,9 +20,30 @@ mod schema;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ai::{
+    catalog::ProviderKind,
+    gateway::{ProviderAccess, ProviderWire},
+    profiles::ProfileSnapshot,
+};
+
 pub(crate) use document::{decode_document_output, prepare_document_request};
 pub(crate) use models::{list_models, load_properties};
-pub(crate) use probes::{run_document_schema_probe, run_structured_probe, run_text_probe};
+pub(crate) use probes::{
+    run_document_schema_probe, run_image_probe, run_structured_probe, run_text_probe,
+};
+
+/// The credential and wire family for a request to this profile's provider.
+pub(crate) fn provider_access<'a>(
+    profile: &ProfileSnapshot,
+    secret: Option<&'a str>,
+) -> ProviderAccess<'a> {
+    let wire = if profile.provider_kind == ProviderKind::Claude {
+        ProviderWire::AnthropicMessages
+    } else {
+        ProviderWire::OpenAiCompatible
+    };
+    ProviderAccess::new(wire, secret)
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +63,9 @@ pub struct ProviderModel {
     pub owned_by: Option<String>,
     pub context_window_tokens: Option<i64>,
     pub reasoning: Option<ProviderModelReasoning>,
+    /// Whether the provider's catalog declares image input for this model.
+    /// `None` means the catalog says nothing either way.
+    pub image_input: Option<bool>,
 }
 
 #[derive(Clone, Debug)]

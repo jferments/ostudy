@@ -423,3 +423,25 @@ fn canonical_tables_enter_context_only_as_complete_admitted_blocks_and_changes_i
         })
         .unwrap();
 }
+
+#[test]
+fn an_unextracted_source_is_stale_unless_this_run_left_it_as_a_gap() {
+    let (database, source, _, _) = fixture();
+    database
+        .with_connection(|c| {
+            c.execute(
+                "UPDATE knowledge_sources SET extracted_hash='' WHERE id=?1",
+                [&source.id],
+            )
+            .map_err(CommandError::database)
+        })
+        .unwrap();
+    assert!(database
+        .with_connection(|c| for_document_chunks(c, &source.owner_id, &[0]))
+        .is_err());
+    let gaps = BTreeSet::from([source.id.clone()]);
+    let context = database
+        .with_connection(|c| for_document_chunks_with_gaps(c, &source.owner_id, &[0], &gaps))
+        .unwrap();
+    assert!(context.units.is_empty());
+}

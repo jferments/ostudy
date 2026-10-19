@@ -111,7 +111,7 @@ Use deterministic analytics plus optional model interpretation to identify weak 
 
 ### Additional provider adapters
 
-Dedicated Ollama, OpenAI, Gemini, and Claude integrations remain planned. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
+Dedicated Ollama, OpenAI, and Gemini integrations remain planned; Claude is implemented. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
 
 ## Platform direction
 

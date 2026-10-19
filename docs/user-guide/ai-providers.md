@@ -11,7 +11,8 @@ ostudy connects to an existing model service. It does not install a local model,
 | llama.cpp / Unsloth GGUF | Existing compatible local or deliberately configured LAN server |
 | DeepSeek | Fixed cloud API and configured key |
 | OpenRouter | Fixed API, account-visible model discovery, and adapter-specific routing/privacy policy |
-| Dedicated Ollama, OpenAI, Gemini, Claude | Planned catalog entries, not implemented normal Add model choices |
+| Claude | Fixed Anthropic API and your API key, model discovery, and enforced structured output |
+| Dedicated Ollama, OpenAI, Gemini | Planned catalog entries, not implemented normal Add model choices |
 
 A model available through OpenRouter is not evidence of a dedicated adapter for its original vendor. Provider/model availability outside the application can change; use the actual model discovery and connection test rather than assuming every model name is usable.
 
@@ -55,9 +56,11 @@ A local server can still be unavailable, misconfigured, too small in context, or
 
 ## Cloud profiles
 
-DeepSeek and OpenRouter use their fixed configured provider endpoints rather than accepting an arbitrary cloud URL. API usage is billed by the provider, not by a separate ostudy subscription. Cost depends on workload, model, retries, and current provider terms; inspect those terms before transmitting sensitive material.
+DeepSeek, OpenRouter, and Claude use their fixed configured provider endpoints rather than accepting an arbitrary cloud URL. API usage is billed by the provider, not by a separate ostudy subscription. Cost depends on workload, model, retries, and current provider terms; inspect those terms before transmitting sensitive material.
 
 For OpenRouter document requests, the adapter requests parameter-compatible structured output, denies provider data collection, and disables provider-side context compression. **Require zero data retention** adds a stronger routing constraint where supported. This may reduce eligible endpoints or cause a request to fail. The app must report that rather than silently relaxing the profile.
+
+Claude models list only when they support structured output. Some current Claude models cannot turn reasoning off; for them, document work uses the model's lowest effort. Claude does not report cost, so usage shows tokens only, including prompt-cache reads.
 
 These request policies are not an independent audit of the external provider. Choose an appropriate service for the material you intend to process.
 

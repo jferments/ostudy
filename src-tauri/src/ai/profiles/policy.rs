@@ -121,12 +121,12 @@ pub(super) fn validate_provider_configuration(
     }
     if matches!(
         provider_kind,
-        ProviderKind::Deepseek | ProviderKind::Openrouter
+        ProviderKind::Deepseek | ProviderKind::Openrouter | ProviderKind::Claude
     ) && auth_mode != AuthMode::Bearer
     {
         return Err(CommandError::new(
             "invalid_ai_auth_mode",
-            "Built-in cloud provider profiles require bearer-token authentication.",
+            "Built-in cloud provider profiles require an API key.",
         ));
     }
     Ok(())
