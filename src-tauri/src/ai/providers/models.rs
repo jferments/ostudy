@@ -210,6 +210,7 @@ fn parse_model_list(
                 Some("OpenAI".to_string()),
                 openai::model_context_window_tokens(id),
                 openai::model_reasoning(id),
+                openai::model_image_input(id),
             ),
             ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => (
                 id.to_string(),
