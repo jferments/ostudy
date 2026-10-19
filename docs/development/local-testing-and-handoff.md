@@ -58,9 +58,25 @@ If the checkout is an older clean `main`, update it with `git pull --ff-only`, t
 
 Interpret database identity as a **lineage plus version**, not as one globally increasing schema number. Current libraries use `ostudy-release-v1` schema 9, whose immutable baseline is schema 1; the retained pre-0.1 compatibility lineage reaches `ostudy-public-v1` schema 30. A source build that predates a release migration can refuse a newer release-v1 schema even though public-v1 uses a larger unrelated number, while a current build can admit supported release-v1 schema 1 and public-v1 inputs and migrate them through the verified release owner. Never downgrade or hand-edit schema metadata to make an older executable accept a newer lineage.
 
-## Linux: ordinary test-drive
+## Linux: the maintainer's test-drive
 
-On an already configured machine, from the selected checkout:
+The maintainer's checkout is `~/code/ostudy`, and he tries a branch with the development desktop run. Handoff steps for him use this shape, with the real branch name:
+
+```bash
+cd ~/code/ostudy
+git status --short
+git fetch origin --prune
+git switch 'REPLACE_WITH_BRANCH'
+git pull --ff-only
+pnpm install --frozen-lockfile
+pnpm desktop
+```
+
+`pnpm install --frozen-lockfile` comes before `pnpm desktop` because `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: error`: pnpm refuses to run any script while `node_modules` is older than the branch's lockfile. `pnpm desktop` runs `scripts/dev.sh`, which starts Tauri hot reload with the `src-tauri/tauri.dev.conf.json` overlay, so the app runs as `io.github.jferments.ostudy.dev` and opens the separate development library, not his production library. Say what that library needs for the test (for example a deck to import first). Never give bare `pnpm tauri dev`: that debug build resolves the production identifier, and startup refuses it before opening any library (`validate_desktop_runtime` in `src-tauri/src/application_profile.rs`).
+
+## Linux: standalone test-drive
+
+To test the built application rather than hot reload, on an already configured machine, from the selected checkout:
 
 ```bash
 ./scripts/build.sh
@@ -73,7 +89,7 @@ The build wrapper performs pinned-environment checks, provisions PDFium, install
 
 Do not launch the mutable Cargo debug binary as a workaround. Later Tauri dev, native checks, or Android work can reuse that Cargo location. The staged standalone artifact exists specifically to keep the tested/launched executable stable.
 
-`pnpm desktop` is the native hot-reload development path. `pnpm dev`/`pnpm build` are frontend commands and do not prove a working native application.
+`pnpm desktop` is the native hot-reload development path described above. `pnpm dev`/`pnpm build` are frontend commands and do not prove a working native application.
 
 ## Linux: isolated fresh-library tests
 

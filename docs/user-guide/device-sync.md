@@ -17,13 +17,13 @@ The transport changes only how the two native processes exchange bytes. Device i
 
 Every outgoing transfer has a **What to synchronize** section. The sender chooses the categories included in that transfer:
 
-- **Flashcards** — decks, folders (subjects), Basic/Cloze and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, question-generation evidence, source-citation snapshots, and managed card/question images.
+- **Flashcards** — decks, Basic/Fill in the blank and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, source-citation snapshots, and managed card/question images.
 - **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
 - **Study Guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
 - **API provider settings** — AI provider profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from provider settings.
 
-Subjects, the folders and collections that hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device. If one device deletes a subject while the other files a deck or document in it, the deck or document ends up in No subject, the way deleting a subject leaves the decks and documents it held.
+Subjects, which hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device. If one device deletes a subject while the other files a deck or document in it, the deck or document ends up in No subject, the way deleting a subject leaves the decks and documents it held.
 
 Flashcards, Documents, and Study Guides are selected by default. **API provider settings** and **Saved API keys** are off by default.
 
@@ -35,9 +35,19 @@ At least one transferable category must be selected.
 
 An unselected category is removed from the copied synchronization snapshot before transmission. It is not merely ignored during merge.
 
-When Flashcards is unselected, typed question definitions, schedules, attempts, question-review links, remediation records, generation evidence and managed card assets are removed with that graph. Private editor drafts, question write receipts, asset-reconciliation diagnostics and other local operation records are excluded even when Flashcards is selected.
+When Flashcards is unselected, typed question definitions, schedules, attempts, question-review links, remediation records and managed card assets are removed with that graph. Private editor drafts, question write receipts, asset-reconciliation diagnostics and other local operation records are excluded even when Flashcards is selected.
 
-General application and appearance settings always stay local. Theme, font, UI scale, motion, density/layout preferences, and similar device preferences are not part of device sync. Transient AI probe evidence is also excluded.
+Some data always stays on the device, whatever is selected:
+
+- General application and appearance settings: theme, font, UI scale, motion, layout and similar preferences.
+- Tutor projects, conversations, summaries and their search copies (see [Tutor memory and privacy](tutor-memory-and-privacy.md)).
+- The knowledge ostudy extracted from documents, so a transferred document may be read again before new material is made from it on the receiving device.
+- PDF annotations.
+- Lessons and lesson progress.
+- How generated questions were made (their generation evidence) and your **Question generation** preferences.
+- AI model test results.
+
+Use a whole-library backup to move these.
 
 ## Direct USB: plug in, select, sync
 
@@ -121,7 +131,7 @@ If ostudy restarts while a request is still recorded as active, startup marks th
 
 When **Flashcards** is selected, synchronization carries the canonical typed question definition and stable presentation ownership for single-best-answer, select-all, true/false, matching, grouping, ordering, and image occlusion. Managed assets referenced by those definitions travel through the same validated asset path.
 
-Retained first-attempt checkpoints, question/review links, remediation records and generation evidence also participate in the supported graph. The receiver validates definitions, active presentation keys, managed-asset ownership, immutable attempt checkpoints, session-snapshot ownership and review linkage before applying the graph. Checkpoint/evidence rows whose columns must agree are resolved as atomic rows during a concurrent merge rather than field-merging revision/phase/checkpoint fragments into an impossible hybrid.
+Retained first-attempt checkpoints, question/review links and remediation records also travel. The receiver checks question definitions, their presentations, their images, attempt checkpoints and review links before applying anything. When both devices changed the same attempt or checkpoint, the whole record is kept from one side and the other is recorded as a conflict, never mixed field by field.
 
 If a received graph is malformed or its typed ownership no longer agrees, the package is rejected before files are installed or the merge commits. Sync does not silently flatten an interactive question into Basic or discard its presentation identities.
 
@@ -165,7 +175,7 @@ Offers expire after a short period. Create a fresh transfer if one expires or th
 
 Protocol v3 binds the selected transport into the authenticated pairing transcript. LAN invitations contain a private network endpoint. Direct-USB invitations use the symbolic `usb` endpoint and are delivered only over the accessory stream; pasting a USB invitation into the LAN receive box is rejected.
 
-Both devices need the same library schema to synchronize in both directions. A device whose library predates the subjects update (schema 6) refuses a package from an updated device and asks to be updated first. An updated device accepts a package from a device that has not updated yet and converts its folders and collections to subjects before merging. Where the two devices filed a deck or document differently, the merge keeps one subject for it. Update every device, ideally right after a final sync, to avoid that.
+Both devices need the same library schema to synchronize in both directions. A device refuses a package from a device whose library schema is newer and asks to be updated first. An updated device accepts a package from a device that has not updated yet and brings it up to date before merging; for a device from before the subjects update (schema 6), that converts its folders and collections to subjects. Where the two devices filed a deck or document differently, the merge keeps one subject for it. Update every device, ideally right after a final sync, to avoid that.
 
 The synchronization package has its own versioned format. Granular-scope packages record the selected categories explicitly while retaining package-level compatibility handling for the earlier flashcard/API-settings package format. Received snapshots are migrated and semantically admitted before merge; an older sender cannot bypass current typed-question validation by supplying a structurally valid SQLite file.
 

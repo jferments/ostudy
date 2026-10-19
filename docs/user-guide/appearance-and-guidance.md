@@ -4,11 +4,11 @@ Open **Settings → Appearance**. Presentation preferences change how ostudy loo
 
 ## Navigation and available space
 
-The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show the five destinations (Home, Library, Review, Tutor, and Progress) with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put the destinations in a bottom bar and keep Search and Settings in the top bar.
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show the five destinations (Home, Library, Review, Tutor, and Progress) with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put the destinations in a bottom bar and keep Search and Settings in the top bar, which also names the current destination.
 
-An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. The application uses native operating-system window chrome on desktop; old instructions for separate in-app maximize/full-screen buttons no longer describe the current shell. Use your window manager's supported controls and shortcuts.
+An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. On desktop the window uses your operating system's own title bar and controls; use them, or your window manager's shortcuts, to maximize or go full screen.
 
-Compact visual spacing must preserve keyboard focus, accessible names, and touch targets. A truncated row preview does not mean stored card text was shortened; open the content to inspect it fully.
+Compact spacing keeps keyboard focus, accessible names, and full-size touch targets. A truncated row preview does not mean stored card text was shortened; open the content to inspect it fully.
 
 ## Themes and typography
 
@@ -18,7 +18,7 @@ Interface font and default card font are independent. Interface scale and defaul
 
 New installations use **IBM Plex Sans** for both default font choices. Older untouched defaults can adopt it, while explicit selections—including an explicitly chosen system font—are preserved. The installed app uses a local bundled face and falls back to the device's sans-serif stack when it is unavailable; it does not fetch a runtime web font.
 
-A custom font-family preference relies on a font installed on the device. It does not copy that font file into the library or make it portable to another device. Restore appearance defaults is not a reset of review history, backup configuration, or AI profiles.
+A custom font-family preference relies on a font installed on the device. It does not copy that font file into the library or make it portable to another device. **Restore appearance defaults** is not a reset of review history, backup configuration, or AI profiles.
 
 ## Motion
 
@@ -26,30 +26,30 @@ Motion choices are **Follow system**, **Full motion**, **Reduced motion**, and *
 
 Every theme uses flat, opaque surfaces without blur, translucency or texture, so there is no separate material-effects setting. Hierarchy comes from borders, surfaces and shadows, which also suits operating-system reduced-transparency and forced-colors preferences.
 
-Do not interpret an animation as the authoritative signal that a review committed. The native result owns that fact; effects follow semantic events and may be disabled or unavailable.
+An animation is not the signal that a review was saved. The saved review is what counts; effects follow it and may be turned off or unavailable.
 
 ## Artwork and completion feedback
 
-**Decorative artwork** controls nonessential mascot and illustrated-state art. Functional icons, notices, controls, educational images in cards/documents, and the raccoon brand mark beside the ostudy name remain visible. **Celebrations** permits brief one-shot completion effects when the motion policy allows them; disabling it does not remove the completion summary or analytics.
+**Decorative artwork** controls nonessential mascot and illustrated-state art. Functional icons, notices, controls, educational images in cards/documents, and the raccoon brand mark beside the ostudy name remain visible. **Celebrations** permits brief one-shot completion effects when full motion is on; turning it off does not remove **Session complete** or Progress.
 
-Platform feedback can vary by capability and preference. Unsupported audio/haptic/visual effects must not prevent ordinary studying. There is no separate Comfortable/Compact deck-density preference in the current interface.
+Platform feedback can vary by capability and preference. A device that cannot play an audio, haptic, or visual effect still studies normally. There is no separate Comfortable/Compact deck-density preference in the current interface.
 
 ## Contextual help
 
-Question-mark controls provide a short hover/focus explanation where applicable. Activating Help opens its touch-friendly explanation. Short and full explanations come from the same topic registry rather than separately maintained screen copy.
+Help buttons (an **i** icon) sit beside some settings and notices, such as **Motion** in Settings → Appearance and the notice on Documents when no AI provider is set up. Hovering over or focusing one shows a short explanation; choosing it opens a sheet with the full explanation and the name of the guide section that covers the topic. Short and full explanations come from the same help topics rather than separately written screen text.
 
-Help can identify a related guide or offer **Start guided tutorial**. Ordinary help is available without an AI provider or tutorial opt-in; reading help does not send library content to a model.
+A topic that has a tutorial also offers **Start guided tutorial**. Help works without an AI provider and without turning tutorials on, and reading help never sends library content to a model.
 
 ## Explicitly started tutorials
 
-**Interactive tutorials** default off. To use one, enable the setting, open a relevant Help topic, and explicitly start its tutorial. Current modules cover orientation to Library and the main navigation, Search filters, practice reveal/rating, and document generation.
+**Interactive tutorials** in Settings → Appearance is off by default. To use a tutorial, turn it on, open a related Help topic, and choose **Start guided tutorial**. Each step points at a part of the screen; use **Next**, **Back**, and **Finish** to move through it, **More help** to open the step's help topic, and **Skip tutorial** or **×** to leave. If the part a step describes is not visible in the current layout, the step says so and you can continue.
 
-Tutorials never auto-start because you opened a route, exposed a target, upgraded a version, or restarted the app. Observing the target of an already-running step only keeps its spotlight aligned with layout changes.
+Tutorials never start on their own: not when you open a screen, upgrade, or restart the app.
 
-Escape or Android Back dismisses active guidance before ordinary navigation. Turning tutorials off closes an active tutorial and prevents new starts until re-enabled. Versioned tutorial progress/dismissals are device-local presentation state, not library content included in `.ostudybackup`. They do not change cards, schedules, providers, or credentials.
+Escape or Android Back closes an active tutorial before ordinary navigation. Turning tutorials off closes an active tutorial and prevents new ones until you turn them on again. Which tutorials you finished or skipped is remembered on this device only; it is not library content, is not included in `.ostudybackup`, and does not change cards, schedules, providers, or credentials.
 
 ## Other Settings sections
 
 The normal tabs are Appearance, Backup/Sync, AI/LLM, Review/Scheduling, Card templates, and Diagnostics. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup/Sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
 
-For current study routes see [Getting started](getting-started.md), for deck actions see [Flashcards](flashcards-workspace.md), and for recoverable data versus device-local presentation state see [Backups](backups-imports-and-sharing.md).
+For current study routes see [Getting started](getting-started.md), for deck actions see [Library Workbench](flashcards-workspace.md), and for recoverable data versus device-local presentation state see [Backups](backups-imports-and-sharing.md).

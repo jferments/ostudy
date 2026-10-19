@@ -16,9 +16,9 @@ A backup is not automatically encrypted just because credentials are excluded. I
 
 ## Import a deck or generated cards
 
-Open **Library → Decks** and choose **Import deck**. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
+Open **Library → Flashcards** and choose **Import deck** beside the Library tabs. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
 
-A new imported deck starts in **Unsorted decks** until you organize it locally. The receiving library owns folder membership and schedules.
+A new imported deck starts in **No subject** until you move it with **Move to subject…**. The receiving library owns subject membership and schedules. Generated `.ostudy.json` and `.studydeck` imports open the imported deck when they finish.
 
 ### Portable `.studydeck`
 
@@ -32,9 +32,9 @@ Older supported `.studydeck` versions remain readable for the card kinds they co
 
 Choose an Anki deck package through the same import dialog. Older-compatible packages can be converted directly without installing Anki libraries in oStudy. When a newer package is rejected, open it in Anki and export an **Anki Deck Package (.apkg)** with **Support older Anki versions** and **Include media** enabled. Renaming a file does not convert its format. Compressed modern collections, collection backups, and arbitrary standalone Anki databases are not supported by this first adapter.
 
-The importer follows the cards actually stored in the package. Common Basic, reverse, and optional-reverse presentations become independent editable Basic cards with fresh schedules. Compatible simple cloze presentations become native **Fill in the blank** cards. Complex cloze cards that contain extra answer fields or media keep their rendered presentation as Basic cards rather than losing those fields. Anki linked-note editing and review history do not carry over. Subdecks are combined into one imported deck, with source deck paths retained as tags rather than recreated as folders.
+The importer follows the cards actually stored in the package. Common Basic, reverse, and optional-reverse presentations become independent editable Basic cards with fresh schedules. Compatible simple cloze presentations become native **Fill in the blank** cards. Complex cloze cards that contain extra answer fields or media keep their rendered presentation as Basic cards rather than losing those fields. Anki linked-note editing and review history do not carry over. Subdecks are combined into one imported deck, with source deck paths retained as tags rather than recreated as subjects.
 
-For ordinary Basic cards, Anki's common back-template repetition of the front is removed from the stored answer. The default oStudy reveal therefore shows the answer rather than repeating the question and answer together. Enable **Settings → Appearance → Display both question and answer when card is flipped** if you prefer the front to stay visible after reveal. Fill in the blank imports retain the blank/context on their revealed side automatically.
+For ordinary Basic cards, Anki's common back-template repetition of the front is removed from the stored answer. The default oStudy reveal therefore shows the answer rather than repeating the question and answer together. Enable **Settings → Review/Scheduling → Display both question and answer when card is flipped** if you prefer the front to stay visible after reveal. Fill in the blank imports retain the blank/context on their revealed side automatically.
 
 Anki `type:`/typed-answer cards preserve the question and answer as ordinary reveal cards. The interactive typing/comparison widget itself is not retained. Supported local images and readable text formatting are converted to native content. Arbitrary CSS is normalized to oStudy's native appearance and reported as an aggregate appearance conversion instead of producing one warning per card.
 
@@ -42,7 +42,7 @@ Anki templates may also contain JavaScript. oStudy **never executes imported Jav
 
 While a large Anki deck is importing, the dialog shows the current phase and card-level progress. After the package has been read and its card total is known, the progress view shows **cards processed / total**, plus the number imported and skipped so far. The phases include reading the package, converting cards, importing media, and saving the deck. Progress display is advisory; losing a UI progress listener does not change whether the transactional import succeeds.
 
-After the import commits, the dialog stays open with an **Anki import report**. It shows imported/skipped/content-simplified totals plus aggregate counts for native appearance conversion, JavaScript static recovery, typed-answer conversion, native Fill in the blank conversion, and complex-cloze fallback. Expand compatibility details for actual per-card problems. If no compatible cards are found, no deck is created. Nothing executable in the package is run, and no network content is fetched.
+After the import commits, the dialog stays open as **Anki import complete**, with an import report and **Open imported deck**. It shows imported/skipped/content-simplified totals plus aggregate counts for native appearance conversion, JavaScript static recovery, typed-answer conversion, native Fill in the blank conversion, and complex-cloze fallback. Expand compatibility details for actual per-card problems. If no compatible cards are found, no deck is created. Nothing executable in the package is run, and no network content is fetched.
 
 The compatibility report is a post-import result, not an approval preview. Do not import the same file again merely because some cards were skipped. See the [Anki adapter reference](../reference/anki-import.md) for exact format, semantic conversion, extension boundaries, resource limits, and JavaScript-salvage rules.
 
@@ -56,15 +56,13 @@ See the [format reference](../reference/generated-json-import.md), [generator in
 
 ## Export or share decks
 
-Use a deck's contextual **Export** action or select decks and use the selected-deck export control. Wide layouts may show a direct control; compact layouts place secondary actions in the relevant action menu. Multiple selected decks produce separate files, not a whole-library archive.
-
-The export dialog uses the native save flow. A single-deck native **Share** path is available where the platform supports system sharing. Opening a share sheet hands the file to the operating system; it does not prove a recipient received it. Canceling a later file in a multi-deck export does not undo files already saved, so read the partial-result message.
+In the Workbench, open a deck's **…** menu and choose **Export…**, then **Save file** to save a `.studydeck` through the platform's save dialog. Where the platform supports system sharing, **Share** hands the file to the operating system; that does not prove a recipient received it. Export is one deck at a time and is never a whole-library archive.
 
 A successful import remains committed even if a subsequent screen refresh fails. Refresh the view rather than immediately assuming the write failed and initiating a new import.
 
 ## Create a whole-library backup
 
-Open **Settings → Backup/Sync** and use the library backup controls. A `.ostudybackup` captures a coherent SQLite snapshot and the managed files required to restore it, including decks/folders, notes/cards, typed interactive definitions and presentation identities, schedules, captured attempts and review evidence, generation evidence, tags/templates, reviews, sessions, analytics source records, ordinary settings, managed images, retained source documents, canonical document derivatives, learning plans/topics, study-guide revisions and learner overlays, and their persisted relationships.
+Open **Settings → Backup/Sync** and choose **Back up library** (or **Share backup** where the platform supports sharing). A `.ostudybackup` captures a consistent snapshot of the library database and the managed files needed to restore it: subjects, decks, notes and cards with their question definitions, schedules, reviews and practice attempts, study activity, tags and templates, ordinary settings, managed images, source documents and everything extracted from them, learning plans, study guides with your notes and edits, PDF annotations, lessons, Tutor conversations and projects, and generation evidence.
 
 Supported backups also preserve recoverable card, template, bulk-entry, and nonsecret provider-metadata drafts with their staged images. Nonsecret provider profiles, task defaults, and appropriate redacted metadata belong to the library; saved credential bytes do not. Device-local presentation checkpoints and browser-local tutorial progress are not a full portable UI session.
 
@@ -92,9 +90,9 @@ Do not rename an arbitrary SQLite file to masquerade as a backup. The package ve
 
 [Device synchronization](device-sync.md) sends the selected supported study-data graph over an authenticated encrypted local-network or direct-USB transport and merges it on the receiver. It is not automatic cloud backup, continuous background replication, or permission for the receiver to upload its own library during acceptance.
 
-When **Flashcards** is selected, native interactive definitions, stable presentation identities, retained captured attempts/review links, managed question assets, and question-generation evidence participate in the same typed graph admission and merge policy as the rest of the flashcard domain. Checkpoint/evidence records whose fields must remain consistent are merged atomically rather than field-by-field. Malformed received question graphs are rejected before files are installed or a merge commits. Private editor drafts, write receipts, reconciliation diagnostics and other transfer-excluded local state do not hitchhike in the package.
+When **Flashcards** is selected, question definitions, their presentations, practice attempts and review links, and question images travel and are checked like the rest of the flashcard data; records whose fields must agree are merged whole rather than field by field. A malformed package is rejected before anything is installed or merged. Editor drafts, question generation evidence and other local records stay on the sending device.
 
-Documents and Study Guides have explicit selectable scopes; Study Guides require Documents. Cross-document/flashcard provenance travels only when both domains are selected. Ordinary appearance/application settings stay device-local. Provider configuration and available saved credentials require a new explicit sender opt-in per offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
+Documents and Study Guides have explicit selectable scopes; Study Guides require Documents. Links between documents and flashcards travel only when both are selected. Ordinary appearance and application settings stay on each device, and so do PDF annotations, lessons and Tutor conversations. Provider settings and saved keys need the sender's explicit choice for each offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
 
 ## Safety and factual accuracy
 

@@ -39,11 +39,14 @@ After source changes:
 ./run-app.sh
 ```
 
-For live Tauri/Vite development:
+For live Tauri/Vite development (install the locked dependencies first, because pnpm refuses to run scripts when `node_modules` is older than the lockfile):
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm desktop
 ```
+
+`pnpm desktop` also runs as `io.github.jferments.ostudy.dev` with the development library. Do not run bare `pnpm tauri dev`: that debug build resolves the production identifier and startup refuses it.
 
 Desktop OCR fallback for scanned or damaged PDFs additionally requires Tesseract and appropriate trained data:
 
