@@ -21,7 +21,7 @@ export interface Size { width: number; height: number; }
 export interface Bounds { left: number; top: number; right: number; bottom: number; }
 
 export type AnnotatorTool =
-  | "select" | "pen" | "highlighter" | "text" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
+  | "select" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
 export type ShapeTool = "line" | "arrow" | "rectangle" | "ellipse";
 export const SHAPE_TOOLS: readonly ShapeTool[] = ["line", "arrow", "rectangle", "ellipse"];
 
@@ -33,6 +33,7 @@ export function isShapeTool(tool: AnnotatorTool): tool is ShapeTool {
 const MAX_COORDINATE = 14_400;
 export const MAX_STROKE_POINTS = 10_000;
 export const MAX_TEXT_CHARS = 5_000;
+export const MAX_STICKY_CHARS = 20_000;
 const MAX_TEXT_RECTS = 2_000;
 const STROKE_WIDTH_RANGE = [0.25, 64] as const;
 const FONT_SIZE_RANGE = [6, 96] as const;
@@ -42,10 +43,13 @@ export const TEXT_LINE_HEIGHT = 1.3;
 export const TEXT_PADDING = 2;
 export const DEFAULT_TEXT_WIDTH = 200;
 export const MIN_TEXT_WIDTH = 24;
+/** A sticky note's size on the page, in points; its text opens in full when tapped. */
+export const STICKY_WIDTH = 120;
+export const STICKY_HEIGHT = 72;
 /** Shapes smaller than this on both sides are taken as a slip and not kept. */
 const MIN_SHAPE_EXTENT = 2;
 
-export type StyleFamily = "pen" | "highlighter" | "shape" | "text";
+export type StyleFamily = "pen" | "highlighter" | "shape" | "text" | "sticky";
 /** A tool's look. `size` is the stroke width, or the font size for text, in points. */
 export interface ToolStyle { color: string; size: number; }
 export type ToolStyles = Readonly<Record<StyleFamily, ToolStyle>>;
@@ -84,6 +88,11 @@ export const STYLE_CHOICES: Readonly<Record<StyleFamily, { swatches: readonly Sw
     swatches: INK_SWATCHES,
     sizes: [{ size: 10, label: "Small" }, { size: 14, label: "Medium" }, { size: 20, label: "Large" }],
   },
+  // A sticky note's paper, and the size of the preview text on it.
+  sticky: {
+    swatches: HIGHLIGHT_SWATCHES,
+    sizes: [{ size: 8, label: "Small" }, { size: 10, label: "Medium" }, { size: 12, label: "Large" }],
+  },
 };
 
 export const DEFAULT_STYLES: ToolStyles = {
@@ -91,17 +100,24 @@ export const DEFAULT_STYLES: ToolStyles = {
   highlighter: { color: "#fde047", size: 16 },
   shape: { color: "#dc2626", size: 3 },
   text: { color: "#1f2328", size: 14 },
+  sticky: { color: "#fde047", size: 10 },
 };
 
 export function styleFamilyForTool(tool: AnnotatorTool): StyleFamily | null {
-  if (tool === "pen" || tool === "highlighter" || tool === "text") return tool;
+  if (tool === "pen" || tool === "highlighter" || tool === "text" || tool === "sticky") return tool;
   return isShapeTool(tool) ? "shape" : null;
 }
 
 export function styleFamilyForShape(shape: AnnotationShape): StyleFamily {
   if (shape.kind === "ink") return "pen";
   if (shape.kind === "highlight") return "highlighter";
-  return shape.kind === "text" ? "text" : "shape";
+  if (shape.kind === "text") return shape.sticky ? "sticky" : "text";
+  return "shape";
+}
+
+/** Whether a text note is drawn as a sticky note. */
+export function isStickyNote(shape: AnnotationShape): shape is TextShape & { sticky: true } {
+  return shape.kind === "text" && shape.sticky === true;
 }
 
 export function shapeStyle(shape: AnnotationShape): ToolStyle {
@@ -138,6 +154,7 @@ export function createAnnotationId(): string {
 
 /** A text note's height from its text, for pages whose notes have not been laid out yet. */
 export function estimateTextHeight(shape: TextShape): number {
+  if (shape.sticky) return STICKY_HEIGHT;
   const perLine = Math.max(1, Math.floor((shape.width - 2 * TEXT_PADDING) / (shape.fontSize * 0.55)));
   const lines = shape.text.split("\n")
     .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / perLine)), 0);
@@ -363,7 +380,8 @@ export function handlesFor(shape: AnnotationShape, textHeight: number): Array<{ 
         { handle: "se", point: { x: shape.x + shape.width, y: shape.y + shape.height } },
       ];
     case "text":
-      return [{ handle: "width", point: { x: shape.x + shape.width, y: shape.y + textHeight / 2 } }];
+      // A sticky note keeps its size: only its text grows.
+      return shape.sticky ? [] : [{ handle: "width", point: { x: shape.x + shape.width, y: shape.y + textHeight / 2 } }];
     default:
       return [];
   }
@@ -578,7 +596,8 @@ export function isStorable(shape: AnnotationShape): boolean {
       return coordinate(shape.x) && coordinate(shape.y)
         && shape.width > 0 && shape.x + shape.width <= MAX_COORDINATE
         && shape.text.trim().length > 0
-        && [...shape.text].length <= MAX_TEXT_CHARS
+        && (shape.sticky === undefined || shape.sticky === true)
+        && [...shape.text].length <= (shape.sticky ? MAX_STICKY_CHARS : MAX_TEXT_CHARS)
         && !CONTROL.test(shape.text)
         && Number.isFinite(shape.fontSize)
         && shape.fontSize >= FONT_SIZE_RANGE[0] && shape.fontSize <= FONT_SIZE_RANGE[1];
@@ -602,7 +621,8 @@ const KIND_NAMES: Readonly<Record<AnnotationShape["kind"], string>> = {
 
 /** A short name for an annotation, for assistive technology. */
 export function describeAnnotation(annotation: Annotation): string {
-  const name = `${KIND_NAMES[annotation.shape.kind]} on page ${annotation.pageNumber}`;
+  const kind = isStickyNote(annotation.shape) ? "Sticky note" : KIND_NAMES[annotation.shape.kind];
+  const name = `${kind} on page ${annotation.pageNumber}`;
   const quoted = annotation.shape.kind === "text" ? annotation.shape.text
     : annotation.shape.kind === "highlight" ? annotation.shape.text : undefined;
   if (quoted === undefined) return name;

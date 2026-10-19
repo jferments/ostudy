@@ -54,6 +54,8 @@ export interface TextShape {
   text: string;
   color: string;
   fontSize: number;
+  /** A sticky note: a small note of `width` showing the start of its text; `color` is its paper. */
+  sticky?: true;
 }
 
 export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape;

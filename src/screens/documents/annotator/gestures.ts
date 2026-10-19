@@ -3,6 +3,7 @@ import {
   handlesFor,
   isDeliberateShape,
   isShapeTool,
+  isStickyNote,
   isStorable,
   MAX_STROKE_POINTS,
   moveWithinPage,
@@ -84,7 +85,7 @@ export type GestureEffect =
   | { kind: "erase"; annotations: readonly Annotation[] }
   | { kind: "select"; id: string | null }
   | { kind: "edit-text"; annotation: Annotation }
-  | { kind: "new-text"; pageNumber: number; point: Point }
+  | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
   | { kind: "scroll-by"; dx: number; dy: number }
   /** Pixels per millisecond the view keeps moving after a flick. */
   | { kind: "fling"; velocityX: number; velocityY: number }
@@ -100,7 +101,7 @@ type Gesture =
   | { kind: "text-highlight"; pointerId: number; pointer: PointerKind; start: Client; moved: boolean; pageNumber: number; text: PageText; from: number; to: number }
   | { kind: "shape"; pointerId: number; pageNumber: number; tool: ShapeTool; start: Point; shape: AnnotationShape | null }
   | { kind: "erase"; pointerId: number; last: Client; erased: Map<string, Annotation> }
-  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" }
+  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "resize"; pointerId: number; pageNumber: number; original: Annotation; handle: Handle; current: Annotation }
   | { kind: "pan"; pointerId: number; last: Client; samples: Array<Client & { time: number }> }
@@ -360,10 +361,11 @@ export class AnnotatorGestures {
     }
     // A stylus's eraser end erases, whichever tool is chosen.
     const tool: AnnotatorTool = sample.kind === "pen" && sample.button === PEN_ERASER_BUTTON ? "eraser" : context.tool;
-    // With pen-only drawing a finger still places and opens text notes.
-    const fingerPans = sample.kind === "touch" && context.penOnly && isDrawingTool(tool) && tool !== "text";
+    const placesNotes = tool === "text" || tool === "sticky";
+    // With pen-only drawing a finger still places and opens notes.
+    const fingerPans = sample.kind === "touch" && context.penOnly && isDrawingTool(tool) && !placesNotes;
     const pageNumber = surface.pageAt(client.x, client.y);
-    if (fingerPans || (pageNumber === null && isDrawingTool(tool) && tool !== "text")) {
+    if (fingerPans || (pageNumber === null && isDrawingTool(tool) && !placesNotes)) {
       this.active = sample.kind === "touch"
         ? { kind: "pan", ...base, last: client, samples: [{ ...client, time: sample.time }] }
         : { kind: "idle" };
@@ -372,7 +374,7 @@ export class AnnotatorGestures {
     const size = pageNumber === null ? null : surface.pageSize(pageNumber);
     const point = pageNumber === null ? null : surface.toPage(pageNumber, client.x, client.y);
 
-    if (tool === "select" || tool === "text") {
+    if (tool === "select" || placesNotes) {
       let hit: Annotation | null = null;
       if (pageNumber !== null && point && size) {
         const slop = HIT_SLOP[sample.kind] / context.scale;
@@ -384,7 +386,8 @@ export class AnnotatorGestures {
         }
         hit = topmostAt(
           context.annotationsOn(pageNumber), point, slop, context.textHeight,
-          tool === "text" ? (annotation) => annotation.shape.kind === "text" : undefined,
+          tool === "select" ? undefined
+            : (annotation) => annotation.shape.kind === "text" && (tool === "text" || isStickyNote(annotation.shape)),
         );
       }
       this.active = { kind: "press", ...base, pointer: sample.kind, start: client, pageNumber, hit, purpose: tool };
@@ -485,13 +488,13 @@ export class AnnotatorGestures {
   }
 
   private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext): GestureEffect[] {
-    if (active.purpose === "text") {
+    if (active.purpose !== "select") {
       if (active.hit) return [{ kind: "edit-text", annotation: active.hit }];
       if (active.pageNumber === null) return [];
       const size = surface.pageSize(active.pageNumber);
       if (!size) return [];
       const point = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
-      return [{ kind: "new-text", pageNumber: active.pageNumber, point }];
+      return [{ kind: "new-text", pageNumber: active.pageNumber, point, sticky: active.purpose === "sticky" }];
     }
     if (!active.hit) return context.selected ? [{ kind: "select", id: null }] : [];
     // A tap on the selected text note opens it, so a double tap edits.

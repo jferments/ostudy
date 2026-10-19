@@ -37,6 +37,8 @@ const MAX_FONT_SIZE: f64 = 96.0;
 const MAX_TEXT_CHARS: usize = 5_000;
 /// Lines one text highlight may cover: a few dense pages' worth.
 const MAX_TEXT_RECTS: usize = 2_000;
+/// Sticky notes hold long-form text behind their preview.
+const MAX_STICKY_CHARS: usize = 20_000;
 /// Matches the table's own payload check.
 const MAX_PAYLOAD_BYTES: usize = 262_144;
 const MAX_CHANGES_PER_REQUEST: usize = 500;
@@ -111,7 +113,10 @@ pub struct Frame {
     pub stroke_width: f64,
 }
 
-/// Typed text whose lines wrap at `width`; its height follows the text.
+/// Typed text whose lines wrap at `width`; its height follows the text. A
+/// sticky note (`sticky: true`) is drawn as a small note of `width` showing
+/// the start of its text, opens to all of it, and may hold longer text;
+/// `color` is then the note's paper.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextNote {
@@ -121,6 +126,8 @@ pub struct TextNote {
     pub text: String,
     pub color: String,
     pub font_size: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sticky: Option<bool>,
 }
 
 impl AnnotationShape {
@@ -189,9 +196,18 @@ impl AnnotationShape {
                 if note.text.trim().is_empty() {
                     return Err(invalid("A text note needs some text."));
                 }
-                if note.text.chars().count() > MAX_TEXT_CHARS {
+                let limit = match note.sticky {
+                    None => MAX_TEXT_CHARS,
+                    Some(true) => MAX_STICKY_CHARS,
+                    Some(false) => {
+                        return Err(invalid(
+                            "A text note is either a sticky note or not marked at all.",
+                        ))
+                    }
+                };
+                if note.text.chars().count() > limit {
                     return Err(invalid(format!(
-                        "A text note can hold up to {MAX_TEXT_CHARS} characters."
+                        "A text note can hold up to {limit} characters."
                     )));
                 }
                 if note

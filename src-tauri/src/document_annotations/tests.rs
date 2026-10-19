@@ -183,6 +183,16 @@ fn every_kind() -> Vec<AnnotationShape> {
             text: "Mitral valve\n\tcloses first".into(),
             color: "#111111".into(),
             font_size: 12.0,
+            sticky: None,
+        }),
+        AnnotationShape::Text(TextNote {
+            x: 300.0,
+            y: 40.0,
+            width: 120.0,
+            text: "Ask about the second heart sound.\n\nIt splits on inspiration.".into(),
+            color: "#fde047".into(),
+            font_size: 10.0,
+            sticky: Some(true),
         }),
     ]
 }
@@ -271,6 +281,7 @@ fn shapes_outside_their_limits_are_refused() {
             text: text.into(),
             color: "#000000".into(),
             font_size,
+            sticky: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -730,4 +741,29 @@ fn page_text_pairs_each_character_with_its_box() {
         vec![72.0, 100.0, 5.5, 11.0, 0.0, 0.0, 0.0, 0.0, 90.0, 100.0, 6.0, 11.0]
     );
     assert_eq!((dto.page_number, dto.width), (3, 612.0));
+}
+
+#[test]
+fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
+    let note = |text: String, sticky: Option<bool>| {
+        AnnotationShape::Text(TextNote {
+            x: 1.0,
+            y: 1.0,
+            width: 120.0,
+            text,
+            color: "#fde047".into(),
+            font_size: 10.0,
+            sticky,
+        })
+    };
+    let long = "a".repeat(MAX_TEXT_CHARS + 1);
+    assert!(note(long.clone(), None).validate().is_err());
+    note(long, Some(true)).validate().unwrap();
+    assert!(note("a".repeat(MAX_STICKY_CHARS + 1), Some(true))
+        .validate()
+        .is_err());
+    assert!(note("Marked false".into(), Some(false)).validate().is_err());
+    // A plain note stores no marker, so builds before sticky notes still read it.
+    let plain = note("Plain".into(), None).payload_json().unwrap();
+    assert!(!plain.contains("sticky"), "{plain}");
 }

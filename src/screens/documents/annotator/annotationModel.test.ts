@@ -6,7 +6,9 @@ import {
   distanceToShape,
   estimateTextHeight,
   isDeliberateShape,
+  handlesFor,
   isStorable,
+  MAX_STICKY_CHARS,
   MAX_STROKE_POINTS,
   MAX_TEXT_CHARS,
   MIN_TEXT_WIDTH,
@@ -175,6 +177,17 @@ describe("stored shapes", () => {
     const description = describeAnnotation(long);
     expect(description.startsWith("Text note on page 1: Remember the heart")).toBe(true);
     expect(description.endsWith("…")).toBe(true);
+  });
+
+  it("keeps sticky notes a fixed size and lets them hold long text", () => {
+    const sticky: TextShape = { ...note, width: 120, fontSize: 10, color: "#fde047", sticky: true, text: "x".repeat(5_000) };
+    expect(isStorable(sticky)).toBe(true);
+    expect(isStorable({ ...sticky, text: "x".repeat(MAX_STICKY_CHARS + 1) })).toBe(false);
+    expect(isStorable({ ...sticky, sticky: false } as unknown as TextShape)).toBe(false);
+    expect(estimateTextHeight(sticky)).toBe(72);
+    expect(handlesFor(sticky, 72)).toEqual([]);
+    expect(describeAnnotation(annotation("sticky", { ...sticky, text: "Ask in office hours" }, 1)))
+      .toBe("Sticky note on page 1: Ask in office hours");
   });
 
   it("estimates a note's height from its lines before it is laid out", () => {
