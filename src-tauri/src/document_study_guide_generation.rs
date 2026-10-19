@@ -286,7 +286,10 @@ pub(crate) async fn execute_study_guide_generation(
                 "ai.document.study_guide",
                 "study_guide_editorial_skipped",
                 "Published the guide in plan order after the editorial pass failed twice.",
-                serde_json::json!({"document":execution.document_id,"code":error.code}),
+                // Only the editorial checks' own messages are logged: they are
+                // fixed text naming the failed check, never learner material.
+                serde_json::json!({"document":execution.document_id,"code":error.code,
+                    "check":(error.code == "study_guide_editorial_invalid").then_some(&error.message)}),
             );
             Ok((plan_overview(execution.plan), None))
         }

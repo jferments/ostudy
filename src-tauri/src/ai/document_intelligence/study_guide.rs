@@ -111,16 +111,26 @@ pub(crate) async fn complete_study_guide_section_coverage(
         let system = coverage::system_prompt();
         let user = coverage::user_prompt(document_title, topic, &section.content, &plan)?;
         let schema = coverage::schema(&section.content, &plan);
-        let request = JsonTaskRequest {
-            system_prompt: &system,
-            user_text: &user,
-            schema: &schema,
-            max_tokens: task.completion_token_ceiling(coverage::visible_tokens(&plan)),
-            images: &[],
+        let [first, retry] = coverage::visible_tokens(&plan);
+        let (section, plan) = (&section, &plan);
+        let attempt = |visible_tokens| {
+            let request = JsonTaskRequest {
+                system_prompt: &system,
+                user_text: &user,
+                schema: &schema,
+                max_tokens: task.completion_token_ceiling(visible_tokens),
+                images: &[],
+            };
+            async move {
+                ensure_context_budget(task, &request)?;
+                let value = request_json(runtime, task, request).await?;
+                coverage::admit(section, knowledge, plan, value)
+            }
         };
-        ensure_context_budget(task, &request)?;
-        let value = request_json(runtime, task, request).await?;
-        coverage::admit(&section, knowledge, &plan, value)
+        match attempt(first).await {
+            Err(error) if coverage::retryable(&error) => attempt(retry).await,
+            other => other,
+        }
     }
     .await;
     match outcome {

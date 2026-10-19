@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::ai::document_intelligence::is_output_failure;
 use crate::knowledge::evidence::Importance;
 
 /// New explanations one follow-up may add; related units share one.
@@ -16,6 +17,7 @@ const MAX_MISSING_UNITS: usize = 24;
 /// The section's link bound (`knowledge.select(.., 64)`).
 const MAX_SECTION_SUPPORT: usize = 64;
 const END_OF_SECTION: &str = "";
+const MAX_VISIBLE_TOKENS: usize = 4096;
 
 pub(super) struct CoveragePlan {
     pub(super) missing: KnowledgeCatalog,
@@ -133,9 +135,20 @@ pub(super) fn schema(section: &StudyGuideSectionContent, plan: &CoveragePlan) ->
                 "items":{"type":"string","enum":(0..plan.missing.units.len()).map(protocol::alias).collect::<Vec<_>>()}}}})
 }
 
-/// Output budget for `room` short explanations and their links.
-pub(super) fn visible_tokens(plan: &CoveragePlan) -> usize {
-    (512 + 450 * plan.room).min(4096)
+/// Output budgets for the follow-up and its one retry: enough for `room` short
+/// explanations and their links, then the whole ceiling. Dense table rows can
+/// run past the first budget, and losing the follow-up loses those facts.
+pub(super) fn visible_tokens(plan: &CoveragePlan) -> [usize; 2] {
+    [
+        (512 + 450 * plan.room).min(MAX_VISIBLE_TOKENS),
+        MAX_VISIBLE_TOKENS,
+    ]
+}
+
+/// A cut-off or malformed answer is worth asking for once more; a context
+/// budget failure is not, since the retry sends the same input.
+pub(super) fn retryable(error: &CommandError) -> bool {
+    is_output_failure(error) && error.code != "ai_document_context_budget"
 }
 
 #[derive(serde::Deserialize)]
@@ -368,5 +381,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!((empty.added_explanations, empty.added_links), (0, 0));
+    }
+
+    #[test]
+    fn a_cut_off_follow_up_is_retried_once_with_the_whole_budget() {
+        let knowledge = catalog();
+        let plan = plan(&section(&knowledge), &knowledge).unwrap();
+        let [first, retry] = visible_tokens(&plan);
+        assert!(first < retry);
+        assert_eq!(retry, MAX_VISIBLE_TOKENS);
+        assert!(retryable(&CommandError::new(
+            "ai_document_output_truncated",
+            "cut off"
+        )));
+        assert!(retryable(&output_error("malformed")));
+        assert!(!retryable(&CommandError::new(
+            "ai_document_context_budget",
+            "too large"
+        )));
+        assert!(!retryable(&CommandError::new(
+            "ai_request_canceled",
+            "stop"
+        )));
     }
 }
