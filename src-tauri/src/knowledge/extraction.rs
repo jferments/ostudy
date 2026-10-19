@@ -750,7 +750,7 @@ pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usiz
     }
     result
 }
-fn has_substantive_text(source: &SourceRecord) -> bool {
+pub(crate) fn has_substantive_text(source: &SourceRecord) -> bool {
     !source.text.contains("has no extractable structured text")
         && source.text.lines().any(|line| {
             let line = line.trim();

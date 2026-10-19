@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use super::*;
+use crate::ai::document_intelligence::is_output_failure;
 use crate::knowledge::evidence::Importance;
 
 /// New explanations one follow-up may add; related units share one.
@@ -16,6 +17,7 @@ const MAX_MISSING_UNITS: usize = 24;
 /// The section's link bound (`knowledge.select(.., 64)`).
 const MAX_SECTION_SUPPORT: usize = 64;
 const END_OF_SECTION: &str = "";
+const MAX_VISIBLE_TOKENS: usize = 4096;
 
 pub(super) struct CoveragePlan {
     pub(super) missing: KnowledgeCatalog,
@@ -91,7 +93,7 @@ pub(super) fn system_prompt() -> String {
 
 For each listed fact the section does not already teach, write an explanation in the section's style: a short heading that names one idea, and a body of one paragraph that teaches the subject itself (its mechanism, causes, consequences and qualifications), not the document or its tables. Teach closely related facts together in one explanation. Never repeat or rephrase what the section already says, and skip facts it already teaches in other words. Teach only what the evidence supports; preserve qualifications, numerical signs, units, exceptions and uncertainty. Background needed to connect two supported ideas may appear as one short clause.
 
-placeAfter is the heading of the existing explanation the new one follows in reading order, or \"\" to place it after the last one. knowledgeUnitIds lists every catalog unit that your explanations teach or that the section already teaches. When nothing is missing, return [] for both. Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}."
+placeAfter is the heading of the existing explanation the new one follows in reading order, or \"\" to place it after the last one. Each explanation's knowledgeUnitIds lists the catalog units that explanation itself teaches. When nothing is missing, return []. Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}."
     )
 }
 
@@ -122,20 +124,31 @@ pub(super) fn user_prompt(
 pub(super) fn schema(section: &StudyGuideSectionContent, plan: &CoveragePlan) -> Value {
     let mut places = headings(section);
     places.push(END_OF_SECTION.to_string());
-    json!({"type":"object","additionalProperties":false,"required":["explanations","knowledgeUnitIds"],
+    json!({"type":"object","additionalProperties":false,"required":["explanations"],
         "properties":{
             "explanations":{"type":"array","maxItems":plan.room,"items":{"type":"object","additionalProperties":false,
-                "required":["heading","body","placeAfter"],"properties":{
+                "required":["heading","body","placeAfter","knowledgeUnitIds"],"properties":{
                     "heading":{"type":"string","minLength":1,"maxLength":MAX_EXPLANATION_HEADING_CHARS},
                     "body":{"type":"string","minLength":1,"maxLength":MAX_EXPLANATION_BODY_CHARS},
-                    "placeAfter":{"type":"string","enum":places}}}},
-            "knowledgeUnitIds":{"type":"array","maxItems":plan.missing.units.len(),"uniqueItems":true,
-                "items":{"type":"string","enum":(0..plan.missing.units.len()).map(protocol::alias).collect::<Vec<_>>()}}}})
+                    "placeAfter":{"type":"string","enum":places},
+                    "knowledgeUnitIds":{"type":"array","minItems":1,"maxItems":plan.missing.units.len(),"uniqueItems":true,
+                        "items":{"type":"string","enum":(0..plan.missing.units.len()).map(protocol::alias).collect::<Vec<_>>()}}}}}}})
 }
 
-/// Output budget for `room` short explanations and their links.
-pub(super) fn visible_tokens(plan: &CoveragePlan) -> usize {
-    (512 + 450 * plan.room).min(4096)
+/// Output budgets for the follow-up and its one retry: enough for `room` short
+/// explanations and their links, then the whole ceiling. Dense table rows can
+/// run past the first budget, and losing the follow-up loses those facts.
+pub(super) fn visible_tokens(plan: &CoveragePlan) -> [usize; 2] {
+    [
+        (512 + 450 * plan.room).min(MAX_VISIBLE_TOKENS),
+        MAX_VISIBLE_TOKENS,
+    ]
+}
+
+/// A cut-off or malformed answer is worth asking for once more; a context
+/// budget failure is not, since the retry sends the same input.
+pub(super) fn retryable(error: &CommandError) -> bool {
+    is_output_failure(error) && error.code != "ai_document_context_budget"
 }
 
 #[derive(serde::Deserialize)]
@@ -145,6 +158,8 @@ struct Addition {
     body: String,
     #[serde(default)]
     place_after: String,
+    #[serde(default)]
+    knowledge_unit_ids: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -152,8 +167,6 @@ struct Addition {
 struct Response {
     #[serde(default)]
     explanations: Vec<Addition>,
-    #[serde(default)]
-    knowledge_unit_ids: Vec<String>,
 }
 
 pub(super) struct Admitted {
@@ -163,8 +176,10 @@ pub(super) struct Admitted {
 }
 
 /// Insert the new explanations where the model placed them and add the links.
-/// An explanation that only restates the section is left out. The result passes
-/// the same native checks as a freshly written section.
+/// An explanation that only restates the section is left out, and so are its
+/// links: a unit is linked only through an explanation that teaches it, so a
+/// follow-up cannot mark facts taught by naming them. The result passes the
+/// same native checks as a freshly written section.
 pub(super) fn admit(
     section: &GroundedStudyGuideSection,
     knowledge: &KnowledgeCatalog,
@@ -173,16 +188,18 @@ pub(super) fn admit(
 ) -> Result<Admitted, CommandError> {
     let response: Response = serde_json::from_value(value)
         .map_err(|_| output_error("The coverage follow-up does not match its contract."))?;
-    let new_ids = protocol::resolve(&response.knowledge_unit_ids, &plan.missing)?;
+    let mut new_ids = Vec::new();
     let mut content = section.content.clone();
     // Parallel to `content.explanations`: true for an inserted explanation.
     let mut inserted = vec![false; content.explanations.len()];
     for addition in response.explanations.into_iter().take(plan.room) {
         let heading = addition.heading.trim();
         let body = addition.body.trim();
+        let ids = protocol::resolve(&addition.knowledge_unit_ids, &plan.missing)?;
         if heading.is_empty() || body.is_empty() || super::dedupe::restates(&content, body) {
             continue;
         }
+        new_ids.extend(ids);
         let mut at = content
             .explanations
             .iter()
@@ -290,8 +307,8 @@ mod tests {
             ]
         );
         assert_eq!(plan.room, MAX_ADDED_EXPLANATIONS);
-        let ids = &schema(&section(&knowledge).content, &plan)["properties"]["knowledgeUnitIds"]
-            ["items"]["enum"];
+        let ids = &schema(&section(&knowledge).content, &plan)["properties"]["explanations"]
+            ["items"]["properties"]["knowledgeUnitIds"]["items"]["enum"];
         assert_eq!(ids, &json!(["K0", "K1"]));
     }
 
@@ -318,12 +335,11 @@ mod tests {
         let plan = plan(&section, &knowledge).unwrap();
         let admitted = admit(&section, &knowledge, &plan, json!({
             "explanations": [
-                {"heading": "Atrioventricular delay", "body": "The atrioventricular node delays the impulse by about a tenth of a second, so the atria finish emptying before the ventricles contract.", "placeAfter": "The sinoatrial node"},
-                {"heading": "Bundle branches", "body": "Bundle branches carry the impulse down the septum to the Purkinje fibers, which spread it through the ventricular walls.", "placeAfter": "The sinoatrial node"},
-                {"heading": "Pacemaker again", "body": "The sinoatrial node depolarizes spontaneously and sets the resting heart rate near 75 beats per minute.", "placeAfter": ""},
-                {"heading": "Contraction strength", "body": "Stretching the ventricular wall before contraction increases the force of the following beat over a physiological range.", "placeAfter": ""}
-            ],
-            "knowledgeUnitIds": ["K0", "K1"]
+                {"heading": "Atrioventricular delay", "body": "The atrioventricular node delays the impulse by about a tenth of a second, so the atria finish emptying before the ventricles contract.", "placeAfter": "The sinoatrial node", "knowledgeUnitIds": ["K0"]},
+                {"heading": "Bundle branches", "body": "Bundle branches carry the impulse down the septum to the Purkinje fibers, which spread it through the ventricular walls.", "placeAfter": "The sinoatrial node", "knowledgeUnitIds": ["K0"]},
+                {"heading": "Pacemaker again", "body": "The sinoatrial node depolarizes spontaneously and sets the resting heart rate near 75 beats per minute.", "placeAfter": "", "knowledgeUnitIds": ["K1"]},
+                {"heading": "Contraction strength", "body": "Stretching the ventricular wall before contraction increases the force of the following beat over a physiological range.", "placeAfter": "", "knowledgeUnitIds": ["K0"]}
+            ]
         })).unwrap();
         let headings = admitted
             .section
@@ -342,8 +358,9 @@ mod tests {
                 "Contraction strength"
             ]
         );
-        assert_eq!((admitted.added_explanations, admitted.added_links), (3, 2));
-        assert_eq!(admitted.section.knowledge_support.len(), 3);
+        // K1 came only with the restatement, which was dropped.
+        assert_eq!((admitted.added_explanations, admitted.added_links), (3, 1));
+        assert_eq!(admitted.section.knowledge_support.len(), 2);
         assert!(knowledge.validates(&admitted.section.knowledge_support, 64));
         assert_eq!(admitted.section.content.overview, section.content.overview);
     }
@@ -357,16 +374,32 @@ mod tests {
             &section,
             &knowledge,
             &plan,
-            json!({"explanations": [], "knowledgeUnitIds": ["K7"]})
+            json!({"explanations": [{"heading": "Extra", "body": "A new fact about the conduction system that the section has not mentioned.", "placeAfter": "", "knowledgeUnitIds": ["K7"]}]})
         )
         .is_err());
-        let empty = admit(
-            &section,
-            &knowledge,
-            &plan,
-            json!({"explanations": [], "knowledgeUnitIds": []}),
-        )
-        .unwrap();
+        let empty = admit(&section, &knowledge, &plan, json!({"explanations": []})).unwrap();
         assert_eq!((empty.added_explanations, empty.added_links), (0, 0));
+    }
+
+    #[test]
+    fn a_cut_off_follow_up_is_retried_once_with_the_whole_budget() {
+        let knowledge = catalog();
+        let plan = plan(&section(&knowledge), &knowledge).unwrap();
+        let [first, retry] = visible_tokens(&plan);
+        assert!(first < retry);
+        assert_eq!(retry, MAX_VISIBLE_TOKENS);
+        assert!(retryable(&CommandError::new(
+            "ai_document_output_truncated",
+            "cut off"
+        )));
+        assert!(retryable(&output_error("malformed")));
+        assert!(!retryable(&CommandError::new(
+            "ai_document_context_budget",
+            "too large"
+        )));
+        assert!(!retryable(&CommandError::new(
+            "ai_request_canceled",
+            "stop"
+        )));
     }
 }

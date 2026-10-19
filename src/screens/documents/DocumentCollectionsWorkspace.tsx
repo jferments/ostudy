@@ -46,6 +46,7 @@ export function DocumentCollectionsWorkspace({
   onOpenGuide,
   onOpenDocument,
   onAnnotateDocument,
+  onRenameDocument,
   onUploadInto,
   onContainedDocumentIdsChange,
 }: {
@@ -58,6 +59,7 @@ export function DocumentCollectionsWorkspace({
   onOpenGuide?: (collectionId: string, title: string) => void;
   onOpenDocument?: (document: DocumentSummary) => void;
   onAnnotateDocument?: (document: DocumentSummary) => void;
+  onRenameDocument?: (document: DocumentSummary) => void;
   /** Uploads a new document straight into the collection. */
   onUploadInto?: (collectionId: string) => void;
   onContainedDocumentIdsChange?: (documentIds: string[]) => void;
@@ -155,6 +157,7 @@ export function DocumentCollectionsWorkspace({
                 onOpenGuide={onOpenGuide}
                 onOpenDocument={onOpenDocument}
                 onAnnotateDocument={onAnnotateDocument}
+                onRenameDocument={onRenameDocument}
                 onRename={() => open({ kind: "rename", folder, name: folder.name })}
                 onDelete={() => void deleteCurrent(folder)}
                 onAdd={() => open({ kind: "add-documents", folderId: folder.id, documentIds: [] })}
@@ -204,6 +207,7 @@ function CollectionCard({
   onOpenGuide,
   onOpenDocument,
   onAnnotateDocument,
+  onRenameDocument,
   onRename,
   onDelete,
   onAdd,
@@ -221,6 +225,7 @@ function CollectionCard({
   onOpenGuide?: (collectionId: string, title: string) => void;
   onOpenDocument?: (document: DocumentSummary) => void;
   onAnnotateDocument?: (document: DocumentSummary) => void;
+  onRenameDocument?: (document: DocumentSummary) => void;
   onRename: () => void;
   onDelete: () => void;
   onAdd: () => void;
@@ -276,6 +281,7 @@ function CollectionCard({
                     disabled={mutationBusy}
                     onOpen={onOpenDocument}
                     onAnnotate={onAnnotateDocument}
+                    onRenameDocument={onRenameDocument}
                     onRanges={onRanges}
                     onMove={onMove}
                     onRemove={onRemove}
@@ -313,7 +319,7 @@ function CollectionCard({
   );
 }
 
-function CollectionMember({ membership, organization, document, canMove, disabled, onOpen, onAnnotate, onRanges, onMove, onRemove }: {
+function CollectionMember({ membership, organization, document, canMove, disabled, onOpen, onAnnotate, onRenameDocument, onRanges, onMove, onRemove }: {
   membership: DocumentCollectionMembership;
   organization: DocumentCollectionOrganization;
   document: DocumentSummary | undefined;
@@ -321,6 +327,7 @@ function CollectionMember({ membership, organization, document, canMove, disable
   disabled: boolean;
   onOpen?: (document: DocumentSummary) => void;
   onAnnotate?: (document: DocumentSummary) => void;
+  onRenameDocument?: (document: DocumentSummary) => void;
   onRanges: (membership: DocumentCollectionMembership) => void;
   onMove: (membership: DocumentCollectionMembership) => void;
   onRemove: (membership: DocumentCollectionMembership) => void;
@@ -330,6 +337,9 @@ function CollectionMember({ membership, organization, document, canMove, disable
   if (document && onOpen) items.push({ id: "open", label: "Open", onSelect: () => onOpen(document) });
   if (document && onAnnotate && canAnnotateDocument(document)) {
     items.push({ id: "annotate", label: "Annotate", onSelect: () => onAnnotate(document) });
+  }
+  if (document && onRenameDocument) {
+    items.push({ id: "rename", label: "Rename…", onSelect: () => onRenameDocument(document) });
   }
   items.push({ id: "range", label: "Reading range…", onSelect: () => onRanges(membership), disabled: disabled || !document });
   if (canMove) items.push({ id: "move", label: "Move to another collection…", onSelect: () => onMove(membership), disabled });
