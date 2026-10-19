@@ -642,6 +642,7 @@ pub(crate) fn page_characters(
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
+        let _pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -1233,10 +1234,13 @@ mod tests {
         let runtime = shared_test_runtime();
         let page = page_characters(runtime, &source, 1).unwrap();
         assert!(page.characters.len() > 10);
-        let document = runtime.pdfium.load_pdf_from_file(&source, None).unwrap();
-        let render = image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
-            .unwrap()
-            .to_luma8();
+        let render = {
+            let _pdfium = runtime.exclusive();
+            let document = runtime.pdfium.load_pdf_from_file(&source, None).unwrap();
+            image::load_from_memory(&render_page_at_dpi(&document, 0, 144.0).unwrap())
+                .unwrap()
+                .to_luma8()
+        };
         let scale = f64::from(render.width()) / page.width;
         // Every letter's box holds some ink in the page render.
         let mut letters = 0;
