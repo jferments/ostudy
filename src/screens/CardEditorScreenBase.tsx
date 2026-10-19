@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { TagInput } from "../components/TagInput";
 import { CardEditorController } from "../controllers/cardEditorController";
@@ -34,13 +34,14 @@ import {
   type TemplateValueInput,
 } from "../ipc/templates";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
+import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
-import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
+import { PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
+import { IconButton } from "../ui/icons/IconButton";
 import { FormField } from "../ui/primitives/FormField";
 import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
-import { Surface } from "../ui/primitives/Surface";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { BasicCardFields } from "./card-editor/BasicCardFields";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
@@ -94,6 +95,12 @@ interface CardEditorScreenProps {
   ) => void | Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
   onMoveCopy?: () => void;
+  /** More actions for a saved card, such as Suspend, beside Move / copy in its menu. */
+  moreActions?: OverflowMenuItem[];
+  /** Read-only facts below the fields, such as the card's schedule. */
+  details?: ReactNode;
+  /** Close with an × at the end of the header instead of a Cancel button, for an editor shown as a panel. */
+  closeButton?: boolean;
 }
 
 export function CardEditorScreen({
@@ -106,6 +113,9 @@ export function CardEditorScreen({
   onTemplateGenerated,
   onDirtyChange,
   onMoveCopy,
+  moreActions = [],
+  details,
+  closeButton = false,
 }: CardEditorScreenProps) {
   const existing = card !== null && card.noteId !== "";
   const questionNote = card && isQuestionNote(card) ? card : null;
@@ -771,6 +781,13 @@ export function CardEditorScreen({
         ? "Loading template…"
         : "Save card";
 
+  const cardMenu: OverflowMenuItem[] = [
+    ...(existing && recallNote
+      ? [{ id: "move-copy", label: dirty ? "Move / copy (save first)" : "Move / copy", disabled: dirty, onSelect: openMoveCopy }]
+      : []),
+    ...moreActions,
+  ];
+
   return (
     <>
     {previewOpen ? <CardPreviewWorkspace title={selectedDeck.name} onClose={preview.close}>
@@ -782,20 +799,28 @@ export function CardEditorScreen({
     </CardPreviewWorkspace> : null}
     <div ref={preview.editorRef} hidden={previewOpen} inert={previewOpen} onBlurCapture={preview.rememberField}>
     <PageScaffold aria-busy={isSaving || isLoadingTemplate}>
-      <PageHeader eyebrow={deck.name} title={title} actions={<>
-        <Button variant="back" disabled={isSaving} onClick={() => void cancel()}>← {deck.name}</Button>
-        {existing && recallNote ? <Button variant="secondary" disabled={isSaving || dirty}
-          title={dirty ? "Save or discard edits before moving this card" : undefined} onClick={openMoveCopy}>Move / copy</Button> : null}
-        {canPreview ? <Button variant="secondary" disabled={isSaving || isPreparingPreview}
-          onClick={() => void openCardPreview()}>Preview card</Button> : null}
-        <Button variant="secondary" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
-        {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
-          {selectedCustomTemplate ? "Generate + another" : "Save + another"}
-        </Button> : null}
-        <Button variant="primary" disabled={!canSave} onClick={() => void save(false, false)}>
-          {isSaving ? activeQuestionDraft ? "Saving question…" : selectedCustomTemplate ? "Generating…" : "Saving…" : saveLabel}
-        </Button>
-      </>} />
+      <header
+        data-slot="card-editor-header"
+        className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:mb-4 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-4 tw:gap-y-2 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:px-4 tw:py-2.5 tw:shadow-sm"
+      >
+        <div className="tw:min-w-0 tw:flex-[1_1_10rem]">
+          <span className="tw:block tw:truncate tw:text-caption tw:text-muted-foreground">{deck.name}</span>
+          <h1 className="tw:m-0 tw:text-title-small tw:font-semibold">{title}</h1>
+        </div>
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2">
+          {closeButton ? null : <Button variant="text" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>}
+          {canPreview ? <Button variant="secondary" disabled={isSaving || isPreparingPreview}
+            onClick={() => void openCardPreview()}>Preview card</Button> : null}
+          {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
+            {selectedCustomTemplate ? "Generate + another" : "Save + another"}
+          </Button> : null}
+          <Button variant="primary" disabled={!canSave} onClick={() => void save(false, false)}>
+            {isSaving ? activeQuestionDraft ? "Saving question…" : selectedCustomTemplate ? "Generating…" : "Saving…" : saveLabel}
+          </Button>
+          {cardMenu.length > 0 ? <OverflowMenu label="Card actions" items={cardMenu} disabled={isSaving} /> : null}
+          {closeButton ? <IconButton icon="close" label="Close editor" disabled={isSaving} onClick={() => void cancel()} /> : null}
+        </div>
+      </header>
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {duplicateMatches.length > 0 ? (
         <InlineNotice kind="warning" title="This looks like an exact duplicate" className="tw:mb-5">
@@ -813,10 +838,8 @@ export function CardEditorScreen({
       ) : null}
       <div className={presentation["card-editor-layout"]}>
         <div className={presentation["card-editor-fields"]}>
-          <Surface className="tw:grid tw:gap-5 tw:p-5 tw:lg:grid-cols-2">
-            <FormField label="Card template" description={existing
-              ? "The question type is locked after saving so its schedule remains attached to the same study presentation."
-              : "Choose a recall card, an interactive question type, or a reusable bulk-entry template."}>
+          <div className="tw:grid tw:gap-4 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-4 tw:py-3 tw:sm:grid-cols-2">
+            <FormField label="Card template">
               <NativeSelect value={selectedTemplateKey} disabled={isSaving || existing} onChange={(event) => {
                 setSelectedTemplateKey(event.currentTarget.value);
                 preview.close();
@@ -842,7 +865,7 @@ export function CardEditorScreen({
                 ))}</optgroup> : null}
               </NativeSelect>
             </FormField>
-            <FormField label="Deck" description="A card belongs to one active deck and can have any number of tags.">
+            <FormField label="Deck">
               <NativeSelect value={selectedDeckId} disabled={isSaving} onChange={(event) => {
                 setSelectedDeckId(event.currentTarget.value);
                 markDirty();
@@ -850,7 +873,7 @@ export function CardEditorScreen({
                 {availableDecks.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
               </NativeSelect>
             </FormField>
-          </Surface>
+          </div>
           {isLoadingTemplate ? <InlineProgress>Loading template…</InlineProgress> : null}
           {activeQuestionDraft ? (
             <InteractiveQuestionEditor key={`${activeQuestionDraft.kind}-${editorGeneration}`} draft={activeQuestionDraft}
@@ -880,6 +903,7 @@ export function CardEditorScreen({
           )}
           <TagInput tags={tags} suggestions={tagSuggestions} disabled={isSaving}
             onChange={(nextTags) => { setTags(nextTags); markDirty(); }} />
+          {details}
         </div>
 
       </div>

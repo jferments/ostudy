@@ -11,33 +11,29 @@ import type { DeckSummary } from "../../../ipc/decks";
 import type { DocumentSummary } from "../../../ipc/documents";
 import type { Subject, SubjectLibrary } from "../../../ipc/subjects";
 
-/** The library-wide card lists the Workbench offers above the subjects. */
+/**
+ * The library-wide card lists. The tree offers only All cards; the others are
+ * kept so older launches still name a list, and read as the Show filter.
+ */
 export type WorkbenchView = "all" | "due" | "new" | "often_missed" | "suspended";
 
-/** What the card list shows: a library-wide view, a subject, one deck, or one tag. */
+/** What the card list shows: all cards, a subject, one deck, or one tag. */
 export type WorkbenchScope =
   | { kind: "view"; view: WorkbenchView }
   | { kind: "subject"; subjectId: string | null }
   | { kind: "deck"; deckId: string }
   | { kind: "tag"; tagId: string };
 
-/** The quick filters above the card list, inside the chosen scope. */
-export type CardFilter = "all" | "due" | "new" | "suspended";
+/** The Show filter above the card list, inside the chosen scope. */
+export type CardFilter = WorkbenchView;
 
 export const DEFAULT_SCOPE: WorkbenchScope = { kind: "view", view: "all" };
 
-export const VIEWS: ReadonlyArray<{ view: WorkbenchView; label: string; icon: "cards" | "calendar-check" | "sparkles" | "warning" | "stop" }> = [
-  { view: "all", label: "All cards", icon: "cards" },
-  { view: "due", label: "Due today", icon: "calendar-check" },
-  { view: "new", label: "New", icon: "sparkles" },
-  { view: "often_missed", label: "Often missed", icon: "warning" },
-  { view: "suspended", label: "Suspended", icon: "stop" },
-];
-
 export const CARD_FILTERS: ReadonlyArray<{ value: CardFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "due", label: "Due" },
+  { value: "all", label: "All cards" },
+  { value: "due", label: "Due today" },
   { value: "new", label: "New" },
+  { value: "often_missed", label: "Often missed" },
   { value: "suspended", label: "Suspended" },
 ];
 
@@ -84,17 +80,11 @@ const FILTERS: Readonly<Record<WorkbenchView, Filters>> = {
   suspended: { availabilityFilter: "all", statusFilter: "suspended", reviewedFilter: "all" },
 };
 
-const CARD_FILTER_VIEWS: Readonly<Record<CardFilter, WorkbenchView>> = {
-  all: "all",
-  due: "due",
-  new: "new",
-  suspended: "suspended",
-};
-
 /**
- * The card search for a scope. A library-wide view sets the filters itself;
- * elsewhere the quick filter does. Subject scopes list the subject's live
- * decks; a subject with no decks searches none, never the whole library.
+ * The card search for a scope and its Show filter. A library-wide view other
+ * than All cards (from an older launch) applies until another filter is
+ * chosen. Subject scopes list the subject's live decks; a subject with no
+ * decks searches none, never the whole library.
  */
 export function searchInputFor(
   scope: WorkbenchScope,
@@ -104,7 +94,7 @@ export function searchInputFor(
   library: WorkbenchLibrary,
   limit: number,
 ): CardSearchInput | null {
-  const view = scope.kind === "view" ? scope.view : CARD_FILTER_VIEWS[filter];
+  const view = filter === "all" && scope.kind === "view" ? scope.view : filter;
   let deckIds: string[] = [];
   let tagIds: string[] = [];
   if (scope.kind === "deck") deckIds = [scope.deckId];
@@ -200,7 +190,7 @@ export function archivedDecks(library: WorkbenchLibrary): DeckSummary[] {
 export function scopeTitle(scope: WorkbenchScope, library: WorkbenchLibrary, tagName: (tagId: string) => string | undefined): string {
   switch (scope.kind) {
     case "view":
-      return VIEWS.find((entry) => entry.view === scope.view)?.label ?? "All cards";
+      return CARD_FILTERS.find((entry) => entry.value === scope.view)?.label ?? "All cards";
     case "subject":
       return scope.subjectId === null
         ? "No subject"

@@ -124,11 +124,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   }
 
   return (
-    <PageScaffold role="region" aria-label="Documents">
+    <PageScaffold width="full" role="region" aria-label="Documents">
       <PageHeader
         title="Documents"
-        icon="document"
-        description="Turn your course materials into connected flashcards and study guides."
+        compact
         actions={
           <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
             <Button

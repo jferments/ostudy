@@ -2,7 +2,6 @@ import type { Asset } from "../../ipc/assets";
 import type { RichDocument } from "../../ipc/common";
 import { RichFieldList, type RichEditorField } from "../../editor/RichFieldList";
 import { Checkbox } from "../../ui/primitives/FormControls";
-import { Surface } from "../../ui/primitives/Surface";
 
 type BasicFieldId = "front" | "back";
 
@@ -38,16 +37,12 @@ export function BasicCardFields({
   return <>
     <RichFieldList fields={fields} assets={assets} assetDraftId={assetDraftId}
       disabled={disabled} onAssetImported={onAssetImported} onFieldChange={onFieldChange} />
-    <Surface className="tw:p-5">
-      <label className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-label">
-        <span>
-          <strong>Create reverse card</strong>
-          <small className="tw:mt-1 tw:block tw:text-muted-foreground">
-            Study both directions with separate schedules and review histories.
-          </small>
-        </span>
-        <Checkbox checked={reverseEnabled} disabled={disabled} onCheckedChange={onReverseChange} />
-      </label>
-    </Surface>
+    <label
+      title="Study both directions with separate schedules"
+      className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted tw:px-4 tw:text-label"
+    >
+      <Checkbox checked={reverseEnabled} disabled={disabled} onCheckedChange={onReverseChange} />
+      <span className="tw:font-medium">Create reverse card</span>
+    </label>
   </>;
 }

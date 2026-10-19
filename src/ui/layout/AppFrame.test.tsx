@@ -74,8 +74,8 @@ describe("application frame", () => {
     const bottom = view.container.querySelector('[data-slot="bottom-navigation"]');
     const header = view.container.querySelector('[data-slot="app-header"]');
     expect(bottom !== null).toBe(layout === "compact");
-    // Wider screens carry the navigation inside the header.
-    expect(header?.querySelector('[data-slot="header-navigation"]') !== null).toBe(layout !== "compact");
+    // Wider screens carry the navigation inside the header, drawn as a side rail.
+    expect(header?.querySelector('[data-slot="rail-navigation"]') !== null).toBe(layout !== "compact");
   });
 
   it("keeps the visible label as each destination's name and describes the badge", () => {
@@ -104,6 +104,18 @@ describe("application frame", () => {
     expect(header?.className).toContain("tw:fixed");
     expect(header?.className).toContain("tw:pt-(--safe-top)");
     expect(within(header as HTMLElement).getByText("Library")).toBeTruthy();
+  });
+
+  it("draws the side rail beside the main area on wider screens", () => {
+    const view = renderFrame(1000);
+    const frame = view.container.querySelector("[data-frame-layout]");
+    expect(frame?.className).toContain("tw:grid-cols-[auto_minmax(0,1fr)]");
+    const header = view.container.querySelector('[data-slot="app-header"]');
+    expect(header?.className).toContain("tw:bg-navigation");
+    expect(header?.className).toContain("tw:flex-col");
+    const home = screen.getByRole("button", { name: "Home" });
+    expect(home.className).toContain("tw:text-navigation-selected-foreground");
+    expect(home.className).toContain("tw:coarse:min-h-touch");
   });
 
   it("routes a selection through the item's callback", () => {
