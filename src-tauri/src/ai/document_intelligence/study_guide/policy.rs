@@ -65,7 +65,8 @@ impl WritingBudget {
             .clamp(2_000, 12_000);
         Self {
             target_chars,
-            overview_chars: target_chars.saturating_mul(3) / 5,
+            // The overview orients in a few sentences; explanations teach.
+            overview_chars: (target_chars / 8).clamp(400, 900),
         }
     }
 
@@ -87,7 +88,7 @@ impl WritingBudget {
 
     pub(super) fn instructions(self) -> String {
         format!(
-            "Source-aware writing target: roughly {} human-readable characters including all categories, with roughly {} in the narrative overview. These are flexible editorial targets, not validity limits. Allocate more space to mechanisms, qualifications, contrasts and necessary definitions when the evidence needs it; use explanatory subsections rather than forcing every idea into the overview. Do not pad a simple topic to a target or cut a condition to meet one. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance; never claim exhaustive coverage from a length target.",
+            "Source-aware writing target: at most roughly {} human-readable characters across all categories. The overview orients in roughly {} characters or fewer; the explanations carry the teaching. These are flexible editorial targets, not validity limits. Give more space to mechanisms, qualifications, contrasts and necessary definitions when the evidence needs it. A section that says each fact once is usually shorter than the target; do not pad a simple topic or cut a condition to meet one. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance; never claim exhaustive coverage from a length target.",
             self.target_chars, self.overview_chars
         )
     }

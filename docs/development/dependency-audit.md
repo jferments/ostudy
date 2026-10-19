@@ -85,7 +85,7 @@ copies into the distribution.
 - reqwest `0.13.4` with default features disabled and Rustls/JSON enabled
 - url `2.5.7`
 - base64 `0.22.1`
-- oxidize-pdf `4.2.2`, default features disabled, with `compression` and `semantic`
+- oxidize-pdf `5.5.0`, default features disabled, with `compression` and `semantic`
 - image `0.25.10` for PNG encoding of PDFium bitmaps on desktop
 - pdfium-render `0.9.3`, compiled against PDFium API build `7881`
 - sysinfo `0.39.6` for cross-platform available-memory observation used by document concurrency planning

@@ -3,8 +3,7 @@ import type { ShowToast } from "../components/Toast";
 import { getAiTaskDefaults, listAiProviderProfiles, type AiProviderProfileSummary } from "../ipc/aiProfiles";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
 import { HelpTrigger } from "../ui/help/HelpProvider";
-import { Icon } from "../ui/icons/Icon";
-import { Item, ItemActions, ItemContent, ItemMedia } from "../ui/primitives/Item";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { DocumentsDevelopmentStub } from "./DocumentsDevelopmentStub";
 import { DocumentsScreen } from "./DocumentsScreen";
 import { providerStyles as styles } from "./documents/presentation";
@@ -43,29 +42,19 @@ export function DocumentsSection({ refreshDecks, onStudyCollection, showToast }:
   }, [documentProcessingAvailable]);
 
   if (!documentProcessingAvailable) return <DocumentsDevelopmentStub />;
-  const modelLabel = isLoading ? "Loading…" : profile?.modelId || profile?.displayName || "Not configured";
-  const providerPanel = (
-    <Item as="section" variant="muted" size="sm" className={styles.providerPanel} aria-label="Current Flashcard Generation model">
-      <ItemMedia variant="icon" className={styles.icon} aria-hidden="true">
-        <Icon name="sparkles" size={18} />
-      </ItemMedia>
-      <ItemContent className={styles.providerCopy}>
-        <p className={styles.label}>Current Flashcard Generation model</p>
-        <strong>{modelLabel}</strong>
-        <small>{isLoading ? "Reading the current task default" : profile
-          ? "Used for document flashcards and study guides" : "Configure a provider before generating document learning artifacts"}</small>
-      </ItemContent>
-      <ItemActions className={styles.providerActions}>
-        <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
-      </ItemActions>
-    </Item>
-  );
+  // The model itself lives in Settings; the page only says when none is set up.
+  const providerNotice = !isLoading && !profile ? (
+    <InlineNotice kind="warning" className="tw:mb-5">
+      Set up an AI provider in Settings to make cards and guides from documents.
+      <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+    </InlineNotice>
+  ) : null;
   return <div className={styles.section} data-tour-anchor="documents.upload">
     <DocumentsScreen
       refreshDecks={refreshDecks}
       onStudyCollection={onStudyCollection}
       showToast={showToast}
-      headerSupplement={providerPanel}
+      headerSupplement={providerNotice}
     />
   </div>;
 }

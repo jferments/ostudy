@@ -4,7 +4,7 @@ The annotator lets you write, highlight, draw arrows and boxes, and type notes o
 
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** (the pen icon) beside a PDF. A PDF inside a collection has an **Annotate** button in its collection's source list. The button appears once the import has drawn the document's pages; other document formats cannot be annotated yet.
+Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
@@ -33,7 +33,7 @@ Choose **Text**, tap or click the page, and type. Escape, Ctrl+Enter, or a tap e
 
 The pages open at automatic zoom: fitted to the width of the window, but no larger than 125%, the size at which the page images look sharpest. Zoom with two fingers, Ctrl and the mouse wheel or a trackpad pinch, Ctrl+= and Ctrl+-, or the zoom buttons; Ctrl+0 or the percentage button returns to automatic zoom. Two fingers scroll, and so does a finger that starts beside the pages. The middle mouse button drags the view.
 
-The page images are drawn at 120 dpi when a PDF is imported, so pages look softer when zoomed in past 125%. Annotations stay sharp at any zoom.
+The page images are drawn at 120 dpi when a PDF is imported. When you zoom in past them, or on a high-density screen such as a tablet's, oStudy draws the part of the page you are looking at again from the PDF at the size it is shown, a moment after scrolling or zooming stops; until then the page shows its softer image. Nothing extra is saved. Annotations stay sharp at any zoom.
 
 ## Pens, fingers and phones
 

@@ -13,8 +13,9 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_document_study_guide_editorial, generate_study_guide_topic_section,
-            AuthoringEvidence, DocumentTaskContext, SourcePageImage,
+            complete_study_guide_section_coverage, generate_document_study_guide_editorial,
+            generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
+            SourcePageImage,
         },
         AiRuntimeState,
     },
@@ -26,8 +27,8 @@ use crate::{
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
         publish_document_study_guide_with_editorial, DocumentStudyGuide, GroundedStudyGuideSection,
-        StudyGuideSectionContent, StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION,
-        STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
+        StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
+        STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
     knowledge::{
@@ -39,6 +40,8 @@ use crate::{
     util::unix_time_millis,
 };
 
+mod gaps;
+mod ownership;
 mod partition_checkpoints;
 mod preservation;
 
@@ -91,7 +94,7 @@ pub(crate) async fn execute_study_guide_generation(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        authoring::prepare_document(authoring::DocumentPreparation {
+        let gaps = authoring::prepare_document(authoring::DocumentPreparation {
             database: execution.database,
             paths: execution.paths,
             runtime: execution.runtime,
@@ -116,9 +119,11 @@ pub(crate) async fn execute_study_guide_generation(
                     execution.document_id,
                     &indices,
                     execution.task,
+                    &gaps,
                 )
             })
             .collect::<Result<Vec<_>, CommandError>>()
+            .map(|catalogs| ownership::assign(execution.plan, catalogs))
     }
     .await;
     let catalogs = match knowledge {
@@ -258,15 +263,35 @@ pub(crate) async fn execute_study_guide_generation(
     let cancellation = crate::task_cancellation::current_signal()
         .unwrap_or_else(crate::task_cancellation::CancellationSignal::new);
     execution.task.ensure_current(execution.database)?;
-    let editorial = generate_document_study_guide_editorial(
-        execution.runtime,
-        execution.task,
-        execution.document_title,
-        execution.plan,
-        &section_contents,
-        &cancellation,
-    )
-    .await;
+    let request_editorial = || {
+        generate_document_study_guide_editorial(
+            execution.runtime,
+            execution.task,
+            execution.document_title,
+            execution.plan,
+            &section_contents,
+            &cancellation,
+        )
+    };
+    let mut editorial = request_editorial().await;
+    if editorial.as_ref().is_err_and(editorial_falls_back) {
+        editorial = request_editorial().await;
+    }
+    // Chapters and an introduction make the guide easier to read, but the
+    // sections are already validated. Without them the guide still publishes in
+    // learning-plan order with the plan's own summary.
+    let editorial = match editorial {
+        Err(error) if editorial_falls_back(&error) => {
+            crate::logging::warn_target(
+                "ai.document.study_guide",
+                "study_guide_editorial_skipped",
+                "Published the guide in plan order after the editorial pass failed twice.",
+                serde_json::json!({"document":execution.document_id,"code":error.code}),
+            );
+            Ok((plan_overview(execution.plan), None))
+        }
+        other => other.map(|(overview, editorial)| (overview, Some(editorial))),
+    };
     let (overview, editorial) = match editorial {
         Ok(value) => {
             execution.task.ensure_current(execution.database)?;
@@ -315,7 +340,7 @@ pub(crate) async fn execute_study_guide_generation(
         Some(execution.job_id),
         overview,
         drafts,
-        Some(editorial),
+        editorial,
     ) {
         Ok(guide) => guide,
         Err(error) => {
@@ -358,6 +383,19 @@ pub(crate) async fn execute_study_guide_generation(
     Ok(guide)
 }
 
+fn editorial_falls_back(error: &CommandError) -> bool {
+    error.code != "ai_request_canceled"
+        && (gaps::recoverable(error) || error.code == "study_guide_editorial_invalid")
+}
+
+fn plan_overview(plan: &DocumentLearningPlan) -> StudyGuideOverview {
+    StudyGuideOverview {
+        summary: plan.summary.clone(),
+        learning_objectives: plan.learning_objectives.clone(),
+        key_concepts: plan.key_concepts.clone(),
+    }
+}
+
 async fn generate_missing_topics(
     execution: &StudyGuideGenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
@@ -368,6 +406,7 @@ async fn generate_missing_topics(
     cached: usize,
 ) -> Result<(), CommandError> {
     let mut completed = cached;
+    let mut gaps = 0usize;
     let mut first_failure: Option<(usize, CommandError)> = None;
     run_bounded_provider_queue(
         missing.len(),
@@ -378,15 +417,23 @@ async fn generate_missing_topics(
         },
         |(index, result)| {
             let control =
-                consume_completed_topic(index, result, &mut first_failure, |index, section| {
-                    let topic = &execution.plan.topics[index];
-                    persist_checkpoint_best_effort(
-                        execution.database,
-                        execution.document_id,
-                        contract_key,
-                        topic,
-                        &section,
-                    );
+                consume_completed_topic(index, result, &mut first_failure, |index, authored| {
+                    let section = match authored {
+                        AuthoredTopic::Written(section) => {
+                            persist_checkpoint_best_effort(
+                                execution.database,
+                                execution.document_id,
+                                contract_key,
+                                &execution.plan.topics[index],
+                                &section,
+                            );
+                            section
+                        }
+                        AuthoredTopic::Gap(section) => {
+                            gaps = gaps.saturating_add(1);
+                            section
+                        }
+                    };
                     resolved[index] = Some(section);
                     completed = completed.saturating_add(1);
                     let (usage, _) = execution.task.usage_summary();
@@ -405,7 +452,27 @@ async fn generate_missing_topics(
         },
     )
     .await?;
-    first_failure.map_or(Ok(()), |(_, error)| Err(error))
+    if let Some((_, error)) = first_failure {
+        return Err(error);
+    }
+    // A guide made only of gaps says nothing the knowledge list does not, and
+    // usually means the model cannot do this task at all.
+    if gaps > 0 && gaps == execution.plan.topics.len() {
+        return Err(CommandError::new(
+            "ai_document_output_invalid",
+            "The AI model could not write any section of this study guide. Try another model.",
+        ));
+    }
+    if gaps > 0 {
+        crate::logging::warn_target(
+            "ai.document.study_guide",
+            "study_guide_published_with_gaps",
+            "Some topics are published as marked gaps; generating the guide again retries them.",
+            serde_json::json!({"document":execution.document_id,"gaps":gaps,
+                "topics":execution.plan.topics.len()}),
+        );
+    }
+    Ok(())
 }
 
 /// Consume every completed provider request, including siblings that finish
@@ -432,130 +499,227 @@ fn consume_completed_topic<T>(
     }
 }
 
+/// One topic's outcome. A gap is a native section listing the topic's
+/// extracted facts; it is published but never checkpointed.
+enum AuthoredTopic {
+    Written(GroundedStudyGuideSection),
+    Gap(GroundedStudyGuideSection),
+}
+
+#[derive(Clone, Copy)]
+enum TopicSplit {
+    /// The partitions the context budget admits.
+    Planned,
+    /// Each half of the topic's knowledge on its own, after a failed output.
+    Halves,
+}
+
 async fn generate_slot(
     execution: &StudyGuideGenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
     index: usize,
-) -> Result<GroundedStudyGuideSection, CommandError> {
+) -> Result<AuthoredTopic, CommandError> {
     let topic = &execution.plan.topics[index];
-    let evidence = &execution.evidence[index];
     let root_key = hash(&format!(
         "document-guide-topic-v2|{}|{}|{}",
         execution.document_id,
         topic.id,
         topic.source_locator.stable_identity(),
     ));
-    let mut root_task = execution.task.clone();
-    root_task.diagnostic_window_key = Some(root_key.clone());
-
-    let result = async {
-        root_task.ensure_current(execution.database)?;
-        let partitions = authoring_plan::partition_catalog(&catalogs[index], |knowledge| {
-            crate::ai::document_intelligence::preflight_document_study_guide_section(
-                &root_task,
-                execution.document_title,
-                execution.plan,
-                topic,
-                &evidence.source_text,
-                AuthoringEvidence {
-                    images: &evidence.images,
-                    knowledge,
-                },
-            )
-        })?;
-        let child_keys = partitions
-            .iter()
-            .enumerate()
-            .map(|(part_index, knowledge)| {
-                Ok(hash(&format!(
-                    "document-guide-topic-child-v1|{root_key}|{part_index}|{}",
-                    knowledge.request_fingerprint()?
-                )))
-            })
-            .collect::<Result<Vec<_>, CommandError>>()?;
-        if child_keys.len() > 1 {
-            if let Some(diagnostics) = root_task.diagnostics.as_ref() {
-                diagnostics.bind_recovery_family("guide_authoring", &root_key, &child_keys)?;
-            }
-        }
-
-        let contract_key = study_guide_contract_key(&root_task, execution.plan);
-        let mut partials = Vec::with_capacity(partitions.len());
-        for (part_index, knowledge) in partitions.iter().enumerate() {
-            let mut child_task = root_task.clone();
-            child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
-                root_key.clone()
-            } else {
-                child_keys[part_index].clone()
-            });
-            root_task.ensure_current(execution.database)?;
-            let partition_key =
-                partition_checkpoints::contract_key(&contract_key, &child_keys[part_index]);
-            if partitions.len() > 1 {
-                if let Some(section) = partition_checkpoints::load(
-                    execution.database,
-                    execution.document_id,
-                    &partition_key,
-                    topic,
-                    knowledge,
-                ) {
-                    partials.push(section);
-                    continue;
+    let mut error =
+        match author_topic(execution, catalogs, index, &root_key, TopicSplit::Planned).await {
+            Ok(section) => return Ok(AuthoredTopic::Written(section)),
+            Err(error) => log_topic_failure(execution, index, error),
+        };
+    if !gaps::recoverable(&error) {
+        return Err(topic_error(execution, index, error));
+    }
+    // A smaller request usually gets past a slip or an over-long answer. The
+    // halves are a new recovery family, so their retries have their own budget.
+    if catalogs[index].units.len() >= 2 {
+        let split_key = hash(&format!("document-guide-topic-split-v1|{root_key}"));
+        match author_topic(execution, catalogs, index, &split_key, TopicSplit::Halves).await {
+            Ok(section) => return Ok(AuthoredTopic::Written(section)),
+            Err(retry) => {
+                error = log_topic_failure(execution, index, retry);
+                if !gaps::recoverable(&error) {
+                    return Err(topic_error(execution, index, error));
                 }
             }
-            let section = generate_study_guide_topic_section(
-                execution.runtime,
-                &child_task,
-                execution.document_title,
-                execution.plan,
-                topic,
-                &evidence.source_text,
-                AuthoringEvidence {
-                    images: &evidence.images,
-                    knowledge,
-                },
-            )
-            .await?;
-            root_task.ensure_current(execution.database)?;
-            if partitions.len() > 1 {
-                persist_checkpoint_best_effort(
-                    execution.database,
-                    execution.document_id,
-                    &partition_key,
-                    topic,
-                    &section,
-                );
-            }
-            partials.push(section);
         }
-        root_task.ensure_current(execution.database)?;
-        merge_topic_sections(topic, &catalogs[index], partials)
     }
-    .await
-    .map_err(|error: CommandError| {
-        crate::logging::error_target(
-            "ai.document.study_guide",
-            "study_guide_topic_failed",
-            "A guide topic failed; safe structural details are available without document or model content.",
-            serde_json::json!({"document":execution.document_id,"topicIndex":index,
-                "unitStart":topic.source_locator.first(),"unitEnd":topic.source_locator.last(),
-                "provider":execution.task.provider_kind,"model":execution.task.model_id,
-                "code":error.code,"detail":error.message}),
-        );
-        CommandError::new(
-            error.code,
-            format!(
-                "Study-guide generation failed for topic {}/{} ('{}', source units {}–{}): {}",
-                index + 1,
-                execution.plan.topics.len(),
-                topic.title,
-                topic.source_locator.first(),
-                topic.source_locator.last(),
-                error.message,
-            ),
+    crate::logging::warn_target(
+        "ai.document.study_guide",
+        "study_guide_topic_gap",
+        "Published a marked gap listing the topic's extracted facts instead of failing the guide.",
+        serde_json::json!({"document":execution.document_id,"topicIndex":index,
+            "units":catalogs[index].units.len(),"code":error.code}),
+    );
+    gaps::section(topic, &catalogs[index]).map(AuthoredTopic::Gap)
+}
+
+async fn author_topic(
+    execution: &StudyGuideGenerationExecution<'_>,
+    catalogs: &[KnowledgeCatalog],
+    index: usize,
+    root_key: &str,
+    split: TopicSplit,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    let topic = &execution.plan.topics[index];
+    let evidence = &execution.evidence[index];
+    let mut root_task = execution.task.clone();
+    root_task.diagnostic_window_key = Some(root_key.to_string());
+
+    root_task.ensure_current(execution.database)?;
+    let preflight = |knowledge: &KnowledgeCatalog| {
+        crate::ai::document_intelligence::preflight_document_study_guide_section(
+            &root_task,
+            execution.document_title,
+            execution.plan,
+            topic,
+            &evidence.source_text,
+            AuthoringEvidence {
+                images: &evidence.images,
+                knowledge,
+            },
         )
-    });
-    result
+    };
+    let partitions = match split {
+        TopicSplit::Planned => authoring_plan::partition_catalog(&catalogs[index], preflight)?,
+        TopicSplit::Halves => {
+            let Some(halves) = authoring_plan::halve_catalog(&catalogs[index]) else {
+                return Err(CommandError::new(
+                    "document_study_guide_incomplete",
+                    "A single knowledge unit cannot be split further.",
+                ));
+            };
+            let mut partitions = Vec::new();
+            for half in &halves {
+                partitions.extend(authoring_plan::partition_catalog(half, preflight)?);
+            }
+            partitions
+        }
+    };
+    let child_keys = partitions
+        .iter()
+        .enumerate()
+        .map(|(part_index, knowledge)| {
+            Ok(hash(&format!(
+                "document-guide-topic-child-v1|{root_key}|{part_index}|{}",
+                knowledge.request_fingerprint()?
+            )))
+        })
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    if child_keys.len() > 1 {
+        if let Some(diagnostics) = root_task.diagnostics.as_ref() {
+            diagnostics.bind_recovery_family("guide_authoring", root_key, &child_keys)?;
+        }
+    }
+
+    let contract_key = study_guide_contract_key(&root_task, execution.plan);
+    let mut partials = Vec::with_capacity(partitions.len());
+    for (part_index, knowledge) in partitions.iter().enumerate() {
+        let mut child_task = root_task.clone();
+        child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
+            root_key.to_string()
+        } else {
+            child_keys[part_index].clone()
+        });
+        root_task.ensure_current(execution.database)?;
+        let partition_key =
+            partition_checkpoints::contract_key(&contract_key, &child_keys[part_index]);
+        if partitions.len() > 1 {
+            if let Some(section) = partition_checkpoints::load(
+                execution.database,
+                execution.document_id,
+                &partition_key,
+                topic,
+                knowledge,
+            ) {
+                partials.push(section);
+                continue;
+            }
+        }
+        let section = generate_study_guide_topic_section(
+            execution.runtime,
+            &child_task,
+            execution.document_title,
+            execution.plan,
+            topic,
+            &evidence.source_text,
+            AuthoringEvidence {
+                images: &evidence.images,
+                knowledge,
+            },
+        )
+        .await?;
+        root_task.ensure_current(execution.database)?;
+        let mut coverage_task = child_task.clone();
+        coverage_task.diagnostic_window_key = child_task
+            .diagnostic_window_key
+            .as_deref()
+            .map(|key| hash(&format!("document-guide-coverage-v1|{key}")));
+        let section = complete_study_guide_section_coverage(
+            execution.runtime,
+            &coverage_task,
+            execution.document_title,
+            topic,
+            knowledge,
+            section,
+        )
+        .await;
+        root_task.ensure_current(execution.database)?;
+        if partitions.len() > 1 {
+            persist_checkpoint_best_effort(
+                execution.database,
+                execution.document_id,
+                &partition_key,
+                topic,
+                &section,
+            );
+        }
+        partials.push(section);
+    }
+    root_task.ensure_current(execution.database)?;
+    merge_topic_sections(topic, &catalogs[index], partials)
+}
+
+fn log_topic_failure(
+    execution: &StudyGuideGenerationExecution<'_>,
+    index: usize,
+    error: CommandError,
+) -> CommandError {
+    let topic = &execution.plan.topics[index];
+    crate::logging::error_target(
+        "ai.document.study_guide",
+        "study_guide_topic_failed",
+        "A guide topic failed; safe structural details are available without document or model content.",
+        serde_json::json!({"document":execution.document_id,"topicIndex":index,
+            "unitStart":topic.source_locator.first(),"unitEnd":topic.source_locator.last(),
+            "provider":execution.task.provider_kind,"model":execution.task.model_id,
+            "code":error.code,"detail":error.message}),
+    );
+    error
+}
+
+fn topic_error(
+    execution: &StudyGuideGenerationExecution<'_>,
+    index: usize,
+    error: CommandError,
+) -> CommandError {
+    let topic = &execution.plan.topics[index];
+    CommandError::new(
+        error.code,
+        format!(
+            "Study-guide generation failed for topic {}/{} ('{}', source units {}–{}): {}",
+            index + 1,
+            execution.plan.topics.len(),
+            topic.title,
+            topic.source_locator.first(),
+            topic.source_locator.last(),
+            error.message,
+        ),
+    )
 }
 
 fn merge_topic_sections(
@@ -632,6 +796,9 @@ fn merge_topic_sections(
             }
         }
     }
+    let knowledge_support = gaps::bounded(knowledge_support, catalog, |support| {
+        support.unit_id.as_str()
+    });
     if knowledge_support.is_empty()
         || !catalog.validates(&knowledge_support, catalog.units.len().max(1))
     {
@@ -844,7 +1011,7 @@ mod tests {
         SourceLocator::new(SourceUnitKind::Page, vec![unit], None).unwrap()
     }
 
-    fn plan() -> DocumentLearningPlan {
+    pub(super) fn plan() -> DocumentLearningPlan {
         DocumentLearningPlan {
             id: "a".repeat(32),
             document_id: "b".repeat(32),

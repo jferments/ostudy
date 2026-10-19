@@ -425,7 +425,7 @@ def show_workbench_tree(ctx: Context) -> None:
             return
         close_editor = (
             f"{workbench}//*[@data-testid='workbench-editor']"
-            "//button[normalize-space(.)='Cancel' or normalize-space(.)='Close']"
+            "//button[normalize-space(.)='Cancel' or @aria-label='Close editor' or normalize-space(.)='Close']"
         )
         back = f"{workbench}//button[@aria-label='Library']"
         click(ctx, close_editor if exists(ctx, close_editor) else back)
@@ -444,15 +444,15 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
-            # Library opens its last page: the Workbench, or a page with the view switcher.
-            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library']")
+            # Library opens its last page; every page carries Library's tabs.
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages']")
             show_workbench_tree(ctx)
             if section == "decks" and exists(ctx, WORKBENCH):
-                # The Workbench is Library's first page; it has no view switcher.
+                # The Workbench is Library's first page.
                 pass
             else:
                 # Choosing the open view again returns it to its first page.
-                click(ctx, f"//main//nav[@aria-label='Library']//button[@data-testid='library-view-{section}']")
+                click(ctx, f"//main//nav[@aria-label='Library pages']//button[@data-testid='library-view-{section}']")
         else:
             click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
     elif section == "settings" and ctx.layout == "compact":
@@ -755,6 +755,10 @@ def open_card_editor(ctx: Context) -> None:
     open_deck(ctx, seed.DETAIL_DECK)
     question = seed.question_text(seed.note_spec(seed.EDITOR_NOTE))
     if exists(ctx, WORKBENCH):
+        # An editor left open by an earlier capture covers the list; close it first.
+        close_editor = "//main//*[@data-testid='workbench-editor']//button[@aria-label='Close editor']"
+        if exists(ctx, close_editor):
+            click(ctx, close_editor)
         click(ctx, f"//main//*[@data-card-id]//button[contains(normalize-space(.), {xpath_literal(question[:60])})]")
         find(ctx, "//main//*[@data-testid='workbench-editor']//h1[normalize-space(.)='Edit card']")
         find(ctx, "//main//*[@contenteditable='true'][contains(normalize-space(.), 'Heart rate')]")
@@ -811,25 +815,25 @@ def open_guide_reader(ctx: Context) -> None:
 
 
 def open_documents(ctx: Context) -> None:
-    """Documents lists each subject as a collection with its sources, then the documents in no subject."""
+    """Documents shows each subject as a collection with its documents, then the documents in no subject."""
     go(ctx, "documents")
     for subject in seed.SUBJECTS:
-        find(ctx, f"//main//section[@aria-label='Document collections']//h3[normalize-space(.)={xpath_literal(subject)}]")
+        find(ctx, f"//main//article[@data-testid='document-collection']//h3[normalize-space(.)={xpath_literal(subject)}]")
     for document in seed.DOCUMENTS:
         if document.subject is None:
-            find(ctx, f"//main//h2[normalize-space(.)={xpath_literal(document.title)}]")
+            find(ctx, f"//main//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]")
         else:
-            find(ctx, f"//main//section[@aria-label='Collection sources']//*[normalize-space(text())={xpath_literal(document.title)}]")
+            find(ctx, f"//main//ul[starts-with(@aria-label, 'Documents in ')]//*[normalize-space(text())={xpath_literal(document.title)}]")
 
 
 def open_document_info(ctx: Context) -> None:
     open_documents(ctx)
-    # Generation info is an action of a document in no subject.
+    # Details is an action of a document in no subject.
     document = seed.INFO_DOCUMENT
     click(ctx, f"//main//button[@aria-label={xpath_literal('More actions for ' + document.title)}]")
     # Wide layouts open a dropdown menu; compact layouts open a sheet of buttons.
-    click(ctx, "(//*[@role='menuitem'] | //*[@role='dialog']//button)[normalize-space(.)='Generation info']")
-    find(ctx, f"//*[@role='dialog']//*[normalize-space(.)={xpath_literal(document.title + ' generation info')}]")
+    click(ctx, "(//*[@role='menuitem'] | //*[@role='dialog']//button)[normalize-space(.)='Details']")
+    find(ctx, f"//*[@role='dialog']//*[normalize-space(.)={xpath_literal(document.title)}]")
 
 
 def open_analytics(ctx: Context) -> None:

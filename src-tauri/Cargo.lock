@@ -827,6 +827,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "const-oid"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
 name = "const-random"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1148,6 +1154,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
+ "const-oid",
  "crypto-common",
  "subtle",
 ]
@@ -3334,9 +3341,9 @@ dependencies = [
 
 [[package]]
 name = "oxidize-pdf"
-version = "4.2.2"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf7fe173e5597b6a680c976240f07a2dcf92e03544a800f8d0fee53f5ee1c3cf"
+checksum = "b10d71fadd841b51fc1f7549d946831afc56ec1fa5de7fcaf3c100a134bed9a8"
 dependencies = [
  "aes",
  "bitflags 2.13.1",
@@ -3347,10 +3354,12 @@ dependencies = [
  "lazy_static",
  "libc",
  "md5",
+ "memchr",
  "num_cpus",
  "quick-xml 0.41.0",
  "rand",
  "regex",
+ "roxmltree",
  "serde",
  "serde_json",
  "sha2",

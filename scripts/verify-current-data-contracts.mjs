@@ -54,7 +54,7 @@ requireText("legacy public lineage", database, 'const LEGACY_PUBLIC_SCHEMA_LINEA
 requireText("legacy schema 30", database, "pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;");
 requireText("release lineage", release, 'pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";');
 requireText("release baseline schema 1", release, "pub(crate) const BASELINE_VERSION: i64 = 1;");
-requireText("release current schema 8", release, "pub(crate) const SCHEMA_VERSION: i64 = 8;");
+requireText("release current schema 9", release, "pub(crate) const SCHEMA_VERSION: i64 = 9;");
 requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
 requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
 requireText("selection-deck migration checksum", release, '"c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"');
@@ -70,6 +70,8 @@ requireText("study activity release migration", release, 'name: "study_activity"
 requireText("release migration 7 checksum", release, '"01614ecab4fca2e86a8c7f307c430615a781cc473c901b4e465fa39ba08cc5ce"');
 requireText("document annotations release migration", release, 'name: "document_annotations"');
 requireText("release migration 8 checksum", release, '"aef233f14b0d9830abc51dfecb31d4d627a6cc39917659eef4d85090854c7254"');
+requireText("lessons release migration", release, 'name: "lessons"');
+requireText("release migration 9 checksum", release, '"781c7040dd19f12cdff7d740338dc55b149293d6dcaf7323aa03b916dd1b591e"');
 requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
 requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
 requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");
@@ -138,7 +140,7 @@ requireText("canonical document schema v1", canonicalDocument, 'pub(crate) const
 for (const needle of [
   "ostudy-release-v1",
   "**baseline is schema 1**",
-  "**schema 8**",
+  "**schema 9**",
   "Legacy `ostudy-public-v1` schemas **10–30**",
   "repair versions **1–3**",
   "writer v3",

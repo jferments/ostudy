@@ -1,7 +1,7 @@
 import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyDocumentAnnotationChanges, getDocumentAnnotations } from "./documentAnnotations";
+import { applyDocumentAnnotationChanges, getDocumentAnnotations, renderDocumentPageTile } from "./documentAnnotations";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
@@ -33,5 +33,11 @@ describe("document annotation IPC", () => {
         ],
       },
     });
+  });
+
+  it("asks for one tile of one page drawn at a chosen size", async () => {
+    const tile = { pageNumber: 3, pageWidth: 2040, pageHeight: 2640, left: 512, top: 1024, width: 512, height: 512 };
+    await renderDocumentPageTile(documentId, tile);
+    expect(invoke).toHaveBeenCalledWith("render_document_page_tile", { input: { documentId, ...tile } });
   });
 });
