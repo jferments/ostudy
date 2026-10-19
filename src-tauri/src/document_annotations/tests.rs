@@ -583,3 +583,71 @@ fn deleting_the_document_removes_its_annotations() {
         .unwrap();
     assert_eq!(remaining, 0);
 }
+
+fn tile_request(page_number: i64, left: u32, width: u32) -> RenderDocumentPageTileInput {
+    RenderDocumentPageTileInput {
+        document_id: DOCUMENT.to_string(),
+        page_number,
+        page_width: 2_000,
+        page_height: 2_600,
+        left,
+        top: 0,
+        width,
+        height: 512,
+    }
+}
+
+#[test]
+fn page_tile_requests_name_a_page_and_a_tile_on_it() {
+    let (page, tile) = page_tiles::validated_request(&tile_request(2, 1_488, 512)).unwrap();
+    assert_eq!(page, 2);
+    assert_eq!(
+        (tile.left, tile.width, tile.page_width),
+        (1_488, 512, 2_000)
+    );
+    assert_eq!(
+        page_tiles::validated_request(&tile_request(0, 0, 512))
+            .unwrap_err()
+            .code,
+        "document_annotation_page_missing"
+    );
+    assert_eq!(
+        page_tiles::validated_request(&tile_request(1, 1_489, 512))
+            .unwrap_err()
+            .code,
+        "document_annotation_invalid"
+    );
+    let mut bad_id = tile_request(1, 0, 512);
+    bad_id.document_id = "../x".to_string();
+    assert!(page_tiles::validated_request(&bad_id).is_err());
+}
+
+#[test]
+fn page_tiles_draw_only_from_a_stored_pdf() {
+    let fixture = fixture("tiles", &[Some((1_020, 1_320))]);
+    fixture
+        .database
+        .with_connection(|connection| {
+            assert!(page_tiles::pdf_source_path(connection, DOCUMENT)?.ends_with(".pdf"));
+            connection
+                .execute(
+                    "UPDATE documents SET source_format = 'docx' WHERE id = ?1",
+                    [OTHER_DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                page_tiles::pdf_source_path(connection, OTHER_DOCUMENT)
+                    .unwrap_err()
+                    .code,
+                "document_annotation_invalid"
+            );
+            assert_eq!(
+                page_tiles::pdf_source_path(connection, "ffffffffffffffffffffffffffffffff")
+                    .unwrap_err()
+                    .code,
+                "document_not_found"
+            );
+            Ok(())
+        })
+        .unwrap();
+}

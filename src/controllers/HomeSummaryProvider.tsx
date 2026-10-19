@@ -140,9 +140,12 @@ export function HomeSummaryProvider({
     }, REFRESH_DELAY_MS);
   }, [refresh]);
 
+  // Development builds mount twice; a cancelled timer must not leave a refresh
+  // marked as pending, or no read is ever scheduled again.
   useEffect(
     () => () => {
       if (pendingRefresh.current !== null) window.clearTimeout(pendingRefresh.current);
+      pendingRefresh.current = null;
     },
     [],
   );
