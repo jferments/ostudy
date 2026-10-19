@@ -8,6 +8,7 @@ pub const MAX_TIMEOUT_MS: i64 = 300_000;
 pub const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/";
 pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1/";
 pub const CLAUDE_BASE_URL: &str = "https://api.anthropic.com/v1/";
+pub const OPENAI_BASE_URL: &str = "https://api.openai.com/v1/";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -53,7 +54,7 @@ impl ProviderKind {
     pub fn implemented(self) -> bool {
         matches!(
             self,
-            Self::LlamaCpp | Self::Deepseek | Self::Openrouter | Self::Claude
+            Self::LlamaCpp | Self::Deepseek | Self::Openrouter | Self::Claude | Self::Openai
         )
     }
 
@@ -61,7 +62,7 @@ impl ProviderKind {
     /// profile's effort is resolved against the selected model instead of
     /// being forced off.
     pub fn declares_reasoning(self) -> bool {
-        matches!(self, Self::Openrouter | Self::Claude)
+        matches!(self, Self::Openrouter | Self::Claude | Self::Openai)
     }
 
     pub fn fixed_base_url(self) -> Option<&'static str> {
@@ -69,6 +70,7 @@ impl ProviderKind {
             Self::Deepseek => Some(DEEPSEEK_BASE_URL),
             Self::Openrouter => Some(OPENROUTER_BASE_URL),
             Self::Claude => Some(CLAUDE_BASE_URL),
+            Self::Openai => Some(OPENAI_BASE_URL),
             _ => None,
         }
     }
@@ -79,7 +81,7 @@ impl ProviderKind {
             Self::Deepseek => DEEPSEEK_BASE_URL,
             Self::Openrouter => OPENROUTER_BASE_URL,
             Self::Ollama => "http://127.0.0.1:11434/",
-            Self::Openai => "https://api.openai.com/",
+            Self::Openai => OPENAI_BASE_URL,
             Self::Gemini => "https://generativelanguage.googleapis.com/",
             Self::Claude => CLAUDE_BASE_URL,
         }
@@ -195,7 +197,7 @@ pub fn provider_catalog() -> Vec<ProviderCatalogEntryDto> {
                 "Use one OpenRouter API key to select from its account-visible model catalog."
             }
             ProviderKind::Ollama => "Native Ollama support is planned for a later AI stage.",
-            ProviderKind::Openai => "OpenAI Responses support is planned for a later AI stage.",
+            ProviderKind::Openai => "Connect to OpenAI's API with your own API key.",
             ProviderKind::Gemini => "Gemini support is planned for a later AI stage.",
             ProviderKind::Claude => {
                 "Connect to Anthropic's Claude API with your own API key."

@@ -85,7 +85,10 @@ pub(super) fn build_capabilities(
                 None,
             );
         }
-        ProviderKind::LlamaCpp | ProviderKind::Openrouter | ProviderKind::Claude => {
+        ProviderKind::LlamaCpp
+        | ProviderKind::Openrouter
+        | ProviderKind::Claude
+        | ProviderKind::Openai => {
             set_capability(
                 &mut capabilities,
                 "json_schema_output",

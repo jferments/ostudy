@@ -195,12 +195,12 @@ pub(crate) fn load_document_provider_capabilities(
 /// Providers whose model catalog declares reasoning controls. Their hidden
 /// reasoning shares the completion budget, so the budget gets headroom.
 fn declares_reasoning(provider_kind: &str) -> bool {
-    matches!(provider_kind, "openrouter" | "claude")
+    matches!(provider_kind, "openrouter" | "claude" | "openai")
 }
 
 fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
     match provider_kind {
-        "llama_cpp" | "openrouter" | "claude" => StructuredOutputStrategy::JsonSchema,
+        "llama_cpp" | "openrouter" | "claude" | "openai" => StructuredOutputStrategy::JsonSchema,
         "deepseek" => StructuredOutputStrategy::StrictTool,
         _ => StructuredOutputStrategy::Unknown,
     }

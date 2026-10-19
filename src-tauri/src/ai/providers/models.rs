@@ -10,7 +10,7 @@ use crate::ai::{
 use super::{
     claude,
     dialect::{command_to_gateway, ProviderDialect, DEFAULT_MAX_MODEL_LIST_BYTES},
-    llama_cpp, openrouter, provider_access, ProviderModel, ProviderProperties,
+    llama_cpp, openai, openrouter, provider_access, ProviderModel, ProviderProperties,
 };
 
 pub(crate) async fn list_models(
@@ -98,6 +98,10 @@ pub(crate) async fn load_properties(
             Err(error_value) => Err(error_value),
         };
     }
+    if profile.provider_kind == ProviderKind::Openai {
+        // OpenAI's model records carry no capabilities; the family decides.
+        return Ok(openai::properties(&profile.model_id));
+    }
     if profile.provider_kind != ProviderKind::LlamaCpp {
         return Ok(ProviderProperties::default());
     }
@@ -154,10 +158,19 @@ fn parse_model_list(
         let structured_outputs = match dialect {
             ProviderDialect::Openrouter => openrouter::model_structured_outputs_declared(item),
             ProviderDialect::Claude => claude::model_structured_outputs_declared(item),
-            ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => None,
+            ProviderDialect::LlamaCpp | ProviderDialect::Deepseek | ProviderDialect::Openai => None,
         };
         if structured_outputs == Some(false) {
             declared_incompatible = declared_incompatible.saturating_add(1);
+            continue;
+        }
+        if dialect == ProviderDialect::Openai
+            && !item
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(openai::is_chat_model)
+        {
+            // OpenAI lists every modality on one endpoint.
             continue;
         }
         let id = item.get("id").and_then(Value::as_str).ok_or_else(|| {
@@ -191,6 +204,13 @@ fn parse_model_list(
                 claude::model_context_window_tokens(item),
                 claude::model_reasoning(item),
                 claude::model_image_input(item),
+            ),
+            ProviderDialect::Openai => (
+                id.to_string(),
+                Some("OpenAI".to_string()),
+                openai::model_context_window_tokens(id),
+                openai::model_reasoning(id),
+                openai::model_image_input(id),
             ),
             ProviderDialect::LlamaCpp | ProviderDialect::Deepseek => (
                 id.to_string(),
@@ -236,6 +256,7 @@ fn profile_kind_label(dialect: ProviderDialect) -> &'static str {
         ProviderDialect::Deepseek => "deepseek",
         ProviderDialect::Openrouter => "openrouter",
         ProviderDialect::Claude => "claude",
+        ProviderDialect::Openai => "openai",
     }
 }
 
@@ -295,5 +316,34 @@ mod tests {
                 .and_then(|reasoning| reasoning.default_effort.as_deref()),
             Some("high")
         );
+    }
+
+    #[test]
+    fn openai_lists_chat_models_with_family_facts() {
+        let models = parse_model_list(
+            &json!({"object":"list","data":[
+                {"id":"gpt-5-mini","object":"model","created":1,"owned_by":"system"},
+                {"id":"text-embedding-3-small","object":"model","created":1,"owned_by":"system"},
+                {"id":"gpt-4.1","object":"model","created":1,"owned_by":"system"},
+                {"id":"whisper-1","object":"model","created":1,"owned_by":"openai-internal"}
+            ]}),
+            ProviderDialect::Openai,
+            DEFAULT_MAX_MODELS,
+        )
+        .expect("model list should parse");
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["gpt-4.1", "gpt-5-mini"]
+        );
+        assert_eq!(models[0].context_window_tokens, Some(1_047_576));
+        assert!(models[0].reasoning.is_none());
+        assert!(models[1]
+            .reasoning
+            .as_ref()
+            .is_some_and(|reasoning| reasoning.mandatory));
+        assert_eq!(models[1].owned_by.as_deref(), Some("OpenAI"));
     }
 }

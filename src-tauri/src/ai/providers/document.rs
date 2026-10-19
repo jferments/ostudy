@@ -10,7 +10,7 @@ use crate::ai::{
 use super::{
     claude, deepseek,
     dialect::{command_to_gateway, ProviderDialect},
-    llama_cpp, openai_compatible, openrouter, schema as schema_support,
+    llama_cpp, openai, openai_compatible, openrouter, schema as schema_support,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,6 +150,28 @@ pub(crate) fn prepare_document_request(
                 url: claude::messages_endpoint(profile)?,
                 body,
                 compatibility_body,
+                decoder: DocumentOutputDecoder::ContentJson,
+                schema: schema.clone(),
+            })
+        }
+        ProviderDialect::Openai => {
+            // Strict JSON-schema output with the resolved effort. If OpenAI
+            // still refuses the request (a schema its strict mode cannot
+            // compile, or an effort the model does not take), one retry
+            // keeps the schema in the instructions with JSON mode and the
+            // model's default reasoning; native admission decides either way.
+            let mut strict = base.clone();
+            openai_compatible::set_json_schema(
+                &mut strict,
+                "ostudy_document_task",
+                schema_support::portable_strict_schema(schema),
+            );
+            let mut compatible = base;
+            openai_compatible::set_json_object(&mut compatible);
+            Ok(PreparedDocumentRequest {
+                url: openai::completion_endpoint(profile)?,
+                body: openai::lower_chat_body(&strict, reasoning_effort),
+                compatibility_body: Some(openai::lower_chat_body(&compatible, "automatic")),
                 decoder: DocumentOutputDecoder::ContentJson,
                 schema: schema.clone(),
             })

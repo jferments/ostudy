@@ -121,7 +121,10 @@ pub(super) fn validate_provider_configuration(
     }
     if matches!(
         provider_kind,
-        ProviderKind::Deepseek | ProviderKind::Openrouter | ProviderKind::Claude
+        ProviderKind::Deepseek
+            | ProviderKind::Openrouter
+            | ProviderKind::Claude
+            | ProviderKind::Openai
     ) && auth_mode != AuthMode::Bearer
     {
         return Err(CommandError::new(
