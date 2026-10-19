@@ -10,7 +10,7 @@ import { Button } from "../../../ui/primitives/Button";
 import { EmptyState, LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { useLibraryFullPage } from "../../library/LibraryFrame";
-import { isShapeTool, isStickyNote, type AnnotatorTool, type ShapeTool } from "./annotationModel";
+import { isShapeTool, type AnnotatorTool, type ShapeTool } from "./annotationModel";
 import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
@@ -25,7 +25,7 @@ interface DocumentAnnotatorProps {
 }
 
 const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+  v: "select", p: "pen", h: "highlighter", t: "text", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -119,11 +119,9 @@ function ReadyAnnotator({ documentId, title, pages, controller }: {
   const viewport = useAnnotatorViewport(pages, viewportRef, contentRef);
   const { layoutMode, inputMode } = useLayoutMode();
   const [lastShape, setLastShape] = useState<ShapeTool>("arrow");
-  const [lastNote, setLastNote] = useState<"text" | "sticky">("text");
 
   function chooseTool(tool: AnnotatorTool) {
     if (isShapeTool(tool)) setLastShape(tool);
-    if (tool === "text" || tool === "sticky") setLastNote(tool);
     controller.setTool(tool);
   }
 
@@ -131,8 +129,6 @@ function ReadyAnnotator({ documentId, title, pages, controller }: {
     if (event.defaultPrevented) return;
     const target = event.target as HTMLElement;
     if (target.closest("textarea, input, select, [contenteditable='true'], [role='menu']")) return;
-    // An open sticky note's dialog has buttons too; its keys are not shortcuts.
-    if (controller.editing) return;
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const command = key === "z" ? (event.shiftKey ? controller.redo : controller.undo)
@@ -176,11 +172,10 @@ function ReadyAnnotator({ documentId, title, pages, controller }: {
         disabled={false}
         tool={controller.tool}
         lastShape={lastShape}
-        lastNote={lastNote}
         onTool={chooseTool}
         style={controller.activeStyle}
         onStyle={controller.chooseStyle}
-        selection={selected ? { isText: selected.shape.kind === "text", isSticky: isStickyNote(selected.shape) } : null}
+        selection={selected ? { isText: selected.shape.kind === "text" } : null}
         onDeleteSelection={controller.deleteSelected}
         onEditSelection={() => { if (selected) controller.editText(selected); }}
         canUndo={controller.canUndo}

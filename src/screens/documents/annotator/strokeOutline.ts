@@ -61,14 +61,3 @@ export function highlightPath(shape: HighlightShape): string {
   if (segments.length === 1) segments.push(segments[0] ?? "0,0");
   return segments.length === 0 ? "" : `M${segments.join(" L")}`;
 }
-
-/** A text highlight's boxes, one per line, as a single filled path. */
-export function textHighlightPath(rects: readonly number[]): string {
-  const boxes: string[] = [];
-  for (let index = 0; index + 3 < rects.length; index += 4) {
-    const x = rects[index] ?? 0;
-    const y = rects[index + 1] ?? 0;
-    boxes.push(`M${fixed(x)},${fixed(y)} h${fixed(rects[index + 2] ?? 0)} v${fixed(rects[index + 3] ?? 0)} h${fixed(-(rects[index + 2] ?? 0))} Z`);
-  }
-  return boxes.join(" ");
-}

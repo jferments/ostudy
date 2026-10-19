@@ -24,14 +24,11 @@ import {
   DEFAULT_STYLES,
   DEFAULT_TEXT_WIDTH,
   estimateTextHeight,
-  isStickyNote,
   isStorable,
   moveWithinPage,
   restyle,
   styleFamilyForShape,
   styleFamilyForTool,
-  STICKY_HEIGHT,
-  STICKY_WIDTH,
   TEXT_LINE_HEIGHT,
   type Annotation,
   type AnnotatorTool,
@@ -146,7 +143,6 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
 
   const textHeight = useCallback((annotation: Annotation): number => {
     if (annotation.shape.kind !== "text") return 0;
-    if (isStickyNote(annotation.shape)) return STICKY_HEIGHT;
     const measured = textHeights.current.get(annotation.id);
     return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
   }, []);
@@ -205,28 +201,9 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
     setEditing({ annotation: { ...annotation, shape: annotation.shape }, isNew: false, text: annotation.shape.text });
   }, [finishEditing, setEditing]);
 
-  /**
-   * Opens a new text note with its first line at `point`, or a sticky note with
-   * its corner there, kept on the page.
-   */
-  const newText = useCallback((pageNumber: number, point: Point, page: { width: number; height: number }, sticky = false) => {
+  /** Opens a new text note with its first line at `point`, kept on the page. */
+  const newText = useCallback((pageNumber: number, point: Point, page: { width: number; height: number }) => {
     finishEditing();
-    if (sticky) {
-      const width = Math.min(STICKY_WIDTH, page.width);
-      const note: TextShape = {
-        kind: "text",
-        x: Math.round(Math.max(0, Math.min(point.x, page.width - width)) * 100) / 100,
-        y: Math.round(Math.max(0, Math.min(point.y, page.height - STICKY_HEIGHT)) * 100) / 100,
-        width,
-        text: "",
-        color: styles.sticky.color,
-        fontSize: styles.sticky.size,
-        sticky: true,
-      };
-      setSelection(null);
-      setEditing({ annotation: { id: createAnnotationId(), pageNumber, shape: note, createdAt: now() }, isNew: true, text: "" });
-      return;
-    }
     const fontSize = styles.text.size;
     const width = Math.min(DEFAULT_TEXT_WIDTH, page.width);
     const lineHeight = fontSize * TEXT_LINE_HEIGHT;
@@ -241,7 +218,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
     };
     setSelection(null);
     setEditing({ annotation: { id: createAnnotationId(), pageNumber, shape, createdAt: now() }, isNew: true, text: "" });
-  }, [finishEditing, now, setEditing, styles.sticky, styles.text]);
+  }, [finishEditing, now, setEditing, styles.text]);
 
   const typeText = useCallback((text: string) => {
     const open = editingRef.current;

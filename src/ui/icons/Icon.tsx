@@ -69,7 +69,6 @@ export const ICON_NAMES = [
   "shape-rectangle",
   "sort",
   "sparkles",
-  "sticky-note",
   "stop",
   "study-guide",
   "template",
@@ -564,13 +563,6 @@ function iconPath(name: IconName): ReactNode {
           <path d="M20 2v4" />
           <path d="M22 4h-4" />
           <circle cx="4" cy="20" r="2" />
-        </>
-      );
-    case "sticky-note": // Lucide: sticky-note
-      return (
-        <>
-          <path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" />
-          <path d="M15 3v5a1 1 0 0 0 1 1h5" />
         </>
       );
     case "stop": // Lucide: circle-stop

@@ -1,7 +1,7 @@
 import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyDocumentAnnotationChanges, getDocumentAnnotations, getDocumentPageText, renderDocumentPageTile } from "./documentAnnotations";
+import { applyDocumentAnnotationChanges, getDocumentAnnotations, renderDocumentPageTile } from "./documentAnnotations";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
@@ -39,10 +39,5 @@ describe("document annotation IPC", () => {
     const tile = { pageNumber: 3, pageWidth: 2040, pageHeight: 2640, left: 512, top: 1024, width: 512, height: 512 };
     await renderDocumentPageTile(documentId, tile);
     expect(invoke).toHaveBeenCalledWith("render_document_page_tile", { input: { documentId, ...tile } });
-  });
-
-  it("reads one page's positioned text", async () => {
-    await getDocumentPageText(documentId, 4);
-    expect(invoke).toHaveBeenCalledWith("get_document_page_text", { input: { documentId, pageNumber: 4 } });
   });
 });

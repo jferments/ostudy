@@ -132,36 +132,6 @@ describe("drawing", () => {
     expect(gestures.up(at(2, "mouse", 100, 100), surface, ctx)).toEqual([{ kind: "draft", draft: null }]);
   });
 
-  it("snaps a highlight dragged across the page's text to its lines, and keeps the words", () => {
-    const characters = Array.from("heart rate output");
-    const boxes = Float64Array.from(characters.flatMap((_, index) => index < 11
-      ? [72 + index * 6, 100, 6, 10]
-      : [72 + (index - 11) * 6, 114, 6, 10]));
-    const gestures = new AnnotatorGestures();
-    const ctx = context({ tool: "highlighter", pageText: (pageNumber) => (pageNumber === 1 ? { characters, boxes } : null) });
-
-    // Nothing shows for a press, and a tap on the text marks nothing.
-    expect(gestures.down(at(1, "mouse", 105, 105), surface, ctx)).toEqual([]);
-    expect(gestures.up(at(1, "mouse", 105, 105), surface, ctx)).toEqual([{ kind: "draft", draft: null }]);
-
-    gestures.down(at(2, "mouse", 111, 105), surface, ctx);
-    const moved = gestures.move(at(2, "mouse", 400, 118), surface, ctx);
-    expect(only(moved, "draft")[0]?.draft?.shape).toMatchObject({ kind: "highlight", points: [], text: "rate output" });
-    expect(created(gestures.up(at(2, "mouse", 400, 118), surface, ctx))[0]).toEqual({
-      kind: "highlight",
-      points: [],
-      rects: [108, 100, 30, 10, 72, 114, 36, 10],
-      text: "rate output",
-      color: "#fde047",
-      strokeWidth: 16,
-    });
-
-    // Away from the text, and on a page without text, the highlighter draws freely.
-    gestures.down(at(3, "mouse", 300, 400), surface, ctx);
-    expect(only(gestures.move(at(3, "mouse", 340, 400), surface, ctx), "draft")[0]?.draft?.shape).toMatchObject({ points: [300, 400, 340, 400] });
-    gestures.up(at(3, "mouse", 340, 400), surface, ctx);
-  });
-
   it("draws boxes and arrows by dragging, squares them with Shift and drops slips", () => {
     const gestures = new AnnotatorGestures();
     const boxes = context({ tool: "rectangle" });
@@ -266,7 +236,7 @@ describe("fingers, pens and palms", () => {
     const text = context({ penOnly: true, tool: "text" });
     gestures.down(at(2, "touch", 50, 60), surface, text);
     expect(gestures.up(at(2, "touch", 52, 61), surface, text)).toEqual([
-      { kind: "new-text", pageNumber: 1, point: { x: 50, y: 60 }, sticky: false },
+      { kind: "new-text", pageNumber: 1, point: { x: 50, y: 60 } },
     ]);
   });
 
@@ -349,32 +319,17 @@ describe("selecting and text", () => {
     const ctx = context({ tool: "text" }, [box, note]);
     gestures.down(at(1, "mouse", 50, 60), surface, ctx);
     expect(gestures.up(at(1, "mouse", 50, 60), surface, ctx)).toEqual([
-      { kind: "new-text", pageNumber: 1, point: { x: 50, y: 60 }, sticky: false },
+      { kind: "new-text", pageNumber: 1, point: { x: 50, y: 60 } },
     ]);
     gestures.down(at(2, "touch", 320, 305), surface, ctx);
     expect(gestures.up(at(2, "touch", 320, 305), surface, ctx)).toEqual([{ kind: "edit-text", annotation: note }]);
     // Text taps pass through other annotations to the page.
     gestures.down(at(3, "mouse", 101, 125), surface, ctx);
     expect(gestures.up(at(3, "mouse", 101, 125), surface, ctx)).toEqual([
-      { kind: "new-text", pageNumber: 1, point: { x: 101, y: 125 }, sticky: false },
+      { kind: "new-text", pageNumber: 1, point: { x: 101, y: 125 } },
     ]);
     gestures.down(at(4, "mouse", 650, 60), surface, ctx);
     expect(gestures.up(at(4, "mouse", 650, 60), surface, ctx)).toEqual([]);
-  });
-
-  it("places a sticky note where the sticky tool taps, or opens the sticky note under it", () => {
-    const gestures = new AnnotatorGestures();
-    const sticky = annotation("sticky", {
-      kind: "text", x: 40, y: 40, width: 120, text: "Ask about this", color: "#fde047", fontSize: 10, sticky: true,
-    });
-    const ctx = context({ tool: "sticky", penOnly: true }, [sticky, note]);
-    gestures.down(at(1, "touch", 80, 60), surface, ctx);
-    expect(gestures.up(at(1, "touch", 80, 60), surface, ctx)).toEqual([{ kind: "edit-text", annotation: sticky }]);
-    // Plain text notes are not sticky notes, so a tap on one places a new sticky note.
-    gestures.down(at(2, "mouse", 320, 305), surface, ctx);
-    expect(gestures.up(at(2, "mouse", 320, 305), surface, ctx)).toEqual([
-      { kind: "new-text", pageNumber: 1, point: { x: 320, y: 305 }, sticky: true },
-    ]);
   });
 
   it("opens the selected note with another tap", () => {
