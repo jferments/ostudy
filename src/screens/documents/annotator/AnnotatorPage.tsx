@@ -1,14 +1,19 @@
-import { memo, useLayoutEffect, useRef, type CSSProperties } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import { cn } from "../../../ui/internal/cn";
+import { Dialog } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import { Textarea } from "../../../ui/primitives/FormControls";
 import {
   arrowHead,
   describeAnnotation,
   handlesFor,
+  isStickyNote,
+  MAX_STICKY_CHARS,
   MAX_TEXT_CHARS,
   shapeBounds,
+  STICKY_HEIGHT,
   TEXT_LINE_HEIGHT,
   TEXT_PADDING,
   type Annotation,
@@ -16,7 +21,8 @@ import {
   type TextShape,
 } from "./annotationModel";
 import { usePageImage, type PageImageCache } from "./pageImages";
-import { highlightPath, inkPath } from "./strokeOutline";
+import { tileDensity, tilesFor, usePageTiles, type PageRegion, type PageTile, type ShownTile } from "./pageTiles";
+import { highlightPath, inkPath, textHighlightPath } from "./strokeOutline";
 import type { TextEditing } from "./useDocumentAnnotator";
 
 export interface PageDraft {
@@ -32,6 +38,12 @@ interface AnnotatorPageProps {
   /** Near the screen: show the image and annotations, not just the page's place. */
   near: boolean;
   images: PageImageCache | null;
+  /** Sharp tiles for a zoomed-in page, drawn for where the view last rested. */
+  tiles: PageImageCache | null;
+  tileScale: number;
+  pixelRatio: number;
+  /** The part of this page in view, in points; null when none is. */
+  region: PageRegion | null;
   annotations: readonly Annotation[];
   /** The rest of these belong to this page, or are null. */
   draft: PageDraft | null;
@@ -51,9 +63,17 @@ interface AnnotatorPageProps {
 }
 
 /** One page: its render, highlights under it all, strokes and shapes, then text notes and the selection. */
+const NO_TILES: readonly PageTile[] = [];
+
 export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPageProps) {
-  const { page, scale, near } = props;
+  const { page, scale, near, region, tileScale, pixelRatio } = props;
   const image = usePageImage(props.images, page.assetId, near && page.imageAvailable);
+  const density = near && page.imageAvailable && region ? tileDensity(page, tileScale, pixelRatio) : null;
+  const wanted = useMemo(
+    () => (density !== null && region ? tilesFor(page, density, region) : NO_TILES),
+    [density, page, region],
+  );
+  const tiles = usePageTiles(props.tiles, wanted);
   const width = page.width * scale;
   const height = page.height * scale;
   return (
@@ -64,21 +84,27 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
       className="tw:relative tw:mx-auto tw:mb-4 tw:overflow-hidden tw:bg-[var(--ostudy-color-neutral-0)] tw:shadow-md tw:ring-1 tw:ring-border tw:select-none tw:forced-color-adjust-none tw:last:mb-0 tw:compact:mb-3"
       style={{ width, height }}
     >
-      {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} /> : null}
+      {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} sharpTiles={tiles} /> : null}
     </div>
   );
 });
 
 function PageContent({
   page, scale, annotations, draft, preview, erasing, selected, editing, selectable, coarse, textHeight,
-  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed,
-}: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean }) {
+  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
+}: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : annotation);
   const viewBox = `0 0 ${page.width} ${page.height}`;
   const faded = (annotation: Annotation) => erasing?.has(annotation.id) ? 0.25 : undefined;
   const highlights = shown.filter((annotation) => annotation.shape.kind === "highlight");
   const graphics = shown.filter((annotation) => annotation.shape.kind !== "highlight" && annotation.shape.kind !== "text");
-  const notes = shown.filter((annotation) => annotation.shape.kind === "text" && annotation.id !== editing?.annotation.id);
+  const notes = shown.filter((annotation) => annotation.shape.kind === "text" && !isStickyNote(annotation.shape)
+    && annotation.id !== editing?.annotation.id);
+  // A sticky note stays on the page while it is open; its text is typed in a dialog.
+  const stickies = shown.filter((annotation) => isStickyNote(annotation.shape) && annotation.id !== editing?.annotation.id);
+  const openSticky = editing && isStickyNote(editing.annotation.shape)
+    ? { ...editing.annotation, shape: { ...editing.annotation.shape, text: editing.text } }
+    : null;
   return (
     <>
       {imageUrl ? (
@@ -88,6 +114,23 @@ function PageContent({
           {imageFailed ? "This page's image could not be read." : null}
         </p>
       )}
+      {/* Drawn again from the PDF at the size shown, over the softer page image. */}
+      {sharpTiles.map((tile) => (
+        <img
+          key={tile.key}
+          src={tile.url}
+          alt=""
+          draggable={false}
+          data-page-tile=""
+          className="tw:pointer-events-none tw:absolute"
+          style={{
+            left: `${(tile.left / tile.pageWidth) * 100}%`,
+            top: `${(tile.top / tile.pageHeight) * 100}%`,
+            width: `${(tile.width / tile.pageWidth) * 100}%`,
+            height: `${(tile.height / tile.pageHeight) * 100}%`,
+          }}
+        />
+      ))}
       {/* Highlights blend into the page, so text under them stays readable. */}
       <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:mix-blend-multiply">
         {highlights.map((annotation) => (
@@ -108,7 +151,11 @@ function PageContent({
         {notes.map((annotation) => (
           <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText} />
         ))}
-        {editing ? <TextNoteEditor editing={editing} onType={onTypeText} onFinish={onFinishText} /> : null}
+        {stickies.map((annotation) => (
+          <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
+        ))}
+        {openSticky ? <StickyNote annotation={openSticky} opacity={undefined} open /> : null}
+        {editing && !openSticky ? <TextNoteEditor editing={editing} onType={onTypeText} onFinish={onFinishText} /> : null}
       </div>
       {selected && !editing ? (
         <SelectionOutline page={page} scale={scale} coarse={coarse}
@@ -141,6 +188,7 @@ const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { sh
     case "ink":
       return <path d={inkPath(shape, complete)} fill={shape.color} />;
     case "highlight":
+      if (shape.rects) return <path d={textHighlightPath(shape.rects)} fill={shape.color} fillOpacity={0.75} />;
       return (
         <path d={highlightPath(shape)} fill="none" stroke={shape.color} strokeWidth={shape.strokeWidth}
           strokeLinecap="butt" strokeLinejoin="round" strokeOpacity={0.75} />
@@ -206,6 +254,95 @@ const TextNote = memo(function TextNote({ annotation, opacity, onMeasure }: {
     </div>
   );
 });
+
+const STICKY_PADDING = 6;
+
+/**
+ * A sticky note on the page: a small square of paper in the note's color, with
+ * a folded corner and the first lines of its text. The whole text opens in a
+ * dialog.
+ */
+const StickyNote = memo(function StickyNote({ annotation, opacity, open = false }: {
+  annotation: Annotation;
+  opacity: number | undefined;
+  open?: boolean;
+}) {
+  if (!isStickyNote(annotation.shape)) return null;
+  const { x, y, width, color, fontSize, text } = annotation.shape;
+  const lineHeight = fontSize * TEXT_LINE_HEIGHT;
+  const lines = Math.max(1, Math.floor((STICKY_HEIGHT - STICKY_PADDING * 2) / lineHeight));
+  return (
+    <div
+      aria-hidden="true"
+      data-sticky-note=""
+      className={cn(
+        "tw:absolute tw:box-border tw:overflow-hidden tw:rounded-sm tw:text-[var(--ostudy-color-neutral-950)] tw:shadow-md",
+        open && "tw:outline-2 tw:outline-primary tw:outline-dashed",
+      )}
+      style={{
+        left: x, top: y, width, height: STICKY_HEIGHT, padding: STICKY_PADDING, opacity,
+        backgroundColor: color, fontSize, lineHeight: TEXT_LINE_HEIGHT,
+      }}
+    >
+      {/* The folded corner. */}
+      <span
+        className="tw:absolute tw:right-0 tw:bottom-0 tw:size-3 tw:bg-[var(--ostudy-color-neutral-950)]/20"
+        style={{ clipPath: "polygon(100% 0, 100% 100%, 0 100%)" }}
+      />
+      <div className="tw:whitespace-pre-wrap tw:wrap-anywhere"
+        style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: lines, overflow: "hidden" }}>
+        {text}
+      </div>
+    </div>
+  );
+});
+
+/**
+ * The open sticky note's whole text, in a dialog: a sticky note holds more than
+ * fits on the page. Closing keeps what was typed; an emptied note is removed.
+ */
+export function StickyNoteEditor({ editing, onType, onFinish }: {
+  editing: TextEditing;
+  onType: (text: string) => void;
+  onFinish: () => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const field = ref.current;
+    if (field) field.setSelectionRange(field.value.length, field.value.length);
+  }, [editing.annotation.id]);
+  return (
+    <Dialog
+      title={editing.isNew ? "New sticky note" : "Sticky note"}
+      description={`Page ${editing.annotation.pageNumber}`}
+      width="small"
+      initialFocusRef={ref}
+      onClose={onFinish}
+      actions={<>
+        <Button variant="secondary" className="tw:text-destructive" onClick={() => { onType(""); onFinish(); }}>
+          {editing.isNew ? "Discard" : "Delete note"}
+        </Button>
+        <Button variant="primary" onClick={onFinish}>Done</Button>
+      </>}
+    >
+      <Textarea
+        ref={ref}
+        value={editing.text}
+        aria-label="Note"
+        maxLength={MAX_STICKY_CHARS}
+        rows={10}
+        spellCheck
+        onChange={(event) => onType(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            onFinish();
+          }
+        }}
+      />
+    </Dialog>
+  );
+}
 
 /** The open text note: a field in the note's place, at the note's size, growing with its text. */
 function TextNoteEditor({ editing, onType, onFinish }: {

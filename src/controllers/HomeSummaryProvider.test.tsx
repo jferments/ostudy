@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as homeIpc from "../ipc/home";
@@ -120,6 +121,19 @@ describe("HomeSummaryProvider", () => {
     // Home being visible and the deck list arriving coalesce into one read.
     expect(homeIpc.getHomeSummary).toHaveBeenCalledTimes(1);
     expect(subjectsIpc.getSubjectLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reads when React mounts the provider twice, as development builds do", async () => {
+    render(
+      <StrictMode>
+        <HomeSummaryProvider section="home" activeWorkflow={null} decks={decks}>
+          <Probe />
+        </HomeSummaryProvider>
+      </StrictMode>,
+    );
+    await settle();
+    expect(screen.getByLabelText("loading").textContent).toBe("no");
+    expect(screen.getByLabelText("due").textContent).toBe("5");
   });
 
   it("reads again when Home or Review opens, a session ends or the deck list changes", async () => {

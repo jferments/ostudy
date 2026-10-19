@@ -200,6 +200,22 @@ pub struct RenderPdfPageRequest {
     pub maximum_bytes: u64,
 }
 
+/// One rectangle of a page drawn at `page_width` by `page_height` pixels.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPdfTileRequest {
+    pub token: String,
+    pub page_number: u32,
+    pub page_width: u32,
+    pub page_height: u32,
+    pub left: u32,
+    pub top: u32,
+    pub width: u32,
+    pub height: u32,
+    pub target_path: String,
+    pub maximum_bytes: u64,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderPdfPageResult {

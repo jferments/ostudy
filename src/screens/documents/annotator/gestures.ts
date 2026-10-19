@@ -3,6 +3,8 @@ import {
   handlesFor,
   isDeliberateShape,
   isShapeTool,
+  isStickyNote,
+  isStorable,
   MAX_STROKE_POINTS,
   moveWithinPage,
   resizeShape,
@@ -21,6 +23,7 @@ import {
   type Size,
   type ToolStyles,
 } from "./annotationModel";
+import { characterAt, characterNear, textBetween, type PageText } from "./textSelection";
 
 export type PointerKind = "mouse" | "pen" | "touch";
 
@@ -61,6 +64,8 @@ export interface GestureContext {
   selected: Annotation | null;
   annotationsOn(pageNumber: number): readonly Annotation[];
   textHeight(annotation: Annotation): number;
+  /** The page's text, when it is known; the highlighter then snaps to it. */
+  pageText?(pageNumber: number): PageText | null;
   newId(): string;
   now(): number;
 }
@@ -80,7 +85,7 @@ export type GestureEffect =
   | { kind: "erase"; annotations: readonly Annotation[] }
   | { kind: "select"; id: string | null }
   | { kind: "edit-text"; annotation: Annotation }
-  | { kind: "new-text"; pageNumber: number; point: Point }
+  | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
   | { kind: "scroll-by"; dx: number; dy: number }
   /** Pixels per millisecond the view keeps moving after a flick. */
   | { kind: "fling"; velocityX: number; velocityY: number }
@@ -92,9 +97,11 @@ interface Client { x: number; y: number; }
 type Gesture =
   | { kind: "ink"; pointerId: number; pageNumber: number; points: number[]; simulatePressure: boolean; last: Point }
   | { kind: "highlight"; pointerId: number; pageNumber: number; points: number[]; last: Point }
+  /** A highlighter drag that began on the page's text, from one character to another. */
+  | { kind: "text-highlight"; pointerId: number; pointer: PointerKind; start: Client; moved: boolean; pageNumber: number; text: PageText; from: number; to: number }
   | { kind: "shape"; pointerId: number; pageNumber: number; tool: ShapeTool; start: Point; shape: AnnotationShape | null }
   | { kind: "erase"; pointerId: number; last: Client; erased: Map<string, Annotation> }
-  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" }
+  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "resize"; pointerId: number; pageNumber: number; original: Annotation; handle: Handle; current: Annotation }
   | { kind: "pan"; pointerId: number; last: Client; samples: Array<Client & { time: number }> }
@@ -191,6 +198,14 @@ export class AnnotatorGestures {
         else active.points.push(point.x, point.y);
         return [{ kind: "draft", draft: { pageNumber: active.pageNumber, shape: this.stroke(active, context), complete: false } }];
       }
+      case "text-highlight": {
+        if (!active.moved && clientDistance(client, active.start) < TAP_SLOP[active.pointer]) return [];
+        active.moved = true;
+        const to = characterNear(active.text, surface.toPage(active.pageNumber, client.x, client.y));
+        if (to === null || to === active.to) return [];
+        active.to = to;
+        return [{ kind: "draft", draft: { pageNumber: active.pageNumber, shape: this.textHighlight(active, context), complete: false } }];
+      }
       case "shape": {
         const size = surface.pageSize(active.pageNumber);
         if (!size) return [];
@@ -272,6 +287,14 @@ export class AnnotatorGestures {
           ...(keep ? [this.create(active.pageNumber, shape, context)] : []),
         ];
       }
+      case "text-highlight": {
+        // A tap on the text marks nothing; only a drag across it does.
+        const shape = this.textHighlight(active, context);
+        return [
+          { kind: "draft", draft: null },
+          ...(active.moved && isStorable(shape) ? [this.create(active.pageNumber, shape, context)] : []),
+        ];
+      }
       case "shape":
         return [
           { kind: "draft", draft: null },
@@ -338,10 +361,11 @@ export class AnnotatorGestures {
     }
     // A stylus's eraser end erases, whichever tool is chosen.
     const tool: AnnotatorTool = sample.kind === "pen" && sample.button === PEN_ERASER_BUTTON ? "eraser" : context.tool;
-    // With pen-only drawing a finger still places and opens text notes.
-    const fingerPans = sample.kind === "touch" && context.penOnly && isDrawingTool(tool) && tool !== "text";
+    const placesNotes = tool === "text" || tool === "sticky";
+    // With pen-only drawing a finger still places and opens notes.
+    const fingerPans = sample.kind === "touch" && context.penOnly && isDrawingTool(tool) && !placesNotes;
     const pageNumber = surface.pageAt(client.x, client.y);
-    if (fingerPans || (pageNumber === null && isDrawingTool(tool) && tool !== "text")) {
+    if (fingerPans || (pageNumber === null && isDrawingTool(tool) && !placesNotes)) {
       this.active = sample.kind === "touch"
         ? { kind: "pan", ...base, last: client, samples: [{ ...client, time: sample.time }] }
         : { kind: "idle" };
@@ -350,7 +374,7 @@ export class AnnotatorGestures {
     const size = pageNumber === null ? null : surface.pageSize(pageNumber);
     const point = pageNumber === null ? null : surface.toPage(pageNumber, client.x, client.y);
 
-    if (tool === "select" || tool === "text") {
+    if (tool === "select" || placesNotes) {
       let hit: Annotation | null = null;
       if (pageNumber !== null && point && size) {
         const slop = HIT_SLOP[sample.kind] / context.scale;
@@ -362,7 +386,8 @@ export class AnnotatorGestures {
         }
         hit = topmostAt(
           context.annotationsOn(pageNumber), point, slop, context.textHeight,
-          tool === "text" ? (annotation) => annotation.shape.kind === "text" : undefined,
+          tool === "select" ? undefined
+            : (annotation) => annotation.shape.kind === "text" && (tool === "text" || isStickyNote(annotation.shape)),
         );
       }
       this.active = { kind: "press", ...base, pointer: sample.kind, start: client, pageNumber, hit, purpose: tool };
@@ -391,6 +416,13 @@ export class AnnotatorGestures {
       };
       this.active = gesture;
       return [{ kind: "draft", draft: { pageNumber, shape: this.stroke(gesture, context), complete: false } }];
+    }
+    const text = context.pageText?.(pageNumber) ?? null;
+    const first = text ? characterAt(text, point, HIT_SLOP[sample.kind] / context.scale) : null;
+    if (text && first !== null) {
+      // Nothing shows until the drag moves, so a tap leaves no mark behind.
+      this.active = { kind: "text-highlight", ...base, pointer: sample.kind, start: client, moved: false, pageNumber, text, from: first, to: first };
+      return [];
     }
     const gesture: Gesture = { kind: "highlight", ...base, pageNumber, last: start, points: [start.x, start.y] };
     this.active = gesture;
@@ -456,13 +488,13 @@ export class AnnotatorGestures {
   }
 
   private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext): GestureEffect[] {
-    if (active.purpose === "text") {
+    if (active.purpose !== "select") {
       if (active.hit) return [{ kind: "edit-text", annotation: active.hit }];
       if (active.pageNumber === null) return [];
       const size = surface.pageSize(active.pageNumber);
       if (!size) return [];
       const point = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
-      return [{ kind: "new-text", pageNumber: active.pageNumber, point }];
+      return [{ kind: "new-text", pageNumber: active.pageNumber, point, sticky: active.purpose === "sticky" }];
     }
     if (!active.hit) return context.selected ? [{ kind: "select", id: null }] : [];
     // A tap on the selected text note opens it, so a double tap edits.
@@ -494,6 +526,18 @@ export class AnnotatorGestures {
     };
   }
 
+  private textHighlight(active: Extract<Gesture, { kind: "text-highlight" }>, context: GestureContext): HighlightShape {
+    const { rects, text } = textBetween(active.text, active.from, active.to);
+    return {
+      kind: "highlight",
+      points: [],
+      rects,
+      text,
+      color: context.styles.highlighter.color,
+      strokeWidth: context.styles.highlighter.size,
+    };
+  }
+
   private create(pageNumber: number, shape: AnnotationShape, context: GestureContext): GestureEffect {
     return { kind: "create", annotation: { id: context.newId(), pageNumber, shape, createdAt: context.now() } };
   }
@@ -505,6 +549,7 @@ export class AnnotatorGestures {
     switch (active?.kind) {
       case "ink":
       case "highlight":
+      case "text-highlight":
       case "shape":
         return [{ kind: "draft", draft: null }];
       case "erase":
