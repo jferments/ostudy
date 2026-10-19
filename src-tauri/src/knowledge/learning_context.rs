@@ -287,10 +287,23 @@ pub(crate) fn unit_visible(unit: &KnowledgeUnit, sources: &[SourceRecord]) -> bo
 /// Native source-window selection for cards and guides. Dependent pages may be
 /// brought into the same request only within this explicitly selected document.
 /// No collection priorities or consumer model participate in saved-unit identity.
+#[cfg(test)]
 pub(crate) fn for_document_chunks(
     connection: &Connection,
     document_id: &str,
     chunk_indices: &[i64],
+) -> Result<LearningContext, CommandError> {
+    for_document_chunks_with_gaps(connection, document_id, chunk_indices, &BTreeSet::new())
+}
+
+/// As `for_document_chunks`, but sources this run's preparation left as gaps
+/// contribute no units instead of failing as stale. Any other unextracted
+/// source is still stale.
+pub(crate) fn for_document_chunks_with_gaps(
+    connection: &Connection,
+    document_id: &str,
+    chunk_indices: &[i64],
+    gaps: &BTreeSet<String>,
 ) -> Result<LearningContext, CommandError> {
     crate::util::validate_entity_id(document_id, "knowledge document")?;
     if chunk_indices.is_empty()
@@ -337,7 +350,11 @@ pub(crate) fn for_document_chunks(
         let source =
             repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
         if !repository::extraction_available(connection, &source)? {
-            return Err(repository::stale_source());
+            if !gaps.contains(&source.id) {
+                return Err(repository::stale_source());
+            }
+            sources.insert(source.id.clone(), source);
+            continue;
         }
         for unit in repository::load_units(connection, &id)? {
             target_units.insert(unit.id.clone());

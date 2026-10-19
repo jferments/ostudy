@@ -129,13 +129,10 @@ fn schema_and_admission_use_same_bounds_and_never_trim_table_headers() {
         "ai_document_output_resource"
     );
     value["content"]["tables"][0]["columns"][0] = json!(header);
-    value["content"]["tables"][0]["rows"] = json!([["broken"]]);
-    assert_eq!(
-        parse_section_with_images(value, &catalog_fixture(), false)
-            .unwrap_err()
-            .code,
-        "ai_document_output_invalid"
-    );
+    // A short row is a model slip: it is padded with a visible gap.
+    value["content"]["tables"][0]["rows"] = json!([["short"]]);
+    let parsed = parse_section_with_images(value, &catalog_fixture(), false).unwrap();
+    assert_eq!(parsed.content.tables[0].rows, vec![vec!["short", "—"]]);
 }
 
 #[test]
