@@ -16,6 +16,7 @@ import { createAnnotationId, type Annotation, type AnnotatorTool } from "./annot
 import { AnnotatorPage, type PageDraft } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
+import { createTileCache } from "./pageTiles";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, MIN_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -78,10 +79,16 @@ export function AnnotatorCanvas({
   // The cache lives as long as this effect, so a remounted canvas gets a fresh one
   // rather than a disposed one that never reads again.
   const [images, setImages] = useState<PageImageCache | null>(null);
+  const [tiles, setTiles] = useState<PageImageCache | null>(null);
   useEffect(() => {
     const cache = new PageImageCache(documentId);
+    const tileCache = createTileCache(documentId);
     setImages(cache);
-    return () => cache.dispose();
+    setTiles(tileCache);
+    return () => {
+      cache.dispose();
+      tileCache.dispose();
+    };
   }, [documentId]);
   const [draft, setDraft] = useState<PageDraft | null>(null);
   const [preview, setPreview] = useState<Annotation | null>(null);
@@ -91,7 +98,7 @@ export function AnnotatorCanvas({
   const pageSizes = useMemo(() => new Map(pages.map((page) => [page.pageNumber, page])), [pages]);
   const rects = useRef<Map<number, DOMRect> | null>(null);
 
-  const { scale, near } = viewport;
+  const { scale, near, settled } = viewport;
   const latest = useRef({ controller, scale, viewport });
   latest.current = { controller, scale, viewport };
 
@@ -334,6 +341,10 @@ export function AnnotatorCanvas({
                 scale={scale}
                 near={near.has(pageNumber)}
                 images={images}
+                tiles={tiles}
+                tileScale={settled?.scale ?? 0}
+                pixelRatio={settled?.pixelRatio ?? 1}
+                region={settled?.regions.get(pageNumber) ?? null}
                 annotations={controller.annotations.get(pageNumber) ?? EMPTY}
                 draft={draft?.pageNumber === pageNumber ? draft : null}
                 preview={preview?.pageNumber === pageNumber ? preview : null}
