@@ -118,6 +118,15 @@ fn parse_study_guide_section_mode(
             ))
         })?;
     repair_table_shapes(&mut section);
+    let restated = super::dedupe::drop_restated_items(&mut section);
+    if restated > 0 {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_restated_items_dropped",
+            "Dropped study-aid items that restated an earlier sentence; content is not logged.",
+            json!({"droppedItems": restated}),
+        );
+    }
     // All resource checks precede the legacy normalizer. Each capacity is below
     // that normalizer's truncation boundary, including table column labels.
     validate_generated_safety(&section)?;

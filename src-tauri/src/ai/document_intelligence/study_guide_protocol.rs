@@ -101,8 +101,9 @@ pub(super) fn bound_context(
         if serialized.len() <= maximum_bytes {
             return Ok(serialized);
         }
-        // The caller placed the active topic first. Remove remote background
-        // topics before the active topic's context and document-level metadata.
+        // Remove trailing background topics before document-level metadata.
+        // A caller that needs one topic kept places it first or names it
+        // outside this context.
         if let Some(topics) = value["topics"].as_array_mut() {
             if topics.len() > 1 {
                 topics.pop();
