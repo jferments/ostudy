@@ -59,8 +59,8 @@ impl Seen {
     }
 }
 
-/// Drop restated study-aid items in reader order and return how many went.
-pub(super) fn drop_restated_items(section: &mut StudyGuideSectionContent) -> usize {
+/// The teaching text of a section: overview, explanations, steps and tables.
+fn taught(section: &StudyGuideSectionContent) -> Seen {
     let mut seen = Seen(Vec::new());
     seen.add(&section.overview);
     for explanation in &section.explanations {
@@ -74,6 +74,17 @@ pub(super) fn drop_restated_items(section: &mut StudyGuideSectionContent) -> usi
             seen.add(&row.join(" "));
         }
     }
+    seen
+}
+
+/// True when every judgeable sentence of `text` repeats the section's teaching.
+pub(super) fn restates(section: &StudyGuideSectionContent, text: &str) -> bool {
+    taught(section).restates(text)
+}
+
+/// Drop restated study-aid items in reader order and return how many went.
+pub(super) fn drop_restated_items(section: &mut StudyGuideSectionContent) -> usize {
+    let mut seen = taught(section);
     let mut dropped = 0usize;
     section.key_points.retain(|point| {
         let keep = !seen.restates(point);
