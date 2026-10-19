@@ -262,11 +262,12 @@ describe("SettingsScreen AI provider/model behavior", () => {
           name: "Flashcard and study-guide generation model",
         }) as HTMLSelectElement).value,
       ).toBe("deepseek/deepseek-v4.1-flash");
+      // Document work never reasons, so only the Tutor row offers the choice.
       expect(
-        (screen.getByRole("combobox", {
+        screen.queryByRole("combobox", {
           name: "Flashcard and study-guide generation reasoning",
-        }) as HTMLSelectElement).value,
-      ).toBe("none");
+        }),
+      ).toBeNull();
       expect(
         (screen.getByRole("combobox", {
           name: "Interactive tutor model",

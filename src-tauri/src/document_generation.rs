@@ -105,7 +105,7 @@ pub(crate) async fn execute_generation_windows(
     if input.windows.is_empty() {
         return Ok(Vec::new());
     }
-    authoring::prepare_document(authoring::DocumentPreparation {
+    let gaps = authoring::prepare_document(authoring::DocumentPreparation {
         database: input.database,
         paths: input.paths,
         runtime: input.runtime,
@@ -124,6 +124,7 @@ pub(crate) async fn execute_generation_windows(
                 input.document_id,
                 &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(),
                 input.task,
+                &gaps,
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
