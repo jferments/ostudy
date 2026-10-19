@@ -249,62 +249,64 @@ function CollectionCard({
 
   return (
     <FolderDropZone folderId={folder.id} disabled={mutationBusy} onDropDocument={onDropDocument}>
-      <article aria-labelledby={headingId} data-testid="document-collection" className="tw:relative tw:mt-1.5 tw:mr-1.5 tw:min-w-0">
-        {/* The sheet behind the card makes a collection read as a stack of documents. */}
-        <span aria-hidden="true" className="tw:absolute tw:-top-1.5 tw:-right-1.5 tw:bottom-1.5 tw:left-1.5 tw:rounded-xl tw:border tw:border-solid tw:border-primary/25 tw:bg-primary/12" />
-        <div className="tw:relative tw:grid tw:min-w-0 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-primary/30 tw:bg-[color-mix(in_oklab,var(--primary)_7%,var(--card))] tw:p-4 tw:compact:p-3">
-          <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-3">
-            <span aria-hidden="true" className="tw:grid tw:size-10 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-primary tw:text-primary-foreground">
-              <Icon name="folder" size={20} />
-            </span>
-            <div className="tw:grid tw:min-w-0 tw:flex-1">
-              <h3 id={headingId} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{folder.name}</h3>
-              <span className="tw:text-small tw:text-muted-foreground">{collectionSummary(memberships.length, status)}</span>
+      <article aria-labelledby={headingId} data-testid="document-collection" className="tw:relative tw:mr-1.5 tw:mb-1.5 tw:min-w-0">
+        {/* The offset sheet behind the card makes a collection read as a stack of documents. */}
+        <span aria-hidden="true" className="tw:absolute tw:inset-0 tw:translate-x-1.5 tw:translate-y-1.5 tw:rounded-xl tw:border tw:border-solid tw:border-primary/30 tw:bg-primary/12" />
+        <div className="tw:relative tw:min-w-0 tw:rounded-xl tw:bg-card">
+          <div className="tw:grid tw:min-w-0 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-primary/30 tw:bg-primary/7 tw:p-4 tw:compact:p-3">
+            <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-3">
+              <span aria-hidden="true" className="tw:grid tw:size-10 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-primary tw:text-primary-foreground">
+                <Icon name="folder" size={20} />
+              </span>
+              <div className="tw:grid tw:min-w-0 tw:flex-1">
+                <h3 id={headingId} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{folder.name}</h3>
+                <span className="tw:text-small tw:text-muted-foreground">{collectionSummary(memberships.length, status)}</span>
+              </div>
+              <OverflowMenu label={`More actions for ${folder.name}`} items={menu} />
             </div>
-            <OverflowMenu label={`More actions for ${folder.name}`} items={menu} />
+            {memberships.length ? (
+              <ul aria-label={`Documents in ${folder.name}`} className="tw:m-0 tw:grid tw:list-none tw:rounded-lg tw:border tw:border-solid tw:border-primary/20 tw:bg-card tw:p-0">
+                {memberships.map((membership) => (
+                  <CollectionMember
+                    key={membership.id}
+                    membership={membership}
+                    organization={organization}
+                    document={documents.get(membership.documentId)}
+                    canMove={organization.collections.length > 1}
+                    disabled={mutationBusy}
+                    onOpen={onOpenDocument}
+                    onAnnotate={onAnnotateDocument}
+                    onRanges={onRanges}
+                    onMove={onMove}
+                    onRemove={onRemove}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <Button
+                variant="ghost"
+                disabled={mutationBusy}
+                onClick={onAdd}
+                className="tw:min-h-24 tw:w-full tw:justify-center tw:rounded-lg tw:border-2 tw:border-dashed tw:border-primary/30 tw:text-primary tw:hover:bg-primary/6 tw:hover:text-primary"
+              >
+                <Icon name="plus" size={18} />
+                Add documents
+              </Button>
+            )}
+            {memberships.length ? (
+              <CollectionStudyActions
+                status={status}
+                loading={bundle.loading}
+                busy={bundle.busy}
+                canceling={bundle.canceling}
+                onRun={() => void bundle.run()}
+                onStop={() => void bundle.stop()}
+                onStudy={onStudyCollection}
+                onOpenGuide={onOpenGuide}
+              />
+            ) : null}
+            {bundle.error ? <InlineNotice kind="warning">{bundle.error}</InlineNotice> : null}
           </div>
-          {memberships.length ? (
-            <ul aria-label={`Documents in ${folder.name}`} className="tw:m-0 tw:grid tw:list-none tw:rounded-lg tw:border tw:border-solid tw:border-primary/20 tw:bg-card tw:p-0">
-              {memberships.map((membership) => (
-                <CollectionMember
-                  key={membership.id}
-                  membership={membership}
-                  organization={organization}
-                  document={documents.get(membership.documentId)}
-                  canMove={organization.collections.length > 1}
-                  disabled={mutationBusy}
-                  onOpen={onOpenDocument}
-                  onAnnotate={onAnnotateDocument}
-                  onRanges={onRanges}
-                  onMove={onMove}
-                  onRemove={onRemove}
-                />
-              ))}
-            </ul>
-          ) : (
-            <Button
-              variant="ghost"
-              disabled={mutationBusy}
-              onClick={onAdd}
-              className="tw:min-h-24 tw:w-full tw:justify-center tw:rounded-lg tw:border-2 tw:border-dashed tw:border-primary/30 tw:text-primary tw:hover:bg-primary/6 tw:hover:text-primary"
-            >
-              <Icon name="plus" size={18} />
-              Add documents
-            </Button>
-          )}
-          {memberships.length ? (
-            <CollectionStudyActions
-              status={status}
-              loading={bundle.loading}
-              busy={bundle.busy}
-              canceling={bundle.canceling}
-              onRun={() => void bundle.run()}
-              onStop={() => void bundle.stop()}
-              onStudy={onStudyCollection}
-              onOpenGuide={onOpenGuide}
-            />
-          ) : null}
-          {bundle.error ? <InlineNotice kind="warning">{bundle.error}</InlineNotice> : null}
         </div>
       </article>
     </FolderDropZone>
