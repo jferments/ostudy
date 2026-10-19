@@ -4,12 +4,17 @@ export const providerStyles = {
 } as const;
 
 export const guideLibraryStyles = {
-  "workspace": "tw:p-(--card-gutter)",
-  "toolbar": "tw:mb-4 tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:justify-between tw:gap-4",
-  "search": "tw:max-sm:w-full tw:max-sm:flex-[0_1_auto] tw:max-sm:[&>label]:w-full tw:max-sm:[&>label]:max-w-none tw:max-sm:[&>label]:flex-[0_1_auto] tw:flex tw:min-w-0 tw:flex-1 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:flex-1 tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
-  "tools": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:gap-1.5 tw:[&>label]:text-small tw:[&>label]:font-medium",
-  "summary": "tw:mb-3 tw:flex tw:flex-wrap tw:justify-between tw:gap-2 tw:text-small tw:text-muted-foreground",
-  "metrics": "tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:tabular-nums",
+  "workspace": "tw:min-w-0",
+  "toolbar": "tw:flex tw:min-w-0 tw:flex-[1_1_24rem] tw:flex-wrap tw:items-center tw:justify-end tw:gap-2",
+  "search": "tw:relative tw:flex tw:min-w-0 tw:flex-[1_1_14rem] tw:items-center tw:sm:max-w-[24rem]",
+  "summary": "tw:mt-0 tw:mb-3 tw:text-small tw:text-muted-foreground",
+  "grid": "tw:m-0 tw:grid tw:list-none tw:grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] tw:gap-5 tw:p-0",
+  "card": "tw:mr-1.5 tw:mb-1.5 tw:min-w-0",
+  "stack": "tw:absolute tw:inset-0 tw:translate-x-1.5 tw:translate-y-1.5 tw:rounded-xl tw:border tw:border-solid tw:border-primary/30 tw:bg-primary/12",
+  "cardSurface": "tw:relative tw:flex tw:h-full tw:min-w-0 tw:flex-col tw:gap-4 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:shadow-sm tw:compact:p-3",
+  "collectionSurface": "tw:border-primary/30",
+  "cover": "tw:grid tw:h-14 tw:w-11 tw:shrink-0 tw:place-items-center tw:rounded-l-sm tw:rounded-r-lg tw:border-0 tw:border-l-4 tw:border-solid tw:border-primary tw:bg-primary/12 tw:text-primary",
+  "metrics": "tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:text-small tw:tabular-nums tw:text-muted-foreground",
   "pagination": "tw:mt-4 tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2 tw:text-small tw:tabular-nums tw:text-muted-foreground"
 } as const;
 
