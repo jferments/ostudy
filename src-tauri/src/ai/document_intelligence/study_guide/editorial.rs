@@ -228,6 +228,20 @@ fn user_prompt(
             if let Some(overview) = bounded_complete_text(&section.overview, detail_limit) {
                 value["validatedSectionOverview"] = Value::String(overview);
             }
+            // The headings show what the section actually teaches, which can
+            // differ from the title planned before it was written.
+            if detail_limit > 0 && !section.explanations.is_empty() {
+                let headings = section
+                    .explanations
+                    .iter()
+                    .map(|explanation| explanation.heading.trim())
+                    .filter(|heading| !heading.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                if let Some(headings) = bounded_complete_text(&headings, detail_limit) {
+                    value["explanationHeadings"] = Value::String(headings);
+                }
+            }
             value
         })
         .collect::<Vec<_>>();
@@ -238,7 +252,7 @@ fn user_prompt(
     });
     let context = serde_json::to_string(&context).map_err(CommandError::serialization)?;
     Ok(format!(
-        "Edit this COMPLETE topic set into a readable guide. Every alias T0 through T{} must appear exactly once across chapters; do not omit, duplicate, merge, or invent topic aliases. The introduction should be 2–4 short paragraphs that orient the learner to the subject and explain how the major ideas fit together, not a list of labels. Learning objectives should be at most six broad abilities or understandings, never a dump of individual facts. Use a few major chapters appropriate to the material, each with a narrative introduction. Subsection titles should be concise human headings with normal capitalization.\n\n<ostudy-guide-sections>\n{context}\n</ostudy-guide-sections>",
+        "Edit this COMPLETE topic set into a readable guide. Every alias T0 through T{} must appear exactly once across chapters; do not omit, duplicate, merge, or invent topic aliases. The introduction should be 2–4 short paragraphs that orient the learner to the subject and explain how the major ideas fit together, not a list of labels. Learning objectives should be at most six broad abilities or understandings, never a dump of individual facts. Use a few major chapters appropriate to the material, each with a narrative introduction. Name each topic's subsection from what its section actually teaches (its overview and explanation headings), not from its current title, so a reader finds each idea where its heading says it is. Subsection titles should be concise human headings with normal capitalization.\n\n<ostudy-guide-sections>\n{context}\n</ostudy-guide-sections>",
         plan.topics.len().saturating_sub(1)
     ))
 }
