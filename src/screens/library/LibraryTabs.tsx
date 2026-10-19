@@ -20,9 +20,9 @@ interface LibraryTabsProps {
 }
 
 /**
- * Library's pages as underline tabs: Flashcards (the Workbench), Documents and
- * Study guides. Underlines keep them apart from the side rail's tiles and from
- * the filters inside each page.
+ * Library's pages as folder tabs: Flashcards (the Workbench), Documents and
+ * Study guides. The open page's tab is in front, joined to the page below it;
+ * the others sit back on a shaded face.
  */
 export function LibraryTabs({ view, onSelectView, actions, className }: LibraryTabsProps) {
   return (
@@ -32,8 +32,9 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
         className,
       )}
     >
-      <nav aria-label="Library pages" data-tour-anchor="library.views" className="tw:min-w-0 tw:overflow-x-auto">
-        <ul className="tw:m-0 tw:flex tw:list-none tw:gap-5 tw:p-0 tw:compact:gap-4">
+      {/* The row overlaps the line below it so the front tab can cover it. */}
+      <nav aria-label="Library pages" data-tour-anchor="library.views" className="tw:-mb-px tw:min-w-0 tw:overflow-x-auto">
+        <ul className="tw:m-0 tw:flex tw:list-none tw:items-end tw:gap-1 tw:p-0">
           {LIBRARY_SECTIONS.map((section) => {
             const active = section === view;
             return (
@@ -43,11 +44,10 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
                   aria-current={active ? "page" : undefined}
                   onClick={() => onSelectView(section)}
                   className={cn(
-                    "tw:relative tw:min-h-11 tw:justify-center tw:rounded-none tw:px-0.5 tw:text-body tw:whitespace-nowrap tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none",
-                    "tw:after:absolute tw:after:inset-x-0 tw:after:-bottom-px tw:after:h-0.75 tw:after:rounded-t-sm",
+                    "tw:min-h-11 tw:justify-center tw:rounded-t-md tw:rounded-b-none tw:border tw:border-b-0 tw:border-solid tw:px-4 tw:text-body tw:whitespace-nowrap tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:focus-visible:ring-inset tw:reduce-motion:transition-none tw:compact:px-3",
                     active
-                      ? "tw:font-semibold tw:text-foreground tw:after:bg-foreground"
-                      : "tw:font-medium tw:text-muted-foreground tw:hover:text-foreground",
+                      ? "tw:border-border tw:bg-background tw:font-semibold tw:text-foreground"
+                      : "tw:mb-px tw:min-h-10 tw:border-border/70 tw:bg-muted tw:font-medium tw:text-muted-foreground tw:hover:bg-foreground/8 tw:hover:text-foreground",
                   )}
                 >
                   {VIEWS[section].label}
