@@ -457,12 +457,18 @@ fn compact_topic_label(value: &str) -> String {
     }
 }
 
+/// A label list, not prose. Commas alone do not decide it: a three-sentence
+/// overview of a chapter routinely has ten, and rejecting those left every
+/// document with the native fallback summary and no core units. A comma list
+/// is one whose comma-separated pieces average under four words.
 fn inventory_like_summary(value: &str) -> bool {
     let clean = value.trim();
+    let pieces = clean.split(',').collect::<Vec<_>>();
+    let words = clean.split_whitespace().count();
     clean.contains(" / ")
         || clean.matches("; ").count() >= 2
         || clean.lines().count() > 1
-        || clean.matches(',').count() >= 4
+        || (pieces.len() >= 5 && words < 4 * pieces.len())
 }
 
 fn whole_items<'a>(
@@ -737,6 +743,14 @@ mod tests {
         assert!(summary.contains("Topic 2"));
         assert!(summary.contains("Topic 4"));
         assert!(!summary.contains("Topic 1"));
+    }
+
+    #[test]
+    fn narrative_summary_with_many_commas_is_not_an_inventory() {
+        assert!(!inventory_like_summary("The heart is a muscular pump whose specialized cells generate, conduct and coordinate each beat, so that the atria fill the ventricles before they contract. Its output, the product of heart rate and stroke volume, is adjusted by autonomic nerves, reflexes, hormones and drugs, which act on rate, contractility, preload or afterload."));
+        assert!(inventory_like_summary(
+            "Heart rate, stroke volume, preload, afterload, contractility, cardiac output"
+        ));
     }
 
     #[test]
