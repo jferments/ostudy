@@ -3,8 +3,8 @@ import { progressStyles } from "./presentation";
 import { Progress } from "../../ui/primitives/Progress";
 import { Disclosure } from "../../ui/primitives/FormControls";
 
-export function GenerationProgressPanel({ document, progress, now }: {
-  document: DocumentSummary; progress: DocumentGenerationProgress | null; now: number;
+export function GenerationProgressPanel({ document, progress }: {
+  document: DocumentSummary; progress: DocumentGenerationProgress | null;
 }) {
   const stage = generationStage(document, progress);
   const percent = generationPercent(document, progress);
@@ -12,7 +12,6 @@ export function GenerationProgressPanel({ document, progress, now }: {
     <div className={progressStyles.heading}><span>{stage.title}</span><span>{percent === null ? "Working…" : `${percent}%`}</span></div>
     <Progress value={percent} max={100} label="Document generation progress" />
     <div className={progressStyles.detail}>{stage.detail}</div>
-    <GenerationDiagnostics progress={progress} now={now} />
   </div>;
 }
 

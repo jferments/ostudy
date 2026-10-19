@@ -1,32 +1,37 @@
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { isActiveArtifactJob, useDocumentArtifactProgress } from "../controllers/useDocumentArtifactProgress";
+import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
 import { generationInstructionsError } from "../ipc/generationInstructions";
+import type { DocumentArtifactJob } from "../ipc/studyGuides";
+import { Icon } from "../ui/icons/Icon";
+import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
+import { Dialog } from "../ui/overlays/Dialog";
 import { MetadataDialog, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
-import { ResponsiveActionGroup, type ResponsiveAction } from "../ui/patterns/ResponsiveActionGroup";
+import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
-import { Surface } from "../ui/primitives/Surface";
-import { Badge } from "../ui/primitives/Badge";
+import { Badge, type BadgeTone } from "../ui/primitives/Badge";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
+import { Textarea } from "../ui/primitives/FormControls";
+import { FormField } from "../ui/primitives/FormField";
 import {
-  GenerationProgressPanel, statusLabel, processingPhaseLabel, formatDocumentType,
+  GenerationDiagnostics, GenerationProgressPanel, statusLabel, processingPhaseLabel, formatDocumentType,
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
 import { LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
-import { GenerationInstructionsField } from "./documents/GenerationInstructionsField";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
-import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
+import { type CollectionDialog, DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
+import { useDocumentCollectionsController } from "./documents/useDocumentCollectionsController";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { beginDocumentFolderDrag, isInteractiveDocumentDragOrigin } from "./documents/documentFolderDrag";
-import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
@@ -70,15 +75,21 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     isUploading || documents.some((document) => document.lifecycleState === "processing")
       || busyDocumentIds.size > 0 || guideGeneratingDocumentIds.size > 0,
   );
-  const [uploadInstructions, setUploadInstructions] = useState("");
-  const [instructionDrafts, setInstructionDrafts] = useState<Record<string, string>>({});
+  // Phones drop the row's Open button, so Open leads the row's menu there.
+  const compact = useLayoutMode().layoutMode === "compact";
+  const collections = useDocumentCollectionsController();
+  // An upload into a collection files the document once the picker returns.
+  const latestCollections = useRef(collections);
+  latestCollections.current = collections;
+  const [collectionDialog, setCollectionDialog] = useState<CollectionDialog | null>(null);
+  const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
-  const [generationInfoDocumentId, setGenerationInfoDocumentId] = useState<string | null>(null);
+  const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
   const handleContainedDocumentIdsChange = useCallback((next: string[]) => {
     setContainedDocumentIds((current) => (
@@ -89,6 +100,12 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   }, []);
   const contained = new Set(containedDocumentIds);
   const looseDocuments = documents.filter((document) => !contained.has(document.id));
+  const hasCollections = (collections.organization?.collections.length ?? 0) > 0;
+
+  const openDocument = (document: DocumentSummary) => document.sourceFormat === "image_bundle"
+    ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
+  const uploadInto = (collectionId: string) => void uploadDocument(undefined,
+    (documentId) => latestCollections.current.addDocument(collectionId, documentId));
 
   if (collectionGuide) {
     return (
@@ -123,6 +140,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     );
   }
 
+  const detailsDocument = detailsDocumentId ? documents.find((document) => document.id === detailsDocumentId) : undefined;
+
   return (
     <PageScaffold width="full" role="region" aria-label="Documents">
       <PageHeader
@@ -131,168 +150,143 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         actions={
           <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
             <Button
-              variant="secondary"
-              disabled={isUploading}
-              onClick={() => setImageWorkspaceDocumentId(null)}
+              disabled={collections.organization === null || collections.busy}
+              onClick={() => setCollectionDialog({ kind: "create", name: "" })}
             >
-              Upload images
+              New collection
             </Button>
-            <Button variant="primary"
-              disabled={isUploading || generationInstructionsError(uploadInstructions) !== null}
-              onClick={() => void uploadDocument(uploadInstructions)}>
-              {isUploading ? "Choose a document…" : "Upload document"}
-            </Button>
+            <OverflowMenu
+              label={isUploading ? "Choose a document…" : "Upload"}
+              triggerPresentation="text"
+              triggerVariant="primary"
+              disabled={isUploading}
+              items={[
+                { id: "document", label: "Document…", onSelect: () => void uploadDocument() },
+                { id: "images", label: "Images…", onSelect: () => setImageWorkspaceDocumentId(null) },
+              ]}
+            />
           </div>
         }
       />
       {props.headerSupplement}
-      <GenerationInstructionsField compact label="Instructions for new document flashcards"
-        value={uploadInstructions} onChange={setUploadInstructions} disabled={isUploading} />
+      {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       <DocumentCollectionsWorkspace
+        controller={collections}
+        dialog={collectionDialog}
+        onDialogChange={setCollectionDialog}
         documents={documents}
         refreshDecks={props.refreshDecks}
         onStudyCollection={props.onStudyCollection}
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
+        onOpenDocument={openDocument}
         onAnnotateDocument={(document) => setAnnotating({ id: document.id, title: document.title })}
+        onUploadInto={uploadInto}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
       />
-      <div className={styles.toolbar}>
-        <strong>Loose documents</strong>
-        <span className={styles.count}>{looseDocuments.length} document{looseDocuments.length === 1 ? "" : "s"}</span>
-      </div>
-      {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
-        <EmptyState title="No documents yet" description="Upload a course handout, chapter, presentation, or study packet to create learning materials." />
-      ) : looseDocuments.length === 0 ? (
-        <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-          Every document is currently organized into a collection.
-        </p>
-      ) : (
-        <div className={styles.list}>
-          {looseDocuments.map((document) => {
-            const guideJob = artifactProgress.jobs[document.id] ?? null;
-            const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
-            const cardBusy = busyDocumentIds.has(document.id);
-            const deleting = deletingDocumentIds.has(document.id);
-            const busy = cardBusy || deleting || guideGenerating;
-            const instructions = instructionDrafts[document.id] ?? jobs.generationInstructionsFor(document);
-            const invalidInstructions = generationInstructionsError(instructions) !== null;
-            const canceling = cancelingDocumentIds.has(document.id);
-            const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
-            const live = generationProgress[document.id] ?? null;
-            const learningPlan = learningPlans[document.id] ?? null;
-            const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
-            const showArtifacts = authoring || guideGenerating
-              || (document.lifecycleState !== "processing" && guideJob !== null);
-            const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
-            const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
-            const actions: ResponsiveAction[] = [{
-              id: "view",
-              label: document.sourceFormat === "image_bundle" ? "View image collection" : "View",
-              placement: "always-visible",
-              presentation: "icon",
-              icon: "view",
-              onSelect: () => document.sourceFormat === "image_bundle"
-                ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
-              disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
-            }];
-            if (canAnnotateDocument(document)) actions.push({
-              id: "annotate",
-              label: "Annotate",
-              description: "Draw, highlight and type notes on the pages.",
-              placement: "always-visible",
-              presentation: "icon",
-              icon: "annotate",
-              onSelect: () => setAnnotating({ id: document.id, title: document.title }),
-              disabled: deleting,
-            });
-            if (document.lifecycleState !== "processing") actions.push({
-              id: "delete",
-              label: "Delete document",
-              description: "Permanently delete this managed source and document-owned derivatives.",
-              placement: "always-visible",
-              presentation: "icon",
-              icon: "delete",
-              destructive: true,
-              onSelect: () => void deleteDocument(document),
-              disabled: busy,
-              loading: deleting,
-            });
-            actions.push({
-              id: "generation-info",
-              label: "Generation info",
-              placement: "overflow-only",
-              onSelect: () => setGenerationInfoDocumentId(document.id),
-            });
-            if (document.lifecycleState === "processing") actions.push({
-              id: "stop-generation",
-              label: canceling ? "Stopping…" : "Stop generation",
-              placement: "overflow-only",
-              destructive: true,
-              onSelect: () => void stopGeneration(document),
-              disabled: canceling,
-            });
-            if (!guideGenerating && document.lifecycleState !== "processing") actions.push({
-              id: "study-guide",
-              label: guideJob === null ? "Generate study guide" : "Regenerate study guide",
-              placement: "overflow-only",
-              onSelect: () => void generateStudyGuide(document),
-              disabled: busy,
-            });
-            if (guideGenerating && document.lifecycleState !== "processing") actions.push({
-              id: "stop-guide",
-              label: cancelingGuide ? "Stopping study guide…" : "Stop study guide generation",
-              placement: "overflow-only",
-              destructive: true,
-              onSelect: () => void stopStudyGuide(document),
-              disabled: cancelingGuide,
-            });
-            if (canRetry) actions.push({
-              id: "retry",
-              label: cardBusy ? "Retrying…" : "Retry generation",
-              placement: "overflow-only",
-              onSelect: () => void retry(document, instructions),
-              disabled: busy || invalidInstructions,
-            });
-            if (canGenerateMore) actions.push({
-              id: "generate-more",
-              label: cardBusy ? "Generating…" : "Generate more cards",
-              placement: "overflow-only",
-              onSelect: () => void generateMore(document, instructions),
-              disabled: busy || invalidInstructions,
-            });
-            return (
-              <Surface as="article" key={document.id} className={styles.card}>
-                <div
-                  className={`${styles.cardMain} tw:cursor-grab tw:active:cursor-grabbing`}
-                  data-document-drag-source={document.id}
-                  draggable={document.lifecycleState !== "processing"}
-                  onDragStart={(event) => {
-                    if (isInteractiveDocumentDragOrigin(event.target)) {
-                      event.preventDefault();
-                      return;
-                    }
-                    beginDocumentFolderDrag(event.dataTransfer, document.id);
-                  }}
+        <EmptyState title="No documents yet" icon="document" />
+      ) : looseDocuments.length === 0 ? null : (
+        <section aria-labelledby="loose-documents-heading" className="tw:grid tw:min-w-0 tw:gap-3">
+          {hasCollections ? (
+            <h2 id="loose-documents-heading" className="tw:m-0 tw:text-body tw:font-semibold">Documents</h2>
+          ) : <h2 id="loose-documents-heading" className="sr-only">Documents</h2>}
+          <ul className="tw:m-0 tw:grid tw:min-w-0 tw:list-none tw:gap-2 tw:p-0">
+            {looseDocuments.map((document) => {
+              const guideJob = artifactProgress.jobs[document.id] ?? null;
+              const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
+              const cardBusy = busyDocumentIds.has(document.id);
+              const deleting = deletingDocumentIds.has(document.id);
+              const busy = cardBusy || deleting || guideGenerating;
+              const instructions = jobs.generationInstructionsFor(document);
+              const canceling = cancelingDocumentIds.has(document.id);
+              const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
+              const live = generationProgress[document.id] ?? null;
+              const learningPlan = learningPlans[document.id] ?? null;
+              const processing = document.lifecycleState === "processing";
+              const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
+              // A finished guide needs no panel; a running or failed one does.
+              const guideUnsettled = guideJob !== null && guideJob.state !== "succeeded" && guideJob.state !== "canceled";
+              const showArtifacts = authoring || guideGenerating || (!processing && guideUnsettled);
+              const items: OverflowMenuItem[] = [];
+              if (canAnnotateDocument(document)) items.push({
+                id: "annotate", label: "Annotate", disabled: deleting,
+                onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+              });
+              if (hasCollections && !processing) items.push({
+                id: "move", label: "Move to a collection…", disabled: collections.busy,
+                onSelect: () => setCollectionDialog({ kind: "move-document", documentId: document.id, targetCollectionId: "" }),
+              });
+              if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
+                id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
+                onSelect: () => setMoreCards({ document, instructions }),
+              });
+              if (document.generatedDeckId === null && !processing) items.push({
+                id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
+                onSelect: () => void retry(document, instructions),
+              });
+              if (!guideGenerating && !processing) items.push({
+                id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
+                onSelect: () => void generateStudyGuide(document),
+              });
+              if (guideGenerating && !processing) items.push({
+                id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
+                onSelect: () => void stopStudyGuide(document),
+              });
+              if (processing) items.push({
+                id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
+                onSelect: () => void stopGeneration(document),
+              });
+              items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
+              if (!processing) items.push({
+                id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
+                onSelect: () => void deleteDocument(document),
+              });
+              return (
+                <li
+                  key={document.id}
+                  data-testid="document-row"
+                  aria-labelledby={`document-${document.id}`}
+                  className="tw:grid tw:min-w-0 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:py-3 tw:pr-3 tw:pl-4 tw:compact:pl-3"
                 >
-                  <div className={styles.titleRow}>
-                    <h2>{document.title}</h2>
-                    <Badge tone={document.lifecycleState === "ready" ? "success" : document.lifecycleState === "processing" ? "accent" : "warning"}>
-                      {statusLabel(document)}
-                    </Badge>
-                    {document.lifecycleState === "processing" ? (
-                      <span className={styles.processingPhase} aria-live="polite">{processingPhaseLabel(document, canceling, live)}</span>
-                    ) : guideGenerating ? (
-                      <span className={styles.processingPhase} aria-live="polite">{cancelingGuide ? "Stopping study guide" : "Generating study guide"}</span>
-                    ) : null}
+                  <div
+                    className="tw:flex tw:min-w-0 tw:cursor-grab tw:items-center tw:gap-4 tw:active:cursor-grabbing tw:compact:gap-3"
+                    data-document-drag-source={document.id}
+                    draggable={!processing}
+                    onDragStart={(event) => {
+                      if (isInteractiveDocumentDragOrigin(event.target)) {
+                        event.preventDefault();
+                        return;
+                      }
+                      beginDocumentFolderDrag(event.dataTransfer, document.id);
+                    }}
+                  >
+                    <DocumentThumb image={document.sourceFormat === "image_bundle"} />
+                    <div className="tw:grid tw:min-w-0 tw:flex-1">
+                      <h3 id={`document-${document.id}`} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{document.title}</h3>
+                      <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
+                        {documentMeta(document)}
+                        <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
+                      </span>
+                    </div>
+                    <span className="tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden">
+                      {materialSummary(document, guideJob)}
+                    </span>
+                    <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
+                    <Button size="small" className="tw:shrink-0 tw:compact:hidden"
+                      disabled={document.sourceFormat === "image_bundle" ? deleting : busy}
+                      onClick={() => openDocument(document)}>
+                      Open
+                    </Button>
+                    <OverflowMenu label={`More actions for ${document.title}`} items={compact ? [{
+                      id: "open", label: "Open", onSelect: () => openDocument(document),
+                      disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
+                    }, ...items] : items} />
                   </div>
-                  <div className={styles.sourceSummary}>
-                    <span className={styles.filename}>{document.originalFilename}</span>
-                    <span className={styles.cardCount}>{document.generatedCardCount} card{document.generatedCardCount === 1 ? "" : "s"}</span>
-                  </div>
-                  <GenerationInstructionsField compact value={instructions}
-                    disabled={busy || document.lifecycleState === "processing"}
-                    onChange={(value) => setInstructionDrafts((current) => ({ ...current, [document.id]: value }))} />
+                  {processing || guideGenerating ? (
+                    <span className="tw:sr-only" aria-live="polite">
+                      {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
+                    </span>
+                  ) : null}
                   {showArtifacts ? (
                     <LearningArtifactProgressPanel
                       document={document}
@@ -300,49 +294,128 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                       guideJob={guideJob}
                       guideStarting={guideGenerating}
                       readFailed={artifactProgress.readFailed}
-                      now={clockNow}
                     />
-                  ) : document.lifecycleState === "processing" ? (
-                    <GenerationProgressPanel document={document} progress={live} now={clockNow} />
+                  ) : processing ? (
+                    <GenerationProgressPanel document={document} progress={live} />
                   ) : null}
-                  {document.lifecycleState === "processing" && learningPlan ? (
+                  {processing && learningPlan ? (
                     <CheckedLearningPlanPanel document={document} plan={learningPlan} />
                   ) : null}
-                  {document.safeErrorMessage ? <InlineNotice kind="warning" className="tw:mt-4">{document.safeErrorMessage}</InlineNotice> : null}
-                  {!document.generatedDeckId && document.generatedCardCount > 0 && document.lifecycleState === "ready" ? (
-                    <p className={styles.deckNote}>The previous generated deck was deleted. Retry generation to create a new deck from the retained document.</p>
-                  ) : null}
-                </div>
-                <ResponsiveActionGroup
-                  label={`Actions for ${document.title}`}
-                  overflowLabel={`More actions for ${document.title}`}
-                  actions={actions}
-                  className={styles.actions}
-                />
-                {generationInfoDocumentId === document.id ? (
-                  <MetadataDialog
-                    open
-                    title={`${document.title} generation info`}
-                    description="Source, processing, and latest generation details for this document."
-                    onClose={() => setGenerationInfoDocumentId(null)}
-                  >
-                    <MetadataList>
-                      <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
-                      <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
-                      <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
-                      <MetadataItem label="API tokens" value={formatApiTokens(document, live)} />
-                      <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
-                      <MetadataItem label="Created" value={formatDate(document.createdAt)} />
-                      <MetadataItem label="SHA-256" value={document.sha256} />
-                    </MetadataList>
-                    <GenerationSummary report={document.generationSummary} />
-                  </MetadataDialog>
-                ) : null}
-              </Surface>
-            );
-          })}
-        </div>
+                  {document.safeErrorMessage ? <InlineNotice kind="warning">{document.safeErrorMessage}</InlineNotice> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
+      {detailsDocument ? (
+        <DocumentDetails
+          document={detailsDocument}
+          progress={generationProgress[detailsDocument.id] ?? null}
+          now={clockNow}
+          onClose={() => setDetailsDocumentId(null)}
+        />
+      ) : null}
+      {moreCards ? (
+        <MoreCardsDialog
+          title={moreCards.document.title}
+          instructions={moreCards.instructions}
+          onChange={(instructions) => setMoreCards({ ...moreCards, instructions })}
+          onClose={() => setMoreCards(null)}
+          onSubmit={() => {
+            const { document, instructions } = moreCards;
+            setMoreCards(null);
+            void generateMore(document, instructions);
+          }}
+        />
+      ) : null}
     </PageScaffold>
+  );
+}
+
+function DocumentThumb({ image }: { image: boolean }) {
+  return (
+    <span aria-hidden="true" className="tw:grid tw:h-13 tw:w-10 tw:shrink-0 tw:place-items-center tw:rounded-md tw:border tw:border-solid tw:border-border-strong tw:bg-muted/40 tw:text-muted-foreground tw:compact:h-11 tw:compact:w-8.5">
+      <Icon name={image ? "image" : "document"} size={18} />
+    </span>
+  );
+}
+
+function documentMeta(document: DocumentSummary): string {
+  const parts = [document.sourceFormat === "image_bundle" ? "Images" : formatDocumentType(document.sourceFormat)];
+  if (document.sourceUnitCount > 0) {
+    parts.push(`${document.sourceUnitCount.toLocaleString()} ${sourceUnitHeading(document.sourceUnitKind).toLowerCase()}`);
+  }
+  parts.push(`added ${formatAddedDate(document.createdAt)}`);
+  return parts.join(" · ");
+}
+
+function formatAddedDate(timestamp: number): string {
+  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(timestamp))) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function materialSummary(document: DocumentSummary, guideJob: DocumentArtifactJob | null): string {
+  const cards = document.generatedCardCount;
+  const parts = cards > 0 ? [`${cards.toLocaleString()} card${cards === 1 ? "" : "s"}`] : [];
+  if (cards > 0 && !document.generatedDeckId) parts.push("deck deleted");
+  if (guideJob?.state === "succeeded") parts.push("guide");
+  return parts.length ? parts.join(" · ") : "Nothing yet";
+}
+
+function statusTone(document: DocumentSummary): BadgeTone {
+  if (document.lifecycleState === "ready") return "success";
+  if (document.lifecycleState === "processing") return "accent";
+  return "warning";
+}
+
+function DocumentDetails({ document, progress, now, onClose }: {
+  document: DocumentSummary;
+  progress: DocumentGenerationProgress | null;
+  now: number;
+  onClose: () => void;
+}) {
+  return (
+    <MetadataDialog open title="Details" description={document.title} onClose={onClose}>
+      <MetadataList>
+        <MetadataItem label="File" value={document.originalFilename} />
+        <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
+        <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
+        <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
+        <MetadataItem label="API tokens" value={formatApiTokens(document, progress)} />
+        <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
+        <MetadataItem label="Created" value={formatDate(document.createdAt)} />
+        <MetadataItem label="SHA-256" value={document.sha256} />
+      </MetadataList>
+      {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
+      <GenerationSummary report={document.generationSummary} />
+    </MetadataDialog>
+  );
+}
+
+function MoreCardsDialog({ title, instructions, onChange, onClose, onSubmit }: {
+  title: string;
+  instructions: string;
+  onChange: (instructions: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const error = generationInstructionsError(instructions);
+  return (
+    <Dialog title="Make more cards" description={title} width="small" onClose={onClose}
+      onSubmit={() => { if (!error) onSubmit(); }}
+      actions={<>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={error !== null}>Make cards</Button>
+      </>}>
+      <FormField label="Instructions (optional)" error={error}>
+        <Textarea value={instructions} rows={4} autoFocus
+          placeholder="For each cranial nerve, make concise recall cards about how nurses test it."
+          onChange={(event) => onChange(event.currentTarget.value)} />
+      </FormField>
+    </Dialog>
   );
 }
