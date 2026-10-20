@@ -7,7 +7,7 @@ import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuidePdfTheme, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { Icon } from "../ui/icons/Icon";
@@ -141,13 +141,13 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     try { await cancelDocumentStudyGuideGeneration(documentId); showToast("info", "Stopping study-guide generation…"); }
     catch (error: unknown) { setIsCanceling(false); showToast("error", getErrorMessage(error)); }
   }
-  async function exportPdf(includeAnnotations: boolean): Promise<void> {
+  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
     if (!guide || isExporting || isGenerating || isSaving) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
     let failed = false;
     try {
-      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations);
+      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations, theme);
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
@@ -317,7 +317,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         onSave={(value) => void saveEditing(value)} onClose={() => setEditing(null)} />
     ) : null}
     {exportOpen && guide ? (
-      <GuideExportDialog exporting={isExporting} onExport={(includeNotes) => void exportPdf(includeNotes)} onClose={() => setExportOpen(false)} />
+      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)} onClose={() => setExportOpen(false)} />
     ) : null}
   </>;
 }

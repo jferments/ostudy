@@ -894,7 +894,7 @@ describe("StudyGuideDialog", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
 
     await waitFor(() => {
-      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes);
+      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "navy");
       expect(mockedPublish).toHaveBeenCalledWith("8".repeat(32));
       expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32));
     });

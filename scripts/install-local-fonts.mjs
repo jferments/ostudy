@@ -4,13 +4,15 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { localFontSources } from "./font-sources.mjs";
+import { localFontSources, pdfFontDirectory, pdfFontSources } from "./font-sources.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const outputDirectory = join(root, "src", "assets", "fonts");
 const maximumFontBytes = 5 * 1024 * 1024;
 const requestTimeoutMillis = 30_000;
 const maximumDownloadAttempts = 3;
+// Google Fonts serves TrueType rather than WOFF2 to non-browser clients.
+const trueTypeUserAgent = "curl/8";
 const browserUserAgent =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -51,6 +53,114 @@ for (const font of localFontSources) {
 console.log(
   `OK   Local font cache is ready (${installed} downloaded, ${reused} already present).`,
 );
+
+const pdfOutputDirectory = join(root, pdfFontDirectory);
+await mkdir(pdfOutputDirectory, { recursive: true });
+let pdfInstalled = 0;
+let pdfReused = 0;
+for (const font of pdfFontSources) {
+  for (const face of font.faces) {
+    const destination = join(pdfOutputDirectory, face.filename);
+    if (await isValidTrueType(destination)) {
+      pdfReused += 1;
+      continue;
+    }
+    const bytes = await downloadTrueTypeFace(font, face);
+    const temporary = `${destination}.tmp-${process.pid}`;
+    try {
+      await writeFile(temporary, bytes, { mode: 0o644 });
+      await rename(temporary, destination);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    pdfInstalled += 1;
+    console.log(
+      `Installed ${font.family} ${face.style} ${face.weight} for PDF export -> ${face.filename}`,
+    );
+  }
+}
+
+console.log(
+  `OK   PDF export fonts are ready (${pdfInstalled} downloaded, ${pdfReused} already present).`,
+);
+
+async function downloadTrueTypeFace(font, face) {
+  const family = font.family.replaceAll(" ", "+");
+  const stylesheetUrl = `https://fonts.googleapis.com/css2?family=${family}:${font.googleAxes}`;
+  let lastFailure = null;
+  for (let attempt = 1; attempt <= maximumDownloadAttempts; attempt += 1) {
+    try {
+      const stylesheet = await fetchText(
+        stylesheetUrl,
+        "Google Fonts TrueType stylesheet",
+        trueTypeUserAgent,
+      );
+      const assetUrl = extractTrueType(stylesheet, font.family, face);
+      const parsed = new URL(assetUrl);
+      if (parsed.protocol !== "https:" || parsed.hostname !== "fonts.gstatic.com") {
+        throw new Error(
+          `Google Fonts returned an unexpected asset host for ${font.family}: ${parsed.hostname}`,
+        );
+      }
+      const response = await fetch(assetUrl, {
+        headers: { "User-Agent": trueTypeUserAgent },
+        signal: AbortSignal.timeout(requestTimeoutMillis),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Google Fonts asset download failed for ${font.family}: HTTP ${response.status}.`,
+        );
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length === 0 || bytes.length > maximumFontBytes || !hasTrueTypeMagic(bytes)) {
+        throw new Error(`Google Fonts returned an invalid TrueType payload for ${font.family}.`);
+      }
+      return bytes;
+    } catch (error) {
+      lastFailure = error;
+      if (attempt < maximumDownloadAttempts) {
+        console.warn(
+          `Retrying ${font.family} ${face.style} ${face.weight} after Google Fonts download ` +
+            `failure (attempt ${attempt}/${maximumDownloadAttempts}).`,
+        );
+      }
+    }
+  }
+  throw lastFailure instanceof Error
+    ? lastFailure
+    : new Error(`Google Fonts download failed for ${font.family}.`);
+}
+
+function extractTrueType(stylesheet, family, face) {
+  for (const match of stylesheet.matchAll(/@font-face\s*\{([^}]+)\}/gu)) {
+    const body = match[1];
+    const style = body.match(/font-style\s*:\s*([^;]+);/iu)?.[1]?.trim();
+    const weight = body.match(/font-weight\s*:\s*([^;]+);/iu)?.[1]?.trim();
+    if (style !== face.style || weight !== face.weight) continue;
+    const url = body.match(
+      /src\s*:\s*url\((?:["']?)(https:\/\/fonts\.gstatic\.com\/[^)'"\s]+\.ttf)(?:["']?)\)/iu,
+    )?.[1];
+    if (url) return url;
+  }
+  throw new Error(
+    `Google Fonts returned no TrueType face for ${family} ${face.style} ${face.weight}.`,
+  );
+}
+
+async function isValidTrueType(path) {
+  try {
+    const bytes = await readFile(path);
+    return bytes.length > 0 && bytes.length <= maximumFontBytes && hasTrueTypeMagic(bytes);
+  } catch {
+    return false;
+  }
+}
+
+function hasTrueTypeMagic(bytes) {
+  if (bytes.length < 4) return false;
+  const tag = bytes.subarray(0, 4);
+  return tag.readUInt32BE(0) === 0x00010000 || tag.toString("ascii") === "true";
+}
 
 async function downloadFontFace(font, face) {
   const family = font.family.replaceAll(" ", "+");
@@ -108,11 +218,11 @@ async function downloadFontFace(font, face) {
     : new Error(`Google Fonts download failed for ${font.family}.`);
 }
 
-async function fetchText(url, label) {
+async function fetchText(url, label, userAgent = browserUserAgent) {
   const response = await fetch(url, {
     headers: {
       Accept: "text/css,*/*;q=0.1",
-      "User-Agent": browserUserAgent,
+      "User-Agent": userAgent,
     },
     signal: AbortSignal.timeout(requestTimeoutMillis),
   });

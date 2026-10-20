@@ -41,6 +41,8 @@ pub(super) enum DrawOp {
 enum Node {
     Row(Vec<Node>),
     Text(String),
+    /// Words typeset upright: `\text`, `\operatorname` and named functions.
+    Upright(String),
     Space(f64),
     Fraction(Box<Node>, Box<Node>),
     Sqrt(Box<Node>),
@@ -60,6 +62,150 @@ enum MatrixKind {
     Plain,
     Parentheses,
     Brackets,
+}
+
+/// Translates the bounded subset into Typst math markup for the PDF template.
+///
+/// The result is evaluated by Typst, so it is built only from the parsed tree:
+/// letters and digits stand alone, every other ASCII character is a quoted
+/// string, and nothing from the source reaches Typst as code.
+pub(super) fn typst_markup(source: &str) -> Result<String, ()> {
+    validate_latex(source).map_err(|_| ())?;
+    let mut parser = Parser::new(source);
+    let node = parser.parse()?;
+    let mut output = String::new();
+    write_typst(&node, &mut output, 0)?;
+    Ok(output)
+}
+
+fn write_typst(node: &Node, output: &mut String, depth: usize) -> Result<(), ()> {
+    if depth > MAX_DEPTH {
+        return Err(());
+    }
+    match node {
+        Node::Row(nodes) => {
+            for child in nodes {
+                write_typst(child, output, depth + 1)?;
+            }
+        }
+        Node::Text(text) => write_typst_text(text, output),
+        Node::Upright(text) => {
+            output.push_str(" upright(");
+            push_typst_string(text, output);
+            output.push_str(") ");
+        }
+        Node::Space(em) => {
+            // Source whitespace (0.24) is not space in TeX math.
+            let space = match *em {
+                width if width <= 0.0 || (width - 0.24).abs() < f64::EPSILON => "",
+                width if width < 0.3 => " thin ",
+                width if width < 0.6 => " med ",
+                width if width < 1.5 => " quad ",
+                _ => " wide ",
+            };
+            output.push_str(space);
+        }
+        Node::Fraction(numerator, denominator) => {
+            output.push_str(" frac(");
+            write_typst(numerator, output, depth + 1)?;
+            output.push_str(", ");
+            write_typst(denominator, output, depth + 1)?;
+            output.push_str(") ");
+        }
+        Node::Sqrt(radicand) => {
+            output.push_str(" sqrt(");
+            write_typst(radicand, output, depth + 1)?;
+            output.push_str(") ");
+        }
+        Node::Scripts {
+            base,
+            superscript,
+            subscript,
+        } => {
+            output.push_str(" attach(");
+            write_typst(base, output, depth + 1)?;
+            if let Some(superscript) = superscript {
+                output.push_str(", t: ");
+                write_typst(superscript, output, depth + 1)?;
+            }
+            if let Some(subscript) = subscript {
+                output.push_str(", b: ");
+                write_typst(subscript, output, depth + 1)?;
+            }
+            output.push_str(") ");
+        }
+        Node::Matrix { rows, kind } => {
+            output.push_str(match kind {
+                MatrixKind::Plain => " mat(delim: #none, ",
+                MatrixKind::Parentheses => " mat(delim: \"(\", ",
+                MatrixKind::Brackets => " mat(delim: \"[\", ",
+            });
+            for (row_index, row) in rows.iter().enumerate() {
+                if row_index > 0 {
+                    output.push_str("; ");
+                }
+                for (cell_index, cell) in row.iter().enumerate() {
+                    if cell_index > 0 {
+                        output.push_str(", ");
+                    }
+                    write_typst(cell, output, depth + 1)?;
+                }
+            }
+            output.push_str(") ");
+        }
+    }
+    Ok(())
+}
+
+fn write_typst_text(text: &str, output: &mut String) {
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character.is_ascii_digit() {
+            output.push(' ');
+            output.push(character);
+            while let Some(next) = characters.peek().copied() {
+                let continues_number = next.is_ascii_digit()
+                    || (next == '.'
+                        && characters
+                            .clone()
+                            .nth(1)
+                            .is_some_and(|after| after.is_ascii_digit()));
+                if !continues_number {
+                    break;
+                }
+                output.push(next);
+                characters.next();
+            }
+            output.push(' ');
+        } else if character.is_alphabetic() || (!character.is_ascii() && !character.is_control()) {
+            // One letter or symbol per token, so letters never join into a
+            // Typst identifier and symbols never combine into shorthands.
+            output.push(' ');
+            output.push(character);
+            output.push(' ');
+        } else if matches!(character, '+' | '-' | '=' | '<' | '>' | '!' | '\'' | '|' | '.' | ':') {
+            output.push(' ');
+            output.push(character);
+            output.push(' ');
+        } else if !character.is_control() {
+            output.push(' ');
+            push_typst_string(&character.to_string(), output);
+            output.push(' ');
+        }
+    }
+}
+
+fn push_typst_string(text: &str, output: &mut String) {
+    output.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            character if character.is_control() => {}
+            character => output.push(character),
+        }
+    }
+    output.push('"');
 }
 
 pub(super) fn layout(source: &str, size: f64) -> Result<MathLayout, ()> {
@@ -220,7 +366,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Node::Sqrt(Box::new(self.required_group(depth + 1)?)))
             }
-            "text" | "operatorname" => Ok(Node::Text(self.raw_group()?)),
+            "text" | "operatorname" => Ok(Node::Upright(self.raw_group()?)),
             "mathrm" | "mathbf" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb"
             | "mathfrak" => self.required_group(depth + 1),
             "left" | "right" => Ok(Node::Text(self.delimiter()?)),
@@ -233,7 +379,7 @@ impl<'a> Parser<'a> {
             "quad" => Ok(Node::Space(1.0)),
             "qquad" => Ok(Node::Space(2.0)),
             "sin" | "cos" | "tan" | "log" | "ln" | "exp" | "lim" | "max" | "min" => {
-                Ok(Node::Text(command))
+                Ok(Node::Upright(command))
             }
             _ => symbol(&command)
                 .map(|value| Node::Text(value.to_string()))
@@ -490,7 +636,7 @@ fn layout_node(node: &Node, size: f64, depth: usize) -> Result<MathLayout, ()> {
         return Err(());
     }
     match node {
-        Node::Text(text) => Ok(text_layout(text, size)),
+        Node::Text(text) | Node::Upright(text) => Ok(text_layout(text, size)),
         Node::Space(em) => Ok(MathLayout {
             width: size * *em,
             height: 0.0,
