@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use crate::pdf_render_backend::{PageGraphicKind, PageLayout, PageTextRun};
 
 /// Names this detector in stored scans, so a better one can find figures again.
-pub(crate) const DETECTOR: &str = "pdfium-objects-v1";
+pub(crate) const DETECTOR: &str = "pdfium-objects-v2";
 
 pub(crate) const MAX_FIGURES_PER_PAGE: usize = 12;
 pub(crate) const MAX_FIGURES: usize = 400;
@@ -37,10 +37,20 @@ const CLUSTER_GAP: f64 = 4.0;
 /// Pictures and drawings this close are one figure.
 const MERGE_GAP: f64 = 6.0;
 const MIN_DRAWING_PATHS: usize = 6;
+/// Characters per thousand square points. A table or shaded box drawn only
+/// with level and upright lines holds more text than the first, and boxed
+/// prose of any shape more than the second; such a box is a figure only when
+/// a figure caption names it, as for a flowchart or a bar chart.
+const TABLE_TEXT_DENSITY: f64 = 1.0;
+const PROSE_TEXT_DENSITY: f64 = 6.0;
+/// The share of a cluster's paths that must be boxy for it to read as a table.
+const TABLE_BOXY_SHARE: f64 = 0.9;
 /// Header and footer bands, as a share of the page height.
 const FURNITURE_BAND: f64 = 0.07;
 /// The same box on this many pages is furniture.
 const FURNITURE_PAGES: usize = 3;
+/// The widest gap, in points, between pieces gathered above a caption.
+const GATHER_GAP: f64 = 24.0;
 /// How far a caption may sit from its figure, in points.
 const CAPTION_REACH: f64 = 48.0;
 /// A figure covering this share of its page, or a page with less body text
@@ -105,6 +115,14 @@ impl Rect {
             && other.left - gap <= self.right()
             && self.top - gap <= other.bottom()
             && other.top - gap <= self.bottom()
+    }
+
+    fn contains_centre_of(&self, other: &Rect) -> bool {
+        let (x, y) = (
+            other.left + other.width / 2.0,
+            other.top + other.height / 2.0,
+        );
+        x >= self.left && x <= self.right() && y >= self.top && y <= self.bottom()
     }
 
     fn contains(&self, other: &Rect, slack: f64) -> bool {
@@ -203,9 +221,22 @@ pub(crate) struct PageFigures {
     page_number: usize,
     width: f64,
     height: f64,
-    figures: Vec<(FigureKind, Rect)>,
+    figures: Vec<Candidate>,
+    /// Groups of graphics too small or wordy to be figures by themselves,
+    /// which a figure caption beneath them can still gather into one.
+    pieces: Vec<Rect>,
     lines: Vec<Line>,
     text: String,
+}
+
+/// A box on one page that may be a figure.
+#[derive(Clone, Copy, Debug)]
+struct Candidate {
+    kind: FigureKind,
+    bounds: Rect,
+    /// Text-heavy boxes, such as a flowchart or a table, count only when a
+    /// figure caption names them.
+    needs_caption: bool,
 }
 
 /// Every figure in a document's page layouts, in page and reading order.
@@ -214,17 +245,105 @@ pub(crate) fn detect_layouts(pages: &[PageLayout]) -> Vec<DetectedFigure> {
     detect(pages.iter().map(PageFigures::from_layout).collect())
 }
 
+/// Figures drawn as separate boxes, arrows and labels, found from the figure
+/// captions on `page` that no figure in `found` claimed: the pieces just
+/// above such a caption, and the pieces just above those, are its figure.
+fn gathered_figures(
+    page: &PageFigures,
+    found: &[(FigureKind, Rect, Option<Caption>)],
+) -> Vec<(FigureKind, Rect, Option<Caption>)> {
+    let claimed = |line: &Line| {
+        found.iter().any(|(_, bounds, caption)| {
+            bounds.intersection_area(&line.bounds) > 0.0
+                || caption
+                    .as_ref()
+                    .is_some_and(|caption| caption.bounds.intersection_area(&line.bounds) > 0.0)
+        })
+    };
+    let mut gathered = Vec::new();
+    for line in &page.lines {
+        if caption_label(line.text.trim()).is_none() || claimed(line) {
+            continue;
+        }
+        let (left, right) = (
+            line.bounds.left - MERGE_GAP,
+            line.bounds.right() + MERGE_GAP,
+        );
+        let mut region: Option<Rect> = None;
+        loop {
+            let reach_top = region.map_or(line.bounds.top, |region| region.top);
+            let next = page.pieces.iter().find(|piece| {
+                piece.right() > left
+                    && piece.left < right
+                    && piece.bottom() <= line.bounds.top + 2.0
+                    && piece.bottom() >= reach_top - GATHER_GAP
+                    && region.is_none_or(|region| !region.contains(piece, 0.5))
+                    && !found
+                        .iter()
+                        .any(|(_, bounds, _)| bounds.intersection_area(piece) > 0.0)
+            });
+            let Some(next) = next else {
+                break;
+            };
+            region = Some(region.map_or(*next, |region| region.union(next)));
+        }
+        let Some(region) = region else {
+            continue;
+        };
+        let big_enough = region.area() >= page.width * page.height * MIN_AREA_SHARE
+            && region.width >= MIN_SIDE
+            && region.height >= MIN_SIDE;
+        let Some(caption) = find_caption(region, &page.lines) else {
+            continue;
+        };
+        if big_enough && caption.bounds.top == line.bounds.top {
+            gathered.push((FigureKind::Drawing, region, Some(caption)));
+        }
+    }
+    gathered
+}
+
 /// Every figure in a document, in page and reading order.
 pub(crate) fn detect(mut candidates: Vec<PageFigures>) -> Vec<DetectedFigure> {
     drop_furniture(&mut candidates);
 
     let mut figures = Vec::new();
     for page in &candidates {
-        let mut on_page = page
+        let on_page = page
             .figures
             .iter()
-            .map(|(kind, bounds)| (*kind, *bounds, find_caption(*bounds, &page.lines)))
+            .map(|candidate| {
+                let caption = find_caption(candidate.bounds, &page.lines);
+                (candidate, caption)
+            })
+            .filter(|(candidate, caption)| {
+                caption.is_some()
+                    || (!candidate.needs_caption && !labelled_table(candidate.bounds, &page.lines))
+            })
+            .map(|(candidate, caption)| (candidate.kind, candidate.bounds, caption))
             .collect::<Vec<_>>();
+        // Panels set apart on the page but named by one caption are one figure.
+        let mut joined = Vec::<(FigureKind, Rect, Option<Caption>)>::new();
+        for (kind, bounds, caption) in on_page {
+            let shared = caption.as_ref().and_then(|caption| {
+                joined.iter_mut().find(|(_, _, other)| {
+                    other
+                        .as_ref()
+                        .is_some_and(|other| other.bounds == caption.bounds)
+                })
+            });
+            match shared {
+                Some(figure) => {
+                    figure.1 = figure.1.union(&bounds);
+                    if kind == FigureKind::Image {
+                        figure.0 = FigureKind::Image;
+                    }
+                }
+                None => joined.push((kind, bounds, caption)),
+            }
+        }
+        let mut on_page = joined;
+        on_page.extend(gathered_figures(page, &on_page));
         on_page.sort_by(|a, b| {
             a.1.top
                 .total_cmp(&b.1.top)
@@ -262,8 +381,10 @@ impl PageFigures {
                 && rect.area() < page_area * PAGE_COVER_SHARE
         };
 
-        let mut figures = Vec::<(FigureKind, Rect)>::new();
+        let mut figures = Vec::<Candidate>::new();
+        let mut pieces = Vec::<Rect>::new();
         let mut paths = Vec::<Rect>::new();
+        let mut boxy = Vec::<bool>::new();
         for graphic in &page.graphics {
             let Some(rect) = Rect::from_bounds(graphic.bounds).clipped(page.width, page.height)
             else {
@@ -277,12 +398,19 @@ impl PageFigures {
                         FigureKind::Drawing
                     };
                     if big_enough(&rect) {
-                        figures.push((kind, rect));
+                        figures.push(Candidate {
+                            kind,
+                            bounds: rect,
+                            needs_caption: false,
+                        });
+                    } else if rect.area() < page_area * PAGE_COVER_SHARE {
+                        pieces.push(rect);
                     }
                 }
                 PageGraphicKind::Path | PageGraphicKind::Shading => {
                     if rect.area() < page_area * PAGE_COVER_SHARE {
                         paths.push(rect);
+                        boxy.push(graphic.boxy);
                     }
                 }
             }
@@ -311,14 +439,31 @@ impl PageFigures {
                 .iter()
                 .map(|text| text.intersection_area(&bounds))
                 .sum::<f64>();
+            let characters = page
+                .text_runs
+                .iter()
+                .filter(|run| bounds.contains_centre_of(&Rect::from_bounds(run.bounds)))
+                .map(|run| run.text.chars().filter(|c| !c.is_whitespace()).count())
+                .sum::<usize>();
+            let density = characters as f64 * 1_000.0 / bounds.area();
+            let boxy_share =
+                cluster.iter().filter(|index| boxy[**index]).count() as f64 / cluster.len() as f64;
+            let is_text_block = density >= PROSE_TEXT_DENSITY
+                || (density >= TABLE_TEXT_DENSITY && boxy_share >= TABLE_BOXY_SHARE);
             let is_drawing = cluster.len() >= MIN_DRAWING_PATHS
                 && (rules as f64) < cluster.len() as f64 * 0.8
                 && text_area < bounds.area() * 0.45
                 && big_enough(&bounds);
             if is_drawing {
-                figures.push((FigureKind::Drawing, bounds));
-            } else {
+                figures.push(Candidate {
+                    kind: FigureKind::Drawing,
+                    bounds,
+                    needs_caption: is_text_block,
+                });
+            } else if !is_text_block {
                 leftovers.push(bounds);
+            } else {
+                pieces.push(bounds);
             }
         }
         // Leader lines and label boxes drawn over a picture's edge belong to
@@ -326,24 +471,25 @@ impl PageFigures {
         loop {
             let before = leftovers.len();
             leftovers.retain(|rest| {
-                let Some((_, figure)) = figures.iter_mut().find(|(_, figure)| {
-                    figure.near(rest, MERGE_GAP) && rest.area() <= figure.area()
+                let Some(figure) = figures.iter_mut().find(|figure| {
+                    figure.bounds.near(rest, MERGE_GAP) && rest.area() <= figure.bounds.area()
                 }) else {
                     return true;
                 };
-                *figure = figure.union(rest);
+                figure.bounds = figure.bounds.union(rest);
                 false
             });
             if leftovers.len() == before {
                 break;
             }
         }
+        pieces.extend(leftovers);
 
         let figures = merge_near(figures)
             .into_iter()
-            .filter(|(_, rect)| {
-                rect.bottom() > page.height * FURNITURE_BAND
-                    && rect.top < page.height * (1.0 - FURNITURE_BAND)
+            .filter(|candidate| {
+                candidate.bounds.bottom() > page.height * FURNITURE_BAND
+                    && candidate.bounds.top < page.height * (1.0 - FURNITURE_BAND)
             })
             .collect();
         PageFigures {
@@ -351,6 +497,7 @@ impl PageFigures {
             width: page.width,
             height: page.height,
             figures,
+            pieces,
             lines: lines(&page.text_runs),
             text: page.text.clone(),
         }
@@ -395,20 +542,25 @@ fn clusters(rects: &[Rect], gap: f64) -> Vec<Vec<usize>> {
 }
 
 /// Joins figures that overlap or nearly touch, until none do.
-fn merge_near(mut figures: Vec<(FigureKind, Rect)>) -> Vec<(FigureKind, Rect)> {
+fn merge_near(mut figures: Vec<Candidate>) -> Vec<Candidate> {
     loop {
         let mut merged = false;
         'search: for a in 0..figures.len() {
             for b in a + 1..figures.len() {
-                if figures[a].1.near(&figures[b].1, MERGE_GAP) {
-                    let (kind_b, rect_b) = figures.remove(b);
-                    let (kind_a, rect_a) = figures[a];
-                    let kind = if kind_a == FigureKind::Image || kind_b == FigureKind::Image {
+                if figures[a].bounds.near(&figures[b].bounds, MERGE_GAP) {
+                    let other = figures.remove(b);
+                    let first = figures[a];
+                    let kind = if first.kind == FigureKind::Image || other.kind == FigureKind::Image
+                    {
                         FigureKind::Image
                     } else {
                         FigureKind::Drawing
                     };
-                    figures[a] = (kind, rect_a.union(&rect_b));
+                    figures[a] = Candidate {
+                        kind,
+                        bounds: first.bounds.union(&other.bounds),
+                        needs_caption: first.needs_caption && other.needs_caption,
+                    };
                     merged = true;
                     break 'search;
                 }
@@ -430,7 +582,7 @@ fn drop_furniture(pages: &mut [PageFigures]) {
         let mut seen = page
             .figures
             .iter()
-            .map(|(_, rect)| key(rect))
+            .map(|candidate| key(&candidate.bounds))
             .collect::<Vec<_>>();
         seen.sort_unstable();
         seen.dedup();
@@ -439,8 +591,9 @@ fn drop_furniture(pages: &mut [PageFigures]) {
         }
     }
     for page in pages.iter_mut() {
-        page.figures
-            .retain(|(_, rect)| counts.get(&key(rect)).copied().unwrap_or(0) < FURNITURE_PAGES);
+        page.figures.retain(|candidate| {
+            counts.get(&key(&candidate.bounds)).copied().unwrap_or(0) < FURNITURE_PAGES
+        });
     }
 }
 
@@ -464,13 +617,28 @@ fn lines(runs: &[PageTextRun]) -> Vec<Line> {
     let mut lines = Vec::<Line>::new();
     for (text, rect) in runs {
         let middle = rect.top + rect.height / 2.0;
+        // A run can sit a fraction higher than the run before it on the same
+        // line, as a bold "Fig. 1.2" does beside its caption, so it may join
+        // a line on either side.
         let joined = lines.iter_mut().rev().take(4).find(|line| {
             let line_middle = line.bounds.top + line.bounds.height / 2.0;
+            let reach = rect.height.max(line.bounds.height) * 2.0;
             (middle - line_middle).abs() < line.bounds.height.max(rect.height) * 0.4
-                && rect.left >= line.bounds.left
-                && rect.left - line.bounds.right() < rect.height.max(line.bounds.height) * 2.0
+                && if rect.left >= line.bounds.left {
+                    let gap = rect.left - line.bounds.right();
+                    // A caption across a column gutter starts its own line.
+                    gap < reach && !(gap > rect.height && caption_label(text).is_some())
+                } else {
+                    // Only a run snug against the line, never one across a gutter.
+                    line.bounds.left - rect.right() < rect.height.max(line.bounds.height)
+                        && rect.right() <= line.bounds.left + 1.0
+                }
         });
         match joined {
+            Some(line) if rect.left < line.bounds.left => {
+                line.text = format!("{text} {}", line.text);
+                line.bounds = line.bounds.union(&rect);
+            }
             Some(line) => {
                 line.text.push(' ');
                 line.text.push_str(text);
@@ -559,7 +727,13 @@ fn figure_number(text: &str) -> Option<(String, usize)> {
 }
 
 /// The label a line opens with, written the usual way: "Figure 3.2".
+/// `line` without the bullet, square or rule some books set before a caption.
+fn without_leading_marks(line: &str) -> &str {
+    line.trim_start_matches(|character: char| !character.is_alphanumeric())
+}
+
 fn caption_label(line: &str) -> Option<String> {
+    let line = without_leading_marks(line);
     let lowered = line.to_lowercase();
     // Lowercasing keeps these ASCII words and digits at the same byte offsets.
     if lowered.len() != line.len() {
@@ -572,7 +746,15 @@ fn caption_label(line: &str) -> Option<String> {
     if !word.ends_with('.') && rest.chars().next().is_some_and(char::is_alphabetic) {
         return None;
     }
-    let (number, _) = figure_number(rest.trim_start())?;
+    let rest = rest.trim_start();
+    let (number, consumed) = figure_number(rest)?;
+    // "Fig. 8.18)" or "Fig. 8.18," closes a reference in running text.
+    if rest[consumed..]
+        .trim_start()
+        .starts_with([')', ',', ';', ']'])
+    {
+        return None;
+    }
     let word = word.trim_end_matches('.');
     let word = if word == "fig" {
         "Figure".to_string()
@@ -586,12 +768,28 @@ fn caption_label(line: &str) -> Option<String> {
     Some(truncate_chars(&format!("{word} {number}"), MAX_LABEL_CHARS))
 }
 
+/// Whether a "Table 6.1" label sits just above `bounds`: a ruled table,
+/// not a figure.
+fn labelled_table(bounds: Rect, lines: &[Line]) -> bool {
+    lines.iter().any(|line| {
+        let above = bounds.top - line.bounds.bottom();
+        (-2.0..=CAPTION_REACH).contains(&above)
+            && line.bounds.left < bounds.right()
+            && line.bounds.right() > bounds.left
+            && without_leading_marks(line.text.trim())
+                .to_lowercase()
+                .strip_prefix("table")
+                .and_then(|rest| figure_number(rest.trim_start()))
+                .is_some()
+    })
+}
+
 fn find_caption(figure: Rect, lines: &[Line]) -> Option<Caption> {
     let overlaps = |line: &Line| {
         let shared = line.bounds.right().min(figure.right()) - line.bounds.left.max(figure.left);
         shared >= line.bounds.width.min(figure.width) * 0.3
     };
-    let mut best: Option<(f64, usize, bool, String)> = None;
+    let mut best: Option<((u8, f64), usize, bool, String)> = None;
     for (index, line) in lines.iter().enumerate() {
         if !overlaps(line) {
             continue;
@@ -601,18 +799,25 @@ fn find_caption(figure: Rect, lines: &[Line]) -> Option<Caption> {
         };
         let below = line.bounds.top - figure.bottom();
         let above = figure.top - line.bounds.bottom();
-        let (distance, is_below) = if (-2.0..=CAPTION_REACH).contains(&below) {
-            (below.max(0.0), true)
+        // A caption beneath a figure comes first. Some books frame a figure
+        // and its caption together, so one in the lower half of the frame
+        // comes next. One above the figure comes last, since it often
+        // belongs to the figure above. Within each, the nearest wins.
+        let inside = figure.contains(&line.bounds, 2.0)
+            && line.bounds.top >= figure.top + figure.height / 2.0;
+        let (rank, is_below) = if (-2.0..=CAPTION_REACH).contains(&below) {
+            ((0, below.max(0.0)), true)
+        } else if inside {
+            ((1, figure.bottom() - line.bounds.bottom()), true)
         } else if (-2.0..=CAPTION_REACH).contains(&above) {
-            (above.max(0.0), false)
+            ((2, above.max(0.0)), false)
         } else {
             continue;
         };
-        if best
-            .as_ref()
-            .is_none_or(|(nearest, ..)| distance < *nearest)
-        {
-            best = Some((distance, index, is_below, label));
+        if best.as_ref().is_none_or(|(nearest, ..)| {
+            rank.0 < nearest.0 || (rank.0 == nearest.0 && rank.1 < nearest.1)
+        }) {
+            best = Some((rank, index, is_below, label));
         }
     }
     let (_, first, is_below, label) = best?;
@@ -620,7 +825,7 @@ fn find_caption(figure: Rect, lines: &[Line]) -> Option<Caption> {
     // A caption below its figure runs on in the lines beneath it; one above
     // usually is a single line or two, read the same way.
     let mut bounds = lines[first].bounds;
-    let mut text = lines[first].text.trim().to_string();
+    let mut text = without_leading_marks(lines[first].text.trim()).to_string();
     let mut previous = lines[first].bounds;
     for line in lines[first + 1..].iter().take(MAX_CAPTION_LINES - 1) {
         let gap = line.bounds.top - previous.bottom();
@@ -647,6 +852,10 @@ fn find_caption(figure: Rect, lines: &[Line]) -> Option<Caption> {
         bounds = bounds.union(&line.bounds);
         previous = line.bounds;
     }
+    let text = text
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>();
     let text = truncate_chars(&text, MAX_CAPTION_CHARS);
     Some(Caption {
         bounds,

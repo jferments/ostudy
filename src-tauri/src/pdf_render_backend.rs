@@ -703,7 +703,17 @@ pub(crate) enum PageGraphicKind {
 pub(crate) struct PageGraphic {
     pub kind: PageGraphicKind,
     pub bounds: [f64; 4],
+    /// A path drawn only with level and upright straight lines, such as a
+    /// table rule, cell or shaded box, rather than a curve or a slant.
+    pub boxy: bool,
 }
+
+/// How far, in points, a drawing may bleed past the page edge before its
+/// bounds are treated as clipped and ignored.
+const MAX_GRAPHIC_OVERHANG: f64 = 36.0;
+
+/// A path with more segments than this is not counted as boxy.
+const MAX_BOXY_SEGMENTS: usize = 24;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PageTextRun {
@@ -1208,6 +1218,36 @@ fn characters_of_page(
 /// One page's graphics and text runs through the same page-to-device mapping
 /// as [`characters_of_page`].
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+/// Whether every segment of `path` is a level or upright straight line.
+fn is_boxy_path(path: &pdfium_render::prelude::PdfPagePathObject<'_>) -> bool {
+    use pdfium_render::prelude::{PdfPathSegmentType, PdfPathSegments};
+
+    let segments = path.segments();
+    let count = usize::try_from(segments.len()).unwrap_or(usize::MAX);
+    if count == 0 || count > MAX_BOXY_SEGMENTS {
+        return false;
+    }
+    let mut previous: Option<(f32, f32)> = None;
+    for segment in segments.iter() {
+        let point = (segment.x().value, segment.y().value);
+        match segment.segment_type() {
+            PdfPathSegmentType::MoveTo => {}
+            PdfPathSegmentType::LineTo => {
+                let Some((x, y)) = previous else {
+                    return false;
+                };
+                let tolerance = 0.5;
+                if (point.0 - x).abs() > tolerance && (point.1 - y).abs() > tolerance {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+        previous = Some(point);
+    }
+    true
+}
+
 fn layout_of_page(
     document: &pdfium_render::prelude::PdfDocument<'_>,
     index: usize,
@@ -1266,8 +1306,33 @@ fn layout_of_page(
             PdfPageObjectType::XObjectForm => PageGraphicKind::Form,
             _ => continue,
         };
-        if let Some(bounds) = object.bounds().ok().and_then(|quad| boxed(quad.to_rect())) {
-            graphics.push(PageGraphic { kind, bounds });
+        let Some([left, top, object_width, object_height]) =
+            object.bounds().ok().and_then(|quad| boxed(quad.to_rect()))
+        else {
+            continue;
+        };
+        let (page_width, page_height) = (f64::from(width), f64::from(height));
+        let overhang = (-left)
+            .max(-top)
+            .max(left + object_width - page_width)
+            .max(top + object_height - page_height);
+        // A drawing that runs far off the page is clipped to an unknown
+        // visible part, so its box says nothing about where it shows.
+        if overhang > MAX_GRAPHIC_OVERHANG && kind != PageGraphicKind::Image {
+            continue;
+        }
+        let (right, bottom) = (
+            (left + object_width).min(page_width),
+            (top + object_height).min(page_height),
+        );
+        let (left, top) = (left.max(0.0), top.max(0.0));
+        if right > left && bottom > top {
+            let boxy = object.as_path_object().is_some_and(is_boxy_path);
+            graphics.push(PageGraphic {
+                kind,
+                bounds: [left, top, right - left, bottom - top],
+                boxy,
+            });
         }
     }
 

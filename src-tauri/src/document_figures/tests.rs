@@ -5,7 +5,11 @@ use crate::pdf_render_backend::{PageGraphic, PageGraphicKind, PageLayout, PageTe
 const DOCUMENT: &str = "dddddddddddddddddddddddddddddddd";
 
 fn graphic(kind: PageGraphicKind, bounds: [f64; 4]) -> PageGraphic {
-    PageGraphic { kind, bounds }
+    PageGraphic {
+        kind,
+        bounds,
+        boxy: false,
+    }
 }
 
 fn run(text: &str, left: f64, top: f64, width: f64) -> PageTextRun {
@@ -496,4 +500,108 @@ fn pdfium_finds_a_drawn_figure_its_caption_and_the_page_that_refers_to_it() {
         figure.passages[0].excerpt.as_deref(),
         Some("As Figure 1.1 shows, the right atrium fills first.")
     );
+}
+
+fn boxy(bounds: [f64; 4]) -> PageGraphic {
+    PageGraphic {
+        kind: PageGraphicKind::Path,
+        bounds,
+        boxy: true,
+    }
+}
+
+/// A row of boxed, labelled cells: a text panel or a boxed table.
+fn text_panel(top: f64) -> (Vec<PageGraphic>, Vec<PageTextRun>) {
+    let mut graphics = Vec::new();
+    let mut runs = Vec::new();
+    for cell in 0..8 {
+        let left = 72.0 + f64::from(cell % 4) * 110.0;
+        let cell_top = top + f64::from(cell / 4) * 40.0;
+        graphics.push(boxy([left, cell_top, 110.0, 40.0]));
+        runs.push(run("Proximal tubule", left + 8.0, cell_top + 14.0, 90.0));
+    }
+    (graphics, runs)
+}
+
+#[test]
+fn a_boxed_text_panel_is_a_figure_only_when_captioned() {
+    let (graphics, mut runs) = text_panel(120.0);
+    runs.extend(body(400.0));
+    assert!(detect::detect_layouts(&[page(1, graphics.clone(), runs.clone())]).is_empty());
+
+    runs.push(run(
+        "Figure 6.2 The segments of the nephron.",
+        72.0,
+        206.0,
+        300.0,
+    ));
+    let figures = detect::detect_layouts(&[page(1, graphics, runs)]);
+    assert_eq!(figures.len(), 1);
+    assert_eq!(figures[0].caption.as_ref().unwrap().label, "Figure 6.2");
+}
+
+#[test]
+fn a_bulleted_caption_is_read_and_a_reference_is_not_a_caption() {
+    let picture = graphic(PageGraphicKind::Image, [72.0, 100.0, 300.0, 220.0]);
+    let mut runs = vec![run("• Figure 1.3 The lungs.", 72.0, 330.0, 200.0)];
+    runs.extend(body(400.0));
+    let figures = detect::detect_layouts(&[page(1, vec![picture.clone()], runs)]);
+    assert_eq!(figures[0].caption.as_ref().unwrap().label, "Figure 1.3");
+    assert_eq!(
+        figures[0].caption.as_ref().unwrap().text,
+        "Figure 1.3 The lungs."
+    );
+
+    let mut runs = vec![run(
+        "Figure 2), drawn earlier, shows the airways.",
+        72.0,
+        330.0,
+        300.0,
+    )];
+    runs.extend(body(400.0));
+    let figures = detect::detect_layouts(&[page(1, vec![picture], runs)]);
+    assert_eq!(figures.len(), 1);
+    assert!(figures[0].caption.is_none());
+}
+
+#[test]
+fn panels_that_share_one_caption_are_one_figure() {
+    let mut runs = vec![run(
+        "Figure 5 A, filtration. B, reabsorption.",
+        72.0,
+        262.0,
+        460.0,
+    )];
+    runs.extend(body(400.0));
+    let figures = detect::detect_layouts(&[page(
+        1,
+        vec![
+            graphic(PageGraphicKind::Image, [72.0, 100.0, 200.0, 150.0]),
+            graphic(PageGraphicKind::Image, [330.0, 100.0, 200.0, 150.0]),
+        ],
+        runs,
+    )]);
+    assert_eq!(figures.len(), 1);
+    assert_eq!(figures[0].bounds.left, 72.0);
+    assert!((figures[0].bounds.width - 458.0).abs() < 1e-9);
+}
+
+#[test]
+fn small_pieces_above_a_caption_are_gathered_into_one_figure() {
+    let mut graphics = Vec::new();
+    for piece in 0..4 {
+        let left = 72.0 + f64::from(piece % 2) * 50.0;
+        let top = 200.0 + f64::from(piece / 2) * 50.0;
+        graphics.push(graphic(PageGraphicKind::Image, [left, top, 40.0, 40.0]));
+    }
+    let mut runs = vec![run("Figure 8.4 Four kinds of villi.", 72.0, 300.0, 200.0)];
+    runs.extend(body(400.0));
+    let figures = detect::detect_layouts(&[page(1, graphics.clone(), runs)]);
+    assert_eq!(figures.len(), 1);
+    assert_eq!(figures[0].caption.as_ref().unwrap().label, "Figure 8.4");
+    assert_eq!(figures[0].bounds.top, 200.0);
+    assert!((figures[0].bounds.width - 90.0).abs() < 1e-9);
+
+    // Without a caption they stay too small to be figures.
+    assert!(detect::detect_layouts(&[page(1, graphics, body(400.0))]).is_empty());
 }
