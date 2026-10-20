@@ -415,9 +415,16 @@ pub(crate) async fn test_profile(
     let image_input_probe = if image_input_declared(profile, models.as_deref(), &properties) {
         let image_started = Instant::now();
         let image_probe_visible_tokens = 64_usize;
+        // Page images only travel with document work, which never reasons; a
+        // probe at the profile's own effort can spend its few tokens thinking
+        // and fail a model that reads images well.
+        let mut image_profile = request_profile.clone();
+        if profile.provider_kind == ProviderKind::Openrouter {
+            image_profile.reasoning_effort = document_reasoning_effort(profile, models.as_deref());
+        }
         let image_probe_max_tokens = if profile.provider_kind == ProviderKind::Openrouter {
             super::super::reasoning::structured_completion_token_ceiling(
-                &request_profile.reasoning_effort,
+                &image_profile.reasoning_effort,
                 image_probe_visible_tokens,
             )
         } else {
@@ -425,7 +432,7 @@ pub(crate) async fn test_profile(
         };
         match providers::run_image_probe(
             &runtime.gateway,
-            &request_profile,
+            &image_profile,
             bearer,
             image_probe_max_tokens,
         )
@@ -543,6 +550,17 @@ fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderMo
     )
 }
 
+/// The effort document work resolves to: it requests none, and a model that
+/// cannot turn reasoning off falls back to its lowest declared effort.
+fn document_reasoning_effort(
+    profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
+) -> String {
+    let mut document = profile.clone();
+    document.reasoning_effort = "none".to_string();
+    probe_reasoning_effort(&document, models)
+}
+
 fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), CommandError> {
     crate::util::validate_entity_id(&input.profile_id, "AI provider profile")?;
     if input.revision < 1 {
@@ -589,6 +607,13 @@ pub(super) fn classify_model_match_for_test(
 }
 
 #[cfg(test)]
+pub(super) fn document_reasoning_effort_for_test(
+    profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
+) -> String {
+    document_reasoning_effort(profile, models)
+}
+
 pub(super) fn probe_reasoning_effort_for_test(
     profile: &ProfileSnapshot,
     models: Option<&[ProviderModel]>,

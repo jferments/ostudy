@@ -225,12 +225,8 @@ async fn analyze(
     } else {
         vec![]
     };
-    if images.is_empty()
-        && pending
-            .iter()
-            .any(|s| !s.images.is_empty() && !has_substantive_text(s))
-    {
-        return Err(CommandError::new("semantic_images_require_vision","This material requires image understanding. Select and test an image-capable learning model before preparing it."));
+    if images.is_empty() {
+        pending = defer_picture_only_sources(pending)?;
     }
     let catalog = EvidenceCatalog::build(&pending, !images.is_empty())?;
     let authorization = hash(
@@ -750,6 +746,38 @@ pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usiz
     }
     result
 }
+/// Without image understanding a source that is only a picture (a cover, a
+/// full-page figure) has nothing to read. It waits for a model that can see
+/// it while the rest of the window goes ahead; a window of nothing else fails.
+fn defer_picture_only_sources(
+    pending: Vec<SourceRecord>,
+) -> Result<Vec<SourceRecord>, CommandError> {
+    let (unreadable, readable): (Vec<_>, Vec<_>) = pending
+        .into_iter()
+        .partition(|s| !s.images.is_empty() && !has_substantive_text(s));
+    if readable.is_empty() {
+        return Err(images_require_vision());
+    }
+    if !unreadable.is_empty() {
+        crate::logging::warn_target(
+            "ai.knowledge.extraction",
+            "knowledge_image_sources_deferred",
+            "Left picture-only sources unread until an image-capable model prepares them.",
+            json!({"sourceIds":unreadable.iter().map(|s|&s.id).collect::<Vec<_>>()}),
+        );
+    }
+    Ok(readable)
+}
+
+pub(crate) const IMAGES_REQUIRE_VISION: &str = "semantic_images_require_vision";
+
+fn images_require_vision() -> CommandError {
+    CommandError::new(
+        IMAGES_REQUIRE_VISION,
+        "This material requires image understanding. Select and test an image-capable learning model before preparing it.",
+    )
+}
+
 pub(crate) fn has_substantive_text(source: &SourceRecord) -> bool {
     !source.text.contains("has no extractable structured text")
         && source.text.lines().any(|line| {

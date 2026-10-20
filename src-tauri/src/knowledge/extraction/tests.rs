@@ -422,3 +422,29 @@ fn neighbouring_sources_share_a_window_and_its_page_images() {
     assert_eq!(window_page_images(&sources[..3]).len(), 2);
     assert_eq!(window_page_images(&sources).len(), 3);
 }
+
+#[test]
+fn picture_only_sources_wait_for_vision_without_failing_their_window() {
+    let (_, source, _, _) = fixture();
+    let picture = |segment: &str, text: &str| {
+        let mut source = source.clone();
+        source.segment_key = segment.to_string();
+        source.text = text.to_string();
+        source.images = vec![EvidenceImage::DocumentAsset {
+            document_id: source.owner_id.clone(),
+            asset_id: "unit-1".to_string(),
+        }];
+        source.refresh_identity().unwrap();
+        source
+    };
+    let cover = picture("cover", "[image]");
+    let figure = picture("figure", "Figure 2 shows the pressure curve.");
+    let kept =
+        defer_picture_only_sources(vec![cover.clone(), source.clone(), figure.clone()]).unwrap();
+    assert_eq!(
+        kept.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+        vec![source.id.as_str(), figure.id.as_str()]
+    );
+    let error = defer_picture_only_sources(vec![cover]).unwrap_err();
+    assert_eq!(error.code, IMAGES_REQUIRE_VISION);
+}
