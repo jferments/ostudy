@@ -142,23 +142,58 @@ ostudy_check_stamp_path() {
   printf '%s/%s.stamp\n' "$OSTUDY_CHECK_STATE_DIR" "$tier"
 }
 
+# The runner checks many branches in turn, so the latest stamp alone is often
+# another branch's. Every passing fingerprint is also kept here, and any of them
+# qualifies an identical tree: a train whose tree equals a PR head that already
+# passed reuses that pass instead of repeating it.
+OSTUDY_CHECK_STAMP_HISTORY_LIMIT="${OSTUDY_CHECK_STAMP_HISTORY_LIMIT:-64}"
+
+ostudy_check_stamp_history_path() {
+  local tier="$1"
+  local fingerprint="$2"
+  printf '%s/history/%s/%s.stamp\n' "$OSTUDY_CHECK_STATE_DIR" "$tier" "$fingerprint"
+}
+
+ostudy_prune_check_stamp_history() {
+  local tier="$1"
+  local directory="$OSTUDY_CHECK_STATE_DIR/history/$tier"
+  [[ -d "$directory" ]] || return 0
+  find "$directory" -maxdepth 1 -type f -name '*.stamp' -printf '%T@ %p\n' \
+    | sort -rn \
+    | tail -n +"$((OSTUDY_CHECK_STAMP_HISTORY_LIMIT + 1))" \
+    | cut -d' ' -f2- \
+    | while IFS= read -r stale; do rm -f -- "$stale"; done
+}
+
 ostudy_check_stamp_is_current() {
   local tier="$1"
-  local stamp
-  stamp="$(ostudy_check_stamp_path "$tier")"
-  [[ -f "$stamp" ]] || return 1
-
-  local recorded current
-  recorded="$(sed -n 's/^fingerprint=//p' "$stamp" | head -n 1)"
-  [[ -n "$recorded" ]] || return 1
+  local stamp recorded current history
+  OSTUDY_CHECK_MATCHED_STAMP=""
   current="$(ostudy_check_fingerprint "$tier")"
-  [[ "$recorded" == "$current" ]]
+  stamp="$(ostudy_check_stamp_path "$tier")"
+  if [[ -f "$stamp" ]]; then
+    recorded="$(sed -n 's/^fingerprint=//p' "$stamp" | head -n 1)"
+    if [[ -n "$recorded" && "$recorded" == "$current" ]]; then
+      OSTUDY_CHECK_MATCHED_STAMP="$tier|$stamp"
+      return 0
+    fi
+  fi
+  history="$(ostudy_check_stamp_history_path "$tier" "$current")"
+  [[ -f "$history" ]] || return 1
+  recorded="$(sed -n 's/^fingerprint=//p' "$history" | head -n 1)"
+  [[ "$recorded" == "$current" ]] || return 1
+  OSTUDY_CHECK_MATCHED_STAMP="$tier|$history"
 }
 
 ostudy_check_stamp_source_sha() {
   local tier="$1"
   local stamp
   stamp="$(ostudy_check_stamp_path "$tier")"
+  # Name the source that actually qualified this tree when the last
+  # ostudy_check_stamp_is_current call for this tier matched a kept pass.
+  if [[ "${OSTUDY_CHECK_MATCHED_STAMP:-}" == "$tier|"* ]]; then
+    stamp="${OSTUDY_CHECK_MATCHED_STAMP#"$tier|"}"
+  fi
   [[ -f "$stamp" ]] || return 1
   sed -n 's/^source_sha=//p' "$stamp" | head -n 1
 }
@@ -170,7 +205,9 @@ ostudy_write_check_stamp() {
   if git -C "$OSTUDY_ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
     source_sha="$(git -C "$OSTUDY_ROOT_DIR" rev-parse HEAD)"
   fi
-  mkdir -p "$OSTUDY_CHECK_STATE_DIR"
+  local history
+  history="$(ostudy_check_stamp_history_path "$tier" "$fingerprint")"
+  mkdir -p "$OSTUDY_CHECK_STATE_DIR" "$(dirname -- "$history")"
   cat > "$(ostudy_check_stamp_path "$tier")" <<STAMP
 root=$OSTUDY_ROOT_DIR
 tier=$tier
@@ -178,6 +215,8 @@ scope=$(ostudy_qualification_scope "$tier")
 source_sha=$source_sha
 fingerprint=$fingerprint
 STAMP
+  cp -- "$(ostudy_check_stamp_path "$tier")" "$history"
+  ostudy_prune_check_stamp_history "$tier"
 }
 
 ostudy_javascript_dependencies_present() {
@@ -200,4 +239,5 @@ ostudy_clear_check_stamps() {
     "$(ostudy_check_stamp_path full)" \
     "$(ostudy_check_stamp_path android-compile)" \
     "$(ostudy_check_stamp_path android-smoke)"
+  rm -rf -- "$OSTUDY_CHECK_STATE_DIR/history"
 }
