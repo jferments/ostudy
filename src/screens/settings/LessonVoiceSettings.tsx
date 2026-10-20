@@ -16,7 +16,8 @@ const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:
 /**
  * The Voice row of "Default for each task": the connection, model and voice
  * that read lessons aloud. A model with preset voices offers its list; a model
- * that copies voices offers the learner's saved voices, managed in the Lesson
+ * that copies voices offers the voices that come with ostudy and the learner's
+ * saved ones, managed in the Lesson
  * voices dialog. It reloads when the AI connections change, since only an
  * OpenRouter connection can speak.
  */
@@ -85,8 +86,8 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       onChange={(event) => {
         const next = settings.models.find((candidate) => candidate.id === event.currentTarget.value);
         if (!next) return;
-        // A model that copies voices starts with the first voice saved for it.
-        const own = settings.voices.find((voice) => voice.state === "saved" && voice.modelId === next.id);
+        // A model that copies voices starts with its first voice, the default.
+        const own = settings.voices.find((voice) => voice.state !== "tried" && voice.modelId === next.id);
         save(settings.profileId, next.id, next.clonesVoices ? (own?.voice ?? "") : next.defaultVoice);
       }}
     >
@@ -97,7 +98,7 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       ))}
     </NativeSelect>
   );
-  const saved = settings.voices.filter((voice) => voice.state === "saved" && voice.modelId === settings.modelId);
+  const saved = settings.voices.filter((voice) => voice.state !== "tried" && voice.modelId === settings.modelId);
   const clones = model?.clonesVoices === true;
   const voiceSelect = clones ? (
     saved.length > 0 ? (

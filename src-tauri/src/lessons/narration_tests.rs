@@ -171,7 +171,7 @@ fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     let unset = settings(&database);
     assert_eq!(unset.profile_id, None);
     assert_eq!(unset.model_id, DRAMA);
-    assert_eq!(unset.voice, "");
+    assert_eq!(unset.voice, "builtin:relaxed-man");
     assert_eq!(unset.revision, 0);
     assert_eq!(unset.models.len(), 2);
 
@@ -223,7 +223,7 @@ fn saving_the_voice_checks_the_model_voice_connection_and_revision() {
     let saved = save(&database, Some(OPENROUTER), DRAMA, "", 0).unwrap();
     assert_eq!(saved.revision, 1);
     assert_eq!(saved.model_id, DRAMA);
-    assert_eq!(settings(&database).voice, "");
+    assert_eq!(settings(&database).voice, "builtin:relaxed-man");
 
     let stale = save(&database, Some(OPENROUTER), KOKORO, "am_adam", 0).unwrap_err();
     assert_eq!(stale.code, "speech_settings_changed");

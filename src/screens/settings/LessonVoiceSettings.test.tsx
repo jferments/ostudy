@@ -85,6 +85,7 @@ describe("LessonVoiceSettings", () => {
     vi.mocked(keepSpeechVoice).mockReset();
     vi.mocked(renameSpeechVoice).mockReset();
     vi.mocked(removeSpeechVoice).mockReset();
+    vi.mocked(createManagedMediaObjectUrl).mockClear();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   });
@@ -150,7 +151,6 @@ describe("LessonVoiceSettings", () => {
     expect(trySpeechVoice).toHaveBeenCalledWith(null);
     const dialog = await screen.findByRole("dialog", { name: "Lesson voices" });
     await waitFor(() => expect(createManagedMediaObjectUrl).toHaveBeenCalledWith("asset-3", "audio"));
-    expect(within(dialog).getByText("You have no saved voices yet.")).toBeTruthy();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Keep this voice" }));
     expect(keepSpeechVoice).toHaveBeenCalledWith(tried.id);
@@ -273,6 +273,49 @@ describe("LessonVoiceSettings", () => {
     });
     expect((connection as HTMLSelectElement).options[0]?.text).toBe("No OpenRouter service");
     expect(screen.getByRole("listitem").textContent).toContain("Voice");
+  });
+
+  it("offers the voices that come with oStudy, played from the app's own files", async () => {
+    const relaxed: SpeechVoice = {
+      id: "relaxed-man",
+      name: "Relaxed man",
+      modelId: DRAMA,
+      assetId: null,
+      state: "builtIn",
+      voice: "builtin:relaxed-man",
+    };
+    const calm: SpeechVoice = {
+      ...relaxed,
+      id: "calm-older-woman",
+      name: "Calm older woman",
+      voice: "builtin:calm-older-woman",
+    };
+    const current = settings({ modelId: DRAMA, voice: relaxed.voice, voices: [relaxed, calm] });
+    vi.mocked(getSpeechSettings).mockResolvedValue(current);
+    vi.mocked(keepSpeechVoice).mockResolvedValue({ ...current, voice: calm.voice, revision: 1 });
+    render(<LessonVoiceSettings connectionsKey={1} />);
+
+    await waitFor(() =>
+      expect([...select("Lesson voice").options].map((option) => option.text)).toEqual([
+        "Relaxed man",
+        "Calm older woman",
+      ]),
+    );
+    expect(select("Lesson voice").value).toBe(relaxed.voice);
+    fireEvent.click(screen.getByRole("button", { name: "More for Voice" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Lesson voices…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Lesson voices" });
+    expect(within(dialog).queryByRole("button", { name: "More for Relaxed man" })).toBeNull();
+
+    const play = vi.mocked(HTMLMediaElement.prototype.play);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Listen to Calm older woman" }));
+    await waitFor(() => expect(play).toHaveBeenCalled());
+    expect(createManagedMediaObjectUrl).not.toHaveBeenCalled();
+    expect(dialog.querySelector("audio")?.getAttribute("src")).toBe("/voices/calm-older-woman.mp3");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use" }));
+    expect(keepSpeechVoice).toHaveBeenCalledWith("calm-older-woman");
+    expect(await within(dialog).findAllByText("In use")).toHaveLength(1);
   });
 
   it("labels Kokoro voices and leaves other names alone", () => {

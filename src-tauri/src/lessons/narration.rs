@@ -164,7 +164,7 @@ pub(crate) fn save_settings(
         .map_err(CommandError::database)?;
     let offered = if model.voices.is_empty() {
         input.voice.is_empty()
-            || model.clones_voices && voices::is_saved_voice(&transaction, model, &input.voice)?
+            || model.clones_voices && voices::is_own_voice(&transaction, model, &input.voice)?
     } else {
         model.voices.contains(&input.voice.as_str())
     };
@@ -269,7 +269,7 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
             return Ok(Resolved {
                 profile_id,
                 model,
-                voice,
+                voice: chosen_voice(model, voice),
                 revision,
             });
         }
@@ -282,9 +282,18 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
     Ok(Resolved {
         profile_id,
         model,
-        voice: model.default_voice.to_string(),
+        voice: chosen_voice(model, model.default_voice.to_string()),
         revision: stored_revision,
     })
+}
+
+/// A model that copies voices with none chosen speaks the default voice.
+fn chosen_voice(model: &SpeechModel, voice: String) -> String {
+    if model.clones_voices && voice.is_empty() {
+        voices::default_voice()
+    } else {
+        voice
+    }
 }
 
 /// Enabled OpenRouter connections, most recently changed first.
@@ -397,8 +406,7 @@ pub(crate) async fn speak_saved(
     let request = speaking_request(database, &settings)?;
     let engine = speech::engine(request.profile.provider_kind)?;
     let _narrating = Narrating::begin(key)?;
-    let (model, voice) =
-        voices::lesson_voice(database, paths, runtime, &request, &settings, lesson_id).await?;
+    let (model, voice) = voices::lesson_voice(database, &settings, lesson_id)?;
     let pieces = segments(text, model.max_characters);
     let narrator = Narrator {
         database,

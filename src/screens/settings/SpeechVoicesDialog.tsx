@@ -43,7 +43,7 @@ export function SpeechVoicesDialog({
   const [error, setError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const model = settings.models.find((candidate) => candidate.id === settings.modelId);
-  const saved = settings.voices.filter((voice) => voice.state === "saved" && voice.modelId === settings.modelId);
+  const saved = settings.voices.filter((voice) => voice.state !== "tried" && voice.modelId === settings.modelId);
   const tried = settings.voices.find((voice) => voice.state === "tried" && voice.modelId === settings.modelId);
 
   const stop = () => {
@@ -60,14 +60,19 @@ export function SpeechVoicesDialog({
   const play = (voice: SpeechVoice) => {
     stop();
     setPlaying(voice.id);
-    createManagedMediaObjectUrl(voice.assetId, "audio").then(
-      (made) => {
+    // A voice that comes with ostudy plays from the app's own files.
+    const source =
+      voice.assetId === null
+        ? Promise.resolve({ src: builtInSample(voice.id), owned: false })
+        : createManagedMediaObjectUrl(voice.assetId, "audio").then((src) => ({ src, owned: true }));
+    source.then(
+      ({ src: made, owned }) => {
         const audio = audioRef.current;
         if (!audio) {
-          revokeManagedMediaObjectUrl(made);
+          if (owned) revokeManagedMediaObjectUrl(made);
           return;
         }
-        url.current = made;
+        url.current = owned ? made : null;
         audio.src = made;
         audio.onended = stop;
         audio.play().catch((failure: unknown) => {
@@ -203,30 +208,30 @@ export function SpeechVoicesDialog({
                     Use
                   </Button>
                 )}
-                <OverflowMenu
-                  label={`More for ${voice.name}`}
-                  disabled={busy !== null}
-                  items={[
-                    {
-                      id: "rename",
-                      label: "Rename…",
-                      onSelect: () => setRenaming({ id: voice.id, name: voice.name }),
-                    },
-                    {
-                      id: "remove",
-                      label: "Remove",
-                      disabled: inUse,
-                      onSelect: () => change(() => removeSpeechVoice(voice.id), "saving"),
-                    },
-                  ]}
-                />
+                {voice.state === "builtIn" ? null : (
+                  <OverflowMenu
+                    label={`More for ${voice.name}`}
+                    disabled={busy !== null}
+                    items={[
+                      {
+                        id: "rename",
+                        label: "Rename…",
+                        onSelect: () => setRenaming({ id: voice.id, name: voice.name }),
+                      },
+                      {
+                        id: "remove",
+                        label: "Remove",
+                        disabled: inUse,
+                        onSelect: () => change(() => removeSpeechVoice(voice.id), "saving"),
+                      },
+                    ]}
+                  />
+                )}
               </li>
             );
           })}
         </ul>
-      ) : (
-        <p className="tw:m-0 tw:text-muted-foreground">You have no saved voices yet.</p>
-      )}
+      ) : null}
       {tried ? (
         <div className="tw:flex tw:min-h-11 tw:min-w-0 tw:items-center tw:gap-2 tw:rounded-md tw:bg-muted tw:px-2 tw:py-1">
           {playButton(tried)}
@@ -269,4 +274,9 @@ export function SpeechVoicesDialog({
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
     </Dialog>
   );
+}
+
+/** Where a voice that comes with ostudy keeps its sample. */
+export function builtInSample(id: string): string {
+  return `${import.meta.env.BASE_URL}voices/${id}.mp3`;
 }

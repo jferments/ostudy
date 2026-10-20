@@ -94,7 +94,7 @@ Older builds cannot open a schema-15 library. Restoring the pre-upgrade checkpoi
 
 ## The saved voices update (schema 16)
 
-Schema 16 keeps the voices you save for reading lessons aloud, each a short sample of the voice with the words it says, and the voice each lesson was first read in, so a lesson keeps its voice when you choose another. A lesson's record goes when the lesson does. The update itself writes nothing: both tables start empty. A lesson read aloud before the update takes the voice chosen when it is next read. Drama 3 audio made before the update had no single voice, so it is read again once, in that voice; Kokoro audio is reused.
+Schema 16 keeps the voices you save for reading lessons aloud, each a short sample of the voice with the words it says, and the voice each lesson was first read in, so a lesson keeps its voice when you choose another. A lesson's record goes when the lesson does. The update itself writes nothing: both tables start empty. Drama 3 reads in **Relaxed man**, one of the two voices that come with oStudy, until you choose another. A lesson read aloud before the update takes the voice chosen when it is next read. Drama 3 audio made before the update had no single voice, so it is read again once, in that voice; Kokoro audio is reused.
 
 Older builds cannot open a schema-16 library. Restoring the pre-upgrade checkpoint returns the schema-15 library as it was. Saved voices are part of whole-library backups; device sync leaves them out, like lesson narration.
 

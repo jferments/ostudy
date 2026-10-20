@@ -138,21 +138,21 @@ fn keep_voice(database: &Database, id: &str) -> SpeechSettingsDto {
 }
 
 /// The voice `lesson_id` is spoken in, as narration asks for it.
-fn voice_for(database: &Database, paths: &AppPaths, lesson_id: &str) -> (String, String) {
+fn voice_for(database: &Database, lesson_id: &str) -> (String, String) {
     let settings = database
         .with_connection(|connection| resolved(connection))
         .unwrap();
-    let request = speaking_request(database, &settings).unwrap();
-    let (model, voice) = tauri::async_runtime::block_on(lesson_voice(
-        database,
-        paths,
-        &runtime(),
-        &request,
-        &settings,
-        lesson_id,
-    ))
-    .unwrap();
+    let (model, voice) = lesson_voice(database, &settings, lesson_id).unwrap();
     (model.id.to_string(), voice)
+}
+
+/// The learner's own voices, without those that come with ostudy.
+fn own(settings: SpeechSettingsDto) -> Vec<SpeechVoiceDto> {
+    settings
+        .voices
+        .into_iter()
+        .filter(|voice| voice.state != "builtIn")
+        .collect()
 }
 
 fn query<T: rusqlite::types::FromSql>(database: &Database, sql: &str) -> T {
@@ -186,16 +186,18 @@ fn a_tried_voice_can_be_kept_named_chosen_and_removed() {
 
     let first = seed_voice(&database, &paths);
     assert_eq!(first.name, "New voice");
-    assert_eq!(settings(&database).voices, vec![first.clone()]);
+    assert_eq!(own(settings(&database)), vec![first.clone()]);
     // Trying again replaces the voice being tried.
     let second = seed_voice(&database, &paths);
-    assert_eq!(settings(&database).voices, vec![second.clone()]);
+    assert_eq!(own(settings(&database)), vec![second.clone()]);
 
     let kept = keep_voice(&database, &second.id);
     assert_eq!(kept.voice, voice_key(&second.id));
-    assert_eq!(kept.voices.len(), 1);
+    let revision = kept.revision;
+    let kept = own(kept);
+    assert_eq!(kept.len(), 1);
     assert_eq!(
-        (kept.voices[0].name.as_str(), kept.voices[0].state.as_str()),
+        (kept[0].name.as_str(), kept[0].state.as_str()),
         ("Voice 1", "saved")
     );
 
@@ -214,11 +216,11 @@ fn a_tried_voice_can_be_kept_named_chosen_and_removed() {
             )
         })
     };
-    let gone = choose(DRAMA, voice_key(&first.id), kept.revision).unwrap_err();
+    let gone = choose(DRAMA, voice_key(&first.id), revision).unwrap_err();
     assert_eq!(gone.code, "speech_voice_unknown");
-    let preset = choose(KOKORO, voice_key(&second.id), kept.revision).unwrap_err();
+    let preset = choose(KOKORO, voice_key(&second.id), revision).unwrap_err();
     assert_eq!(preset.code, "speech_voice_unknown");
-    let again = choose(DRAMA, voice_key(&second.id), kept.revision).unwrap();
+    let again = choose(DRAMA, voice_key(&second.id), revision).unwrap();
     assert_eq!(again.voice, voice_key(&second.id));
 
     let rename_to = |name: &str| {
@@ -242,7 +244,7 @@ fn a_tried_voice_can_be_kept_named_chosen_and_removed() {
         "speech_voice_name_invalid"
     );
     assert_eq!(
-        rename_to(" Ms. Rivera ").unwrap().voices[0].name,
+        own(rename_to(" Ms. Rivera ").unwrap())[0].name,
         "Ms. Rivera"
     );
 
@@ -257,8 +259,9 @@ fn a_tried_voice_can_be_kept_named_chosen_and_removed() {
     let removed = database
         .with_connection(|connection| remove(connection, &second.id, NOW))
         .unwrap();
-    assert_eq!(removed.voices.len(), 1);
-    assert_eq!(removed.voices[0].name, "Voice 2");
+    let removed = own(removed);
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0].name, "Voice 2");
     assert_eq!(
         query::<i64>(&database, "SELECT COUNT(*) FROM speech_voices"),
         1
@@ -267,7 +270,11 @@ fn a_tried_voice_can_be_kept_named_chosen_and_removed() {
     // A described voice keeps its description as its name.
     let described = seed_named_voice(&database, &paths, "a calm older woman");
     let kept = keep_voice(&database, &described.id);
-    assert_eq!(kept.voices[1].name, "a calm older woman");
+    let named = own(kept)
+        .into_iter()
+        .find(|voice| voice.id == described.id)
+        .unwrap();
+    assert_eq!(named.name, "a calm older woman");
 }
 
 #[test]
@@ -296,7 +303,7 @@ fn a_lesson_keeps_the_voice_it_was_first_spoken_in() {
     keep_voice(&database, &first.id);
 
     assert_eq!(
-        voice_for(&database, &paths, &lesson_id),
+        voice_for(&database, &lesson_id),
         (DRAMA.to_string(), first.voice.clone())
     );
     assert_eq!(lesson_voice_of(&database, &lesson_id), first.voice);
@@ -310,16 +317,16 @@ fn a_lesson_keeps_the_voice_it_was_first_spoken_in() {
     // for the first time now takes the new one.
     let second = seed_voice(&database, &paths);
     keep_voice(&database, &second.id);
-    assert_eq!(voice_for(&database, &paths, &lesson_id).1, first.voice);
+    assert_eq!(voice_for(&database, &lesson_id).1, first.voice);
     let other = new_lesson(&database);
-    assert_eq!(voice_for(&database, &paths, &other).1, second.voice);
+    assert_eq!(voice_for(&database, &other).1, second.voice);
 
     // Removing the first voice hides it but keeps it for its lesson.
     let removed = database
         .with_connection(|connection| remove(connection, &first.id, NOW))
         .unwrap();
     assert!(removed.voices.iter().all(|voice| voice.id != first.id));
-    assert_eq!(voice_for(&database, &paths, &lesson_id).1, first.voice);
+    assert_eq!(voice_for(&database, &lesson_id).1, first.voice);
     assert_eq!(
         query::<String>(
             &database,
@@ -344,7 +351,7 @@ fn a_lesson_keeps_the_voice_it_was_first_spoken_in() {
         reference(&database, &paths, &first.voice).unwrap_err().code,
         "speech_voice_missing"
     );
-    assert_eq!(voice_for(&database, &paths, &lesson_id).1, second.voice);
+    assert_eq!(voice_for(&database, &lesson_id).1, second.voice);
     assert_eq!(lesson_voice_of(&database, &lesson_id), second.voice);
 
     // Deleting a lesson forgets its voice.
@@ -388,7 +395,74 @@ fn a_model_with_preset_voices_speaks_its_preset_and_offers_none_to_try() {
     .unwrap_err();
     assert_eq!(refused.code, "speech_voice_presets");
     assert_eq!(
-        voice_for(&database, &paths, &lesson_id),
+        voice_for(&database, &lesson_id),
         (KOKORO.to_string(), "bm_george".to_string())
     );
+}
+
+#[test]
+fn two_voices_come_with_ostudy_and_the_relaxed_man_is_the_default() {
+    let (database, lesson_id) = library();
+    let paths = temporary_paths("built-in");
+    let current = settings(&database);
+    assert_eq!(current.voice, "builtin:relaxed-man");
+    let built_in: Vec<_> = current
+        .voices
+        .iter()
+        .map(|voice| {
+            (
+                voice.name.as_str(),
+                voice.state.as_str(),
+                voice.asset_id.is_none(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        built_in,
+        vec![
+            ("Relaxed man", "builtIn", true),
+            ("Calm older woman", "builtIn", true)
+        ]
+    );
+
+    // A lesson read with no voice chosen is read in the default, carrying its
+    // sample and the words it says.
+    assert_eq!(voice_for(&database, &lesson_id).1, "builtin:relaxed-man");
+    let carried = reference(&database, &paths, "builtin:relaxed-man")
+        .unwrap()
+        .unwrap();
+    assert_eq!(carried.audio, BUILT_IN_VOICES[0].audio);
+    assert_eq!(carried.transcript, SAMPLE);
+    assert!(carried.audio.len() > 10_000);
+    for voice in BUILT_IN_VOICES {
+        assert!(matches!(
+            crate::media::inspect_media_bytes(voice.audio).unwrap().kind,
+            crate::media::MediaKind::Audio
+        ));
+    }
+
+    // The other can be chosen, but neither renamed nor removed.
+    let chosen = keep_voice(&database, "calm-older-woman");
+    assert_eq!(chosen.voice, "builtin:calm-older-woman");
+    let other = new_lesson(&database);
+    assert_eq!(voice_for(&database, &other).1, "builtin:calm-older-woman");
+    assert_eq!(voice_for(&database, &lesson_id).1, "builtin:relaxed-man");
+    assert!(database
+        .with_connection(|connection| remove(connection, "calm-older-woman", NOW))
+        .is_err());
+    let unknown = database
+        .with_connection(|connection| {
+            save_settings(
+                connection,
+                SaveSpeechSettingsInput {
+                    profile_id: Some(OPENROUTER.to_string()),
+                    model_id: DRAMA.to_string(),
+                    voice: "builtin:nobody".to_string(),
+                    expected_revision: chosen.revision,
+                },
+                NOW,
+            )
+        })
+        .unwrap_err();
+    assert_eq!(unknown.code, "speech_voice_unknown");
 }

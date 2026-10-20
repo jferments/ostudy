@@ -2,12 +2,13 @@
 //!
 //! A model that copies voices (Drama 3) picks a new speaker for every request
 //! that carries no recording, so the parts of one lesson sounded like
-//! different people. A saved voice is a sample sentence the model spoke once,
-//! kept with its words; a request that carries it is spoken in that voice.
-//! Trying a voice makes one sample to listen to, and keeping it adds it to the
-//! learner's voices and chooses it. A lesson records the voice it is first
-//! spoken in and keeps it when the learner later chooses another, so the
-//! audio it already has and the audio it gets later sound alike.
+//! different people. A voice is a sample sentence the model spoke once, kept
+//! with its words; a request that carries it is spoken in that voice. Two
+//! voices come with ostudy, and the first is the default. Trying a voice makes
+//! one sample to listen to, and keeping it adds it to the learner's voices and
+//! chooses it. A lesson records the voice it is first spoken in and keeps it
+//! when the learner later chooses another, so the audio it already has and the
+//! audio it gets later sound alike.
 
 use std::fs;
 
@@ -38,6 +39,44 @@ use crate::{
 pub(crate) const SAMPLE: &str = "Hello, everyone, and welcome. Today we are going to take \
 this one step at a time, and by the end, I think you will find that it makes good sense.";
 const SAVED: &str = "saved:";
+const BUILT_IN: &str = "builtin:";
+
+/// A voice that comes with ostudy: a Drama 3 sample of `SAMPLE`, made with a
+/// description of the voice (Jay chose these two, 2026-10-20).
+pub(crate) struct BuiltInVoice {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub audio: &'static [u8],
+}
+
+/// The first is the default. The frontend plays the same files from
+/// `public/voices/`.
+pub(crate) const BUILT_IN_VOICES: &[BuiltInVoice] = &[
+    BuiltInVoice {
+        id: "relaxed-man",
+        name: "Relaxed man",
+        audio: include_bytes!("../../../public/voices/relaxed-man.mp3"),
+    },
+    BuiltInVoice {
+        id: "calm-older-woman",
+        name: "Calm older woman",
+        audio: include_bytes!("../../../public/voices/calm-older-woman.mp3"),
+    },
+];
+
+/// The voice a model that copies voices speaks when none is chosen.
+pub(crate) fn default_voice() -> String {
+    built_in_key(BUILT_IN_VOICES[0].id)
+}
+
+fn built_in_key(id: &str) -> String {
+    format!("{BUILT_IN}{id}")
+}
+
+fn built_in(voice: &str) -> Option<&'static BuiltInVoice> {
+    let id = voice.strip_prefix(BUILT_IN)?;
+    BUILT_IN_VOICES.iter().find(|candidate| candidate.id == id)
+}
 const PURPOSE: &str = "lesson_narration";
 const MAX_NAME_CHARACTERS: usize = 60;
 const MAX_DESCRIPTION_CHARACTERS: usize = 120;
@@ -50,9 +89,10 @@ pub struct SpeechVoiceDto {
     pub id: String,
     pub name: String,
     pub model_id: String,
-    /// The sample, to listen to.
-    pub asset_id: String,
-    /// `saved`, or `tried` for the voice being tried.
+    /// The sample, to listen to; none for a voice that comes with ostudy,
+    /// whose sample is `/voices/<id>.mp3`.
+    pub asset_id: Option<String>,
+    /// `builtIn`, `saved`, or `tried` for the voice being tried.
     pub state: String,
     /// The speech setting's voice that chooses it.
     pub voice: String,
@@ -90,8 +130,20 @@ fn saved_id(voice: &str) -> Option<&str> {
         .filter(|id| validate_entity_id(id, "voice").is_ok())
 }
 
-/// The learner's saved voices, oldest first, then the voice being tried.
+/// The voices that come with ostudy, the learner's saved voices oldest first,
+/// then the voice being tried.
 pub(super) fn listed(connection: &Connection) -> Result<Vec<SpeechVoiceDto>, CommandError> {
+    let mut voices: Vec<SpeechVoiceDto> = BUILT_IN_VOICES
+        .iter()
+        .map(|voice| SpeechVoiceDto {
+            id: voice.id.to_string(),
+            name: voice.name.to_string(),
+            model_id: speech::DRAMA.to_string(),
+            asset_id: None,
+            state: "builtIn".to_string(),
+            voice: built_in_key(voice.id),
+        })
+        .collect();
     let mut statement = connection
         .prepare(
             "SELECT id, name, model_id, asset_id, state FROM speech_voices
@@ -112,16 +164,21 @@ pub(super) fn listed(connection: &Connection) -> Result<Vec<SpeechVoiceDto>, Com
             })
         })
         .map_err(CommandError::database)?;
-    rows.collect::<Result<_, _>>()
-        .map_err(CommandError::database)
+    for row in rows {
+        voices.push(row.map_err(CommandError::database)?);
+    }
+    Ok(voices)
 }
 
-/// Whether `voice` chooses one of the learner's saved voices for `model`.
-pub(super) fn is_saved_voice(
+/// Whether `voice` chooses one of the learner's voices for `model`.
+pub(super) fn is_own_voice(
     connection: &Connection,
     model: &SpeechModel,
     voice: &str,
 ) -> Result<bool, CommandError> {
+    if built_in(voice).is_some() {
+        return Ok(model.id == speech::DRAMA);
+    }
     let Some(id) = saved_id(voice) else {
         return Ok(false);
     };
@@ -153,6 +210,14 @@ fn sample(connection: &Connection, voice: &str) -> Result<Option<(String, String
         .map_err(CommandError::database)
 }
 
+/// Whether a request can speak in `voice`: a preset, a voice that comes with
+/// ostudy, or a saved voice whose sample is still there.
+fn speaks(connection: &Connection, voice: &str) -> Result<bool, CommandError> {
+    Ok(built_in(voice).is_some()
+        || saved_id(voice).is_none() && !voice.starts_with(BUILT_IN)
+        || sample(connection, voice)?.is_some())
+}
+
 /// The recording a request carries to speak in `voice`; none for a preset
 /// voice or the model's own choice.
 pub(super) fn reference(
@@ -160,6 +225,12 @@ pub(super) fn reference(
     paths: &AppPaths,
     voice: &str,
 ) -> Result<Option<VoiceReference>, CommandError> {
+    if let Some(voice) = built_in(voice) {
+        return Ok(Some(VoiceReference {
+            audio: voice.audio.to_vec(),
+            transcript: SAMPLE.to_string(),
+        }));
+    }
     if saved_id(voice).is_none() {
         return Ok(None);
     }
@@ -180,17 +251,13 @@ fn missing() -> CommandError {
 /// The model and voice a lesson is spoken in. The first time any part of the
 /// lesson is spoken, that is the voice chosen now, and it is recorded for the
 /// lesson; a lesson whose recorded voice can no longer speak takes the voice
-/// chosen now instead. A model that copies voices always speaks a saved voice:
-/// when none is chosen yet, one is made and chosen first.
-pub(super) async fn lesson_voice(
+/// chosen now instead, or the default voice when that cannot speak either.
+pub(super) fn lesson_voice(
     database: &Database,
-    paths: &AppPaths,
-    runtime: &AiRuntimeState,
-    request: &ProfileRequestSnapshot,
     settings: &Resolved,
     lesson_id: &str,
 ) -> Result<(&'static SpeechModel, String), CommandError> {
-    let kept = database.with_connection(|connection| {
+    database.with_connection(|connection| {
         let recorded: Option<(String, String)> = connection
             .query_row(
                 "SELECT model_id, voice FROM lesson_voices WHERE lesson_id = ?1",
@@ -199,51 +266,24 @@ pub(super) async fn lesson_voice(
             )
             .optional()
             .map_err(CommandError::database)?;
-        let Some((model_id, voice)) = recorded else {
-            return Ok(None);
-        };
-        let Some(model) = speech::speech_model(&model_id) else {
-            return Ok(None);
-        };
-        let speaks = saved_id(&voice).is_none() || sample(connection, &voice)?.is_some();
-        Ok(speaks.then_some((model, voice)))
-    })?;
-    if let Some(kept) = kept {
-        return Ok(kept);
-    }
-
-    let model = settings.model;
-    let chosen = database.with_connection(|connection| {
-        Ok(if saved_id(&settings.voice).is_some() {
-            sample(connection, &settings.voice)?.map(|_| settings.voice.clone())
-        } else {
-            Some(settings.voice.clone())
-        })
-    })?;
-    let voice = match chosen {
-        Some(voice) if !(model.clones_voices && voice.is_empty()) => voice,
-        _ if model.clones_voices => {
-            let made = make_sample(database, paths, runtime, request, model, "saved", None).await?;
-            database.with_connection(|connection| {
-                let transaction = connection
-                    .transaction_with_behavior(TransactionBehavior::Immediate)
-                    .map_err(CommandError::database)?;
-                let current = resolved(&transaction)?;
-                write_settings(
-                    &transaction,
-                    current.profile_id.as_deref(),
-                    model,
-                    &made.voice,
-                    unix_time_millis()?,
-                )?;
-                transaction.commit().map_err(CommandError::database)
-            })?;
-            made.voice
+        if let Some((model_id, voice)) = recorded {
+            if let Some(model) = speech::speech_model(&model_id) {
+                if speaks(connection, &voice)? {
+                    return Ok((model, voice));
+                }
+            }
         }
-        _ => return Err(missing()),
-    };
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
+
+        let model = settings.model;
+        let voice = if speaks(connection, &settings.voice)?
+            && !(model.clones_voices && settings.voice.is_empty())
+        {
+            settings.voice.clone()
+        } else if model.clones_voices {
+            default_voice()
+        } else {
+            return Err(missing());
+        };
         connection
             .execute(
                 "INSERT INTO lesson_voices(lesson_id, model_id, voice, created_at)
@@ -252,11 +292,11 @@ pub(super) async fn lesson_voice(
                      model_id = excluded.model_id,
                      voice = excluded.voice,
                      created_at = excluded.created_at",
-                params![lesson_id, model.id, voice, now],
+                params![lesson_id, model.id, voice, unix_time_millis()?],
             )
-            .map_err(CommandError::database)
-    })?;
-    Ok((model, voice))
+            .map_err(CommandError::database)?;
+        Ok((model, voice))
+    })
 }
 
 /// Speaks the sample with no recording, so the model picks a new voice, and
@@ -337,7 +377,7 @@ async fn make_sample(
             id,
             name,
             model_id: model.id.to_string(),
-            asset_id,
+            asset_id: Some(asset_id),
             state: state.to_string(),
         })
     })
@@ -443,7 +483,8 @@ fn voice_state(
     Ok((model, state))
 }
 
-/// Keeps the voice being tried as a saved voice and chooses it.
+/// Keeps the voice being tried as a saved voice and chooses it; chooses a
+/// saved voice or one that comes with ostudy.
 pub(crate) fn keep(
     connection: &mut Connection,
     id: &str,
@@ -452,6 +493,20 @@ pub(crate) fn keep(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
+    if let Some(voice) = built_in(&built_in_key(id)) {
+        let current = resolved(&transaction)?;
+        let model = speech::speech_model(speech::DRAMA).expect("Drama 3 is in the speech catalog");
+        write_settings(
+            &transaction,
+            current.profile_id.as_deref(),
+            model,
+            &built_in_key(voice.id),
+            now,
+        )?;
+        let saved = speech_settings(&transaction)?;
+        transaction.commit().map_err(CommandError::database)?;
+        return Ok(saved);
+    }
     let (model, state) = voice_state(&transaction, id)?;
     if state == "tried" {
         // A described voice keeps its description as its name.

@@ -15,9 +15,9 @@ export interface SpeechVoice {
   id: string;
   name: string;
   modelId: string;
-  /** The sample, to listen to. */
-  assetId: string;
-  state: "saved" | "tried";
+  /** The sample, to listen to; null for a voice that comes with ostudy. */
+  assetId: string | null;
+  state: "builtIn" | "saved" | "tried";
   /** The setting's `voice` that chooses it. */
   voice: string;
 }
