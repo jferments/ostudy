@@ -893,8 +893,9 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, home)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Home", deadline)
-    # The library is still empty here, so Home shows its welcome.
+    # Home names itself in a visually hidden h1; the library is still empty
+    # here, so Home shows its welcome.
+    webdriver.wait_for_main_heading(session_id, "Home", deadline)
     webdriver.wait_for_main_heading(session_id, "Your library is empty", deadline)
     assert_no_horizontal_overflow(session_id, "compact Home")
 
