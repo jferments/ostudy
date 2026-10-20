@@ -2,8 +2,7 @@
 //!
 //! Migration 11 adds the speech setting and the kept narration segments.
 //! Narration is made in the app; an upgrade writes none, so both tables start
-//! empty. It also rebuilds `prepared_exports` with every row kept, so a lesson
-//! can be prepared as a lecture deck (`lecture_pptx`).
+//! empty.
 
 use std::sync::OnceLock;
 
@@ -134,56 +133,6 @@ mod tests {
             assert_eq!(transaction.total_changes(), changes);
             transaction.rollback().unwrap();
         }
-        validate_input(&connection).unwrap();
-    }
-
-    #[test]
-    fn prepared_exports_keep_their_rows_and_accept_lecture_decks() {
-        let mut connection = schema_ten();
-        let insert = |connection: &Connection, id: char, purpose: &str| {
-            connection.execute(
-                "INSERT INTO prepared_exports(
-                     id, operation_id, purpose, suggested_filename, media_type, byte_size,
-                     sha256, relative_path, state, summary_json, created_at, updated_at,
-                     expires_at, published_at, released_at
-                 ) VALUES (?1, ?2, ?3, 'out', 'application/octet-stream', 10, ?4, ?5,
-                           'published', '{}', 1, 2, 3, 2, NULL)",
-                rusqlite::params![
-                    id.to_string().repeat(32),
-                    id.to_string().repeat(32),
-                    purpose,
-                    "e".repeat(64),
-                    format!("exports/{id}")
-                ],
-            )
-        };
-        insert(&connection, 'a', "study_guide_pdf").unwrap();
-        assert!(insert(&connection, 'b', "lecture_pptx").is_err());
-        let rows = |connection: &Connection| {
-            connection
-                .query_row(
-                    "SELECT group_concat(id || purpose || state || published_at, ',')
-                     FROM prepared_exports",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .unwrap()
-        };
-        let before = rows(&connection);
-
-        apply_migrations_through(&mut connection, VERSION).unwrap();
-        assert_eq!(rows(&connection), before);
-        insert(&connection, 'b', "lecture_pptx").unwrap();
-        assert!(insert(&connection, 'c', "slides").is_err());
-        assert_eq!(
-            count(
-                &connection,
-                "SELECT COUNT(*) FROM sqlite_schema
-                 WHERE name IN ('prepared_exports_v11')
-                    OR (type = 'index' AND name = 'prepared_exports_state_expiry_idx')"
-            ),
-            1
-        );
         validate_input(&connection).unwrap();
     }
 }
