@@ -109,6 +109,7 @@ export interface NativeCommandGatewayMap {
   "get_ai_task_defaults": readonly [typeof GatewayModule0.getAiTaskDefaults];
   "get_analytics": readonly [typeof GatewayModule2.getAnalytics];
   "get_app_info": readonly [typeof GatewayModule33.getAppInfo];
+  "get_card_mark_source": readonly [typeof GatewayModule3.getCardMarkSource];
   "get_card_note": readonly [typeof GatewayModule6.getCardNote];
   "get_card_template": readonly [typeof GatewayModule39.getCardTemplate];
   "get_collection_study_guide": readonly [typeof GatewayModule37.getCollectionStudyGuide];
@@ -134,6 +135,7 @@ export interface NativeCommandGatewayMap {
   "get_image_set_preview": readonly [typeof GatewayModule21.getImageSetPreview];
   "get_learning_task_progress": readonly [typeof GatewayModule22.getLearningTaskProgress];
   "get_lesson": readonly [typeof GatewayModule23.getLesson];
+  "get_lesson_lecture": readonly [typeof GatewayModule23.getLessonLecture];
   "get_library_session": readonly [typeof GatewayModule24.getLibrarySession];
   "get_note_source_citation": readonly [typeof GatewayModule14.getNoteSourceCitation];
   "get_pending_usb_sync_request": readonly [typeof GatewayModule10.getPendingUsbSyncRequest];
@@ -213,6 +215,7 @@ export interface NativeCommandGatewayMap {
   "prepare_deck_export": readonly [typeof GatewayModule9.prepareDeckExport];
   "prepare_document_study_guide_pdf": readonly [typeof GatewayModule36.prepareDocumentStudyGuidePdf];
   "prepare_image_set": readonly [typeof GatewayModule21.prepareImageSet];
+  "prepare_lesson_lecture_pptx": readonly [typeof GatewayModule23.prepareLessonLecturePptx];
   "prepare_library_backup_async": readonly [typeof GatewayModule5.prepareLibraryBackup];
   "prepare_library_restore_async": readonly [typeof GatewayModule5.prepareLibraryRestore];
   "prepare_occlusion_image": readonly [typeof GatewayModule25.prepareOcclusionImage];

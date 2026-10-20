@@ -8,8 +8,8 @@ import type {
   SelectionCard,
 } from "../../../ipc/cards";
 import type { DeckSummary } from "../../../ipc/decks";
-import type { DocumentSummary } from "../../../ipc/documents";
 import type { Subject, SubjectLibrary } from "../../../ipc/subjects";
+import type { LibrarySubjectScope } from "../../../navigation/appDestinations";
 
 /**
  * The library-wide card lists. The tree offers only All cards; the others are
@@ -17,12 +17,15 @@ import type { Subject, SubjectLibrary } from "../../../ipc/subjects";
  */
 export type WorkbenchView = "all" | "due" | "new" | "often_missed" | "suspended";
 
-/** What the card list shows: all cards, a subject, one deck, or one tag. */
+/**
+ * What the card list shows: all cards, a subject, one deck, or one tag. A tag
+ * chosen inside a subject keeps to that subject's decks.
+ */
 export type WorkbenchScope =
   | { kind: "view"; view: WorkbenchView }
   | { kind: "subject"; subjectId: string | null }
   | { kind: "deck"; deckId: string }
-  | { kind: "tag"; tagId: string };
+  | { kind: "tag"; tagId: string; subjectId?: string | null };
 
 /** The Show filter above the card list, inside the chosen scope. */
 export type CardFilter = WorkbenchView;
@@ -55,8 +58,20 @@ export function sameScope(left: WorkbenchScope, right: WorkbenchScope): boolean 
     case "deck":
       return left.deckId === (right as typeof left).deckId;
     case "tag":
-      return left.tagId === (right as typeof left).tagId;
+      return left.tagId === (right as typeof left).tagId && left.subjectId === (right as typeof left).subjectId;
   }
+}
+
+/** Where the Workbench starts for Library's chosen subject: all of its cards. */
+export function subjectRootScope(subject: LibrarySubjectScope): WorkbenchScope {
+  if (subject.kind === "subject") return { kind: "subject", subjectId: subject.subjectId };
+  if (subject.kind === "none") return { kind: "subject", subjectId: null };
+  return DEFAULT_SCOPE;
+}
+
+/** The subject Library's choice names, `null` for No subject, or undefined for Everything. */
+export function subjectFilterOf(subject: LibrarySubjectScope): string | null | undefined {
+  return subject.kind === "subject" ? subject.subjectId : subject.kind === "none" ? null : undefined;
 }
 
 /** The sort a scope opens with: a deck or subject in source order, the due list by due date. */
@@ -102,17 +117,22 @@ export function searchInputFor(
     deckIds = decksInSubject(library, scope.subjectId).map((deck) => deck.id);
     if (deckIds.length === 0) return null;
   }
-  if (scope.kind === "tag") tagIds = [scope.tagId];
+  if (scope.kind === "tag") {
+    tagIds = [scope.tagId];
+    if (scope.subjectId !== undefined) {
+      deckIds = decksInSubject(library, scope.subjectId).map((deck) => deck.id);
+      if (deckIds.length === 0) return null;
+    }
+  }
   const trimmed = query.trim();
   const effectiveSort: CardSort = trimmed === "" && sort === "relevance" ? defaultSort(scope) : sort;
   return { deckIds, query: trimmed, tagIds, ...FILTERS[view], sort: effectiveSort, limit, offset: 0 };
 }
 
-/** The decks, documents and subjects the tree and the actions work from. */
+/** The decks and subjects the tree and the actions work from. */
 export interface WorkbenchLibrary {
   subjects: Subject[];
   decks: DeckSummary[];
-  documents: DocumentSummary[];
   organization: SubjectLibrary | null;
 }
 
@@ -122,7 +142,6 @@ export interface SubjectNode {
   subject: Subject | null;
   name: string;
   decks: DeckSummary[];
-  documents: DocumentSummary[];
   cardCount: number;
   dueCount: number;
 }
@@ -148,13 +167,6 @@ export function decksInSubject(library: WorkbenchLibrary, subjectId: string | nu
   return ordered;
 }
 
-export function documentsInSubject(library: WorkbenchLibrary, subjectId: string | null): DocumentSummary[] {
-  const placements = new Map((library.organization?.documents ?? []).map((placement) => [placement.documentId, placement.subjectId]));
-  return library.documents
-    .filter((document) => (placements.get(document.id) ?? null) === subjectId)
-    .sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" }));
-}
-
 /**
  * Subjects in the learner's order, then No subject when it holds anything.
  * Counts are the decks' card and due counts, which the deck list already
@@ -164,7 +176,7 @@ export function subjectNodes(library: WorkbenchLibrary): SubjectNode[] {
   const subjects = [...library.subjects].sort((left, right) => left.sortOrder - right.sortOrder);
   const nodes: SubjectNode[] = subjects.map((subject) => node(library, subject.id, subject, subject.name));
   const unfiled = node(library, null, null, "No subject");
-  if (unfiled.decks.length > 0 || unfiled.documents.length > 0) nodes.push(unfiled);
+  if (unfiled.decks.length > 0) nodes.push(unfiled);
   return nodes;
 }
 
@@ -175,7 +187,6 @@ function node(library: WorkbenchLibrary, subjectId: string | null, subject: Subj
     subject,
     name,
     decks,
-    documents: documentsInSubject(library, subjectId),
     cardCount: decks.reduce((total, deck) => total + deck.generatedCardCount, 0),
     dueCount: decks.reduce((total, deck) => total + deck.studyableDueCount, 0),
   };

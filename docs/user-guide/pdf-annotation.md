@@ -4,13 +4,13 @@ The annotator lets you write, highlight, draw arrows and boxes, and type notes o
 
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
+Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
 ### From a card's source
 
-A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
+A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. A card you made from a mark opens at that mark instead, with the mark selected; if you have since erased the mark, it opens at the mark's page. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
 
 A source opens only while its PDF is in your library. Once the document is deleted, or for cards from a shared deck (`.studydeck` files never carry the document or its citations), the source stays plain text.
 
@@ -88,4 +88,4 @@ Storing annotations needs library schema 8, and cards from marks need schema 10.
 - Highlighting that snaps to text on Android.
 - Saving or exporting a copy of the PDF with its annotations.
 - Erasing part of a stroke, and selecting several annotations at once.
-- Annotating documents other than PDFs, such as Word or PowerPoint files and image collections.
+- Annotating documents other than PDFs, such as Word or PowerPoint files and image sets.

@@ -84,8 +84,6 @@ vi.mock("./screens/library/workbench/LibraryWorkbench", () => ({
     onPracticeCards,
     onCardDirtyChange,
     onDeckScopeChange,
-    onOpenDocuments,
-    onOpenStudyGuides,
   }: {
     decks: decksIpc.DeckSummary[];
     launch?: WorkbenchLaunch;
@@ -94,8 +92,6 @@ vi.mock("./screens/library/workbench/LibraryWorkbench", () => ({
     onPracticeCards: (cardIds: string[]) => void;
     onCardDirtyChange: (dirty: boolean) => void;
     onDeckScopeChange?: (deckId: string | null) => void;
-    onOpenDocuments: () => void;
-    onOpenStudyGuides: () => void;
   }) => {
     const scope = launch?.scope;
     const place = !scope
@@ -110,10 +106,6 @@ vi.mock("./screens/library/workbench/LibraryWorkbench", () => ({
     return (
       <section>
         <h1>Decks mock</h1>
-        <nav aria-label="Library pages">
-          <button type="button" onClick={onOpenDocuments}>Documents</button>
-          <button type="button" onClick={onOpenStudyGuides}>Study guides</button>
-        </nav>
         <span>{decks.map((deck) => deck.name).join(",")}</span>
         <output aria-label="Workbench launch">{`${place}${launch?.focusSearch ? "|search" : ""}`}</output>
         <output aria-label="Workbench request">{launch?.requestId ?? "none"}</output>
@@ -286,25 +278,11 @@ vi.mock("./screens/home/HomeScreen", () => ({
     </section>
   ),
 }));
-vi.mock("./screens/subject/SubjectScreen", () => ({
-  SubjectScreen: ({
-    subjectId,
-    onBack,
-    onOpenLibrary,
-  }: {
-    subjectId: string;
-    onBack: () => void;
-    onOpenLibrary: (scope: { subjectId?: string | null; deckId?: string }) => void;
-  }) => (
+vi.mock("./screens/library/LibraryOverview", () => ({
+  LibraryOverview: ({ subject }: { subject: { kind: string; subjectId?: string } }) => (
     <section>
-      <h1>Subject mock</h1>
-      <output aria-label="Subject page">{subjectId}</output>
-      <button type="button" onClick={onBack}>
-        Back to subjects mock
-      </button>
-      <button type="button" onClick={() => onOpenLibrary({ subjectId })}>
-        Manage subject mock
-      </button>
+      <h2>Overview mock</h2>
+      <output aria-label="Overview subject">{subject.kind === "subject" ? subject.subjectId : subject.kind}</output>
     </section>
   ),
 }));
@@ -824,44 +802,34 @@ describe("App shell", () => {
     expect(currentDestination()).toBe("Home");
   });
 
-  it("opens a subject's page from Home and manages it in Library", async () => {
+  it("opens a subject's page in Library from Home", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
     renderApp();
     await screen.findByRole("heading", { name: "Home mock" });
     fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
-    expect(await screen.findByRole("heading", { name: "Subject mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Subject page").textContent).toBe("subject-a");
-    expect(currentDestination()).toBe("Home");
+    expect(await screen.findByRole("heading", { name: "Overview mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Overview subject").textContent).toBe("subject-a");
+    expect(currentDestination()).toBe("Library");
+    expect(libraryView("Overview").getAttribute("aria-current")).toBe("page");
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to subjects mock" }));
-    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
-    await screen.findByRole("heading", { name: "Subject mock" });
-    // Choosing Home again, or Android Back, returns to the subject list.
-    fireEvent.click(navButton("Home"));
-    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
-    await screen.findByRole("heading", { name: "Subject mock" });
+    // Android Back from Library returns to Home.
     await waitFor(() => expect(dispatchPlatformBack()).toBe(true));
     expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
 
+    // The subject stays chosen on Library's other pages.
     fireEvent.click(screen.getByRole("button", { name: "Open subject mock" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Manage subject mock" }));
+    await screen.findByRole("heading", { name: "Overview mock" });
+    fireEvent.click(libraryView("Flashcards"));
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
     expect(screen.getByLabelText("Workbench launch").textContent).toBe("subject:subject-a");
-    // An ordinary visit to Library carries no subject.
-    fireEvent.click(navButton("Home"));
-    await screen.findByRole("heading", { name: "Home mock" });
-    fireEvent.click(navButton("Library"));
-    await waitFor(() => expect(screen.getByLabelText("Workbench launch").textContent).toBe("none"));
 
     fireEvent.click(navButton("Home"));
     fireEvent.click(await screen.findByRole("button", { name: "Open unfiled documents mock" }));
-    expect(await screen.findByRole("heading", { name: "Documents mock" })).toBeTruthy();
-    expect(libraryView("Documents").getAttribute("aria-current")).toBe("page");
+    expect(await screen.findByRole("heading", { name: "Overview mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Overview subject").textContent).toBe("none");
+    expect(screen.getByRole("heading", { level: 2, name: "No subject" })).toBeTruthy();
   });
 
   it("reopens the Library view used last", async () => {

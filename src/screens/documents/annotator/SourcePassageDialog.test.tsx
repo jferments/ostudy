@@ -43,12 +43,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function openPassage(onClose = vi.fn()) {
+function openPassage(onClose = vi.fn(), annotationId?: string) {
   render(
     <LayoutModeProvider>
       <OverlayProvider>
         <SourcePassageDialog
-          passage={{ documentId, title: "Shock physiology", pageNumber: 2 }}
+          passage={{ documentId, title: "Shock physiology", pageNumber: 2, annotationId }}
           onClose={onClose}
           showToast={vi.fn()}
         />
@@ -71,6 +71,36 @@ describe("source passage", () => {
     expect(screen.getByRole("group", { name: "Page 1" }).dataset.marked).toBeUndefined();
     // The outline fades once the learner has found the page.
     await waitFor(() => expect(cited.dataset.marked).toBeUndefined(), { timeout: 4000 });
+  });
+
+  it("opens at the card's mark and selects it", async () => {
+    const markId = "f".repeat(32);
+    vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({
+      documentId,
+      pages,
+      annotations: [{
+        id: markId, pageNumber: 2, revision: 1, createdAt: 5, updatedAt: 5,
+        shape: { kind: "highlight", points: [], color: "#facc15", strokeWidth: 14, rects: [100, 300, 200, 14], text: "Preload" },
+      }],
+    });
+    openPassage(vi.fn(), markId);
+
+    const canvas = await screen.findByRole("group", { name: "Pages of Shock physiology" });
+    // The mark's top sits a quarter of the way down the view, which has no height here.
+    expect(canvas.scrollTop).toBe(16 + 792 + PAGE_GAP + 300);
+    expect(screen.getByRole("toolbar", { name: "Selected annotation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Highlight on page 2: Preload" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Opened at the card's mark on page 2")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Page 2" }).dataset.marked).toBeUndefined();
+  });
+
+  it("opens at the cited page when the card's mark was erased", async () => {
+    openPassage(vi.fn(), "f".repeat(32));
+
+    const canvas = await screen.findByRole("group", { name: "Pages of Shock physiology" });
+    expect(canvas.scrollTop).toBe(16 + 792 + PAGE_GAP - 8);
+    expect(screen.getByText("Opened at page 2")).toBeTruthy();
+    expect(screen.queryByRole("toolbar", { name: "Selected annotation" })).toBeNull();
   });
 
   it("closes back to the card", async () => {

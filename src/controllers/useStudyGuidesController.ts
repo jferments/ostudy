@@ -8,6 +8,7 @@ import {
   type StudyGuidePageItem,
   type StudyGuideLibraryPage,
   type StudyGuideLibrarySort,
+  type StudyGuideSubjectFilter,
 } from "../ipc/studyGuides";
 import { listContinueReading, type ContinueReadingItem } from "../ipc/studyGuideReading";
 import { useRequestLane } from "./requestLane";
@@ -45,6 +46,8 @@ export interface StudyGuideDeleteTarget {
 }
 
 interface UseStudyGuidesControllerOptions {
+  /** Lists one subject's guides; every guide when left out. */
+  subject?: StudyGuideSubjectFilter;
   openRequest?: StudyGuideOpenRequest | null;
   onOpenRequestConsumed?: (requestId: number) => void;
   showToast: ShowToast;
@@ -58,6 +61,7 @@ const EMPTY_PAGE: StudyGuideLibraryPage = {
 };
 
 export function useStudyGuidesController({
+  subject,
   openRequest = null,
   onOpenRequestConsumed,
   showToast,
@@ -77,6 +81,13 @@ export function useStudyGuidesController({
   const continueLane = useRequestLane();
   const consumedRequest = useRef<number | null>(null);
   const deleteOperations = useRef(new Map<string, string>());
+  const subjectKey = subject?.kind === "subject" ? `subject:${subject.subjectId}` : (subject?.kind ?? "all");
+  // Another subject starts on its first page.
+  const [shownSubjectKey, setShownSubjectKey] = useState(subjectKey);
+  if (shownSubjectKey !== subjectKey) {
+    setShownSubjectKey(subjectKey);
+    setOffset(0);
+  }
 
   const load = useCallback(
     async (refreshOnly = false): Promise<void> => {
@@ -89,6 +100,7 @@ export function useStudyGuidesController({
           sort,
           offset,
           limit: STUDY_GUIDE_PAGE_SIZE,
+          subject: subjectFilterOf(subjectKey),
         });
         if (!readLane.isCurrent(token)) return;
         setPage(loaded);
@@ -106,7 +118,7 @@ export function useStudyGuidesController({
         }
       }
     },
-    [offset, query, readLane, sort],
+    [offset, query, readLane, sort, subjectKey],
   );
 
   useEffect(() => {
@@ -284,4 +296,9 @@ export function deleteTargetFromItem(
     guideId: item.guideId,
     guideRevision: item.guideRevision,
   };
+}
+
+function subjectFilterOf(key: string): StudyGuideSubjectFilter {
+  if (key.startsWith("subject:")) return { kind: "subject", subjectId: key.slice("subject:".length) };
+  return key === "none" ? { kind: "none" } : { kind: "all" };
 }

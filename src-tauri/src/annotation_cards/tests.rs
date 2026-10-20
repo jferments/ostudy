@@ -413,3 +413,39 @@ fn deleting_the_document_keeps_the_card_and_its_words() {
         "document_not_found"
     );
 }
+
+fn source(database: &Database, note: &str) -> Result<Option<CardMarkSourceDto>, CommandError> {
+    database.with_connection(|connection| mark_source(connection, note))
+}
+
+#[test]
+fn a_cards_source_names_its_mark_until_the_mark_is_erased() {
+    let database = library();
+    assert_eq!(source(&database, NOTE).unwrap(), None);
+    assert_eq!(
+        source(&database, "not an id").unwrap_err().code,
+        "invalid_identifier"
+    );
+
+    let linked = link(&database, NOTE, HIGHLIGHT).unwrap();
+    assert_eq!(source(&database, NOTE).unwrap(), Some(linked.clone()));
+
+    // An erased mark leaves the page and words but no mark to open at.
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "DELETE FROM document_annotations WHERE id = ?1",
+                    [HIGHLIGHT],
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    assert_eq!(
+        source(&database, NOTE).unwrap(),
+        Some(CardMarkSourceDto {
+            annotation_id: None,
+            ..linked
+        })
+    );
+}

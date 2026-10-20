@@ -13,7 +13,7 @@ import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { cn } from "../../../ui/internal/cn";
 import { Icon } from "../../../ui/icons/Icon";
 import { useLibraryFullPage } from "../../library/LibraryFrame";
-import { isShapeTool, isStickyNote, type AnnotatorTool, type ShapeTool } from "./annotationModel";
+import { isShapeTool, isStickyNote, shapeBounds, type AnnotatorTool, type ShapeTool } from "./annotationModel";
 import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
@@ -148,11 +148,14 @@ interface AnnotatorBodyProps {
   onCardSaved?: () => void;
   /** Opens the pages at this page and points it out. */
   focusPage?: number;
+  /** A mark on `focusPage` to open at and select instead. */
+  focusAnnotationId?: string;
 }
 
 /** The annotator under its frame: loading and failure states, then the toolbar and pages. */
 export function AnnotatorBody({
   documentId, title, controller, showToast, suggestedDeckId = null, onCardSaved = ignore, focusPage,
+  focusAnnotationId,
 }: AnnotatorBodyProps) {
   const { load } = controller;
   // A failed save is reported once; the header keeps showing it until a save works.
@@ -175,13 +178,16 @@ export function AnnotatorBody({
     />
   ) : (
     <ReadyAnnotator documentId={documentId} title={title} pages={load.pages} controller={controller}
-      suggestedDeckId={suggestedDeckId} onCardSaved={onCardSaved} showToast={showToast} focusPage={focusPage} />
+      suggestedDeckId={suggestedDeckId} onCardSaved={onCardSaved} showToast={showToast} focusPage={focusPage}
+      focusAnnotationId={focusAnnotationId} />
   );
 }
 
 function ignore(): void {}
 
-function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast, focusPage }: {
+function ReadyAnnotator({
+  documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast, focusPage, focusAnnotationId,
+}: {
   documentId: string;
   title: string;
   pages: readonly AnnotatedPage[];
@@ -190,21 +196,36 @@ function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId,
   onCardSaved: () => void;
   showToast: ShowToast;
   focusPage?: number;
+  focusAnnotationId?: string;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const viewport = useAnnotatorViewport(pages, viewportRef, contentRef);
   const cited = focusPage !== undefined && pages.some((page) => page.pageNumber === focusPage) ? focusPage : null;
   const { measured, showPage } = viewport;
-  // Once the pages have their size, the cited page is scrolled to and outlined for a moment.
+  // The mark a card came from, while it is still on the cited page.
+  const focusMark = cited !== null && focusAnnotationId
+    ? controller.annotations.get(cited)?.find((annotation) => annotation.id === focusAnnotationId) ?? null
+    : null;
+  const { select, setTool, textHeight } = controller;
+  // Once the pages have their size, the view goes to the card's mark and selects
+  // it, or, without one, to the cited page, which is outlined for a moment.
   const [outlined, setOutlined] = useState<number | null>(null);
+  const [openedAtMark, setOpenedAtMark] = useState(false);
   const shown = useRef(false);
   useLayoutEffect(() => {
     if (cited === null || !measured || shown.current) return;
     shown.current = true;
+    if (focusMark) {
+      showPage(cited, shapeBounds(focusMark.shape, textHeight(focusMark)).top);
+      setTool("select");
+      select(focusMark.id, cited);
+      setOpenedAtMark(true);
+      return;
+    }
     showPage(cited);
     setOutlined(cited);
-  }, [cited, measured, showPage]);
+  }, [cited, focusMark, measured, select, setTool, showPage, textHeight]);
   useEffect(() => {
     if (outlined === null) return undefined;
     const timer = setTimeout(() => setOutlined(null), CITED_PAGE_MARK_MS);
@@ -326,7 +347,11 @@ function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId,
           coarse={inputMode === "coarse"}
           markedPage={outlined}
         />
-        {cited !== null ? <p role="status" className="tw:sr-only">Opened at page {cited}</p> : null}
+        {cited !== null ? (
+          <p role="status" className="tw:sr-only">
+            {openedAtMark ? `Opened at the card's mark on page ${cited}` : `Opened at page ${cited}`}
+          </p>
+        ) : null}
       </div>
       {cardMark ? (
         <aside aria-label="New card from your mark"

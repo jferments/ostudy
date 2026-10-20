@@ -137,7 +137,7 @@ class AndroidSmokeTest {
                 })()
                 """.trimIndent()
             )
-            assertEquals("Subjects", snapshot.getString("sections"))
+            assertEquals("Decks", snapshot.getString("sections"))
             assertTrue(snapshot.getBoolean("libraryCurrent"))
             assertTrue(snapshot.getBoolean("settingsGear"))
             assertEquals(1, snapshot.getInt("createActions"))
@@ -271,13 +271,14 @@ class AndroidSmokeTest {
             )
             // Library reopens the page used last. Step to the Flashcards tab from
             // another Library page, then back from a card list to the tree, and
-            // open the deck.
+            // open the deck. Under Everything a deck row leads with its subject's
+            // badge, so match the deck by any of its spans.
             waitUntil(
                 webView,
                 predicate = { it == "true" },
                 expression = {
                     "(() => { " +
-                        "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'); " +
+                        "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => Array.from(button.querySelectorAll('span')).some(span => span.textContent?.trim() === 'Android Emulator Smoke Deck')); " +
                         "if (deck) return true; " +
                         "const page = document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-decks\"]'); " +
                         "if (page && page.getAttribute('aria-current') !== 'page') { page.click(); return false; } " +
@@ -286,7 +287,7 @@ class AndroidSmokeTest {
                         "})()"
                 }
             )
-            evaluateSync(webView, "Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck')?.click(); true")
+            evaluateSync(webView, "Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => Array.from(button.querySelectorAll('span')).some(span => span.textContent?.trim() === 'Android Emulator Smoke Deck'))?.click(); true")
             waitUntil(
                 webView,
                 predicate = { it == "true" },
@@ -322,7 +323,7 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck')) && " +
+                    "Boolean(Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => Array.from(button.querySelectorAll('span')).some(span => span.textContent?.trim() === 'Android Emulator Smoke Deck'))) && " +
                         "!document.querySelector('main h1[data-testid=\"workbench-title\"]')"
                 }
             )

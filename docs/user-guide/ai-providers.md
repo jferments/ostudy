@@ -30,7 +30,7 @@ The first OpenRouter service you save with a key also fills any task that has no
 
 | Task | Used for | Reasoning |
 | --- | --- | --- |
-| **Cards and guides** | Reading documents and image collections, making cards, study guides and collection study materials | Always off |
+| **Cards and guides** | Reading documents and image sets, making cards, study guides and a subject's study materials | Always off |
 | **Tutor** | Tutor chat, including **Ask Tutor** from a study guide | Your choice; starts at Low |
 | **Search** | Searching saved knowledge and conversations in Tutor | Not used; llama.cpp and OpenRouter only |
 | **Voice** | Reading lesson steps aloud with **Listen** | Not used; OpenRouter only. The model is **Drama 3** (the default) or **Kokoro**, which adds a voice choice in the Reasoning column |

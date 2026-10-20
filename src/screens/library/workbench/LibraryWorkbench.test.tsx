@@ -12,6 +12,8 @@ import { makeDeck, makeSubject, makeSubjectLibrary } from "../../../test/factori
 import { matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../../ui/overlays/OverlayProvider";
+import type { LibrarySubjectScope } from "../../../navigation/appDestinations";
+import { LibraryFrame } from "../LibraryFrame";
 import { LibraryWorkbench, type WorkbenchLaunch } from "./LibraryWorkbench";
 
 vi.mock("../../../ipc/cards", () => ({
@@ -89,9 +91,11 @@ function row(overrides: Partial<cardsIpc.CardBrowserRow> = {}): cardsIpc.CardBro
   };
 }
 
-function renderWorkbench(width = 1400, launch?: WorkbenchLaunch) {
+function renderWorkbench(width = 1400, launch?: WorkbenchLaunch, subject?: LibrarySubjectScope) {
   setViewport(width);
   const props = {
+    subject,
+    onSubjectChange: vi.fn(),
     decks,
     refreshDecks: vi.fn(async () => decks),
     launch,
@@ -99,15 +103,24 @@ function renderWorkbench(width = 1400, launch?: WorkbenchLaunch) {
     onPracticeCards: vi.fn(),
     onPracticeSelected: vi.fn(),
     practiceShuffle: true,
-    onOpenDocuments: vi.fn(),
-    onOpenStudyGuides: vi.fn(),
     onCardDirtyChange: vi.fn(),
     showToast: vi.fn(),
   };
   render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <LibraryWorkbench {...props} />
+        <LibraryFrame
+          view="decks"
+          fill
+          onSelectView={vi.fn()}
+          subject={subject ?? { kind: "all" }}
+          onChooseSubject={vi.fn()}
+          onStartReview={vi.fn()}
+          onPracticeSubject={vi.fn()}
+          showToast={vi.fn()}
+        >
+          <LibraryWorkbench {...props} />
+        </LibraryFrame>
       </OverlayProvider>
     </LayoutModeProvider>,
   );
@@ -147,12 +160,14 @@ describe("LibraryWorkbench", () => {
     vi.clearAllMocks();
   });
 
-  it("lists subjects with their decks and opens on all cards", async () => {
+  it("lists every deck under Everything, without a subject level, and opens on all cards", async () => {
     renderWorkbench();
     const tree = screen.getByRole("navigation", { name: "Library" });
-    await waitFor(() => expect(within(tree).getByRole("button", { name: /^Cardiac physiology\s*\d/u })).toBeTruthy());
-    expect(within(tree).getByRole("button", { name: /^Lecture 7: The cardiac cycle\s*\d/u })).toBeTruthy();
-    expect(within(tree).getByRole("button", { name: /^No subject\s*\d/u })).toBeTruthy();
+    await waitFor(() => expect(within(tree).getByRole("button", { name: /^Lecture 7: The cardiac cycle\s*\d/u })).toBeTruthy());
+    expect(within(tree).getByRole("button", { name: /^Lab handout: PV loops\s*\d/u })).toBeTruthy();
+    expect(within(tree).getByRole("button", { name: /^Loose deck\s*\d/u })).toBeTruthy();
+    expect(within(tree).queryByRole("button", { name: /^Cardiac physiology/u })).toBeNull();
+    expect(within(tree).queryByRole("button", { name: /^No subject/u })).toBeNull();
     expect(within(tree).getByRole("button", { name: /Check these \(2\)/u })).toBeTruthy();
     expect(within(tree).getByRole("button", { name: /All cards/u }).getAttribute("aria-current")).toBe("true");
     await waitFor(() => expect(screen.getByText("During which two phases are all four heart valves closed?")).toBeTruthy());
@@ -185,12 +200,39 @@ describe("LibraryWorkbench", () => {
   it("puts Library's pages in tabs above the tree, with Import deck beside them", async () => {
     renderWorkbench();
     const tabs = screen.getByRole("navigation", { name: "Library pages" });
-    expect(within(tabs).getAllByRole("button").map((button) => button.textContent)).toEqual(["Flashcards", "Documents", "Study guides"]);
     expect(within(tabs).getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
     const tree = screen.getByRole("navigation", { name: "Library" });
     expect(within(tree).queryByRole("button", { name: "Documents" })).toBeNull();
     expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
+  });
+
+  it("lists only Library's chosen subject's decks and tags, and keeps a tag to that subject", async () => {
+    const props = renderWorkbench(1400, { requestId: 1, scope: { kind: "subject", subjectId: cardiac.id } }, {
+      kind: "subject",
+      subjectId: cardiac.id,
+    });
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    const root = await within(tree).findByRole("button", { name: /^All of Cardiac physiology\s*\d/u });
+    expect(root.getAttribute("aria-current")).toBe("true");
+    expect(within(tree).getByRole("button", { name: /^Lab handout: PV loops\s*\d/u })).toBeTruthy();
+    expect(within(tree).queryByRole("button", { name: /^Loose deck/u })).toBeNull();
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenLastCalledWith([lecture.id, lab.id]));
+    await waitFor(() => expect(props.onSubjectChange).toHaveBeenLastCalledWith({ kind: "subject", subjectId: cardiac.id }));
+    fireEvent.click(await within(tree).findByRole("button", { name: /^high-yield\s*\d/u }));
+    await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id, lab.id], tagIds: ["t".repeat(32)] }));
+  });
+
+  it("returns a deck to all of the subject's cards on Back", async () => {
+    renderWorkbench(1400, { requestId: 1, scope: { kind: "subject", subjectId: cardiac.id } }, {
+      kind: "subject",
+      subjectId: cardiac.id,
+    });
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(await within(tree).findByRole("button", { name: /^Lab handout: PV loops\s*\d/u }));
+    await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe(lab.name));
+    await waitFor(() => expect(dispatchPlatformBack()).toBe(true));
+    await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe(cardiac.name));
   });
 
   it("scopes a subject to its own decks", async () => {

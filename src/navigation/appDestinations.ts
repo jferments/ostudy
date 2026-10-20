@@ -8,13 +8,27 @@ import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 export type AppDestination = "home" | "library" | "tutor" | "progress" | "settings";
 
 /**
- * Library hosts three of today's sections as its views, in the order its
- * switcher shows them. They keep their section ids so saved checkpoints and
- * launch requests still name them.
+ * Library's pages, in the order its tabs show them. Each one shows what the
+ * chosen subject holds (see LibrarySubjectScope). Flashcards, Documents and
+ * Study guides keep their section ids so saved checkpoints and launch
+ * requests still name them.
  */
-export const LIBRARY_SECTIONS = ["decks", "documents", "study-guides"] as const;
+export const LIBRARY_SECTIONS = ["overview", "lessons", "study-guides", "documents", "decks"] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
+
+/** Which subject's materials Library shows: all of them, one subject, or No subject. */
+export type LibrarySubjectScope =
+  | { kind: "all" }
+  | { kind: "subject"; subjectId: string }
+  | { kind: "none" };
+
+export const ALL_SUBJECTS: LibrarySubjectScope = { kind: "all" };
+
+export function sameSubjectScope(left: LibrarySubjectScope, right: LibrarySubjectScope): boolean {
+  if (left.kind === "subject" && right.kind === "subject") return left.subjectId === right.subjectId;
+  return left.kind === right.kind;
+}
 
 /**
  * Where `openLibrary` opens Library. No scope opens it as the learner last

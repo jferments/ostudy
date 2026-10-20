@@ -146,3 +146,61 @@ export const localFontSources = Object.freeze([
     ],
   },
 ]);
+
+// TrueType faces embedded in exported study-guide PDFs. Typst cannot read
+// WOFF2, so these come from Google Fonts' TrueType stylesheet and are compiled
+// into the native binary from src-tauri/resources/pdf-fonts. The serif body
+// face (Libertinus Serif) and the math face come from the typst-assets crate.
+export const pdfFontDirectory = "src-tauri/resources/pdf-fonts";
+
+export const pdfFontSources = Object.freeze([
+  {
+    family: "IBM Plex Sans",
+    googleAxes: "ital,wght@0,400;0,600;0,700;1,400",
+    noticePath: "public/licenses/IBM-Plex-Sans-OFL-1.1.txt",
+    faces: [
+      { style: "normal", weight: "400", filename: "ibm-plex-sans-400.ttf" },
+      { style: "italic", weight: "400", filename: "ibm-plex-sans-400-italic.ttf" },
+      { style: "normal", weight: "600", filename: "ibm-plex-sans-600.ttf" },
+      { style: "normal", weight: "700", filename: "ibm-plex-sans-700.ttf" },
+    ],
+  },
+  {
+    family: "Lato",
+    googleAxes: "ital,wght@0,400;0,700;1,400",
+    noticePath: "public/licenses/Lato-OFL-1.1.txt",
+    faces: [
+      { style: "normal", weight: "400", filename: "lato-400.ttf" },
+      { style: "italic", weight: "400", filename: "lato-400-italic.ttf" },
+      { style: "normal", weight: "700", filename: "lato-700.ttf" },
+    ],
+  },
+  {
+    family: "Sora",
+    googleAxes: "wght@400;600;700",
+    noticePath: "public/licenses/Sora-OFL-1.1.txt",
+    faces: [
+      { style: "normal", weight: "400", filename: "sora-400.ttf" },
+      { style: "normal", weight: "600", filename: "sora-600.ttf" },
+      { style: "normal", weight: "700", filename: "sora-700.ttf" },
+    ],
+  },
+  {
+    family: "Roboto Slab",
+    googleAxes: "wght@400;700",
+    noticePath: "public/licenses/Roboto-Slab-Apache-2.0.txt",
+    faces: [
+      { style: "normal", weight: "400", filename: "roboto-slab-400.ttf" },
+      { style: "normal", weight: "700", filename: "roboto-slab-700.ttf" },
+    ],
+  },
+  {
+    family: "Caladea",
+    googleAxes: "wght@400;700",
+    noticePath: "public/licenses/Caladea-OFL-1.1.txt",
+    faces: [
+      { style: "normal", weight: "400", filename: "caladea-400.ttf" },
+      { style: "normal", weight: "700", filename: "caladea-700.ttf" },
+    ],
+  },
+]);
