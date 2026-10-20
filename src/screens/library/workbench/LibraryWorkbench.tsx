@@ -658,6 +658,7 @@ export function LibraryWorkbench({
       scheduleBusy={scheduleBusy}
       onDirtyChange={setEditorDirty}
       onClose={closeEditor}
+      showToast={showToast}
       onSchedule={(action) => {
         if (editor.kind !== "card") return;
         const card = { cardId: editor.row.cardId, noteId: editor.row.noteId, deckId: editor.row.deckId };
@@ -907,10 +908,11 @@ interface WorkbenchEditorProps {
   onSchedule: (action: "suspend" | "resume" | "reset") => void;
   onMoveCopy: () => void;
   onSaved: (message: string, closed: boolean) => Promise<void>;
+  showToast: ShowToast;
 }
 
 /** The open card in today's card editor, with its schedule below the fields and Suspend and Reset in its menu. */
-function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyChange, onClose, onSchedule, onMoveCopy, onSaved }: WorkbenchEditorProps) {
+function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyChange, onClose, onSchedule, onMoveCopy, onSaved, showToast }: WorkbenchEditorProps) {
   const deckId = editor.kind === "card" ? editor.note.deckId : editor.deckId;
   const deck = decks.find((candidate) => candidate.id === deckId);
   if (!deck) {
@@ -942,6 +944,7 @@ function WorkbenchEditor({ editor, decks, todayStartAt, scheduleBusy, onDirtyCha
         decks={decks}
         card={card}
         onDirtyChange={onDirtyChange}
+        showToast={showToast}
         closeButton
         onCancel={() => { onDirtyChange(false); onClose(); }}
         onMoveCopy={card && !isQuestionNote(card) ? onMoveCopy : undefined}
