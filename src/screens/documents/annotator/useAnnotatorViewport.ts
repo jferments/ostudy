@@ -228,12 +228,16 @@ export function useAnnotatorViewport(
     scaleRef.current = target;
   }, [anchorAt, placeAnchor, viewportCenter]);
 
-  /** Scrolls a page's top into view. */
-  const showPage = useCallback((pageNumber: number) => {
+  /**
+   * Scrolls a page's top into view, or, given a spot `top` page points down
+   * the page, puts that spot a quarter of the way down the view.
+   */
+  const showPage = useCallback((pageNumber: number, top?: number) => {
     const viewport = viewportRef.current;
     const element = pageElement(pageNumber);
     if (!viewport || !element) return;
-    viewport.scrollTop = Math.max(0, element.offsetTop - PAGE_TOP_MARGIN);
+    const offset = top === undefined ? PAGE_TOP_MARGIN : viewport.clientHeight / 4 - top * scaleRef.current;
+    viewport.scrollTop = Math.max(0, element.offsetTop - offset);
   }, [pageElement, viewportRef]);
 
   const zoomBy = useCallback((factor: number) => zoomTo(scaleRef.current * factor), [zoomTo]);

@@ -160,5 +160,79 @@
         "$value": "#FF5FB4"
       }
     }
+  },
+  "pdfThemePreview": {
+    "navy": {
+      "paper": {
+        "$type": "color",
+        "$value": "#FFFFFF"
+      },
+      "primary": {
+        "$type": "color",
+        "$value": "#1D2B4F"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#2F6690"
+      },
+      "highlight": {
+        "$type": "color",
+        "$value": "#E8B04A"
+      }
+    },
+    "sage": {
+      "paper": {
+        "$type": "color",
+        "$value": "#FBF7EF"
+      },
+      "primary": {
+        "$type": "color",
+        "$value": "#4A6B57"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#F1EADB"
+      },
+      "highlight": {
+        "$type": "color",
+        "$value": "#B0614A"
+      }
+    },
+    "slate": {
+      "paper": {
+        "$type": "color",
+        "$value": "#FFFFFF"
+      },
+      "primary": {
+        "$type": "color",
+        "$value": "#263241"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#1F7A7A"
+      },
+      "highlight": {
+        "$type": "color",
+        "$value": "#E07A5F"
+      }
+    },
+    "plum": {
+      "paper": {
+        "$type": "color",
+        "$value": "#FFFDFB"
+      },
+      "primary": {
+        "$type": "color",
+        "$value": "#3F2A4A"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#7B4B8A"
+      },
+      "highlight": {
+        "$type": "color",
+        "$value": "#D4A03C"
+      }
+    }
   }
 }

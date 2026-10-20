@@ -109,6 +109,7 @@ export interface NativeCommandGatewayMap {
   "get_ai_task_defaults": readonly [typeof GatewayModule0.getAiTaskDefaults];
   "get_analytics": readonly [typeof GatewayModule2.getAnalytics];
   "get_app_info": readonly [typeof GatewayModule33.getAppInfo];
+  "get_card_mark_source": readonly [typeof GatewayModule3.getCardMarkSource];
   "get_card_note": readonly [typeof GatewayModule6.getCardNote];
   "get_card_template": readonly [typeof GatewayModule39.getCardTemplate];
   "get_collection_study_guide": readonly [typeof GatewayModule37.getCollectionStudyGuide];

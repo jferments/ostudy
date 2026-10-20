@@ -234,7 +234,7 @@ describe("Document collections workspace", () => {
     });
     expect(collections.resolveDocumentSourceSelection).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions("Cardiac physiology");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Reading range…" }));
     const dialog = await screen.findByRole("dialog", { name: "Reading range" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Pages" }), {
@@ -262,7 +262,7 @@ describe("Document collections workspace", () => {
         <Workspace documents={[document]} onAnnotateDocument={onAnnotateDocument} />
       </OverlayProvider>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions("Cardiac physiology");
     fireEvent.click(await screen.findByRole("menuitem", { name: "Annotate" }));
     expect(onAnnotateDocument).toHaveBeenCalledWith(document);
 
@@ -274,7 +274,7 @@ describe("Document collections workspace", () => {
         />
       </OverlayProvider>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "More actions for Cardiac physiology" }));
+    await openDocumentActions("Cardiac physiology");
     await screen.findByRole("menuitem", { name: "Reading range…" });
     expect(screen.queryByRole("menuitem", { name: "Annotate" })).toBeNull();
   });
@@ -452,3 +452,12 @@ describe("Document collections workspace", () => {
   });
 
 });
+
+async function openDocumentActions(title: string): Promise<void> {
+  // Base UI hands a menu trigger its click handling and aria-expanded in the same
+  // render, after a passive effect connects the trigger to its root. A click that
+  // lands before that is dropped, so wait for the trigger to report closed first.
+  const trigger = await screen.findByRole("button", { name: `More actions for ${title}` });
+  await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
+  fireEvent.click(trigger);
+}
