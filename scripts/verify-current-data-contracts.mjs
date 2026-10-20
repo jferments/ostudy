@@ -75,7 +75,7 @@ requireText("release migration 9 checksum", release, '"781c7040dd19f12cdff7d7403
 requireText("card mark links release migration", release, 'name: "note_annotation_sources"');
 requireText("release migration 10 checksum", release, '"44fe80681ce06adb81bc9afcf9213e2e6f2235c1bfa6d720329b571c35e24f45"');
 requireText("lesson narration release migration", release, 'name: "lesson_narration"');
-requireText("release migration 11 checksum", release, '"4c8db63fdc61a16c6a7008eeff26576b96e593ed82c20092e652ab8385e02f9f"');
+requireText("release migration 11 checksum", release, '"3fda3c51b3fe9788f2dde11ece277bbcf8f4f5912ee166dc58a8a1089264a1ee"');
 requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
 requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
 requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");

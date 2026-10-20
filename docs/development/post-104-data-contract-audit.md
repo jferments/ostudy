@@ -33,7 +33,7 @@ The explicit source-checkout recovery path for final pre-public v26 remains sepa
 
 ## 106-C findings and final disposition
 
-1. **Schema 30 is the terminal pre-0.1 public-v1 registry, not the current writer.** Older stage documents naming 17/18/21 describe historical checkpoints; current runtime writes release-v1 schema 11 from the immutable schema-1 baseline plus forward migrations 2–10.
+1. **Schema 30 is the terminal pre-0.1 public-v1 registry, not the current writer.** Older stage documents naming 17/18/21 describe historical checkpoints; current runtime writes release-v1 schema 11 from the immutable schema-1 baseline plus forward migrations 2–11.
 2. **The public-v1 repair registry is retained compatibility evidence.** Three repairs remain required for supported legacy admission/normalization even though fresh release-v1 does not replay that ledger. Clearing a pre-public ledger did not authorize deleting the compatibility framework.
 3. **The backup schema-10 floor is intentional.** Historical Tutor backup tests construct real schema-10/11 snapshots. Current release-v1 backups are a separate admitted lineage, not a reduction of that compatibility floor.
 4. **Rich-content docs were stale.** Native admission supports rich-root schema 3 for math/media while preserving the transport-envelope version 1.

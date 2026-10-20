@@ -64,7 +64,7 @@ Schema 10 remembers which highlight or note on a document each card you make fro
 Older builds cannot open a schema-10 library. Restoring the pre-upgrade checkpoint returns the schema-9 library as it was. These links are part of whole-library backups but stay on the device that made them, like the annotations themselves; shared decks do not carry them.
 ## The lesson narration update (schema 11)
 
-Schema 11 keeps the audio of lesson narration you have listened to, so a step is spoken by the voice service once and then plays from your library, and it records which voice lessons use. The update itself writes nothing: the tables start empty.
+Schema 11 keeps the audio of lesson narration you have listened to, so a step is spoken by the voice service once and then plays from your library, and it records which voice lessons use. It also lets a prepared export be a lecture slide deck, rebuilding the small table of prepared exports with every entry kept. The update writes no new rows: the narration tables start empty.
 
 Older builds cannot open a schema-11 library. Restoring the pre-upgrade checkpoint returns the schema-10 library as it was. Narration audio is part of whole-library backups but stays on the device that made it, like the lessons it belongs to. Deleting a lesson keeps its audio for now, because the same sentences can be spoken again in another lesson.
 
