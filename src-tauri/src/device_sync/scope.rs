@@ -448,6 +448,7 @@ pub(crate) fn sanitize_snapshot(
              DROP TABLE sync_narration_assets;
              DELETE FROM document_study_guide_section_reads;
              DELETE FROM document_study_guide_positions;
+             DELETE FROM document_figure_readings;
              DELETE FROM document_figure_passages;
              DELETE FROM document_figures;
              DELETE FROM document_figure_scans;",
@@ -779,7 +780,12 @@ mod tests {
                              72, 72, 200, 150, 'Figure 1', 'Figure 1. The heart.', 0, 1, 1);
                          INSERT INTO document_figure_passages(document_id, figure_id, ordinal,
                              page_number, kind, excerpt)
-                         VALUES ('{document}', 'p00001-01', 0, 1, 'mention', 'See Figure 1.');"
+                         VALUES ('{document}', 'p00001-01', 0, 1, 'mention', 'See Figure 1.');
+                         INSERT INTO document_figure_readings(document_id, figure_id, title,
+                             shows, concepts_json, explained_json, importance,
+                             worth_studying, provider, model, read_at)
+                         VALUES ('{document}', 'p00001-01', 'The heart', 'Four chambers.',
+                             '[]', '[1]', 4, 1, 'openrouter', 'test', 1);"
                     ))
                     .map_err(CommandError::database)?;
                 sanitize_snapshot(connection, selection)?;
@@ -787,7 +793,8 @@ mod tests {
                     .query_row(
                         "SELECT (SELECT COUNT(*) FROM document_figure_scans)
                               + (SELECT COUNT(*) FROM document_figures)
-                              + (SELECT COUNT(*) FROM document_figure_passages)",
+                              + (SELECT COUNT(*) FROM document_figure_passages)
+                              + (SELECT COUNT(*) FROM document_figure_readings)",
                         [],
                         |row| row.get(0),
                     )
@@ -799,6 +806,7 @@ mod tests {
             "document_figure_scans",
             "document_figures",
             "document_figure_passages",
+            "document_figure_readings",
         ] {
             assert!(!selection.includes_table(table));
         }

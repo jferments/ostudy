@@ -242,6 +242,10 @@ const CONTRACTS: &[Contract] = &[
                 table: "document_figure_passages",
                 description: "document figures",
             },
+            Rule::AddedEmpty {
+                table: "document_figure_readings",
+                description: "document figures",
+            },
         ],
     },
 ];

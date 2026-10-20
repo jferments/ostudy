@@ -159,7 +159,7 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     ReleaseMigration {
         version: 15,
         name: "document_figures",
-        checksum: "06bc6a3a985fc1accc63029308d174696a476ceaf75a39d6eba4fae8688f5830",
+        checksum: "c9cf31789d96b699de7130234c1105a7c7c2b5ac4ce0445b91704ed1a8fa1cae",
         sql: include_str!("../../schema/0015_document_figures.sql"),
     },
 ];

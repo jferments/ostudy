@@ -1,7 +1,8 @@
 //! Additive release-v15 admission for document figures.
 //!
 //! Migration 15 adds, for each PDF document, whether the learner chose to use
-//! its images and the figures found in it with the passages that explain them.
+//! its images and the figures found in it with the passages that explain them
+//! and what the learner's AI model read in each.
 //! Figures are found after import; an upgrade writes none, so the tables start
 //! empty.
 
@@ -28,10 +29,11 @@ mod tests {
     };
 
     const DOCUMENT: &str = "11111111111111111111111111111111";
-    const FIGURE_TABLES: [&str; 3] = [
+    const FIGURE_TABLES: [&str; 4] = [
         "document_figure_scans",
         "document_figures",
         "document_figure_passages",
+        "document_figure_readings",
     ];
 
     /// A schema-14 library as the previous release left it, with one document.
@@ -67,7 +69,8 @@ mod tests {
         let comparison = connection.transaction().unwrap();
         comparison
             .execute_batch(
-                "DROP TABLE document_figure_passages;
+                "DROP TABLE document_figure_readings;
+                 DROP TABLE document_figure_passages;
                  DROP TABLE document_figures;
                  DROP TABLE document_figure_scans;",
             )
@@ -121,6 +124,7 @@ mod tests {
         apply_migrations(&mut connection).unwrap();
         for damage in [
             "DROP TABLE document_figure_passages;",
+            "DROP TABLE document_figure_readings;",
             "DROP INDEX document_figures_in_order;",
             "DROP INDEX document_figures_in_order;
              CREATE INDEX document_figures_in_order ON document_figures(document_id, ordinal);",

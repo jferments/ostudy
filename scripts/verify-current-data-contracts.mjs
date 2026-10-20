@@ -83,7 +83,7 @@ requireText("release migration 13 checksum", release, '"b759a0e5e7347557a1f287a4
 requireText("annotated PDF exports release migration", release, 'name: "annotated_pdf_exports"');
 requireText("release migration 14 checksum", release, '"689d37008214b79efc99d7954c242cac9c9c1850a0e0ee20ed6319aa86a7b0be"');
 requireText("document figures release migration", release, 'name: "document_figures"');
-requireText("release migration 15 checksum", release, '"06bc6a3a985fc1accc63029308d174696a476ceaf75a39d6eba4fae8688f5830"');
+requireText("release migration 15 checksum", release, '"c9cf31789d96b699de7130234c1105a7c7c2b5ac4ce0445b91704ed1a8fa1cae"');
 requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
 requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
 requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");
