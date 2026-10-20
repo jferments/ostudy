@@ -82,7 +82,7 @@ Document/AI/synchronization are implemented optional subsystems; do not describe
 
 ## UI and accessibility invariants
 
-The main navigation names five destinations on every screen size: Home, Library, Review, Tutor, and Progress, with Search and the Settings gear in the header. Library's pages are its Flashcards (the Workbench), Documents and Study guides tabs. Practice is an internal contextual workflow that runs inside Review. Card templates live in Settings; deck transfer is contextual. Subjects organize both decks and documents; there are no deck folders, Analytics screen, More menu, or Templates/Import destinations.
+The main navigation names five destinations: Home, Library, Tutor, Progress, and Settings, with Search in the header. Review lives on Home. Library's pages are its Flashcards (the Workbench), Documents and Study guides tabs. Practice is an internal contextual workflow that runs inside Home. Card templates live in Settings; deck transfer is contextual. Subjects organize both decks and documents; there are no deck folders, Analytics screen, More menu, or Templates/Import destinations.
 
 Responsive presentation can move an action but cannot change its meaning, stable identity, authorization, destructive status, accessible name, or domain operation. Primary next steps stay discoverable. Empty states omit controls with no meaningful target rather than presenting filler tiles/disabled toolbars.
 

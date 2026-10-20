@@ -52,7 +52,15 @@ function renderHeader({
 }
 
 describe("AppHeaderBar", () => {
-  it.each([390, 1000, 1440])("offers Search and the Settings gear without window controls at %s px", (width) => {
+  it("offers only Search in a phone's header; Settings is in its bottom bar", () => {
+    const { onSearch } = renderHeader({ width: 390 });
+    const header = screen.getByTestId("app-header");
+    fireEvent.click(within(header).getByRole("button", { name: "Search" }));
+    expect(onSearch).toHaveBeenCalledTimes(1);
+    expect(within(header).queryByTestId("app-settings")).toBeNull();
+  });
+
+  it.each([1000, 1440])("offers Search and the Settings gear without window controls at %s px", (width) => {
     const { onSearch, onSettings } = renderHeader({ width });
     const header = screen.getByTestId("app-header");
     fireEvent.click(within(header).getByRole("button", { name: "Search" }));
@@ -81,7 +89,7 @@ describe("AppHeaderBar", () => {
     ["decks", null, "Library"],
     ["documents", null, "Library"],
     ["study-guides", null, "Library"],
-    ["review", null, "Review"],
+    ["review", null, null],
     ["tutor", null, "Tutor"],
     ["analytics", null, "Progress"],
     ["settings", null, "Settings"],
@@ -95,7 +103,7 @@ describe("AppHeaderBar", () => {
     if (title) expect(within(header).getByText(title)).toBeTruthy();
   });
 
-  it("marks the gear current only on Settings itself", () => {
+  it("marks the rail's gear current only on Settings itself", () => {
     const settings = renderHeader({ section: "settings" });
     expect(screen.getByRole("button", { name: "Settings" }).getAttribute("aria-current")).toBe("page");
     settings.unmount();

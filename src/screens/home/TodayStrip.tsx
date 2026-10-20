@@ -66,45 +66,35 @@ export function TodayStrip({ studyDate, today, headingId, onStartReview, onChoos
         </h2>
         <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{detail}</p>
         {tooManyDecks ? (
-          // A phone's strip has no subject chooser; Review starts one subject at a time.
           <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-            Cards are due in more than {MAX_SESSION_DECKS} decks.{" "}
-            {compact ? "Start one subject at a time in Review." : "Choose subjects to review them in parts."}
+            Cards are due in more than {MAX_SESSION_DECKS} decks. Choose subjects to review them in parts.
           </p>
         ) : null}
       </div>
       {due > 0 ? (
-        compact ? (
+        <ButtonGroup
+          aria-label="Review today's cards"
+          className={cn("tw:rounded-full tw:shadow-glow", compact && "tw:w-full")}
+        >
           <Button
             variant="primary"
-            className="tw:h-11 tw:rounded-full tw:px-4.5 tw:text-body"
+            className="tw:h-11 tw:flex-1 tw:rounded-l-full tw:pr-4 tw:pl-5 tw:text-body tw:shadow-none"
             disabled={tooManyDecks}
             onClick={onStartReview}
           >
-            <Icon name="practice" size={15} /> Start
+            <Icon name="practice" size={15} /> Start review
           </Button>
-        ) : (
-          <ButtonGroup aria-label="Review today's cards" className="tw:rounded-full tw:shadow-glow">
-            <Button
-              variant="primary"
-              className={cn("tw:h-11 tw:rounded-l-full tw:pr-4 tw:pl-5 tw:text-body tw:shadow-none")}
-              disabled={tooManyDecks}
-              onClick={onStartReview}
-            >
-              <Icon name="practice" size={15} /> Start review
-            </Button>
-            <Button
-              variant="primary"
-              size="icon"
-              aria-label="Choose subjects to review"
-              aria-haspopup="dialog"
-              className="tw:h-11 tw:w-10 tw:rounded-r-full tw:border-0 tw:border-l tw:border-solid tw:border-l-primary-foreground/35 tw:shadow-none"
-              onClick={onChooseSubjects}
-            >
-              <Icon name="chevron-down" size={16} />
-            </Button>
-          </ButtonGroup>
-        )
+          <Button
+            variant="primary"
+            size="icon"
+            aria-label="Choose subjects to review"
+            aria-haspopup="dialog"
+            className="tw:h-11 tw:w-10 tw:rounded-r-full tw:border-0 tw:border-l tw:border-solid tw:border-l-primary-foreground/35 tw:shadow-none"
+            onClick={onChooseSubjects}
+          >
+            <Icon name="chevron-down" size={16} />
+          </Button>
+        </ButtonGroup>
       ) : null}
     </Card>
   );

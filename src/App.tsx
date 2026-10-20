@@ -24,7 +24,6 @@ import { HomeScreen } from "./screens/home/HomeScreen";
 import { SubjectScreen } from "./screens/subject/SubjectScreen";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
-import { ReviewScreen } from "./screens/review/ReviewScreen";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
@@ -123,6 +122,17 @@ function App() {
     void controller.practiceScope(deckIds, []);
   }
 
+  // Review lives on Home, so Home also stands in for the legacy Review section.
+  const homeScreen = (
+    <HomeScreen
+      onStartReview={startReview}
+      onOpenSubject={(subjectId, view) => void controller.openSubject(subjectId, view)}
+      onOpenLibrary={() => void controller.openLibrary()}
+      onPracticeSubject={(subjectId) => void controller.practiceSubject(subjectId)}
+      onOpenProgress={() => navigate("analytics")}
+    />
+  );
+
   return (
     <LayoutModeProvider>
       <AppearanceProvider settings={controller.activeSettings}>
@@ -213,13 +223,7 @@ function App() {
                                 showToast={controller.showToast}
                               />
                             ) : controller.section === "home" ? (
-                              <HomeScreen
-                                onStartReview={startReview}
-                                onOpenSubject={(subjectId, view) =>
-                                  void controller.openSubject(subjectId, view)
-                                }
-                                onOpenLibrary={() => void controller.openLibrary()}
-                              />
+                              homeScreen
                             ) : controller.section === "decks" ? (
                               <LibraryWorkbench
                                 decks={controller.decks}
@@ -255,10 +259,7 @@ function App() {
                                 </PerformanceProfiler>
                               </LibraryFrame>
                             ) : controller.section === "review" ? (
-                              <ReviewScreen
-                                onStartReview={startReview}
-                                onChooseDecks={() => navigate("decks")}
-                              />
+                              homeScreen
                             ) : controller.section === "tutor" ? (
                               <TutorScreen />
                             ) : controller.section === "analytics" ? (
@@ -299,9 +300,9 @@ function App() {
 const DESTINATION_SECTIONS: Readonly<Record<AppDestination, AppSection | null>> = {
   home: "home",
   library: null,
-  review: "review",
   tutor: "tutor",
   progress: "analytics",
+  settings: "settings",
 };
 
 interface ShellHeaderProps {
@@ -312,7 +313,7 @@ interface ShellHeaderProps {
   onSettings: () => void;
 }
 
-/** The header and main navigation, with today's count on Review. */
+/** The header and main navigation, with today's count on Home. */
 function ShellHeader({
   section,
   activeWorkflow,
