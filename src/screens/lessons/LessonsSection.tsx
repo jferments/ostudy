@@ -7,6 +7,7 @@ import { Button } from "../../ui/primitives/Button";
 import { Card } from "../../ui/primitives/Card";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { Progress } from "../../ui/primitives/Progress";
 import type { SubjectCourse } from "./useSubjectCourse";
 
 interface LessonsSectionProps {
@@ -56,14 +57,17 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
         </InlineNotice>
       ) : null}
       {course.writing ? (
-        <Card as="div" role="status" className="tw:flex-row tw:items-center tw:gap-3 tw:p-5 tw:compact:p-4">
-          <Icon name="sparkles" size={20} className="tw:shrink-0 tw:text-accent-foreground" />
-          <span className="tw:min-w-0 tw:flex-1 tw:text-body">
-            {course.stopping ? "Stopping…" : "Writing lessons…"}
-          </span>
-          <Button size="small" className="tw:rounded-full" disabled={course.stopping} onClick={course.stop}>
-            <Icon name="stop" size={14} /> Stop
-          </Button>
+        <Card as="div" role="status" className="tw:gap-3 tw:p-5 tw:compact:p-4">
+          <div className="tw:flex tw:items-center tw:gap-3">
+            <Icon name="sparkles" size={20} className="tw:shrink-0 tw:text-accent-foreground" />
+            <span className="tw:min-w-0 tw:flex-1 tw:text-body">
+              {course.stopping ? "Stopping…" : "Writing lessons…"}
+            </span>
+            <Button size="small" className="tw:rounded-full" disabled={course.stopping} onClick={course.stop}>
+              <Icon name="stop" size={14} /> Stop
+            </Button>
+          </div>
+          <WritingProgress planned={course.progress?.planned ?? null} written={course.progress?.written ?? 0} />
         </Card>
       ) : null}
       {lessons.length > 0 ? (
@@ -165,4 +169,13 @@ function lessonState(lesson: LessonSummary): string {
   if (lesson.progress && lesson.progress.revisionNumber === lesson.written?.revisionNumber) return "In progress";
   if (lesson.written?.sources === "changed") return `Source changed · ${minutes(lesson)}`;
   return minutes(lesson);
+}
+
+/** How far the course has got; until the outline is planned the bar has no end yet. */
+function WritingProgress({ planned, written }: { planned: number | null; written: number }) {
+  if (planned === null) {
+    return <Progress value={null} max={1} label="Course writing progress" text="Planning the course…" />;
+  }
+  const text = `${written} of ${planned} ${planned === 1 ? "lesson" : "lessons"} written`;
+  return <Progress value={written} max={planned} label="Course writing progress" valueText={text} text={text} />;
 }

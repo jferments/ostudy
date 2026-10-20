@@ -12,11 +12,14 @@
 
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::{LazyLock, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock, Mutex,
+    },
 };
 
 use rusqlite::{Connection, OptionalExtension};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::State;
@@ -75,24 +78,54 @@ pub(crate) async fn write_subject_course(
     write_course(database.inner(), runtime.inner(), input).await
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetSubjectCourseWritingProgressInput {
+    pub operation_id: String,
+}
+
+/// How far a course being written is. Advisory: the course is saved only
+/// when every lesson is written.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseWritingProgressDto {
+    /// The lessons the course will have; absent while the parts are planned.
+    pub planned: Option<usize>,
+    pub written: usize,
+}
+
+#[tauri::command]
+pub fn get_subject_course_writing_progress(
+    input: GetSubjectCourseWritingProgressInput,
+) -> Result<CourseWritingProgressDto, CommandError> {
+    validate_entity_id(&input.operation_id, "course writing operation")?;
+    let active = ACTIVE.lock().map_err(|_| registry_error())?;
+    let writing = active
+        .values()
+        .find(|writing| writing.operation_id == input.operation_id)
+        .ok_or_else(not_running)?;
+    Ok(writing.progress.snapshot())
+}
+
 #[tauri::command]
 pub fn cancel_subject_course_writing(
     input: CancelSubjectCourseWritingInput,
 ) -> Result<(), CommandError> {
     validate_entity_id(&input.operation_id, "course writing operation")?;
     let active = ACTIVE.lock().map_err(|_| registry_error())?;
-    let signal = active
+    let writing = active
         .values()
-        .find(|(operation_id, _)| *operation_id == input.operation_id)
-        .map(|(_, signal)| signal)
-        .ok_or_else(|| {
-            CommandError::new(
-                "lesson_writing_not_running",
-                "That course is no longer being written.",
-            )
-        })?;
-    signal.cancel();
+        .find(|writing| writing.operation_id == input.operation_id)
+        .ok_or_else(not_running)?;
+    writing.signal.cancel();
     Ok(())
+}
+
+fn not_running() -> CommandError {
+    CommandError::new(
+        "lesson_writing_not_running",
+        "That course is no longer being written.",
+    )
 }
 
 pub(crate) async fn write_course(
@@ -108,6 +141,7 @@ pub(crate) async fn write_course(
     })?;
     let guard = Guard::begin(&input.subject_id, &input.operation_id)?;
     let signal = guard.signal();
+    let progress = guard.progress();
     let mut diagnostics = generation::Operation::begin(
         database,
         Some(&input.operation_id),
@@ -115,7 +149,15 @@ pub(crate) async fn write_course(
         Some(&input.subject_id),
         PURPOSE,
     )?;
-    let result = write_lessons(database, runtime, &input, diagnostics.context(), &signal).await;
+    let result = write_lessons(
+        database,
+        runtime,
+        &input,
+        diagnostics.context(),
+        &signal,
+        &progress,
+    )
+    .await;
     diagnostics.finish_result(&result);
     drop(guard);
     result?;
@@ -128,6 +170,7 @@ async fn write_lessons(
     input: &WriteSubjectCourseInput,
     diagnostics: generation::Context,
     signal: &CancellationSignal,
+    progress: &CourseProgress,
 ) -> Result<(), CommandError> {
     let subject_id = input.subject_id.as_str();
     let plans = database.with_connection(|connection| subject_plans(connection, subject_id))?;
@@ -160,6 +203,7 @@ async fn write_lessons(
             format!("A subject can hold up to {MAX_LESSONS_PER_SUBJECT} lessons."),
         ));
     }
+    progress.plan(parts.len());
     let subject_title = collection_title(database, subject_id)?;
     let course = CourseRequest {
         database,
@@ -184,6 +228,7 @@ async fn write_lessons(
             Ok::<_, CommandError>(match result {
                 Ok(lesson) => {
                     lessons[index] = Some(lesson);
+                    progress.wrote_one();
                     QueueControl::Continue
                 }
                 Err(error) => {
@@ -476,13 +521,45 @@ fn nothing_to_teach() -> CommandError {
 }
 
 /// Subjects whose course is being written, with the operation writing it.
-static ACTIVE: LazyLock<Mutex<HashMap<String, (String, CancellationSignal)>>> =
+static ACTIVE: LazyLock<Mutex<HashMap<String, Writing>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+struct Writing {
+    operation_id: String,
+    signal: CancellationSignal,
+    progress: Arc<CourseProgress>,
+}
+
+/// Lessons planned and written so far; zero planned until the parts are known.
+#[derive(Default)]
+struct CourseProgress {
+    planned: AtomicUsize,
+    written: AtomicUsize,
+}
+
+impl CourseProgress {
+    fn plan(&self, lessons: usize) {
+        self.planned.store(lessons, Ordering::Relaxed);
+    }
+
+    fn wrote_one(&self) {
+        self.written.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> CourseWritingProgressDto {
+        let planned = self.planned.load(Ordering::Relaxed);
+        CourseWritingProgressDto {
+            planned: (planned > 0).then_some(planned),
+            written: self.written.load(Ordering::Relaxed).min(planned),
+        }
+    }
+}
 
 /// One course writer per subject. Dropping the guard stops its requests.
 struct Guard {
     subject_id: String,
     signal: CancellationSignal,
+    progress: Arc<CourseProgress>,
     _activity: ActivityGuard,
 }
 
@@ -494,26 +571,36 @@ impl Guard {
         if active.contains_key(subject_id)
             || active
                 .values()
-                .any(|(operation, _)| operation == operation_id)
+                .any(|writing| writing.operation_id == operation_id)
         {
             return Err(CommandError::new(
                 "lesson_writing_already_running",
                 "This subject's course is already being written.",
             ));
         }
+        let progress = Arc::new(CourseProgress::default());
         active.insert(
             subject_id.to_string(),
-            (operation_id.to_string(), signal.clone()),
+            Writing {
+                operation_id: operation_id.to_string(),
+                signal: signal.clone(),
+                progress: Arc::clone(&progress),
+            },
         );
         Ok(Self {
             subject_id: subject_id.to_string(),
             signal,
+            progress,
             _activity: activity,
         })
     }
 
     fn signal(&self) -> CancellationSignal {
         self.signal.clone()
+    }
+
+    fn progress(&self) -> Arc<CourseProgress> {
+        Arc::clone(&self.progress)
     }
 }
 
