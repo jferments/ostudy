@@ -449,3 +449,24 @@ fn a_cards_source_names_its_mark_until_the_mark_is_erased() {
         })
     );
 }
+
+#[test]
+fn a_question_is_asked_about_a_marks_words_only() {
+    let database = library();
+    let words = database
+        .with_connection(|connection| mark_words(connection, HIGHLIGHT))
+        .unwrap();
+    assert_eq!(words.page_number, 2);
+    assert_eq!(words.words, "The SA node sets the heart rate.");
+    assert!(!words.document_title.is_empty());
+
+    let refused = |annotation: &str| {
+        database
+            .with_connection(|connection| mark_words(connection, annotation))
+            .unwrap_err()
+            .code
+    };
+    assert_eq!(refused(INK), "mark_has_no_words");
+    assert_eq!(refused(&"9".repeat(32)), "document_annotation_not_found");
+    assert_eq!(refused("not an id"), "invalid_identifier");
+}

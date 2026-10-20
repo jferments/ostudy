@@ -38,3 +38,15 @@ export async function getDocumentMarkedCards(documentId: string): Promise<Docume
 export async function getCardMarkSource(noteId: string): Promise<CardMarkSource | null> {
   return invoke<CardMarkSource | null>("get_card_mark_source", { input: { noteId } });
 }
+
+export interface MarkQuestionDraft {
+  question: string;
+}
+
+/**
+ * Asks the flashcard model for a question the mark's words answer. Cancel it
+ * with `cancelLearningTask(operationId)`.
+ */
+export async function draftMarkQuestion(operationId: string, annotationId: string): Promise<MarkQuestionDraft> {
+  return invoke<MarkQuestionDraft>("draft_mark_question", { input: { operationId, annotationId } });
+}

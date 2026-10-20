@@ -11,6 +11,7 @@ mod curation;
 mod evidence;
 mod flashcards;
 mod lesson;
+mod mark_question;
 mod observed;
 mod outline;
 mod schemas;
@@ -35,6 +36,7 @@ pub(crate) use flashcards::{
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
 };
 pub(crate) use lesson::{LessonAuthoring, LESSON_PROMPT_VERSION};
+pub(crate) use mark_question::{request_mark_question, MarkQuestionSource};
 pub(crate) use observed::{
     generate_collection_study_guide_topic_section, generate_document_study_guide_editorial,
     generate_lesson, generate_study_guide_topic_section, generate_window_flashcards,
