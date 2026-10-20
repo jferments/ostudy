@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 # Keeps the persistent CI Cargo target from filling the runner's root disk.
-# CI builds with CARGO_INCREMENTAL=0, so incremental state left by earlier runs
-# is dead weight and always goes. The whole target is cleared when it outgrows
+# Incremental state from earlier runs never helps a fresh checkout's build, so
+# it always goes before the job builds. The whole target is cleared when it outgrows
 # its cap or when the disk is too full for a build to fit before the guest
 # preflight minimum; the next run then builds cold.
 
