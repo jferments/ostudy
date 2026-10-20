@@ -851,10 +851,10 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
     )
     if not isinstance(state, dict):
         raise AssertionError(f"Could not inspect the internal Practice workflow: {state!r}")
-    # A session runs inside Home, where Review lives, wherever it started.
-    if state.get("selectedPrimary") != ["nav-home"]:
+    # A session runs inside Review wherever it started, so Review is the current destination.
+    if state.get("selectedPrimary") != ["nav-review"]:
         raise AssertionError(
-            f"Internal Practice did not run inside Home: {state!r}"
+            f"Internal Practice did not run inside Review: {state!r}"
         )
     if int(state.get("practiceDestinations", -1)) != 0:
         raise AssertionError(f"Practice returned to standing navigation: {state!r}")
@@ -956,7 +956,7 @@ def wait_for_saved_library_search_checkpoint(session_id: str, deadline: float) -
 
 
 def verify_due_today(session_id: str, expected: str, deadline: float) -> None:
-    """Home's Today strip and the Home badge agree on what is due today."""
+    """Home's Today strip, the Review badge and Review agree on what is due today."""
     home = find_element(session_id, "css selector", "button[data-testid='nav-home']", deadline)
     click(session_id, home)
     find_element(
@@ -969,15 +969,24 @@ def verify_due_today(session_id: str, expected: str, deadline: float) -> None:
     find_element(
         session_id,
         "xpath",
-        "//nav[@aria-label='Main navigation']//button[@data-testid='nav-home']"
+        "//nav[@aria-label='Main navigation']//button[@data-testid='nav-review']"
         f"//*[@data-slot='nav-badge'][normalize-space(.)={json.dumps(count)}]",
+        deadline,
+    )
+    review = find_element(session_id, "css selector", "button[data-testid='nav-review']", deadline)
+    click(session_id, review)
+    wait_for_main_heading(session_id, "Review", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='review-today']//h2[normalize-space(.)={json.dumps(expected)}]",
         deadline,
     )
     # The smoke deck is filed under no subject.
     find_element(
         session_id,
         "xpath",
-        "//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)='No subject']]",
+        "//main//*[@data-testid='review-subject'][.//*[normalize-space(.)='No subject']]",
         deadline,
     )
 
@@ -1048,16 +1057,16 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     wait_for_workbench_title(session_id, deck_name, deadline)
     find_card_row(session_id, question, deadline)
 
-    progress("Verifying today's count on Home and its badge")
+    progress("Verifying today's count on Home, the Review badge and Review")
     deadline = deadline_after()
     verify_due_today(session_id, "1 card due today", deadline)
 
-    progress("Starting today's review from Home and ending it early")
+    progress("Starting today's review from Review and ending it early")
     deadline = deadline_after()
     start_review = find_element(
         session_id,
         "xpath",
-        "//main//*[@data-testid='home-today']//button[normalize-space(.)='Start review']",
+        "//main//*[@data-testid='review-today']//button[normalize-space(.)='Start review']",
         deadline,
     )
     click(session_id, start_review)
@@ -1069,11 +1078,11 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     )
     assert_internal_practice_shell(session_id, deck_name)
     click_text_button(session_id, "End session", deadline)
-    wait_for_main_heading(session_id, "Home", deadline)
+    wait_for_main_heading(session_id, "Review", deadline)
     find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-home'][aria-current='page']",
+        "button[data-testid='nav-review'][aria-current='page']",
         deadline,
     )
 
@@ -1286,7 +1295,7 @@ def verify_persistence_after_restart(
         deadline,
     )
 
-    progress("Verifying post-restart navigation to Settings")
+    progress("Verifying post-restart navigation to Settings in the header")
     deadline = deadline_after()
     settings_button = find_element(
         session_id,
@@ -1333,8 +1342,8 @@ def main() -> int:
 
         print(
             "Native smoke test passed: opened a fresh library on Home, created a deck and "
-            "card, matched today's count on Home and its badge, ran Practice "
-            "inside Home with accessible progress, accepted a review, restarted ostudy, "
+            "card, matched today's count on Home, the Review badge and Review, ran Practice "
+            "inside Review with accessible progress, accepted a review, restarted ostudy, "
             "and verified durable content and Progress."
         )
         return 0

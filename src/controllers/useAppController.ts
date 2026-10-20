@@ -531,9 +531,8 @@ export function useAppController() {
   }
 
   async function navigate(next: AppSection): Promise<void> {
-    // An active session runs inside Home, where Review lives, so choosing Home
-    // (or the legacy Review section) keeps it.
-    if ((next === "home" || next === "review") && practiceWorkflow !== null) return;
+    // An active session runs inside Review, so choosing Review keeps it.
+    if (next === "review" && practiceWorkflow !== null) return;
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     if (next === "home" && section === "home" && homeSubjectId !== null && !leavingPracticeWorkflow) {

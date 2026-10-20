@@ -283,13 +283,13 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertNotIn("Verifying restored Analytics checkpoint after restart", source)
 
     def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
-        state = {"selectedPrimary": ["nav-home"], "practiceDestinations": 0, "heading": "Cardiology", "progressValueText": "Card 1 of 1, 0 studied, 1 remaining, 0% complete", "formerHeaderProgressCount": 0}
+        state = {"selectedPrimary": ["nav-review"], "practiceDestinations": 0, "heading": "Cardiology", "progressValueText": "Card 1 of 1, 0 studied, 1 remaining, 0% complete", "formerHeaderProgressCount": 0}
         with patch.object(self.smoke, "request", return_value=state):
             self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
         for key, invalid_value in (
             ("progressValueText", "0 of 1"),
             ("formerHeaderProgressCount", 1),
-            # A session runs inside Home: no other destination, and not none.
+            # A session runs inside Review: no other destination, and not none.
             ("selectedPrimary", []),
             ("selectedPrimary", ["nav-library"]),
             ("practiceDestinations", 1),
@@ -310,14 +310,18 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("button[data-testid='library-view-study-guides'][aria-current='page']", selectors)
         heading.assert_called_once_with("session-1", "Study Guides", 42.0)
 
-    def test_today_count_must_agree_on_home_and_its_badge(self) -> None:
-        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click:
+    def test_today_count_must_agree_on_home_the_review_badge_and_review(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click, patch.object(self.smoke, "wait_for_main_heading") as heading:
             self.smoke.verify_due_today("session-1", "3 cards due today", 42.0)
-        self.assertEqual([call.args[1] for call in click.call_args_list], ["button[data-testid='nav-home']"])
+        self.assertEqual(
+            [call.args[1] for call in click.call_args_list],
+            ["button[data-testid='nav-home']", "button[data-testid='nav-review']"],
+        )
+        heading.assert_called_once_with("session-1", "Review", 42.0)
         selectors = [call.args[2] for call in find_element.call_args_list]
         self.assertTrue(any("home-today" in selector and '"3 cards due today"' in selector for selector in selectors))
-        self.assertTrue(any("nav-home" in selector and "nav-badge" in selector and '"3"' in selector for selector in selectors))
-        self.assertTrue(any("subject-tile" in selector and "No subject" in selector for selector in selectors))
+        self.assertTrue(any("nav-badge" in selector and '"3"' in selector for selector in selectors))
+        self.assertTrue(any("review-today" in selector and '"3 cards due today"' in selector for selector in selectors))
 
     def test_a_fresh_library_must_open_on_home(self) -> None:
         with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "wait_for_main_heading") as heading:

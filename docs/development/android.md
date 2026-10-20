@@ -26,7 +26,7 @@ Android values that Tauri exposes as configuration belong in `src-tauri/tauri.an
 
 Supported Android capabilities include:
 
-- the five destinations (Home, Library, Tutor, Progress, Settings) in a bottom bar;
+- the same five destinations (Home, Library, Review, Tutor, Progress) in a bottom bar;
 - subject, deck, card, tag, template, search, and bulk authoring;
 - all native interactive question types, including manual image occlusion;
 - FSRS practice and scheduling controls;

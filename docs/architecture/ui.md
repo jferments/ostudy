@@ -29,8 +29,8 @@ Independent reads use independent request lanes. An obsolete success/error must 
 
 | Area | Contract |
 | --- | --- |
-| Main navigation | Home, Library, Tutor, Progress, Settings; Search in the header; Review lives on Home |
-| Compact navigation | Brand, page title and Search in the top bar; the five destinations in the bottom bar; no More menu |
+| Main navigation | Home, Library, Review, Tutor, Progress at every width; Search and the Settings gear in the header |
+| Compact navigation | Brand, page title, Search and Settings in the top bar; the five destinations in the bottom bar; no More menu |
 | Home | Landing page and Android Back root: Today strip, subject tiles, No subject, first-run welcome; a subject tile opens that subject's page inside Home |
 | Library | Tabs for its Flashcards (the Workbench, the default), Documents and Study guides pages, with Import deck beside them; reopens the last page chosen and the deck the Workbench had open |
 | Review | Today's due cards and estimate, Start by subject, Custom practice; highlighted while Practice runs |
@@ -48,7 +48,7 @@ Coming back to Library from another destination reopens the deck the Workbench h
 
 The schema-v2 device-local checkpoint separates destination from a real resumable-session hint and logical return target. Native SQLite owns session progress; the checkpoint is not a serialized React store or a content backup.
 
-Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy Cards/Templates checkpoint and Flashcards-workspace values are accepted only at their compatibility boundaries and normalize to current destinations before reaching live React route state. The application sections the checkpoint stores are home, decks, study-guides, documents, review, tutor, analytics and settings; the navigation presents them as the five destinations (decks, documents and study-guides are Library's views, analytics is Progress, and review shows Home), and the live Flashcards route workspaces are exactly decks and search, which the Workbench reads as All cards and All cards with search focused. A checkpoint written by an older build names only the older sections and still opens. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
+Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy Cards/Templates checkpoint and Flashcards-workspace values are accepted only at their compatibility boundaries and normalize to current destinations before reaching live React route state. The application sections the checkpoint stores are home, decks, study-guides, documents, review, tutor, analytics and settings; the navigation presents them as the five destinations (decks, documents and study-guides are Library's views, analytics is Progress, and settings belongs to the header gear), and the live Flashcards route workspaces are exactly decks and search, which the Workbench reads as All cards and All cards with search focused. A checkpoint written by an older build names only the older sections and still opens. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
 
 ## Home, Review and Library
 
@@ -140,7 +140,7 @@ Interface/card font and scale preferences remain independent. Current React appe
 
 ## Responsive and accessible presentation
 
-Wide and medium widths draw the header as a side rail on the left, in its own `navigation` colour (grey on the light theme, a step darker than the content on the dark ones): the raccoon mark, the labeled destinations, then Search and Settings at the bottom; compact keeps the brand, the page title and Search in a top bar and the five destinations, Settings last, in a bottom bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
+Wide and medium widths draw the header as a side rail on the left, in its own `navigation` colour (grey on the light theme, a step darker than the content on the dark ones): the raccoon mark, the five labeled destinations, then Search and Settings at the bottom; compact keeps the brand, the page title, Search and Settings in a top bar and the five destinations in a bottom bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
 
 Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion and artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress. Surfaces are flat and opaque in every theme, so nothing depends on blur or translucency; the stored material preference is kept for settings compatibility but is no longer shown or styled. Educational images and functional status/icons are not decorative artwork.
 

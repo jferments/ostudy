@@ -3,20 +3,19 @@ import { useId, useMemo, useState } from "react";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
 import { Icon } from "../../ui/icons/Icon";
+import { cn } from "../../ui/internal/cn";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ItemTrigger } from "../../ui/primitives/Item";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
-import { Panel } from "../../ui/primitives/Panel";
 import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
 import { processingPhaseLabel } from "../documents/DocumentProgress";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
 import { HomeFirstRun } from "./HomeFirstRun";
-import { ContinuePanel, SuggestionsPanel, useHomeLessons } from "./HomeStudyPanels";
-import { HomeWeekPanel } from "./HomeWeekPanel";
 import {
   buildSubjectTiles,
   countLabel,
@@ -45,23 +44,13 @@ interface HomeScreenProps {
    */
   onOpenSubject: (subjectId: string | null, noSubjectView: "decks" | "documents") => void;
   onOpenLibrary: () => void;
-  /** Practices a subject's cards beyond today's schedule. */
-  onPracticeSubject: (subjectId: string) => void;
-  onOpenProgress: () => void;
 }
 
 /**
- * Home: the Today strip with Start review, then lessons to pick up, suggestions,
- * the week at a glance and the learner's subjects with what is due in each. A
- * library with nothing in it shows a welcome instead.
+ * Home: the slim Today strip, then the learner's subjects with what is due in
+ * each. A library with nothing in it shows a welcome instead.
  */
-export function HomeScreen({
-  onStartReview,
-  onOpenSubject,
-  onOpenLibrary,
-  onPracticeSubject,
-  onOpenProgress,
-}: HomeScreenProps) {
+export function HomeScreen({ onStartReview, onOpenSubject, onOpenLibrary }: HomeScreenProps) {
   const {
     summary,
     library,
@@ -124,15 +113,6 @@ export function HomeScreen({
     onOpenSubject(tile.subjectId, deckCount === 0 && sourceCount > 0 ? "documents" : "decks");
   }
 
-  const subjectIds = useMemo(
-    () => (tiles ? tiles.subjects.flatMap((tile) => (tile.subjectId === null ? [] : [tile.subjectId])) : []),
-    [tiles],
-  );
-  // Home rereads lessons and the week whenever today's summary changes.
-  const refreshKey = summary ? summary.today.reviewsRemaining + summary.today.newRemaining * 100_000 : 0;
-  const lessons = useHomeLessons(subjectIds, refreshKey);
-  const openSubjectPage = (subjectId: string) => onOpenSubject(subjectId, "decks");
-
   const readError = summaryError ?? libraryError;
   const firstRun = Boolean(tiles && tiles.subjects.length === 0 && tiles.noSubject === null);
 
@@ -192,64 +172,41 @@ export function HomeScreen({
                 </Button>
               </p>
             ) : null}
-            <div className="tw:flex tw:flex-wrap tw:items-start tw:gap-5 tw:compact:gap-4">
-              <div className="tw:grid tw:min-w-0 tw:flex-[2_1_28rem] tw:gap-5 tw:empty:hidden tw:compact:gap-4">
-                <ContinuePanel lessons={lessons} subjects={tiles.subjects} onOpenSubject={openSubjectPage} />
-                <SuggestionsPanel
-                  lessons={lessons}
-                  subjects={tiles.subjects}
-                  refreshKey={refreshKey}
-                  onStartReview={onStartReview}
-                  onPracticeSubject={onPracticeSubject}
-                  onOpenSubject={openSubjectPage}
-                />
-              </div>
-              <div className="tw:grid tw:min-w-0 tw:flex-[1_1_20rem] tw:gap-5 tw:compact:gap-4">
-                <HomeWeekPanel refreshKey={refreshKey} onOpenProgress={onOpenProgress} />
-                <Panel
-                  title="Your subjects"
-                  headingId={subjectsHeadingId}
-                  data-tour-anchor="home.subjects"
-                  description={`${countLabel(tiles.subjects.length, "subject")} · ${countLabel(
-                    shownTiles.reduce((sum, tile) => sum + tile.summary.sourceCount, 0),
-                    "source",
-                  )} · ${countLabel(
-                    shownTiles.reduce((sum, tile) => sum + tile.summary.cardCount, 0),
-                    "card",
-                  )}`}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      data-testid="home-new-subject"
-                      onClick={() => setSheet("new-subject")}
-                    >
-                      <Icon name="plus" size={16} /> New subject
-                    </Button>
-                  }
-                >
-                  {tiles.subjects.length > 1 ? (
-                    <NativeSelect
-                      aria-label="Sort subjects"
-                      value={sort}
-                      onChange={(event) => setSort(event.currentTarget.value as SubjectSort)}
-                    >
-                      {SUBJECT_SORT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  ) : null}
-                  <ul className="tw:m-0 tw:grid tw:list-none tw:divide-y tw:divide-border tw:p-0">
-                    {shownTiles.map((tile) => (
-                      <li key={tile.key} className="tw:min-w-0">
-                        <SubjectTileCard tile={tile} compact={compact} onOpen={() => openTile(tile)} />
-                      </li>
-                    ))}
-                  </ul>
-                </Panel>
-              </div>
-            </div>
+            <section
+              aria-labelledby={subjectsHeadingId}
+              data-tour-anchor="home.subjects"
+              className="tw:flex tw:flex-col tw:gap-4.5 tw:compact:gap-3"
+            >
+              <SubjectsHeader
+                headingId={subjectsHeadingId}
+                compact={compact}
+                subjectCount={tiles.subjects.length}
+                sourceCount={shownTiles.reduce((sum, tile) => sum + tile.summary.sourceCount, 0)}
+                cardCount={shownTiles.reduce((sum, tile) => sum + tile.summary.cardCount, 0)}
+                sort={sort}
+                onSortChange={setSort}
+                onNewSubject={() => setSheet("new-subject")}
+              />
+              <ul
+                className={cn(
+                  "tw:m-0 tw:grid tw:list-none tw:p-0",
+                  compact
+                    ? "tw:grid-cols-2 tw:gap-3"
+                    : "tw:grid-cols-[repeat(auto-fill,minmax(min(16.875rem,100%),1fr))] tw:gap-4",
+                )}
+              >
+                {shownTiles.map((tile) => (
+                  <li key={tile.key} className="tw:min-w-0">
+                    <SubjectTileCard tile={tile} compact={compact} onOpen={() => openTile(tile)} />
+                  </li>
+                ))}
+                {compact ? null : (
+                  <li className="tw:min-w-0">
+                    <NewSubjectTile onSelect={() => setSheet("new-subject")} />
+                  </li>
+                )}
+              </ul>
+            </section>
           </div>
         )
       ) : null}
@@ -277,5 +234,98 @@ export function HomeScreen({
         <CheckTheseSheet onClose={() => setSheet(null)} onChanged={refresh} />
       ) : null}
     </PageScaffold>
+  );
+}
+
+interface SubjectsHeaderProps {
+  headingId: string;
+  compact: boolean;
+  subjectCount: number;
+  sourceCount: number;
+  cardCount: number;
+  sort: SubjectSort;
+  onSortChange: (sort: SubjectSort) => void;
+  onNewSubject: () => void;
+}
+
+function SubjectsHeader({
+  headingId,
+  compact,
+  subjectCount,
+  sourceCount,
+  cardCount,
+  sort,
+  onSortChange,
+  onNewSubject,
+}: SubjectsHeaderProps) {
+  const sortControl = (
+    <div className={compact ? "tw:w-[11.25rem]" : "tw:w-[12.5rem]"}>
+      <NativeSelect
+        aria-label="Sort subjects"
+        value={sort}
+        onChange={(event) => onSortChange(event.currentTarget.value as SubjectSort)}
+        className={cn(
+          "tw:rounded-full tw:border-border tw:bg-card tw:ps-4 tw:font-medium",
+          compact ? "tw:h-9 tw:text-label" : "tw:h-11 tw:text-body",
+        )}
+      >
+        {SUBJECT_SORT_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </NativeSelect>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className="tw:flex tw:flex-col tw:gap-2.5">
+        <div className="tw:flex tw:items-center tw:justify-between tw:gap-3">
+          <h2 id={headingId} className="tw:m-0 tw:text-section tw:leading-tight tw:font-semibold tw:tracking-tight">
+            Your subjects
+          </h2>
+          <Button className="tw:rounded-full" onClick={onNewSubject}>
+            <Icon name="plus" size={16} /> New subject
+          </Button>
+        </div>
+        {subjectCount > 1 ? sortControl : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="tw:flex tw:flex-wrap tw:items-end tw:gap-3">
+      <div className="tw:min-w-0 tw:flex-[1_1_16.25rem]">
+        <h2 id={headingId} className="tw:m-0 tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight">
+          Your subjects
+        </h2>
+        <p className="tw:mt-1 tw:mb-0 tw:text-body tw:text-muted-foreground">
+          {countLabel(subjectCount, "subject")} · {countLabel(sourceCount, "source")} ·{" "}
+          {countLabel(cardCount, "card")}
+        </p>
+      </div>
+      {subjectCount > 1 ? sortControl : null}
+    </div>
+  );
+}
+
+function NewSubjectTile({ onSelect }: { onSelect: () => void }) {
+  return (
+    <ItemTrigger
+      data-testid="home-new-subject"
+      onClick={onSelect}
+      className="tw:h-full tw:min-h-50 tw:w-full tw:flex-col tw:justify-center tw:gap-2.5 tw:rounded-lg tw:border-2 tw:border-dashed tw:border-border tw:p-5 tw:text-center tw:text-muted-foreground tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:hover:border-primary tw:hover:text-foreground tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none"
+    >
+      <span
+        aria-hidden="true"
+        className="tw:grid tw:size-13 tw:place-items-center tw:rounded-full tw:bg-accent tw:text-accent-foreground"
+      >
+        <Icon name="plus" size={24} />
+      </span>
+      <span className="tw:font-heading tw:text-title-small tw:font-semibold tw:text-foreground">
+        New subject
+      </span>
+    </ItemTrigger>
   );
 }

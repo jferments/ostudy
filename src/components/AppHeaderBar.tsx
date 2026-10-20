@@ -21,16 +21,15 @@ interface AppHeaderBarProps {
 const COMPACT_TITLES: Record<AppDestination, string | null> = {
   home: null,
   library: "Library",
+  review: "Review",
   tutor: "Tutor",
   progress: "Progress",
-  settings: "Settings",
 };
 
 /**
  * The header on every screen size. Wider screens draw it as a side rail: the
  * raccoon, the main navigation, then Search and Settings at the bottom. A phone
- * has a top bar with the brand, the current place and Search; its Settings is
- * in the bottom bar.
+ * has a top bar with the brand, the current place and the two actions.
  */
 export function AppHeaderBar({
   section,
@@ -52,14 +51,25 @@ export function AppHeaderBar({
           brand={<BrandLockup compact />}
           title={compactTitle(section, activeWorkflow)}
           actions={
-            <IconButton
-              icon="search"
-              label="Search"
-              tooltip="Search cards"
-              data-testid="app-search"
-              className={actionClassName}
-              onClick={onSearch}
-            />
+            <>
+              <IconButton
+                icon="search"
+                label="Search"
+                tooltip="Search cards"
+                data-testid="app-search"
+                className={actionClassName}
+                onClick={onSearch}
+              />
+              <IconButton
+                icon="settings"
+                label="Settings"
+                tooltip="Settings"
+                data-testid="app-settings"
+                aria-current={settingsActive ? "page" : undefined}
+                className={actionClassName}
+                onClick={onSettings}
+              />
+            </>
           }
         />
         {navigation}
@@ -89,6 +99,7 @@ export function AppHeaderBar({
 
 function compactTitle(section: AppSection, activeWorkflow: AppWorkflow | null): string | null {
   if (activeWorkflow === "practice") return "Practice";
+  if (section === "settings") return "Settings";
   const destination = destinationOf(section, activeWorkflow);
   return destination === null ? null : COMPACT_TITLES[destination];
 }

@@ -74,7 +74,7 @@ class AndroidSmokeTest {
                       .join('|'),
                     bottomNavigation: navigation?.dataset.slot === 'bottom-navigation',
                     searchAction: Boolean(document.querySelector('header [data-testid="app-search"]')),
-                    settingsGear: Boolean(navigation?.querySelector('[data-testid="app-settings"]')),
+                    settingsGear: Boolean(document.querySelector('header [data-testid="app-settings"]')),
                     createSubject: has('Create a subject'),
                     importDocument: has('Import a document'),
                     openLibrary: has('Open Library'),
@@ -84,7 +84,7 @@ class AndroidSmokeTest {
                 })()
                 """.trimIndent()
             )
-            assertEquals("Home|Library|Tutor|Progress|Settings", homeSnapshot.getString("navigation"))
+            assertEquals("Home|Library|Review|Tutor|Progress", homeSnapshot.getString("navigation"))
             assertEquals("nav-home", homeSnapshot.getString("current"))
             assertTrue(homeSnapshot.getBoolean("bottomNavigation"))
             assertTrue(homeSnapshot.getBoolean("searchAction"))
@@ -350,7 +350,7 @@ class AndroidSmokeTest {
             waitForBridge(webView)
             waitUntil(webView, predicate = { it == "true" }, expression = {
                 "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
-                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-home'"
+                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-review'"
             })
             val restored = evaluatePromise(webView, "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()")
             assertEquals(sessionId, restored.getString("sessionId"))
@@ -365,7 +365,7 @@ class AndroidSmokeTest {
             waitForBridge(webView)
             waitUntil(webView, predicate = { it == "true" }, expression = {
                 "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
-                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-home'"
+                    "Array.from(document.querySelectorAll('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')).map(button => button.dataset.testid).join('|') === 'nav-review'"
             })
             val restored = evaluatePromise(webView, "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()")
             assertNotNull(restored.optString("sessionId").takeIf(String::isNotBlank))

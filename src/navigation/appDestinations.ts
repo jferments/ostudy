@@ -1,11 +1,10 @@
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 
 /**
- * The five places the main navigation names: Home, Library, Tutor, Progress and
- * Settings. Settings sits at the foot of the side rail on wider screens and in
- * the bottom bar on a phone; Search lives in the header.
+ * The five places the main navigation names, on every screen size. Settings
+ * and Search live in the header beside them.
  */
-export type AppDestination = "home" | "library" | "tutor" | "progress" | "settings";
+export type AppDestination = "home" | "library" | "review" | "tutor" | "progress";
 
 /**
  * Library hosts three of today's sections as its views, in the order its
@@ -31,26 +30,25 @@ export function isLibrarySection(section: AppSection): section is LibrarySection
 }
 
 /**
- * The destination the navigation highlights. Review lives on Home, so the
- * legacy Review section and an active Practice session highlight Home.
+ * The destination the navigation highlights. Practice runs inside Review
+ * wherever it was started, so an active session highlights Review. Settings
+ * belongs to the header gear and highlights no destination.
  */
 export function destinationOf(
   section: AppSection,
   activeWorkflow: AppWorkflow | null,
 ): AppDestination | null {
-  if (activeWorkflow === "practice") return "home";
+  if (activeWorkflow === "practice") return "review";
   if (isLibrarySection(section)) return "library";
   switch (section) {
     case "home":
       return "home";
     case "review":
-      return "home";
+      return "review";
     case "tutor":
       return "tutor";
     case "analytics":
       return "progress";
-    case "settings":
-      return "settings";
     default:
       return null;
   }

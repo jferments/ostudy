@@ -4,7 +4,7 @@ ostudy keeps your study library on your device. You can create cards, organize d
 
 ## Find your way around
 
-The main navigation has five destinations: **Home**, **Library**, **Tutor**, **Progress**, and **Settings**. On a wide or medium window they sit in a rail down the left side, with **Search** and **Settings** at its bottom. On a phone they are in the bottom bar, and the top bar keeps Search. There is no separate More menu. **Home** shows a badge with the number of cards due today; its Today strip starts the review, and below it are lessons to pick up, suggestions, this week's study and your subjects.
+The main navigation has five destinations: **Home**, **Library**, **Review**, **Tutor**, and **Progress**. On a wide or medium window they sit in a rail down the left side, with **Search** and **Settings** at its bottom. On a phone they are in the bottom bar, and the top bar keeps Search and Settings. There is no separate More menu. **Review** shows a badge with the number of cards due today.
 
 **Home** opens first. Its Today strip shows how many cards are due today and about how long they take, with **Start review**; on a wider window the arrow beside it lets you choose which subjects to review. Below it are your subjects: each tile shows what is due, its sources and cards, and opens the subject's page. A subject's page has **Manage**, which opens Library with only that subject, **Review N due** for what is due in it, the overview guide across its sources, its sources and how far each has been prepared, and its cards and decks with **Browse cards** and **Practice a mix**.
 
@@ -12,7 +12,7 @@ The main navigation has five destinations: **Home**, **Library**, **Tutor**, **P
 
 The Workbench shows a tree of subjects, decks, and tags on the left, the chosen cards in the middle, and the open card's editor on the right; on a phone you see one of these at a time. The header's **Search** opens the Workbench on **All cards** with the search field focused. Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup and sync**.
 
-Choosing **Library** opens the page you used last. Library's **Flashcards** tab returns to the Workbench, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Home; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination, and from a subject's page to Home's subject list. In the Workbench it first steps back to the tree on a phone, or to **All cards** on a wider screen; during practice it returns to where the session started.
+Choosing **Library** opens the page you used last. Library's **Flashcards** tab returns to the Workbench, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Review; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination, and from a subject's page to Home's subject list. In the Workbench it first steps back to the tree on a phone, or to **All cards** on a wider screen; during practice it returns to where the session started.
 
 ## Create your first deck
 

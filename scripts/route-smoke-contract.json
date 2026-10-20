@@ -25,16 +25,16 @@
         "label": "Library"
       },
       {
+        "id": "review",
+        "label": "Review"
+      },
+      {
         "id": "tutor",
         "label": "Tutor"
       },
       {
         "id": "progress",
         "label": "Progress"
-      },
-      {
-        "id": "settings",
-        "label": "Settings"
       }
     ],
     "library": {
@@ -58,6 +58,10 @@
       {
         "id": "search",
         "label": "Search"
+      },
+      {
+        "id": "settings",
+        "label": "Settings"
       }
     ]
   },
@@ -123,7 +127,7 @@
             ],
             "assertionFragments": [
               "heading.textContent?.trim() === 'Your library is empty'",
-              "assertEquals(\"Home|Library|Tutor|Progress|Settings\", homeSnapshot.getString(\"navigation\"))",
+              "assertEquals(\"Home|Library|Review|Tutor|Progress\", homeSnapshot.getString(\"navigation\"))",
               "assertEquals(\"nav-home\", homeSnapshot.getString(\"current\"))",
               "assertTrue(homeSnapshot.getBoolean(\"openLibrary\"))",
               "assertFalse(homeSnapshot.getBoolean(\"todayStrip\"))"
@@ -161,7 +165,7 @@
             "path": "tests/webdriver/card_listing_followup_smoke.py",
             "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
             "entryFragments": [
-              "EXPECTED_NAVIGATION = [\"Home\", \"Library\", \"Tutor\", \"Progress\"]",
+              "EXPECTED_NAVIGATION = [\"Home\", \"Library\", \"Review\", \"Tutor\", \"Progress\"]",
               "assert_medium_navigation(session_id, deadline)",
               "webdriver.open_library_view(session_id, \"decks\", deadline)"
             ],
@@ -280,9 +284,9 @@
     },
     {
       "id": "review",
-      "label": "Home",
+      "label": "Review",
       "placement": {
-        "destination": "home"
+        "destination": "review"
       },
       "smoke": {
         "coverage": "route-entry",
@@ -303,11 +307,13 @@
             ],
             "entryFragments": [
               "def verify_due_today(session_id: str, expected: str, deadline: float) -> None:",
-              "home = find_element(session_id, \"css selector\", \"button[data-testid='nav-home']\", deadline)"
+              "review = find_element(session_id, \"css selector\", \"button[data-testid='nav-review']\", deadline)"
             ],
             "assertionFragments": [
-              "//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)='No subject']]",
-              "//main//*[@data-testid='home-today']//button[normalize-space(.)='Start review']"
+              "wait_for_main_heading(session_id, \"Review\", deadline)",
+              "f\"//main//*[@data-testid='review-today']//h2[normalize-space(.)={json.dumps(expected)}]\"",
+              "//main//*[@data-testid='review-subject'][.//*[normalize-space(.)='No subject']]",
+              "//main//*[@data-testid='review-today']//button[normalize-space(.)='Start review']"
             ]
           },
           {
@@ -315,12 +321,12 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "\"button[data-testid='nav-home']\",",
-              "webdriver.click(session_id, home)"
+              "\"button[data-testid='nav-review']\",",
+              "webdriver.click(session_id, review)"
             ],
             "assertionFragments": [
-              "webdriver.wait_for_main_heading(session_id, \"Your library is empty\", deadline)",
-              "assert_no_horizontal_overflow(session_id, \"compact Home\")"
+              "//main//*[@data-testid='review-today']//h2[normalize-space(.)='Nothing due today']",
+              "compact Review screen"
             ]
           }
         ]
@@ -433,7 +439,7 @@
       "id": "settings",
       "label": "Settings",
       "placement": {
-        "destination": "settings"
+        "headerAction": "settings"
       },
       "smoke": {
         "coverage": "route-entry",
@@ -471,7 +477,7 @@
   "applicationWorkflows": [
     {
       "id": "practice",
-      "destination": "home",
+      "destination": "review",
       "protectedWorkflow": "active-practice"
     }
   ],
@@ -508,7 +514,7 @@
               }
             ],
             "entryFragments": [
-              "//main//*[@data-testid='home-today']//button[normalize-space(.)='Start review']",
+              "//main//*[@data-testid='review-today']//button[normalize-space(.)='Start review']",
               "Opening and dismissing selected-deck Practice setup",
               "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options…\", deadline)",
               "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice\", deadline)",
@@ -516,7 +522,7 @@
               "click(session_id, practice_button)"
             ],
             "assertionFragments": [
-              "if state.get(\"selectedPrimary\") != [\"nav-home\"]:",
+              "if state.get(\"selectedPrimary\") != [\"nav-review\"]:",
               "Practice selected decks",
               "[role='dialog'] button[aria-label='Close dialog']",
               "Verifying one-step Practice from the tree returns to the Workbench",
@@ -524,7 +530,7 @@
               "//button[normalize-space(.)='Show answer']",
               "assert_internal_practice_shell(session_id, deck_name)",
               "click_text_button(session_id, \"End session\", deadline)",
-              "button[data-testid='nav-home'][aria-current='page']",
+              "button[data-testid='nav-review'][aria-current='page']",
               "button[data-testid='nav-library'][aria-current='page']",
               "PRACTICE_COMPLETE_SELECTOR"
             ]
@@ -541,7 +547,7 @@
               "End session"
             ],
             "assertionFragments": [
-              "=== 'nav-home'",
+              "=== 'nav-review'",
               "library-view-study-guides",
               "=== 'Study Guides'"
             ]

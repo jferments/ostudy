@@ -5,8 +5,6 @@ import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
 import type { DeckSummary } from "../../ipc/decks";
 import type { DocumentSummary } from "../../ipc/documents";
 import * as homeIpc from "../../ipc/home";
-import * as lessonsIpc from "../../ipc/lessons";
-import * as progressIpc from "../../ipc/progress";
 import * as practiceIpc from "../../ipc/practice";
 import * as subjectsIpc from "../../ipc/subjects";
 import {
@@ -33,12 +31,6 @@ vi.mock("../../ipc/subjects", () => ({
   dismissSubjectFilingReview: vi.fn(),
 }));
 vi.mock("../../ipc/practice", () => ({ getPracticeWorkload: vi.fn() }));
-vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
-vi.mock("../../ipc/progress", () => ({
-  getProgressOverview: vi.fn(),
-  getProgressActivity: vi.fn(),
-  getProgressSubjects: vi.fn(),
-}));
 
 const jobs = vi.hoisted(() => ({
   current: {
@@ -126,8 +118,6 @@ function renderHome({
   const onStartReview = vi.fn();
   const onOpenSubject = vi.fn();
   const onOpenLibrary = vi.fn();
-  const onPracticeSubject = vi.fn();
-  const onOpenProgress = vi.fn();
   const view = render(
     <LayoutModeProvider>
       <AppearanceProvider
@@ -139,15 +129,13 @@ function renderHome({
               onStartReview={onStartReview}
               onOpenSubject={onOpenSubject}
               onOpenLibrary={onOpenLibrary}
-              onPracticeSubject={onPracticeSubject}
-              onOpenProgress={onOpenProgress}
             />
           </HomeSummaryProvider>
         </OverlayProvider>
       </AppearanceProvider>
     </LayoutModeProvider>,
   );
-  return { onStartReview, onOpenSubject, onOpenLibrary, onPracticeSubject, onOpenProgress, unmount: view.unmount };
+  return { onStartReview, onOpenSubject, onOpenLibrary, unmount: view.unmount };
 }
 
 const DECKS = [makeDeck()];
@@ -166,10 +154,6 @@ describe("HomeScreen", () => {
     vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(
       makeSubjectLibrary({ subjects: [cardiac, pharmacology, spanish, renal] }),
     );
-    vi.mocked(lessonsIpc.listSubjectLessons).mockImplementation(async (subjectId) => ({ subjectId, lessons: [] }));
-    vi.mocked(progressIpc.getProgressOverview).mockRejectedValue(new Error("not needed"));
-    vi.mocked(progressIpc.getProgressActivity).mockRejectedValue(new Error("not needed"));
-    vi.mocked(progressIpc.getProgressSubjects).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -194,6 +178,7 @@ describe("HomeScreen", () => {
     const tiles = screen.getAllByTestId("subject-tile");
     expect(within(tiles[0] as HTMLElement).getByText("23 due")).toBeTruthy();
     expect(within(tiles[0] as HTMLElement).getByText("4 sources · 111 cards")).toBeTruthy();
+    expect(within(tiles[0] as HTMLElement).getByText("Overview guide ready")).toBeTruthy();
     expect(within(tiles[1] as HTMLElement).getByText("Cards only · 312 cards")).toBeTruthy();
     expect(within(tiles[3] as HTMLElement).getByText("2 sources · 0 cards")).toBeTruthy();
     expect(within(tiles[3] as HTMLElement).queryByText(/due|All done/u)).toBeNull();
@@ -452,95 +437,31 @@ describe("HomeScreen", () => {
     expect(screen.queryByRole("button", { name: "Start review" })).toBeNull();
   });
 
-  it("fits a phone: the strip keeps Start review and the subject chooser, and subjects are one list", async () => {
+  it("fits a phone: a slim strip with Start, a New subject button and two columns", async () => {
     const { onStartReview } = renderHome({ width: 390 });
     const strip = await screen.findByTestId("home-today");
     expect(within(strip).getByText("About 9 minutes")).toBeTruthy();
-    expect(within(strip).getByRole("button", { name: "Choose subjects to review" })).toBeTruthy();
-    fireEvent.click(within(strip).getByRole("button", { name: "Start review" }));
+    expect(within(strip).queryByRole("button", { name: "Choose subjects to review" })).toBeNull();
+    fireEvent.click(within(strip).getByRole("button", { name: "Start" }));
     expect(onStartReview).toHaveBeenCalledOnce();
-    expect(screen.getByTestId("home-new-subject")).toBeTruthy();
-    expect(screen.getAllByTestId("subject-tile")).toHaveLength(5);
+    expect(screen.queryByTestId("home-new-subject")).toBeNull();
+    expect(screen.getByRole("button", { name: "New subject" })).toBeTruthy();
+    expect(screen.getAllByTestId("subject-tile")[0]?.closest("ul")?.className).toContain("tw:grid-cols-2");
   });
 
-  it.each([1440, 390])("at %s px, says how to review cards due in more decks than one session takes", async (width) => {
+  it.each([
+    [1440, "Choose subjects to review them in parts."],
+    [390, "Start one subject at a time in Review."],
+  ])("at %s px, says how to review cards due in more decks than one session takes", async (width, advice) => {
     const deckIds = Array.from({ length: 101 }, (_, index) => `deck-${index}`);
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(
       makeHomeSummary({ today: { scheduledReviews: 101, estimatedMinutes: 20, deckIds } }),
     );
     renderHome({ width });
     const strip = await screen.findByTestId("home-today");
-    expect(
-      within(strip).getByText("Cards are due in more than 100 decks. Choose subjects to review them in parts."),
-    ).toBeTruthy();
-    expect((within(strip).getByRole("button", { name: "Start review" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("offers to pick up a lesson in progress, most recent first", async () => {
-    vi.mocked(lessonsIpc.listSubjectLessons).mockImplementation(async (subjectId) => ({
-      subjectId,
-      lessons:
-        subjectId === "cardiac"
-          ? [
-              lessonSummary("lesson-old", "cardiac", "Valves", { currentStep: 1, updatedAt: 10 }),
-              lessonSummary("lesson-new", "cardiac", "The cardiac cycle", { currentStep: 2, updatedAt: 20 }),
-              lessonSummary("lesson-done", "cardiac", "Finished one", { currentStep: 7, updatedAt: 30, finishedAt: 30 }),
-            ]
-          : [],
-    }));
-    const { onOpenSubject } = renderHome();
-    const panel = await screen.findByTestId("home-continue");
-    const rows = within(panel).getAllByRole("listitem");
-    expect(rows.map((row) => within(row).getByText(/^(Valves|The cardiac cycle)$/u).textContent)).toEqual([
-      "The cardiac cycle",
-      "Valves",
-    ]);
-    expect(within(panel).getByText("Lesson · Cardiac physiology · step 3 of 8")).toBeTruthy();
-    expect(within(panel).queryByText("Finished one")).toBeNull();
-    fireEvent.click(within(panel).getByRole("button", { name: "Resume The cardiac cycle" }));
-    expect(onOpenSubject).toHaveBeenCalledWith("cardiac", "decks");
-  });
-
-  it("suggests reviewing a slipping subject and a lesson for a subject with sources and none", async () => {
-    vi.mocked(progressIpc.getProgressSubjects).mockResolvedValue([
-      subjectProgress("cardiac", 0.62, -0.19),
-      subjectProgress("pharm", 0.9, -0.02),
-    ]);
-    const { onStartReview } = renderHome();
-    const panel = await screen.findByTestId("home-suggestions");
-    expect(within(panel).getByText("Cardiac physiology is slipping")).toBeTruthy();
-    expect(within(panel).getByText("62% remembered this week, down from 81%")).toBeTruthy();
-    expect(within(panel).queryByText("Pharmacology: Autonomic is slipping")).toBeNull();
-    expect(within(panel).getByText("Pharmacology: Autonomic is ready for a lesson")).toBeTruthy();
-    fireEvent.click(within(panel).getByRole("button", { name: "Review 23" }));
-    expect(onStartReview).toHaveBeenCalledWith(["deck-cp"]);
-  });
-
-  it("shows the week at a glance and opens Progress", async () => {
-    vi.mocked(progressIpc.getProgressOverview).mockResolvedValue({
-      scope: { deckIds: [], tagIds: [] } as never,
-      summary: { reviewCount: 212, newCardCount: 0, rememberedCount: 180, correctRate: 0.85, averageConfidence: null, averageResponseTimeMs: null, studyTimeMs: 6_000_000, retentionReviewCount: 150, retentionRememberedCount: 126, trueRetention: 0.84 },
-      previousSummary: null,
-      studyDayCount: 6,
-      timeline: [],
-      desiredRetention: 0.9,
-    });
-    vi.mocked(progressIpc.getProgressActivity).mockResolvedValue({
-      startLocalDate: "2026-04-20",
-      todayLocalDate: "2026-10-05",
-      days: [{ localDate: "2026-10-05", reviewCount: 30, studyTimeMs: 600_000 }],
-      currentStreak: { length: 6, startLocalDate: "2026-09-30", endLocalDate: "2026-10-05" },
-      longestStreak: null,
-      busiestWeekday: null,
-    });
-    const { onOpenProgress } = renderHome();
-    const panel = await screen.findByTestId("home-week");
-    expect(within(panel).getByText("84%")).toBeTruthy();
-    expect(within(panel).getByText("212")).toBeTruthy();
-    expect(within(panel).getByText("1 h 40")).toBeTruthy();
-    expect(within(panel).getByText("6")).toBeTruthy();
-    fireEvent.click(within(panel).getByRole("button", { name: "Progress" }));
-    expect(onOpenProgress).toHaveBeenCalledOnce();
+    expect(within(strip).getByText(`Cards are due in more than 100 decks. ${advice}`)).toBeTruthy();
+    const start = within(strip).getByRole("button", { name: width === 390 ? "Start" : "Start review" });
+    expect((start as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("says when today's limits are reached instead of showing zero", async () => {
@@ -565,46 +486,3 @@ describe("HomeScreen", () => {
     expect(await screen.findByTestId("home-today")).toBeTruthy();
   });
 });
-
-function lessonSummary(
-  id: string,
-  subjectId: string,
-  title: string,
-  progress: { currentStep: number; updatedAt: number; finishedAt?: number },
-): import("../../ipc/lessons").LessonSummary {
-  return {
-    id,
-    subjectId,
-    title,
-    revision: 1,
-    written: { revisionNumber: 1, origin: "generated", stepCount: 8, checkCount: 2, estimatedMinutes: 12, sources: "current", createdAt: 1 },
-    progress: {
-      revisionNumber: 1,
-      currentStep: progress.currentStep,
-      furthestStep: progress.currentStep,
-      checks: {},
-      startedAt: 1,
-      updatedAt: progress.updatedAt,
-      finishedAt: progress.finishedAt ?? null,
-      revision: 1,
-    },
-  };
-}
-
-function subjectProgress(subjectId: string, trueRetention: number, retentionDelta: number): import("../../ipc/progress").SubjectProgress {
-  return {
-    subjectId,
-    name: subjectId,
-    cardCount: 100,
-    solidCount: 10,
-    dueTodayCount: 5,
-    reviewCount: 60,
-    rememberedCount: 40,
-    correctRate: 0.7,
-    retentionReviewCount: 40,
-    retentionRememberedCount: Math.round(40 * trueRetention),
-    trueRetention,
-    retentionDelta,
-    studyTimeMs: 0,
-  };
-}

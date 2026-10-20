@@ -314,7 +314,7 @@ class CatalogueTests(unittest.TestCase):
     def test_builds_without_home_skip_only_the_screens_they_lack(self) -> None:
         selected = list(capture.SCREENS)
         kept, skipped = capture.screens_for_shell(selected, capture.SECTIONS_SHELL)
-        self.assertEqual([screen.id for screen in skipped], ["home", "subject"])
+        self.assertEqual([screen.id for screen in skipped], ["home", "subject", "review"])
         self.assertIn("first-run", [screen.id for screen in kept])
         self.assertEqual(kept + skipped, [screen for screen in selected if screen in kept] + skipped)
         kept, skipped = capture.screens_for_shell(selected, capture.DESTINATIONS_SHELL)
@@ -340,6 +340,7 @@ class CatalogueTests(unittest.TestCase):
                              ["nav-library", "library-view-study-guides"])
             self.assertEqual(route(destinations, "wide", "analytics"), ["nav-progress"])
             self.assertEqual(route(destinations, "wide", "settings"), ["app-settings"])
+            self.assertEqual(route(destinations, "medium", "review"), ["nav-review"])
             self.assertEqual(route(sections, "wide", "documents"), ["nav-documents"])
             self.assertEqual(route(sections, "wide", "settings"), ["nav-settings"])
             self.assertEqual(route(sections, "compact", "settings"), ["app-settings"])
