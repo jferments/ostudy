@@ -1,24 +1,54 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
-import { getSemanticSourceCitation, sameStudyScope, scopeMembers, studyScopeKey, type SourceCitation } from "../../ipc/knowledge";
+import { getSemanticSourceCitation, sameStudyScope, studyScopeKey, type SourceCitation } from "../../ipc/knowledge";
+import type { TutorTurn } from "../../ipc/tutor";
+import { copyText } from "../../platform/clipboard";
 import { Icon } from "../../ui/icons/Icon";
 import { IconButton } from "../../ui/icons/IconButton";
+import { cn } from "../../ui/internal/cn";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { Dialog, Sheet } from "../../ui/overlays/Dialog";
+import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
-import { Card } from "../../ui/primitives/Card";
 import { Textarea, Disclosure } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { EmptyState } from "../../ui/primitives/EmptyState";
-import { PageScaffold, PageHeader } from "../../ui/patterns/WorkspacePatterns";
+import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
-import { TutorHistory } from "./TutorHistory";
+import { RenameConversationDialog, TutorHistory } from "./TutorHistory";
 import { useTutor } from "./TutorContext";
 import { TutorMarkdown } from "./TutorMarkdown";
-import { TutorSources } from "./TutorSources";
+import { sourcesLabel, TutorSources } from "./TutorSources";
 import { styles } from "./presentation";
+
+function SourceDetails({ source }: { source: SourceCitation }) {
+  return (
+    <>
+      <p className={styles.message}>{source.excerpt}</p>
+      {source.locator ? <small>Source units: {source.locator.unitNumbers.join(", ")}</small> : null}
+      <small>{source.origin.replaceAll("_", " ")}</small>
+    </>
+  );
+}
+
+/** Copy reports its own result in place, so a chat needs no toast. */
+function CopyAnswer({ text }: { text: string }) {
+  const [result, setResult] = useState<"copied" | "failed" | null>(null);
+  useEffect(() => {
+    if (!result) return;
+    const timer = window.setTimeout(() => setResult(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [result]);
+  return (
+    <Button size="small" variant="ghost" onClick={() => {
+      copyText(text).then(() => setResult("copied"), () => setResult("failed"));
+    }}>
+      <Icon name="copy" size={16} />
+      <span aria-live="polite">{result === "copied" ? "Copied" : result === "failed" ? "Couldn't copy" : "Copy"}</span>
+    </Button>
+  );
+}
 
 export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean }) {
   const tutor = useTutor();
@@ -28,6 +58,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [source, setSource] = useState<SourceCitation | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [sourceBusy, setSourceBusy] = useState(false);
@@ -38,23 +69,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
-  const members = scopeMembers(tutor.scope);
-  const sourceLabel = tutor.scope.kind === "library"
-    ? "Library"
-    : members.length > 1
-      ? `${members.length} sources`
-      : members.length === 1
-        ? (() => {
-            const member = members[0];
-            return member
-              ? tutor.choices.find((choice) => sameStudyScope(choice.scope, member))?.title ?? "Selected source"
-              : "Selected source";
-          })()
-        : null;
-  const projectLabel = tutor.projects.find((project) => project.id === tutor.detail?.conversation.projectId)?.title;
-  const materialLabel = tutor.target?.title ?? sourceLabel;
-  const headingContext = [projectLabel, materialLabel].filter(Boolean).join(" · ") || null;
+  const lastTurnId = tutor.detail?.turns.at(-1)?.id;
+  const chosen = tutor.target?.title ?? sourcesLabel(tutor.scope, tutor.choices);
   const inlineHistory = showHistory && layoutMode !== "compact" && !hintOnly;
+  // Only the wide, full-page chat has room to keep a source open beside it.
+  const sourceBeside = inlineHistory && layoutMode === "wide";
+  const canQuiz = !locked && !tutor.needsRefresh && (tutor.scope.kind !== "general" || Boolean(tutor.target) || Boolean(tutor.draft.trim()));
 
   useEffect(() => {
     sourceLane.invalidate();
@@ -99,165 +119,254 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain");
   }
 
-  return (
-    <section className={inlineHistory ? styles.withHistory : styles.workspace} aria-label={hintOnly ? "Flashcard hints" : "Tutor conversation"}>
-      {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
-      <Card className={styles.chat}>
-        {!hintOnly ? (
-          <header className={styles.chatHeader}>
-            <div className={styles.heading}>
-              <h2>{tutor.detail?.conversation.title ?? "New chat"}</h2>
-              {headingContext ? <span className={styles.muted}>{headingContext}</span> : null}
-            </div>
+  function openSources(): void {
+    setSourcesOpen(true);
+    void tutor.initialize();
+  }
+
+  const chatActions: OverflowMenuItem[] = [
+    ...(tutor.detail ? [{ id: "rename", label: "Rename…", onSelect: () => setRenaming(true) }] : []),
+    { id: "settings", label: "Chat settings", onSelect: () => setSettingsOpen(true) },
+    ...(tutor.detail ? [{ id: "delete", label: "Delete", destructive: true, onSelect: () => { void remove(); } }] : []),
+  ];
+
+  // Sources are optional: with none chosen the Tutor answers from what it knows.
+  const scopePicker = (
+    <Button
+      size="small"
+      variant="secondary"
+      className={styles.scope}
+      aria-label={chosen ? `Sources: ${chosen}` : "Add sources"}
+      disabled={locked}
+      onClick={openSources}
+    >
+      <Icon name={chosen ? "book" : "plus"} size={16} />
+      <span>{chosen ?? "Add sources"}</span>
+      {chosen ? <Icon name="chevron-down" size={16} /> : null}
+    </Button>
+  );
+
+  function citations(turn: TutorTurn) {
+    if (hintOnly || turn.mode === "quiz" || !turn.citations.length) return null;
+    return (
+      <div className={styles.citations}>
+        {turn.citations.map((citation, index) => (
+          <Button
+            key={citation.id}
+            size="small"
+            variant="secondary"
+            className={styles.citation}
+            aria-label={`Source ${index + 1}: ${citation.title}`}
+            title={citation.title}
+            disabled={sourceBusy || !turn.evidenceCurrent}
+            onClick={() => { void showSource(citation); }}
+          >
+            {index + 1}
+          </Button>
+        ))}
+      </div>
+    );
+  }
+
+  const transcriptView = (
+    <div
+      ref={transcript}
+      className={hintOnly ? styles.hintTranscript : styles.transcript}
+      role="log"
+      aria-label="Saved conversation"
+      aria-relevant="additions"
+      onScroll={() => {
+        const element = transcript.current;
+        if (element) followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+      }}
+    >
+      {!turns.length ? (
+        <div className={styles.empty}>
+          <h3>{hintOnly ? "Work toward the answer" : "What would you like to understand?"}</h3>
+          {!hintOnly ? (
             <div className={styles.toolbar}>
-              {!inlineHistory ? (
-                <Button size="small" disabled={locked} onClick={() => setHistoryOpen(true)}>
-                  <Icon name="menu" /> Conversations
-                </Button>
-              ) : null}
-              <Button size="small" disabled={locked} onClick={() => { setSourcesOpen(true); void tutor.initialize(); }}>
-                <Icon name="document" /> Sources
+              {scopePicker}
+              <Button size="small" variant="secondary" className={styles.scope} disabled={!canQuiz} onClick={() => { void tutor.send("quiz"); }}>
+                <Icon name="help" size={16} /> Quiz me
               </Button>
-              <IconButton
-                icon="settings"
-                iconSize={20}
-                label="Chat settings"
-                tooltip="Chat settings"
-                disabled={locked}
-                onClick={() => setSettingsOpen(true)}
-              />
             </div>
-          </header>
-        ) : (
-          <p className={styles.muted}>Hints keep the answer and source previews hidden. Close this panel to return to the same card.</p>
-        )}
-        {!tutor.profiles.length && !tutor.loading ? (
-          <InlineNotice>Select a Tutor model in Settings → AI/LLM to send messages. Saved chats remain readable offline.</InlineNotice>
-        ) : null}
-        <div
-          ref={transcript}
-          className={styles.transcript}
-          role="log"
-          aria-label="Saved conversation"
-          aria-relevant="additions"
-          onScroll={() => {
-            const element = transcript.current;
-            if (element) followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
-          }}
-        >
-          {!turns.length ? (
-            <EmptyState
-              className={styles.empty}
-              icon={<Icon name="brain" size={32} />}
-              title={hintOnly ? "Work toward the answer" : "What would you like to understand?"}
-              description={hintOnly
-                ? "Ask for an explanation, compare ideas, or test your knowledge."
-                : "Ask for an explanation, compare ideas, or test your knowledge. Choose optional sources above. Your saved material is ready to use; no separate understanding step."}
-            />
-          ) : null}
-          {tutor.detail?.hasEarlierTurns && !hintOnly ? (
-            <Button disabled={locked} onClick={() => { followTail.current = false; void tutor.loadEarlier(); }}>Load earlier messages</Button>
-          ) : null}
-          {turns.map((turn) => (
-            <article className={styles.turn} key={turn.id}>
-              {turn.userText ? (
-                <section className={styles.userMessage} aria-label="Your message">
-                  <strong>You</strong><div className={styles.message}>{turn.userText}</div>
-                </section>
-              ) : null}
-              <section className={styles.assistantMessage} aria-label="Tutor response">
-                <div className={styles.toolbar}><strong>Tutor</strong><span className={styles.muted}>{turn.model}</span></div>
-                {turn.assistantText && turn.assistantText !== turn.errorMessage
-                  ? turn.mode === "hint"
-                    ? <div className={styles.message}>{turn.assistantText}</div>
-                    : <TutorMarkdown text={turn.assistantText} />
-                  : null}
-                {turn.state === "running" ? <p role="status">Working on your response…</p> : null}
-                {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
-                {!turn.evidenceCurrent && turn.state === "complete" ? (
-                  <InlineNotice kind="warning">The source has changed or been removed. This answer is historical, not current evidence.</InlineNotice>
-                ) : null}
-                {turn.feedback ? (
-                  <Disclosure title="Quiz feedback">
-                    {turn.feedback.criteriaFeedback.map((text, index) => <TutorMarkdown key={index} text={text} />)}
-                  </Disclosure>
-                ) : null}
-                {!hintOnly && turn.mode !== "quiz" ? (
-                  <div className={styles.sources}>
-                    {turn.citations.map((citation, index) => (
-                      <Button
-                        key={citation.id}
-                        size="small"
-                        variant="text"
-                        disabled={sourceBusy || !turn.evidenceCurrent}
-                        onClick={() => { void showSource(citation); }}
-                      >
-                        Source {index + 1}: {citation.title}
-                      </Button>
-                    ))}
-                  </div>
-                ) : null}
-                {turn.id === tutor.detail?.turns.at(-1)?.id
-                  && (turn.mode !== "hint" || hintOnly)
-                  && ["failed", "canceled", "interrupted"].includes(turn.state) ? (
-                    <Button size="small" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.retryTurn(turn); }}>
-                      Try again
-                    </Button>
-                  ) : null}
-              </section>
-            </article>
-          ))}
-          {tutor.busy && !turns.some((turn) => turn.state === "running") ? (
-            <p role="status">{hintOnly ? "Preparing a hint…" : "Searching saved material and composing your response…"}</p>
           ) : null}
         </div>
-        {sourceError ? <InlineNotice kind="error">{sourceError}</InlineNotice> : null}
-        {tutor.error ? <InlineNotice kind="error">{tutor.error}</InlineNotice> : null}
-        {tutor.needsRefresh ? <Button disabled={tutor.busy} onClick={() => { void tutor.refresh(); }}>Refresh saved conversation</Button> : null}
-        {tutor.pending ? (
-          <InlineNotice>
-            <p>Checking this response will not submit a duplicate message.</p>
-            <Button disabled={tutor.busy} onClick={() => { void tutor.retryPending(); }}>Check response</Button>
-          </InlineNotice>
-        ) : null}
-        <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
-          <label className={styles.composerLabel} htmlFor={`${id}-message`}>{hintOnly ? "Hint request" : question ? "Your answer" : "Message"}</label>
-          <Textarea
-            className={styles.composerInput}
-            id={`${id}-message`}
-            rows={2}
-            maxLength={8000}
-            value={tutor.draft}
-            placeholder={question ? "Type your answer…" : "Ask a question…"}
-            disabled={locked || tutor.needsRefresh}
-            onChange={(event) => tutor.setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <div className={styles.toolbar}>
-            <Button type="submit" variant="primary" disabled={locked || tutor.needsRefresh || !tutor.draft.trim()}>
-              {hintOnly ? "Request hint" : question ? "Submit answer" : "Send"}
-            </Button>
+      ) : null}
+      {tutor.detail?.hasEarlierTurns && !hintOnly ? (
+        <Button className="tw:self-center" disabled={locked} onClick={() => { followTail.current = false; void tutor.loadEarlier(); }}>Load earlier messages</Button>
+      ) : null}
+      {turns.map((turn) => {
+        const answered = turn.state === "complete" && Boolean(turn.assistantText) && turn.assistantText !== turn.errorMessage;
+        return (
+          <article className={styles.turn} key={turn.id}>
+            {turn.userText ? (
+              <section className={styles.userMessage} aria-label="Your message">
+                <div className={styles.message}>{turn.userText}</div>
+              </section>
+            ) : null}
+            <section className={styles.assistantMessage} aria-label="Tutor response">
+              {turn.assistantText && turn.assistantText !== turn.errorMessage
+                ? turn.mode === "hint"
+                  ? <div className={styles.message}>{turn.assistantText}</div>
+                  : <TutorMarkdown text={turn.assistantText} />
+                : null}
+              {turn.state === "running" ? <p role="status" className={styles.muted}>Thinking…</p> : null}
+              {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
+              {!turn.evidenceCurrent && turn.state === "complete" ? (
+                <InlineNotice kind="warning">The source has changed or been removed. This answer is historical, not current evidence.</InlineNotice>
+              ) : null}
+              {turn.feedback ? (
+                <Disclosure title="Quiz feedback">
+                  {turn.feedback.criteriaFeedback.map((text, index) => <TutorMarkdown key={index} text={text} />)}
+                </Disclosure>
+              ) : null}
+              {citations(turn)}
+              {!hintOnly && answered ? (
+                <div className={styles.answerActions}>
+                  {turn.id === lastTurnId && !question ? (
+                    <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.send("quiz", ""); }}>
+                      <Icon name="help" size={16} /> Quiz me on this
+                    </Button>
+                  ) : null}
+                  <CopyAnswer text={turn.assistantText} />
+                </div>
+              ) : null}
+              {turn.id === lastTurnId
+                && (turn.mode !== "hint" || hintOnly)
+                && ["failed", "canceled", "interrupted"].includes(turn.state) ? (
+                  <Button size="small" className="tw:justify-self-start" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.retryTurn(turn); }}>
+                    Try again
+                  </Button>
+                ) : null}
+            </section>
+          </article>
+        );
+      })}
+      {tutor.busy && !turns.some((turn) => turn.state === "running") ? (
+        <p role="status" className={cn(styles.muted, "tw:mx-auto tw:w-full tw:max-w-3xl")}>{hintOnly ? "Preparing a hint…" : "Thinking…"}</p>
+      ) : null}
+    </div>
+  );
+
+  const notices = (
+    <div className={hintOnly ? "tw:grid tw:gap-2" : styles.notices}>
+      {!tutor.profiles.length && !tutor.loading ? (
+        <InlineNotice>Choose a Tutor model in Settings → AI/LLM to send messages.</InlineNotice>
+      ) : null}
+      {sourceError ? <InlineNotice kind="error">{sourceError}</InlineNotice> : null}
+      {tutor.error ? <InlineNotice kind="error">{tutor.error}</InlineNotice> : null}
+      {tutor.needsRefresh ? <Button disabled={tutor.busy} onClick={() => { void tutor.refresh(); }}>Refresh saved conversation</Button> : null}
+      {tutor.pending ? (
+        <InlineNotice>
+          <p>Checking this response will not submit a duplicate message.</p>
+          <Button disabled={tutor.busy} onClick={() => { void tutor.retryPending(); }}>Check response</Button>
+        </InlineNotice>
+      ) : null}
+    </div>
+  );
+
+  const messageLabel = hintOnly ? "Hint request" : question ? "Your answer" : "Message";
+  const composerInput = (className: string, rows: number) => (
+    <>
+      <label className={styles.composerLabel} htmlFor={`${id}-message`}>{messageLabel}</label>
+      <Textarea
+        className={className}
+        id={`${id}-message`}
+        rows={rows}
+        maxLength={8000}
+        value={tutor.draft}
+        placeholder={question ? "Your answer" : turns.length ? "Ask a follow-up" : "Ask anything"}
+        disabled={locked || tutor.needsRefresh}
+        onChange={(event) => tutor.setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+      />
+    </>
+  );
+  const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
+  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim();
+
+  if (hintOnly) {
+    return (
+      <section className={styles.panelWorkspace} aria-label="Flashcard hints">
+        <div className={styles.hintChat}>
+          {notices}
+          {transcriptView}
+          <form className={styles.hintComposer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
+            {composerInput(styles.hintComposerInput, 2)}
+            <div className={styles.toolbar}>
+              <Button type="submit" variant="primary" disabled={sendDisabled}>{submitLabel}</Button>
+              {tutor.busy || tutor.pending ? (
+                <Button variant="dangerSecondary" onClick={() => { void tutor.cancel(); }}><Icon name="stop" /> Stop response</Button>
+              ) : null}
+            </div>
+          </form>
+        </div>
+      </section>
+    );
+  }
+
+  const header = (
+    <header className={styles.chatHeader}>
+      {!inlineHistory ? (
+        <IconButton icon="menu" label="Conversations" disabled={locked} onClick={() => setHistoryOpen(true)} />
+      ) : null}
+      <h2 className={styles.heading}>{tutor.detail?.conversation.title ?? "New chat"}</h2>
+      {inlineHistory ? (turns.length ? scopePicker : null) : (
+        <IconButton icon="plus" label="New chat" disabled={locked || tutor.organizing} onClick={() => tutor.newConversation()} />
+      )}
+      <OverflowMenu label="Chat actions" disabled={locked} items={chatActions} />
+      {!inlineHistory && turns.length ? <div className={styles.scopeRow}>{scopePicker}</div> : null}
+    </header>
+  );
+
+  return (
+    <section
+      className={inlineHistory ? cn(styles.withHistory, sourceBeside && source ? styles.withSource : null) : showHistory ? styles.workspace : styles.panelWorkspace}
+      aria-label="Tutor conversation"
+    >
+      {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
+      <div className={styles.chat}>
+        {header}
+        {transcriptView}
+        {notices}
+        <div className={styles.composerWrap}>
+          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
+            {composerInput(styles.composerInput, 1)}
+            {question ? (
+              <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
+            ) : null}
             {tutor.busy || tutor.pending ? (
-              <Button variant="dangerSecondary" onClick={() => { void tutor.cancel(); }}><Icon name="stop" /> Stop response</Button>
-            ) : null}
-            {!hintOnly && question ? (
-              <Button disabled={locked || tutor.needsRefresh || !tutor.draft.trim()} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
-            ) : null}
+              <IconButton icon="stop" label="Stop response" className={styles.stop} onClick={() => { void tutor.cancel(); }} />
+            ) : (
+              <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
+            )}
+          </form>
+        </div>
+      </div>
+      {sourceBeside && source ? (
+        <aside className={styles.sourcePanel} aria-label="Source">
+          <div className={styles.sourcePanelHeader}>
+            <h3>Source</h3>
+            <IconButton icon="close" label="Close source" onClick={() => setSource(null)} />
           </div>
-          <p className={styles.disclosure}>Sending uses your selected AI and embedding services with relevant material. Charges may apply. AI can make mistakes.</p>
-        </form>
-      </Card>
-      {historyOpen && !hintOnly ? (
+          <div className={styles.sourceCard}>
+            <strong>{source.title}</strong>
+            <SourceDetails source={source} />
+          </div>
+        </aside>
+      ) : null}
+      {historyOpen ? (
         <Sheet title="Conversations" onClose={() => setHistoryOpen(false)}>
           <TutorHistory tutor={tutor} onSelected={() => setHistoryOpen(false)} />
         </Sheet>
       ) : null}
-      {sourcesOpen && !hintOnly ? (
+      {sourcesOpen ? (
         <TutorSources
           key={studyScopeKey(tutor.scope)}
           scope={tutor.scope}
@@ -266,12 +375,15 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           onApply={(scope) => { if (!sameStudyScope(scope, tutor.scope)) tutor.changeSources(scope); }}
         />
       ) : null}
-      {settingsOpen && !hintOnly ? <TutorChatSettings tutor={tutor} onClose={() => setSettingsOpen(false)} onDelete={remove} /> : null}
-      {source && !hintOnly ? (
+      {settingsOpen ? <TutorChatSettings tutor={tutor} onClose={() => setSettingsOpen(false)} onDelete={remove} /> : null}
+      {renaming && tutor.detail ? (
+        <RenameConversationDialog tutor={tutor} conversation={tutor.detail.conversation} onClose={() => setRenaming(false)} />
+      ) : null}
+      {source && !sourceBeside ? (
         <Dialog title={source.title} onClose={() => setSource(null)} width="large">
-          <p className={styles.message}>{source.excerpt}</p>
-          {source.locator ? <p>Source units: {source.locator.unitNumbers.join(", ")}</p> : null}
-          <p className={styles.muted}>Origin: {source.origin.replaceAll("_", " ")}. A citation links the source; it does not independently verify every claim.</p>
+          <div className="tw:grid tw:gap-2 tw:[&>small]:text-muted-foreground">
+            <SourceDetails source={source} />
+          </div>
         </Dialog>
       ) : null}
     </section>
@@ -283,9 +395,9 @@ export function TutorScreen() {
   const initialize = tutor.initialize;
   useEffect(() => { void initialize(); }, [initialize]);
   return (
-    <PageScaffold width="full" className={styles.screen} data-testid="tutor-screen">
-      <PageHeader title="Tutor" icon="brain" description="Explore ideas with your study material, or start a general conversation." />
-      {tutor.loading ? <p role="status">Loading saved chats and settings…</p> : null}
+    <PageScaffold width="full" inset={false} className={styles.screen} data-testid="tutor-screen">
+      <h1 className="tw:sr-only">Tutor</h1>
+      {tutor.loading ? <p role="status" className="tw:sr-only">Loading saved chats…</p> : null}
       <TutorWorkspace showHistory />
     </PageScaffold>
   );
