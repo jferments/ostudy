@@ -15,7 +15,9 @@ use super::{
     endpoint_policy::join_endpoint,
     gateway::AudioResponse,
     generation,
-    profiles::{enabled_profiles_of_kind, task_profile_id, ProfileRequestSnapshot},
+    profiles::{
+        enabled_profiles_of_kind, task_profile_id, ProfileRequestSnapshot, ProfileSnapshot,
+    },
     AiRuntimeState,
 };
 use crate::{error::CommandError, task_cancellation::CancellationSignal};
@@ -124,7 +126,7 @@ pub(crate) async fn speak(
     accounting: &generation::Context,
     cancellation: &CancellationSignal,
 ) -> Result<AudioResponse, CommandError> {
-    let profile = &request.profile;
+    let profile = &speaking_profile(&request.profile, model);
     profile.validate_for_provider_request()?;
     engine(profile.provider_kind)?;
     if text.trim().is_empty() || text.chars().count() > model.max_characters {
@@ -172,9 +174,48 @@ pub(crate) async fn speak(
     response
 }
 
+/// The connection as a speech request uses it. A connection made in Settings
+/// keeps no model of its own (each task picks one), so the speech model is the
+/// request's model, and a speech model has no reasoning to configure.
+fn speaking_profile(profile: &ProfileSnapshot, model: &SpeechModel) -> ProfileSnapshot {
+    ProfileSnapshot {
+        model_id: model.id.to_string(),
+        reasoning_effort: "none".to_string(),
+        ..profile.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_connection_without_a_model_of_its_own_can_speak() {
+        // As Settings saves an OpenRouter connection: no model, no effort.
+        let connection = ProfileSnapshot {
+            id: "a".repeat(32),
+            provider_kind: crate::ai::catalog::ProviderKind::Openrouter,
+            base_url: "https://openrouter.ai/api/v1/".into(),
+            model_id: String::new(),
+            reasoning_effort: String::new(),
+            auth_mode: crate::ai::catalog::AuthMode::Bearer,
+            enabled: true,
+            allow_insecure_http: false,
+            require_zero_data_retention: false,
+            request_timeout_ms: 60_000,
+            credential_epoch: 1,
+            revision: 1,
+        };
+        assert_eq!(
+            connection.validate_for_provider_request().unwrap_err().code,
+            "ai_profile_incomplete"
+        );
+        let drama = speech_model(DRAMA).unwrap();
+        let speaking = speaking_profile(&connection, drama);
+        speaking.validate_for_provider_request().unwrap();
+        assert_eq!(speaking.model_id, DRAMA);
+        assert_eq!(speaking.id, connection.id);
+    }
 
     #[test]
     fn every_catalog_default_voice_is_one_of_its_voices() {

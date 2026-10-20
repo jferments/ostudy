@@ -412,8 +412,9 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
-    // Lesson narration, its audio and the speech setting go with them, and
-    // links from cards to the marks they were made from go with the marks.
+    // Teacher's lecture scripts, lesson narration, its audio and the speech
+    // setting go with them, and links from cards to the marks they were made
+    // from go with the marks.
     // How far a learner has read each guide stays on the device too.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
@@ -436,6 +437,7 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM review_day_rollups;
              DELETE FROM document_annotations;
              DELETE FROM lesson_progress;
+             DELETE FROM lecture_scripts;
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
@@ -813,7 +815,10 @@ mod tests {
                          INSERT INTO lesson_progress(lesson_id, revision_number, current_step,
                              furthest_step, checks_json, revision, started_at, updated_at,
                              finished_at)
-                         VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);",
+                         VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);
+                         INSERT INTO lecture_scripts(lesson_id, revision_number, script_json,
+                             provenance_json, created_at)
+                         VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);",
                         hash = "b".repeat(64),
                         unit = "c".repeat(32),
                     ))
@@ -824,7 +829,8 @@ mod tests {
                         "SELECT (SELECT COUNT(*) FROM lessons)
                               + (SELECT COUNT(*) FROM lesson_revisions)
                               + (SELECT COUNT(*) FROM lesson_revision_units)
-                              + (SELECT COUNT(*) FROM lesson_progress)",
+                              + (SELECT COUNT(*) FROM lesson_progress)
+                              + (SELECT COUNT(*) FROM lecture_scripts)",
                         [],
                         |row| row.get(0),
                     )
@@ -832,7 +838,13 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
-        for table in ["lessons", "lesson_revisions", "lesson_revision_units", "lesson_progress"] {
+        for table in [
+            "lessons",
+            "lesson_revisions",
+            "lesson_revision_units",
+            "lesson_progress",
+            "lecture_scripts",
+        ] {
             assert!(!selection.includes_table(table));
         }
     }

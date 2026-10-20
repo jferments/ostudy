@@ -225,6 +225,14 @@ const CONTRACTS: &[Contract] = &[
         setup: "",
         rules: &[],
     },
+    Contract {
+        version: 15,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "lecture_scripts",
+            description: "lecture script",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
