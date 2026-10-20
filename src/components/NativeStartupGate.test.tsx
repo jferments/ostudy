@@ -68,7 +68,11 @@ describe("NativeStartupGate", () => {
     act(() => progress?.({ sequence: 1, message: "Creating a recovery checkpoint…", completed: false }));
     expect(screen.getByRole("heading", { name: "Updating your oStudy library" })).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("Creating a recovery checkpoint");
-    act(() => progress?.({ sequence: 2, message: "Library updated; recovery checkpoint retained.", completed: true }));
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    act(() => progress?.({ sequence: 2, message: "Creating a recovery checkpoint…", completed: false, permille: 425 }));
+    expect(screen.getByRole("progressbar", { name: "Library update progress" }).getAttribute("aria-valuetext")).toBe("42%");
+    expect(screen.getByText("42% done")).toBeTruthy();
+    act(() => progress?.({ sequence: 3, message: "Library updated; recovery checkpoint retained.", completed: true }));
     expect(screen.queryByText("Application ready")).toBeNull();
     await act(async () => { finish?.({} as Awaited<ReturnType<typeof getSettings>>); });
     expect(await screen.findByText("Application ready")).toBeTruthy();

@@ -37,6 +37,8 @@ interface AnnotatorPageProps {
   scale: number;
   /** Near the screen: show the image and annotations, not just the page's place. */
   near: boolean;
+  /** Outlined, as the page a card's source opened at. */
+  marked?: boolean;
   images: PageImageCache | null;
   /** Sharp tiles for a zoomed-in page, drawn for where the view last rested. */
   tiles: PageImageCache | null;
@@ -79,9 +81,13 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
   return (
     <div
       data-annotator-page={page.pageNumber}
+      data-marked={props.marked || undefined}
       role="group"
       aria-label={`Page ${page.pageNumber}`}
-      className="tw:relative tw:mx-auto tw:mb-4 tw:overflow-hidden tw:bg-[var(--ostudy-color-neutral-0)] tw:shadow-md tw:ring-1 tw:ring-border tw:select-none tw:forced-color-adjust-none tw:last:mb-0 tw:compact:mb-3"
+      className={cn(
+        "tw:relative tw:mx-auto tw:mb-4 tw:overflow-hidden tw:bg-[var(--ostudy-color-neutral-0)] tw:shadow-md tw:ring-1 tw:ring-border tw:select-none tw:forced-color-adjust-none tw:last:mb-0 tw:compact:mb-3",
+        props.marked && "tw:ring-4 tw:ring-primary tw:forced-colors:outline-solid tw:forced-colors:outline-4 tw:forced-colors:outline-[Highlight]",
+      )}
       style={{ width, height }}
     >
       {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} sharpTiles={tiles} /> : null}

@@ -20,12 +20,13 @@ pub(super) fn ordinary_request(
     access: ProviderAccess<'_>,
     body: Option<&Value>,
     timeout_ms: i64,
+    accept: &str,
 ) -> RequestBuilder {
     let openrouter = is_openrouter_url(&url);
     let mut request = client
         .request(method, url)
         .timeout(Duration::from_millis(timeout_ms.max(1) as u64))
-        .header(reqwest::header::ACCEPT, "application/json");
+        .header(reqwest::header::ACCEPT, accept);
     if openrouter {
         request = request
             .header("X-OpenRouter-Title", "ostudy")

@@ -382,7 +382,12 @@ pub(crate) async fn prepare_document(
                 // One window's bad output must not sink the document: keep its
                 // sources as gaps and let the rest of the document finish.
                 let outcome = match outcome {
-                    Err(error) if crate::ai::document_intelligence::is_output_failure(&error) => {
+                    // So must a window of pictures the model cannot see; a
+                    // document with nothing else still reports it below.
+                    Err(error)
+                        if crate::ai::document_intelligence::is_output_failure(&error)
+                            || error.code == super::extraction::IMAGES_REQUIRE_VISION =>
+                    {
                         crate::logging::warn_target(
                             "ai.knowledge.extraction",
                             "knowledge_extraction_window_gap",

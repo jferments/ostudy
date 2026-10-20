@@ -16,6 +16,8 @@ struct Snapshot {
     sequence: u32,
     message: String,
     completed: bool,
+    /// How far the whole update is, in thousandths, once it is known.
+    permille: Option<u16>,
 }
 
 #[derive(Default)]
@@ -27,10 +29,26 @@ impl ProgressState {
         let sequence = current
             .as_ref()
             .map_or(1, |value| value.sequence.saturating_add(1));
+        // A new phase keeps the overall progress reached so far.
+        let permille = current.as_ref().and_then(|value| value.permille);
         let next = Snapshot {
             sequence,
             message: message.into(),
             completed,
+            permille: if completed { Some(1000) } else { permille },
+        };
+        *current = Some(next.clone());
+        Some(next)
+    }
+
+    /// Moves the current phase's overall progress; nothing before a phase.
+    fn advance(&self, permille: u16) -> Option<Snapshot> {
+        let mut current = self.0.lock().ok()?;
+        let previous = current.as_ref()?;
+        let next = Snapshot {
+            sequence: previous.sequence.saturating_add(1),
+            permille: Some(permille.min(1000)),
+            ..previous.clone()
         };
         *current = Some(next.clone());
         Some(next)
@@ -64,6 +82,15 @@ pub(super) fn publish(app: &tauri::AppHandle, message: &str, completed: bool) {
     }
 }
 
+pub(super) fn advance(app: &tauri::AppHandle, permille: u16) {
+    if let Some(snapshot) = app
+        .try_state::<ProgressState>()
+        .and_then(|state| state.advance(permille))
+    {
+        let _ = app.emit(PROGRESS, snapshot);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,6 +110,25 @@ mod tests {
         assert_eq!(next.sequence, 2);
         assert!(!next.completed);
         assert_eq!(state.snapshot(), Some(next));
+    }
+
+    #[test]
+    fn progress_moves_within_a_phase_and_carries_into_the_next() {
+        let state = ProgressState::default();
+        assert!(state.advance(100).is_none());
+        state
+            .publish("Creating a recovery checkpoint…", false)
+            .unwrap();
+        let moved = state.advance(250).unwrap();
+        assert_eq!((moved.sequence, moved.permille), (2, Some(250)));
+        assert_eq!(moved.message, "Creating a recovery checkpoint…");
+        let next = state
+            .publish("Updating a private library copy…", false)
+            .unwrap();
+        assert_eq!(next.permille, Some(250));
+        assert_eq!(state.advance(4000).unwrap().permille, Some(1000));
+        let done = state.publish("Library updated.", true).unwrap();
+        assert_eq!(done.permille, Some(1000));
     }
 
     #[test]

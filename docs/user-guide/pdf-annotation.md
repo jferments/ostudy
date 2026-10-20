@@ -8,6 +8,12 @@ Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
+### From a card's source
+
+A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
+
+A source opens only while its PDF is in your library. Once the document is deleted, or for cards from a shared deck (`.studydeck` files never carry the document or its citations), the source stays plain text.
+
 ## Tools
 
 | Tool | Key | What it does |
