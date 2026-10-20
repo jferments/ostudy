@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as annotationCardsIpc from "../../../ipc/annotationCards";
 import * as annotationIpc from "../../../ipc/documentAnnotations";
 import * as studyGuideIpc from "../../../ipc/studyGuides";
 import { layoutWidths, matchesLayoutQuery } from "../../../test/viewport";
@@ -17,6 +18,22 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   getDocumentPageText: vi.fn(),
 }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
+vi.mock("../../../ipc/annotationCards", () => ({ getDocumentMarkedCards: vi.fn(), linkCardNoteToAnnotation: vi.fn() }));
+// The card editor has its own tests; here it shows what it was given and saves on a click.
+vi.mock("./MarkCardEditor", () => ({
+  MarkCardEditor: ({ mark, suggestedDeckId, onSaved, onClose }: {
+    mark: { id: string; quote: string };
+    suggestedDeckId: string | null;
+    onSaved: (closed: boolean) => void;
+    onClose: () => void;
+  }) => (
+    <div>
+      <p>Card from {mark.id}: {mark.quote} in {suggestedDeckId}</p>
+      <button type="button" onClick={() => onSaved(true)}>Save card</button>
+      <button type="button" onClick={onClose}>Close card</button>
+    </div>
+  ),
+}));
 
 const documentId = "a".repeat(32);
 const title = "Cardiac physiology";
@@ -35,6 +52,7 @@ beforeEach(() => {
   vi.mocked(studyGuideIpc.readDocumentSourceAsset).mockResolvedValue(new ArrayBuffer(8));
   vi.mocked(annotationIpc.renderDocumentPageTile).mockResolvedValue(new ArrayBuffer(8));
   vi.mocked(annotationIpc.getDocumentPageText).mockRejectedValue(new Error("This page has no text."));
+  vi.mocked(annotationCardsIpc.getDocumentMarkedCards).mockResolvedValue({ documentId, cardIds: [], suggestedDeckId: null });
   Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function rect(this: HTMLElement) {
@@ -61,11 +79,12 @@ function usePhoneLayout(): void {
   }));
 }
 
-async function openAnnotator(onClose = vi.fn(), showToast = vi.fn()) {
+async function openAnnotator(onClose = vi.fn(), showToast = vi.fn(), onPracticeCards?: (cardIds: string[]) => Promise<void>) {
   render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <DocumentAnnotator documentId={documentId} title={title} onClose={onClose} showToast={showToast} />
+        <DocumentAnnotator documentId={documentId} title={title} onClose={onClose} showToast={showToast}
+          onPracticeCards={onPracticeCards} />
       </OverlayProvider>
     </LayoutModeProvider>,
   );
@@ -230,6 +249,43 @@ describe("document annotator", () => {
       op: "put",
       shape: { kind: "highlight", points: [], rects: [72, 200, 78, 10], text: "Stroke volume" },
     });
+  });
+
+  it("makes a card from a highlight and studies the cards made from marks", async () => {
+    const highlightId = "h".repeat(32);
+    const deckId = "d".repeat(32);
+    vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({
+      documentId,
+      pages,
+      annotations: [{
+        id: highlightId, pageNumber: 1, revision: 1, createdAt: 5, updatedAt: 5,
+        shape: { kind: "highlight", points: [], color: "#facc15", strokeWidth: 14, rects: [100, 100, 200, 14], text: " The SA node sets the rate " },
+      }],
+    });
+    vi.mocked(annotationCardsIpc.getDocumentMarkedCards)
+      .mockResolvedValueOnce({ documentId, cardIds: [], suggestedDeckId: deckId })
+      .mockResolvedValue({ documentId, cardIds: ["c".repeat(32)], suggestedDeckId: deckId });
+    const onPracticeCards = vi.fn(async () => undefined);
+    const { canvas } = await openAnnotator(vi.fn(), vi.fn(), onPracticeCards);
+    // With no cards from marks yet, there is nothing to study.
+    await waitFor(() => expect(annotationCardsIpc.getDocumentMarkedCards).toHaveBeenCalledWith(documentId));
+    expect(screen.queryByRole("button", { name: "Study marked cards" })).toBeNull();
+
+    fireEvent.keyDown(canvas, { key: "v" });
+    const item = within(screen.getByRole("list", { name: "Annotations on page 1" }))
+      .getByRole("button", { name: "Highlight on page 1: The SA node sets the rate" });
+    act(() => item.focus());
+    const selection = screen.getByRole("toolbar", { name: "Selected annotation" });
+    fireEvent.click(within(selection).getByRole("button", { name: "Make a card" }));
+    expect(await screen.findByText(`Card from ${highlightId}: The SA node sets the rate in ${deckId}`)).toBeTruthy();
+    // One editor at a time.
+    expect(within(selection).queryByRole("button", { name: "Make a card" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save card" }));
+    await waitFor(() => expect(screen.queryByText(/Card from/u)).toBeNull());
+    const study = await screen.findByRole("button", { name: "Study marked cards" });
+    fireEvent.click(study);
+    await waitFor(() => expect(onPracticeCards).toHaveBeenCalledWith(["c".repeat(32)]));
   });
 
   it("zooms with the keyboard and with two fingers, without drawing", async () => {
