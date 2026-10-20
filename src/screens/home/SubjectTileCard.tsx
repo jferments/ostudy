@@ -9,23 +9,30 @@ import { SubjectBadge } from "./SubjectBadge";
 interface SubjectTileCardProps {
   tile: SubjectTile;
   compact: boolean;
+  /** The subject's remembered rate over the last 30 days; `null` before any review, undefined while unknown. */
+  remembered?: number | null;
   onOpen: () => void;
 }
 
 /**
  * One subject on Home: a row with its badge, its name, what it holds or the
- * document it is preparing, and its due count. The name is the row's button
+ * document it is preparing, how much of it is remembered, and its due count. The name is the row's button
  * and stretches over the whole row; the rest describes it.
  */
-export function SubjectTileCard({ tile, compact, onOpen }: SubjectTileCardProps) {
+export function SubjectTileCard({ tile, compact, remembered, onOpen }: SubjectTileCardProps) {
   const id = useId();
   const pillId = `${id}-due`;
   const metaId = `${id}-meta`;
+  const rememberedId = `${id}-remembered`;
+  const percent = remembered === undefined || remembered === null ? null : Math.round(remembered * 100);
   const color = tile.colorIndex === null ? null : SUBJECT_COLORS[tile.colorIndex];
   const pill = tilePill(tile);
   const status = tileStatus(tile);
+  // Phones fold the rate into the row's line; wider rows draw it as a bar.
   const meta = status ? `${status.text}` : tileMeta(tile);
-  const describedBy = [pill ? pillId : null, metaId].filter(Boolean).join(" ");
+  const inlineRate = !status && compact && percent !== null;
+  const showBar = !compact && percent !== null;
+  const describedBy = [pill ? pillId : null, metaId, showBar ? rememberedId : null].filter(Boolean).join(" ");
 
   return (
     <article
@@ -47,27 +54,41 @@ export function SubjectTileCard({ tile, compact, onOpen }: SubjectTileCardProps)
         </h3>
         <p id={metaId} className="tw:m-0 tw:flex tw:min-w-0 tw:items-center tw:gap-1.5 tw:text-small tw:text-muted-foreground">
           {status ? <Icon name={status.icon} size={14} className="tw:shrink-0" /> : null}
-          <span className="tw:min-w-0 tw:truncate">{meta}</span>
+          <span className="tw:min-w-0 tw:truncate">
+            {meta}
+            {inlineRate ? <> · {percent}%<span className="tw:sr-only"> remembered</span></> : null}
+          </span>
         </p>
       </div>
-      {pill ? (
-        <span
-          id={pillId}
-          className={cn(
-            "tw:inline-flex tw:shrink-0 tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-label tw:font-semibold tw:whitespace-nowrap",
-            pill.kind === "due"
-              ? color
-                ? color.soft
-                : "tw:bg-accent tw:text-accent-foreground"
-              : pill.kind === "done"
-                ? "tw:bg-success-soft tw:text-success"
-                : "tw:bg-(--ostudy-color-canvas-inset) tw:text-muted-foreground",
-          )}
-        >
-          {pill.kind === "done" ? <Icon name="check" size={13} /> : null}
-          {pill.text}
+      {showBar ? (
+        <span id={rememberedId} className="tw:grid tw:w-36 tw:shrink-0 tw:gap-1">
+          <span aria-hidden="true" className="tw:h-1.5 tw:overflow-hidden tw:rounded-full tw:bg-progress-track">
+            <span className="tw:block tw:h-full tw:rounded-full tw:bg-primary" style={{ width: `${percent}%` }} />
+          </span>
+          <span className="tw:text-label tw:text-muted-foreground tw:tabular-nums">{percent}% remembered</span>
         </span>
       ) : null}
+      {/* A fixed column on wider rows keeps the bars lined up whatever the pill says. */}
+      <span className={compact ? "tw:contents" : "tw:flex tw:w-24 tw:shrink-0 tw:justify-end"}>
+        {pill ? (
+          <span
+            id={pillId}
+            className={cn(
+              "tw:inline-flex tw:shrink-0 tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-label tw:font-semibold tw:whitespace-nowrap",
+              pill.kind === "due"
+                ? color
+                  ? color.soft
+                  : "tw:bg-accent tw:text-accent-foreground"
+                : pill.kind === "done"
+                  ? "tw:bg-success-soft tw:text-success"
+                  : "tw:bg-(--ostudy-color-canvas-inset) tw:text-muted-foreground",
+            )}
+          >
+            {pill.kind === "done" ? <Icon name="check" size={13} /> : null}
+            {pill.text}
+          </span>
+        ) : null}
+      </span>
     </article>
   );
 }
