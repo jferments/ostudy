@@ -20,6 +20,7 @@ import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { BuiltInTemplates } from "./settings/BuiltInTemplates";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
+import { LessonVoiceSettings } from "./settings/LessonVoiceSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
@@ -201,7 +202,12 @@ export function SettingsScreen({
         return (
           <AiLlmSettings
             controller={aiController}
-            defaultBlock={<DefaultAiModelSettings controller={aiController} />}
+            defaultBlock={
+              <DefaultAiModelSettings
+                controller={aiController}
+                extraRows={<LessonVoiceSettings connectionsKey={aiController.profiles} />}
+              />
+            }
           />
         );
       case "storage":

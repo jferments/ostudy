@@ -126,7 +126,7 @@ struct BackupSummary {
 mod activation;
 #[path = "library_backup/live.rs"]
 pub(crate) mod live;
-pub(crate) use activation::{apply_pending_restore, checkpoint};
+pub(crate) use activation::{apply_pending_restore, checkpoint, meter};
 #[path = "library_backup/package.rs"]
 mod package;
 #[cfg(test)]
@@ -331,7 +331,8 @@ fn copy_and_sync(source: &Path, destination: &Path) -> Result<(), CommandError> 
         .create_new(true)
         .open(destination)
         .map_err(CommandError::io)?;
-    std::io::copy(&mut input, &mut output).map_err(CommandError::io)?;
+    let copied = std::io::copy(&mut input, &mut output).map_err(CommandError::io)?;
+    activation::meter::advance(copied);
     output.sync_all().map_err(CommandError::io)?;
     sync_directory(destination.parent().ok_or_else(|| {
         CommandError::new(

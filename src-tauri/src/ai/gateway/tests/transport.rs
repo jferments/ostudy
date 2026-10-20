@@ -60,6 +60,51 @@ async fn ordinary_json_remains_non_streaming_inside_a_document_task() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn speech_requests_return_audio_bytes_and_classify_json_errors() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
+    let base = format!(
+        "http://{}",
+        listener.local_addr().expect("mock address should resolve")
+    );
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("speech request should arrive");
+        let request = read_http_request(&mut stream);
+        assert!(request.contains("accept: audio/*, application/json"));
+        let audio = b"ID3fake-mp3-bytes";
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            audio.len()
+        )
+        .expect("audio headers should write");
+        stream.write_all(audio).expect("audio should write");
+        let (mut stream, _) = listener.accept().expect("second request should arrive");
+        read_http_request(&mut stream);
+        write_json_response(
+            &mut stream,
+            400,
+            r#"{"error":{"message":"Invalid option: expected one of mp3|pcm","code":400}}"#,
+        );
+    });
+
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    let url = Url::parse(&format!("{base}/v1/audio/speech")).expect("URL should parse");
+    let body = json!({ "model": "voice", "input": "Hello.", "response_format": "mp3" });
+    let audio = gateway
+        .post_json_for_audio(url.clone(), Some("key"), &body, 5_000, 1_024)
+        .await
+        .expect("audio should arrive");
+    assert_eq!(audio.bytes, b"ID3fake-mp3-bytes");
+
+    let failure = gateway
+        .post_json_for_audio(url, Some("key"), &body, 5_000, 1_024)
+        .await
+        .expect_err("a JSON error is not audio");
+    assert_ne!(failure.safe.code, "ai_provider_protocol_error");
+    server.join().expect("mock server should finish");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn document_transport_requires_a_cancellable_document_scope() {
     let gateway = AiGateway::new().expect("gateway should initialize");
     let failure = gateway

@@ -114,6 +114,14 @@ pub(super) fn load_task_defaults(
     })
 }
 
+/// The connection assigned to a task, if one is.
+pub(crate) fn task_profile_id(
+    connection: &Connection,
+    task: AiTaskKind,
+) -> Result<Option<String>, CommandError> {
+    task_assignment(connection, task).map(|assignment| assignment.map(|value| value.profile_id))
+}
+
 fn task_assignment(
     connection: &Connection,
     task: AiTaskKind,

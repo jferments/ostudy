@@ -16,6 +16,8 @@ use std::{
 
 #[path = "checkpoint.rs"]
 pub(crate) mod checkpoint;
+#[path = "meter.rs"]
+pub(crate) mod meter;
 
 const JOURNAL: &str = "library-restore-journal.json";
 const TRANSACTIONS: &str = "restore-transactions";
@@ -609,6 +611,7 @@ pub(super) fn hash_file(path: &Path) -> Result<String, String> {
             break;
         }
         digest.update(&buffer[..count]);
+        meter::advance(count as u64);
     }
     Ok(format!("{:x}", digest.finalize()))
 }

@@ -356,6 +356,39 @@ fn one_writer_per_subject_and_stopping_an_unknown_run_says_so() {
     );
 }
 
+#[test]
+fn a_running_course_reports_lessons_planned_and_written() {
+    let subject = "e".repeat(32);
+    let operation = "2".repeat(32);
+    let progress = |operation: &str| {
+        get_subject_course_writing_progress(GetSubjectCourseWritingProgressInput {
+            operation_id: operation.to_string(),
+        })
+    };
+    let guard = Guard::begin(&subject, &operation).unwrap();
+    assert_eq!(
+        progress(&operation).unwrap(),
+        CourseWritingProgressDto {
+            planned: None,
+            written: 0
+        }
+    );
+    guard.progress().plan(3);
+    guard.progress().wrote_one();
+    assert_eq!(
+        progress(&operation).unwrap(),
+        CourseWritingProgressDto {
+            planned: Some(3),
+            written: 1
+        }
+    );
+    drop(guard);
+    assert_eq!(
+        progress(&operation).err().unwrap().code,
+        "lesson_writing_not_running"
+    );
+}
+
 fn part(title: &str, summary: String) -> CoursePart {
     CoursePart {
         document_id: String::new(),
