@@ -657,3 +657,147 @@ fn answering_a_check_grades_it_records_it_and_never_touches_reviews() {
         })
         .unwrap();
 }
+
+#[test]
+fn a_lecture_is_compiled_from_the_saved_lesson_with_narration_as_notes() {
+    use super::lecture::{read_lecture, LectureSlideKind};
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let lesson = read(&database, &id, None);
+    let document_title: String = database
+        .with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT title FROM documents WHERE id = ?1",
+                    [DOCUMENT],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id.clone(),
+                    revision_number: None,
+                },
+            )
+        })
+        .unwrap();
+
+    assert_eq!(lecture.revision_number, 1);
+    assert_eq!(lecture.title, "Loop of Henle");
+    let kinds: Vec<_> = lecture.slides.iter().map(|slide| slide.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            LectureSlideKind::Title,
+            LectureSlideKind::Step,
+            LectureSlideKind::Step,
+            LectureSlideKind::Step,
+            LectureSlideKind::Sources
+        ]
+    );
+    let title = &lecture.slides[0];
+    assert_eq!(title.points, lesson.content.objectives);
+    assert_eq!(title.notes, lesson.content.summary);
+    for (slide, step) in lecture.slides[1..4].iter().zip(&lesson.content.steps) {
+        assert_eq!(slide.step_key.as_deref(), Some(step.key.as_str()));
+        assert_eq!(slide.title, step.title);
+        assert_eq!(slide.points, step.slide_points);
+        assert_eq!(slide.notes, step.narration);
+    }
+    assert_eq!(lecture.slides[4].points, [document_title]);
+
+    // A check's answer and explanation never reach a slide.
+    let text = serde_json::to_string(&lecture).unwrap();
+    assert!(!text.contains(CORRECT_OPTION));
+    assert!(!text.contains("watertight while its pumps"));
+}
+
+#[test]
+fn a_lecture_without_source_documents_has_no_sources_slide() {
+    use super::lecture::{read_lecture, LectureSlideKind};
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    database
+        .with_connection(|connection| {
+            connection
+                .execute("DELETE FROM knowledge_units WHERE id = ?1", [UNIT])
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id,
+                    revision_number: Some(1),
+                },
+            )
+        })
+        .unwrap();
+    assert_eq!(lecture.slides.len(), 4);
+    assert!(lecture
+        .slides
+        .iter()
+        .all(|slide| slide.kind != LectureSlideKind::Sources));
+}
+
+#[test]
+fn a_lecture_is_prepared_once_as_a_pptx_export_for_its_operation() {
+    use super::pptx::{prepare, PrepareLessonLecturePptxInput};
+    use crate::paths::AppPaths;
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let root = std::env::temp_dir().join(format!(
+        "ostudy-lecture-pptx-{}-{}",
+        std::process::id(),
+        crate::util::unix_time_millis().unwrap()
+    ));
+    let paths = AppPaths::new(root.clone()).unwrap();
+    let input = |operation: char| PrepareLessonLecturePptxInput {
+        lesson_id: id.clone(),
+        revision_number: None,
+        operation_id: operation.to_string().repeat(32),
+    };
+
+    let prepared = prepare(&database, &paths, input('a')).unwrap();
+    assert_eq!(prepared.slide_count, 5);
+    assert_eq!(prepared.revision_number, 1);
+    let export = &prepared.prepared_export;
+    assert_eq!(export.purpose, "lecture_pptx");
+    assert_eq!(export.suggested_filename, "Loop of Henle.pptx");
+    assert_eq!(
+        export.media_type,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    );
+    let bytes = std::fs::read(
+        paths.resolve_relative(&AppPaths::prepared_export_relative_path(&export.id, "pptx")),
+    )
+    .unwrap();
+    assert!(bytes.starts_with(b"PK"), "a .pptx is a zip package");
+    assert_eq!(i64::try_from(bytes.len()).unwrap(), export.byte_size);
+
+    // The same operation returns what it prepared instead of a second file.
+    let again = prepare(&database, &paths, input('a')).unwrap();
+    assert_eq!(again.prepared_export.id, export.id);
+    assert_eq!(again.prepared_export.sha256, export.sha256);
+
+    let missing = prepare(
+        &database,
+        &paths,
+        PrepareLessonLecturePptxInput {
+            lesson_id: "9".repeat(32),
+            ..input('b')
+        },
+    );
+    assert!(missing.is_err());
+    let _ = std::fs::remove_dir_all(root);
+}

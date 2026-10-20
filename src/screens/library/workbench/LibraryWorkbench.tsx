@@ -8,7 +8,6 @@ import { isQuestionNote } from "../../../ipc/authoringNotes";
 import type { CardBrowserRow, CardSort, SelectionCard } from "../../../ipc/cards";
 import { createMutationId, createOperationId, getErrorCode, getErrorMessage } from "../../../ipc/common";
 import type { DeckSummary, MergeDecksInput } from "../../../ipc/decks";
-import type { DocumentSummary } from "../../../ipc/documents";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import type { ScheduleAction } from "../../../ipc/scheduling";
 import { getSubjectLibrary, moveDeckToSubject } from "../../../ipc/subjects";
@@ -36,8 +35,8 @@ import { DeckTransferDialog, type DeckTransferDialogRequest } from "../../flashc
 import { PracticeSetupSheet } from "../../flashcards/deck-library/PracticeSetupSheet";
 import type { PracticeDeckScope } from "../../flashcards/deck-library/practiceSetupModel";
 import { CheckTheseSheet } from "../../home/CheckTheseSheet";
-import { LibraryTabs } from "../LibraryTabs";
-import { NewSubjectSheet } from "../../home/NewSubjectSheet";
+import { useLibraryFullPage, useLibraryTabActions } from "../LibraryFrame";
+import { ALL_SUBJECTS, type LibrarySubjectScope } from "../../../navigation/appDestinations";
 import { CardScheduleSummary } from "./CardScheduleSummary";
 import { useWorkbenchCards, PAGE_SIZE } from "./useWorkbenchCards";
 import { useWorkbenchLibrary } from "./useWorkbenchLibrary";
@@ -47,7 +46,8 @@ import { WorkbenchTree } from "./WorkbenchTree";
 import {
   CARD_FILTERS,
   decksInSubject,
-  DEFAULT_SCOPE,
+  subjectFilterOf,
+  subjectRootScope,
   defaultSort,
   sameScope,
   scopeExists,
@@ -76,21 +76,19 @@ export interface LibraryWorkbenchProps {
   /** Practice with options: scheduled or extra cards, tags and shuffle. */
   onPracticeSelected: (request: SelectedPracticeRequest) => void | Promise<void>;
   practiceShuffle: boolean;
-  onOpenDocuments: () => void;
-  onOpenStudyGuides: () => void;
   onCardDirtyChange: (dirty: boolean) => void;
   /** The open deck, or null for any other place, so practice can return to it. */
   onDeckScopeChange?: (deckId: string | null) => void;
+  /** Library's chosen subject: the tree shows only it, and a subject chosen here becomes Library's. */
+  subject?: LibrarySubjectScope;
+  onSubjectChange?: (subject: LibrarySubjectScope) => void;
   showToast: ShowToast;
 }
 
 type Sheet =
-  | { kind: "new-subject" }
-  | { kind: "rename-subject"; subjectId: string; name: string }
   | { kind: "new-deck"; subjectId: string | null }
   | { kind: "rename-deck"; deck: DeckSummary }
   | { kind: "move-deck"; deck: DeckSummary }
-  | { kind: "move-document"; document: DocumentSummary }
   | { kind: "merge-deck"; source: DeckSummary; operationId: string }
   | { kind: "transfer"; request: DeckTransferDialogRequest }
   | { kind: "check-these" }
@@ -109,7 +107,6 @@ type Editor =
 type CompactPage = "tree" | "cards" | "editor";
 
 const PANE_STORAGE_KEY = "ostudy.workbench.panes";
-const MAX_SUBJECT_NAME = 120;
 const MAX_DECK_NAME = 200;
 
 /**
@@ -126,21 +123,28 @@ export function LibraryWorkbench({
   onPracticeCards,
   onPracticeSelected,
   practiceShuffle,
-  onOpenDocuments,
-  onOpenStudyGuides,
   onCardDirtyChange,
   onDeckScopeChange,
+  subject,
+  onSubjectChange,
   showToast,
 }: LibraryWorkbenchProps) {
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
   const confirm = useConfirm();
-  const libraryState = useWorkbenchLibrary(decks, refreshDecks, showToast);
+  const librarySubject = subject ?? ALL_SUBJECTS;
+  const subjectFilter = subjectFilterOf(librarySubject);
+  const libraryState = useWorkbenchLibrary(decks, refreshDecks, showToast, subjectFilter);
   const { library, tags } = libraryState;
-  const [scope, setScope] = useState<WorkbenchScope>(launch?.scope ?? DEFAULT_SCOPE);
+  // All of the chosen subject's cards: where the list starts and where Back returns.
+  const rootScope = useMemo(
+    () => subjectRootScope(subjectFilter === undefined ? ALL_SUBJECTS : subjectFilter === null ? { kind: "none" } : { kind: "subject", subjectId: subjectFilter }),
+    [subjectFilter],
+  );
+  const [scope, setScope] = useState<WorkbenchScope>(launch?.scope ?? rootScope);
   const [filter, setFilter] = useState<CardFilter>("all");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<CardSort>(() => defaultSort(launch?.scope ?? DEFAULT_SCOPE));
+  const [sort, setSort] = useState<CardSort>(() => defaultSort(launch?.scope ?? rootScope));
   const [editor, setEditor] = useState<Editor | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -175,6 +179,18 @@ export function LibraryWorkbench({
     onDeckScopeChange?.(scopeDeckId);
   }, [onDeckScopeChange, scopeDeckId]);
 
+  // Choosing All cards or a subject here chooses it for the rest of Library too.
+  const reportedSubject: LibrarySubjectScope | null =
+    scope.kind === "view" && scope.view === "all"
+      ? ALL_SUBJECTS
+      : scope.kind === "subject"
+        ? scope.subjectId === null ? { kind: "none" } : { kind: "subject", subjectId: scope.subjectId }
+        : null;
+  const reportedSubjectKey = reportedSubject === null ? null : JSON.stringify(reportedSubject);
+  useEffect(() => {
+    if (reportedSubjectKey !== null) onSubjectChange?.(JSON.parse(reportedSubjectKey) as LibrarySubjectScope);
+  }, [onSubjectChange, reportedSubjectKey]);
+
   // A launch from Home, a subject's Manage button or the header's Search.
   const appliedLaunch = useRef<number | null>(launch?.requestId ?? null);
   useEffect(() => {
@@ -195,11 +211,11 @@ export function LibraryWorkbench({
   }, []);
 
   // Android Back steps out of the Workbench before leaving Library: on phones
-  // from the card list to the tree, elsewhere from a deck, subject or tag to All
-  // cards. The open card's editor handles Back itself.
+  // from the card list to the tree, elsewhere from a deck or tag to all of the
+  // subject's cards. The open card's editor handles Back itself.
   const backAction = useRef<() => void>(() => undefined);
-  backAction.current = compact ? () => setPage("tree") : () => void chooseScope(DEFAULT_SCOPE);
-  const backActive = compact ? page === "cards" : !sameScope(scope, DEFAULT_SCOPE);
+  backAction.current = compact ? () => setPage("tree") : () => void chooseScope(rootScope);
+  const backActive = compact ? page === "cards" : !sameScope(scope, rootScope);
   useEffect(() => {
     if (!backActive) return;
     return registerPlatformBackHandler(() => {
@@ -208,14 +224,14 @@ export function LibraryWorkbench({
     });
   }, [backActive]);
 
-  // A deck or subject that disappears (deleted here or elsewhere) returns the list to All cards.
+  // A deck or subject that disappears (deleted here or elsewhere) returns the list to its start.
   useEffect(() => {
     if (libraryState.loading || !library.organization) return;
     if (!scopeExists(scope, library)) {
-      setScope(DEFAULT_SCOPE);
-      setSort(defaultSort(DEFAULT_SCOPE));
+      setScope(rootScope);
+      setSort(defaultSort(rootScope));
     }
-  }, [library, libraryState.loading, scope]);
+  }, [library, libraryState.loading, rootScope, scope]);
 
   useEffect(() => { onCardDirtyChange(editorDirty); }, [editorDirty, onCardDirtyChange]);
   useEffect(() => () => onCardDirtyChange(false), [onCardDirtyChange]);
@@ -396,8 +412,8 @@ export function LibraryWorkbench({
         },
       });
       if (scope.kind === "deck" && scope.deckId === deck.id) {
-        setScope(DEFAULT_SCOPE);
-        setSort(defaultSort(DEFAULT_SCOPE));
+        setScope(rootScope);
+        setSort(defaultSort(rootScope));
       }
       await refreshAfterMutation();
     } catch (caught: unknown) {
@@ -498,34 +514,6 @@ export function LibraryWorkbench({
     }
   }
 
-  function documentMenu(document: DocumentSummary): OverflowMenuItem[] {
-    return [
-      { id: "open", label: "Open in Documents", onSelect: onOpenDocuments },
-      { id: "move", label: "Move to subject…", onSelect: () => setSheet({ kind: "move-document", document }) },
-    ];
-  }
-
-  async function deleteSubject(subjectId: string): Promise<void> {
-    const subject = library.subjects.find((candidate) => candidate.id === subjectId);
-    if (!subject) return;
-    const accepted = await confirm({
-      title: `Delete “${subject.name}”?`,
-      description: "Its decks and documents move to No subject, with their cards and schedules. The subject's overview guide is deleted.",
-      confirmLabel: "Delete subject",
-      destructive: true,
-    });
-    if (!accepted) return;
-    if (await libraryState.deleteSubject(subjectId)) showToast("success", `Deleted “${subject.name}”.`);
-  }
-
-  async function moveSubjectBy(subjectId: string, offset: -1 | 1): Promise<void> {
-    const ordered = [...library.subjects].sort((left, right) => left.sortOrder - right.sortOrder);
-    const index = ordered.findIndex((subject) => subject.id === subjectId);
-    const target = index + offset;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    await libraryState.moveSubject(subjectId, target);
-  }
-
   const selectionActions = useMemo((): { primary: Omit<ResponsiveAction, "placement" | "presentation">; secondary: ResponsiveAction[] } => {
     const notes = uniqueNotes(selected);
     const run = (action: () => void) => () => action();
@@ -576,17 +564,14 @@ export function LibraryWorkbench({
       />
     </>
   ) : scope.kind === "subject" ? (
-    <>
-      <Button
-        variant="secondary"
-        size="small"
-        disabled={decksInSubject(library, scope.subjectId).every((deck) => deck.generatedCardCount === 0)}
-        onClick={() => beginPracticeSetup(decksInSubject(library, scope.subjectId))}
-      >
-        Practice…
-      </Button>
-      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "new-deck", subjectId: scope.subjectId })}>New deck</Button>
-    </>
+    <Button
+      variant="secondary"
+      size="small"
+      disabled={decksInSubject(library, scope.subjectId).every((deck) => deck.generatedCardCount === 0)}
+      onClick={() => beginPracticeSetup(decksInSubject(library, scope.subjectId))}
+    >
+      Practice…
+    </Button>
   ) : null;
 
   const empty = emptyCopy(scope, filter, query, scopeDeck);
@@ -600,15 +585,10 @@ export function LibraryWorkbench({
         scope={scope}
         checkTheseCount={library.organization?.checkTheseCount ?? 0}
         compact={compact}
+        subject={librarySubject}
         onSelectScope={(next) => void chooseScope(next)}
-        onNewSubject={() => setSheet({ kind: "new-subject" })}
-        onRenameSubject={(subjectId) => setSheet({ kind: "rename-subject", subjectId, name: library.subjects.find((subject) => subject.id === subjectId)?.name ?? "" })}
-        onMoveSubject={(subjectId, offset) => void moveSubjectBy(subjectId, offset)}
-        onDeleteSubject={(subjectId) => void deleteSubject(subjectId)}
         onNewDeck={(subjectId) => setSheet({ kind: "new-deck", subjectId })}
         deckMenu={deckMenu}
-        documentMenu={documentMenu}
-        onOpenDocument={() => onOpenDocuments()}
         onCheckThese={() => setSheet({ kind: "check-these" })}
       />
     </div>
@@ -677,6 +657,21 @@ export function LibraryWorkbench({
     />
   ) : null;
 
+  // Import deck sits at the end of Library's tabs while the Workbench is open.
+  const importAction = useMemo(
+    () => compact ? (
+      <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
+    ) : (
+      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
+        Import deck
+      </Button>
+    ),
+    [compact],
+  );
+  useLibraryTabActions(importAction);
+  // A phone's card editor is a page of its own, without Library's header and tabs.
+  useLibraryFullPage(compact && page === "editor");
+
   let body;
   if (compact) {
     body = page === "editor" && editorPane ? editorPane : page === "cards" ? list : tree;
@@ -716,28 +711,8 @@ export function LibraryWorkbench({
   return (
     <div
       data-testid="library-workbench"
-      className={compact
-        ? "tw:min-w-0 tw:px-4 tw:pt-4 tw:pb-[calc(5rem+var(--safe-bottom))]"
-        : "tw:flex tw:h-full tw:min-h-0 tw:flex-col tw:px-5 tw:pt-5 tw:pb-4"}
+      className={compact ? "tw:min-w-0" : "tw:flex tw:h-full tw:min-h-0 tw:flex-1 tw:flex-col"}
     >
-      {compact && page === "editor" ? null : (
-        <LibraryTabs
-          view="decks"
-          onSelectView={(view) => {
-            if (view === "documents") onOpenDocuments();
-            else if (view === "study-guides") onOpenStudyGuides();
-            else void chooseScope(DEFAULT_SCOPE);
-          }}
-          actions={compact ? (
-            <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
-          ) : (
-            <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
-              Import deck
-            </Button>
-          )}
-          className="tw:mb-4 tw:shrink-0"
-        />
-      )}
       {opening ? <span className="sr-only" role="status">Opening card…</span> : null}
       {libraryState.loading && !library.organization ? <InlineProgress>Loading your library…</InlineProgress> : null}
       <div className={compact ? "tw:min-w-0" : "tw:flex tw:min-h-0 tw:flex-1"}>{body}</div>
@@ -749,31 +724,6 @@ export function LibraryWorkbench({
     if (!sheet) return null;
     const close = () => setSheet(null);
     switch (sheet.kind) {
-      case "new-subject":
-        return (
-          <NewSubjectSheet
-            onClose={close}
-            onCreated={(organization, name) => {
-              libraryState.acceptOrganization(organization);
-              close();
-              showToast("success", `Created “${name}”.`);
-              const created = organization.subjects.find((subject) => subject.name === name);
-              if (created) void chooseScope({ kind: "subject", subjectId: created.id }, { force: true });
-            }}
-          />
-        );
-      case "rename-subject":
-        return (
-          <NameSheet
-            title="Rename subject"
-            label="Name"
-            initialName={sheet.name}
-            submitLabel="Rename"
-            maxLength={MAX_SUBJECT_NAME}
-            onClose={close}
-            onSubmit={(name) => libraryState.renameSubject(sheet.subjectId, name)}
-          />
-        );
       case "new-deck":
         return (
           <NameSheet
@@ -808,16 +758,6 @@ export function LibraryWorkbench({
             currentSubjectId={subjectOfDeck(library, sheet.deck.id)}
             onClose={close}
             onMove={(subjectId) => libraryState.moveDecks([sheet.deck.id], subjectId)}
-          />
-        );
-      case "move-document":
-        return (
-          <MoveToSubjectSheet
-            itemLabel={`“${sheet.document.title}”`}
-            subjects={library.subjects}
-            currentSubjectId={library.organization?.documents.find((placement) => placement.documentId === sheet.document.id)?.subjectId ?? null}
-            onClose={close}
-            onMove={(subjectId) => libraryState.moveDocument(sheet.document.id, subjectId)}
           />
         );
       case "merge-deck":

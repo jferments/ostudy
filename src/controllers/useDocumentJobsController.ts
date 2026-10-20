@@ -317,7 +317,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
 
   async function uploadDocument(
     generationInstructions?: string,
-    /** Runs once the document is saved, before its processing starts, such as to file it in a collection. */
+    /** Runs once the document is saved, before its processing starts, such as to file it in a subject. */
     onImported?: (documentId: string) => Promise<unknown>,
   ): Promise<void> {
     if (selectingFile.current) return;
