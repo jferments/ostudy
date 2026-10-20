@@ -267,7 +267,8 @@ export function CardEditorScreen({
     kind: "card",
     targetEntityId: card?.noteId || undefined,
     contextEntityId: card?.noteId ? undefined : deck.id,
-    baseRevision: card?.revision,
+    // A prefilled card that is not saved yet has no revision to build on.
+    baseRevision: card?.noteId ? card.revision : undefined,
     payload: durablePayload,
     assetIds: usedAssetIds,
     onRecovered: (payload) => {

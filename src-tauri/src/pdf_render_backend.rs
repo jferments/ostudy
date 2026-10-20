@@ -92,7 +92,7 @@ pub(crate) struct PdfRenderRuntime {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pdfium: Arc<Pdfium>,
     /// PDFium is not thread-safe (pdfium-render's `thread_safe` feature only
-    /// marks it Send and Sync), so one PDF is open at a time across clones.
+    /// marks it Send and Sync), so its calls run one at a time across clones.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     access: Arc<std::sync::Mutex<()>>,
     #[cfg(target_os = "android")]
@@ -111,8 +111,10 @@ impl fmt::Debug for PdfRenderRuntime {
 }
 
 impl PdfRenderRuntime {
-    /// Held for as long as a PDF is open: concurrent PDFium calls corrupt its
-    /// shared font state. A panic while holding it leaves nothing to repair.
+    /// Held around every PDFium call, opening and closing a document included:
+    /// concurrent calls corrupt its shared font state. A long import lets go
+    /// between pages, so a document stays open across other callers' turns,
+    /// which PDFium allows. A panic while holding it leaves nothing to repair.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn exclusive(&self) -> std::sync::MutexGuard<'_, ()> {
         self.access
@@ -400,7 +402,8 @@ where
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let _pdfium = runtime.exclusive();
+        // Declared before the document so the document closes under the lock.
+        let mut pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -415,7 +418,11 @@ where
         for index in 0..page_count {
             let png = render_page_at_dpi(&document, index, PAGE_RENDER_DPI)
                 .map_err(RenderProcessError::Backend)?;
-            visitor(index + 1, png).map_err(RenderProcessError::Visitor)?;
+            // The visitor may run OCR; let the annotator draw tiles meanwhile.
+            drop(pdfium);
+            let visited = visitor(index + 1, png);
+            pdfium = runtime.exclusive();
+            visited.map_err(RenderProcessError::Visitor)?;
         }
         Ok(page_count)
     }
@@ -462,7 +469,8 @@ where
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let _pdfium = runtime.exclusive();
+        // Declared before the document so the document closes under the lock.
+        let mut pdfium = runtime.exclusive();
         let document = runtime
             .pdfium
             .load_pdf_from_file(source_path, None)
@@ -478,7 +486,11 @@ where
             .map_err(RenderProcessError::Backend)?;
         for page_number in &requested {
             let rendered = render_page_at_dpi(&document, *page_number - 1, OCR_RENDER_DPI);
-            visitor(*page_number, rendered).map_err(RenderProcessError::Visitor)?;
+            // OCR runs in the visitor; let the annotator draw tiles meanwhile.
+            drop(pdfium);
+            let visited = visitor(*page_number, rendered);
+            pdfium = runtime.exclusive();
+            visited.map_err(RenderProcessError::Visitor)?;
         }
         Ok(requested.len())
     }

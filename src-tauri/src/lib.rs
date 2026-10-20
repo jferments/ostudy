@@ -8,6 +8,7 @@
 
 mod ai;
 mod analytics;
+mod annotation_cards;
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
@@ -393,6 +394,8 @@ pub fn run() {
             document_operations::delete_document,
             document_annotations::get_document_annotations,
             document_annotations::apply_document_annotation_changes,
+            annotation_cards::link_card_note_to_annotation,
+            annotation_cards::get_document_marked_cards,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
             lessons::list_subject_lessons,
