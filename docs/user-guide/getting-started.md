@@ -20,7 +20,7 @@ Choosing **Library** opens the page and subject you used last. Library's **Flash
 
 A new library opens on Home's welcome, **Your library is empty**, with **Create a subject**, **Import a document**, and **Open Library**. A subject keeps one course's documents, study guides, and decks together; you can also start with a deck and file it later.
 
-Open **Library**. On a wide or medium window, a library with no decks shows **No cards yet** with **New deck** and **Import deck**. To start a deck inside a subject, choose the subject in Library's subject list, open **Flashcards** and choose **New deck** under the decks.
+Open **Library**. On a wide or medium window, a library with no decks shows **No cards yet** with **New deck** and **Import deck**. A subject with nothing in it opens on **Nothing in *subject* yet** with **Upload a document**, **New deck** and **Import deck**, each filing what it makes in that subject. Later, choose the subject in Library's subject list, open **Flashcards** and choose **New deck** under the decks.
 
 Give the deck a name. The Workbench opens it; choose **New card**. Use a Basic question and answer for a first card. Reverse presentations are useful when both directions are worth recalling. Fill in the blank cards hide marked parts of a statement. Choose a reusable template when many cards have the same structure.
 
