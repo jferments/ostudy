@@ -179,6 +179,7 @@ export interface NativeCommandGatewayMap {
   "import_media": readonly [typeof GatewayModule4.importMedia];
   "inspect_image_set": readonly [typeof GatewayModule21.inspectImageSet];
   "join_device_pairing": readonly [typeof GatewayModule10.joinDevicePairing, typeof GatewayModule10.joinUsbDevicePairing];
+  "keep_speech_voice": readonly [typeof GatewayModule34.keepSpeechVoice];
   "link_card_note_to_annotation": readonly [typeof GatewayModule3.linkCardNoteToAnnotation];
   "list_ai_provider_models": readonly [typeof GatewayModule0.listAiProviderModels];
   "list_ai_provider_profiles": readonly [typeof GatewayModule0.listAiProviderProfiles];
@@ -243,7 +244,9 @@ export interface NativeCommandGatewayMap {
   "remediate_practice_question": readonly [typeof GatewayModule29.remediatePracticeQuestion];
   "remove_device_sync_peer": readonly [typeof GatewayModule10.removeDeviceSyncPeer];
   "remove_document_collection_membership": readonly [typeof GatewayModule7.removeDocumentCollectionMembership];
+  "remove_speech_voice": readonly [typeof GatewayModule34.removeSpeechVoice];
   "rename_document": readonly [typeof GatewayModule14.renameDocument];
+  "rename_speech_voice": readonly [typeof GatewayModule34.renameSpeechVoice];
   "rename_subject": readonly [typeof GatewayModule38.renameSubject];
   "rename_tutor_conversation": readonly [typeof GatewayModule40.renameTutorConversation];
   "render_document_page_tile": readonly [typeof GatewayModule12.renderDocumentPageTile];
@@ -295,6 +298,7 @@ export interface NativeCommandGatewayMap {
   "test_ai_provider_profile": readonly [typeof GatewayModule0.testAiProviderProfile];
   "test_embedding_profile": readonly [typeof GatewayModule16.testEmbeddingProfile];
   "transfer_cards": readonly [typeof GatewayModule6.transferCards];
+  "try_speech_voice": readonly [typeof GatewayModule34.trySpeechVoice];
   "undo_deletion": readonly [typeof GatewayModule6.undoDeletion];
   "update_ai_provider_profile": readonly [typeof GatewayModule0.updateAiProviderProfile];
   "update_card_note": readonly [typeof GatewayModule6.updateCardNote];

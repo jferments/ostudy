@@ -6,6 +6,7 @@
 //! in here later. The catalog below names the models ostudy has tried, with
 //! the voices and request size each accepts.
 
+use base64::Engine as _;
 use serde_json::{json, Value};
 
 use rusqlite::Connection;
@@ -37,6 +38,9 @@ pub(crate) struct SpeechModel {
     /// Empty when the model chooses its own voice and takes no `voice` field.
     pub voices: &'static [&'static str],
     pub default_voice: &'static str,
+    /// Whether a request can carry a recording whose voice the model copies.
+    /// Such a model picks a new voice for each request that carries none.
+    pub clones_voices: bool,
     /// The most characters sent in one request.
     pub max_characters: usize,
 }
@@ -62,6 +66,7 @@ pub(crate) const SPEECH_MODELS: &[SpeechModel] = &[
             "bm_lewis",
         ],
         default_voice: "af_heart",
+        clones_voices: false,
         // OpenRouter lists a 4,096-character context.
         max_characters: 1_500,
     },
@@ -70,6 +75,7 @@ pub(crate) const SPEECH_MODELS: &[SpeechModel] = &[
         label: "Drama 3",
         voices: &[],
         default_voice: "",
+        clones_voices: true,
         max_characters: 1_500,
     },
 ];
@@ -103,14 +109,52 @@ pub(crate) fn document_connection(connection: &Connection) -> Result<Option<Stri
     task_profile_id(connection, AiTaskKind::FlashcardGeneration)
 }
 
-pub(crate) fn request_body(model: &SpeechModel, voice: &str, text: &str) -> Value {
+/// A recording of a voice, with the words it says, for a model to copy.
+pub(crate) struct VoiceReference {
+    /// MP3 audio, as speech returns it.
+    pub audio: Vec<u8>,
+    pub transcript: String,
+}
+
+impl std::fmt::Debug for VoiceReference {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VoiceReference")
+            .field("audio_bytes", &self.audio.len())
+            .field("transcript", &self.transcript)
+            .finish()
+    }
+}
+
+/// `voice` is one of the model's preset voices; a model without presets gets
+/// none. A reference goes only to a model that copies voices.
+pub(crate) fn request_body(
+    model: &SpeechModel,
+    voice: &str,
+    text: &str,
+    reference: Option<&VoiceReference>,
+) -> Value {
     let mut body = json!({
         "model": model.id,
         "input": text,
         "response_format": SPEECH_FORMAT,
     });
-    if !voice.is_empty() {
+    if !model.voices.is_empty() && !voice.is_empty() {
         body["voice"] = Value::String(voice.to_string());
+    }
+    if let Some(reference) = reference.filter(|_| model.clones_voices) {
+        body["input_references"] = json!([
+            {
+                "type": "input_audio",
+                "input_audio": {
+                    "data": format!(
+                        "data:audio/mpeg;base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(&reference.audio)
+                    ),
+                },
+            },
+            { "type": "text", "text": reference.transcript },
+        ]);
     }
     body
 }
@@ -122,6 +166,7 @@ pub(crate) async fn speak(
     request: &ProfileRequestSnapshot,
     model: &SpeechModel,
     voice: &str,
+    reference: Option<&VoiceReference>,
     text: &str,
     accounting: &generation::Context,
     cancellation: &CancellationSignal,
@@ -136,7 +181,7 @@ pub(crate) async fn speak(
         ));
     }
     let url = join_endpoint(&profile.base_url, "audio/speech")?;
-    let body = request_body(model, voice, text);
+    let body = request_body(model, voice, text, reference);
     let credential =
         runtime
             .secrets
@@ -233,13 +278,36 @@ mod tests {
     #[test]
     fn a_model_that_picks_its_own_voice_gets_no_voice_field() {
         let drama = speech_model(DRAMA).unwrap();
-        let body = request_body(drama, "", "Hello.");
+        let body = request_body(drama, "", "Hello.", None);
         assert!(body.get("voice").is_none());
+        assert!(body.get("input_references").is_none());
         assert_eq!(body["response_format"], "mp3");
         let kokoro = speech_model(KOKORO).unwrap();
         assert_eq!(
-            request_body(kokoro, "bm_george", "Hello.")["voice"],
+            request_body(kokoro, "bm_george", "Hello.", None)["voice"],
             "bm_george"
         );
+    }
+
+    #[test]
+    fn a_saved_voice_goes_as_a_recording_to_a_model_that_copies_voices() {
+        let reference = VoiceReference {
+            audio: vec![0xff, 0xfb, 0x90],
+            transcript: "Good morning, everyone.".into(),
+        };
+        let drama = speech_model(DRAMA).unwrap();
+        let body = request_body(drama, "", "Hello.", Some(&reference));
+        assert!(body.get("voice").is_none());
+        assert_eq!(
+            body["input_references"],
+            json!([
+                { "type": "input_audio", "input_audio": { "data": "data:audio/mpeg;base64,//uQ" } },
+                { "type": "text", "text": "Good morning, everyone." },
+            ])
+        );
+        // A model with preset voices never gets one.
+        let kokoro = speech_model(KOKORO).unwrap();
+        let body = request_body(kokoro, "af_heart", "Hello.", Some(&reference));
+        assert!(body.get("input_references").is_none());
     }
 }

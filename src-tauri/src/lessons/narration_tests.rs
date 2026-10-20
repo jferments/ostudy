@@ -290,7 +290,8 @@ fn kept_audio_is_reused_without_asking_the_voice_again() {
     let voice = Voice {
         engine: "openrouter",
         model,
-        voice: "bm_george",
+        voice: "bm_george".to_string(),
+        reference: None,
     };
     let pieces = segments(&narration, model.max_characters);
     let mut kept = Vec::new();
@@ -341,7 +342,8 @@ fn something_other_than_audio_is_not_kept() {
     let voice = Voice {
         engine: "openrouter",
         model: speech::speech_model(KOKORO).unwrap(),
-        voice: "af_heart",
+        voice: "af_heart".to_string(),
+        reference: None,
     };
     let refused = keep_segment(&database, &paths, &voice, "Hello.", b"{\"error\":1}").unwrap_err();
     assert_eq!(refused.code, "speech_audio_invalid");
