@@ -18,7 +18,7 @@ The active codebase already includes:
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
 - a native lesson store and AI course writing for a subject (one lesson per top-level document topic), without a learner-facing lesson screen yet;
 - implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, OpenRouter, and Claude, with native credential isolation/capability probing and no silent local-to-cloud fallback;
-- a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/collection grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
+- a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/subject grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
 - one React/Rust application across desktop and Android, with wide/medium/compact navigation, shared accessible overlays/patterns, themes, local typography, reduced motion, safe areas, and keyboard/touch behavior;
 - a qualified Ubuntu/Debian Linux path and a qualified Android source-build/debug-install path with API 36 emulator qualification;
 - tiered exact-SHA qualification on an isolated self-hosted Linux/Android runner.

@@ -1,31 +1,31 @@
 # Library Workbench, authoring, and search
 
-Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
+Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: the chosen subject's decks and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
-Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page. The Workbench shows the subject you chose in Library; under **Everything** its tree lists every subject.
+Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page. The Workbench shows the subject you chose in Library's subject list; there is no second list of subjects inside it.
 
 ## The tree
 
-The tree starts with **All cards**, which also chooses **Everything** for the rest of Library, then has two sections:
+The tree starts with all of the chosen subject's cards (**All of Physiology**, for example; **All cards** under Everything and **Unsorted cards** under No subject), then has two sections:
 
-- **Subjects** lists your subjects in your order, each with its card count. Expand a subject to see its decks and documents. **No subject** holds decks and documents that are not filed under a subject. Archived decks sit behind **Archived decks (N)** at the end of the section. See [Subjects and deck organization](flashcards-organization.md).
-- **Tags** shows your eight most used tags; **Show all N tags** lists the rest.
+- **Decks** lists the subject's decks in your order, each with its card count, and ends with **New deck**. Under Everything it lists every deck, each with its subject's badge. The subject's archived decks sit behind **Archived decks (N)**. See [Subjects and deck organization](flashcards-organization.md).
+- **Tags** shows the eight tags the subject's cards use most; **Show all N tags** lists the rest. A tag chosen in a subject shows only that subject's cards with the tag.
 
-Choosing All cards, a subject, a deck, or a tag shows its cards in the list. Choosing a document opens Documents.
+Choosing the first entry, a deck, or a tag shows its cards in the list. A subject's documents are on its **Documents** tab.
 
 ## Screen sizes and going back
 
 On a tablet or desktop window the tree and the card list sit side by side, and you can drag the divider between them. Opening a card shows its editor as a panel over the card list; close it with **×** and the list is exactly as you left it, scrolled to the same place with the same search, filter and selection. On a phone you see one page at a time: the tree, then the card list, then the editor. The list's back button returns to the tree.
 
-Android Back steps back inside the Workbench before leaving Library: on a phone from the card list to the tree, and on wider screens from a deck, subject, or tag to **All cards**. An open editor handles Back itself. Unsaved editor changes still ask before you discard them when you choose another place or another card.
+Android Back steps back inside the Workbench before leaving Library: on a phone from the card list to the tree, and on wider screens from a deck or tag to all of the subject's cards. An open editor handles Back itself. Unsaved editor changes still ask before you discard them when you choose another place or another card.
 
 The app keeps a device-local presentation checkpoint for useful destinations, including the deck open in the Workbench. It is not a copy of card content, credentials, or the entire screen state. A real practice session can resume over its logical launch destination. If the deck no longer exists, the Workbench falls back to **All cards**. This recovery does not resurrect deleted content.
 
 ## Start from an empty library
 
-When the library has no active decks, **All cards** shows **No cards yet** with **New deck** and **Import deck**. On a phone the tree's Subjects section offers **New deck** instead while you have no subjects, and each subject's menu has **New deck here**. There are no empty folder tiles, selection controls, or collapse controls to work around. An archived-only library still lists its decks under **Archived decks (N)**.
+When the library has no active decks, **All cards** shows **No cards yet** with **New deck** and **Import deck**. On a phone the tree's **New deck** starts one. There are no empty folder tiles, selection controls, or collapse controls to work around. An archived-only library still lists its decks under **Archived decks (N)**.
 
-A new deck goes under the subject you created it in, or under No subject when you start it from the empty library. See [Subjects and deck organization](flashcards-organization.md) to file it later.
+A new deck goes under the subject you created it in, or under No subject when you start it from Everything or No subject. See [Subjects and deck organization](flashcards-organization.md) to file it later.
 
 ## The card list
 
@@ -59,7 +59,7 @@ Choose a deck in the tree to list its cards. The header names the deck and its s
 - **Export…** to save the deck as a portable file.
 - **Archive** and **Delete deck**.
 
-The same actions, plus **Move up** and **Move down**, are in the menu beside the deck in the tree. A subject's header offers **Practice…**, which opens the same practice options for the subject's decks, and **New deck**.
+The same actions, plus **Move up** and **Move down**, are in the menu beside the deck in the tree. All of a subject's cards offers **Practice…**, which opens the same practice options for the subject's decks, and **New deck**.
 
 **Merge into…** moves the deck's cards into another active deck while preserving card and note identities, schedules, review history, tags, media, and source provenance. The emptied source deck is archived afterward. Existing destination cards are not deduplicated just because their wording looks similar.
 
