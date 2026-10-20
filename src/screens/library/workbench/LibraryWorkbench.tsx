@@ -564,17 +564,14 @@ export function LibraryWorkbench({
       />
     </>
   ) : scope.kind === "subject" ? (
-    <>
-      <Button
-        variant="secondary"
-        size="small"
-        disabled={decksInSubject(library, scope.subjectId).every((deck) => deck.generatedCardCount === 0)}
-        onClick={() => beginPracticeSetup(decksInSubject(library, scope.subjectId))}
-      >
-        Practice…
-      </Button>
-      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "new-deck", subjectId: scope.subjectId })}>New deck</Button>
-    </>
+    <Button
+      variant="secondary"
+      size="small"
+      disabled={decksInSubject(library, scope.subjectId).every((deck) => deck.generatedCardCount === 0)}
+      onClick={() => beginPracticeSetup(decksInSubject(library, scope.subjectId))}
+    >
+      Practice…
+    </Button>
   ) : null;
 
   const empty = emptyCopy(scope, filter, query, scopeDeck);

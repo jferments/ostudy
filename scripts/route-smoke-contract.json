@@ -252,7 +252,7 @@
             "assertionFragments": [
               "main [data-testid='library-workbench'] nav[aria-label='Library']",
               "label(button) === 'Import deck'",
-              "assertEquals(\"Subjects\", snapshot.getString(\"sections\"))",
+              "assertEquals(\"Decks\", snapshot.getString(\"sections\"))",
               "assertEquals(1, snapshot.getInt(\"createActions\"))"
             ]
           }
