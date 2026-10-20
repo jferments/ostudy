@@ -166,12 +166,12 @@ fn narration_is_cut_into_whole_sentences_that_fit_one_request() {
 }
 
 #[test]
-fn the_voice_defaults_to_kokoro_through_the_document_writing_connection() {
+fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     let database = library();
     let unset = settings(&database);
     assert_eq!(unset.profile_id, None);
-    assert_eq!(unset.model_id, KOKORO);
-    assert_eq!(unset.voice, "af_heart");
+    assert_eq!(unset.model_id, DRAMA);
+    assert_eq!(unset.voice, "");
     assert_eq!(unset.revision, 0);
     assert_eq!(unset.models.len(), 2);
 
@@ -283,13 +283,14 @@ fn kept_audio_is_reused_without_asking_the_voice_again() {
     let database = library();
     let paths = temporary_paths("reuse");
     add_openrouter(&database, OPENROUTER, 1);
+    save(&database, Some(OPENROUTER), KOKORO, "bm_george", 0).unwrap();
     let lesson_id = lesson(&database);
     let narration = narration_of("two-limbs");
     let model = speech::speech_model(KOKORO).unwrap();
     let voice = Voice {
         engine: "openrouter",
         model,
-        voice: "af_heart",
+        voice: "bm_george",
     };
     let pieces = segments(&narration, model.max_characters);
     let mut kept = Vec::new();

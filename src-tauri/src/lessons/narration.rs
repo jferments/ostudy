@@ -208,7 +208,7 @@ struct Resolved {
     revision: i64,
 }
 
-/// The saved setting, or until one is saved: Kokoro's default voice through
+/// The saved setting, or until one is saved: Drama 3 (Joshi's pick) through
 /// the connection that writes documents if it is OpenRouter's, else the most
 /// recently changed OpenRouter connection. A saved model this build no longer
 /// knows falls back the same way but keeps its revision, so it can be saved over.
@@ -239,7 +239,7 @@ fn resolved(connection: &Connection) -> Result<Resolved, CommandError> {
     let profile_id = document_default
         .filter(|id| usable.iter().any(|item| item.id == *id))
         .or_else(|| usable.first().map(|item| item.id.clone()));
-    let model = speech::speech_model(speech::KOKORO).expect("Kokoro is in the speech catalog");
+    let model = speech::speech_model(speech::DRAMA).expect("Drama 3 is in the speech catalog");
     Ok(Resolved {
         profile_id,
         model,
