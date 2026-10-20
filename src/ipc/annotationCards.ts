@@ -33,3 +33,8 @@ export async function linkCardNoteToAnnotation(
 export async function getDocumentMarkedCards(documentId: string): Promise<DocumentMarkedCards> {
   return invoke<DocumentMarkedCards>("get_document_marked_cards", { input: { documentId } });
 }
+
+/** The mark a card was made from, or null for a card not made from one. */
+export async function getCardMarkSource(noteId: string): Promise<CardMarkSource | null> {
+  return invoke<CardMarkSource | null>("get_card_mark_source", { input: { noteId } });
+}

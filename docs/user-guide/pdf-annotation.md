@@ -10,7 +10,7 @@ The pages scroll in one column. **Back to documents** returns to the list, and s
 
 ### From a card's source
 
-A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
+A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. A card you made from a mark opens at that mark instead, with the mark selected; if you have since erased the mark, it opens at the mark's page. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
 
 A source opens only while its PDF is in your library. Once the document is deleted, or for cards from a shared deck (`.studydeck` files never carry the document or its citations), the source stays plain text.
 

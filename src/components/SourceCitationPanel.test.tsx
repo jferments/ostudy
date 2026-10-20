@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as annotationCards from "../ipc/annotationCards";
 import * as documents from "../ipc/documents";
 import { SourceCitationPanel } from "./SourceCitationPanel";
 
+vi.mock("../ipc/annotationCards", () => ({ getCardMarkSource: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDeckSourceCitations: vi.fn(),
   getNoteSourceCitation: vi.fn(),
@@ -34,6 +36,7 @@ describe("SourceCitationPanel", () => {
     vi.clearAllMocks();
     vi.mocked(documents.listDeckSourceCitations).mockResolvedValue([]);
     vi.mocked(documents.getNoteSourceCitation).mockResolvedValue(null);
+    vi.mocked(annotationCards.getCardMarkSource).mockResolvedValue(null);
   });
 
   it("renders a deck citation and exact source locator", async () => {
@@ -77,6 +80,21 @@ describe("SourceCitationPanel", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Open page 8" }));
     expect(onOpenPassage).toHaveBeenCalledWith({ documentId: "b".repeat(32), title: "Shock physiology", pageNumber: 8 });
+  });
+
+  it("opens a card made from a mark at that mark", async () => {
+    vi.mocked(documents.getNoteSourceCitation).mockResolvedValue(citation);
+    vi.mocked(annotationCards.getCardMarkSource).mockResolvedValue({
+      noteId: "e".repeat(32), documentId: "b".repeat(32), annotationId: "f".repeat(32), pageNumber: 9, quote: "Preload",
+    });
+    const onOpenPassage = vi.fn();
+
+    render(<SourceCitationPanel noteId={"e".repeat(32)} compact onOpenPassage={onOpenPassage} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open page 9" }));
+    expect(onOpenPassage).toHaveBeenCalledWith({
+      documentId: "b".repeat(32), title: "Shock physiology", pageNumber: 9, annotationId: "f".repeat(32),
+    });
   });
 
   it("keeps a removed source as text", async () => {
