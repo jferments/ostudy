@@ -1,7 +1,9 @@
 import { useId, useState } from "react";
 
-import { sameStudyScope, scopeMembers, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
+import type { StudyScope } from "../../ipc/knowledge";
 import type { ConversationSummary, TutorProject } from "../../ipc/tutor";
+import { Icon } from "../../ui/icons/Icon";
+import { IconButton } from "../../ui/icons/IconButton";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
@@ -9,25 +11,11 @@ import { Button } from "../../ui/primitives/Button";
 import { Checkbox, Disclosure, Textarea } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
-import { TutorSources } from "./TutorSources";
+import { sourcesLabel, TutorSources } from "./TutorSources";
 import { styles } from "./presentation";
 import type { TutorController, TutorProjectValues } from "./useTutorController";
 
 const GENERAL: StudyScope = { kind: "general", id: null };
-
-function scopeLabel(scope: StudyScope, choices: ScopeChoice[]): string {
-  if (scope.kind === "general") return "General discussion";
-  if (scope.kind === "library") return "Library";
-  const members = scopeMembers(scope);
-  if (members.length > 1) return `${members.length} sources`;
-  if (members.length === 1) {
-    const member = members[0];
-    return member
-      ? choices.find((choice) => sameStudyScope(choice.scope, member))?.title ?? "Selected source"
-      : "Selected source";
-  }
-  return "General discussion";
-}
 
 function ProjectEditor({
   tutor,
@@ -56,7 +44,6 @@ function ProjectEditor({
   return (
     <Dialog
       title={project ? "Edit Tutor project" : "New Tutor project"}
-      description="Projects organize chats and provide defaults. They do not merge chat history or grant cross-chat retrieval."
       onClose={onClose}
       busy={tutor.organizing}
       width="medium"
@@ -103,16 +90,13 @@ function ProjectEditor({
       <div className={styles.projectDefault}>
         <div>
           <strong>Default sources</strong>
-          <span className={styles.muted}>{scopeLabel(defaultScope, tutor.choices)}</span>
+          <span className={styles.muted}>{sourcesLabel(defaultScope, tutor.choices) ?? "None"}</span>
         </div>
         <Button disabled={tutor.organizing} onClick={() => setSourcesOpen(true)}>Choose sources</Button>
       </div>
-      <p className={styles.muted}>New chats inherit the current defaults. Existing chats and historical Tutor turns keep the sources they already captured.</p>
       {sourcesOpen ? (
         <TutorSources
           title="Default project sources"
-          description="Choose the sources new chats in this project start with. Existing chats are unchanged."
-          note="Selecting defaults is local organization only and sends nothing to an AI provider."
           applyLabel="Use as defaults"
           scope={defaultScope}
           choices={tutor.choices}
@@ -124,7 +108,7 @@ function ProjectEditor({
   );
 }
 
-function RenameConversationDialog({
+export function RenameConversationDialog({
   tutor,
   conversation,
   onClose,
@@ -182,7 +166,6 @@ function MoveConversationDialog({
   return (
     <Dialog
       title="Move conversation"
-      description="Moving changes organization only unless you explicitly apply the destination project's source defaults."
       onClose={onClose}
       busy={tutor.organizing}
       width="small"
@@ -215,7 +198,6 @@ function MoveConversationDialog({
         />
         Use destination project's current default sources
       </label>
-      <p className={styles.muted}>When this is off, the conversation keeps its current sources exactly.</p>
     </Dialog>
   );
 }
@@ -330,6 +312,14 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
             label={`${project.title} project actions`}
             disabled={organizationLocked}
             items={[
+              ...(project.archivedAt === null ? [{
+                id: "new-chat",
+                label: "New chat",
+                onSelect: () => {
+                  tutor.newConversationInProject(project.id);
+                  onSelected?.();
+                },
+              }] : []),
               { id: "edit", label: "Edit project", onSelect: () => setProjectEditor(project) },
               {
                 id: "archive",
@@ -340,19 +330,6 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
             ]}
           />
         </div>
-        {project.archivedAt === null ? (
-          <Button
-            size="small"
-            variant="text"
-            disabled={switchLocked}
-            onClick={() => {
-              tutor.newConversationInProject(project.id);
-              onSelected?.();
-            }}
-          >
-            + New chat in project
-          </Button>
-        ) : null}
         {conversations.map((conversation) => (
           <ConversationRow
             key={conversation.id}
@@ -365,7 +342,6 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
             onMove={setMoveTarget}
           />
         ))}
-        {!conversations.length ? <p className={styles.historyMeta}>No active chats.</p> : null}
       </section>
     );
   }
@@ -373,26 +349,25 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
   return (
     <>
       <nav className={styles.history} aria-label="Conversations">
-        <div className={styles.toolbar}>
+        <div className={styles.historyTop}>
           <Button
+            variant="primary"
             disabled={switchLocked}
             onClick={() => {
               tutor.newConversation();
               onSelected?.();
             }}
           >
-            + New chat
+            <Icon name="plus" size={16} /> New chat
           </Button>
-          <Button variant="secondary" disabled={organizationLocked} onClick={() => setProjectEditor("new")}>
-            New project
-          </Button>
+          <IconButton icon="folder" label="New project" disabled={organizationLocked} onClick={() => setProjectEditor("new")} />
         </div>
 
         {activeProjects.map((project) => <ProjectGroup key={project.id} project={project} />)}
 
         {ungrouped.length ? (
           <section className={styles.historyGroup} aria-label="Ungrouped conversations">
-            <div className={styles.historyGroupHeader}><strong>Ungrouped</strong></div>
+            {activeProjects.length ? <div className={styles.historyGroupHeader}><strong>Other chats</strong></div> : null}
             {ungrouped.map((conversation) => (
               <ConversationRow
                 key={conversation.id}
@@ -406,36 +381,38 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
               />
             ))}
           </section>
-        ) : !activeProjects.length && !archivedProjects.length && !archivedConversations.length ? (
-          <p className={styles.muted}>Your conversations and projects appear here.</p>
         ) : null}
 
-        {archivedProjects.length ? (
-          <Disclosure title={`Archived projects (${archivedProjects.length})`}>
-            <div className={styles.historyArchive}>
-              {archivedProjects.map((project) => <ProjectGroup key={project.id} project={project} />)}
-            </div>
-          </Disclosure>
-        ) : null}
+        {archivedProjects.length || archivedConversations.length ? (
+          <div className={styles.historyArchive}>
+            {archivedProjects.length ? (
+              <Disclosure title={`Archived projects (${archivedProjects.length})`}>
+                <div className={styles.archiveList}>
+                  {archivedProjects.map((project) => <ProjectGroup key={project.id} project={project} />)}
+                </div>
+              </Disclosure>
+            ) : null}
 
-        {archivedConversations.length ? (
-          <Disclosure title={`Archived chats (${archivedConversations.length})`}>
-            <div className={styles.historyArchive}>
-              {archivedConversations.map((conversation) => (
-                <ConversationRow
-                  key={conversation.id}
-                  tutor={tutor}
-                  conversation={conversation}
-                  projectTitle={projectTitle(conversation.projectId)}
-                  switchLocked={switchLocked}
-                  organizationLocked={organizationLocked}
-                  onSelected={onSelected}
-                  onRename={setRenameTarget}
-                  onMove={setMoveTarget}
-                />
-              ))}
-            </div>
-          </Disclosure>
+            {archivedConversations.length ? (
+              <Disclosure title={`Archived chats (${archivedConversations.length})`}>
+                <div className={styles.archiveList}>
+                  {archivedConversations.map((conversation) => (
+                    <ConversationRow
+                      key={conversation.id}
+                      tutor={tutor}
+                      conversation={conversation}
+                      projectTitle={projectTitle(conversation.projectId)}
+                      switchLocked={switchLocked}
+                      organizationLocked={organizationLocked}
+                      onSelected={onSelected}
+                      onRename={setRenameTarget}
+                      onMove={setMoveTarget}
+                    />
+                  ))}
+                </div>
+              </Disclosure>
+            ) : null}
+          </div>
         ) : null}
       </nav>
 
