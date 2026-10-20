@@ -253,7 +253,7 @@ describe("HomeScreen", () => {
     wide.unmount();
     renderHome({ width: 390 });
     await screen.findByTestId("home-today");
-    expect(await within(cardiacTile()).findByText("4 sources · 111 cards · 91% remembered")).toBeTruthy();
+    await waitFor(() => expect(within(cardiacTile()).getByText(/4 sources · 111 cards/u).textContent).toBe("4 sources · 111 cards · 91% remembered"));
   });
 
   it("starts exactly what the strip counts", async () => {

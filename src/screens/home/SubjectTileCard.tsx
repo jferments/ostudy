@@ -29,7 +29,8 @@ export function SubjectTileCard({ tile, compact, remembered, onOpen }: SubjectTi
   const pill = tilePill(tile);
   const status = tileStatus(tile);
   // Phones fold the rate into the row's line; wider rows draw it as a bar.
-  const meta = status ? `${status.text}` : compact && percent !== null ? `${tileMeta(tile)} · ${percent}% remembered` : tileMeta(tile);
+  const meta = status ? `${status.text}` : tileMeta(tile);
+  const inlineRate = !status && compact && percent !== null;
   const showBar = !compact && percent !== null;
   const describedBy = [pill ? pillId : null, metaId, showBar ? rememberedId : null].filter(Boolean).join(" ");
 
@@ -53,7 +54,10 @@ export function SubjectTileCard({ tile, compact, remembered, onOpen }: SubjectTi
         </h3>
         <p id={metaId} className="tw:m-0 tw:flex tw:min-w-0 tw:items-center tw:gap-1.5 tw:text-small tw:text-muted-foreground">
           {status ? <Icon name={status.icon} size={14} className="tw:shrink-0" /> : null}
-          <span className="tw:min-w-0 tw:truncate">{meta}</span>
+          <span className="tw:min-w-0 tw:truncate">
+            {meta}
+            {inlineRate ? <> · {percent}%<span className="tw:sr-only"> remembered</span></> : null}
+          </span>
         </p>
       </div>
       {showBar ? (
@@ -64,24 +68,27 @@ export function SubjectTileCard({ tile, compact, remembered, onOpen }: SubjectTi
           <span className="tw:text-label tw:text-muted-foreground tw:tabular-nums">{percent}% remembered</span>
         </span>
       ) : null}
-      {pill ? (
-        <span
-          id={pillId}
-          className={cn(
-            "tw:inline-flex tw:shrink-0 tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-label tw:font-semibold tw:whitespace-nowrap",
-            pill.kind === "due"
-              ? color
-                ? color.soft
-                : "tw:bg-accent tw:text-accent-foreground"
-              : pill.kind === "done"
-                ? "tw:bg-success-soft tw:text-success"
-                : "tw:bg-(--ostudy-color-canvas-inset) tw:text-muted-foreground",
-          )}
-        >
-          {pill.kind === "done" ? <Icon name="check" size={13} /> : null}
-          {pill.text}
-        </span>
-      ) : null}
+      {/* A fixed column on wider rows keeps the bars lined up whatever the pill says. */}
+      <span className={compact ? "tw:contents" : "tw:flex tw:w-24 tw:shrink-0 tw:justify-end"}>
+        {pill ? (
+          <span
+            id={pillId}
+            className={cn(
+              "tw:inline-flex tw:shrink-0 tw:items-center tw:gap-1 tw:rounded-full tw:px-2.5 tw:py-0.5 tw:text-label tw:font-semibold tw:whitespace-nowrap",
+              pill.kind === "due"
+                ? color
+                  ? color.soft
+                  : "tw:bg-accent tw:text-accent-foreground"
+                : pill.kind === "done"
+                  ? "tw:bg-success-soft tw:text-success"
+                  : "tw:bg-(--ostudy-color-canvas-inset) tw:text-muted-foreground",
+            )}
+          >
+            {pill.kind === "done" ? <Icon name="check" size={13} /> : null}
+            {pill.text}
+          </span>
+        ) : null}
+      </span>
     </article>
   );
 }
