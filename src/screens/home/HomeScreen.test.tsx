@@ -24,6 +24,7 @@ import { HomeScreen } from "./HomeScreen";
 
 vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
+  createOperationId: () => "operation-1",
 }));
 vi.mock("../../ipc/home", () => ({ getHomeSummary: vi.fn() }));
 vi.mock("../../ipc/subjects", () => ({
@@ -129,6 +130,7 @@ function renderHome({
   const onOpenLibrary = vi.fn();
   const onPracticeSubject = vi.fn();
   const onOpenProgress = vi.fn();
+  const onOpenDeck = vi.fn();
   const view = render(
     <LayoutModeProvider>
       <AppearanceProvider
@@ -143,6 +145,9 @@ function renderHome({
               onOpenLibrary={onOpenLibrary}
               onPracticeSubject={onPracticeSubject}
               onOpenProgress={onOpenProgress}
+              onOpenDeck={onOpenDeck}
+              refreshDecks={vi.fn(async () => decks)}
+              showToast={vi.fn()}
             />
           </HomeSummaryProvider>
         </OverlayProvider>
@@ -153,6 +158,13 @@ function renderHome({
 }
 
 const DECKS = [makeDeck()];
+
+/** Chooses an order from the Your subjects menu. */
+async function sortBy(label: string): Promise<void> {
+  fireEvent.click(screen.getByRole("button", { name: "Sort subjects" }));
+  fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: label }));
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+}
 
 function tileNames(): string[] {
   return screen
@@ -184,7 +196,6 @@ describe("HomeScreen", () => {
     expect(within(strip).getByRole("heading", { name: "47 cards due today" })).toBeTruthy();
     expect(within(strip).getByText("About 9 minutes across 3 subjects · Monday, October 5")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Home" })).toBeTruthy();
-    expect(screen.getByText("4 subjects · 9 sources · 649 cards")).toBeTruthy();
 
     expect(tileNames()).toEqual([
       "Cardiac physiology",
@@ -206,18 +217,14 @@ describe("HomeScreen", () => {
   it("keeps the chosen order for the rest of the session", async () => {
     const first = renderHome();
     await screen.findByTestId("home-today");
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort subjects" }), {
-      target: { value: "your-order" },
-    });
+    await sortBy("Your order");
     expect(tileNames().slice(0, 4)).toEqual([
       "Cardiac physiology",
       "Pharmacology: Autonomic",
       "Spanish for clinicians",
       "Renal physiology",
     ]);
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort subjects" }), {
-      target: { value: "name" },
-    });
+    await sortBy("Name");
     expect(tileNames().slice(0, 4)).toEqual([
       "Cardiac physiology",
       "Pharmacology: Autonomic",
@@ -227,10 +234,26 @@ describe("HomeScreen", () => {
     first.unmount();
     renderHome();
     await screen.findByTestId("home-today");
-    expect((screen.getByRole("combobox", { name: "Sort subjects" }) as HTMLSelectElement).value).toBe("name");
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort subjects" }), {
-      target: { value: "most-due" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Sort subjects" }));
+    const menu = await screen.findByRole("menu", { name: "Sort subjects" });
+    expect(within(menu).getByRole("menuitemcheckbox", { name: "Name" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Most due first" }));
+  });
+
+  it("shows how much of each subject is remembered, as a bar on wide screens and in the line on phones", async () => {
+    vi.mocked(progressIpc.getProgressSubjects).mockResolvedValue([
+      { subjectId: "cardiac", name: "Cardiac physiology", cardCount: 111, solidCount: 0, dueTodayCount: 23, reviewCount: 40, rememberedCount: 36, correctRate: 0.9, retentionReviewCount: 40, retentionRememberedCount: 36, trueRetention: 0.912, retentionDelta: null, studyTimeMs: 0 },
+      { subjectId: "renal", name: "Renal physiology", cardCount: 0, solidCount: 0, dueTodayCount: 0, reviewCount: 0, rememberedCount: 0, correctRate: null, retentionReviewCount: 0, retentionRememberedCount: 0, trueRetention: null, retentionDelta: null, studyTimeMs: 0 },
+    ]);
+    const wide = renderHome();
+    await screen.findByTestId("home-today");
+    const cardiacTile = () => screen.getAllByTestId("subject-tile")[0] as HTMLElement;
+    expect(await within(cardiacTile()).findByText("91% remembered")).toBeTruthy();
+    expect(within(screen.getAllByTestId("subject-tile")[3] as HTMLElement).queryByText(/remembered/u)).toBeNull();
+    wide.unmount();
+    renderHome({ width: 390 });
+    await screen.findByTestId("home-today");
+    await waitFor(() => expect(within(cardiacTile()).getByText(/4 sources · 111 cards/u).textContent).toBe("4 sources · 111 cards · 91% remembered"));
   });
 
   it("starts exactly what the strip counts", async () => {
@@ -405,18 +428,22 @@ describe("HomeScreen", () => {
     expect(subjectsIpc.dismissSubjectFilingReview).toHaveBeenCalledWith({ entityKind: "deck", entityId: "d1" });
   });
 
-  it("welcomes an empty library with the mascot and three ways to start", async () => {
+  it("welcomes an empty library with the mascot, no explanation and three ways to start", async () => {
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
     vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
-    const { onOpenLibrary } = renderHome();
+    renderHome();
     const welcome = await screen.findByTestId("home-first-run");
     expect(within(welcome).getByRole("heading", { name: "Your library is empty" })).toBeTruthy();
     expect(welcome.querySelector('img[data-artwork-slot="empty.library"]')).not.toBeNull();
+    expect(welcome.querySelector("p")).toBeNull();
+    expect(within(welcome).queryByRole("button", { name: "Open Library" })).toBeNull();
     expect(screen.queryByTestId("home-today")).toBeNull();
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a document" }));
     expect(jobs.current.uploadDocument).toHaveBeenCalledOnce();
-    fireEvent.click(within(welcome).getByRole("button", { name: "Open Library" }));
-    expect(onOpenLibrary).toHaveBeenCalledOnce();
+    fireEvent.click(within(welcome).getByRole("button", { name: "Import a deck" }));
+    const importDialog = await screen.findByRole("dialog", { name: "Import deck" });
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import deck" })).toBeNull());
     fireEvent.click(within(welcome).getByRole("button", { name: "Create a subject" }));
     expect(await screen.findByRole("dialog", { name: "New subject" })).toBeTruthy();
   });
@@ -424,12 +451,12 @@ describe("HomeScreen", () => {
   it("does not call a library empty when its decks are all archived", async () => {
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
     vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
-    renderHome({ decks: [makeDeck({ archivedAt: 1_700_000_000_000 })] });
+    const { onOpenLibrary } = renderHome({ decks: [makeDeck({ archivedAt: 1_700_000_000_000 })] });
     const welcome = await screen.findByTestId("home-first-run");
     expect(within(welcome).getByRole("heading", { name: "Nothing to study yet" })).toBeTruthy();
     expect(within(welcome).queryByText(/Your library is empty/u)).toBeNull();
-    expect(within(welcome).getByText(/Your archived decks are in Library\./u)).toBeTruthy();
-    expect(within(welcome).getByRole("button", { name: "Open Library" })).toBeTruthy();
+    fireEvent.click(within(welcome).getByRole("button", { name: "Open Library" }));
+    expect(onOpenLibrary).toHaveBeenCalledOnce();
   });
 
   it("shows a plain icon instead of the mascot when mascot art is off", async () => {

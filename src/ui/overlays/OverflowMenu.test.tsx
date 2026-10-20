@@ -66,4 +66,26 @@ describe("OverflowMenu", () => {
     document.documentElement.dataset.theme = theme; renderMenu(); fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
     expect((await screen.findByRole("menuitem", { name: "Delete" })).className).toContain("tw:text-destructive");
   });
+  it("marks the current choice in the menu and in the phone sheet", async () => {
+    for (const compact of [false, true]) {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({ matches: matchesLayoutQuery(query, layoutWidths[compact ? "compact" : "wide"]), media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
+      const onName = vi.fn();
+      const { unmount } = render(<LayoutModeProvider><OverlayProvider><OverflowMenu label="Sort" items={[
+        { id: "due", label: "Most due first", checked: true, onSelect: vi.fn() }, { id: "name", label: "Name", checked: false, onSelect: onName },
+      ]} /></OverlayProvider></LayoutModeProvider>);
+      fireEvent.click(screen.getByRole("button", { name: "Sort" }));
+      if (compact) {
+        const sheet = await screen.findByRole("dialog", { name: "Sort" });
+        expect(within(sheet).getByRole("button", { name: "Most due first" }).getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(within(sheet).getByRole("button", { name: "Name" }));
+      } else {
+        const menu = await screen.findByRole("menu", { name: "Sort" });
+        expect(within(menu).getByRole("menuitemcheckbox", { name: "Most due first" }).getAttribute("aria-checked")).toBe("true");
+        expect(within(menu).getByRole("menuitemcheckbox", { name: "Name" }).getAttribute("aria-checked")).toBe("false");
+        fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Name" }));
+      }
+      expect(onName).toHaveBeenCalledOnce();
+      unmount();
+    }
+  });
 });

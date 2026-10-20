@@ -154,6 +154,9 @@ function App() {
       onOpenLibrary={() => void controller.openLibrary()}
       onPracticeSubject={(subjectId) => void controller.practiceSubject(subjectId)}
       onOpenProgress={() => navigate("analytics")}
+      onOpenDeck={(deckId) => void controller.openLibrary({ deckId })}
+      refreshDecks={controller.refreshDecks}
+      showToast={controller.showToast}
     />
   );
 
