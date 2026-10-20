@@ -83,7 +83,7 @@ export function QuestionGenerationSettings({ showToast, onDirtyChange }: Props) 
     }
   }
 
-  return <Panel className="tw:min-w-0" aria-busy={loading || saving} aria-label="Question generation" headingLevel={2}
+  return <Panel className="tw:min-w-0" aria-busy={loading || saving} aria-label="Question generation"
     title="Question generation"
     description="Choose the formats used for new document-generated cards. Existing cards and running tasks are unchanged. Image occlusion remains manually authored.">
     {loading ? <InlineProgress>Loading question generation preferences…</InlineProgress> : null}

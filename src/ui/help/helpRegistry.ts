@@ -9,7 +9,10 @@ export type HelpTopicId =
   | "documents.processing"
   | "practice.confidence"
   | "practice.dailyLimits"
-  | "settings.motion";
+  | "settings.motion"
+  | "settings.retention"
+  | "settings.reveal"
+  | "settings.backup";
 
 export interface HelpTopic {
   id: HelpTopicId;
@@ -61,7 +64,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "AI model for documents",
     summary: "Documents make cards and study guides with the model chosen for Flashcard and study-guide generation in Settings.",
     details:
-      "In Settings → AI/LLM, add a provider under AI providers, then choose it and a model for Flashcard and study-guide generation under Default AI models. A saved API key stays in this device's secure storage. The source stays in your library, and the cards it makes become an ordinary deck you can edit.",
+      "In Settings → AI, add a provider under AI providers, then choose it and a model for Flashcard and study-guide generation under Default AI models. A saved API key stays in this device's secure storage. The source stays in your library, and the cards it makes become an ordinary deck you can edit.",
     documentation: "AI providers and model profiles: Choose a model for each task",
     tutorialModuleId: "documents",
   },
@@ -88,7 +91,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Daily limits",
     summary: "Daily limits manage your workload without deleting or permanently hiding due cards.",
     details:
-      "Scheduled study keeps to New cards per day and Reviews per day from Settings → Review/Scheduling, and Cards available to study shows what the limits leave out. Choose Extra study when you want to study beyond today's schedule.",
+      "Scheduled study keeps to New cards per day and Reviews per day from Settings → Review, and Cards available to study shows what the limits leave out. A limit of 0 pauses that kind of card in scheduled sessions. Reviews before New day starts at count toward the previous day. Choose Extra study when you want to study beyond today's schedule; shuffling is chosen when you start a session.",
     documentation: "Practice, scheduling, and Progress: Choose a scope",
   },
   "settings.motion": {
@@ -99,5 +102,29 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     details:
       "Reduced motion removes card flips, parallax, spatial route movement, reorder interpolation, and particle celebrations while preserving clear state changes.",
     documentation: "Appearance, accessibility, help, and tutorials: Motion",
+  },
+  "settings.retention": {
+    id: "settings.retention",
+    title: "Desired retention",
+    summary: "How likely you want to be to remember a card when it comes back. Higher retention means shorter intervals and more reviews.",
+    details:
+      "The FSRS scheduler picks each card's next date so that you recall it with about this probability. Changing it affects future scheduling only; your review history and current schedules stay as they are.",
+    documentation: "Practice, scheduling, and Progress: Scheduling controls",
+  },
+  "settings.reveal": {
+    id: "settings.reveal",
+    title: "Answer side",
+    summary: "Basic cards show only the answer when flipped unless you keep the question above it.",
+    details:
+      "Fill in the blank cards always keep their surrounding text after reveal, so questions with several blanks stay understandable.",
+    documentation: "Practice, scheduling, and Progress: Reveal, check, rate, and continue",
+  },
+  "settings.backup": {
+    id: "settings.backup",
+    title: "Library backups",
+    summary: "A backup holds your whole library. API keys and session-only credentials are never included.",
+    details:
+      "Backups include documents, source files, study guides, collections, Tutor history, decks, templates, images, drafts, schedules, reviews, provider settings and app settings. Restoring replaces the current library after it checks the backup.",
+    documentation: "Backups, imports, and sharing: Create a whole-library backup",
   },
 };

@@ -57,7 +57,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
 
       {defaultBlock}
 
-      <Panel className="tw:min-w-0" aria-label="AI providers" headingLevel={2} title="AI providers"
+      <Panel className="tw:min-w-0" aria-label="AI providers" title="AI providers"
         description="Manage API keys and local or remote provider connections."
         actions={(
           <Button
@@ -116,7 +116,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             onDelete={() => void deleteProfile()}
           />
         ) : (
-          <Panel className="tw:col-span-full" headingLevel={2} title="Add an AI provider"
+          <Panel className="tw:col-span-full" title="Add an AI provider"
             description="Choose a provider to configure a local server or API connection." />
         )}
       </div>
@@ -164,7 +164,7 @@ function ProfileSetup({
 
   return (
     <>
-      <Panel className="tw:min-w-0" aria-busy={controller.mutating} headingLevel={2}
+      <Panel className="tw:min-w-0" aria-busy={controller.mutating}
         title={profile ? `Configure ${profile.displayName}` : "Add AI provider"}
         description="Configure the provider connection and credential used by one or more AI models.">
 

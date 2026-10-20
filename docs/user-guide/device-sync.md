@@ -2,7 +2,7 @@
 
 Device synchronization lets one ostudy installation send selected data directly to another trusted installation. There is no ostudy cloud account, and accepting a transfer never uploads the receiving device's library back to the sender.
 
-Open **Settings → Backup/Sync → Device synchronization**.
+Open **Settings → Backup and sync → Device synchronization**.
 
 ## Two connection paths
 
@@ -90,7 +90,7 @@ The sender normally detects its LAN address automatically. **Advanced LAN addres
 
 On the receiving Android device:
 
-1. Open **Settings → Backup/Sync → Device synchronization**.
+1. Open **Settings → Backup and sync → Device synchronization**.
 2. Select **Scan and receive**.
 3. Grant camera access if Android asks for it.
 4. Center the complete QR code inside the camera frame, including the white border.

@@ -140,7 +140,7 @@ A user-started long document task can acquire a foreground service with a visibl
 
 ## 7. Trusted-device synchronization
 
-Open **Settings → Backup/Sync → Device synchronization**. The sender chooses among Flashcards, Documents, Study Guides, API provider settings, and Saved API keys. Flashcards/Documents/Study Guides default on; provider settings/keys default off. Study Guides require Documents and Saved API keys require API provider settings. Native validation repeats those dependency rules.
+Open **Settings → Backup and sync → Device synchronization**. The sender chooses among Flashcards, Documents, Study Guides, API provider settings, and Saved API keys. Flashcards/Documents/Study Guides default on; provider settings/keys default off. Study Guides require Documents and Saved API keys require API provider settings. Native validation repeats those dependency rules.
 
 Selecting Documents transfers the managed source/page/source-asset files and durable processing graph, including canonical/semantic/OCR state, outlines/checkpoints, durable LLM generation state, learning plans/topics, and document artifact metadata. Study Guides remain a separate selectable graph.
 

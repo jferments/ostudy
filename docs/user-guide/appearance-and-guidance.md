@@ -50,6 +50,8 @@ Escape or Android Back closes an active tutorial before ordinary navigation. Tur
 
 ## Other Settings sections
 
-The normal tabs are Appearance, Backup/Sync, AI/LLM, Review/Scheduling, Card templates, and Diagnostics. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup/Sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
+Settings has six sections: Appearance, Review, Card templates, AI, Backup and sync, and Diagnostics. On a wider screen they are listed in a shaded pane beside the open section; on a phone Settings opens on the list, and Back returns to it from a section. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup and sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
+
+Changes to Appearance, Review and Backup and sync preview at once. While any are unsaved, a bar at the bottom offers **Discard** and **Save**. **Restore defaults** in a section's header puts that section's preferences back to their defaults, still unsaved until you choose Save.
 
 For current study routes see [Getting started](getting-started.md), for deck actions see [Library Workbench](flashcards-workspace.md), and for recoverable data versus device-local presentation state see [Backups](backups-imports-and-sharing.md).

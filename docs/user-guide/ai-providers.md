@@ -18,7 +18,7 @@ A model available through OpenRouter is not a dedicated adapter for its original
 
 ## Add a provider
 
-Open **Settings → AI/LLM** and choose **Add provider** in **AI providers**. Pick the **Provider**. For llama.cpp enter its **Server URL**; for a cloud provider enter the **API key**. Choose **Connect**, then **Save provider**. Saved providers appear as tiles marked **Ready**, **Needs API key** or **Disabled**; select one to change it. **Refresh model catalog** reloads the provider's model list.
+Open **Settings → AI** and choose **Add provider** in **AI providers**. Pick the **Provider**. For llama.cpp enter its **Server URL**; for a cloud provider enter the **API key**. Choose **Connect**, then **Save provider**. Saved providers appear as tiles marked **Ready**, **Needs API key** or **Disabled**; select one to change it. **Refresh model catalog** reloads the provider's model list.
 
 **Advanced settings** under a provider hold the **Profile name**, the **Provider inactivity timeout**, **Enable this provider**, **API key storage** (**Save securely** or **This session only**), **Remove API key** and **Delete provider**. A llama.cpp provider also offers **Server authentication** and, for a private-network address over plain HTTP, **Allow unencrypted LAN connection**. An OpenRouter provider offers **Require OpenRouter zero-data-retention routing**.
 
