@@ -114,8 +114,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     [library],
   );
   const subjectOf = (document: DocumentSummary) => placements.get(document.id) ?? null;
+  const [query, setQuery] = useState("");
+  const search = query.trim().toLocaleLowerCase();
   // One group per subject that holds documents, in the learner's order, then No subject.
-  const groups = useMemo(() => {
+  const filedGroups = useMemo(() => {
     const filed = (subjectId: string | null) => documents.filter((document) => (placements.get(document.id) ?? null) === subjectId);
     if (props.subjectId !== undefined) return [{ subjectId: props.subjectId, name: "", documents: filed(props.subjectId) }];
     return [
@@ -123,12 +125,22 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       { subjectId: null, name: "No subject", documents: filed(null) },
     ].filter((group) => group.documents.length > 0);
   }, [documents, placements, props.subjectId, subjects]);
+  const filedCount = filedGroups.reduce((sum, group) => sum + group.documents.length, 0);
+  // Search narrows each group to the documents whose title or file name matches.
+  const groups = useMemo(
+    () => search === ""
+      ? filedGroups
+      : filedGroups
+        .map((group) => ({ ...group, documents: group.documents.filter((document) => matchesSearch(document, search)) }))
+        .filter((group) => group.documents.length > 0),
+    [filedGroups, search],
+  );
   const shownCount = groups.reduce((sum, group) => sum + group.documents.length, 0);
   const subjectId = typeof props.subjectId === "string" ? props.subjectId : null;
   // The subject's materials reread their status whenever its documents or ranges change.
   const materialsKey = subjectId === null || !library
     ? 0
-    : `${library.documentFilingRevision}:${groups[0]?.documents.length ?? 0}`;
+    : `${library.documentFilingRevision}:${filedCount}`;
 
   const openDocument = (document: DocumentSummary) => document.sourceFormat === "image_bundle"
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
@@ -314,7 +326,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 key={subjectId}
                 subjectId={subjectId}
                 refreshKey={materialsKey}
-                hasDocuments={shownCount > 0}
+                hasDocuments={filedCount > 0}
                 refreshDecks={props.refreshDecks}
                 onStudy={props.onStudySubject}
                 onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
@@ -334,12 +346,29 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         }
       />
       {props.headerSupplement}
+      {filedCount > 0 ? (
+        <div role="search" className="tw:mb-4 tw:flex tw:min-w-0">
+          <label className="tw:relative tw:flex tw:w-full tw:max-w-80 tw:items-center tw:compact:max-w-none">
+            <span className="tw:sr-only">Search documents</span>
+            <Icon name="search" size={16} className="tw:pointer-events-none tw:absolute tw:left-3 tw:text-muted-foreground" />
+            <TextField
+              type="search"
+              value={query}
+              placeholder="Search documents"
+              className="tw:w-full tw:pl-9"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </label>
+        </div>
+      ) : null}
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {filing.error ? <InlineNotice kind="error" className="tw:mb-5">{filing.error}</InlineNotice> : null}
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
         <EmptyState title="No documents yet" icon="document" />
-      ) : shownCount === 0 ? (
+      ) : filedCount === 0 ? (
         <EmptyState title={props.subjectId === null ? "Every document has a subject" : "No documents in this subject yet"} icon="document" />
+      ) : shownCount === 0 ? (
+        <EmptyState title={`No documents match “${query.trim()}”`} icon="search" />
       ) : props.subjectId !== undefined ? (
         <section aria-labelledby="documents-list-heading" className="tw:grid tw:min-w-0">
           <h2 id="documents-list-heading" className="tw:sr-only">Documents</h2>
@@ -554,4 +583,9 @@ function MoreCardsDialog({ title, instructions, onChange, onClose, onSubmit }: {
       </FormField>
     </Dialog>
   );
+}
+
+function matchesSearch(document: DocumentSummary, search: string): boolean {
+  return document.title.toLocaleLowerCase().includes(search)
+    || document.originalFilename.toLocaleLowerCase().includes(search);
 }
