@@ -3,7 +3,10 @@ use super::super::super::{
     profiles::ProfileSnapshot,
     providers::{ProviderModel, ProviderModelReasoning},
 };
-use super::super::runner::{classify_model_match_for_test, probe_reasoning_effort_for_test};
+use super::super::runner::{
+    classify_model_match_for_test, document_reasoning_effort_for_test,
+    probe_reasoning_effort_for_test,
+};
 
 fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
     ProfileSnapshot {
@@ -131,5 +134,42 @@ fn openrouter_probe_matches_runtime_none_when_catalog_has_no_reasoning_contract(
     assert_eq!(
         probe_reasoning_effort_for_test(&profile, Some(&models)),
         "none"
+    );
+}
+
+#[test]
+fn openrouter_image_probe_reasons_as_document_work_does() {
+    let mut optional = profile(ProviderKind::Openrouter, "reasoning/optional");
+    optional.reasoning_effort = "high".to_string();
+    let optional_models = vec![model(
+        "reasoning/optional",
+        Some(ProviderModelReasoning {
+            supported_efforts: Some(vec!["low".to_string(), "high".to_string()]),
+            default_effort: Some("high".to_string()),
+            default_enabled: Some(true),
+            supports_max_tokens: true,
+            mandatory: false,
+        }),
+    )];
+    assert_eq!(
+        document_reasoning_effort_for_test(&optional, Some(&optional_models)),
+        "none"
+    );
+
+    let mut mandatory = profile(ProviderKind::Openrouter, "reasoning/mandatory");
+    mandatory.reasoning_effort = "high".to_string();
+    let mandatory_models = vec![model(
+        "reasoning/mandatory",
+        Some(ProviderModelReasoning {
+            supported_efforts: Some(vec!["low".to_string(), "high".to_string()]),
+            default_effort: Some("high".to_string()),
+            default_enabled: Some(true),
+            supports_max_tokens: true,
+            mandatory: true,
+        }),
+    )];
+    assert_eq!(
+        document_reasoning_effort_for_test(&mandatory, Some(&mandatory_models)),
+        "low"
     );
 }

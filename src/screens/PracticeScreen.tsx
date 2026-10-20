@@ -6,6 +6,7 @@ import { registerPracticeExitHandler } from "../controllers/practiceExitGuard";
 import { activeTimeForReview, useVisibleStudyTime } from "../controllers/visibleStudyTime";
 import type { AuthoringNote } from "../ipc/authoringNotes";
 import { getCardNote } from "../ipc/cards";
+import { getNoteSourceCitation } from "../ipc/documents";
 import {
   createMutationId,
   createOperationId,
@@ -43,7 +44,9 @@ import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
 import { LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { sourcePassageFor, type SourcePassage } from "../components/sourcePassage";
 import { CardEditorScreen } from "./CardEditorScreen";
+import { SourcePassageDialog } from "./documents/annotator/SourcePassageDialog";
 import { PracticeComplete } from "./practice/PracticeComplete";
 import { ActivePractice } from "./practice/ActivePractice";
 import { mergePracticeQuestion, mergeQuestionAttempt } from "./practice/questionSession";
@@ -170,6 +173,28 @@ export function PracticeScreen({
     visibleStudyTime.pause("editor");
     return () => visibleStudyTime.resume("editor");
   }, [editorOpen, visibleStudyTime]);
+
+  // The cited page of the card on screen, if its PDF is still in the library.
+  const currentNoteId = current?.presentation.noteId ?? null;
+  const [citedPassage, setCitedPassage] = useState<{ noteId: string; passage: SourcePassage | null } | null>(null);
+  useEffect(() => {
+    if (!currentNoteId) return undefined;
+    let active = true;
+    void getNoteSourceCitation(currentNoteId)
+      .then((citation) => { if (active) setCitedPassage({ noteId: currentNoteId, passage: sourcePassageFor(citation) }); })
+      // A citation that cannot be read leaves the card without a Source action.
+      .catch(() => { if (active) setCitedPassage({ noteId: currentNoteId, passage: null }); });
+    return () => { active = false; };
+  }, [currentNoteId]);
+  const currentPassage = citedPassage?.noteId === currentNoteId ? citedPassage.passage : null;
+  const [readingSource, setReadingSource] = useState<SourcePassage | null>(null);
+  // Reading the source covers the card, so it is not the card's study time either.
+  const sourceOpen = readingSource !== null;
+  useEffect(() => {
+    if (!sourceOpen) return;
+    visibleStudyTime.pause("source");
+    return () => visibleStudyTime.resume("source");
+  }, [sourceOpen, visibleStudyTime]);
 
   useEffect(() => {
     if (isStarting) return registerPracticeExitHandler(async () => false);
@@ -693,7 +718,7 @@ export function PracticeScreen({
     return <CardEditorScreen deck={editorDeck} decks={[editorDeck]} card={editingCard}
       onCancel={() => setEditingCard(null)} onSaved={async (saved) => finishCardEdit(saved.noteId)}
       onQuestionSaved={async (noteId) => finishCardEdit(noteId)} onTemplateGenerated={async () => undefined}
-      onDirtyChange={() => undefined} onMoveCopy={() => undefined} />;
+      onDirtyChange={() => undefined} onMoveCopy={() => undefined} showToast={showToast} />;
   }
 
   if (session && completed) {
@@ -720,10 +745,12 @@ export function PracticeScreen({
       flipAnimationEnabled={flipAnimationEnabled}
       displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? false} errorMessage={errorMessage}
       onReveal={() => void revealAnswer()} onScore={(score) => void submitScore(score)} onEdit={() => void editCurrentCard()}
+      sourcePage={currentPassage?.pageNumber ?? null} onOpenSource={() => setReadingSource(currentPassage)}
       onScheduleAction={(action, intent) => void manageCurrent(action, intent)} onEnd={() => void endSession()}
       onLinkError={setErrorMessage} onSaveQuestionAnswer={saveQuestionAnswer}
       onCheckQuestionAnswer={checkQuestionAnswer} onRevealQuestionAnswer={revealQuestionAnswer} onQuestionAttempt={acceptQuestionAttempt}
       onQuestionChecked={finishQuestionExposure} />
+    {readingSource ? <SourcePassageDialog passage={readingSource} onClose={() => setReadingSource(null)} showToast={showToast} /> : null}
   </PerformanceProfiler>;
 
   if (isStarting && !session) {
