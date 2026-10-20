@@ -79,6 +79,12 @@ mod tests {
             ),
             1
         );
+        // Later migrations keep the lecture decks.
+        apply_migrations(&mut connection).unwrap();
+        assert_eq!(
+            count(&connection, "SELECT COUNT(*) FROM prepared_exports"),
+            3
+        );
         validate_input(&connection).unwrap();
     }
 

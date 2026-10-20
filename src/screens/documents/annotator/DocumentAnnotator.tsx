@@ -18,6 +18,7 @@ import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
 import { MarkCardEditor, type CardMark } from "./MarkCardEditor";
+import { useAnnotatedPdfExport } from "./useAnnotatedPdfExport";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "./useAnnotatorViewport";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "./useDocumentAnnotator";
 
@@ -49,6 +50,8 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
   const controller = useDocumentAnnotator(documentId, showToast);
   const { leave, closing } = useAnnotatorLeave(controller);
   const close = useCallback(() => leave(onClose), [leave, onClose]);
+  const { exporting, exportPdf } = useAnnotatedPdfExport(documentId, controller.flush, showToast);
+  const hasAnnotations = [...controller.annotations.values()].some((page) => page.length > 0);
 
   // The cards made from this document's marks; a newer read replaces an older one.
   const [marked, setMarked] = useState<DocumentMarkedCards | null>(null);
@@ -90,6 +93,13 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
       actions={
         <div className="tw:flex tw:items-center tw:gap-3">
           <SaveStatus state={controller.saveState} onRetry={controller.retrySave} />
+          {hasAnnotations ? (
+            <Button size="small" variant="secondary" disabled={closing || exporting}
+              aria-label="Save PDF with your annotations" onClick={() => void exportPdf()}>
+              <Icon name="download" />
+              <span className="tw:compact:hidden">{exporting ? "Saving PDF…" : "Save PDF"}</span>
+            </Button>
+          ) : null}
           {onPracticeCards && markedCardIds.length > 0 ? (
             <Button size="small" variant="secondary" disabled={closing}
               onClick={() => void leave(() => onPracticeCards(markedCardIds))}>

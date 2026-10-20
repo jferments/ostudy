@@ -211,6 +211,7 @@ export interface NativeCommandGatewayMap {
   "open_document_source": readonly [typeof GatewayModule14.openDocumentSource];
   "open_document_study_guide_section": readonly [typeof GatewayModule35.openStudyGuideSection];
   "open_editor_draft": readonly [typeof GatewayModule15.openEditorDraft];
+  "prepare_annotated_pdf": readonly [typeof GatewayModule12.prepareAnnotatedPdf];
   "prepare_collection_study_guide_pdf": readonly [typeof GatewayModule37.prepareCollectionStudyGuidePdf];
   "prepare_collection_synthesis": readonly [typeof GatewayModule22.prepareCollectionSynthesis];
   "prepare_deck_export": readonly [typeof GatewayModule9.prepareDeckExport];

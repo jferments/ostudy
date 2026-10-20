@@ -1,3 +1,5 @@
+import { createOperationId } from "./common";
+import type { PreparedExport } from "./externalFiles";
 import { invoke } from "./transport";
 
 /** Colors are `#rrggbb`; every length is in PDF points from the page's top-left corner. */
@@ -155,4 +157,22 @@ export interface DocumentPageText {
 
 export async function getDocumentPageText(documentId: string, pageNumber: number): Promise<DocumentPageText> {
   return invoke<DocumentPageText>("get_document_page_text", { input: { documentId, pageNumber } });
+}
+
+export interface PreparedAnnotatedPdf {
+  preparedExport: PreparedExport;
+  /** Annotations drawn into the copy, and the pages they are on. */
+  annotationCount: number;
+  pageCount: number;
+}
+
+/**
+ * Prepares a copy of a PDF document with its annotations drawn into the pages,
+ * for the learner to save or share. The stored document is not changed.
+ */
+export async function prepareAnnotatedPdf(
+  documentId: string,
+  operationId = createOperationId(),
+): Promise<PreparedAnnotatedPdf> {
+  return invoke<PreparedAnnotatedPdf>("prepare_annotated_pdf", { input: { documentId, operationId } });
 }
