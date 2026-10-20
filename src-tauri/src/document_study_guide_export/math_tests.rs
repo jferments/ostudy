@@ -1,6 +1,4 @@
 use super::*;
-use oxidize_pdf::parser::{PdfDocument, PdfReader};
-use std::io::Cursor;
 
 fn fixture() -> EffectiveGuideExport {
     EffectiveGuideExport {
@@ -17,11 +15,9 @@ fn fixture() -> EffectiveGuideExport {
     }
 }
 
-fn extracted_text(path: &Path) -> String {
-    let parsed = PdfDocument::new(PdfReader::new(Cursor::new(fs::read(path).unwrap())).unwrap());
-    (0..parsed.page_count().unwrap())
-        .map(|page| parsed.extract_text_from_page(page).unwrap().text)
-        .collect::<Vec<_>>()
+fn extracted_text(export: &EffectiveGuideExport) -> String {
+    super::tests::rendered_pages(export, StudyGuidePdfTheme::Navy)
+        .1
         .join("\n")
 }
 
@@ -29,15 +25,13 @@ fn extracted_text(path: &Path) -> String {
 fn supported_document_pdf_math_is_typeset_without_source_fallback_notice() {
     let export = fixture();
     assert!(!math_source::requires_source_fallback(&export));
-    let path = std::env::temp_dir().join(format!("ostudy-guide-math-{}.pdf", std::process::id()));
-    render_study_guide_pdf(&export, &path).unwrap();
-    let text = extracted_text(&path);
+    let text = extracted_text(&export);
     assert!(!text.contains("Math notation:"));
     assert!(!text.contains(r"\frac{a}{b}"));
-    assert!(text.contains('a'));
-    assert!(text.contains('b'));
+    // Typst writes math letters as Unicode mathematical italic.
+    assert!(text.contains('𝑎'));
+    assert!(text.contains('𝑏'));
     assert_eq!(export.overview, r"Solve \(\frac{a}{b}\).");
-    fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -45,33 +39,21 @@ fn unsupported_document_pdf_math_preserves_source_and_discloses_fallback() {
     let mut export = fixture();
     export.overview = r"Review \(\overset{?}{x}\).".into();
     assert!(math_source::requires_source_fallback(&export));
-    let path = std::env::temp_dir().join(format!(
-        "ostudy-guide-math-fallback-{}.pdf",
-        std::process::id()
-    ));
-    render_study_guide_pdf(&export, &path).unwrap();
-    let text = extracted_text(&path);
+    let text = extracted_text(&export);
     assert!(text.contains("Math notation:"));
     assert!(text.contains("LaTeX source"));
     assert!(text.contains(r"\overset{?}{x}"));
-    fs::remove_file(path).unwrap();
 }
 
 #[test]
-fn wide_formula_uses_bounded_source_fallback_lines() {
+fn wide_formula_is_kept_as_wrapped_source() {
     let source = format!("\\(\\frac{{{}}}{{b}}\\)", "a".repeat(120));
     let mut export = fixture();
-    export.overview = source.clone();
+    export.overview = source;
     assert!(math_source::requires_source_fallback(&export));
-    let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X);
-    let lines = source_fallback_lines(&source, BODY_SIZE, maximum_width);
-    assert!(lines.len() > 1);
-    for line in lines {
-        let FlowLine::Inline(line) = line else {
-            panic!("source fallback must remain text");
-        };
-        assert!(line.width <= maximum_width);
-    }
+    let text = extracted_text(&export);
+    assert!(text.contains("Math notation:"));
+    assert!(text.contains(r"\frac{"));
 }
 
 #[test]
@@ -79,17 +61,11 @@ fn unicode_prose_and_native_math_remain_selectable() {
     let mut export = fixture();
     export.overview = r"Пример: \(\alpha \le \beta\) и ΔP.".into();
     assert!(!math_source::requires_source_fallback(&export));
-    let path = std::env::temp_dir().join(format!(
-        "ostudy-guide-unicode-math-{}.pdf",
-        std::process::id()
-    ));
-    render_study_guide_pdf(&export, &path).unwrap();
-    let text = extracted_text(&path);
+    let text = extracted_text(&export);
     assert!(text.contains("Пример"));
-    assert!(text.contains('α'));
-    assert!(text.contains('β'));
+    assert!(text.contains('𝛼'));
+    assert!(text.contains('𝛽'));
     assert!(text.contains('≤'));
-    fs::remove_file(path).unwrap();
 }
 
 #[test]

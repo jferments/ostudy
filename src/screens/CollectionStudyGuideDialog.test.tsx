@@ -156,9 +156,12 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     </OverlayProvider>,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Export PDF…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
+  fireEvent.click(within(dialog).getByRole("radio", { name: /^Sage/u }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
   await waitFor(() => {
-    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, true);
+    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, true, "sage");
     expect(externalFiles.publishPreparedExport).toHaveBeenCalledWith("3".repeat(32));
     expect(showToast).toHaveBeenCalledWith(
       "success",
@@ -166,6 +169,7 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     );
   });
   expect(externalFiles.releasePreparedExport).toHaveBeenCalledWith("3".repeat(32));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull());
 });
 
 

@@ -14,16 +14,18 @@ import {
   type CollectionStudyGuide,
   type CollectionStudyGuideOverlay,
 } from "../ipc/studyMaterials";
+import type { StudyGuidePdfTheme } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { useOptionalTutor } from "./tutor/TutorContext";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
-import { Checkbox, Textarea } from "../ui/primitives/FormControls";
+import { Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
+import { GuideExportDialog } from "./study-guides/GuideDialogs";
 import { StudyGuideStructuredContent } from "./study-guides/StudyGuideContent";
 
 type CollectionEditingMode = "note" | "override";
@@ -47,7 +49,7 @@ export function CollectionStudyGuideDialog({
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [includeAnnotations, setIncludeAnnotations] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<CollectionEditingState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const refresh = useCallback(async () => {
@@ -130,12 +132,13 @@ export function CollectionStudyGuideDialog({
     }
   }
 
-  async function exportPdf(): Promise<void> {
+  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
     if (!guide || isExporting) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
+    let failed = false;
     try {
-      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations);
+      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations, theme);
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
@@ -151,10 +154,12 @@ export function CollectionStudyGuideDialog({
         showToast("success", `Exported collection study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
       }
     } catch (error: unknown) {
+      failed = true;
       showToast("error", getErrorMessage(error));
     } finally {
       if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
+      if (!failed) setExportOpen(false);
     }
   }
 
@@ -188,18 +193,8 @@ export function CollectionStudyGuideDialog({
         </div>
         <div className={styles.headerActions}>
           {guide ? (
-            <label className={styles.annotationToggle}>
-              <Checkbox
-                checked={includeAnnotations}
-                disabled={isExporting}
-                onCheckedChange={setIncludeAnnotations}
-              />
-              Include my notes in PDF
-            </label>
-          ) : null}
-          {guide ? (
-            <Button variant="secondary" disabled={isExporting} onClick={() => void exportPdf()}>
-              {isExporting ? "Exporting…" : "Export PDF"}
+            <Button variant="secondary" disabled={isExporting} onClick={() => setExportOpen(true)}>
+              Export PDF…
             </Button>
           ) : null}
           {guide ? (
@@ -321,6 +316,10 @@ export function CollectionStudyGuideDialog({
         <Button variant="secondary" disabled={isSaving} onClick={() => setEditing(null)}>Cancel</Button>
       </div>
     </div> : null}
+    {exportOpen ? (
+      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)}
+        onClose={() => setExportOpen(false)} />
+    ) : null}
     </InlineWorkspace>
   );
 }
