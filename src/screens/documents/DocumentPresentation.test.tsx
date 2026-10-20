@@ -114,6 +114,8 @@ async function openDocumentActions(
 ): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
+  // Base UI drops a click that lands before it wires the trigger, which then reports closed.
+  await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
   fireEvent.click(trigger);
   return screen.findByRole(presentation, { name: label });
 }
