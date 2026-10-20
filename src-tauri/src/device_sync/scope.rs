@@ -413,6 +413,7 @@ pub(crate) fn sanitize_snapshot(
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
     // Links from cards to the marks they were made from go with the marks.
+    // How far a learner has read each guide stays on the device too.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -437,7 +438,9 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
-             DELETE FROM note_annotation_sources;",
+             DELETE FROM note_annotation_sources;
+             DELETE FROM document_study_guide_section_reads;
+             DELETE FROM document_study_guide_positions;",
         )
         .map_err(CommandError::database)?;
 

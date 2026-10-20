@@ -88,6 +88,8 @@ fn kept(connection: &Connection) -> Kept {
         "lesson_revision_units",
         "lesson_progress",
         "note_annotation_sources",
+        "document_study_guide_section_reads",
+        "document_study_guide_positions",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");
