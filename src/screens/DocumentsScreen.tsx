@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { isActiveArtifactJob, useDocumentArtifactProgress } from "../controllers/useDocumentArtifactProgress";
@@ -29,19 +29,26 @@ import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
-import { type CollectionDialog, DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
-import { useDocumentCollectionsController } from "./documents/useDocumentCollectionsController";
+import { ReadingRangeDialog, rangeLabel } from "./documents/ReadingRangeDialog";
+import { SubjectStudyActions } from "./documents/SubjectStudyActions";
+import { useDocumentFiling } from "./documents/useDocumentFiling";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
-import { beginDocumentFolderDrag, isInteractiveDocumentDragOrigin } from "./documents/documentFolderDrag";
+import { subjectColorIndexes, subjectInitials } from "./home/homeModel";
+import { SubjectBadge } from "./home/SubjectBadge";
+import { MoveToSubjectSheet } from "./library/workbench/WorkbenchSheets";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
   /** Practises cards made from a document's marks. */
   onPracticeCards?: (cardIds: string[]) => Promise<void>;
-  /** Studies a collection live, as the decks filed in its subject. */
-  onStudyCollection?: (collectionId: string) => void;
+  /** Studies the decks a subject's study materials made. */
+  onStudySubject?: (subjectId: string) => void;
+  /** Opens a subject's own Documents page from Everything's groups; `null` is No subject. */
+  onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
   headerSupplement?: ReactNode;
+  /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
+  subjectId?: string | null;
 }
 
 type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
@@ -80,45 +87,65 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   );
   // Phones drop the row's Open button, so Open leads the row's menu there.
   const compact = useLayoutMode().layoutMode === "compact";
-  const collections = useDocumentCollectionsController();
-  // An upload into a collection files the document once the picker returns.
-  const latestCollections = useRef(collections);
-  latestCollections.current = collections;
-  const [collectionDialog, setCollectionDialog] = useState<CollectionDialog | null>(null);
+  const filing = useDocumentFiling();
   const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
-  const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
+  const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
-  const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
-  const handleContainedDocumentIdsChange = useCallback((next: string[]) => {
-    setContainedDocumentIds((current) => (
-      current.length === next.length && current.every((id, index) => id === next[index])
-        ? current
-        : next
-    ));
-  }, []);
-  const contained = new Set(containedDocumentIds);
-  const looseDocuments = documents.filter((document) => !contained.has(document.id));
-  const hasCollections = (collections.organization?.collections.length ?? 0) > 0;
+  const [moving, setMoving] = useState<DocumentSummary | null>(null);
+  const [ranging, setRanging] = useState<DocumentSummary | null>(null);
+  // An upload into a subject files the document once the picker returns.
+  const latestFiling = useRef(filing);
+  latestFiling.current = filing;
+
+  const library = filing.library;
+  const subjects = useMemo(
+    () => [...(library?.subjects ?? [])].sort((left, right) => left.sortOrder - right.sortOrder),
+    [library],
+  );
+  const colors = useMemo(() => subjectColorIndexes(subjects), [subjects]);
+  const placements = useMemo(
+    () => new Map((library?.documents ?? []).map((placement) => [placement.documentId, placement.subjectId])),
+    [library],
+  );
+  const subjectOf = (document: DocumentSummary) => placements.get(document.id) ?? null;
+  // One group per subject that holds documents, in the learner's order, then No subject.
+  const groups = useMemo(() => {
+    const filed = (subjectId: string | null) => documents.filter((document) => (placements.get(document.id) ?? null) === subjectId);
+    if (props.subjectId !== undefined) return [{ subjectId: props.subjectId, name: "", documents: filed(props.subjectId) }];
+    return [
+      ...subjects.map((subject) => ({ subjectId: subject.id as string | null, name: subject.name, documents: filed(subject.id) })),
+      { subjectId: null, name: "No subject", documents: filed(null) },
+    ].filter((group) => group.documents.length > 0);
+  }, [documents, placements, props.subjectId, subjects]);
+  const shownCount = groups.reduce((sum, group) => sum + group.documents.length, 0);
+  const subjectId = typeof props.subjectId === "string" ? props.subjectId : null;
+  // The subject's materials reread their status whenever its documents or ranges change.
+  const materialsKey = subjectId === null || !library
+    ? 0
+    : `${library.documentFilingRevision}:${groups[0]?.documents.length ?? 0}`;
 
   const openDocument = (document: DocumentSummary) => document.sourceFormat === "image_bundle"
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
-  const uploadInto = (collectionId: string) => void uploadDocument(undefined,
-    (documentId) => latestCollections.current.addDocument(collectionId, documentId));
+  const upload = () => {
+    const target = props.subjectId;
+    if (typeof target !== "string") return void uploadDocument();
+    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target));
+  };
 
-  if (collectionGuide) {
+  if (subjectGuide) {
     return (
-      <PageScaffold width="full" aria-label="Documents collection study guide">
+      <PageScaffold width="full" aria-label="Subject study guide">
         <CollectionStudyGuideDialog
-          collectionId={collectionGuide.id}
-          collectionTitle={collectionGuide.title}
+          collectionId={subjectGuide.id}
+          collectionTitle={subjectGuide.title}
           showToast={props.showToast}
-          onClose={() => setCollectionGuide(null)}
+          onClose={() => setSubjectGuide(null)}
         />
       </PageScaffold>
     );
@@ -148,26 +175,158 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
 
   const detailsDocument = detailsDocumentId ? documents.find((document) => document.id === detailsDocumentId) : undefined;
 
+  function renderRow(document: DocumentSummary) {
+    const guideJob = artifactProgress.jobs[document.id] ?? null;
+    const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
+    const cardBusy = busyDocumentIds.has(document.id);
+    const deleting = deletingDocumentIds.has(document.id);
+    const busy = cardBusy || deleting || guideGenerating;
+    const instructions = jobs.generationInstructionsFor(document);
+    const canceling = cancelingDocumentIds.has(document.id);
+    const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
+    const live = generationProgress[document.id] ?? null;
+    const learningPlan = learningPlans[document.id] ?? null;
+    const processing = document.lifecycleState === "processing";
+    const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
+    // A finished guide needs no panel; a running or failed one does.
+    const guideUnsettled = guideJob !== null && guideJob.state !== "succeeded" && guideJob.state !== "canceled";
+    const showArtifacts = authoring || guideGenerating || (!processing && guideUnsettled);
+    const filedIn = subjectOf(document);
+    const ranges = filing.rangesOf(document.id);
+    const range = filedIn !== null ? rangeLabel(document, ranges) : null;
+    // A loose document's one filing action sits on the row; elsewhere it is in the menu.
+    const addTo = filedIn === null && subjects.length > 0 && !processing;
+    const items: OverflowMenuItem[] = [];
+    if (canAnnotateDocument(document)) items.push({
+      id: "annotate", label: "Annotate", disabled: deleting,
+      onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+    });
+    if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
+      id: "range", label: "Reading range…", disabled: filing.busy,
+      onSelect: () => setRanging(document),
+    });
+    if (subjects.length > 0 && !processing) items.push({
+      id: "move", label: filedIn === null ? "Add to a subject…" : "Move to another subject…", disabled: filing.busy,
+      onSelect: () => setMoving(document),
+    });
+    if (filedIn !== null && !processing) items.push({
+      id: "unfile", label: "Remove from subject", disabled: filing.busy,
+      onSelect: () => void filing.moveDocument(document.id, null),
+    });
+    if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
+      id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
+      onSelect: () => setMoreCards({ document, instructions }),
+    });
+    if (document.generatedDeckId === null && !processing) items.push({
+      id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
+      onSelect: () => void retry(document, instructions),
+    });
+    if (!guideGenerating && !processing) items.push({
+      id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
+      onSelect: () => void generateStudyGuide(document),
+    });
+    if (guideGenerating && !processing) items.push({
+      id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
+      onSelect: () => void stopStudyGuide(document),
+    });
+    if (processing) items.push({
+      id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
+      onSelect: () => void stopGeneration(document),
+    });
+    items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
+    items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
+    if (!processing) items.push({
+      id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
+      onSelect: () => void deleteDocument(document),
+    });
+    const openDisabled = document.sourceFormat === "image_bundle" ? deleting : busy;
+    return (
+      <li
+        key={document.id}
+        data-testid="document-row"
+        aria-labelledby={`document-${document.id}`}
+        className="tw:grid tw:min-w-0 tw:gap-3 tw:py-3 tw:not-last:border-0 tw:not-last:border-b tw:not-last:border-solid tw:not-last:border-border"
+      >
+        <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-4 tw:compact:gap-3">
+          <DocumentThumb image={document.sourceFormat === "image_bundle"} />
+          <div className="tw:grid tw:min-w-0 tw:flex-1">
+            <h3 id={`document-${document.id}`} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{document.title}</h3>
+            <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
+              {[documentMeta(document), range].filter(Boolean).join(" · ")}
+              <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
+            </span>
+          </div>
+          <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
+            {materialSummary(document, guideJob)}
+          </span>
+          {document.lifecycleState === "ready" ? null : (
+            <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
+          )}
+          {addTo ? (
+            <Button size="small" className="tw:shrink-0 tw:compact:hidden" disabled={filing.busy} onClick={() => setMoving(document)}>
+              Add to…
+            </Button>
+          ) : (
+            <Button size="small" className="tw:shrink-0 tw:compact:hidden" disabled={openDisabled} onClick={() => openDocument(document)}>
+              Open
+            </Button>
+          )}
+          <OverflowMenu
+            label={`More actions for ${document.title}`}
+            items={compact || addTo ? [{ id: "open", label: "Open", onSelect: () => openDocument(document), disabled: openDisabled }, ...items] : items}
+          />
+        </div>
+        {processing || guideGenerating ? (
+          <span className="tw:sr-only" aria-live="polite">
+            {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
+          </span>
+        ) : null}
+        {showArtifacts ? (
+          <LearningArtifactProgressPanel
+            document={document}
+            progress={live}
+            guideJob={guideJob}
+            guideStarting={guideGenerating}
+            readFailed={artifactProgress.readFailed}
+          />
+        ) : processing ? (
+          <GenerationProgressPanel document={document} progress={live} />
+        ) : null}
+        {processing && learningPlan ? (
+          <CheckedLearningPlanPanel document={document} plan={learningPlan} />
+        ) : null}
+        {document.safeErrorMessage ? <InlineNotice kind="warning">{document.safeErrorMessage}</InlineNotice> : null}
+      </li>
+    );
+  }
+
+  const listClass = "tw:m-0 tw:grid tw:min-w-0 tw:list-none tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:px-4 tw:py-1 tw:compact:px-3";
+
   return (
     <PageScaffold width="full" role="region" aria-label="Documents">
       <PageHeader
         title="Documents"
         compact
         actions={
-          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
-            <Button
-              disabled={collections.organization === null || collections.busy}
-              onClick={() => setCollectionDialog({ kind: "create", name: "" })}
-            >
-              New collection
-            </Button>
+          <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2">
+            {subjectId !== null ? (
+              <SubjectStudyActions
+                key={subjectId}
+                subjectId={subjectId}
+                refreshKey={materialsKey}
+                hasDocuments={shownCount > 0}
+                refreshDecks={props.refreshDecks}
+                onStudy={props.onStudySubject}
+                onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
+              />
+            ) : null}
             <OverflowMenu
               label={isUploading ? "Choose a document…" : "Upload"}
               triggerPresentation="text"
               triggerVariant="primary"
               disabled={isUploading}
               items={[
-                { id: "document", label: "Document…", onSelect: () => void uploadDocument() },
+                { id: "document", label: "Document…", onSelect: upload },
                 { id: "images", label: "Images…", onSelect: () => setImageWorkspaceDocumentId(null) },
               ]}
             />
@@ -176,145 +335,55 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       />
       {props.headerSupplement}
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
-      <DocumentCollectionsWorkspace
-        controller={collections}
-        dialog={collectionDialog}
-        onDialogChange={setCollectionDialog}
-        documents={documents}
-        refreshDecks={props.refreshDecks}
-        onStudyCollection={props.onStudyCollection}
-        onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
-        onOpenDocument={openDocument}
-        onAnnotateDocument={(document) => setAnnotating({ id: document.id, title: document.title })}
-        onRenameDocument={setRenaming}
-        onUploadInto={uploadInto}
-        onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
-      />
+      {filing.error ? <InlineNotice kind="error" className="tw:mb-5">{filing.error}</InlineNotice> : null}
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
         <EmptyState title="No documents yet" icon="document" />
-      ) : looseDocuments.length === 0 ? null : (
-        <section aria-labelledby="loose-documents-heading" className="tw:grid tw:min-w-0 tw:gap-3">
-          {hasCollections ? (
-            <h2 id="loose-documents-heading" className="tw:m-0 tw:text-body tw:font-semibold">Documents</h2>
-          ) : <h2 id="loose-documents-heading" className="sr-only">Documents</h2>}
-          <ul className="tw:m-0 tw:grid tw:min-w-0 tw:list-none tw:gap-2 tw:p-0">
-            {looseDocuments.map((document) => {
-              const guideJob = artifactProgress.jobs[document.id] ?? null;
-              const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
-              const cardBusy = busyDocumentIds.has(document.id);
-              const deleting = deletingDocumentIds.has(document.id);
-              const busy = cardBusy || deleting || guideGenerating;
-              const instructions = jobs.generationInstructionsFor(document);
-              const canceling = cancelingDocumentIds.has(document.id);
-              const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
-              const live = generationProgress[document.id] ?? null;
-              const learningPlan = learningPlans[document.id] ?? null;
-              const processing = document.lifecycleState === "processing";
-              const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
-              // A finished guide needs no panel; a running or failed one does.
-              const guideUnsettled = guideJob !== null && guideJob.state !== "succeeded" && guideJob.state !== "canceled";
-              const showArtifacts = authoring || guideGenerating || (!processing && guideUnsettled);
-              const items: OverflowMenuItem[] = [];
-              if (canAnnotateDocument(document)) items.push({
-                id: "annotate", label: "Annotate", disabled: deleting,
-                onSelect: () => setAnnotating({ id: document.id, title: document.title }),
-              });
-              if (hasCollections && !processing) items.push({
-                id: "move", label: "Move to a collection…", disabled: collections.busy,
-                onSelect: () => setCollectionDialog({ kind: "move-document", documentId: document.id, targetCollectionId: "" }),
-              });
-              if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
-                id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
-                onSelect: () => setMoreCards({ document, instructions }),
-              });
-              if (document.generatedDeckId === null && !processing) items.push({
-                id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
-                onSelect: () => void retry(document, instructions),
-              });
-              if (!guideGenerating && !processing) items.push({
-                id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
-                onSelect: () => void generateStudyGuide(document),
-              });
-              if (guideGenerating && !processing) items.push({
-                id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
-                onSelect: () => void stopStudyGuide(document),
-              });
-              if (processing) items.push({
-                id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
-                onSelect: () => void stopGeneration(document),
-              });
-              items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
-              items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
-              if (!processing) items.push({
-                id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
-                onSelect: () => void deleteDocument(document),
-              });
-              return (
-                <li
-                  key={document.id}
-                  data-testid="document-row"
-                  aria-labelledby={`document-${document.id}`}
-                  className="tw:grid tw:min-w-0 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:py-3 tw:pr-3 tw:pl-4 tw:compact:pl-3"
-                >
-                  <div
-                    className="tw:flex tw:min-w-0 tw:cursor-grab tw:items-center tw:gap-4 tw:active:cursor-grabbing tw:compact:gap-3"
-                    data-document-drag-source={document.id}
-                    draggable={!processing}
-                    onDragStart={(event) => {
-                      if (isInteractiveDocumentDragOrigin(event.target)) {
-                        event.preventDefault();
-                        return;
-                      }
-                      beginDocumentFolderDrag(event.dataTransfer, document.id);
-                    }}
-                  >
-                    <DocumentThumb image={document.sourceFormat === "image_bundle"} />
-                    <div className="tw:grid tw:min-w-0 tw:flex-1">
-                      <h3 id={`document-${document.id}`} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{document.title}</h3>
-                      <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
-                        {documentMeta(document)}
-                        <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
-                      </span>
-                    </div>
-                    <span className="tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden">
-                      {materialSummary(document, guideJob)}
-                    </span>
-                    <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
-                    <Button size="small" className="tw:shrink-0 tw:compact:hidden"
-                      disabled={document.sourceFormat === "image_bundle" ? deleting : busy}
-                      onClick={() => openDocument(document)}>
-                      Open
-                    </Button>
-                    <OverflowMenu label={`More actions for ${document.title}`} items={compact ? [{
-                      id: "open", label: "Open", onSelect: () => openDocument(document),
-                      disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
-                    }, ...items] : items} />
-                  </div>
-                  {processing || guideGenerating ? (
-                    <span className="tw:sr-only" aria-live="polite">
-                      {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
-                    </span>
-                  ) : null}
-                  {showArtifacts ? (
-                    <LearningArtifactProgressPanel
-                      document={document}
-                      progress={live}
-                      guideJob={guideJob}
-                      guideStarting={guideGenerating}
-                      readFailed={artifactProgress.readFailed}
-                    />
-                  ) : processing ? (
-                    <GenerationProgressPanel document={document} progress={live} />
-                  ) : null}
-                  {processing && learningPlan ? (
-                    <CheckedLearningPlanPanel document={document} plan={learningPlan} />
-                  ) : null}
-                  {document.safeErrorMessage ? <InlineNotice kind="warning">{document.safeErrorMessage}</InlineNotice> : null}
-                </li>
-              );
-            })}
-          </ul>
+      ) : shownCount === 0 ? (
+        <EmptyState title={props.subjectId === null ? "Every document has a subject" : "No documents in this subject yet"} icon="document" />
+      ) : props.subjectId !== undefined ? (
+        <section aria-labelledby="documents-list-heading" className="tw:grid tw:min-w-0">
+          <h2 id="documents-list-heading" className="tw:sr-only">Documents</h2>
+          <ul className={listClass}>{groups[0]?.documents.map(renderRow)}</ul>
         </section>
+      ) : (
+        <div className="tw:grid tw:min-w-0 tw:gap-6">
+          {groups.map((group) => {
+            const headingId = `documents-group-${group.subjectId ?? "none"}`;
+            return (
+              <section key={headingId} aria-labelledby={headingId} data-testid="document-group" className="tw:grid tw:min-w-0 tw:gap-2.5">
+                <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2.5">
+                  <SubjectBadge
+                    subject={{
+                      subjectId: group.subjectId,
+                      initials: subjectInitials(group.name),
+                      colorIndex: group.subjectId === null ? null : (colors.get(group.subjectId) ?? null),
+                    }}
+                    size="small"
+                    className="tw:size-6 tw:text-caption"
+                  />
+                  <h2 id={headingId} className="tw:m-0 tw:min-w-0 tw:truncate tw:text-body tw:font-semibold">
+                    {group.name}
+                    <span className="tw:ml-2 tw:text-small tw:font-normal tw:text-muted-foreground">
+                      {group.documents.length.toLocaleString()} document{group.documents.length === 1 ? "" : "s"}
+                    </span>
+                  </h2>
+                  {props.onOpenSubject ? (
+                    <Button
+                      variant="text"
+                      size="small"
+                      className="tw:ml-auto tw:shrink-0"
+                      aria-label={`Open ${group.name}`}
+                      onClick={() => props.onOpenSubject?.(group.subjectId)}
+                    >
+                      Open subject <Icon name="chevron-right" size={16} />
+                    </Button>
+                  ) : null}
+                </div>
+                <ul className={listClass}>{group.documents.map(renderRow)}</ul>
+              </section>
+            );
+          })}
+        </div>
       )}
       {detailsDocument ? (
         <DocumentDetails
@@ -329,6 +398,25 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           document={renaming}
           onClose={() => setRenaming(null)}
           onSave={(title) => renameDocument(renaming, title)}
+        />
+      ) : null}
+      {moving ? (
+        <MoveToSubjectSheet
+          itemLabel={`“${moving.title}”`}
+          subjects={subjects}
+          currentSubjectId={subjectOf(moving) ?? undefined}
+          onClose={() => setMoving(null)}
+          onMove={(target) => filing.moveDocument(moving.id, target)}
+        />
+      ) : null}
+      {ranging ? (
+        <ReadingRangeDialog
+          document={ranging}
+          ranges={filing.rangesOf(ranging.id)}
+          busy={filing.busy}
+          error={filing.error}
+          onClose={() => setRanging(null)}
+          onSave={(ranges) => filing.setRanges(ranging.id, ranges)}
         />
       ) : null}
       {moreCards ? (
@@ -375,10 +463,10 @@ function formatAddedDate(timestamp: number): string {
 
 function materialSummary(document: DocumentSummary, guideJob: DocumentArtifactJob | null): string {
   const cards = document.generatedCardCount;
-  const parts = cards > 0 ? [`${cards.toLocaleString()} card${cards === 1 ? "" : "s"}`] : [];
+  const parts = guideJob?.state === "succeeded" ? ["Study guide"] : [];
+  if (cards > 0) parts.push(`${cards.toLocaleString()} card${cards === 1 ? "" : "s"}`);
   if (cards > 0 && !document.generatedDeckId) parts.push("deck deleted");
-  if (guideJob?.state === "succeeded") parts.push("guide");
-  return parts.length ? parts.join(" · ") : "Nothing yet";
+  return parts.length ? parts.join(" · ") : "Nothing made yet";
 }
 
 function statusTone(document: DocumentSummary): BadgeTone {

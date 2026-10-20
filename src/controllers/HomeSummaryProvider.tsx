@@ -14,6 +14,7 @@ import type { DeckSummary } from "../ipc/decks";
 import { getHomeSummary, type HomeSummary } from "../ipc/home";
 import type { AppSettings } from "../ipc/settings";
 import { getSubjectLibrary, type SubjectLibrary } from "../ipc/subjects";
+import { isLibrarySection } from "../navigation/appDestinations";
 import { useDocumentJobs } from "./DocumentJobsProvider";
 import type { AppSection, AppWorkflow } from "./useAppController";
 import { useRequestLane } from "./requestLane";
@@ -150,7 +151,9 @@ export function HomeSummaryProvider({
     [],
   );
 
-  const showsSummary = activeWorkflow === null && (section === "home" || section === "review");
+  // Home and every Library page show the summary's counts.
+  const showsSummary =
+    activeWorkflow === null && (section === "home" || section === "review" || isLibrarySection(section));
   useEffect(() => {
     if (showsSummary) scheduleRefresh();
   }, [scheduleRefresh, section, showsSummary]);
@@ -218,6 +221,11 @@ export function HomeSummaryProvider({
     ],
   );
   return <HomeSummaryContext.Provider value={value}>{children}</HomeSummaryContext.Provider>;
+}
+
+/** The summary where a HomeSummaryProvider is mounted, or null outside one. */
+export function useOptionalHomeSummary(): HomeSummaryState | null {
+  return useContext(HomeSummaryContext);
 }
 
 export function useHomeSummary(): HomeSummaryState {

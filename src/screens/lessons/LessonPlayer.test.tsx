@@ -11,6 +11,8 @@ vi.mock("../../ipc/lessons", () => ({
   getLesson: vi.fn(),
   saveLessonProgress: vi.fn(),
   answerLessonCheck: vi.fn(),
+  getLessonLecture: vi.fn(),
+  narrateLessonStep: vi.fn(),
 }));
 
 function makeProgress(overrides: Partial<lessonsIpc.LessonProgress> = {}): lessonsIpc.LessonProgress {
@@ -148,6 +150,28 @@ describe("LessonPlayer", () => {
     await vi.waitFor(() =>
       expect(props.showToast).toHaveBeenCalledWith("error", "Your place in this lesson was not saved: Disk full"),
     );
+  });
+
+  it("views the lesson as a lecture at the current step and comes back to it", async () => {
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 })));
+    vi.mocked(lessonsIpc.getLessonLecture).mockResolvedValue({
+      lessonId: "lesson-1",
+      revisionNumber: 2,
+      title: "Cardiac output",
+      slides: [
+        { kind: "title", stepKey: null, title: "Cardiac output", points: [], notes: "" },
+        { kind: "step", stepKey: "rate", title: "Heart rate", points: [], notes: "" },
+        { kind: "step", stepKey: "volume", title: "Stroke volume", points: ["Filling"], notes: "" },
+      ],
+    });
+    renderPlayer();
+    fireEvent.click(await screen.findByRole("button", { name: /View as lecture/u }));
+    expect(await screen.findByText("Slide 3 of 3")).toBeTruthy();
+    expect(lessonsIpc.getLessonLecture).toHaveBeenCalledWith("lesson-1", 2);
+
+    const breadcrumb = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    fireEvent.click(breadcrumb.getByRole("button", { name: /Cardiac output/u }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Stroke volume" })).toBeTruthy();
   });
 
   it("says when the lesson cannot open", async () => {

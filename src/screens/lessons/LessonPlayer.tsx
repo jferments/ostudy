@@ -19,6 +19,7 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { LectureView } from "./LectureView";
 import { LessonBlocks } from "./LessonBlocks";
 import { StepNarration } from "./StepNarration";
 
@@ -51,6 +52,7 @@ export function LessonPlayer({
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState<LessonProgress | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [lecture, setLecture] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
 
@@ -102,6 +104,17 @@ export function LessonPlayer({
   const steps = lesson.content.steps;
   const current = steps[step];
   if (!current) return null;
+  if (lecture) {
+    return (
+      <LectureView
+        lessonId={lessonId}
+        revisionNumber={lesson.revisionNumber}
+        lessonTitle={lesson.content.title}
+        stepKey={current.key}
+        onClose={() => setLecture(false)}
+      />
+    );
+  }
   const last = step === steps.length - 1;
   const finish = () => {
     setFinishing(true);
@@ -153,16 +166,19 @@ export function LessonPlayer({
             >
               {current.title}
             </h1>
-            {current.narration.trim() ? (
-              <div className="tw:pt-2">
+            <div className="tw:flex tw:flex-wrap tw:items-start tw:gap-2 tw:pt-2">
+              {current.narration.trim() ? (
                 <StepNarration
                   key={`${lesson.revisionNumber}-${current.key}`}
                   lessonId={lessonId}
                   revisionNumber={lesson.revisionNumber}
                   stepKey={current.key}
                 />
-              </div>
-            ) : null}
+              ) : null}
+              <Button size="small" variant="text" className="tw:rounded-full" onClick={() => setLecture(true)}>
+                <Icon name="view" size={16} /> View as lecture
+              </Button>
+            </div>
           </header>
           <LessonBlocks blocks={current.blocks} />
           {current.check ? (

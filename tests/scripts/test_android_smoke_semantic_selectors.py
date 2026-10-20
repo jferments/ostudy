@@ -29,7 +29,8 @@ class AndroidSmokeSemanticSelectorTests(unittest.TestCase):
         scenario = source[start:end]
         # The deck opens from the Workbench's tree by its name, not a retired deck row.
         self.assertNotIn("Open Android Emulator Smoke Deck", scenario)
-        self.assertIn("button.querySelector('span')?.textContent?.trim() === 'Android Emulator Smoke Deck'", scenario)
+        # A deck row can lead with its subject's badge, so any of its spans may carry the name.
+        self.assertIn("Array.from(button.querySelectorAll('span')).some(span => span.textContent?.trim() === 'Android Emulator Smoke Deck')", scenario)
         # Back closes the editor, then the card list, then leaves Library for Home.
         self.assertEqual(3, scenario.count("device.pressBack()"))
         self.assertLess(scenario.index("=== 'Add card'"), scenario.index("device.pressBack()"))

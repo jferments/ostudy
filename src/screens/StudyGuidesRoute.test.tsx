@@ -43,6 +43,7 @@ describe("StudyGuidesRoute", () => {
       sort: "recent",
       offset: 0,
       limit: 40,
+      subject: { kind: "all" },
     });
   });
 });

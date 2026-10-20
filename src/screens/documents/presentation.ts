@@ -23,7 +23,6 @@ export const guideReaderStyles = {
   "header": "tw:mb-5 tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-card tw:pb-4",
   "eyebrow": "tw:mt-0 tw:mb-1 tw:text-caption tw:font-medium tw:uppercase tw:tracking-wide tw:text-muted-foreground",
   "headerActions": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2",
-  "annotationToggle": "tw:flex tw:min-h-9 tw:items-center tw:gap-2 tw:text-small tw:coarse:min-h-touch",
   "layout": "tw:grid tw:min-w-0 tw:grid-cols-1 tw:items-start tw:gap-7 tw:xl:grid-cols-[14rem_minmax(0,1fr)]",
   "contents": "tw:grid tw:min-w-0 tw:gap-0.5 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-2 tw:text-small tw:xl:sticky tw:xl:top-4 tw:xl:max-h-[calc(100dvh-8rem)] tw:xl:overflow-y-auto tw:[&>strong]:mb-2 tw:[&>strong]:px-2 tw:[&_a]:rounded-md tw:[&_a]:px-2 tw:[&_a]:py-1.5 tw:[&_a]:text-muted-foreground tw:[&_a]:no-underline tw:[&_a:hover]:bg-muted tw:[&_a:hover]:text-foreground tw:[&_a:hover]:underline tw:[&_a:focus-visible]:outline-2 tw:[&_a:focus-visible]:outline-ring",
   "guide": "tw:grid tw:min-w-0 tw:gap-10",
