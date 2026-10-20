@@ -64,6 +64,7 @@ step() {
 }
 trap 'status=$?; ostudy_timing_finish_step failed; ostudy_timing_finish_total failed; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFULL CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
+FAST_NATIVE_DEFERRED=0
 step "Fast qualification"
 if [[ "${OSTUDY_FAST_CHECK_PASSED:-0}" == "1" ]]; then
   printf '\n\033[1;32mREUSE Fast qualification passed earlier in this workflow.\033[0m\n'
@@ -79,7 +80,8 @@ else
   if [[ "${OSTUDY_KEEP_FAILURE_ARTIFACTS:-0}" == 1 ]]; then
     FAST_ARGS+=(--keep-artifacts)
   fi
-  bash "$SCRIPT_DIR/check-fast.sh" "${FAST_ARGS[@]}"
+  OSTUDY_FULL_NATIVE_SUITE_FOLLOWS=1 bash "$SCRIPT_DIR/check-fast.sh" "${FAST_ARGS[@]}"
+  FAST_NATIVE_DEFERRED=1
 fi
 
 step "Verify audited PDFium runtime"
@@ -103,6 +105,11 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-f
 
 step "Rust unit, integration, and migration-fixture tests"
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+if (( FAST_NATIVE_DEFERRED == 1 )); then
+  # Every part of fast qualification has now passed on this tree: its frontend
+  # tests and Clippy in the fast step, and its native tests inside this suite.
+  ostudy_write_check_stamp fast
+fi
 
 step "Standalone Tauri build"
 pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked

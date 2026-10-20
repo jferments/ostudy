@@ -18,8 +18,10 @@ import smoke as webdriver
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
 SPACE_KEY = "\ue00d"
-# The same five destinations on every screen size; Search and Settings sit in the header.
-MAIN_NAVIGATION_LABELS = ["Home", "Library", "Review", "Tutor", "Progress"]
+# Home, Library, Tutor and Progress in the side rail, with Search and Settings at
+# its foot; a phone's bottom bar adds Settings and keeps Search in the header.
+MAIN_NAVIGATION_LABELS = ["Home", "Library", "Tutor", "Progress"]
+COMPACT_NAVIGATION_LABELS = [*MAIN_NAVIGATION_LABELS, "Settings"]
 # Library's outer page, which hosts Decks, Documents and Study guides below its tabs.
 LIBRARY_ROUTE_SELECTOR = "[data-testid='library']"
 EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
@@ -538,7 +540,7 @@ def assert_shell_placement(session_id: str, layout: str) -> None:
           inHeader: Boolean(header && navigation && header.contains(navigation)),
           bottom: navigation?.dataset.slot === 'bottom-navigation',
           search: visible(header?.querySelector("button[data-testid='app-search']")),
-          settings: visible(header?.querySelector("button[data-testid='app-settings']")),
+          settings: visible(document.querySelector("button[data-testid='app-settings']")),
           settingsInNavigation: Boolean(navigation?.querySelector("[data-testid*='settings']")),
         };
         """,
@@ -549,7 +551,7 @@ def assert_shell_placement(session_id: str, layout: str) -> None:
         "bottom": layout == "compact",
         "search": True,
         "settings": True,
-        "settingsInNavigation": False,
+        "settingsInNavigation": layout == "compact",
     }
     if placement != expected:
         raise AssertionError(f"The {layout} shell placed its navigation or header actions wrongly: {placement!r}")
@@ -855,7 +857,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
     wait_for_layout_mode(session_id, "compact", deadline)
     assert_brand_and_fresh_font_defaults(session_id, "compact layout")
-    assert_navigation_labels(session_id, MAIN_NAVIGATION_LABELS, "compact")
+    assert_navigation_labels(session_id, COMPACT_NAVIGATION_LABELS, "compact")
     assert_shell_placement(session_id, "compact")
     webdriver.verify_fresh_home(session_id, deadline)
     assert_no_horizontal_overflow(session_id, "compact first-run Home")
@@ -884,21 +886,17 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     wait_for_overlay_inactive(session_id, deadline, "compact Documents assertions")
     assert_no_horizontal_overflow(session_id, "compact Documents screen")
 
-    review = webdriver.find_element(
+    home = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-review']",
+        "button[data-testid='nav-home']",
         deadline,
     )
-    webdriver.click(session_id, review)
-    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Review", deadline)
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//*[@data-testid='review-today']//h2[normalize-space(.)='Nothing due today']",
-        deadline,
-    )
-    assert_no_horizontal_overflow(session_id, "compact Review screen")
+    webdriver.click(session_id, home)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Home", deadline)
+    # The library is still empty here, so Home shows its welcome.
+    webdriver.wait_for_main_heading(session_id, "Your library is empty", deadline)
+    assert_no_horizontal_overflow(session_id, "compact Home")
 
     settings = webdriver.find_element(
         session_id,
@@ -1368,9 +1366,9 @@ def main() -> int:
         verify_medium_workbench_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
-            "Native UI platform smoke passed: fresh-library Home; the same five destinations in the "
-            "phone bottom bar and the labeled medium and wide side rail, with Search and Settings in it; "
-            "Library's Workbench, Documents and Study guides pages; Review; "
+            "Native UI platform smoke passed: fresh-library Home; Home, Library, Tutor, Progress and "
+            "Settings in the phone bottom bar and the labeled medium and wide side rail, with Search and "
+            "Settings at its foot; Library's Workbench, Documents and Study guides pages; Home's Review; "
             "compact lockup and side-rail mark branding; "
             "fresh-profile IBM Plex interface/card defaults; "
             "the Workbench's tree and card panes; responsive deck header actions; "

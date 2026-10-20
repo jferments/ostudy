@@ -18,7 +18,11 @@ with Path(os.environ["FAKE_CALLS"]).open("a") as output:
     output.write(json.dumps(sys.argv[1:]) + "\n")
 mode = os.environ.get("FAKE_MODE", "pass")
 listing = "--list" in sys.argv
-if listing:
+if listing and "--ignored" in sys.argv:
+    if mode == "ignored":
+        print("module::two: test")
+    print("0 benchmarks")
+elif listing:
     if mode == "list_failure":
         sys.exit(7)
     if mode != "empty":
@@ -38,7 +42,7 @@ else:
 
 
 class NativeContractSelectionTests(unittest.TestCase):
-    def invoke(self, mode="pass", filters=("database::entry_tests::",)):
+    def invoke(self, mode="pass", filters=("database::entry_tests::",), list_only=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             cargo = root / "cargo"
@@ -46,7 +50,8 @@ class NativeContractSelectionTests(unittest.TestCase):
             cargo.chmod(0o700)
             calls = root / "calls.jsonl"
             environment = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
-                               FAKE_CALLS=str(calls), FAKE_MODE=mode)
+                               FAKE_CALLS=str(calls), FAKE_MODE=mode,
+                               OSTUDY_NATIVE_CONTRACTS_LIST_ONLY="1" if list_only else "0")
             result = subprocess.run(["bash", str(SCRIPT), *filters], env=environment,
                                     capture_output=True, text=True, check=False)
             recorded = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
@@ -91,6 +96,21 @@ class NativeContractSelectionTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertEqual(calls, [])
 
+
+    def test_list_only_checks_every_selection_without_running_it(self):
+        result, calls = self.invoke(filters=("database::entry_tests::", "current_format_tests::"), list_only=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 4)
+        self.assertTrue(all("--list" in call for call in calls))
+        self.assertEqual(result.stdout.count("2 selected, none ignored"), 2)
+
+    def test_list_only_still_refuses_empty_or_ignored_selections(self):
+        result, _ = self.invoke("empty", list_only=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("matched no tests", result.stderr)
+        result, _ = self.invoke("ignored", list_only=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("1 ignored tests", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()
