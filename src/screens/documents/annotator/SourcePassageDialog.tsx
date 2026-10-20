@@ -46,6 +46,7 @@ export function SourcePassageDialog({ passage, onClose, showToast }: SourcePassa
         controller={controller}
         showToast={showToast}
         focusPage={passage.pageNumber}
+        focusAnnotationId={passage.annotationId}
       />
     </Dialog>
   );
