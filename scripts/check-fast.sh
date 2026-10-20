@@ -82,6 +82,32 @@ pnpm test
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+DURABILITY_CONTRACTS=(util::durable_fs::tests:: ui_checkpoint::tests:: studydeck::import::)
+EXECUTION_CONTRACTS=(database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests:: startup::upgrade:: startup::upgrade_dialog:: library_backup::activation::checkpoint::)
+STAGING_CONTRACTS=(
+  database::release::staging::tests::
+  database::release::h09_tests::low_space_staging_failure_preserves_the_live_legacy_library
+  database::release::h09_tests::abandoned_disk_candidate_never_changes_live_lineage
+  database::release::h09_tests::disk_conversion_preserves_sibling_managed_files_and_cleans_candidate
+  database::release::tests::schema30_conversion_preserves_all_nonledger_values
+)
+IMAGE_SET_CONTRACTS=(documents::image_sets:: library_backup::image_set_backup_tests::)
+
+# check.sh sets this when its whole native suite (`cargo test --all-features`)
+# runs next: that suite runs every native test below, so running them here too
+# only doubled the full gate. Keep the contract helper's guard that each
+# selection still lists tests and ignores none, and let check.sh write the fast
+# stamp once its suite passes.
+if [[ "${OSTUDY_FULL_NATIVE_SUITE_FOLLOWS:-0}" == "1" ]]; then
+  step "Native contract selections (the full native suite runs them)"
+  OSTUDY_NATIVE_CONTRACTS_LIST_ONLY=1 bash "$SCRIPT_DIR/test-native-contracts.sh" \
+    "${DURABILITY_CONTRACTS[@]}" "${EXECUTION_CONTRACTS[@]}" "${STAGING_CONTRACTS[@]}" "${IMAGE_SET_CONTRACTS[@]}"
+  ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+  ostudy_timing_finish_step passed
+  ostudy_timing_finish_total passed
+  exit 0
+fi
+
 step "Native IPC wire contract and serialization fixtures"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
@@ -99,7 +125,7 @@ cargo test \
   migration_contract::tests::
 
 step "Filesystem durability and checkpoint publication contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" util::durable_fs::tests:: ui_checkpoint::tests:: studydeck::import::
+bash "$SCRIPT_DIR/test-native-contracts.sh" "${DURABILITY_CONTRACTS[@]}"
 
 step "StudyTarget composition parallel-isolation regression"
 cargo test \
@@ -110,15 +136,10 @@ cargo test \
   study_materials::composition::tests::
 
 step "Current-format entry, preservation and native execution contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests:: library_session::execution::tests:: database::startup_validation_tests:: startup::upgrade:: startup::upgrade_dialog:: library_backup::activation::checkpoint::
+bash "$SCRIPT_DIR/test-native-contracts.sh" "${EXECUTION_CONTRACTS[@]}"
 
 step "H-09 disk-backed conversion staging contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" \
-  database::release::staging::tests:: \
-  database::release::h09_tests::low_space_staging_failure_preserves_the_live_legacy_library \
-  database::release::h09_tests::abandoned_disk_candidate_never_changes_live_lineage \
-  database::release::h09_tests::disk_conversion_preserves_sibling_managed_files_and_cleans_candidate \
-  database::release::tests::schema30_conversion_preserves_all_nonledger_values
+bash "$SCRIPT_DIR/test-native-contracts.sh" "${STAGING_CONTRACTS[@]}"
 
 step "External file transfer and recovery contracts"
 cargo test \
@@ -137,7 +158,7 @@ cargo test \
   document_
 
 step "Ordered image-set source and backup contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" documents::image_sets:: library_backup::image_set_backup_tests::
+bash "$SCRIPT_DIR/test-native-contracts.sh" "${IMAGE_SET_CONTRACTS[@]}"
 
 step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
 for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do
