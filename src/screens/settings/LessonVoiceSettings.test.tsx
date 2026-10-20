@@ -88,6 +88,16 @@ describe("LessonVoiceSettings", () => {
     expect(screen.getByRole("listitem").textContent).toContain("Voice");
   });
 
+  it("shows Voice as off with Add OpenRouter when no connection can speak", async () => {
+    vi.mocked(getSpeechSettings).mockResolvedValue(settings({ profileId: null, connections: [] }));
+    const onAddOpenRouter = vi.fn();
+    render(<LessonVoiceSettings connectionsKey={1} onAddOpenRouter={onAddOpenRouter} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add OpenRouter" }));
+    expect(onAddOpenRouter).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("listitem").textContent).toContain("Off · needs OpenRouter");
+    expect(screen.queryByRole("combobox", { name: "Lesson voice connection" })).toBeNull();
+  });
+
   it("labels Kokoro voices and leaves other names alone", () => {
     expect(voiceLabel("af_heart")).toBe("Heart (American female)");
     expect(voiceLabel("bm_lewis")).toBe("Lewis (British male)");

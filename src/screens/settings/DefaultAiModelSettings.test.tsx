@@ -331,6 +331,24 @@ describe("DefaultAiModelSettings", () => {
     expect(alert.textContent).toContain("Document generation schema");
   });
 
+  it("shows Search as off with Add OpenRouter when only a text service is connected", () => {
+    const value = controller();
+    const [first] = value.profiles;
+    value.profiles = [{ ...first!, displayName: "Claude", providerKind: "claude", providerLabel: "Claude" }];
+    value.defaults = { ...value.defaults, embeddingsProfileId: null, embeddingsModelId: null, embeddingsReasoningEffort: null };
+    const onAddOpenRouter = vi.fn();
+    render(
+      <OverlayProvider>
+        <DefaultAiModelSettings controller={value} onAddOpenRouter={onAddOpenRouter} />
+      </OverlayProvider>,
+    );
+    expect(screen.queryByRole("combobox", { name: "Search service" })).toBeNull();
+    expect(screen.getByText("Off · needs OpenRouter")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add OpenRouter" }));
+    expect(onAddOpenRouter).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "Tutor service" })).toBeTruthy();
+  });
+
   it("contains no obsolete provider/profile implementation guidance", () => {
     renderDefaults(controller());
     expect(screen.queryByText(/Each profile stores its own reasoning preference/u)).toBeNull();

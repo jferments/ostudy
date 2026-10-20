@@ -18,11 +18,13 @@ A model available through OpenRouter is not a dedicated adapter for its original
 
 ## Add a provider
 
+With no service yet, **Services** offers **Set up AI**. It walks through choosing a service (OpenRouter is recommended: one key covers text, voice, images and search), what AI use typically costs, creating the account, and creating and pasting an API key, then shows the models chosen for each task. Claude and DeepSeek handle text only, so after them **Search** and **Voice** stay **Off** with **Add OpenRouter**. **Choose a service for each task instead** lists which services can do each task. A llama.cpp server goes straight to **Add a service**.
+
 Open **Settings → AI** and choose **Add a service** in **Services**. Pick the **Service**. For llama.cpp enter its **Server address**; for a cloud service enter the **API key**, and leave **Keep the key on this device** on to save it in the system's secure storage, or turn it off to keep it for this session only. Choose **Connect**. Saved services are listed with **Ready**, **Needs a key** or **Off**; select one to change it, or use its menu to **Edit** or **Remove** it. **Refresh models** reloads the service's model list.
 
 **More options** in a service hold **Use this service**, **Give up after** (the inactivity timeout) and **Remove API key**. A llama.cpp service also offers **Server needs a key** and, for a private-network address over plain HTTP, **Allow an unencrypted network connection**. An OpenRouter service offers **Only zero-data-retention routes**.
 
-The first OpenRouter service you save with a key also fills any task that has no model yet with suggested OpenRouter models. That does not test them; change or test them like any other choice.
+The first OpenRouter, Claude or DeepSeek service you save with a key also fills any task that has no model yet with a suggested model: DeepSeek V4.1 Flash and Qwen3 Embedding 8B on OpenRouter, Claude Sonnet 5.5 on Claude and DeepSeek V4 Flash on DeepSeek. Claude and DeepSeek leave **Search** unassigned. That does not test them; change or test them like any other choice. Without a voice service, lessons show no **Listen** or **Play lecture**.
 
 ## Choose a model for each task
 

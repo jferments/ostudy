@@ -56,7 +56,16 @@ const TASKS: ReadonlyArray<{ task: AiTaskKind; label: string }> = [
 ];
 
 /** One row per task: the service, model and, for the Tutor, reasoning it uses. */
-export function DefaultAiModelSettings({ controller, extraRows }: { controller: AiProfilesController; extraRows?: ReactNode }) {
+export function DefaultAiModelSettings({
+  controller,
+  extraRows,
+  onAddOpenRouter,
+}: {
+  controller: AiProfilesController;
+  extraRows?: ReactNode;
+  /** Offered on Search when no connected service can do it. */
+  onAddOpenRouter?: () => void;
+}) {
   const wide = useLayoutMode().layoutMode === "wide";
   return (
     <Panel title="Default for each task">
@@ -68,7 +77,7 @@ export function DefaultAiModelSettings({ controller, extraRows }: { controller: 
         ) : null}
         {TASKS.map(({ task, label }) => (
           <TaskModelRow key={task} controller={controller} task={task} label={label} wide={wide}
-            assignment={assignmentFor(controller, task)} />
+            assignment={assignmentFor(controller, task)} onAddOpenRouter={onAddOpenRouter} />
         ))}
         {extraRows}
       </div>
@@ -99,12 +108,14 @@ function TaskModelRow({
   label,
   assignment,
   wide,
+  onAddOpenRouter,
 }: {
   controller: AiProfilesController;
   task: AiTaskKind;
   label: string;
   assignment: Assignment;
   wide: boolean;
+  onAddOpenRouter?: () => void;
 }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const eligibleProfiles = useMemo(
@@ -373,6 +384,11 @@ function TaskModelRow({
     <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} onClose={() => setOptionsOpen(false)} />
   ) : null;
 
+  // Search needs embeddings, which text-only services do not offer.
+  if (task === "embeddings" && eligibleProfiles.length === 0 && onAddOpenRouter) {
+    return <TaskOffRow task={task} label={label} wide={wide} onAddOpenRouter={onAddOpenRouter} />;
+  }
+
   return wide ? (
     <div role="listitem" data-task={task} className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-2.5 tw:first:border-t-0">
       <div className={TASK_GRID}>
@@ -397,6 +413,43 @@ function TaskModelRow({
       {reasoningSelect ? <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground"><span>Reasoning</span>{reasoningSelect}</label> : null}
       {feedback}
       {options}
+    </div>
+  );
+}
+
+/** A task no connected service can do: it stays off, with the service that can. */
+export function TaskOffRow({
+  task,
+  label,
+  wide,
+  onAddOpenRouter,
+}: {
+  task: string;
+  label: string;
+  wide: boolean;
+  onAddOpenRouter: () => void;
+}) {
+  const off = <span className="tw:text-muted-foreground">Off · needs OpenRouter</span>;
+  const add = (
+    <Button variant="secondary" size="small" className="tw:justify-self-start" onClick={onAddOpenRouter}>
+      Add OpenRouter
+    </Button>
+  );
+  return wide ? (
+    <div role="listitem" data-task={task} className="tw:grid tw:min-w-0 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-2.5 tw:first:border-t-0">
+      <div className={TASK_GRID}>
+        <span className="tw:font-medium">{label}</span>
+        {off}
+        {add}
+        <span />
+        <span />
+      </div>
+    </div>
+  ) : (
+    <div role="listitem" data-task={task} className="tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-4 tw:first:border-t-0 tw:first:pt-0">
+      <strong className="tw:font-medium">{label}</strong>
+      {off}
+      {add}
     </div>
   );
 }

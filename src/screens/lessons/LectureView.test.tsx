@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
 import { getLessonLecture, narrateLessonStep, prepareLessonLecturePptx, type Lecture } from "../../ipc/lessons";
+import { getSpeechSettings } from "../../ipc/speech";
 import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
 import { LectureView } from "./LectureView";
 
@@ -14,6 +15,7 @@ vi.mock("../../ipc/lessons", () => ({
   narrateLessonStep: vi.fn(),
   prepareLessonLecturePptx: vi.fn(),
 }));
+vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
 vi.mock("../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(),
@@ -55,6 +57,14 @@ describe("LectureView", () => {
   beforeEach(() => {
     vi.mocked(getLessonLecture).mockReset();
     vi.mocked(getLessonLecture).mockResolvedValue(lecture);
+    vi.mocked(getSpeechSettings).mockResolvedValue({
+      profileId: "r".repeat(32),
+      modelId: "fish-audio/drama-3",
+      voice: "",
+      revision: 0,
+      models: [],
+      connections: [],
+    });
     vi.mocked(narrateLessonStep).mockReset();
     vi.mocked(narrateLessonStep).mockImplementation(async (_lesson, _revision, stepKey) => ({
       segments: [{ assetId: stepKey, characters: 20 }],
@@ -186,5 +196,21 @@ describe("LectureView", () => {
         (await screen.findByRole("alert")).textContent,
       ).toContain("The slides were not saved: The lesson is no longer available.");
     });
+  });
+
+  it("offers no Play lecture without a lesson voice", async () => {
+    vi.mocked(getSpeechSettings).mockResolvedValue({
+      profileId: null,
+      modelId: "fish-audio/drama-3",
+      voice: "",
+      revision: 0,
+      models: [],
+      connections: [],
+    });
+    open();
+    expect(await screen.findByText("Slide 1 of 5")).toBeTruthy();
+    await waitFor(() => expect(getSpeechSettings).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /Play lecture/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Save as \.pptx/ })).toBeTruthy();
   });
 });

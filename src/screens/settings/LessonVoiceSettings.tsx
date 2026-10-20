@@ -7,7 +7,7 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
-import { TASK_GRID } from "./DefaultAiModelSettings";
+import { TASK_GRID, TaskOffRow } from "./DefaultAiModelSettings";
 
 const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground";
 
@@ -17,7 +17,14 @@ const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:
  * when the AI connections change, since only an OpenRouter connection can
  * speak.
  */
-export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknown }) {
+export function LessonVoiceSettings({
+  connectionsKey,
+  onAddOpenRouter,
+}: {
+  connectionsKey: unknown;
+  /** Offered when no OpenRouter connection can speak. */
+  onAddOpenRouter?: () => void;
+}) {
   const wide = useLayoutMode().layoutMode === "wide";
   const lane = useRequestLane();
   const [settings, setSettings] = useState<SpeechSettings | null>(null);
@@ -43,6 +50,10 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
         <InlineNotice kind="error">The lesson voice could not load: {error}</InlineNotice>
       </div>
     ) : null;
+  }
+
+  if (settings.connections.length === 0 && onAddOpenRouter) {
+    return <TaskOffRow task="voice" label="Voice" wide={wide} onAddOpenRouter={onAddOpenRouter} />;
   }
 
   const model = settings.models.find((candidate) => candidate.id === settings.modelId);

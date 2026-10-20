@@ -11,6 +11,7 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { useNarrationPlayer } from "./useNarrationPlayer";
+import { useVoiceAvailable } from "./useVoiceAvailable";
 
 interface LectureViewProps {
   lessonId: string;
@@ -37,6 +38,7 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
+  const voiceAvailable = useVoiceAvailable();
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
 
@@ -139,11 +141,11 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
             <Button className="tw:rounded-full" onClick={stopLecture}>
               <Icon name="stop" size={16} /> {voice.listening === "preparing" ? "Preparing…" : "Stop"}
             </Button>
-          ) : (
+          ) : voiceAvailable ? (
             <Button variant="primary" className="tw:rounded-full" disabled={!canLecture} onClick={startLecture}>
               <Icon name="listen" size={16} /> Play lecture
             </Button>
-          )}
+          ) : null}
         </div>
       </header>
       {saved ? <InlineNotice kind={saved.kind}>{saved.text}</InlineNotice> : null}
