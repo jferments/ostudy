@@ -770,6 +770,21 @@ describe("DocumentsScreen", () => {
       expect(onOpenSubject).toHaveBeenCalledWith(cardiology.id);
     });
 
+    it("narrows the groups to the documents a search matches", async () => {
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]));
+
+      await screen.findAllByTestId("document-group");
+      const search = screen.getByRole("searchbox", { name: "Search documents" });
+      fireEvent.change(search, { target: { value: "TERMINOLOGY" } });
+      const groups = screen.getAllByTestId("document-group");
+      expect(groups.map((group) => within(group).getByRole("heading", { level: 2 }).textContent))
+        .toEqual(["No subject1 document"]);
+
+      fireEvent.change(search, { target: { value: "pharmacology" } });
+      expect(screen.queryAllByTestId("document-group")).toEqual([]);
+      expect(screen.getByText("No documents match “pharmacology”")).toBeTruthy();
+    });
+
     it("lists one subject's documents with its study materials action and no collection", async () => {
       renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id });
 
