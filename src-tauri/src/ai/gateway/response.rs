@@ -92,6 +92,85 @@ pub(super) async fn read_json_response(
     Ok(value)
 }
 
+/// Audio a provider returned. The declared type only gates the response;
+/// the bytes are sniffed again before they are kept.
+#[derive(Debug)]
+pub(crate) struct AudioResponse {
+    pub bytes: Vec<u8>,
+    pub generation_id: Option<String>,
+}
+
+pub(super) async fn read_audio_response(
+    mut response: Response,
+    maximum_bytes: usize,
+    openrouter: bool,
+) -> Result<AudioResponse, AiGatewayError> {
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .unwrap_or_default();
+    if !status.is_success() || !content_type.starts_with("audio/") {
+        // Errors, and a success that is not audio, are JSON to classify.
+        read_json_response(
+            response,
+            maximum_bytes.min(MAX_ERROR_BODY_BYTES),
+            openrouter,
+        )
+        .await?;
+        return Err(error(
+            "ai_provider_protocol_error",
+            "The speech provider answered without audio.",
+            false,
+            None,
+        ));
+    }
+    let generation_id = generation_id(&response);
+    if response
+        .content_length()
+        .is_some_and(|length| length > maximum_bytes as u64)
+    {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(classify_reqwest_error)? {
+        if bytes.len().saturating_add(chunk.len()) > maximum_bytes {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
+        return Err(error(
+            "ai_provider_protocol_error",
+            "The speech provider returned empty audio.",
+            false,
+            None,
+        ));
+    }
+    Ok(AudioResponse {
+        bytes,
+        generation_id,
+    })
+}
+
+fn too_large() -> AiGatewayError {
+    error(
+        "ai_response_too_large",
+        "The AI provider returned a response larger than ostudy accepts.",
+        false,
+        None,
+    )
+}
+
 pub(super) async fn read_bounded_body(
     response: &mut Response,
     maximum_bytes: usize,

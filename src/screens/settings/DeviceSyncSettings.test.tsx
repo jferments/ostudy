@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as syncIpc from "../../ipc/deviceSync";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
@@ -43,6 +43,12 @@ function renderSync(showToast = vi.fn()) {
   render(<OverlayProvider><DeviceSyncSettings showToast={showToast} /></OverlayProvider>);
   return showToast;
 }
+async function openSheet(button: "Send to a device" | "Receive") {
+  await screen.findByText("Android phone");
+  fireEvent.click(screen.getByRole("button", { name: button }));
+  return screen.findByRole("dialog", { name: button });
+}
+const toggle = (sheet: HTMLElement, name: string) => within(sheet).getByRole("switch", { name });
 afterEach(cleanup);
 
 describe("DeviceSyncSettings", () => {
@@ -65,116 +71,129 @@ describe("DeviceSyncSettings", () => {
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
-  it("creates a one-way network offer with learning data on and API sharing off by default", async () => {
+  it("lists this device and trusted devices, with sending and receiving behind their own buttons", async () => {
     renderSync();
-    expect(await screen.findByText("Android phone")).toBeTruthy();
-    expect(screen.getByText(/Appearance and other app settings always stay local/iu)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
+    const list = await screen.findByRole("list", { name: "Devices" });
+    expect(within(list).getByText("Desktop")).toBeTruthy();
+    expect(within(list).getByText("Android phone")).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send to a device" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Receive" })).toBeTruthy();
+  });
+
+  it("creates a one-way network code with learning data on and AI sharing off by default", async () => {
+    renderSync();
+    const sheet = await openSheet("Send to a device");
+    expect(toggle(sheet, "Flashcards").getAttribute("aria-checked")).toBe("true");
+    expect(toggle(sheet, "AI services").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show a code" }));
     await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
       transport: "local-network", hostOverride: null, selection: defaultSelection,
     }));
-    expect(await screen.findByAltText(/QR code containing the short-lived ostudy synchronization offer/u)).toBeTruthy();
-    expect(screen.getByText(/Local network · 192\.168\.1\.10:44000/u)).toBeTruthy();
-    expect(screen.getByText(/Flashcards and review history, Documents and LLM processing data, Study Guides/iu)).toBeTruthy();
-    expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
+    expect(await within(sheet).findByAltText("Sync code for the other device to scan")).toBeTruthy();
+    expect(within(sheet).getByText(/192\.168\.1\.10:44000/u)).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Copy as text" })).toBeTruthy();
   });
 
-  it("starts direct USB sync with consent waiting and no USB networking controls", async () => {
+  it("starts direct USB sync with consent waiting and no network controls", async () => {
     const showToast = renderSync();
-    await screen.findByText("Android phone");
-    expect(screen.queryByLabelText(/USB interface address/iu)).toBeNull();
-    expect(screen.queryByLabelText(/^Connection$/iu)).toBeNull();
-    expect(screen.getByText(/no tethering, IP address, QR code/iu)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "USB Sync" }));
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(within(sheet).getByRole("radio", { name: "USB cable" }));
+    expect(within(sheet).queryByLabelText("Network address")).toBeNull();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Send over USB" }));
     await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({ transport: "usb", selection: defaultSelection }));
     expect(showToast).toHaveBeenCalledWith("info", expect.stringContaining("USB sync request sent"));
-    expect(screen.getByText(/Waiting for the Android device to accept/iu)).toBeTruthy();
+    expect(within(sheet).getByText(/Waiting for the phone to accept/iu)).toBeTruthy();
   });
 
-  it("hides the USB action when this desktop build has no native USB host adapter", async () => {
+  it("offers only the network when this build has no native USB host adapter", async () => {
     vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({ ...state(), usbHostAvailable: false });
     renderSync();
-    await screen.findByText("Android phone");
-    expect(screen.queryByRole("button", { name: "USB Sync" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Create network sync offer" })).toBeTruthy();
+    const sheet = await openSheet("Send to a device");
+    expect(within(sheet).queryByRole("radio", { name: "USB cable" })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Show a code" })).toBeTruthy();
   });
 
-  it("keeps the advanced host override LAN-only", async () => {
+  it("keeps the network address override for network codes", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.change(screen.getByLabelText(/Advanced LAN address override/iu), { target: { value: "192.168.42.17" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(within(sheet).getByText("More options"));
+    fireEvent.change(within(sheet).getByLabelText("Network address"), { target: { value: "192.168.42.17" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show a code" }));
     await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
       transport: "local-network", hostOverride: "192.168.42.17", selection: defaultSelection,
     }));
   });
 
-  it("lets the sender select provider settings and saved API keys independently", async () => {
+  it("lets the sender include AI services and saved API keys", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("checkbox", { name: /^API provider settings/iu }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Saved API keys/iu }));
-    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(toggle(sheet, "AI services"));
+    fireEvent.click(toggle(sheet, "Saved API keys"));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show a code" }));
     await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
       transport: "local-network", hostOverride: null, selection: { ...defaultSelection, apiSettings: true, apiCredentials: true },
     }));
   });
 
-  it("keeps Study Guides dependent on Documents", async () => {
+  it("keeps study guides dependent on documents", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    const documents = screen.getByRole("checkbox", { name: /^Documents/iu });
-    const guides = screen.getByRole("checkbox", { name: /^Study Guides/iu });
-    fireEvent.click(documents);
-    expect(documents.getAttribute("aria-checked")).toBe("false");
-    expect(guides.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(guides);
-    expect(guides.getAttribute("aria-checked")).toBe("true");
-    expect(documents.getAttribute("aria-checked")).toBe("true");
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(toggle(sheet, "Documents"));
+    expect(toggle(sheet, "Documents").getAttribute("aria-checked")).toBe("false");
+    expect(toggle(sheet, "Study guides").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle(sheet, "Study guides"));
+    expect(toggle(sheet, "Study guides").getAttribute("aria-checked")).toBe("true");
+    expect(toggle(sheet, "Documents").getAttribute("aria-checked")).toBe("true");
   });
 
-  it("keeps saved API keys dependent on provider settings", async () => {
+  it("keeps saved API keys dependent on AI services", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    const settings = screen.getByRole("checkbox", { name: /^API provider settings/iu });
-    const keys = screen.getByRole("checkbox", { name: /^Saved API keys/iu });
-    fireEvent.click(keys);
-    expect(keys.getAttribute("aria-checked")).toBe("true");
-    expect(settings.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(settings);
-    expect(settings.getAttribute("aria-checked")).toBe("false");
-    expect(keys.getAttribute("aria-checked")).toBe("false");
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(toggle(sheet, "Saved API keys"));
+    expect(toggle(sheet, "Saved API keys").getAttribute("aria-checked")).toBe("true");
+    expect(toggle(sheet, "AI services").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle(sheet, "AI services"));
+    expect(toggle(sheet, "AI services").getAttribute("aria-checked")).toBe("false");
+    expect(toggle(sheet, "Saved API keys").getAttribute("aria-checked")).toBe("false");
   });
 
-  it("requires at least one selected synchronization category", async () => {
+  it("requires at least one selected category", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Flashcards/iu }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Documents/iu }));
-    expect((screen.getByRole("button", { name: "Create network sync offer" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "USB Sync" }) as HTMLButtonElement).disabled).toBe(true);
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(toggle(sheet, "Flashcards"));
+    fireEvent.click(toggle(sheet, "Documents"));
+    expect((within(sheet).getByRole("button", { name: "Show a code" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(sheet).getByRole("radio", { name: "USB cable" }));
+    expect((within(sheet).getByRole("button", { name: "Send over USB" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("disables saved API key transfer when secure storage is unavailable", async () => {
     vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({ ...state(), secureCredentialsAvailable: false });
     renderSync();
-    await screen.findByText("Android phone");
-    const keys = screen.getByRole("checkbox", { name: /^Saved API keys/iu });
+    const sheet = await openSheet("Send to a device");
+    const keys = toggle(sheet, "Saved API keys");
     expect(keys.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(keys);
     expect(keys.getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText(/secure secret store is unavailable/iu)).toBeTruthy();
   });
 
-  it("shows one active waiting offer as replaceable and lets the user cancel it", async () => {
+  it("shows a waiting code as a transfer row the user can cancel", async () => {
     const waiting = activeHostSession();
     vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValueOnce({ ...state(), sessions: [waiting] }).mockResolvedValue(state());
     const showToast = renderSync();
-    expect(await screen.findByRole("button", { name: "Replace with network offer" })).toBeTruthy();
-    expect(screen.getByText(/Waiting/u)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel sending request" }));
+    const transfers = await screen.findByRole("region", { name: "Transfers in progress" });
+    expect(within(transfers).getByText(/Sending · Waiting/u)).toBeTruthy();
+    fireEvent.click(within(transfers).getByRole("button", { name: "Cancel sending request" }));
     await waitFor(() => expect(syncIpc.cancelDeviceSyncSession).toHaveBeenCalledWith(waiting.id));
     expect(showToast).toHaveBeenCalledWith("info", "Sending request canceled.");
+  });
+
+  it("offers a new code in place of a waiting one", async () => {
+    vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({ ...state(), sessions: [activeHostSession()] });
+    renderSync();
+    const sheet = await openSheet("Send to a device");
+    expect(within(sheet).getByRole("button", { name: "Make a new code" })).toBeTruthy();
   });
 
   it("labels an unclaimed direct-USB session without exposing a network endpoint", async () => {
@@ -183,15 +202,15 @@ describe("DeviceSyncSettings", () => {
     expect(await screen.findByText(/Connecting · USB cable/u)).toBeTruthy();
   });
 
-  it("accepts a scanned network offer immediately without a second pairing action", async () => {
+  it("receives a scanned code immediately without a second action", async () => {
     const showToast = renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
+    const sheet = await openSheet("Receive");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Scan the code" }));
     await waitFor(() => {
       expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1);
       expect(syncIpc.joinDevicePairing).toHaveBeenCalledWith("ostudy-sync://pair/scanned");
     });
-    expect(screen.getByRole("status").textContent).toContain("synchronization complete");
+    expect(within(sheet).getByRole("status").textContent).toContain("Sync complete");
     expect(showToast).toHaveBeenCalledWith("info", "Received from Android phone: 12 rows changed and 1 conflicts need review.");
     expect(screen.queryByDisplayValue("ostudy-sync://pair/scanned")).toBeNull();
   });
@@ -199,13 +218,13 @@ describe("DeviceSyncSettings", () => {
   it("turns a failed automatic scan into an explicit retry without rescanning", async () => {
     vi.mocked(syncIpc.joinDevicePairing).mockRejectedValueOnce(new Error("The sending device could not be reached at 192.168.1.10:44000: timed out"));
     renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
-    expect(await screen.findByRole("button", { name: "Retry connection" })).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toContain("connection did not complete");
-    expect(screen.getByText(/sending device could not be reached/iu)).toBeTruthy();
+    const sheet = await openSheet("Receive");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Scan the code" }));
+    expect(await within(sheet).findByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(within(sheet).getByRole("status").textContent).toContain("connection did not complete");
+    expect(within(sheet).getByText(/sending device could not be reached/iu)).toBeTruthy();
     expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(2));
   });
 
@@ -216,41 +235,55 @@ describe("DeviceSyncSettings", () => {
       sentPackageBytes: 0, receivedPackageBytes: 20,
     });
     const showToast = renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.change(screen.getByLabelText("Synchronization invitation"), { target: { value: "ostudy-sync://pair/credential-warning" } });
-    fireEvent.click(screen.getByRole("button", { name: "Accept sync offer" }));
+    const sheet = await openSheet("Receive");
+    fireEvent.change(within(sheet).getByLabelText("Paste the code as text"), { target: { value: "ostudy-sync://pair/credential-warning" } });
+    fireEvent.click(within(sheet).getAllByRole("button", { name: "Receive" }).at(-1)!);
     await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1));
     expect(showToast).toHaveBeenCalledWith("info", expect.stringContaining("saved API credentials could not be stored securely"));
   });
 
-  it("accepts pasted invitation text without receiver-side scope controls", async () => {
+  it("receives pasted code text without receiver-side scope controls", async () => {
     renderSync();
-    await screen.findByText("Android phone");
-    expect(screen.getAllByRole("checkbox", { name: /^Saved API keys/iu })).toHaveLength(1);
-    fireEvent.change(screen.getByLabelText("Synchronization invitation"), { target: { value: "ostudy-sync://pair/pasted" } });
-    fireEvent.click(screen.getByRole("button", { name: "Accept sync offer" }));
+    const sheet = await openSheet("Receive");
+    expect(within(sheet).queryByRole("switch")).toBeNull();
+    fireEvent.change(within(sheet).getByLabelText("Paste the code as text"), { target: { value: "ostudy-sync://pair/pasted" } });
+    fireEvent.click(within(sheet).getAllByRole("button", { name: "Receive" }).at(-1)!);
     await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledWith("ostudy-sync://pair/pasted"));
   });
 
-  it("reports a cancelled scanner without starting synchronization", async () => {
+  it("reports a canceled scanner without starting synchronization", async () => {
     vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValueOnce(null);
     renderSync();
-    await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));
-    expect(await screen.findByText(/Scan cancelled/u)).toBeTruthy();
+    const sheet = await openSheet("Receive");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Scan the code" }));
+    expect(await within(sheet).findByText(/Scan canceled/u)).toBeTruthy();
     expect(syncIpc.joinDevicePairing).not.toHaveBeenCalled();
-    const invitation = screen.getByLabelText("Synchronization invitation") as HTMLTextAreaElement;
-    expect(invitation.value).toBe("");
+    expect((within(sheet).getByLabelText("Paste the code as text") as HTMLTextAreaElement).value).toBe("");
   });
 
-  it("keeps concurrent card edits visible until an explicit side is selected", async () => {
+  it("renames this device from its row", async () => {
+    vi.mocked(syncIpc.updateDeviceSyncName).mockResolvedValue({ deviceId: localId, displayName: "Study desktop", publicKeyBase64: "public" });
+    renderSync();
+    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+    const dialog = await screen.findByRole("dialog", { name: "Rename this device" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Study desktop" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(syncIpc.updateDeviceSyncName).toHaveBeenCalledWith("Study desktop"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Rename this device" })).toBeNull());
+  });
+
+  it("keeps concurrent card edits waiting until the learner keeps one side", async () => {
     vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValueOnce(state()).mockResolvedValueOnce({ ...state(), conflicts: [] });
     renderSync();
-    expect(await screen.findByText("Notes")).toBeTruthy();
-    expect(screen.getByText("front_text")).toBeTruthy();
-    expect(screen.getByText(/"value": "Local"/u)).toBeTruthy();
-    expect(screen.getByText(/"value": "Remote"/u)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Keep left" }));
+    expect(await screen.findByText("1 change needs a decision")).toBeTruthy();
+    expect(screen.getByText("From Android phone")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    const sheet = await screen.findByRole("dialog", { name: "Changes to decide" });
+    expect(within(sheet).getByText(/Notes · front_text/u)).toBeTruthy();
+    expect(within(sheet).getByText("This device")).toBeTruthy();
+    expect(within(sheet).getByText(/"value": "Local"/u)).toBeTruthy();
+    expect(within(sheet).getByText(/"value": "Remote"/u)).toBeTruthy();
+    fireEvent.click(required(within(sheet).getAllByRole("button", { name: "Keep this" })[0], "keep local"));
     await waitFor(() => expect(syncIpc.resolveDeviceSyncConflict).toHaveBeenCalledWith({ conflictId: "3".repeat(32), resolution: "keep_left" }));
   });
 });

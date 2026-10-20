@@ -121,7 +121,7 @@ The intended product sequence is:
 
 1. plug in one Android phone;
 2. choose data scopes;
-3. click **USB Sync**.
+3. choose **Send to a device**, then **USB cable** and **Send over USB**.
 
 No product flow requires ADB, Android developer mode, USB debugging, USB tethering, an IP address, interface-name selection, or a firewall change.
 

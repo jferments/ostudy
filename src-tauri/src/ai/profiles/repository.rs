@@ -132,6 +132,26 @@ pub(crate) fn load_profile_snapshot(
     load_profile(connection, profile_id).map(|profile| ProfileSnapshot::from(&profile))
 }
 
+/// Enabled connections to one provider, most recently changed first, as
+/// `(id, display name)`.
+pub(crate) fn enabled_profiles_of_kind(
+    connection: &Connection,
+    kind: ProviderKind,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, display_name FROM ai_provider_profiles
+             WHERE deleted_at IS NULL AND enabled = 1 AND provider_kind = ?1
+             ORDER BY updated_at DESC, id",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([kind.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<_, _>>()
+        .map_err(CommandError::database)
+}
+
 pub(crate) fn is_device_transfer_table(table: &str) -> bool {
     table == "ai_provider_profiles"
 }

@@ -19,7 +19,7 @@ The automated suite verifies typed IPC parity, SSE parsing/bounds, task-local ca
 
 ## Long-running llama.cpp / Unsloth acceptance
 
-1. In Settings → AI/LLM, select the llama.cpp / Unsloth profile as **Default AI model** for Flashcard generation.
+1. In Settings → AI, select the llama.cpp / Unsloth profile as **Default AI model** for Flashcard generation.
 2. Set that profile's request timeout to a deliberately short but reasonable value, such as 30 seconds.
 3. Upload a PDF/model combination known to require substantially longer than 30 seconds to complete an outline or card-generation call.
 4. Confirm the server accepts the request and returns successful HTTP response headers within the configured timeout.

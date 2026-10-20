@@ -237,5 +237,64 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             self.assertIn("static-stale", checked.stdout)
 
 
+    def commit_tracked(self, repo: Path, content: str) -> str:
+        (repo / "tracked.txt").write_text(content, encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "commit", "-qam", content.strip()], check=True)
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+    def test_tree_that_passed_before_another_branch_is_still_current(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            state = Path(raw_directory) / "state"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            prefix = f"export OSTUDY_CHECK_STATE_DIR={shlex.quote(str(state))}; "
+
+            first = self.commit_tracked(repo, "pull request head\n")
+            self.assertEqual(self.run_guard(repo, prefix + "ostudy_write_check_stamp fast").returncode, 0)
+            self.commit_tracked(repo, "another branch\n")
+            self.assertEqual(self.run_guard(repo, prefix + "ostudy_write_check_stamp fast").returncode, 0)
+
+            # A train whose tree equals the first head, checked after the other
+            # branch replaced the latest stamp.
+            subprocess.run(["git", "-C", str(repo), "checkout", "-q", first], check=True)
+            checked = self.run_guard(
+                repo,
+                prefix
+                + "if ostudy_check_stamp_is_current fast; then echo current; else echo stale; fi; "
+                + "ostudy_check_stamp_source_sha fast",
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertEqual(checked.stdout.split(), ["current", first])
+
+            (repo / "tracked.txt").write_text("never passed\n", encoding="utf-8")
+            unseen = self.run_guard(
+                repo, prefix + "if ostudy_check_stamp_is_current fast; then echo current; else echo stale; fi"
+            )
+            self.assertEqual(unseen.stdout.strip(), "stale")
+
+    def test_kept_passes_are_bounded_and_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            state = Path(raw_directory) / "state"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            prefix = (
+                f"export OSTUDY_CHECK_STATE_DIR={shlex.quote(str(state))}; "
+                "export OSTUDY_CHECK_STAMP_HISTORY_LIMIT=2; "
+            )
+            for content in ("one\n", "two\n", "three\n"):
+                self.commit_tracked(repo, content)
+                self.assertEqual(self.run_guard(repo, prefix + "ostudy_write_check_stamp fast").returncode, 0)
+            kept = list((state / "history" / "fast").glob("*.stamp"))
+            self.assertEqual(len(kept), 2)
+
+            self.assertEqual(self.run_guard(repo, prefix + "ostudy_clear_check_stamps").returncode, 0)
+            self.assertFalse((state / "history").exists())
+            self.assertFalse((state / "fast.stamp").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

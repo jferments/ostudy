@@ -507,7 +507,10 @@ function expectedDestinationSections() {
     const placed = contract.applicationSections.filter(
       (entry) => entry.placement.destination === destination.id,
     );
-    return { id: destination.id, section: placed.length === 1 ? placed[0].id : null };
+    // A destination that hosts several sections opens the one named after it, if any.
+    const section =
+      placed.length === 1 ? placed[0].id : (placed.find((entry) => entry.id === destination.id)?.id ?? null);
+    return { id: destination.id, section };
   });
 }
 

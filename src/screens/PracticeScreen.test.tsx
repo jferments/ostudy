@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as cardsIpc from "../ipc/cards";
 import * as commonIpc from "../ipc/common";
+import * as documentsIpc from "../ipc/documents";
 import type { DeckSummary } from "../ipc/decks";
 import * as platformIpc from "../ipc/platform";
 import * as practiceIpc from "../ipc/practice";
@@ -51,6 +52,19 @@ vi.mock("../ipc/cards", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ipc/cards")>()),
   getCardNote: vi.fn(),
 }));
+vi.mock("../ipc/documents", () => ({ getNoteSourceCitation: vi.fn() }));
+const sourceMounted = vi.hoisted(() => vi.fn());
+vi.mock("./documents/annotator/SourcePassageDialog", async () => {
+  const { useEffect } = await vi.importActual<typeof import("react")>("react");
+  return {
+    SourcePassageDialog: ({ passage, onClose }: { passage: { pageNumber: number }; onClose: () => void }) => {
+      useEffect(() => {
+        sourceMounted(passage);
+      }, [passage]);
+      return <button type="button" onClick={onClose}>Close source</button>;
+    },
+  };
+});
 const editorMounted = vi.hoisted(() => vi.fn());
 vi.mock("./CardEditorScreen", async () => {
   const { useEffect } = await vi.importActual<typeof import("react")>("react");
@@ -190,6 +204,7 @@ describe("PracticeScreen internal workflow", () => {
     vi.clearAllMocks();
     resetPracticeExitGuardForTests();
     vi.mocked(platformIpc.listenToLifecycle).mockResolvedValue(() => undefined);
+    vi.mocked(documentsIpc.getNoteSourceCitation).mockResolvedValue(null);
     vi.mocked(practiceIpc.startSelectedPractice).mockResolvedValue(session);
     vi.mocked(practiceIpc.startCardPractice).mockResolvedValue({ ...session, mode: "custom" });
     vi.mocked(practiceIpc.markPracticeCardViewed).mockResolvedValue(undefined);
@@ -573,6 +588,39 @@ describe("PracticeScreen internal workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
     await screen.findByRole("button", { name: "See your progress" });
 
+    expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
+      expect.objectContaining({ activeTimeMs: 3_000 }),
+    );
+  });
+
+  it("opens the card's cited page after the answer, without counting the reading as the card's time", async () => {
+    let now = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.mocked(documentsIpc.getNoteSourceCitation).mockResolvedValue({
+      citationId: "c".repeat(32), schemaVersion: 1, sourceDocumentId: "d".repeat(32),
+      sourceIdentity: `sha256:${"e".repeat(64)}`, sourceFingerprintSha256: "e".repeat(64),
+      sourceTitle: "Canine anatomy", originalFilename: "anatomy.pdf", sourceFormat: "pdf",
+      sourceMediaType: "application/pdf", sourceUnitKind: "page", sourceUnitCount: 40, sourceRemoved: false,
+      sourceLocator: { unitKind: "page", unitNumbers: [8] },
+    });
+    renderPractice();
+    await findFirstCardShown();
+    expect(screen.queryByRole("button", { name: "Source, page 8" })).toBeNull();
+
+    now += 2_000;
+    await reveal();
+    fireEvent.click(await screen.findByRole("button", { name: "Source, page 8" }));
+    const close = await screen.findByRole("button", { name: "Close source" });
+    await waitFor(() => expect(sourceMounted).toHaveBeenCalledWith({
+      documentId: "d".repeat(32), title: "Canine anatomy", pageNumber: 8,
+    }));
+    now += 300_000;
+    fireEvent.click(close);
+    now += 1_000;
+    fireEvent.click(screen.getByRole("button", { name: /1 Hard/u }));
+    await screen.findByRole("button", { name: "See your progress" });
+
+    expect(documentsIpc.getNoteSourceCitation).toHaveBeenCalledWith(card.presentation.noteId);
     expect(practiceIpc.submitPracticeReview).toHaveBeenCalledWith(
       expect.objectContaining({ activeTimeMs: 3_000 }),
     );

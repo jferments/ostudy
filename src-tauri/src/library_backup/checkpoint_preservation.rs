@@ -182,6 +182,36 @@ const CONTRACTS: &[Contract] = &[
             description: "card mark link",
         }],
     },
+    // Narration is made in the app; the upgrade only creates its tables.
+    Contract {
+        version: 11,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "speech_settings",
+                description: "speech setting",
+            },
+            Rule::AddedEmpty {
+                table: "speech_segments",
+                description: "lesson narration",
+            },
+        ],
+    },
+    // Guides are read in the app; the upgrade only creates the reading tables.
+    Contract {
+        version: 12,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "document_study_guide_section_reads",
+                description: "study guide reading",
+            },
+            Rule::AddedEmpty {
+                table: "document_study_guide_positions",
+                description: "study guide reading",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

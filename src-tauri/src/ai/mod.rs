@@ -18,6 +18,7 @@ pub(crate) mod profiles;
 mod providers;
 pub(crate) mod reasoning;
 mod secrets;
+pub(crate) mod speech;
 pub(crate) mod structured_output;
 
 #[cfg(test)]

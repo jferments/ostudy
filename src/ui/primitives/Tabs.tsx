@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { cn } from "../internal/cn";
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from "../vendor/shadcn/tabs";
 
 export interface TabDefinition<T extends string> {
@@ -47,5 +48,34 @@ export function WorkspaceTabs<T extends string>({ value, onValueChange, tabs, ar
       </TabsTrigger>)}
     </TabsList>
     <TabsContent value={value}>{children}</TabsContent>
+  </TabsRoot>;
+}
+
+export interface PaneTab<T extends string> { value: T; label: string; icon?: ReactNode; panel: ReactNode; /** Starts a separate group below a gap. */ separated?: boolean; }
+/**
+ * Sections listed down a shaded pane beside the open one, as Settings shows them on wider screens.
+ * The pane carries the page heading; `header` sits above the open section. Panels stay mounted
+ * once rendered, so a section's unsaved draft survives switching to another one.
+ */
+export function PaneTabs<T extends string>({ value, onValueChange, tabs, ariaLabel, heading, header }: {
+  value: T; onValueChange: (value: T) => void; tabs: readonly PaneTab<T>[]; ariaLabel: string; heading: ReactNode; header?: ReactNode;
+}) {
+  return <TabsRoot value={value} orientation="vertical" onValueChange={(next) => { const tab = tabs.find((item) => item.value === next); if (tab) onValueChange(tab.value); }}
+    className="tw:grid tw:h-full tw:min-h-0 tw:grid-cols-[minmax(12rem,15rem)_minmax(0,1fr)]">
+    <div className="tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:overflow-y-auto tw:border-0 tw:border-r tw:border-solid tw:border-border/70 tw:bg-foreground/4 tw:p-3">
+      {heading}
+      <TabsList aria-label={ariaLabel} activateOnFocus className="tw:flex tw:w-full tw:min-w-0 tw:flex-col tw:items-stretch tw:gap-0.5 tw:bg-transparent tw:p-0">
+        {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value}
+          className={cn("tw:h-11 tw:w-full tw:justify-start tw:gap-3 tw:rounded-lg tw:px-3 tw:text-body tw:text-muted-foreground tw:data-active:bg-background tw:data-active:font-semibold tw:data-active:text-primary tw:data-active:shadow-xs tw:data-active:ring-0", tab.separated && "tw:mt-3")}>
+          {tab.icon}{tab.label}
+        </TabsTrigger>)}
+      </TabsList>
+    </div>
+    <div className="tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col">
+      {header}
+      {tabs.map((tab) => <TabsContent key={tab.value} value={tab.value} keepMounted className={tab.value === value ? "tw:flex tw:min-h-0 tw:flex-1 tw:flex-col" : undefined}>
+        {tab.panel}
+      </TabsContent>)}
+    </div>
   </TabsRoot>;
 }

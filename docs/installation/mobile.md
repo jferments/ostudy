@@ -8,7 +8,7 @@ The repository contains a Tauri Android project, private Kotlin platform plugin,
 
 The Android application supports:
 
-- the same Home, Library, Review, Tutor and Progress destinations as desktop, in a bottom bar;
+- the same Home, Library, Tutor, Progress and Settings destinations as desktop, in a bottom bar;
 - subject/deck/card/tag/template authoring in the Library Workbench, card search/filter, bulk operations, and managed images;
 - Practice, scheduling controls, Progress, and interrupted-session restoration;
 - durable authoring drafts and complete personal backup/restore;

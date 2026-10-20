@@ -308,25 +308,6 @@ vi.mock("./screens/subject/SubjectScreen", () => ({
     </section>
   ),
 }));
-vi.mock("./screens/review/ReviewScreen", () => ({
-  ReviewScreen: ({
-    onStartReview,
-    onChooseDecks,
-  }: {
-    onStartReview: (deckIds: string[]) => void;
-    onChooseDecks: () => void;
-  }) => (
-    <section>
-      <h1>Review mock</h1>
-      <button type="button" onClick={() => onStartReview(["deck-due-a"])}>
-        Start subject review mock
-      </button>
-      <button type="button" onClick={onChooseDecks}>
-        Choose decks mock
-      </button>
-    </section>
-  ),
-}));
 
 function renderApp() {
   return render(
@@ -569,8 +550,8 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
     expect(screen.getByLabelText("Practice launch").textContent).toBe("none");
-    // The session runs inside Review, whichever view started it.
-    expect(currentDestination()).toBe("Review");
+    // The session runs inside Home, where Review lives, whichever view started it.
+    expect(currentDestination()).toBe("Home");
   });
 
   it("keeps a setup-only legacy-normalized Practice checkpoint in Flashcards", async () => {
@@ -605,9 +586,9 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Practice launch").textContent).toBe(
       `${deck.id}||extra|decks||decks`,
     );
-    expect(currentDestination()).toBe("Review");
-    // Choosing Review keeps the running session.
-    fireEvent.click(navButton("Review"));
+    expect(currentDestination()).toBe("Home");
+    // Choosing Home keeps the running session.
+    fireEvent.click(navButton("Home"));
     expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Consume Practice launch mock" }));
@@ -762,7 +743,7 @@ describe("App shell", () => {
     );
   });
 
-  it("lands a fresh library on Home, saves it and shows today's count on Review", async () => {
+  it("lands a fresh library on Home, saves it and shows today's count on Home", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
 
@@ -774,7 +755,7 @@ describe("App shell", () => {
         vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.some(([input]) => input.section === "home"),
       ).toBe(true),
     );
-    const review = navButton("Review");
+    const review = navButton("Home");
     await waitFor(() => expect(within(review).queryByText("12")).not.toBeNull());
     expect(document.getElementById(review.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
       "12 cards due today",
@@ -819,32 +800,28 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Practice launch").textContent).toBe(
       "deck-due-a,deck-due-b||scheduled|home||",
     );
-    expect(currentDestination()).toBe("Review");
+    expect(currentDestination()).toBe("Home");
     fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
     expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
   });
 
-  it("runs a session started on Review inside Review and returns there", async () => {
+  it("shows Home for the legacy Review section", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
+      schemaVersion: 2,
+      updatedAt: 1,
+      section: "review",
+      flashcardsWorkspace: "decks",
+      deckId: null,
+      editorDraftId: null,
+      practice: null,
+      analytics: null,
+    });
 
     renderApp();
-    await screen.findByRole("heading", { name: "Home mock" });
-    fireEvent.click(navButton("Review"));
-    expect(await screen.findByRole("heading", { name: "Review mock" })).toBeTruthy();
-    expect(currentDestination()).toBe("Review");
-    fireEvent.click(screen.getByRole("button", { name: "Start subject review mock" }));
-
-    expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Practice launch").textContent).toBe("deck-due-a||scheduled|review||");
-    fireEvent.click(navButton("Review"));
-    expect(screen.getByRole("heading", { name: "Practice mock" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
-    expect(await screen.findByRole("heading", { name: "Review mock" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Choose decks mock" }));
-    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
-    expect(screen.getByLabelText("Workbench launch").textContent).toBe("none");
+    expect(await screen.findByRole("heading", { name: "Home mock" })).toBeTruthy();
+    expect(currentDestination()).toBe("Home");
   });
 
   it("opens a subject's page from Home and manages it in Library", async () => {

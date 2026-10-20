@@ -42,4 +42,4 @@ Deletion is different and can remove card-owned history after the recovery windo
 
 A portable `.studydeck` is one deck's content and managed study assets, not a snapshot of its subject or the sender's schedules. A newly imported deck starts under No subject in the receiving library.
 
-A complete `.ostudybackup` preserves coherent library organization along with personal study state and managed files. Use Settings → Backup/Sync, and read [Backups, imports, and sharing](backups-imports-and-sharing.md) before restoring over an existing library.
+A complete `.ostudybackup` preserves coherent library organization along with personal study state and managed files. Use Settings → Backup and sync, and read [Backups, imports, and sharing](backups-imports-and-sharing.md) before restoring over an existing library.

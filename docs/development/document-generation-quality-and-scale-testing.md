@@ -168,7 +168,7 @@ This protects the distinction between durable provenance rows and surviving user
 
 ## AI Settings layout acceptance
 
-Open **Settings → AI/LLM** at desktop width.
+Open **Settings → AI** at desktop width.
 
 - **Default AI model** must appear at the top of the left column.
 - **Provider profiles** must follow immediately beneath it with the normal small column gap; there must not be a large blank vertical region between the two cards.
@@ -206,7 +206,7 @@ Generate-more now uses the same 5,000-token / 10-page generation bound as the fi
 
 1. Start a Practice session with several cards.
 2. Rate at least two cards.
-3. Choose another destination such as **Library**. (Choosing **Review** keeps the session, which runs inside Review.)
+3. Choose another destination such as **Library**. (Choosing **Home** keeps the session, which runs inside Home.)
 4. Confirm **Terminate this practice session?** appears and explains that completed reviews remain durable while post-review analytics will not open automatically.
 5. Cancel and verify the session remains active.
 6. Try again and choose **Yes, terminate**.

@@ -208,6 +208,10 @@ export interface StudyGuidePageItem {
   guideRevision: number;
   sectionCount: number;
   noteCount: number;
+  /** Sections marked read in their current text; 0 for subject guides. */
+  readSectionCount: number;
+  /** When a section was last opened; null for subject guides. */
+  lastOpenedAt: number | null;
   publishedAt: number;
 }
 

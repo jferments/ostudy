@@ -412,7 +412,9 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
-    // Links from cards to the marks they were made from go with the marks.
+    // Lesson narration, its audio and the speech setting go with them, and
+    // links from cards to the marks they were made from go with the marks.
+    // How far a learner has read each guide stays on the device too.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -437,7 +439,14 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
-             DELETE FROM note_annotation_sources;",
+             DELETE FROM note_annotation_sources;
+             CREATE TEMP TABLE sync_narration_assets AS SELECT asset_id FROM speech_segments;
+             DELETE FROM speech_segments;
+             DELETE FROM speech_settings;
+             DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
+             DROP TABLE sync_narration_assets;
+             DELETE FROM document_study_guide_section_reads;
+             DELETE FROM document_study_guide_positions;",
         )
         .map_err(CommandError::database)?;
 
@@ -824,6 +833,48 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, 0);
         for table in ["lessons", "lesson_revisions", "lesson_revision_units", "lesson_progress"] {
+            assert!(!selection.includes_table(table));
+        }
+    }
+
+    #[test]
+    fn lesson_narration_and_its_audio_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let asset = "d".repeat(32);
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO assets(id, original_filename, mime_type, byte_size,
+                             relative_path, created_at)
+                         VALUES ('{asset}', 'narration.mp3', 'audio/mpeg', 10,
+                             'assets/images/{asset}.mp3', 1);
+                         INSERT INTO speech_segments(id, text_sha256, engine, model_id, voice,
+                             format, asset_id, characters, created_at)
+                         VALUES ('{segment}', '{hash}', 'openrouter', 'hexgrad/kokoro-82m',
+                             'af_heart', 'mp3', '{asset}', 12, 1);
+                         INSERT INTO speech_settings(id, profile_id, model_id, voice, revision,
+                             updated_at)
+                         VALUES (1, NULL, 'hexgrad/kokoro-82m', 'af_heart', 1, 1);",
+                        segment = "e".repeat(32),
+                        hash = "b".repeat(64),
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row(
+                        "SELECT (SELECT COUNT(*) FROM speech_segments)
+                              + (SELECT COUNT(*) FROM speech_settings)
+                              + (SELECT COUNT(*) FROM assets)",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        for table in ["speech_segments", "speech_settings"] {
             assert!(!selection.includes_table(table));
         }
     }

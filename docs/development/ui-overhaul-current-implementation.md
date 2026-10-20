@@ -26,8 +26,8 @@ Shared TextField, NativeSelect, Textarea, Checkbox, Switch, RadioGroup, Slider, 
 
 The visible Settings migration includes:
 
-- **Appearance:** theme-preview cards, a preview using actual shared controls, typography/scaling, motion, artwork and accessibility groups.
-- **Review/Scheduling:** shared numeric fields, sliders, checkboxes and panels, preserving bounds and scheduling meanings.
+- **Appearance:** theme-preview cards, text (fonts and scaling), and motion and art switches. The whole app previews changes live, so there is no separate preview panel.
+- **Review:** shared numeric fields, sliders, switches and panels, preserving bounds and scheduling meanings.
 - **AI provider/task models:** provider selection/setup cards, advanced disclosure and three task-model panels. Credential ownership, model-specific probes, assignments, reasoning policy and retry identities remain in their controllers.
 - **Diagnostics and library safety:** diagnostic session/state/privacy panels, backup/storage controls and readable wrapping paths. Native operations are unchanged.
 - **Device sync:** identity, sender/receiver, trusted devices and conflict panels; shared scoped checkboxes, text fields, textarea and actions. Study Guides still require Documents; saved keys still require provider settings and available secure storage. USB and LAN remain distinct transports. A detected but failed connection is warning-styled, not successful.
@@ -53,7 +53,7 @@ Progress's rich inline status content remains a specialized oStudy presentation,
 
 ## Phase 7: shell and navigation
 
-AppFrame, AppHeader and the shadcn SidebarInset content surface replace the old shell presentation. Wide and medium layouts put the brand, the five labeled destinations (Home, Library, Review, Tutor and Progress), Search and the Settings gear in one header drawn as a side rail beside the inset content surface, coloured by the `navigation` theme tokens. Compact layouts keep the brand, the page title, Search and Settings in a top bar and the same five destinations in a bottom bar. There is no new hidden More navigation or competing vendor router.
+AppFrame, AppHeader and the shadcn SidebarInset content surface replace the old shell presentation. Wide and medium layouts put the brand, the labeled destinations (Home, Library, Tutor and Progress), then Search and Settings in one header drawn as a side rail beside the inset content surface, coloured by the `navigation` theme tokens. Compact layouts keep the brand, the page title and Search in a top bar and Home, Library, Tutor, Progress and Settings in a bottom bar. There is no new hidden More navigation or competing vendor router.
 
 PageScaffold, PageHeader, CommandBar, selection toolbars and responsive action groups provide shared hierarchy and spacing. Navigation identities, lazy feature roots, dirty guards, contextual workflows, checkpoint semantics, safe areas and IME behavior stay with the existing application/platform owners. Generic error-boundary actions use the same controls.
 

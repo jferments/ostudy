@@ -4,7 +4,7 @@ Open **Settings → Appearance**. Presentation preferences change how ostudy loo
 
 ## Navigation and available space
 
-The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show the five destinations (Home, Library, Review, Tutor, and Progress) with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put the destinations in a bottom bar and keep Search and Settings in the top bar, which also names the current destination.
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show Home, Library, Tutor, and Progress with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put Home, Library, Tutor, Progress, and Settings in a bottom bar and keep Search in the top bar, which also names the current destination.
 
 An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. On desktop the window uses your operating system's own title bar and controls; use them, or your window manager's shortcuts, to maximize or go full screen.
 
@@ -50,6 +50,8 @@ Escape or Android Back closes an active tutorial before ordinary navigation. Tur
 
 ## Other Settings sections
 
-The normal tabs are Appearance, Backup/Sync, AI/LLM, Review/Scheduling, Card templates, and Diagnostics. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup/Sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
+Settings has six sections: Appearance, Review, Card templates, AI, Backup and sync, and Diagnostics. On a wider screen they are listed in a shaded pane beside the open section; on a phone Settings opens on the list, and Back returns to it from a section. Card templates lists **Built-in templates**, where you choose which formats AI writes, above **Your templates**, a full editing workspace. AI holds only **Services** (the connected AI services and their keys) and **Default for each task**. Backup and sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
+
+Changes to Appearance, Review and Backup and sync preview at once. While any are unsaved, a bar at the bottom offers **Discard** and **Save**. **Restore defaults** in a section's header puts that section's preferences back to their defaults, still unsaved until you choose Save.
 
 For current study routes see [Getting started](getting-started.md), for deck actions see [Library Workbench](flashcards-workspace.md), and for recoverable data versus device-local presentation state see [Backups](backups-imports-and-sharing.md).

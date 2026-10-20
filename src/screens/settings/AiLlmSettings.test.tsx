@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../../test/factories";
@@ -92,8 +92,8 @@ function controller(selected = profile()): AiProfilesController {
     updateDraft: vi.fn(),
     setCredentialDraft: vi.fn(),
     setCredentialPersistence: vi.fn(),
-    saveProfile: vi.fn().mockResolvedValue(undefined),
-    connectSetup: vi.fn().mockResolvedValue(undefined),
+    saveProfile: vi.fn().mockResolvedValue(true),
+    connectSetup: vi.fn().mockResolvedValue(true),
     deleteProfile: vi.fn().mockResolvedValue(undefined),
     saveCredential: vi.fn().mockResolvedValue(undefined),
     clearCredential: vi.fn().mockResolvedValue(undefined),
@@ -116,37 +116,72 @@ function renderSettings(value: AiProfilesController) {
   );
 }
 
+async function openService(name = "OpenRouter") {
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}`, "u") }));
+  return screen.findByRole("dialog");
+}
+
 describe("AiLlmSettings", () => {
-  it("treats this panel as provider/API-key connection management, not model assignment", () => {
+  it("lists services with their status and keeps model assignment out of the service sheet", async () => {
     renderSettings(controller());
 
-    expect(screen.getByRole("heading", { name: "AI providers" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add provider" })).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
-    expect(screen.queryByRole("option", { name: "Chat model" })).toBeNull();
-    expect((screen.getByLabelText("API key") as HTMLInputElement).type).toBe("password");
+    expect(screen.getByRole("heading", { name: "Services" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add a service" })).toBeTruthy();
+    const list = screen.getByRole("list", { name: "Services" });
+    expect(within(list).getByText("Key saved")).toBeTruthy();
+    expect(within(list).getByText("Ready")).toBeTruthy();
+
+    const sheet = await openService();
+    expect(within(sheet).queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(within(sheet).queryByRole("option", { name: "Chat model" })).toBeNull();
+    expect((within(sheet).getByLabelText("API key") as HTMLInputElement).type).toBe("password");
   });
 
-  it("keeps connection policy and credentials provider-scoped", () => {
+  it("keeps connection policy and credentials service-scoped", async () => {
     const value = controller();
     renderSettings(value);
-    fireEvent.click(screen.getByText("Advanced settings"));
+    const sheet = await openService();
+    expect(value.selectProfile).toHaveBeenCalledWith(profileId);
 
-    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe("OpenRouter");
-    expect(screen.getByRole("checkbox", { name: "Enable this provider" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }).getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }));
+    expect((within(sheet).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("OpenRouter");
+    fireEvent.click(within(sheet).getByText("More options"));
+    expect(within(sheet).getByRole("switch", { name: "Use this service" }).getAttribute("aria-checked")).toBe("true");
+    const zdr = within(sheet).getByRole("switch", { name: "Only zero-data-retention routes" });
+    expect(zdr.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(zdr);
     expect(value.updateDraft).toHaveBeenCalledWith({ requireZeroDataRetention: true });
-    fireEvent.click(screen.getByRole("radio", { name: "This session only" }));
+    fireEvent.click(within(sheet).getByRole("switch", { name: "Keep the key on this device" }));
     expect(value.setCredentialPersistence).toHaveBeenCalledWith("session");
-    expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Refresh models" })).toBeTruthy();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), { target: { value: "OpenRouter 2" } });
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), { target: { value: "OpenRouter 2" } });
     expect(value.updateDraft).toHaveBeenCalledWith({ displayName: "OpenRouter 2" });
   });
 
-  it("shows the explicit LAN HTTP opt-in only for remote llama.cpp HTTP endpoints", () => {
+  it("adds a service from the sheet and closes it once connected", async () => {
+    const value = controller();
+    value.selectedProfile = null;
+    value.credentialDraft = "sk-test";
+    renderSettings(value);
+    fireEvent.click(screen.getByRole("button", { name: "Add a service" }));
+    expect(value.beginCreate).toHaveBeenCalledWith("openrouter");
+    const sheet = await screen.findByRole("dialog", { name: "Add a service" });
+    expect(within(sheet).getByRole("radio", { name: /^OpenRouter/u })).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(value.connectSetup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a service" })).toBeNull());
+  });
+
+  it("removes a service from its menu after confirmation", async () => {
+    const value = controller();
+    renderSettings(value);
+    fireEvent.click(screen.getByRole("button", { name: "More for OpenRouter" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove service" }));
+    await waitFor(() => expect(value.deleteProfile).toHaveBeenCalledWith(expect.objectContaining({ id: profileId })));
+  });
+
+  it("shows the explicit LAN HTTP opt-in only for remote llama.cpp HTTP endpoints", async () => {
     const selected = profile({
       displayName: "LAN llama.cpp",
       providerKind: "llama_cpp",
@@ -165,12 +200,12 @@ describe("AiLlmSettings", () => {
     const value = controller(selected);
     required(value.catalog[0], "catalog profile").chatTemplatePolicy = "server_model";
     renderSettings(value);
-    const trigger = screen.getByRole("button", { name: "Advanced settings" });
+    const sheet = await openService("LAN llama.cpp");
+    const trigger = within(sheet).getByRole("button", { name: "More options" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    const advanced = trigger.closest('[data-slot="collapsible"]') as HTMLElement;
-    const optIn = within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" });
+    const optIn = within(sheet).getByRole("switch", { name: "Allow an unencrypted network connection" });
     expect(optIn.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(optIn);
     expect(value.updateDraft).toHaveBeenCalledWith({ allowInsecureHttp: true });

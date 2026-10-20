@@ -62,6 +62,7 @@ mod document_study_guide_deletion;
 mod document_study_guide_export;
 mod document_study_guide_generation;
 mod document_study_guide_library;
+mod document_study_guide_reading;
 mod document_study_guides;
 mod document_topic_links;
 mod document_visual_evidence;
@@ -404,6 +405,10 @@ pub fn run() {
             lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,
             lessons::writing::cancel_subject_course_writing,
+            lessons::writing::get_subject_course_writing_progress,
+            lessons::narration::get_speech_settings,
+            lessons::narration::save_speech_settings,
+            library_session::commands::leased_narrate_lesson_step,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,
@@ -411,6 +416,10 @@ pub fn run() {
             document_study_guide_commands::get_document_study_guide,
             library_session::commands::leased_read_document_source_asset,
             document_study_guide_library::list_study_guide_page,
+            document_study_guide_reading::get_document_study_guide_reading,
+            document_study_guide_reading::open_document_study_guide_section,
+            document_study_guide_reading::set_document_study_guide_section_read,
+            document_study_guide_reading::list_continue_reading_study_guides,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,

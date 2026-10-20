@@ -88,6 +88,10 @@ fn kept(connection: &Connection) -> Kept {
         "lesson_revision_units",
         "lesson_progress",
         "note_annotation_sources",
+        "speech_settings",
+        "speech_segments",
+        "document_study_guide_section_reads",
+        "document_study_guide_positions",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");
@@ -683,4 +687,34 @@ fn populated_crash_restore_and_explicit_retry_preserve_study_data_and_newer_copy
     fixture.original_managed_files_are_present();
     verify_checkpoint(&first_attempt).unwrap();
     verify_checkpoint(&restoration).unwrap();
+}
+
+#[test]
+fn an_update_reports_rising_progress_that_its_plan_nearly_fills() {
+    let fixture = Fixture::new();
+    advance_to_schema_four(&fixture);
+    seed_history(&fixture);
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let record = std::rc::Rc::clone(&seen);
+    let attached = super::super::meter::attach(move |permille| record.borrow_mut().push(permille));
+    let _guard = begin_upgrade(
+        &fixture.0,
+        APPLICATION,
+        (crate::database::CURRENT_SCHEMA_LINEAGE, 4),
+        &mut |_| {},
+    )
+    .unwrap();
+    let before_finish = seen.borrow().clone();
+    super::super::meter::finish();
+    drop(attached);
+
+    assert!(
+        before_finish.windows(2).all(|pair| pair[0] < pair[1]),
+        "{before_finish:?}"
+    );
+    // Only the activated library's own checks remain after preparation, so
+    // the plan should be nearly used up, never overrun.
+    let last = *before_finish.last().unwrap();
+    assert!((800..=990).contains(&last), "{before_finish:?}");
+    assert_eq!(seen.borrow().last(), Some(&1000));
 }

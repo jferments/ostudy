@@ -9,6 +9,7 @@ import {
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuidePdfTheme, type TopicCardProjection,
 } from "../ipc/studyGuides";
+import { getStudyGuideReading, openStudyGuideSection, setStudyGuideSectionRead, type StudyGuideReading } from "../ipc/studyGuideReading";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { Icon } from "../ui/icons/Icon";
 import { IconButton } from "../ui/icons/IconButton";
@@ -19,6 +20,7 @@ import { useConfirm } from "../ui/overlays/overlayContext";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Button } from "../ui/primitives/Button";
+import { Progress } from "../ui/primitives/Progress";
 import { GuideExportDialog, GuideTextDialog } from "./study-guides/GuideDialogs";
 import { type GuideDestination, GuideOutline, guidePageId } from "./study-guides/GuideOutline";
 import { GuideOverviewPage, type GuidePageLink, GuideSectionPage } from "./study-guides/GuideReaderPages";
@@ -60,10 +62,22 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   // Check-yourself answers last while the guide is open; nothing is stored.
   const [checkProgress, setCheckProgress] = useState<Record<string, CheckProgressMap>>({});
   const [navigation, setNavigation] = useState<{ scrollId: string; focusId: string; sequence: number } | null>(null);
+  // Which sections are read and where the learner stopped. Reading is not a review: it never
+  // changes a card's schedule, and a failed save only leaves the marks as they were.
+  const [reading, setReading] = useState<StudyGuideReading | null>(null);
+  const resumed = useRef(false);
   const loadSequence = useRef(0);
   const refresh = useCallback(async () => {
     const loaded = await getDocumentStudyGuide(documentId);
-    setGuide(loaded); setErrorMessage(null); setLoadFailed(false); return loaded;
+    setGuide(loaded); setErrorMessage(null); setLoadFailed(false);
+    const stored = loaded ? await getStudyGuideReading(documentId).catch(() => null) : null;
+    setReading(stored?.guideId === loaded?.id ? stored : null);
+    // The guide reopens on the section the learner last opened, once per visit.
+    if (!resumed.current && loaded && stored?.lastTopicId && loaded.sections.some((section) => section.topicId === stored.lastTopicId)) {
+      setCurrentTopicId(stored.lastTopicId);
+    }
+    resumed.current = true;
+    return loaded;
   }, [documentId]);
   const load = useCallback(() => {
     const sequence = ++loadSequence.current;
@@ -101,7 +115,19 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     });
   }, [navigation]);
 
+  // Opening a section is where the guide reopens next time.
+  const guideId = guide?.id ?? null;
+  useEffect(() => {
+    if (!guideId || !currentTopicId) return;
+    let active = true;
+    void openStudyGuideSection(documentId, guideId, currentTopicId)
+      .then((saved) => { if (active) setReading(saved); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [documentId, guideId, currentTopicId]);
+
   const order = useMemo(() => guide ? guideReadingOrder(guide) : null, [guide]);
+  const readTopicIds = useMemo(() => new Set(reading?.readTopicIds ?? []), [reading]);
   const guideNote = useMemo(() => guide ? findEditingOverlay(guide.overlays, null, "note") : null, [guide]);
   const guideTitle = guide?.editorial?.title?.trim() || documentTitle;
   const currentEntry = order?.entries.find((entry) => entry.section.topicId === currentTopicId) ?? null;
@@ -112,11 +138,22 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
 
   function navigate(destination: GuideDestination): void {
     setContentsOpen(false);
+    // Moving on to a later section counts the one just read.
+    if (destination.kind === "page" && destination.topicId !== null && currentEntry && order) {
+      const from = order.entries.indexOf(currentEntry);
+      const to = order.entries.findIndex((entry) => entry.section.topicId === destination.topicId);
+      if (to > from && !readTopicIds.has(currentEntry.section.topicId)) void setSectionRead(currentEntry.section.topicId, true);
+    }
     const target = destination.kind === "page"
       ? { scrollId: guidePageId(destination.topicId), focusId: `${guidePageId(destination.topicId)}-title` }
       : { scrollId: destination.id, focusId: destination.id };
     if (destination.kind === "page") setCurrentTopicId(destination.topicId);
     setNavigation((current) => ({ ...target, sequence: (current?.sequence ?? 0) + 1 }));
+  }
+  async function setSectionRead(topicId: string, read: boolean): Promise<void> {
+    if (!guide) return;
+    try { setReading(await setStudyGuideSectionRead(documentId, guide.id, topicId, read)); }
+    catch (error: unknown) { showToast("error", getErrorMessage(error)); }
   }
   async function generate(): Promise<void> {
     if (guide || isGenerating || isSaving || isExporting) return;
@@ -124,6 +161,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     try {
       const generated = await generateDocumentStudyGuide(documentId);
       setGuide(generated); setLoadFailed(false); setEditing(null); setCurrentTopicId(null);
+      setReading(await getStudyGuideReading(documentId).catch(() => null));
       showToast("success", "Study guide created.");
     } catch (error: unknown) {
       const code = getErrorCode(error);
@@ -227,7 +265,15 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     ...(guideNote ? [{ id: "remove-guide-note", label: "Remove guide note", destructive: true, disabled: actionsDisabled,
       onSelect: () => void discardOverlay(guideNote, "Guide note removed.") }] : []),
   ] : [];
+  const readCount = order ? order.entries.filter((entry) => readTopicIds.has(entry.section.topicId)).length : 0;
   const topBarActions = guide ? <>
+    {order && order.entries.length > 0 && layoutMode !== "compact" ? (
+      <div className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:tabular-nums tw:text-muted-foreground">
+        <Progress value={readCount} max={order.entries.length} size="small" className="tw:w-[clamp(5rem,10vw,10rem)]"
+          label="Sections read" valueText={`${readCount} of ${order.entries.length} sections read`} />
+        <span aria-hidden="true">{readCount} of {order.entries.length}</span>
+      </div>
+    ) : null}
     {layoutMode === "compact" ? (
       <IconButton icon="contents" label="Contents" tooltip={false} className="tw:size-11" aria-haspopup="dialog" aria-expanded={contentsOpen}
         onClick={() => setContentsOpen(true)} />
@@ -279,7 +325,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           : "tw:w-full tw:px-page tw:pt-7 tw:pb-[calc(4rem+var(--safe-bottom))] tw:compact:px-4 tw:compact:pt-5 tw:compact:pb-6"}>
           {layoutMode === "wide" ? (
             <div className="tw:sticky tw:top-20 tw:max-h-[calc(100dvh-7rem)] tw:min-w-0 tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:bg-foreground/4 tw:p-2">
-              <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} blocks={blocks} onNavigate={navigate} />
+              <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} readTopicIds={readTopicIds} blocks={blocks} onNavigate={navigate} />
             </div>
           ) : null}
           {currentEntry ? (
@@ -290,6 +336,8 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
               checkProgress={checkProgress[checkKey(currentEntry)] ?? {}}
               onCheckProgressChange={(next) => setCheckProgress((current) => ({ ...current, [checkKey(currentEntry)]: next }))}
               actionsDisabled={actionsDisabled} onNavigate={navigate}
+              read={readTopicIds.has(currentEntry.section.topicId)}
+              onSetRead={(read) => void setSectionRead(currentEntry.section.topicId, read)}
               onPractice={() => void studyTopic(currentEntry.section)}
               onEditNote={() => beginTopicNote(currentEntry.section)}
               onRemoveNote={(note) => void discardOverlay(note, "Topic note removed.")}
@@ -307,7 +355,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     </InlineWorkspace>
     {contentsOpen && order ? (
       <Sheet title="Contents" width="small" onClose={() => setContentsOpen(false)}>
-        <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} blocks={blocks} onNavigate={navigate} showLabel={false} />
+        <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} readTopicIds={readTopicIds} blocks={blocks} onNavigate={navigate} showLabel={false} />
       </Sheet>
     ) : null}
     {editing && guide ? (

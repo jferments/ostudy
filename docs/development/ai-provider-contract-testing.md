@@ -168,7 +168,7 @@ rather than capturing raw provider traffic.
 ## Manual llama.cpp qualification
 
 After the deterministic gate passes, a developer may configure a real profile in
-Settings → AI/LLM:
+Settings → AI:
 
 1. Start an existing llama.cpp server outside ostudy.
 2. Add a **llama.cpp / Unsloth GGUF** profile with its loopback or explicitly
