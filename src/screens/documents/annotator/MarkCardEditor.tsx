@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShowToast } from "../../../components/Toast";
 import { RICH_DOCUMENT_SCHEMA_VERSION } from "../../../editor/adapter";
 import { EMPTY_RICH_DOCUMENT, cloneDocument } from "../../../editor/richText";
-import { linkCardNoteToAnnotation } from "../../../ipc/annotationCards";
+import { draftMarkQuestion, linkCardNoteToAnnotation } from "../../../ipc/annotationCards";
 import type { CardNote } from "../../../ipc/cards";
-import { getErrorMessage, type RichDocument } from "../../../ipc/common";
+import { createOperationId, getErrorMessage, type RichDocument } from "../../../ipc/common";
 import { listDecks, type DeckSummary } from "../../../ipc/decks";
+import { cancelLearningTask } from "../../../ipc/knowledge";
 import { Button } from "../../../ui/primitives/Button";
+import { Icon } from "../../../ui/icons/Icon";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "../../CardEditorScreen";
@@ -27,6 +29,14 @@ interface MarkCardEditorProps {
   onSaved: (closed: boolean) => void;
   showToast: ShowToast;
 }
+
+/** The question the AI is writing for this mark, from the learner's request on. */
+type Suggestion =
+  | { state: "idle" }
+  | { state: "writing"; operationId: string }
+  | { state: "failed"; message: string }
+  /** Written after the learner started editing, so it is offered rather than filled in. */
+  | { state: "offered"; question: string };
 
 type DeckLoad =
   | { state: "loading" }
@@ -55,7 +65,46 @@ export function MarkCardEditor({ mark, suggestedDeckId, onClose, onSaved, showTo
 
   const decks = load.state === "ready" ? load.decks : [];
   const deck = decks.find((candidate) => candidate.id === suggestedDeckId) ?? decks[0] ?? null;
-  const draft = useMemo(() => deck ? newCardFromQuote(deck.id, mark.quote) : null, [deck, mark.quote]);
+  // A question the AI wrote fills in the card while the learner has not changed it yet.
+  const [question, setQuestion] = useState("");
+  const draft = useMemo(() => deck ? newCardFromQuote(deck.id, mark.quote, question) : null, [deck, mark.quote, question]);
+  const dirty = useRef(false);
+  const [suggestion, setSuggestion] = useState<Suggestion>({ state: "idle" });
+  const writing = suggestion.state === "writing" ? suggestion.operationId : null;
+  // Closing the editor or moving to another mark stops a question still being written.
+  const current = useRef<string | null>(null);
+  useEffect(() => () => {
+    if (current.current) void cancelLearningTask(current.current).catch(() => undefined);
+    current.current = null;
+  }, [mark.id]);
+
+  async function suggestQuestion() {
+    const operationId = createOperationId();
+    current.current = operationId;
+    setSuggestion({ state: "writing", operationId });
+    try {
+      const drafted = await draftMarkQuestion(operationId, mark.id);
+      if (current.current !== operationId) return;
+      if (dirty.current) {
+        setSuggestion({ state: "offered", question: drafted.question });
+      } else {
+        setQuestion(drafted.question);
+        setSuggestion({ state: "idle" });
+      }
+    } catch (error: unknown) {
+      if (current.current !== operationId) return;
+      setSuggestion({ state: "failed", message: getErrorMessage(error) });
+    } finally {
+      if (current.current === operationId) current.current = null;
+    }
+  }
+
+  function stopWriting() {
+    if (!writing) return;
+    current.current = null;
+    setSuggestion({ state: "idle" });
+    void cancelLearningTask(writing).catch(() => undefined);
+  }
 
   async function link(noteIds: readonly string[], closed: boolean) {
     try {
@@ -88,26 +137,53 @@ export function MarkCardEditor({ mark, suggestedDeckId, onClose, onSaved, showTo
     );
   }
   return (
-    <CardEditorScreen
-      key={`${mark.id}-${deck.id}`}
+    <div>
+      {mark.quote.trim() !== "" ? (
+        <div className="tw:grid tw:gap-2 tw:pt-3" aria-live="polite">
+          {writing ? (
+            <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+              <span role="status">Writing a question…</span>
+              <Button size="small" variant="text" onClick={stopWriting}>Stop</Button>
+            </div>
+          ) : (
+            <div>
+              <Button size="small" onClick={() => void suggestQuestion()}>
+                <Icon name="sparkles" size={16} />Suggest a question
+              </Button>
+            </div>
+          )}
+          {suggestion.state === "failed" ? (
+            <InlineNotice kind="warning">A question could not be written: {suggestion.message}</InlineNotice>
+          ) : null}
+          {suggestion.state === "offered" ? (
+            <InlineNotice kind="info">
+              Suggested question: <strong>{suggestion.question}</strong>
+            </InlineNotice>
+          ) : null}
+        </div>
+      ) : null}
+      <CardEditorScreen
+      key={`${mark.id}-${deck.id}-${question}`}
       deck={deck}
       decks={decks}
       card={draft}
       closeButton
       // An unsaved card stays in its draft, which the editor offers back next time.
-      onDirtyChange={ignoreDirty}
+      onDirtyChange={(changed) => { dirty.current = changed; }}
       onCancel={onClose}
       onSaved={(saved, continueAdding) => link([saved.noteId], !continueAdding)}
       onQuestionSaved={(noteId, continueAdding) => link([noteId], !continueAdding)}
       onTemplateGenerated={(result, continueAdding) => link(result.createdNoteIds, !continueAdding)}
-    />
+      />
+    </div>
   );
 }
 
-const ignoreDirty = () => undefined;
-
-/** A basic card not yet saved, its answer the marked words, one paragraph a line. */
-export function newCardFromQuote(deckId: string, quote: string): CardNote {
+/**
+ * A basic card not yet saved, its answer the marked words, one paragraph a
+ * line, and its question empty unless one is given.
+ */
+export function newCardFromQuote(deckId: string, quote: string, question = ""): CardNote {
   const lines = quote.split(/\r?\n/);
   const backDoc: RichDocument = quote.trim() === ""
     ? cloneDocument(EMPTY_RICH_DOCUMENT)
@@ -127,9 +203,15 @@ export function newCardFromQuote(deckId: string, quote: string): CardNote {
     updatedAt: 0,
     revision: 0,
     cardType: "basic",
-    frontDoc: cloneDocument(EMPTY_RICH_DOCUMENT),
+    frontDoc: question === ""
+      ? cloneDocument(EMPTY_RICH_DOCUMENT)
+      : {
+        type: "doc",
+        attrs: { schemaVersion: RICH_DOCUMENT_SCHEMA_VERSION },
+        content: [{ type: "paragraph", content: [{ type: "text", text: question }] }],
+      },
     backDoc,
-    frontText: "",
+    frontText: question,
     backText: quote,
     reverseEnabled: false,
     assets: [],

@@ -337,7 +337,8 @@ describe("document annotator", () => {
     drag(canvas, [[100, 100], [200, 200]]);
 
     expect(await screen.findByText("Not saved")).toBeTruthy();
-    expect(showToast).toHaveBeenCalledWith("error", "Annotations could not be saved: The library is busy.");
+    // The toast comes from an effect, which can run after the header shows the failure.
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith("error", "Annotations could not be saved: The library is busy."));
 
     fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
