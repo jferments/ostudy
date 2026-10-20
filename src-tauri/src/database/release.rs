@@ -46,6 +46,8 @@ mod study_activity;
 
 #[path = "release/annotated_pdf_exports.rs"]
 mod annotated_pdf_exports;
+#[path = "release/lecture_exports.rs"]
+mod lecture_exports;
 #[path = "release/study_guide_reading.rs"]
 mod study_guide_reading;
 
@@ -58,7 +60,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 13;
+pub(crate) const SCHEMA_VERSION: i64 = 14;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -141,9 +143,15 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     },
     ReleaseMigration {
         version: 13,
+        name: "lecture_exports",
+        checksum: "b759a0e5e7347557a1f287a43b8d1e07cba3f1ebd347727ebe7d2191740d82ce",
+        sql: include_str!("../../schema/0013_lecture_exports.sql"),
+    },
+    ReleaseMigration {
+        version: 14,
         name: "annotated_pdf_exports",
-        checksum: "e6497984707ef0e1a4611f5145605be2ffab24b0f35c9e2d158e4e28f2030b5d",
-        sql: include_str!("../../schema/0013_annotated_pdf_exports.sql"),
+        checksum: "689d37008214b79efc99d7954c242cac9c9c1850a0e0ee20ed6319aa86a7b0be",
+        sql: include_str!("../../schema/0014_annotated_pdf_exports.sql"),
     },
 ];
 
@@ -358,6 +366,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     note_annotation_sources::validate_schema(connection, user_version)?;
     lesson_narration::validate_schema(connection, user_version)?;
     study_guide_reading::validate_schema(connection, user_version)?;
+    lecture_exports::validate_schema(connection, user_version)?;
     annotated_pdf_exports::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)

@@ -48,11 +48,11 @@ export function useHomeLessons(subjectIds: readonly string[], refreshKey: number
 interface ContinuePanelProps {
   lessons: HomeLessons | null;
   subjects: readonly SubjectTile[];
-  onOpenSubject: (subjectId: string) => void;
+  onOpenLesson: (subjectId: string, lessonId: string) => void;
 }
 
 /** Lessons started and not finished, most recent first. Hidden when there are none. */
-export function ContinuePanel({ lessons, subjects, onOpenSubject }: ContinuePanelProps) {
+export function ContinuePanel({ lessons, subjects, onOpenLesson }: ContinuePanelProps) {
   if (!lessons) return null;
   const names = new Map(subjects.map((tile) => [tile.subjectId, tile.name]));
   const started = [...lessons.bySubject.values()]
@@ -88,7 +88,7 @@ export function ContinuePanel({ lessons, subjects, onOpenSubject }: ContinuePane
                 </>
               }
               trailing={
-                <Button variant="secondary" aria-label={`Resume ${lesson.title}`} onClick={() => onOpenSubject(lesson.subjectId)}>
+                <Button variant="secondary" aria-label={`Resume ${lesson.title}`} onClick={() => onOpenLesson(lesson.subjectId, lesson.id)}>
                   Resume
                 </Button>
               }

@@ -4,10 +4,13 @@ import { LIBRARY_SECTIONS, type LibrarySection } from "../../navigation/appDesti
 import { cn } from "../../ui/internal/cn";
 import { ItemTrigger } from "../../ui/primitives/Item";
 
-const VIEWS: Readonly<Record<LibrarySection, { label: string }>> = {
-  decks: { label: "Flashcards" },
-  documents: { label: "Documents" },
-  "study-guides": { label: "Study guides" },
+/** Phones use the short labels so all five tabs fit. */
+const VIEWS: Readonly<Record<LibrarySection, { label: string; short: string }>> = {
+  overview: { label: "Overview", short: "Overview" },
+  lessons: { label: "Lessons", short: "Lessons" },
+  "study-guides": { label: "Study guides", short: "Guides" },
+  documents: { label: "Documents", short: "Docs" },
+  decks: { label: "Flashcards", short: "Cards" },
 };
 
 interface LibraryTabsProps {
@@ -20,9 +23,10 @@ interface LibraryTabsProps {
 }
 
 /**
- * Library's pages as folder tabs: Flashcards (the Workbench), Documents and
- * Study guides. The open page's tab is in front, joined to the page below it;
- * the others sit back on a shaded face.
+ * Library's pages as folder tabs: Overview, Lessons, Study guides, Documents
+ * and Flashcards (the Workbench), each showing the chosen subject. The open
+ * page's tab is in front, joined to the page below it; the others sit back on
+ * a shaded face.
  */
 export function LibraryTabs({ view, onSelectView, actions, className }: LibraryTabsProps) {
   return (
@@ -42,6 +46,7 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
                 <ItemTrigger
                   data-testid={`library-view-${section}`}
                   aria-current={active ? "page" : undefined}
+                  aria-label={VIEWS[section].label}
                   onClick={() => onSelectView(section)}
                   className={cn(
                     "tw:justify-center tw:rounded-t-md tw:rounded-b-none tw:border tw:border-b-0 tw:border-solid tw:px-4 tw:text-body tw:whitespace-nowrap tw:compact:px-2.5 tw:compact:text-small tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:focus-visible:ring-inset tw:reduce-motion:transition-none",
@@ -50,7 +55,8 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
                       : "tw:mb-px tw:min-h-11 tw:border-border/70 tw:bg-foreground/6 tw:font-medium tw:text-muted-foreground tw:hover:bg-foreground/10 tw:hover:text-foreground",
                   )}
                 >
-                  {VIEWS[section].label}
+                  <span className="tw:compact:hidden">{VIEWS[section].label}</span>
+                  <span className="tw:hidden tw:compact:inline">{VIEWS[section].short}</span>
                 </ItemTrigger>
               </li>
             );

@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as collections from "../../ipc/collections";
 import * as documentArtifactProgress from "../../ipc/documentArtifactProgress";
 import * as documentIpc from "../../ipc/documents";
 import * as studyGuideIpc from "../../ipc/studyGuides";
+import * as subjects from "../../ipc/subjects";
+import { makeSubjectLibrary } from "../../test/factories";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "../DocumentsScreen";
@@ -25,18 +26,10 @@ vi.mock("../../ipc/studyGuides", () => ({
   cancelDocumentStudyGuideGeneration: vi.fn(),
   getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
 }));
-vi.mock("../../ipc/collections", () => ({
-  getDocumentCollectionOrganization: vi.fn().mockResolvedValue({
-    revision: 1, collections: [], memberships: [], ranges: [],
-  }),
-  createDocumentCollection: vi.fn(),
-  updateDocumentCollection: vi.fn(),
-  deleteDocumentCollection: vi.fn(),
-  addDocumentCollectionMembership: vi.fn(),
-  moveDocumentCollectionMembership: vi.fn(),
-  removeDocumentCollectionMembership: vi.fn(),
-  setDocumentCollectionRanges: vi.fn(),
-  resolveDocumentSourceSelection: vi.fn(),
+vi.mock("../../ipc/subjects", () => ({
+  getSubjectLibrary: vi.fn(),
+  moveDocumentToSubject: vi.fn(),
+  setDocumentStudyRanges: vi.fn(),
 }));
 
 const documentId = "a".repeat(32);
@@ -121,22 +114,21 @@ async function openDocumentActions(
 ): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
+  // Base UI drops a click that lands before it wires the trigger, which then reports closed.
+  await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
   fireEvent.click(trigger);
   return screen.findByRole(presentation, { name: label });
 }
 
-async function waitForCollectionDiscovery(): Promise<void> {
-  await waitFor(() => {
-    expect(
-      (screen.getByRole("button", { name: "New collection" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+async function waitForFilingDiscovery(): Promise<void> {
+  await waitFor(() => expect(subjects.getSubjectLibrary).toHaveBeenCalled());
+  await act(async () => {
+    await Promise.resolve();
   });
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValue({
-    revision: 1, collections: [], memberships: [], ranges: [],
-  });
+  vi.mocked(subjects.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
   vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
   vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
   vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
@@ -146,15 +138,15 @@ beforeEach(() => {
 });
 
 describe("Document job presentation", () => {
-  it("keeps document actions open while collection discovery settles", async () => {
-    let finish!: (value: collections.DocumentCollectionOrganization) => void;
-    vi.mocked(collections.getDocumentCollectionOrganization).mockReturnValueOnce(
+  it("keeps document actions open while subject filing discovery settles", async () => {
+    let finish!: (value: subjects.SubjectLibrary) => void;
+    vi.mocked(subjects.getSubjectLibrary).mockReturnValueOnce(
       new Promise((resolve) => { finish = resolve; }),
     );
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({ generatedDeckId: null, generatedCardCount: 0 }),
     ]);
-    // This test owns the collection-discovery race. Keep the independent
+    // This test owns the filing-discovery race. Keep the independent
     // progress reads pending so their rerenders cannot close the menu and turn
     // this into a scheduler-timing test.
     vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockReturnValueOnce(
@@ -170,7 +162,7 @@ describe("Document job presentation", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
 
     await act(async () => {
-      finish({ revision: 1, collections: [], memberships: [], ranges: [] });
+      finish(makeSubjectLibrary());
       await Promise.resolve();
     });
     expect(actions.isConnected).toBe(true);
@@ -187,7 +179,7 @@ describe("Document job presentation", () => {
     const toast = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await waitForCollectionDiscovery();
+    await waitForFilingDiscovery();
     await openDocumentActions();
     fireEvent.click(await screen.findByText("Retry"));
 

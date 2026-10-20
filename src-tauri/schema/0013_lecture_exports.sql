@@ -1,16 +1,16 @@
--- Release migration 13: annotated PDF exports.
+-- Release migration 13: lecture exports.
 --
--- A PDF can be saved with its annotations drawn into its pages, so prepared
--- exports gain the purpose 'annotated_pdf'. SQLite cannot change a CHECK in
--- place, so the table is rebuilt with every row and column kept in order and
--- its index recreated. Nothing references prepared_exports, and the rebuild
--- runs in the migration's own transaction. The upgrade writes no new rows.
+-- A lesson can be saved as a lecture slide deck (.pptx), so prepared exports
+-- gain the purpose 'lecture_pptx'. SQLite cannot change a CHECK in place, so
+-- the table is rebuilt with every row and column kept in order and its index
+-- recreated. Nothing references prepared_exports, and the rebuild runs in the
+-- migration's own transaction. The upgrade writes no new rows.
 CREATE TABLE prepared_exports_v13 (
     id                  TEXT PRIMARY KEY CHECK(length(id) = 32),
     operation_id        TEXT NOT NULL UNIQUE CHECK(length(operation_id) = 32),
     purpose             TEXT NOT NULL CHECK(purpose IN (
                             'studydeck', 'library_backup', 'study_guide_pdf',
-                            'annotated_pdf'
+                            'lecture_pptx'
                         )),
     suggested_filename  TEXT NOT NULL,
     media_type          TEXT NOT NULL,

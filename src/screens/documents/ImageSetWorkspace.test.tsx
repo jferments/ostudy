@@ -146,7 +146,7 @@ describe("automatic image collections", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByText("Content filter")).toBeNull();
     expect(screen.queryByRole("button", { name: /Import image set|Rotate|Retry local OCR|Prepare/ })).toBeNull();
-    const list = screen.getByRole("list", { name: "Images in collection" });
+    const list = screen.getByRole("list", { name: "Images in this set" });
     expect(list.compareDocumentPosition(pasteArea()) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     const click = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Add more images" }));

@@ -2,9 +2,8 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import type { TagSummary } from "../../../ipc/cards";
 import type { DeckSummary } from "../../../ipc/decks";
-import type { DocumentSummary } from "../../../ipc/documents";
+import type { LibrarySubjectScope } from "../../../navigation/appDestinations";
 import { Icon, type IconName } from "../../../ui/icons/Icon";
-import { IconButton } from "../../../ui/icons/IconButton";
 import { cn } from "../../../ui/internal/cn";
 import { OverflowMenu, type OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { Button } from "../../../ui/primitives/Button";
@@ -13,9 +12,12 @@ import { subjectColorIndexes, subjectInitials } from "../../home/homeModel";
 import { SubjectBadge } from "../../home/SubjectBadge";
 import {
   archivedDecks,
+  decksInSubject,
   sameScope,
+  subjectFilterOf,
   subjectNodes,
-  type SubjectNode,
+  subjectOfDeck,
+  subjectRootScope,
   type WorkbenchLibrary,
   type WorkbenchScope,
 } from "./workbenchModel";
@@ -25,58 +27,51 @@ const TAG_PREVIEW = 8;
 
 export interface WorkbenchTreeActions {
   onSelectScope: (scope: WorkbenchScope) => void;
-  onNewSubject: () => void;
-  onRenameSubject: (subjectId: string) => void;
-  onMoveSubject: (subjectId: string, offset: -1 | 1) => void;
-  onDeleteSubject: (subjectId: string) => void;
   onNewDeck: (subjectId: string | null) => void;
   deckMenu: (deck: DeckSummary) => OverflowMenuItem[];
-  documentMenu: (document: DocumentSummary) => OverflowMenuItem[];
-  onOpenDocument: (document: DocumentSummary) => void;
   onCheckThese: () => void;
 }
 
 interface WorkbenchTreeProps extends WorkbenchTreeActions {
   library: WorkbenchLibrary;
+  /** The chosen subject's tags, or every tag under Everything. */
   tags: TagSummary[];
   scope: WorkbenchScope;
   checkTheseCount: number;
   /** Phones show the tree as its own page with larger rows. */
   compact: boolean;
+  /** Library's chosen subject: the tree lists its decks and tags. */
+  subject: LibrarySubjectScope;
 }
 
 /**
- * The Workbench's left side: All cards, subjects with their decks and
- * documents, and tags. Choosing an entry scopes the card list; each subject,
- * deck and document carries its own actions menu.
+ * The Workbench's left side for Library's chosen subject: all of its cards,
+ * its decks and its tags. Everything lists every deck, each with its
+ * subject's badge. Choosing an entry scopes the card list; each deck carries
+ * its own actions menu.
  */
-export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, ...actions }: WorkbenchTreeProps) {
-  const nodes = useMemo(() => subjectNodes(library), [library]);
-  const archived = useMemo(() => archivedDecks(library), [library]);
+export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, subject, ...actions }: WorkbenchTreeProps) {
+  const subjectId = subjectFilterOf(subject);
   const colors = useMemo(() => subjectColorIndexes(library.subjects), [library.subjects]);
-  const totalCards = useMemo(
-    () => library.decks.filter((deck) => deck.archivedAt === null).reduce((sum, deck) => sum + deck.generatedCardCount, 0),
-    [library.decks],
+  const decks = useMemo(
+    () =>
+      subjectId === undefined
+        ? subjectNodes(library).flatMap((node) => node.decks.map((deck) => ({ deck, subjectId: node.subjectId, name: node.name })))
+        : decksInSubject(library, subjectId).map((deck) => ({ deck, subjectId, name: "" })),
+    [library, subjectId],
   );
-  const activeSubjectId = scope.kind === "subject"
-    ? scope.subjectId
-    : scope.kind === "deck"
-      ? (library.organization?.decks.find((placement) => placement.deckId === scope.deckId)?.subjectId ?? null)
-      : undefined;
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  // Few subjects open expanded; otherwise the one holding the current scope does.
-  const [initialized, setInitialized] = useState(false);
-  if (!initialized && library.organization !== null && nodes.length > 0) {
-    setInitialized(true);
-    setExpanded(new Set(nodes.length <= 3 ? nodes.map(nodeKey) : activeSubjectId !== undefined ? [String(activeSubjectId)] : []));
-  }
-  const [revealedSubject, setRevealedSubject] = useState(activeSubjectId);
-  if (activeSubjectId !== revealedSubject) {
-    setRevealedSubject(activeSubjectId);
-    if (activeSubjectId !== undefined && !expanded.has(String(activeSubjectId))) {
-      setExpanded(new Set([...expanded, String(activeSubjectId)]));
-    }
-  }
+  const archived = useMemo(
+    () => archivedDecks(library).filter((deck) => subjectId === undefined || subjectOfDeck(library, deck.id) === subjectId),
+    [library, subjectId],
+  );
+  const totalCards = decks.reduce((sum, entry) => sum + entry.deck.generatedCardCount, 0);
+  const root = subjectRootScope(subject);
+  const rootLabel =
+    subject.kind === "all"
+      ? "All cards"
+      : subject.kind === "none"
+        ? "Unsorted cards"
+        : `All of ${library.subjects.find((candidate) => candidate.id === subject.subjectId)?.name ?? "this subject"}`;
   const [showArchived, setShowArchived] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
   const sortedTags = useMemo(
@@ -85,33 +80,21 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
   );
   const visibleTags = showAllTags ? sortedTags : sortedTags.slice(0, TAG_PREVIEW);
 
-  function toggle(node: SubjectNode): void {
-    setExpanded((current) => {
-      const next = new Set(current);
-      const key = nodeKey(node);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
   return (
     <nav aria-label="Library" data-tour-anchor="library.workbench" className="tw:grid tw:min-w-0 tw:content-start tw:gap-5 tw:pb-4">
       <div className="tw:grid tw:min-w-0">
         <TreeEntry
-          icon="cards"
-          label="All cards"
+          icon="library"
+          label={rootLabel}
           count={totalCards}
-          current={sameScope(scope, { kind: "view", view: "all" })}
+          current={sameScope(scope, root)}
           compact={compact}
-          onSelect={() => actions.onSelectScope({ kind: "view", view: "all" })}
+          onSelect={() => actions.onSelectScope(root)}
+          testId="workbench-root"
         />
       </div>
 
-      <TreeSection
-        title="Subjects"
-        action={<IconButton icon="plus" label="New subject" onClick={actions.onNewSubject} />}
-      >
+      <TreeSection title="Decks">
         {checkTheseCount > 0 ? (
           <Button
             variant="secondary"
@@ -123,97 +106,42 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
             Check these ({checkTheseCount.toLocaleString()})
           </Button>
         ) : null}
-        {nodes.length === 0 ? (
-          <div className="tw:grid tw:justify-items-start tw:gap-2 tw:px-2">
-            <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-              Subjects hold a course's decks and documents.
-            </p>
-            {/* Phones open on this page, so an empty library starts its first deck here. */}
-            {compact ? <Button variant="primary" onClick={() => actions.onNewDeck(null)}>New deck</Button> : null}
+        {decks.map(({ deck, subjectId: deckSubjectId, name }) => (
+          <div key={deck.id} className="tw:flex tw:min-w-0 tw:items-center">
+            <TreeEntry
+              icon="cards"
+              leading={
+                subjectId === undefined ? (
+                  <SubjectBadge
+                    subject={{
+                      subjectId: deckSubjectId,
+                      initials: subjectInitials(name),
+                      colorIndex: deckSubjectId === null ? null : (colors.get(deckSubjectId) ?? null),
+                    }}
+                    size="small"
+                    className="tw:size-6 tw:text-caption"
+                  />
+                ) : undefined
+              }
+              label={deck.name}
+              count={deck.generatedCardCount}
+              current={sameScope(scope, { kind: "deck", deckId: deck.id })}
+              compact={compact}
+              onSelect={() => actions.onSelectScope({ kind: "deck", deckId: deck.id })}
+              testId="workbench-deck"
+            />
+            <OverflowMenu label={`${deck.name} actions`} items={actions.deckMenu(deck)} className="tw:shrink-0" />
           </div>
-        ) : null}
-        {nodes.map((node, index) => {
-          const key = nodeKey(node);
-          const open = expanded.has(key);
-          const subjectId = node.subjectId;
-          const badge = {
-            subjectId,
-            initials: subjectInitials(node.name),
-            colorIndex: subjectId === null ? null : (colors.get(subjectId) ?? null),
-          };
-          const menu: OverflowMenuItem[] = [
-            { id: "new-deck", label: "New deck here", onSelect: () => actions.onNewDeck(subjectId) },
-          ];
-          if (subjectId !== null) {
-            menu.push(
-              { id: "rename", label: "Rename", onSelect: () => actions.onRenameSubject(subjectId) },
-              { id: "up", label: "Move up", disabled: index === 0, onSelect: () => actions.onMoveSubject(subjectId, -1) },
-              {
-                id: "down",
-                label: "Move down",
-                disabled: index >= library.subjects.length - 1,
-                onSelect: () => actions.onMoveSubject(subjectId, 1),
-              },
-              { id: "delete", label: "Delete subject", destructive: true, onSelect: () => actions.onDeleteSubject(subjectId) },
-            );
-          }
-          return (
-            <div key={key} className="tw:grid tw:min-w-0" data-subject-id={subjectId ?? "none"}>
-              <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-0.5">
-                <IconButton
-                  icon={open ? "chevron-down" : "chevron-right"}
-                  label={open ? `Collapse ${node.name}` : `Expand ${node.name}`}
-                  aria-expanded={open}
-                  iconSize={16}
-                  tooltip={false}
-                  onClick={() => toggle(node)}
-                  className="tw:shrink-0"
-                />
-                <TreeEntry
-                  leading={<SubjectBadge subject={badge} size="small" className="tw:size-6 tw:text-caption" />}
-                  label={node.name}
-                  count={node.cardCount}
-                  current={sameScope(scope, { kind: "subject", subjectId })}
-                  compact={compact}
-                  onSelect={() => actions.onSelectScope({ kind: "subject", subjectId })}
-                />
-                <OverflowMenu label={`${node.name} actions`} items={menu} className="tw:shrink-0" />
-              </div>
-              {open ? (
-                <div role="group" aria-label={node.name} className="tw:ml-8 tw:grid tw:min-w-0 tw:gap-px tw:border-0 tw:border-l tw:border-solid tw:border-border tw:pl-1.5">
-                  {node.decks.map((deck) => (
-                    <div key={deck.id} className="tw:flex tw:min-w-0 tw:items-center">
-                      <TreeEntry
-                        icon="cards"
-                        label={deck.name}
-                        count={deck.generatedCardCount}
-                        current={sameScope(scope, { kind: "deck", deckId: deck.id })}
-                        compact={compact}
-                        onSelect={() => actions.onSelectScope({ kind: "deck", deckId: deck.id })}
-                      />
-                      <OverflowMenu label={`${deck.name} actions`} items={actions.deckMenu(deck)} className="tw:shrink-0" />
-                    </div>
-                  ))}
-                  {node.documents.map((document) => (
-                    <div key={document.id} className="tw:flex tw:min-w-0 tw:items-center">
-                      <TreeEntry
-                        icon="document"
-                        label={document.title}
-                        muted
-                        compact={compact}
-                        onSelect={() => actions.onOpenDocument(document)}
-                      />
-                      <OverflowMenu label={`${document.title} actions`} items={actions.documentMenu(document)} className="tw:shrink-0" />
-                    </div>
-                  ))}
-                  {node.decks.length === 0 && node.documents.length === 0 ? (
-                    <p className="tw:m-0 tw:px-2 tw:py-1 tw:text-small tw:text-muted-foreground">Nothing here yet.</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+        ))}
+        <Button
+          variant="text"
+          size="small"
+          data-testid="workbench-new-deck"
+          className="tw:justify-start tw:px-2"
+          onClick={() => actions.onNewDeck(subjectId ?? null)}
+        >
+          <Icon name="plus" size={16} /> New deck
+        </Button>
         {archived.length > 0 ? (
           <div className="tw:grid tw:min-w-0">
             <Button variant="ghost" size="small" aria-expanded={showArchived} className="tw:justify-start tw:text-muted-foreground" onClick={() => setShowArchived((value) => !value)}>
@@ -221,7 +149,7 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
               {showArchived ? "Hide archived decks" : `Archived decks (${archived.length.toLocaleString()})`}
             </Button>
             {showArchived ? archived.map((deck) => (
-              <div key={deck.id} className="tw:ml-8 tw:flex tw:min-w-0 tw:items-center">
+              <div key={deck.id} className="tw:ml-6 tw:flex tw:min-w-0 tw:items-center">
                 <TreeEntry
                   icon="archive"
                   label={deck.name}
@@ -245,9 +173,9 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
               icon="filter"
               label={tag.name}
               count={tag.sourceNoteCount}
-              current={sameScope(scope, { kind: "tag", tagId: tag.id })}
+              current={sameScope(scope, { kind: "tag", tagId: tag.id, subjectId })}
               compact={compact}
-              onSelect={() => actions.onSelectScope({ kind: "tag", tagId: tag.id })}
+              onSelect={() => actions.onSelectScope({ kind: "tag", tagId: tag.id, subjectId })}
             />
           ))}
           {sortedTags.length > TAG_PREVIEW ? (
@@ -257,21 +185,15 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
           ) : null}
         </TreeSection>
       ) : null}
-
     </nav>
   );
 }
 
-function nodeKey(node: Pick<SubjectNode, "subjectId">): string {
-  return String(node.subjectId);
-}
-
-function TreeSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+function TreeSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="tw:grid tw:min-w-0 tw:gap-0.5">
       <div className="tw:flex tw:min-h-8 tw:items-center tw:justify-between tw:gap-2 tw:px-2">
         <h2 className="tw:m-0 tw:text-caption tw:font-semibold tw:tracking-wide tw:text-muted-foreground tw:uppercase">{title}</h2>
-        {action}
       </div>
       {children}
     </section>
@@ -287,11 +209,13 @@ interface TreeEntryProps {
   muted?: boolean;
   compact: boolean;
   onSelect: () => void;
+  testId?: string;
 }
 
-function TreeEntry({ label, icon, leading, count, current = false, muted = false, compact, onSelect }: TreeEntryProps) {
+function TreeEntry({ label, icon, leading, count, current = false, muted = false, compact, onSelect, testId }: TreeEntryProps) {
   return (
     <ItemTrigger
+      data-testid={testId}
       aria-current={current ? "true" : undefined}
       onClick={onSelect}
       className={cn(

@@ -212,10 +212,16 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
-    // Annotated PDFs rebuild prepared_exports to widen its purposes; every
+    // Lecture decks rebuild prepared_exports to widen its purposes; every
     // row and column is kept, so no table may change.
     Contract {
         version: 13,
+        setup: "",
+        rules: &[],
+    },
+    // Annotated PDF copies widen prepared_exports' purposes the same way.
+    Contract {
+        version: 14,
         setup: "",
         rules: &[],
     },

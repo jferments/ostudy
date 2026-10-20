@@ -151,7 +151,7 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
             </Button>
           </div>
         </div>
-        {total > 0 ? <ul aria-label="Images in collection" className="tw:m-0 tw:grid tw:list-none tw:gap-1 tw:p-0">
+        {total > 0 ? <ul aria-label="Images in this set" className="tw:m-0 tw:grid tw:list-none tw:gap-1 tw:p-0">
           {details?.members.map((member) => {
             const selected = previewId === member.id;
             return <li key={member.id}

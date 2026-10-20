@@ -4,7 +4,7 @@ The annotator lets you write, highlight, draw arrows and boxes, and type notes o
 
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
+Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
@@ -81,7 +81,7 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
 
-Storing annotations needs library schema 8, cards from marks need schema 10, and saving an annotated copy needs schema 13. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
+Storing annotations needs library schema 8, cards from marks need schema 10, and saving an annotated copy needs schema 14. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 
 ## Not available yet
 
@@ -91,4 +91,4 @@ Storing annotations needs library schema 8, cards from marks need schema 10, and
 - Handwriting recognition, and turning handwriting into searchable text.
 - Highlighting that snaps to text on Android.
 - Erasing part of a stroke, and selecting several annotations at once.
-- Annotating documents other than PDFs, such as Word or PowerPoint files and image collections.
+- Annotating documents other than PDFs, such as Word or PowerPoint files and image sets.

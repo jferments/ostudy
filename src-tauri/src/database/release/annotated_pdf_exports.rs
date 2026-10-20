@@ -1,6 +1,6 @@
-//! Release-v13 admission for annotated PDF exports.
+//! Release-v14 admission for annotated PDF exports.
 //!
-//! Migration 13 rebuilds `prepared_exports` so a PDF can be prepared with its
+//! Migration 14 rebuilds `prepared_exports` so a PDF can be prepared with its
 //! annotations drawn in (`annotated_pdf`). Every prepared export is kept, and the
 //! upgrade writes no new rows.
 
@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 13;
+const VERSION: i64 = 14;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -26,10 +26,10 @@ mod tests {
         validate_supported_input,
     };
 
-    /// A schema-12 library as the previous release left it.
-    fn schema_twelve() -> Connection {
-        let connection = release_library(12);
-        assert_eq!(validate_supported_input(&connection).unwrap(), 12);
+    /// A schema-13 library as the previous release left it.
+    fn schema_thirteen() -> Connection {
+        let connection = release_library(13);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
         connection
     }
 
@@ -55,10 +55,11 @@ mod tests {
     }
 
     #[test]
-    fn schema_twelve_upgrades_keeping_every_export_and_accepts_annotated_pdfs() {
-        let mut connection = schema_twelve();
+    fn schema_thirteen_upgrades_keeping_every_export_and_accepts_annotated_pdfs() {
+        let mut connection = schema_thirteen();
         insert(&connection, 'a', "study_guide_pdf").unwrap();
         insert(&connection, 'b', "studydeck").unwrap();
+        insert(&connection, 'e', "lecture_pptx").unwrap();
         assert!(insert(&connection, 'c', "annotated_pdf").is_err());
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
@@ -74,7 +75,7 @@ mod tests {
             count(
                 &connection,
                 "SELECT COUNT(*) FROM sqlite_schema
-                 WHERE name = 'prepared_exports_v13'
+                 WHERE name = 'prepared_exports_v14'
                     OR (type = 'index' AND name = 'prepared_exports_state_expiry_idx')"
             ),
             1
@@ -83,22 +84,22 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_thirteenth_migration_rolls_back_to_schema_twelve_and_retries() {
-        let mut connection = schema_twelve();
+    fn interrupted_fourteenth_migration_rolls_back_to_schema_thirteen_and_retries() {
+        let mut connection = schema_thirteen();
         insert(&connection, 'a', "library_backup").unwrap();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_annotated_pdf_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=13
+                 WHEN NEW.version=14
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 12);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 12).unwrap();
+        validate_schema(&connection, 13).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_annotated_pdf_migration;")
@@ -112,7 +113,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_export_schemas_fail_read_only() {
-        let mut connection = schema_twelve();
+        let mut connection = schema_thirteen();
         {
             let transaction = connection.transaction().unwrap();
             transaction.execute_batch(migration_sql(VERSION)).unwrap();
@@ -129,7 +130,7 @@ mod tests {
             "DROP TABLE prepared_exports;
              CREATE TABLE prepared_exports(
                  id TEXT PRIMARY KEY, operation_id TEXT NOT NULL UNIQUE,
-                 purpose TEXT NOT NULL CHECK(purpose IN ('studydeck', 'library_backup', 'study_guide_pdf')),
+                 purpose TEXT NOT NULL CHECK(purpose IN ('studydeck', 'library_backup', 'study_guide_pdf', 'lecture_pptx')),
                  suggested_filename TEXT NOT NULL, media_type TEXT NOT NULL,
                  byte_size INTEGER NOT NULL, sha256 TEXT NOT NULL,
                  relative_path TEXT NOT NULL UNIQUE, state TEXT NOT NULL,
