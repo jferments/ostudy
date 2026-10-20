@@ -211,31 +211,32 @@ export function LibrarySubjectHeader({
   ].join(" · ");
 
   // Each page under the tabs names itself in its h1; the subject is the page's context.
+  // Where the side pane does not fit, the name is the button that opens the subject list.
   const title = (
     <h2
       data-testid="library-subject-name"
-      className="tw:m-0 tw:truncate tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight tw:compact:text-section"
+      className="tw:m-0 tw:min-w-0 tw:truncate tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight tw:compact:text-section"
     >
-      {name}
+      {onSwitch ? (
+        <ItemTrigger
+          data-testid="library-switch-subject"
+          aria-label={`${name}, choose a subject`}
+          onClick={onSwitch}
+          className="tw:max-w-full tw:min-h-11 tw:gap-1.5 tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
+        >
+          <span className="tw:min-w-0 tw:truncate">{name}</span>
+          <Icon name="chevron-down" size={18} className="tw:shrink-0 tw:text-muted-foreground" />
+        </ItemTrigger>
+      ) : (
+        name
+      )}
     </h2>
   );
   return (
     <header data-testid="library-subject-header" className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-3">
       {subjects.current ? <SubjectBadge subject={subjects.current} size="large" className="tw:compact:size-11" /> : null}
       <div className="tw:min-w-0 tw:flex-[1_1_12rem]">
-        {onSwitch ? (
-          <ItemTrigger
-            data-testid="library-switch-subject"
-            aria-label={`${name}, choose a subject`}
-            onClick={onSwitch}
-            className="tw:max-w-full tw:min-h-11 tw:gap-1.5 tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
-          >
-            {title}
-            <Icon name="chevron-down" size={18} className="tw:shrink-0 tw:text-muted-foreground" />
-          </ItemTrigger>
-        ) : (
-          title
-        )}
+        {title}
         {subjects.ready ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{counts}</p> : null}
       </div>
       {scope.kind === "subject" && cards > 0 ? (

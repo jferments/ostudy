@@ -983,11 +983,11 @@ def verify_library_subject_pages(session_id: str, deadline: float, layout: str) 
     beside the page on wide screens and behind the header's switcher otherwise."""
     for view, heading in (("overview", "Overview"), ("lessons", "Lessons")):
         webdriver.open_library_view(session_id, view, deadline)
-        webdriver.wait_for_element_text(
+        # WebKitGTK reports no element text for these headings, so match the DOM text.
+        webdriver.find_element(
             session_id,
-            "css selector",
-            "main [data-testid='library-subject-name']",
-            "Everything",
+            "xpath",
+            "//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']",
             deadline,
         )
         wait_for_overlay_inactive(session_id, deadline, f"{layout} Library {heading} assertions")
