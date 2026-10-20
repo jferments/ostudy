@@ -1,6 +1,7 @@
 //! Per-proposal admission and bounded repair. Invalid candidates remain explicit
 //! local drafts, never evidence. A malformed sibling cannot erase valid repairs.
 mod envelope;
+mod numbers;
 use super::super::{
     contracts::{
         hash, invalid, KnowledgeKind, KnowledgeUnitInput, SourceKind, SourceRecord,
@@ -170,6 +171,14 @@ fn admit(
         }
         reference.validate(source)?;
     }
+    let evidence_sources = evidence
+        .iter()
+        .map(|reference| reference.source_id.clone())
+        .collect::<HashSet<_>>();
+    let evidence_sources = evidence_sources
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
     let supporting_excerpt = evidence
         .iter()
         .find(|e| e.source_id == primary.id && !e.excerpt.is_empty())
@@ -195,6 +204,13 @@ fn admit(
     content
         .validate(primary)
         .map_err(|_| invalid("invalid_unit_content"))?;
+    let cited = sources
+        .iter()
+        .filter(|source| evidence_sources.contains(source.id.as_str()))
+        .collect::<Vec<_>>();
+    if numbers::unsupported_number(&content, &cited).is_some() {
+        return Err(invalid("unsupported_number"));
+    }
     if let Some(value) = annotation {
         content.details = Some(super::super::typed_payload::TypedPayload::admit_or_defer(
             value,
@@ -669,7 +685,9 @@ mod capacity_regression_tests {
         let units = (0..40)
             .map(|i| {
                 json!({"title":format!("Property {i}"),"kind":"fact",
-            "statement":format!("Property {i} of the supplied triangle."),
+            // Letters, not digits: a stated number must be printed in the source.
+            "statement":format!("Property {}{} of the supplied triangle.",
+                char::from(b'a' + i / 26), char::from(b'a' + i % 26)),
             "qualifications":[],"topic":"Geometry","importance":"supporting","evidenceIds":["E0"]})
             })
             .collect::<Vec<_>>();
