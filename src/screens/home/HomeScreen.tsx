@@ -311,7 +311,8 @@ function useSubjectsRemembered(refreshKey: number): Map<string | null, number | 
     let current = true;
     void getProgressSubjects({ range: "30d", subjectIds: [], deckIds: [], tagIds: [] })
       .then((rows) => {
-        if (current) setRates(new Map(rows.map((row) => [row.subjectId, row.trueRetention])));
+        // Like This week, falls back to the correct rate before any due review.
+        if (current) setRates(new Map(rows.map((row) => [row.subjectId, row.trueRetention ?? row.correctRate])));
       })
       .catch(() => undefined);
     return () => {
