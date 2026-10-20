@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as annotationCardsIpc from "../../../ipc/annotationCards";
 import * as annotationIpc from "../../../ipc/documentAnnotations";
+import * as externalFilesIpc from "../../../ipc/externalFiles";
 import * as studyGuideIpc from "../../../ipc/studyGuides";
 import { layoutWidths, matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
@@ -16,7 +17,9 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   applyDocumentAnnotationChanges: vi.fn(),
   renderDocumentPageTile: vi.fn(),
   getDocumentPageText: vi.fn(),
+  prepareAnnotatedPdf: vi.fn(),
 }));
+vi.mock("../../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 vi.mock("../../../ipc/annotationCards", () => ({ getDocumentMarkedCards: vi.fn(), linkCardNoteToAnnotation: vi.fn() }));
 // The card editor has its own tests; here it shows what it was given and saves on a click.
@@ -286,6 +289,37 @@ describe("document annotator", () => {
     const study = await screen.findByRole("button", { name: "Study marked cards" });
     fireEvent.click(study);
     await waitFor(() => expect(onPracticeCards).toHaveBeenCalledWith(["c".repeat(32)]));
+  });
+
+  it("saves a copy of the PDF with its annotations once pending ones are saved", async () => {
+    const exportId = "x".repeat(32);
+    vi.mocked(annotationIpc.prepareAnnotatedPdf).mockResolvedValue({
+      preparedExport: {
+        id: exportId, purpose: "annotated_pdf", suggestedFilename: `${title}-annotated.pdf`, mediaType: "application/pdf",
+        byteSize: 10, sha256: "e".repeat(64), expiresAt: 2,
+      },
+      annotationCount: 1,
+      pageCount: 1,
+    });
+    vi.mocked(externalFilesIpc.publishPreparedExport).mockResolvedValue({
+      preparedExportId: exportId, displayName: `${title}-annotated.pdf`, destinationKind: "file", completedAt: 3,
+    });
+    vi.mocked(externalFilesIpc.releasePreparedExport).mockResolvedValue(undefined);
+    const { canvas, showToast } = await openAnnotator();
+    // Nothing to save before the first mark.
+    expect(screen.queryByRole("button", { name: "Save PDF with your annotations" })).toBeNull();
+
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [200, 160]]);
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF with your annotations" }));
+    await waitFor(() => expect(externalFilesIpc.releasePreparedExport).toHaveBeenCalledWith(exportId));
+    // The new mark was saved before the copy was made.
+    const saved = vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mock.invocationCallOrder.at(0) ?? Infinity;
+    const prepared = vi.mocked(annotationIpc.prepareAnnotatedPdf).mock.invocationCallOrder.at(0) ?? -Infinity;
+    expect(saved).toBeLessThan(prepared);
+    expect(annotationIpc.prepareAnnotatedPdf).toHaveBeenCalledWith(documentId);
+    expect(externalFilesIpc.publishPreparedExport).toHaveBeenCalledWith(exportId);
+    expect(showToast).toHaveBeenCalledWith("success", "Saved a copy with 1 annotation on 1 page.");
   });
 
   it("zooms with the keyboard and with two fingers, without drawing", async () => {

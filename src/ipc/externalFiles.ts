@@ -43,7 +43,7 @@ export interface StagedExternalFile {
 
 export interface PreparedExport {
   id: string;
-  purpose: "studydeck" | "library_backup" | "study_guide_pdf" | "collection_study_guide_pdf";
+  purpose: "studydeck" | "library_backup" | "study_guide_pdf" | "collection_study_guide_pdf" | "annotated_pdf";
   suggestedFilename: string;
   mediaType: string;
   byteSize: number;

@@ -14,7 +14,7 @@ The active codebase already includes:
 - the release-v1 schema-1 baseline advanced by reviewed release migrations (currently schema 9) with a per-version upgrade preservation contract and pre-upgrade checkpoints, preserved historical readers/conversion, production/development isolation, and journaled same-process complete-library restoration;
 - retained PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV sources normalized into one canonical document model;
 - native PDF extraction/rendering with ruled-table rebuilding, page images for table/figure/OCR pages, and OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
-- a PDF annotator (ink, highlighter, shapes and text notes over the page renders, with sharp zoomed tiles) whose marks stay out of the source file;
+- a PDF annotator (ink, highlighter, shapes and text notes over the page renders, with sharp zoomed tiles) whose marks stay out of the source file and can be saved into an annotated copy;
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
 - a native lesson store and AI course writing for a subject (one lesson per top-level document topic), without a learner-facing lesson screen yet;
 - implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, OpenRouter, and Claude, with native credential isolation/capability probing and no silent local-to-cloud fallback;

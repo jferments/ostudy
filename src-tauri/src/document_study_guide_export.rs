@@ -1802,7 +1802,7 @@ fn install_unicode_font(document: &mut Document) -> Result<PdfFontChoice, Comman
     })
 }
 
-fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
+pub(crate) fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
     let pairs = [
         (
             "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
@@ -1947,6 +1947,12 @@ fn source_label(locator: &SourceLocator) -> String {
 }
 
 fn portable_filename(value: &str) -> String {
+    portable_filename_or(value, "study-guide")
+}
+
+/// A file name from a title, without characters that some systems refuse;
+/// `fallback` when nothing is left.
+pub(crate) fn portable_filename_or(value: &str, fallback: &str) -> String {
     let mut result = value
         .chars()
         .map(|character| {
@@ -1964,7 +1970,7 @@ fn portable_filename(value: &str) -> String {
         .collect::<String>();
     result = result.trim().trim_matches('.').trim().to_string();
     if result.is_empty() {
-        "study-guide".to_string()
+        fallback.to_string()
     } else {
         result.chars().take(120).collect()
     }
