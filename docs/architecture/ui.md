@@ -37,7 +37,7 @@ Independent reads use independent request lanes. An obsolete success/error must 
 | Workbench | Subjects, decks, views and tags in a tree; the chosen cards in a dense list; the open card's editor beside it; the header's Search opens All cards with search focused |
 | Progress | Overview, forecast, card strength, activity, subjects, question types, sessions, topics and the review log, each read by its own native command (`src/ipc/progress.ts`); the stored section id is still `analytics` |
 | Templates | Card templates tab in Settings; lazy activation and retained editor state |
-| Transfers | Contextual deck import/export; library recovery and device sync in Backup/Sync |
+| Transfers | Contextual deck import/export; library recovery and device sync in Backup and sync |
 | Practice | Internal contextual session, not a standing navigation destination |
 | Study Guide reader | Inline workspace page preserving navigation, not a modal; one page per section |
 | Tutor | Shared top-level/contextual controller; general chat does not require source material or embeddings |

@@ -48,10 +48,10 @@ describe("Settings Card templates tab", () => {
 
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Appearance",
-      "Backup/Sync",
-      "AI/LLM",
-      "Review/Scheduling",
+      "Review",
       "Card templates",
+      "AI",
+      "Backup and sync",
       "Diagnostics",
     ]);
     expect(screen.queryByLabelText("Card template manager")).toBeNull();
