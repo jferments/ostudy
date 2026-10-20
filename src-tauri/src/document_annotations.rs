@@ -35,6 +35,10 @@ const MAX_STROKE_POINTS: usize = 10_000;
 const MIN_FONT_SIZE: f64 = 6.0;
 const MAX_FONT_SIZE: f64 = 96.0;
 const MAX_TEXT_CHARS: usize = 5_000;
+/// Lines one text highlight may cover: a few dense pages' worth.
+const MAX_TEXT_RECTS: usize = 2_000;
+/// Sticky notes hold long-form text behind their preview.
+const MAX_STICKY_CHARS: usize = 20_000;
 /// Matches the table's own payload check.
 const MAX_PAYLOAD_BYTES: usize = 262_144;
 const MAX_CHANGES_PER_REQUEST: usize = 500;
@@ -69,13 +73,19 @@ pub struct InkStroke {
     pub simulate_pressure: bool,
 }
 
-/// A translucent marker stroke. `points` holds `x, y` pairs.
+/// A translucent marker. A free stroke has `x, y` pairs in `points`; a
+/// highlight of the PDF's own text has empty `points`, one `x, y, width,
+/// height` box per line in `rects`, and the words it covers in `text`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HighlightStroke {
     pub points: Vec<f64>,
     pub color: String,
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rects: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 /// A straight line or an arrow from (x1, y1) to (x2, y2); an arrow's head is at
@@ -103,7 +113,10 @@ pub struct Frame {
     pub stroke_width: f64,
 }
 
-/// Typed text whose lines wrap at `width`; its height follows the text.
+/// Typed text whose lines wrap at `width`; its height follows the text. A
+/// sticky note (`sticky: true`) is drawn as a small note of `width` showing
+/// the start of its text, opens to all of it, and may hold longer text;
+/// `color` is then the note's paper.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextNote {
@@ -113,6 +126,8 @@ pub struct TextNote {
     pub text: String,
     pub color: String,
     pub font_size: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sticky: Option<bool>,
 }
 
 impl AnnotationShape {
@@ -141,7 +156,18 @@ impl AnnotationShape {
                 validate_stroke_width(stroke.stroke_width)
             }
             Self::Highlight(stroke) => {
-                validate_points(&stroke.points, 2)?;
+                match (&stroke.rects, &stroke.text) {
+                    (None, None) => validate_points(&stroke.points, 2)?,
+                    (Some(rects), Some(text)) if stroke.points.is_empty() => {
+                        validate_text_rects(rects)?;
+                        validate_quoted_text(text)?;
+                    }
+                    _ => {
+                        return Err(invalid(
+                            "A highlight is either a free stroke or boxes over the page's text.",
+                        ))
+                    }
+                }
                 validate_color(&stroke.color)?;
                 validate_stroke_width(stroke.stroke_width)
             }
@@ -170,9 +196,18 @@ impl AnnotationShape {
                 if note.text.trim().is_empty() {
                     return Err(invalid("A text note needs some text."));
                 }
-                if note.text.chars().count() > MAX_TEXT_CHARS {
+                let limit = match note.sticky {
+                    None => MAX_TEXT_CHARS,
+                    Some(true) => MAX_STICKY_CHARS,
+                    Some(false) => {
+                        return Err(invalid(
+                            "A text note is either a sticky note or not marked at all.",
+                        ))
+                    }
+                };
+                if note.text.chars().count() > limit {
                     return Err(invalid(format!(
-                        "A text note can hold up to {MAX_TEXT_CHARS} characters."
+                        "A text note can hold up to {limit} characters."
                     )));
                 }
                 if note
@@ -733,6 +768,42 @@ fn validate_points(points: &[f64], stride: usize) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn validate_text_rects(rects: &[f64]) -> Result<(), CommandError> {
+    if rects.is_empty() || !rects.len().is_multiple_of(4) {
+        return Err(invalid("A text highlight's boxes are incomplete."));
+    }
+    if rects.len() / 4 > MAX_TEXT_RECTS {
+        return Err(invalid(format!(
+            "A text highlight can cover up to {MAX_TEXT_RECTS} lines."
+        )));
+    }
+    for rect in rects.chunks_exact(4) {
+        validate_coordinate(rect[0])?;
+        validate_coordinate(rect[1])?;
+        validate_extent(rect[0], rect[2])?;
+        validate_extent(rect[1], rect[3])?;
+    }
+    Ok(())
+}
+
+/// The words a text highlight covers, as one line of text.
+fn validate_quoted_text(text: &str) -> Result<(), CommandError> {
+    if text.trim().is_empty() {
+        return Err(invalid("A text highlight needs the text it covers."));
+    }
+    if text.chars().count() > MAX_TEXT_CHARS {
+        return Err(invalid(format!(
+            "A text highlight can cover up to {MAX_TEXT_CHARS} characters."
+        )));
+    }
+    if text.chars().any(char::is_control) {
+        return Err(invalid(
+            "A text highlight's text cannot contain control characters.",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_coordinate(value: f64) -> Result<(), CommandError> {
     if value.is_finite() && (0.0..=MAX_COORDINATE).contains(&value) {
         Ok(())
@@ -797,6 +868,10 @@ fn other_document() -> CommandError {
 #[path = "document_annotations/page_tiles.rs"]
 mod page_tiles;
 pub(crate) use page_tiles::{render_document_page_tile, RenderDocumentPageTileInput};
+
+#[path = "document_annotations/page_text.rs"]
+mod page_text;
+pub(crate) use page_text::{get_document_page_text, DocumentPageTextDto, GetDocumentPageTextInput};
 
 #[cfg(test)]
 #[path = "document_annotations/tests.rs"]

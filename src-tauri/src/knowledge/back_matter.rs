@@ -105,6 +105,42 @@ pub(crate) fn document_back_matter(
     Ok(back_matter_chunks(&chunks))
 }
 
+/// Page renders attached to back-matter chunks. A chunk that shares one (the
+/// last table of a chapter on the page where Key Terms begin) would otherwise
+/// show the model the skipped material in the image.
+pub(crate) fn back_matter_assets(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<HashSet<String>, CommandError> {
+    let chunks = document_back_matter(connection, document_id)?;
+    if chunks.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let mut statement = connection
+        .prepare(
+            "SELECT chunk_index, visual_asset_ids_json FROM document_semantic_chunk_sources
+             WHERE document_id = ?1 AND visual_asset_ids_json <> '[]'
+             ORDER BY chunk_index LIMIT 100001",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([document_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let mut assets = HashSet::new();
+    for (index, json) in rows {
+        if chunks.contains(&index) {
+            assets.extend(
+                serde_json::from_str::<Vec<String>>(&json).map_err(CommandError::serialization)?,
+            );
+        }
+    }
+    Ok(assets)
+}
+
 /// The canonical chunk a document source was cut from; image-set sources have
 /// no chunk headings and never count as back matter.
 pub(crate) fn source_chunk(source: &SourceRecord) -> Option<(&str, i64)> {
@@ -193,27 +229,57 @@ mod tests {
     fn stored_chunks_mark_the_sources_cut_from_them() {
         let (db, mut source, _, _) = crate::knowledge::authoring::tests::fixture();
         let document = source.owner_id.clone();
+        let locator = serde_json::to_string(
+            &crate::document_domain::SourceLocator::new(
+                crate::document_domain::SourceUnitKind::Page,
+                vec![1],
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
         db.with_connection(|c| {
-            for (index, heading, text) in [
-                (0, Some("Cardiac Cycle"), "Systole and diastole alternate. ".repeat(20)),
-                (1, None, "Valves close in sequence. ".repeat(20)),
-                (2, Some("Review Questions"), "1. Which valve closes first?".to_string()),
-                (3, None, "2. What causes the second heart sound?".to_string()),
+            for (index, heading, text, assets) in [
+                (0, Some("Cardiac Cycle"), "Systole and diastole alternate. ".repeat(20), r#"["unit-render:000001"]"#),
+                (1, None, "Valves close in sequence. ".repeat(20), r#"["unit-render:000002"]"#),
+                (2, Some("Review Questions"), "1. Which valve closes first?".to_string(), r#"["unit-render:000002"]"#),
+                (3, None, "2. What causes the second heart sound?".to_string(), "[]"),
             ] {
                 c.execute(
                     "INSERT INTO document_semantic_chunk_sources(document_id,chunk_index,text,full_text,
                         source_locator_json,visual_asset_ids_json,element_types_json,heading_context,
                         token_estimate,is_oversized,content_sha256,canonical_schema_version,created_at,updated_at)
-                     VALUES(?1,?2,?3,?3,'{}','[]','[]',?4,1,0,?5,1,1,1)",
-                    rusqlite::params![document, index, text, heading, "a".repeat(64)],
+                     VALUES(?1,?2,?3,?3,?7,?6,'[]',?4,1,0,?5,1,1,1)",
+                    rusqlite::params![document, index, text, heading, "a".repeat(64), assets, locator],
                 )
                 .map_err(CommandError::database)?;
             }
             let found = document_back_matter(c, &document)?;
             assert_eq!(found, HashSet::from([2, 3]));
+            assert_eq!(
+                back_matter_assets(c, &document)?,
+                HashSet::from(["unit-render:000002".to_string()])
+            );
             Ok(())
         })
         .unwrap();
+        // The chunk before Review Questions shares that page's render; the
+        // model must not read the questions from it.
+        let images = |index: &str| {
+            crate::knowledge::adapters::materialize_source(
+                &db,
+                &crate::knowledge::adapters::SourceSeed {
+                    kind: SourceKind::Document,
+                    owner_id: document.clone(),
+                    parent_key: index.to_string(),
+                },
+            )
+            .unwrap()
+            .into_iter()
+            .map(|source| source.images.len())
+            .sum::<usize>()
+        };
+        assert_eq!((images("0"), images("1")), (1, 0));
         assert_eq!(source_chunk(&source), Some((document.as_str(), 0)));
         source.segment_key = "3:1:0".into();
         assert_eq!(source_chunk(&source), Some((document.as_str(), 3)));

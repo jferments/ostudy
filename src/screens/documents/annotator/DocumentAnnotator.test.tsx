@@ -14,6 +14,7 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   getDocumentAnnotations: vi.fn(),
   applyDocumentAnnotationChanges: vi.fn(),
   renderDocumentPageTile: vi.fn(),
+  getDocumentPageText: vi.fn(),
 }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mockResolvedValue({ annotations: [], deletedIds: [] });
   vi.mocked(studyGuideIpc.readDocumentSourceAsset).mockResolvedValue(new ArrayBuffer(8));
   vi.mocked(annotationIpc.renderDocumentPageTile).mockResolvedValue(new ArrayBuffer(8));
+  vi.mocked(annotationIpc.getDocumentPageText).mockRejectedValue(new Error("This page has no text."));
   Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function rect(this: HTMLElement) {
@@ -151,6 +153,40 @@ describe("document annotator", () => {
     expect(screen.queryByText("Remember the valves")).toBeNull();
   });
 
+  it("places a sticky note, writes long text in it, and opens it again", async () => {
+    const { canvas, onClose } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "s" });
+    expect(pressed("Sticky note")).toBe("true");
+    drag(canvas, [[300, 300]]);
+
+    const dialog = await screen.findByRole("dialog", { name: "New sticky note" });
+    const field = within(dialog).getByRole("textbox", { name: "Note" });
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    const text = `Ask in office hours\n${"Why does preload rise with volume? ".repeat(40)}`;
+    fireEvent.change(field, { target: { value: text } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    expect(savedChanges()[0]).toMatchObject({
+      op: "put", pageNumber: 1,
+      shape: { kind: "text", sticky: true, text, x: 300, y: 300, width: 120, fontSize: 10, color: "#fde047" },
+    });
+    // The page shows the note's first lines.
+    expect(document.querySelector("[data-sticky-note]")?.textContent).toContain("Ask in office hours");
+
+    fireEvent.keyDown(canvas, { key: "v" });
+    const item = within(screen.getByRole("list", { name: "Annotations on page 1" }))
+      .getByRole("button", { name: /^Sticky note on page 1: Ask in office hours/ });
+    fireEvent.click(item);
+    const reopened = await screen.findByRole("dialog", { name: "Sticky note" });
+    expect((within(reopened).getByRole("textbox", { name: "Note" }) as HTMLTextAreaElement).value).toBe(text);
+    fireEvent.click(within(reopened).getByRole("button", { name: "Delete note" }));
+    await waitFor(() => expect(savedChanges(1)).toEqual([{ op: "delete", id: savedChanges()[0]?.id }]));
+    expect(document.querySelector("[data-sticky-note]")).toBeNull();
+  });
+
   it("draws arrows and boxes, highlights, and erases", async () => {
     const { canvas } = await openAnnotator();
     fireEvent.click(screen.getByRole("button", { name: "Arrow" }));
@@ -173,6 +209,27 @@ describe("document annotator", () => {
     drag(canvas, [[300, 340], [160, 500]]);
     await waitFor(() => expect(savedChanges(1)).toHaveLength(2));
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
+  });
+
+  it("snaps the highlighter to the page's text and keeps the words it covers", async () => {
+    vi.mocked(annotationIpc.getDocumentPageText).mockImplementation((_documentId, pageNumber) => pageNumber === 1
+      ? Promise.resolve({
+        pageNumber, width: 612, height: 792, characters: "Stroke volume",
+        boxes: Array.from("Stroke volume").flatMap((_, index) => [72 + index * 6, 200, 6, 10]),
+      })
+      : Promise.reject(new Error("This page has no text.")));
+    const { canvas } = await openAnnotator();
+    expect(annotationIpc.getDocumentPageText).not.toHaveBeenCalled();
+    fireEvent.keyDown(canvas, { key: "h" });
+    await waitFor(() => expect(annotationIpc.getDocumentPageText).toHaveBeenCalledWith(documentId, 1));
+    await act(async () => {});
+
+    drag(canvas, [[75, 205], [100, 206], [147, 205]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    expect(savedChanges()[0]).toMatchObject({
+      op: "put",
+      shape: { kind: "highlight", points: [], rects: [72, 200, 78, 10], text: "Stroke volume" },
+    });
   });
 
   it("zooms with the keyboard and with two fingers, without drawing", async () => {
@@ -280,6 +337,13 @@ describe("document annotator", () => {
     const { canvas } = await openAnnotator();
     expect(screen.getByText("Ask about preload")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Box" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Text" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+    const notes = await screen.findByRole("dialog", { name: "Notes" });
+    fireEvent.click(within(notes).getByRole("button", { name: "Sticky note" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Notes: Sticky note" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Shapes" }));
     const shapes = await screen.findByRole("dialog", { name: "Shapes" });

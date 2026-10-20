@@ -38,6 +38,7 @@ vi.mock("../ipc/documents", () => ({
   generateMoreDocumentFlashcards: vi.fn(),
   cancelDocumentFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
+  renameDocument: vi.fn(),
   deleteDocument: vi.fn(),
 }));
 vi.mock("../ipc/studyGuides", () => ({
@@ -566,7 +567,7 @@ describe("DocumentsScreen", () => {
 
     const menu = await openDocumentActions();
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Annotate", "Make more cards…", "Make a study guide", "Details", "Delete",
+      "Annotate", "Make more cards…", "Make a study guide", "Rename…", "Details", "Delete",
     ]);
   });
 
@@ -665,6 +666,40 @@ describe("DocumentsScreen", () => {
     await waitFor(() => {
       expect(documentIpc.openDocumentSource).toHaveBeenCalledWith(documentId);
     });
+  });
+
+  it("renames a document from its menu", async () => {
+    vi.mocked(documentIpc.listDocuments)
+      .mockResolvedValueOnce([makeDocument()])
+      .mockResolvedValue([makeDocument({ title: "Cardiac cycle", revision: 3 })]);
+    vi.mocked(documentIpc.renameDocument).mockResolvedValue({ documentId, title: "Cardiac cycle", revision: 3 });
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Rename…");
+    const dialog = await screen.findByRole("dialog", { name: "Rename document" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Title" }), { target: { value: "  Cardiac cycle " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(documentIpc.renameDocument).toHaveBeenCalledWith(documentId, 2, "Cardiac cycle");
+      expect(screen.queryByRole("dialog", { name: "Rename document" })).toBeNull();
+    });
+    expect(await screen.findByRole("heading", { name: "Cardiac cycle" })).toBeTruthy();
+  });
+
+  it("keeps the rename dialog open with the error when saving fails", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(documentIpc.renameDocument).mockRejectedValue(new Error("This document changed. Reload it and try again."));
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Rename…");
+    const dialog = await screen.findByRole("dialog", { name: "Rename document" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Title" }), { target: { value: "New title" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("This document changed. Reload it and try again.")).toBeTruthy();
   });
 
   it("permanently deletes a document only after precise confirmation and preserves citations", async () => {

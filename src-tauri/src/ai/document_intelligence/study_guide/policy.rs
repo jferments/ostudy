@@ -8,6 +8,8 @@
 use super::{KnowledgeCatalog, StudyGuideSectionContent};
 
 pub(super) const MAX_GENERATED_SECTION_CHARS: usize = 64 * 1024;
+/// Below this many catalog units a short section can be complete.
+const MIN_UNITS_FOR_THIN_SECTION: usize = 4;
 pub(super) const MAX_OVERVIEW_CHARS: usize = MAX_GENERATED_SECTION_CHARS;
 pub(super) const MAX_KEY_POINTS: usize = 32;
 pub(super) const MAX_KEY_POINT_CHARS: usize = 16 * 1024;
@@ -86,6 +88,15 @@ impl WritingBudget {
             || super::content::generated_section_char_count(section) > self.target_chars
     }
 
+    /// A section of several catalog units written at a fifth of its target
+    /// usually came back as an introduction alone (a dense table topic once
+    /// answered in 83 tokens). Such a section is worth one fresh request.
+    pub(super) fn thin(self, unit_count: usize, section: &StudyGuideSectionContent) -> bool {
+        unit_count >= MIN_UNITS_FOR_THIN_SECTION
+            && super::content::generated_section_char_count(section).saturating_mul(5)
+                < self.target_chars
+    }
+
     pub(super) fn instructions(self) -> String {
         format!(
             "Source-aware writing target: at most roughly {} human-readable characters across all categories. The overview orients in roughly {} characters or fewer; the explanations carry the teaching. These are flexible editorial targets, not validity limits. Give more space to mechanisms, qualifications, contrasts and necessary definitions when the evidence needs it. A section that says each fact once is usually shorter than the target; do not pad a simple topic or cut a condition to meet one. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance; never claim exhaustive coverage from a length target.",
@@ -97,6 +108,18 @@ impl WritingBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_introduction_alone_is_thin_for_a_catalog_of_several_units() {
+        let section = |chars: usize| StudyGuideSectionContent {
+            overview: "x".repeat(chars),
+            ..Default::default()
+        };
+        let budget = WritingBudget::from_signals(8, 2_400);
+        assert!(budget.thin(8, &section(300)));
+        assert!(!budget.thin(8, &section(budget.target_chars / 2)));
+        assert!(!budget.thin(3, &section(300)));
+    }
 
     #[test]
     fn targets_follow_topic_evidence_not_document_page_count() {

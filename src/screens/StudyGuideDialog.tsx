@@ -260,7 +260,6 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ) : null}
           {loadFailed ? null : (
             <EmptyState icon={<Icon name="study-guide" size={30} />} title="No study guide yet"
-              description="Create a structured guide from the document’s shared learning plan. The same stable topic identities organize generated flashcards and future learning tools."
               actions={<>
                 {isGenerating ? (
                   <Button variant="dangerSecondary" className="tw:border-destructive/30 tw:bg-destructive-soft tw:text-destructive" disabled={isCanceling}
@@ -279,7 +278,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ? "tw:mx-auto tw:grid tw:w-full tw:max-w-[80rem] tw:grid-cols-[clamp(10rem,13vw,14rem)_minmax(0,1fr)_clamp(11rem,15vw,15.5rem)] tw:items-start tw:gap-x-[clamp(1.5rem,2.5vw,3rem)] tw:px-page tw:pt-8 tw:pb-[calc(4rem+var(--safe-bottom))]"
           : "tw:w-full tw:px-page tw:pt-7 tw:pb-[calc(4rem+var(--safe-bottom))] tw:compact:px-4 tw:compact:pt-5 tw:compact:pb-6"}>
           {layoutMode === "wide" ? (
-            <div className="tw:sticky tw:top-20 tw:max-h-[calc(100dvh-7rem)] tw:min-w-0 tw:overflow-y-auto tw:overscroll-contain tw:pb-4">
+            <div className="tw:sticky tw:top-20 tw:max-h-[calc(100dvh-7rem)] tw:min-w-0 tw:overflow-y-auto tw:overscroll-contain tw:rounded-xl tw:bg-foreground/4 tw:p-2">
               <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} blocks={blocks} onNavigate={navigate} />
             </div>
           ) : null}

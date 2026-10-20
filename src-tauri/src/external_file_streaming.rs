@@ -199,6 +199,51 @@ pub async fn stream_publish_prepared_export(
     }))
 }
 
+/// Stage a local file the way a completed platform picker does: copy it to the
+/// partial path, then run the same validation, detection and ledger commit.
+#[cfg(feature = "guide-eval")]
+pub(crate) fn stage_local_import(
+    database: &Database,
+    paths: &AppPaths,
+    operation_id: String,
+    purpose: ExternalImportPurpose,
+    source: &Path,
+) -> Result<StagedExternalFileDto, CommandError> {
+    validate_entity_id(&operation_id, "external file selection")?;
+    let display_name = source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| {
+            CommandError::new(
+                "external_file_name_invalid",
+                "The local file name is not valid UTF-8.",
+            )
+        })?
+        .to_string();
+    let partial_path = paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(
+        &operation_id,
+    ));
+    create_parent(&partial_path)?;
+    remove_file_if_exists(&partial_path)?;
+    let copied_bytes = fs::copy(source, &partial_path).map_err(CommandError::io)?;
+    let staged = finalize_acquired_import(
+        database,
+        paths,
+        operation_id,
+        purpose,
+        partial_path.clone(),
+        ExternalAcquireResult {
+            display_name,
+            reported_media_type: None,
+            copied_bytes,
+        },
+    );
+    if staged.is_err() {
+        let _ = remove_file_if_exists(&partial_path);
+    }
+    staged
+}
+
 fn finalize_acquired_import(
     database: &Database,
     paths: &AppPaths,

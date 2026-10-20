@@ -12,6 +12,7 @@ import {
 import { useRequestLane } from "./requestLane";
 
 export const STUDY_GUIDE_PAGE_SIZE = 40;
+const SEARCH_SETTLE_MS = 250;
 
 export interface StudyGuideOpenRequest {
   requestId: number;
@@ -135,6 +136,17 @@ export function useStudyGuidesController({
       last: page.offset + page.items.length,
     };
   }, [page]);
+
+  // Typing searches once the text settles; Enter searches straight away.
+  useEffect(() => {
+    const normalized = draftQuery.trim();
+    if (normalized === query) return undefined;
+    const timer = window.setTimeout(() => {
+      setOffset(0);
+      setQuery(normalized);
+    }, SEARCH_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftQuery, query]);
 
   function submitSearch(): void {
     const normalized = draftQuery.trim();

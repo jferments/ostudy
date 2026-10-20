@@ -1,17 +1,18 @@
-import type { FormEvent } from "react";
+import { useId, type FormEvent } from "react";
 import type { ShowToast } from "../components/Toast";
 import type { StudyGuidePageItem, StudyGuideLibrarySort } from "../ipc/studyGuides";
+import { getErrorMessage } from "../ipc/common";
+import { openDocumentSource } from "../ipc/documents";
 import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 import { Icon } from "../ui/icons/Icon";
 import { Button } from "../ui/primitives/Button";
-import { Surface } from "../ui/primitives/Surface";
 import { TextField } from "../ui/primitives/TextField";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { ListRow, ListRowMedia, ListRows } from "../ui/primitives/ListRow";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { useConfirm } from "../ui/overlays/overlayContext";
-import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
+import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
+import { cn } from "../ui/internal/cn";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { deleteTargetFromItem, guideSourceFromItem, useStudyGuidesController, type StudyGuideDeleteTarget, type StudyGuideOpenRequest } from "../controllers/useStudyGuidesController";
 import { StudyGuideDialog } from "./StudyGuideDialog";
@@ -38,6 +39,9 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
       confirmLabel: "Delete study guide", destructive: true,
     });
     return accepted ? controller.deleteGuide(target) : false;
+  }
+  async function openSource(documentId: string): Promise<void> {
+    try { await openDocumentSource(documentId); } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
   }
   function submitSearch(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -69,41 +73,39 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
   );
   return (
     <PageScaffold width="full" aria-label="Study Guides">
-      <PageHeader title="Study Guides" compact />
+      <PageHeader title="Study Guides" compact actions={
+        <form className={styles.toolbar} role="search" onSubmit={submitSearch}>
+          <label className={styles.search}>
+            <span className="sr-only">Search guides</span>
+            <Icon name="search" size={16} className="tw:pointer-events-none tw:absolute tw:left-3 tw:text-muted-foreground" />
+            <TextField type="search" value={controller.draftQuery} placeholder="Search guides" className="tw:w-full tw:pl-9"
+              onChange={(event) => controller.setDraftQuery(event.currentTarget.value)} />
+          </label>
+          <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+            <span className="tw:compact:sr-only">Sort</span>
+            <NativeSelect value={controller.sort} onChange={(event) => controller.setSort(event.currentTarget.value as StudyGuideLibrarySort)}>
+              <option value="recent">Newest</option><option value="oldest">Oldest</option>
+              <option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
+            </NativeSelect>
+          </label>
+        </form>
+      } />
       <PerformanceProfiler id="guide-library">
-        <Surface as="section" level={2} className={styles.workspace}>
-          <div className={styles.toolbar}>
-            <form className={styles.search} role="search" onSubmit={submitSearch}>
-              <label><span>Search guides</span>
-                <TextField type="search" value={controller.draftQuery} placeholder="Title, filename, or format"
-                  onChange={(event) => controller.setDraftQuery(event.currentTarget.value)} />
-              </label>
-              <Button type="submit" variant="secondary">Search</Button>
-              {controller.query ? <Button variant="ghost" onClick={controller.clearSearch}>Clear</Button> : null}
-            </form>
-            <div className={styles.tools}>
-              <label><span>Sort</span>
-                <NativeSelect value={controller.sort} onChange={(event) => controller.setSort(event.currentTarget.value as StudyGuideLibrarySort)}>
-                  <option value="recent">Newest</option><option value="oldest">Oldest</option>
-                  <option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
-                </NativeSelect>
-              </label>
-              <Button disabled={controller.isLoading} loading={controller.isRefreshing} onClick={() => void controller.refresh()}>Refresh</Button>
-            </div>
-          </div>
-          <div className={styles.summary} aria-live="polite">
-            <span>{controller.page.totalCount} guide{controller.page.totalCount === 1 ? "" : "s"}{controller.query ? ` matching “${controller.query}”` : ""}</span>
-            {controller.visibleRange ? <span>Showing {controller.visibleRange.first}–{controller.visibleRange.last}</span> : null}
-          </div>
+        <section aria-label="Study guides" className={styles.workspace}>
+          {controller.query ? (
+            <p className={styles.summary} aria-live="polite">
+              {controller.page.totalCount} guide{controller.page.totalCount === 1 ? "" : "s"} matching “{controller.query}”
+            </p>
+          ) : null}
           {controller.errorMessage ? <InlineNotice kind="error" title="Study Guides could not be refreshed." className="tw:mb-4">{controller.errorMessage}</InlineNotice> : null}
           {controller.isLoading && controller.page.items.length === 0 ? <LoadingState label="Loading study guides…" /> : controller.page.items.length === 0 ? (
             <EmptyState icon={<Icon name="study-guide" size={30} />} title={controller.query ? "No matching study guides" : "No study guides yet"}
-              description={controller.query ? "Change the search text or clear the filter." : "Generate a guide from Documents. It will appear here without loading every guide body."} />
+              description={controller.query ? undefined : "Make guides from Documents."} />
           ) : (
-            <ListRows as="div">
+            <ul aria-label="Study guides" className={styles.grid}>
               {controller.page.items.map((item) => {
                 const deleteTarget = deleteTargetFromItem(item);
-                return <GuideRow
+                return <GuideCard
                   key={item.guideId}
                   item={item}
                   deleting={controller.deletingGuideId === item.guideId}
@@ -113,10 +115,11 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
                     title: item.title,
                     source: guideSourceFromItem(item),
                   })}
+                  onOpenSource={item.targetKind === "document" ? () => void openSource(item.targetId) : null}
                   onDelete={deleteTarget ? () => void confirmDelete(deleteTarget) : null}
                 />;
               })}
-            </ListRows>
+            </ul>
           )}
           {controller.page.totalCount > controller.page.limit ? (
             <nav className={styles.pagination} aria-label="Study Guides pages">
@@ -125,61 +128,67 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
               <Button disabled={!controller.canGoNext || controller.isLoading} onClick={controller.goNext}>Next</Button>
             </nav>
           ) : null}
-        </Surface>
+        </section>
       </PerformanceProfiler>
     </PageScaffold>
   );
 }
 
-function GuideRow({
+function GuideCard({
   item,
   deleting,
   onOpen,
+  onOpenSource,
   onDelete,
 }: {
   item: StudyGuidePageItem;
   deleting: boolean;
   onOpen: () => void;
+  onOpenSource: (() => void) | null;
   onDelete: (() => void) | null;
 }) {
-  const actions = [
-    { id: "open", label: "Open", placement: "always-visible" as const, variant: "primary" as const, disabled: deleting, onSelect: onOpen },
-    ...(onDelete ? [{
-      id: "delete",
-      label: `Delete ${item.title} study guide`,
-      description: "Delete generated guide revisions while preserving the source, flashcards, and stable notes.",
-      placement: "wide-and-medium" as const,
-      presentation: "icon" as const,
-      icon: "delete" as const,
-      destructive: true,
-      disabled: deleting,
-      loading: deleting,
-      onSelect: onDelete,
-    }] : []),
+  const headingId = `guide-${useId().replaceAll(":", "")}`;
+  const collection = item.targetKind === "collection";
+  const menu: OverflowMenuItem[] = [
+    ...(onOpenSource ? [{ id: "source", label: "Open the source", onSelect: onOpenSource }] : []),
+    ...(onDelete ? [{ id: "delete", label: "Delete study guide", destructive: true, disabled: deleting, onSelect: onDelete }] : []),
   ];
-  return <ListRow as="article" leading={<ListRowMedia icon="study-guide" />} title={item.title} onActivate={onOpen} activateDisabled={deleting}
-    meta={<>
-      <span className="tw:wrap-anywhere">{sourceSummary(item)}</span>
-      <span className={styles.metrics}>
-        <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
-        <span>{item.noteCount} note{item.noteCount === 1 ? "" : "s"}</span><span>{formatDate(item.publishedAt)}</span>
-      </span>
-    </>}
-    trailing={<ResponsiveActionGroup
-      label={`Actions for ${item.title}`}
-      overflowLabel={`${item.title} actions`}
-      actions={actions}
-    />} />;
+  return (
+    <li data-testid="guide-card" className={styles.card}>
+      <article aria-labelledby={headingId} className="tw:relative tw:h-full tw:min-w-0">
+        {/* A collection's guide sits on a sheet, like its collection on Documents. */}
+        {collection ? <span aria-hidden="true" className={styles.stack} /> : null}
+        <div className={cn(styles.cardSurface, collection && styles.collectionSurface)}>
+          <div className="tw:flex tw:min-w-0 tw:items-start tw:gap-3">
+            <span aria-hidden="true" className={styles.cover}><Icon name={collection ? "folder" : "study-guide"} size={20} /></span>
+            <div className="tw:grid tw:min-w-0 tw:flex-1 tw:gap-0.5">
+              <h3 id={headingId} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold tw:leading-snug">{item.title}</h3>
+              <span className="tw:text-small tw:text-muted-foreground">{sourceSummary(item)}</span>
+            </div>
+            {menu.length ? <OverflowMenu label={`More actions for ${item.title}`} items={menu} /> : null}
+          </div>
+          <div className="tw:mt-auto tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-3 tw:gap-y-2">
+            <span className={styles.metrics}>
+              <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
+              {item.noteCount > 0 ? <span>{item.noteCount} note{item.noteCount === 1 ? "" : "s"}</span> : null}
+              <span>{formatDate(item.publishedAt)}</span>
+            </span>
+            <Button variant="secondary" size="small" disabled={deleting} onClick={onOpen}>Open</Button>
+          </div>
+        </div>
+      </article>
+    </li>
+  );
 }
 function sourceSummary(item: StudyGuidePageItem): string {
   if (item.targetKind === "collection") {
-    return `Document collection · ${item.sourceCount.toLocaleString()} source document${item.sourceCount === 1 ? "" : "s"}`;
+    return `Collection · ${item.sourceCount.toLocaleString()} document${item.sourceCount === 1 ? "" : "s"}`;
   }
   const format = (item.sourceFormat ?? "document").replaceAll("_", " ").toUpperCase();
   const count = item.sourceUnitCount ?? 0;
   const kind = item.sourceUnitKind ?? "page";
   const unit = count === 1 ? singularUnit(kind) : pluralUnit(kind);
-  return `${item.originalFilename ?? "Document"} · ${format} · ${count.toLocaleString()} ${unit}`;
+  return count > 0 ? `${format} · ${count.toLocaleString()} ${unit}` : format;
 }
 function singularUnit(kind: string): string {
   switch (kind) {
@@ -196,5 +205,5 @@ function pluralUnit(kind: string): string {
   return singular === "row group" ? "row groups" : `${singular}s`;
 }
 function formatDate(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(timestamp));
 }
