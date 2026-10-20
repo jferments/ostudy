@@ -20,6 +20,7 @@ import {
 } from "./controllers/useAppController";
 import { isLibrarySection, type AppDestination } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
+import type { StudyGuideOpenRequest } from "./controllers/useStudyGuidesController";
 import { HomeScreen } from "./screens/home/HomeScreen";
 import { LibraryLessons } from "./screens/library/LibraryLessons";
 import { LibraryOverview } from "./screens/library/LibraryOverview";
@@ -92,6 +93,7 @@ function App() {
   const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
   // The lesson Library's Lessons page is playing.
   const [openLessonState, setOpenLesson] = useState<{ subjectId: string; lessonId: string } | null>(null);
+  const [guideOpenRequest, setGuideOpenRequest] = useState<StudyGuideOpenRequest | null>(null);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   useEffect(() => {
@@ -242,6 +244,13 @@ function App() {
                                   onSelectView={navigate}
                                   onOpenLesson={openLesson}
                                   onOpenDeck={(deckId) => void controller.openLibrary({ deckId })}
+                                  onPracticeDeck={(deckId) => void controller.practiceDeck(deckId)}
+                                  onOpenGuide={(documentId, documentTitle) => {
+                                    setGuideOpenRequest({ requestId: Date.now(), documentId, documentTitle });
+                                    navigate("study-guides");
+                                  }}
+                                  onOpenSubject={(subjectId) => controller.chooseLibrarySubject({ kind: "subject", subjectId })}
+                                  onOpenProgress={() => selectDestination("progress")}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "lessons" ? (
@@ -282,6 +291,10 @@ function App() {
                               <LibraryFrame view="study-guides" {...libraryFrame}>
                                 <StudyGuidesRoute
                                   key={studyGuidesNavigationKey}
+                                  openRequest={guideOpenRequest}
+                                  onOpenRequestConsumed={(requestId) =>
+                                    setGuideOpenRequest((current) => (current?.requestId === requestId ? null : current))
+                                  }
                                   subject={librarySubject}
                                   showToast={controller.showToast}
                                   onPracticeCards={controller.practiceCards}
