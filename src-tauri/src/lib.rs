@@ -404,6 +404,7 @@ pub fn run() {
             lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,
             lessons::writing::cancel_subject_course_writing,
+            lessons::writing::get_subject_course_writing_progress,
             lessons::narration::get_speech_settings,
             lessons::narration::save_speech_settings,
             library_session::commands::leased_narrate_lesson_step,

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as lessonsIpc from "../../ipc/lessons";
-import { resetCourseRunsForTests, useSubjectCourse } from "./useSubjectCourse";
+import { COURSE_PROGRESS_INTERVAL_MS, resetCourseRunsForTests, useSubjectCourse } from "./useSubjectCourse";
 
 vi.mock("../../ipc/common", () => ({
   createOperationId: () => "operation-1",
@@ -13,6 +13,7 @@ vi.mock("../../ipc/lessons", () => ({
   listSubjectLessons: vi.fn(),
   writeSubjectCourse: vi.fn(),
   cancelSubjectCourseWriting: vi.fn(),
+  getSubjectCourseWritingProgress: vi.fn(),
 }));
 
 const EMPTY: lessonsIpc.SubjectLessons = { subjectId: "cardiac", lessons: [] };
@@ -36,6 +37,7 @@ describe("useSubjectCourse", () => {
     vi.clearAllMocks();
     resetCourseRunsForTests();
     vi.mocked(lessonsIpc.listSubjectLessons).mockResolvedValue(EMPTY);
+    vi.mocked(lessonsIpc.getSubjectCourseWritingProgress).mockResolvedValue({ planned: null, written: 0 });
   });
 
   it("keeps a run going when the page closes and shows its result on return", async () => {
@@ -78,5 +80,34 @@ describe("useSubjectCourse", () => {
     act(() => result.current.write());
     await waitFor(() => expect(result.current.writeError).toBe("No AI provider"));
     expect(result.current.writing).toBe(false);
+  });
+
+  it("shows how many lessons are written while a run goes, and stops asking when it ends", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = deferred<lessonsIpc.SubjectLessons>();
+      vi.mocked(lessonsIpc.writeSubjectCourse).mockReturnValue(run.promise);
+      vi.mocked(lessonsIpc.getSubjectCourseWritingProgress)
+        .mockRejectedValueOnce(new Error("busy"))
+        .mockResolvedValue({ planned: 4, written: 1 });
+      const { result } = renderHook(() => useSubjectCourse("cardiac"));
+      act(() => result.current.write());
+      expect(result.current.progress).toBeNull();
+
+      // A failed ask is tried again on the next tick.
+      await act(() => vi.advanceTimersByTimeAsync(COURSE_PROGRESS_INTERVAL_MS));
+      expect(result.current.progress).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(COURSE_PROGRESS_INTERVAL_MS));
+      expect(result.current.progress).toEqual({ planned: 4, written: 1 });
+      expect(lessonsIpc.getSubjectCourseWritingProgress).toHaveBeenCalledWith("operation-1");
+
+      await act(async () => run.resolve(WRITTEN));
+      expect(result.current.progress).toBeNull();
+      const asked = vi.mocked(lessonsIpc.getSubjectCourseWritingProgress).mock.calls.length;
+      await act(() => vi.advanceTimersByTimeAsync(COURSE_PROGRESS_INTERVAL_MS * 3));
+      expect(lessonsIpc.getSubjectCourseWritingProgress).toHaveBeenCalledTimes(asked);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -5,6 +5,7 @@ import {
   answerLessonCheck,
   cancelSubjectCourseWriting,
   getLesson,
+  getSubjectCourseWritingProgress,
   listSubjectLessons,
   narrateLessonStep,
   saveLessonProgress,
@@ -37,6 +38,13 @@ describe("lesson IPC", () => {
     await getLesson(lessonId, 1);
     expect(invoke).toHaveBeenLastCalledWith("get_lesson", {
       input: { lessonId, revisionNumber: 1 },
+    });
+  });
+
+  it("asks how far a course being written is by its operation", async () => {
+    await getSubjectCourseWritingProgress("c".repeat(32));
+    expect(invoke).toHaveBeenLastCalledWith("get_subject_course_writing_progress", {
+      input: { operationId: "c".repeat(32) },
     });
   });
 

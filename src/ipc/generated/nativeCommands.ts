@@ -158,6 +158,7 @@ export interface NativeCommandGatewayMap {
   "get_settings": readonly [typeof GatewayModule33.getSettings];
   "get_speech_settings": readonly [typeof GatewayModule34.getSpeechSettings];
   "get_study_target_bundle": readonly [typeof GatewayModule36.getStudyTargetBundle];
+  "get_subject_course_writing_progress": readonly [typeof GatewayModule23.getSubjectCourseWritingProgress];
   "get_subject_filing_reviews": readonly [typeof GatewayModule37.getSubjectFilingReviews];
   "get_subject_library": readonly [typeof GatewayModule37.getSubjectLibrary];
   "get_tutor_conversation": readonly [typeof GatewayModule39.getTutorConversation];

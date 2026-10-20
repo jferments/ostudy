@@ -194,6 +194,21 @@ export async function writeSubjectCourse(
   });
 }
 
+/** How far a course being written is; the course is saved only when complete. */
+export interface CourseWritingProgress {
+  /** The lessons the course will have; null while its parts are planned. */
+  planned: number | null;
+  written: number;
+}
+
+export async function getSubjectCourseWritingProgress(
+  operationId: string,
+): Promise<CourseWritingProgress> {
+  return invoke<CourseWritingProgress>("get_subject_course_writing_progress", {
+    input: { operationId },
+  });
+}
+
 /** Stops a course being written; nothing from the stopped run is saved. */
 export async function cancelSubjectCourseWriting(
   operationId: string,
