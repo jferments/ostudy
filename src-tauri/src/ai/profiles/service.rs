@@ -37,7 +37,7 @@ pub(super) fn get_profile(
     load_detail(database, runtime, profile_id)
 }
 
-pub(super) fn create_profile(
+pub(crate) fn create_profile(
     database: &Database,
     runtime: &AiRuntimeState,
     input: CreateAiProviderProfileInput,
@@ -125,7 +125,7 @@ pub(super) fn delete_profile(
     })
 }
 
-pub(super) fn set_credential(
+pub(crate) fn set_credential(
     database: &Database,
     runtime: &AiRuntimeState,
     input: SetAiProviderCredentialInput,
@@ -220,7 +220,7 @@ pub(super) fn get_task_defaults(database: &Database) -> Result<AiTaskDefaultsDto
     database.with_connection(defaults::load_task_defaults)
 }
 
-pub(super) fn set_task_default(
+pub(crate) fn set_task_default(
     database: &Database,
     runtime: &AiRuntimeState,
     input: SetAiTaskDefaultInput,

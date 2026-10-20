@@ -226,6 +226,7 @@ export interface NativeCommandGatewayMap {
   "remediate_practice_question": readonly [typeof GatewayModule29.remediatePracticeQuestion];
   "remove_device_sync_peer": readonly [typeof GatewayModule10.removeDeviceSyncPeer];
   "remove_document_collection_membership": readonly [typeof GatewayModule7.removeDocumentCollectionMembership];
+  "rename_document": readonly [typeof GatewayModule14.renameDocument];
   "rename_subject": readonly [typeof GatewayModule36.renameSubject];
   "rename_tutor_conversation": readonly [typeof GatewayModule38.renameTutorConversation];
   "render_document_page_tile": readonly [typeof GatewayModule12.renderDocumentPageTile];

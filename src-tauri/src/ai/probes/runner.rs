@@ -72,7 +72,7 @@ pub(super) async fn list_models(
     })
 }
 
-pub(super) async fn test_profile(
+pub(crate) async fn test_profile(
     database: &Database,
     runtime: &AiRuntimeState,
     input: AiProfileReferenceInput,

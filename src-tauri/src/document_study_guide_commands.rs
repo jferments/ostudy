@@ -100,7 +100,12 @@ pub(crate) async fn generate_document_study_guide(
     let document_id = input.document_id.clone();
     let result = run_document_task(
         &document_id,
-        generate_document_study_guide_impl(database, paths, runtime, input),
+        generate_document_study_guide_for_document(
+            database.inner(),
+            paths.inner(),
+            runtime.inner(),
+            &input.document_id,
+        ),
     )
     .await;
     crate::document_outline_service::schedule_document_postprocessing(app, document_id.clone());
@@ -114,13 +119,15 @@ pub(crate) async fn generate_document_study_guide(
     }
 }
 
-async fn generate_document_study_guide_impl(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, AiRuntimeState>,
-    input: GenerateDocumentStudyGuideInput,
+/// `generate_document_study_guide` without its Tauri state, shared with the
+/// study-guide evaluation runner so both take the same path.
+pub(crate) async fn generate_document_study_guide_for_document(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    document_id: &str,
 ) -> Result<DocumentStudyGuide, CommandError> {
-    let stored = load_guide_document(database.inner(), &input.document_id)?;
+    let stored = load_guide_document(database, document_id)?;
     if stored.archived {
         return Err(CommandError::new(
             "document_archived",
@@ -128,7 +135,7 @@ async fn generate_document_study_guide_impl(
         ));
     }
     stored.source.validate()?;
-    let chunks = document_store::load_semantic_chunks(database.inner(), &input.document_id)?;
+    let chunks = document_store::load_semantic_chunks(database, document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
@@ -136,19 +143,16 @@ async fn generate_document_study_guide_impl(
         ));
     }
 
-    let mut task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_document_task_context(database)?;
     let capabilities = document_provider::load_document_provider_capabilities(
-        database.inner(),
+        database,
         &task.profile_id,
         &task.provider_kind,
         &task.model_id,
     )?;
     task.apply_provider_capabilities(&capabilities);
-    let calibration = document_cost::load_cost_calibration(
-        database.inner(),
-        &task.provider_kind,
-        &task.model_id,
-    )?;
+    let calibration =
+        document_cost::load_cost_calibration(database, &task.provider_kind, &task.model_id)?;
     let scale_plan = DocumentScalePlan::for_capabilities(
         stored.source.unit_count,
         &capabilities,
@@ -156,11 +160,11 @@ async fn generate_document_study_guide_impl(
         calibration,
     )?;
     let outline = ensure_document_outline(EnsureDocumentOutlineInput {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
+        database,
+        paths,
+        runtime,
         task: &task,
-        document_id: &input.document_id,
+        document_id,
         extraction_backend: &stored.extraction_backend,
         source: &stored.source,
         chunks: &chunks,
@@ -168,19 +172,14 @@ async fn generate_document_study_guide_impl(
     })
     .await?;
 
-    let learning_plan = ensure_learning_plan_for_outline(
-        database.inner(),
-        &input.document_id,
-        &stored.source,
-        &outline,
-        &chunks,
-    )?;
+    let learning_plan =
+        ensure_learning_plan_for_outline(database, document_id, &stored.source, &outline, &chunks)?;
     generate_document_study_guide_from_plan(PreparedStudyGuideInput {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
+        database,
+        paths,
+        runtime,
         task: &task,
-        document_id: &input.document_id,
+        document_id,
         document_title: &stored.title,
         plan: &learning_plan,
         chunks: &chunks,

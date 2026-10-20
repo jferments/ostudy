@@ -29,7 +29,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-const VIEW_VERSION: i64 = 6;
+const VIEW_VERSION: i64 = 7;
 const MAX_SECTIONS: usize = 160;
 const MAX_DIGEST_BYTES: usize = 24_000;
 const REDUCTION_OUTPUT: usize = crate::document_scale::GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS;
@@ -97,7 +97,19 @@ pub(crate) async fn ensure(input: ViewInput<'_>) -> Result<DocumentOutline, Comm
         );
         return serde_json::from_str(&value).map_err(CommandError::serialization);
     }
-    let mut outline = native_outline(input.windows, input.catalogs)?;
+    let parts = input
+        .database
+        .with_connection(|connection| part_starts(connection, input.document_id))
+        .unwrap_or_else(|error| {
+            crate::logging::warn_target(
+                "ai.knowledge.view",
+                "knowledge_document_parts_skipped",
+                "The document's top-level headings could not be read; topics are grouped by size alone.",
+                json!({"code": error.code}),
+            );
+            Vec::new()
+        });
+    let mut outline = native_outline(input.windows, input.catalogs, &parts)?;
     let signal = current_signal().unwrap_or_else(CancellationSignal::new);
     let mut core = BTreeSet::new();
     let mut reduced = false;
@@ -191,10 +203,11 @@ fn validate_catalogs(
 fn native_outline(
     windows: &[SemanticWindow],
     catalogs: &[KnowledgeCatalog],
+    parts: &[i64],
 ) -> Result<DocumentOutline, CommandError> {
     let mut sections = Vec::new();
     let mut seen = HashSet::new();
-    for group in window_groups(windows, catalogs) {
+    for group in window_groups(windows, catalogs, parts) {
         let (first, end) = (group.start, group.end);
         let mut units = catalogs[first..end]
             .iter()
@@ -290,12 +303,46 @@ const SECTION_TARGET_SOURCE_UNITS: usize = 6;
 /// holds about `SECTION_TARGET_UNITS` units or spans
 /// `SECTION_TARGET_SOURCE_UNITS` pages. A group whose evidence lies inside the
 /// previous group's pages joins it, and so does a short tail, so a small window
-/// never becomes a topic nested in, and repeating, its neighbour.
+/// never becomes a topic nested in, and repeating, its neighbour. Groups never
+/// cross the start of one of the document's top-level parts (`parts`, chunk
+/// indices), so one topic does not end one chapter section and begin the next.
 fn window_groups(
     windows: &[SemanticWindow],
     catalogs: &[KnowledgeCatalog],
+    parts: &[i64],
 ) -> Vec<std::ops::Range<usize>> {
     let minimum_windows = windows.len().div_ceil(MAX_SECTIONS).max(1);
+    // A window belongs to the part holding its middle chunk; windows overlap,
+    // so one that straddles a part start goes where most of it lies.
+    let part = |window: &SemanticWindow| {
+        let middle =
+            window.first_chunk_index + (window.last_chunk_index - window.first_chunk_index) / 2;
+        parts.iter().filter(|start| **start <= middle).count()
+    };
+    let mut groups = Vec::new();
+    let mut run_start = 0;
+    for index in 0..windows.len() {
+        if index + 1 == windows.len() || part(&windows[index + 1]) != part(&windows[index]) {
+            group_part(
+                windows,
+                catalogs,
+                run_start..index + 1,
+                minimum_windows,
+                &mut groups,
+            );
+            run_start = index + 1;
+        }
+    }
+    groups
+}
+
+fn group_part(
+    windows: &[SemanticWindow],
+    catalogs: &[KnowledgeCatalog],
+    run: std::ops::Range<usize>,
+    minimum_windows: usize,
+    groups: &mut Vec<std::ops::Range<usize>>,
+) {
     let evidence_range = |range: &std::ops::Range<usize>| {
         let pages = catalogs[range.clone()]
             .iter()
@@ -316,25 +363,26 @@ fn window_groups(
             ),
         }
     };
-    let mut groups: Vec<std::ops::Range<usize>> = Vec::new();
-    let mut start = 0;
+    let first_group = groups.len();
+    let mut start = run.start;
     let mut units = 0;
     let mut pages = BTreeSet::new();
-    for index in 0..windows.len() {
+    for index in run.clone() {
         units += catalogs[index].units.len();
         pages.extend(windows[index].source_locator.unit_numbers.iter().copied());
         let full = units >= SECTION_TARGET_UNITS || pages.len() >= SECTION_TARGET_SOURCE_UNITS;
-        let last = index + 1 == windows.len();
+        let last = index + 1 == run.end;
         if !(last || (full && index + 1 - start >= minimum_windows)) {
             continue;
         }
         let group = start..index + 1;
-        let joins_previous = groups.last().is_some_and(|previous| {
-            let (outer_start, outer_end) = evidence_range(previous);
-            let (inner_start, inner_end) = evidence_range(&group);
-            (outer_start <= inner_start && inner_end <= outer_end)
-                || (last && !full && units < SECTION_TARGET_UNITS / 2)
-        });
+        let joins_previous = groups.len() > first_group
+            && groups.last().is_some_and(|previous| {
+                let (outer_start, outer_end) = evidence_range(previous);
+                let (inner_start, inner_end) = evidence_range(&group);
+                (outer_start <= inner_start && inner_end <= outer_end)
+                    || (last && !full && units < SECTION_TARGET_UNITS / 2)
+            });
         match groups.last_mut() {
             Some(previous) if joins_previous => previous.end = group.end,
             _ => groups.push(group),
@@ -343,7 +391,71 @@ fn window_groups(
         units = 0;
         pages.clear();
     }
-    groups
+}
+
+/// Chunk indices where the document's top heading level starts a part: the
+/// largest heading size used more than once (a size used once is the
+/// document title), when smaller headings exist beneath it. Documents without
+/// sized headings, or with one heading level, have no parts.
+fn part_starts(connection: &Connection, document_id: &str) -> Result<Vec<i64>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT text, font_size FROM document_semantic_elements
+             WHERE document_id=?1 AND element_type='title' AND font_size IS NOT NULL
+             ORDER BY element_index",
+        )
+        .map_err(CommandError::database)?;
+    let headings = statement
+        .query_map([document_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let size = |font: f64| (font * 2.0).round() as i64;
+    let mut counts = BTreeMap::<i64, usize>::new();
+    for (_, font) in &headings {
+        *counts.entry(size(*font)).or_default() += 1;
+    }
+    let Some(top) = counts
+        .iter()
+        .rev()
+        .find(|(_, count)| **count > 1)
+        .map(|(size, _)| *size)
+    else {
+        return Ok(Vec::new());
+    };
+    if !counts.keys().any(|smaller| *smaller < top) {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection
+        .prepare(
+            "SELECT chunk_index, heading_context FROM document_semantic_chunk_sources
+             WHERE document_id=?1 ORDER BY chunk_index",
+        )
+        .map_err(CommandError::database)?;
+    let chunks = statement
+        .query_map([document_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let mut starts = Vec::new();
+    let mut after = i64::MIN;
+    for (text, _) in headings.iter().filter(|(_, font)| size(*font) == top) {
+        let text = text.trim();
+        if let Some((index, _)) = chunks.iter().find(|(index, heading)| {
+            *index > after && heading.as_deref().map(str::trim) == Some(text)
+        }) {
+            starts.push(*index);
+            after = *index;
+        }
+    }
+    if starts.len() >= MAX_SECTIONS {
+        return Ok(Vec::new());
+    }
+    Ok(starts)
 }
 
 fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
@@ -650,14 +762,80 @@ mod tests {
             .map(|i| window(i, vec![i as i64 + 1]))
             .collect::<Vec<_>>();
         let catalogs = (0..10).map(|_| catalog(5)).collect::<Vec<_>>();
-        assert_eq!(window_groups(&windows, &catalogs), [0..6, 6..10]);
+        assert_eq!(window_groups(&windows, &catalogs, &[]), [0..6, 6..10]);
         let catalogs = (0..10)
             .map(|i| catalog(if i >= 8 { 3 } else { 16 }))
             .collect::<Vec<_>>();
         assert_eq!(
-            window_groups(&windows, &catalogs),
+            window_groups(&windows, &catalogs, &[]),
             [0..2, 2..4, 4..6, 6..10]
         );
+    }
+
+    #[test]
+    fn topics_do_not_cross_the_start_of_a_top_level_part() {
+        let windows = (0..10)
+            .map(|i| window(i, vec![i as i64 + 1]))
+            .collect::<Vec<_>>();
+        let catalogs = (0..10).map(|_| catalog(5)).collect::<Vec<_>>();
+        // Without parts: [0..6, 6..10]. A part starting at window 4 splits the
+        // first topic there, and its short tail stays inside the second part.
+        assert_eq!(window_groups(&windows, &catalogs, &[4]), [0..4, 4..10]);
+        // A part of a single small window is still its own topic.
+        assert_eq!(
+            window_groups(&windows, &catalogs, &[4, 5]),
+            [0..4, 4..5, 5..10]
+        );
+    }
+
+    #[test]
+    fn parts_start_at_the_largest_repeated_heading_size() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE document_semantic_elements(document_id TEXT, element_index INTEGER,
+                    element_type TEXT, text TEXT, font_size REAL);
+                 CREATE TABLE document_semantic_chunk_sources(document_id TEXT, chunk_index INTEGER,
+                    heading_context TEXT);",
+            )
+            .unwrap();
+        let headings = [
+            ("The Heart", 22.0),
+            ("19.2 Cardiac Muscle", 16.0),
+            ("Conduction", 13.0),
+            ("19.3 Cardiac Cycle", 16.0),
+            ("Heart Sounds", 13.0),
+        ];
+        for (index, (text, size)) in headings.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO document_semantic_elements VALUES('d',?1,'title',?2,?3)",
+                    params![index as i64, text, size],
+                )
+                .unwrap();
+        }
+        let chunks = [
+            "The Heart",
+            "19.2 Cardiac Muscle",
+            "Conduction",
+            "Conduction",
+            "19.3 Cardiac Cycle",
+            "Heart Sounds",
+        ];
+        for (index, heading) in chunks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO document_semantic_chunk_sources VALUES('d',?1,?2)",
+                    params![index as i64, heading],
+                )
+                .unwrap();
+        }
+        assert_eq!(part_starts(&connection, "d").unwrap(), [1, 4]);
+        // One heading level: no parts.
+        connection
+            .execute("UPDATE document_semantic_elements SET font_size=13.0", [])
+            .unwrap();
+        assert!(part_starts(&connection, "d").unwrap().is_empty());
     }
 
     #[test]
@@ -668,7 +846,7 @@ mod tests {
             window(2, vec![5]),
         ];
         let catalogs = vec![catalog(40), catalog(40), catalog(40)];
-        assert_eq!(window_groups(&windows, &catalogs), [0..2, 2..3]);
+        assert_eq!(window_groups(&windows, &catalogs, &[]), [0..2, 2..3]);
     }
 
     #[test]

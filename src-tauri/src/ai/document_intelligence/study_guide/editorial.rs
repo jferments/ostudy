@@ -94,7 +94,22 @@ struct EditorialSubsectionWire {
 
 /// Group subsections under their chapters, keeping chapter order and each
 /// chapter's subsection order. Admission then checks coverage as before.
+///
+/// Models sometimes count chapters from 1 although the prompt asks for 0-based
+/// indexes. When no subsection names chapter 0 and one names the chapter just
+/// past the end, no 0-based reading is valid, so the indexes are read as
+/// 1-based instead of losing the guide's chapters.
 fn nest(wire: EditorialWire) -> Result<EditorialResponse, CommandError> {
+    let one_based = !wire.subsections.is_empty()
+        && wire
+            .subsections
+            .iter()
+            .all(|subsection| subsection.chapter >= 1)
+        && wire
+            .subsections
+            .iter()
+            .any(|subsection| subsection.chapter == wire.chapters.len());
+    let offset = usize::from(one_based);
     let mut chapters = wire
         .chapters
         .into_iter()
@@ -106,7 +121,7 @@ fn nest(wire: EditorialWire) -> Result<EditorialResponse, CommandError> {
         .collect::<Vec<_>>();
     for subsection in wire.subsections {
         let chapter = chapters
-            .get_mut(subsection.chapter)
+            .get_mut(subsection.chapter - offset)
             .ok_or_else(|| editorial_error("A study-guide subsection named an unknown chapter."))?;
         chapter.topics.push(EditorialTopicResponse {
             alias: subsection.alias,
@@ -606,6 +621,42 @@ mod tests {
         }))
         .unwrap();
         assert!(nest(unknown).is_err());
+    }
+
+    #[test]
+    fn chapters_counted_from_one_still_nest() {
+        let subsections = |chapters: [usize; 4]| {
+            ["T0", "T1", "T2", "T3"]
+                .iter()
+                .zip(chapters)
+                .map(|(alias, chapter)| json!({"alias": alias, "chapter": chapter, "title": "a heading"}))
+                .collect::<Vec<_>>()
+        };
+        let wire = |chapters: [usize; 4]| -> EditorialWire {
+            serde_json::from_value(json!({
+                "title": "cardiovascular drugs",
+                "introduction": response().introduction,
+                "learningObjectives": response().learning_objectives,
+                "chapters": [
+                    {"title": "treatment foundations", "introduction": response().chapters[0].introduction},
+                    {"title": "major drug classes", "introduction": response().chapters[1].introduction}
+                ],
+                "subsections": subsections(chapters)
+            }))
+            .unwrap()
+        };
+        let sizes = |nested: EditorialResponse| {
+            nested
+                .chapters
+                .iter()
+                .map(|chapter| chapter.topics.len())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sizes(nest(wire([1, 1, 2, 2])).unwrap()), [2, 2]);
+        // A valid 0-based answer is never shifted.
+        assert_eq!(sizes(nest(wire([1, 1, 1, 1])).unwrap()), [0, 4]);
+        // Past the end of a 1-based reading too.
+        assert!(nest(wire([1, 1, 2, 3])).is_err());
     }
 
     #[test]

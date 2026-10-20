@@ -73,6 +73,8 @@ mod external_file_images;
 mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
+#[cfg(feature = "guide-eval")]
+pub mod guide_eval;
 mod home_summary;
 pub mod ipc_wire_contract;
 mod knowledge;
@@ -388,6 +390,7 @@ pub fn run() {
             document_operations::cancel_document_flashcard_generation,
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
+            document_operations::rename_document,
             document_operations::delete_document,
             document_annotations::get_document_annotations,
             document_annotations::apply_document_annotation_changes,

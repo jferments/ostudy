@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelDocumentFlashcardGeneration,
   deleteDocument,
+  renameDocument,
   generateMoreDocumentFlashcards,
   importDocumentAndGenerateFlashcards,
   listDocuments,
@@ -67,6 +68,12 @@ describe("document IPC", () => {
     vi.mocked(invoke).mockClear();
     await openDocumentSource(documentId);
     expect(invoke).toHaveBeenCalledWith("open_document_source", { documentId });
+
+    vi.mocked(invoke).mockClear();
+    await renameDocument(documentId, 4, "Cardiac cycle");
+    expect(invoke).toHaveBeenCalledWith("rename_document", {
+      input: { documentId, revision: 4, title: "Cardiac cycle" },
+    });
 
     vi.mocked(invoke).mockClear();
     await deleteDocument(documentId, 4);
