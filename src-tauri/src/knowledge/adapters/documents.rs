@@ -71,6 +71,13 @@ pub(super) fn read(
         serde_json::from_str(&assets).map_err(CommandError::serialization)?;
     asset_ids.sort();
     asset_ids.dedup();
+    if !asset_ids.is_empty()
+        && source.identity_version == 2
+        && super::super::extraction::has_substantive_text(&source)
+    {
+        let skipped = super::super::back_matter::back_matter_assets(connection, &seed.owner_id)?;
+        asset_ids.retain(|asset| !skipped.contains(asset));
+    }
     for asset_id in asset_ids {
         source.images.push(EvidenceImage::DocumentAsset {
             document_id: seed.owner_id.clone(),

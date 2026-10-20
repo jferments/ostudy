@@ -118,6 +118,7 @@ export interface NativeCommandGatewayMap {
   "get_document_collection_organization": readonly [typeof GatewayModule6.getDocumentCollectionOrganization];
   "get_document_generation_progress": readonly [typeof GatewayModule13.getDocumentGenerationProgress];
   "get_document_learning_plan": readonly [typeof GatewayModule33.getDocumentLearningPlan];
+  "get_document_page_text": readonly [typeof GatewayModule11.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule33.getDocumentStudyGuide];
   "get_document_topic_card_ids": readonly [typeof GatewayModule33.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule33.getDocumentTopicCardProjection];
@@ -222,6 +223,7 @@ export interface NativeCommandGatewayMap {
   "remediate_practice_question": readonly [typeof GatewayModule28.remediatePracticeQuestion];
   "remove_device_sync_peer": readonly [typeof GatewayModule9.removeDeviceSyncPeer];
   "remove_document_collection_membership": readonly [typeof GatewayModule6.removeDocumentCollectionMembership];
+  "rename_document": readonly [typeof GatewayModule13.renameDocument];
   "rename_subject": readonly [typeof GatewayModule35.renameSubject];
   "rename_tutor_conversation": readonly [typeof GatewayModule37.renameTutorConversation];
   "render_document_page_tile": readonly [typeof GatewayModule11.renderDocumentPageTile];

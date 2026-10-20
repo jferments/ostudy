@@ -22,6 +22,7 @@ Each document is one row: its format, length and when it was added, what it has 
 - **Retry**, when card generation failed or the document's deck was deleted.
 - **Make a study guide** or **Remake the study guide**, and **Stop study guide** while one is being written.
 - **Stop processing** while the document is being read or its first cards are being made.
+- **Rename…**: give the document your own title. A title you choose stays; generated metadata no longer replaces it.
 - **Details**: the file, size, length, processing time and token use, and during a run the live request statistics, the provider and model serving it, and the requested and effective reasoning.
 - **Delete**.
 
@@ -53,7 +54,7 @@ Review generated material for factual errors, weak questions, duplicates and mis
 
 A collection is a **subject**: one grouping for a course's documents, guides and decks. The subjects in **Library → Flashcards** are the same subjects, so a subject made there appears here as a collection, and the other way round. Collections do not nest. Choose **New collection** for a course, unit, or exam.
 
-A collection is drawn as a stack and lists its documents. **Add documents…** in its **…** menu (or the collection's empty **Add documents** area) uploads a new document straight into it or adds several existing documents at once. You can also drag a document row onto the collection, or use **Move to a collection…** from the document's menu. Each listed document's **…** menu offers **Open**, **Annotate**, **Reading range…**, **Move to another collection…** and **Remove from collection**. The collection's own menu also has **Rename…** and **Delete collection**.
+A collection is drawn as a stack and lists its documents. **Add documents…** in its **…** menu (or the collection's empty **Add documents** area) uploads a new document straight into it or adds several existing documents at once. You can also drag a document row onto the collection, or use **Move to a collection…** from the document's menu. Each listed document's **…** menu offers **Open**, **Annotate**, **Rename…**, **Reading range…**, **Move to another collection…** and **Remove from collection**. The collection's own menu also has **Rename…** and **Delete collection**.
 
 A document is in at most one collection. Moving it moves its reading range and its generated deck with it. Removing it from a collection leaves the document and its deck in no subject and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
 
