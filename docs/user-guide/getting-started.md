@@ -18,7 +18,7 @@ Choosing **Library** opens the page and subject you used last. Library's **Flash
 
 ## Create your first deck
 
-A new library opens on Home's welcome, **Your library is empty**, with **Create a subject**, **Import a document**, and **Open Library**. A subject keeps one course's documents, study guides, and decks together; you can also start with a deck and file it later.
+A new library opens on Home's welcome, **Your library is empty**, with **Create a subject**, **Import a document**, and **Import a deck** (an ostudy `.studydeck`, an Anki `.apkg` or generated-card JSON). When every deck is archived, the welcome says **Nothing to study yet** and offers **Open Library**, where those decks are. A subject keeps one course's documents, study guides, and decks together; you can also start with a deck and file it later.
 
 Open **Library**. On a wide or medium window, a library with no decks shows **No cards yet** with **New deck** and **Import deck**. To start a deck inside a subject, choose the subject in Library's subject list, open **Flashcards** and choose **New deck** under the decks.
 
@@ -30,13 +30,13 @@ Keep one focused retrieval task per card. Generated or imported wording should r
 
 ## Organize without changing your study history
 
-**New subject** in Library's subject list, or on Home, creates a subject. **No subject** appears only when some decks or documents are not filed under one. Use the menu beside a deck in the tree for **Move to subject…**, **Move up**, and **Move down**.
+**New subject** in Library's subject list, or **+** beside **Your subjects** on Home, creates a subject. Home's **⋯** menu there sorts the subjects by most due, name, or your order, and each subject shows how much of it you remembered over the last 30 days. **No subject** appears only when some decks or documents are not filed under one. Use the menu beside a deck in the tree for **Move to subject…**, **Move up**, and **Move down**.
 
 A deck's actions menu also has **Merge into…**, **Export…**, **Archive**, and **Delete deck**. **Merge into…** moves the source deck's cards into another active deck while preserving card/note identities, schedules, review history, tags, media, and source provenance. The emptied source deck is archived after the transaction, and existing destination cards are not deduplicated simply because their wording looks similar. Deleting a subject moves its decks and documents to No subject; deleting a deck is a different action with different consequences. Archiving retains the deck but removes it from normal study availability until restored. See [Subjects and deck organization](flashcards-organization.md).
 
 ## Practice a small session
 
-Use **Start review** on Home or in Review for everything due today, **Practice** on a deck, or **Practice with options…** in a deck's actions menu (or **Practice…** on a subject) to open the practice setup. There you choose **Scheduled study**, which keeps to today's schedule and daily limits, or **Extra study**, and **Cards available to study** shows what the session will include. Suspended, buried, or archived cards are not studied.
+Use **Start review** on Home or in Review for everything due today, **Practice** on a deck, or **Practice with options…** in a deck's actions menu (or **Practice…** on a subject) to open the practice setup. There you choose **Due**, which keeps to today's schedule and daily limits, or **Extra**; each shows how many cards it would study. Suspended, buried, or archived cards are not studied.
 
 Think of the answer before choosing **Show answer**. Then choose **Wrong**, **Hard**, **Medium**, or **Easy** based on how well you recalled it. On a keyboard, Space or Enter reveals the answer, and 0–3 chooses a rating when no editor or overlay has focus. Each rating is saved as a review and updates the card's schedule; it is not merely a visual score.
 

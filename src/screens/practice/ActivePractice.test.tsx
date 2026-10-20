@@ -114,6 +114,15 @@ describe("ActivePractice", () => {
     fireEvent.click(within(group).getByRole("button", { name: "2 Medium" }));
     expect(props.onScore).toHaveBeenCalledOnce(); expect(props.onScore).toHaveBeenCalledWith(2);
   });
+  it("shows the interval each rating would schedule and keeps the question visually hidden", () => {
+    renderActive({ revealed: true, previewSet: previews });
+    const group = screen.getByRole("region", { name: "How difficult was that answer?" });
+    const intervals = [...group.querySelectorAll("[data-rating-interval]")].map((node) => node.textContent);
+    expect(intervals).toEqual(["1 min", "1 h", "1 day", "1 mo"]);
+    const hard = screen.getByRole("button", { name: "1 Hard" });
+    expect(document.getElementById(required(hard.getAttribute("aria-describedby"), "description"))?.textContent).toBe("1 h");
+    expect(required(group.querySelector("h2"), "heading").className).toContain("tw:sr-only");
+  });
   it("offers to retry the interval preview and keeps the ratings disabled until it arrives", () => {
     const { props } = renderActive({ revealed: true, previewSet: null });
     for (const name of ["0 Wrong", "1 Hard", "2 Medium", "3 Easy"]) expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
@@ -228,7 +237,7 @@ describe("ActivePractice on a phone", () => {
     fireEvent.click(reveal); expect(props.onReveal).toHaveBeenCalledOnce();
     rerender(<LayoutModeProvider><ActivePractice {...props} revealed /></LayoutModeProvider>);
     const area = required(document.querySelector<HTMLElement>("[data-practice-actions]"), "action area");
-    expect(within(area).getAllByRole("button").map((button) => button.textContent)).toEqual(["0Wrong", "1Hard", "2Medium", "3Easy"]);
+    expect(within(area).getAllByRole("button").map((button) => button.textContent)).toEqual(["0Wrong1 min", "1Hard1 h", "2Medium1 day", "3Easy1 mo"]);
     fireEvent.keyDown(window, { key: "0" }); expect(props.onScore).toHaveBeenCalledWith(0);
   });
   it("disables the card actions menu with the other controls while a change is pending", () => {

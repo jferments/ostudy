@@ -111,7 +111,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Daily limits",
     summary: "Daily limits manage your workload without deleting or permanently hiding due cards.",
     details:
-      "Scheduled study keeps to New cards per day and Reviews per day from Settings → Review, and Cards available to study shows what the limits leave out. A limit of 0 pauses that kind of card in scheduled sessions. Reviews before New day starts at count toward the previous day. Choose Extra study when you want to study beyond today's schedule; shuffling is chosen when you start a session.",
+      "Due cards keep to New cards per day and Reviews per day from Settings → Review; the count beside Due is what the limits leave. A limit of 0 pauses that kind of card in scheduled sessions. Reviews before New day starts at count toward the previous day. Choose Extra when you want to study beyond today's schedule; shuffling is chosen when you start a session.",
     documentation: "Practice, scheduling, and Progress: Choose a scope",
   },
   "settings.motion": {
@@ -134,7 +134,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
   "settings.reveal": {
     id: "settings.reveal",
     title: "Answer side",
-    summary: "Basic cards show only the answer when flipped unless you keep the question above it.",
+    summary: "Basic cards keep the question above the answer when flipped unless you turn it off.",
     details:
       "Fill in the blank cards always keep their surrounding text after reveal, so questions with several blanks stay understandable.",
     documentation: "Practice, scheduling, and Progress: Reveal, check, rate, and continue",
