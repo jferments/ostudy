@@ -6,7 +6,8 @@ import { Badge } from "../ui/primitives/Badge";
 import { Panel } from "../ui/primitives/Panel";
 import { Button } from "../ui/primitives/Button";
 import { Icon } from "../ui/icons/Icon";
-import { sourcePassageFor, type SourcePassage } from "./sourcePassage";
+import { getCardMarkSource, type CardMarkSource } from "../ipc/annotationCards";
+import { atMark, sourcePassageFor, type SourcePassage } from "./sourcePassage";
 
 interface SourceCitationPanelProps {
   deckId?: string; noteId?: string; compact?: boolean;
@@ -18,16 +19,24 @@ interface SourceCitationPanelProps {
 export function SourceCitationPanel({ deckId, noteId, compact = false, onOpenPassage }: SourceCitationPanelProps) {
   const [citations, setCitations] = useState<SourceCitation[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [mark, setMark] = useState<CardMarkSource | null>(null);
+  const canOpen = onOpenPassage !== undefined;
   useEffect(() => {
     let active = true;
     setCitations([]);
     setErrorMessage(null);
+    setMark(null);
+    // A card made from a mark opens its source at that mark; without one it
+    // opens at the cited page, so a failed read only loses the precision.
+    if (noteId && !deckId && canOpen) {
+      void getCardMarkSource(noteId).then((loaded) => { if (active) setMark(loaded); }).catch(() => undefined);
+    }
     const request = deckId ? listDeckSourceCitations(deckId)
       : noteId ? getNoteSourceCitation(noteId).then((citation) => citation ? [citation] : []) : Promise.resolve([]);
     void request.then((loaded) => { if (active) setCitations(loaded); })
       .catch((error: unknown) => { if (active) setErrorMessage(getErrorMessage(error)); });
     return () => { active = false; };
-  }, [deckId, noteId]);
+  }, [deckId, noteId, canOpen]);
 
   if (errorMessage) return <InlineNotice kind="warning">Source details could not be loaded: {errorMessage}</InlineNotice>;
   if (citations.length === 0) return null;
@@ -40,7 +49,7 @@ export function SourceCitationPanel({ deckId, noteId, compact = false, onOpenPas
       </div>
       <div className="tw:grid tw:min-w-0 tw:gap-3">
         {citations.map((citation) => {
-          const passage = onOpenPassage ? sourcePassageFor(citation) : null;
+          const passage = onOpenPassage ? atMark(sourcePassageFor(citation), mark) : null;
           return (
             <article className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:rounded-lg tw:bg-background tw:p-3" key={citation.citationId}>
               <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words tw:[&>span]:text-small tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground">

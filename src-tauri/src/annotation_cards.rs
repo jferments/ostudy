@@ -39,6 +39,12 @@ pub struct GetDocumentMarkedCardsInput {
     pub document_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GetCardMarkSourceInput {
+    pub note_id: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardMarkSourceDto {
@@ -76,6 +82,46 @@ pub fn get_document_marked_cards(
     input: GetDocumentMarkedCardsInput,
 ) -> Result<DocumentMarkedCardsDto, CommandError> {
     database.with_connection(|connection| marked_cards(connection, input.document_id))
+}
+
+/// The mark a card was made from, so its source can open at that mark.
+#[tauri::command]
+pub fn get_card_mark_source(
+    database: State<'_, Database>,
+    input: GetCardMarkSourceInput,
+) -> Result<Option<CardMarkSourceDto>, CommandError> {
+    database.with_connection(|connection| mark_source(connection, &input.note_id))
+}
+
+/// A note's link to its mark, or none for a card not made from one. An
+/// erased mark leaves the link without an annotation id.
+pub(crate) fn mark_source(
+    connection: &Connection,
+    note_id: &str,
+) -> Result<Option<CardMarkSourceDto>, CommandError> {
+    validate_entity_id(note_id, "card")?;
+    connection
+        .query_row(
+            "SELECT link.note_id, link.document_id, annotation.id,
+                    link.page_number, link.quote
+             FROM note_annotation_sources AS link
+             LEFT JOIN document_annotations AS annotation
+               ON annotation.id = link.annotation_id
+              AND annotation.document_id = link.document_id
+             WHERE link.note_id = ?1",
+            [note_id],
+            |row| {
+                Ok(CardMarkSourceDto {
+                    note_id: row.get(0)?,
+                    document_id: row.get(1)?,
+                    annotation_id: row.get(2)?,
+                    page_number: row.get(3)?,
+                    quote: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(CommandError::database)
 }
 
 /// Link a saved note to the mark it was made from. Linking the same note
