@@ -14,6 +14,7 @@ Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is 
 ./scripts/ostudy-dev package-deb
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
+./scripts/ostudy-dev desktop
 ./scripts/ostudy-dev check-changed
 ./scripts/ostudy-dev check-static
 ./scripts/ostudy-dev check-fast
@@ -58,6 +59,7 @@ The report never requires a hand-entered SQLite path. It reads `$XDG_DATA_HOME` 
 ```bash
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
+./scripts/ostudy-dev desktop
 ```
 
 The equivalent underlying commands are:
@@ -71,7 +73,16 @@ The equivalent underlying commands are:
 
 `run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, development-profile stamp, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
 
-Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri hot-reload development. `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
+## Development desktop run
+
+```bash
+pnpm install --frozen-lockfile
+pnpm desktop
+```
+
+`pnpm desktop` (or `./scripts/ostudy-dev desktop`) runs `scripts/dev.sh`: Tauri hot reload with the `src-tauri/tauri.dev.conf.json` overlay, so it runs as `io.github.jferments.ostudy.dev` with the development library. It is how the maintainer tries a branch in `~/code/ostudy` ([Local testing](local-testing-and-handoff.md#linux-the-maintainers-test-drive)). Install first: `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: error`, so scripts refuse to start when `node_modules` is older than the lockfile. Never use bare `pnpm tauri dev`; that debug build resolves the production identifier and startup refuses it.
+
+`pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
 
 ## Validation
 

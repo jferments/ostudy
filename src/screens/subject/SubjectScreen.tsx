@@ -15,6 +15,9 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { CollectionStudyGuideDialog } from "../CollectionStudyGuideDialog";
+import { LessonPlayer } from "../lessons/LessonPlayer";
+import { LessonsSection } from "../lessons/LessonsSection";
+import { useSubjectCourse } from "../lessons/useSubjectCourse";
 import { formatDocumentType, processingPhaseLabel, sourceUnitHeading } from "../documents/DocumentProgress";
 import {
   buildSubjectTiles,
@@ -44,7 +47,7 @@ interface SubjectScreenProps {
 
 /**
  * One subject's page: what is due and its own Start, the overview guide
- * across its sources, the sources themselves and its decks, with Manage
+ * across its sources, its lessons, the sources themselves and its decks, with Manage
  * opening Library scoped to the subject.
  */
 export function SubjectScreen({
@@ -59,8 +62,11 @@ export function SubjectScreen({
 }: SubjectScreenProps) {
   const { summary, library, summaryError, libraryError, isLoading, refresh } = useHomeSummary();
   const jobs = useDocumentJobs();
+  const course = useSubjectCourse(subjectId);
   const [readingOverview, setReadingOverview] = useState(false);
+  const [openLessonId, setOpenLessonId] = useState<string | null>(null);
   const overviewHeadingId = useId();
+  const lessonsHeadingId = useId();
   const sourcesHeadingId = useId();
   const cardsHeadingId = useId();
 
@@ -96,6 +102,26 @@ export function SubjectScreen({
   }, [decks, library, subjectId]);
 
   const readError = summaryError ?? libraryError;
+  const writtenLessons = course.course?.lessons.filter((lesson) => lesson.written !== null) ?? [];
+  const openLessonIndex = writtenLessons.findIndex((lesson) => lesson.id === openLessonId);
+
+  if (openLessonId && tile && openLessonIndex >= 0) {
+    return (
+      <PageScaffold width="workspace" aria-label={`${tile.name} lesson`}>
+        <LessonPlayer
+          lessonId={openLessonId}
+          subjectName={tile.name}
+          lessonNumber={openLessonIndex + 1}
+          lessonCount={writtenLessons.length}
+          showToast={showToast}
+          onClose={() => {
+            setOpenLessonId(null);
+            course.refresh();
+          }}
+        />
+      </PageScaffold>
+    );
+  }
 
   if (readingOverview && tile) {
     // The overview guide reads like any other guide, then returns here.
@@ -149,6 +175,12 @@ export function SubjectScreen({
                 tile={tile}
                 onRead={() => setReadingOverview(true)}
                 onOpenDocuments={onOpenDocuments}
+              />
+              <LessonsSection
+                headingId={lessonsHeadingId}
+                course={course}
+                hasSources={sources.length > 0}
+                onOpenLesson={setOpenLessonId}
               />
               <SourcesSection
                 headingId={sourcesHeadingId}

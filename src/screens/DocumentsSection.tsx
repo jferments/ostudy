@@ -15,7 +15,7 @@ interface DocumentsSectionProps {
   showToast: ShowToast;
 }
 
-export function DocumentsSection({ refreshDecks, onStudyCollection, showToast }: DocumentsSectionProps) {
+export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollection, showToast }: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable = capabilities.native === null || capabilities.native.services.nativePdfRender.state === "available";
   const [profile, setProfile] = useState<AiProviderProfileSummary | null>(null);
@@ -52,6 +52,7 @@ export function DocumentsSection({ refreshDecks, onStudyCollection, showToast }:
   return <div className={styles.section} data-tour-anchor="documents.upload">
     <DocumentsScreen
       refreshDecks={refreshDecks}
+      onPracticeCards={onPracticeCards}
       onStudyCollection={onStudyCollection}
       showToast={showToast}
       headerSupplement={providerNotice}

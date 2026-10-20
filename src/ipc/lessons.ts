@@ -54,12 +54,20 @@ export interface WrittenLesson {
   createdAt: number;
 }
 
+/** The learner's latest answer to one step's check. */
+export interface AnsweredCheck {
+  optionId: string;
+  correct: boolean;
+}
+
 /** Where the learner stopped. Finishing a lesson is not a review. */
 export interface LessonProgress {
   /** May be older than the lesson's latest revision. */
   revisionNumber: number;
   currentStep: number;
   furthestStep: number;
+  /** By step key. */
+  checks: Record<string, AnsweredCheck>;
   startedAt: number;
   updatedAt: number;
   finishedAt: number | null;
@@ -88,9 +96,25 @@ export interface LessonStep {
   blocks: LessonBlock[];
   narration: string;
   slidePoints: string[];
-  /** A check's kind; the question itself stays native until it is answered. */
   checkKind: QuestionKind | null;
+  /**
+   * The check without its answer, when its kind can be answered in a lesson.
+   * Which option is right stays native until the learner answers.
+   */
+  check: LessonCheck | null;
   knowledgeUnitIds: string[];
+}
+
+export interface LessonCheck {
+  prompt: string;
+  options: { id: string; text: string }[];
+}
+
+export interface LessonCheckResult {
+  correct: boolean;
+  correctOptionId: string;
+  explanation: string | null;
+  progress: LessonProgress;
 }
 
 export interface Lesson {
@@ -136,6 +160,21 @@ export async function saveLessonProgress(
 ): Promise<LessonProgress> {
   return invoke<LessonProgress>("save_lesson_progress", {
     input: { lessonId, revisionNumber, currentStep, finished },
+  });
+}
+
+/**
+ * Grades an answer to a step's check and records it in the learner's
+ * progress. It never writes a review.
+ */
+export async function answerLessonCheck(
+  lessonId: string,
+  revisionNumber: number,
+  stepKey: string,
+  optionId: string,
+): Promise<LessonCheckResult> {
+  return invoke<LessonCheckResult>("answer_lesson_check", {
+    input: { lessonId, revisionNumber, stepKey, optionId },
   });
 }
 

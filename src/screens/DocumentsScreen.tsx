@@ -36,6 +36,8 @@ import { beginDocumentFolderDrag, isInteractiveDocumentDragOrigin } from "./docu
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
+  /** Practises cards made from a document's marks. */
+  onPracticeCards?: (cardIds: string[]) => Promise<void>;
   /** Studies a collection live, as the decks filed in its subject. */
   onStudyCollection?: (collectionId: string) => void;
   showToast: ShowToast;
@@ -129,6 +131,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         title={annotating.title}
         onClose={closeAnnotator}
         showToast={props.showToast}
+        onPracticeCards={props.onPracticeCards}
+        onCardsChanged={() => void props.refreshDecks()}
       />
     );
   }

@@ -83,9 +83,11 @@ sources/sidecars, unsupported lineages and invalid migration prefixes. A current
 header avoids redundant planning scans, but `Database::open` still validates the
 current payload before ordinary use. Empty initialization and explicit pre-public
 recovery remain separate. Released SQL and the native migration metadata owner are
-unchanged. Later forward migrations (schema 3 deck-merge receipts, schema 4
-StudyTarget generation guidance, schema 5 per-review scheduler context, schema 6
-subjects) use this same checkpointed upgrade path.
+unchanged. Later forward migrations (schema 2 selection-deck receipts, schema 3
+deck-merge receipts, schema 4 StudyTarget generation guidance, schema 5
+per-review scheduler context, schema 6 subjects, schema 7 the study activity
+ledger and review rollups, schema 8 PDF page annotations, schema 9 lessons) use
+this same checkpointed upgrade path; the registry is `database/release.rs`.
 
 `library_backup/checkpoint.rs` writes a durable upgrade intent before preparation.
 It creates a private SQLite Backup API snapshot, including committed WAL rows, and
@@ -119,7 +121,9 @@ Review events with their attributions and scheduler context, question attempts
 and review links, practice-session cards and snapshots, schedule-action events,
 and StudyTargets with their card origins are compared by name before any
 contract applies. No contract may list them, except that schema 5 creates the
-scheduler-context table empty.
+scheduler-context table empty. Schemas 7, 8 and 9 only add tables, which arrive
+empty: the rollups are built on first use, and annotations and lessons are
+written in the app.
 Historical public migrations/repairs retain their existing database-owner proofs;
 there is no claim that every historical transformation is byte-identical.
 

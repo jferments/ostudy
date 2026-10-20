@@ -19,13 +19,13 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 9: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, and schema 9 stores lessons, the last four described below. Libraries at schemas 1–8 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 10: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, and schema 10 remembers which marks your cards were made from, the last five described below. Libraries at schemas 1–9 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
 ## The subjects update (schema 6)
 
-A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Decks and Documents views show the same subjects as folders and as collections. Each deck and each document is in at most one subject.
+A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Flashcards and Documents pages show the same subjects: in the Workbench tree and as Documents' collections. Each deck and each document is in at most one subject.
 
 - Every folder becomes a subject with its decks. A folder and a collection with the same name, ignoring capitals and surrounding spaces, become one subject, but only when no other folder or collection uses that name. Otherwise both are kept under their own names.
 - A document that was in several collections stays in the one it joined first and leaves the others, keeping the page ranges set there. A document in no collection joins the folder of its generated deck.
@@ -53,9 +53,15 @@ Older builds cannot open a schema-8 library. Restoring the pre-upgrade checkpoin
 
 ## The lessons update (schema 9)
 
-Schema 9 adds a place for a subject's lessons: short teaching sequences written from the subject's documents, each kept with every earlier version of its text, and where you stopped in each one. Finishing a lesson is not a review: it never changes a card's schedule. The update itself writes nothing: the tables start empty.
+Schema 9 adds a place for a subject's lessons: short teaching sequences written from the subject's documents, each kept with every earlier version of its text, and where you stopped in each one. Finishing a lesson is not a review: it never changes a card's schedule. The update itself writes nothing: the tables start empty. This release has no screen for writing or reading lessons yet, so the tables stay empty in ordinary use.
 
 Older builds cannot open a schema-9 library. Restoring the pre-upgrade checkpoint returns the schema-8 library as it was. Lessons are part of whole-library backups but stay on the device that made them: device sync does not carry them yet, because it does not carry the extracted knowledge they are written from.
+
+## The cards-from-marks update (schema 10)
+
+Schema 10 remembers which highlight or note on a document each card you make from it came from, with the page and a copy of the marked words, so you can study the cards from what you marked. Deleting the mark or the document keeps the card. The update itself writes nothing: the table starts empty.
+
+Older builds cannot open a schema-10 library. Restoring the pre-upgrade checkpoint returns the schema-9 library as it was. These links are part of whole-library backups but stay on the device that made them, like the annotations themselves; shared decks do not carry them.
 
 ## What happens when migration is required
 

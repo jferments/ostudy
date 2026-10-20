@@ -1,8 +1,8 @@
 # Document AI architecture, routing, and concurrency
 
-ostudy separates canonical evidence, shared source understanding, artifact authoring/orchestration, and provider-specific transport. This guide describes the knowledge-first implementation after merged PR #106. [ADR 0041](../decisions/0041-modular-document-ai-architecture.md) preserves the earlier modularization rationale; its original outline-first stages are not the current pipeline.
+ostudy separates canonical evidence, shared source understanding, artifact authoring/orchestration, and provider-specific transport. This guide describes the current knowledge-first implementation. [ADR 0041](../decisions/0041-modular-document-ai-architecture.md) preserves the earlier modularization rationale; its original outline-first stages are not the current pipeline.
 
-Implemented document adapters, cards, guides, Tutor and semantic retrieval share native-owned source knowledge. Future lessons or practice-test features must reuse those boundaries, but their presence in a roadmap is not implementation evidence. See [processing architecture](ai-and-document-processing.md), [knowledge representation](knowledge-representation.md), and [the hardening register](../development/post-106-hardening.md) for current limitations and separately planned changes.
+Implemented document adapters, cards, guides, Tutor, semantic retrieval and subject course writing share native-owned source knowledge. Course writing (`lessons/writing.rs`) stores lessons natively but has no learner-facing screen yet; a lesson player, practice tests and other planned features must reuse these boundaries, and their presence in a roadmap is not implementation evidence. See [processing architecture](ai-and-document-processing.md) and [knowledge representation](knowledge-representation.md) for current limitations.
 
 ## End-to-end dependency direction
 
@@ -33,6 +33,7 @@ Domain owners choose relevant evidence and budget each request. Provider adapter
 | `knowledge/` | Source projections, admitted knowledge/evidence, partial-analysis receipts, snapshots, authoring catalogs, collection views, scoped retrieval and derived indexing |
 | `document_generation.rs` and related document services | Native artifact jobs, bounded work, checkpoints, progress, cancellation and publication through existing authoring owners |
 | `study_materials/` | Document/collection StudyTarget orchestration, source-note reuse and collection guide publication |
+| `lessons/` | A subject's course: validated lesson revisions with their knowledge-unit support, resume progress, and AI course writing (one lesson per top-level learning-plan topic, saved in one transaction) |
 | `ai/document_intelligence/mod.rs` | Provider-neutral artifact-authoring facade, exports and optional metadata entry point; not the whole document scheduler or a second source-analysis pipeline |
 | `ai/document_intelligence/context.rs` | Freezes task/profile/model/capability/credential/reasoning context and validates freshness |
 | `ai/document_intelligence/flashcards.rs` | Recall/typed-question candidate authoring, content/evidence admission and task bounds |
@@ -100,7 +101,7 @@ Independent cloud-backed work can overlap within the native queue/resource polic
 
 Completion order must not define artifact ordering, checkpoint identity or SQL publication semantics. No new artifact generator may introduce unbounded fan-out or hold the database lock across provider work. Cancellation belongs to the exact task/subscription; losing one consumer must not discard another consumer's useful shared result.
 
-Request leases and activity admission have separate safety responsibilities. The collection ActivityGuard/close-warning integration gap is recorded in H-02; this documentation does not claim that a private cancellation registry already supplies that missing integration.
+Request leases and activity admission have separate safety responsibilities. Collection study-material work holds the shared ActivityGuard for its whole owned lifetime, so maintenance admission and close protection see it, while its feature-local registry still owns cancellation and progress.
 
 ## Checkpoints and resumability
 
@@ -114,9 +115,9 @@ Credential changes do not by themselves rewrite learner content, but a live requ
 
 OpenRouter requests express explicit endpoint eligibility, privacy, structured-parameter and throughput preferences through the native provider adapter. Optional zero-data-retention settings can reduce eligibility; request flags are not proof of a provider's external retention behavior. Fallback among explicitly eligible endpoints for the selected provider/model is distinct from silently switching a local task to cloud or choosing another model, which is not permitted.
 
-DeepSeek strict tools, OpenRouter strict JSON schema and llama.cpp-compatible structured-request variants use their native dialects. Compatibility lowering and bounded dialect negotiation remain wire concerns, not source-selection logic.
+DeepSeek strict tools, OpenRouter strict JSON schema, llama.cpp-compatible structured-request variants and Claude's Messages API structured-output subset use their native dialects. Compatibility lowering and bounded dialect negotiation remain wire concerns, not source-selection logic.
 
-Task assignments own the active model and requested reasoning; profile-level legacy last-selected fields are not a second authority for the task-request path. Effective reasoning follows declared/probed capability and the native resolution policy, with requested/effective values retained as provenance. Do not silently increase optional reasoning to obtain a valid response. The OpenRouter document probe exercises that same effective reasoning configuration rather than disabling optional reasoning merely to make a small probe pass. Visible structured-output reserves and hidden reasoning headroom are budgeted separately. OpenRouter's unified reasoning object sends either the resolved effort or an explicit reasoning-token cap when that capability is used, never both competing controls in one request.
+Task assignments own the active model and requested reasoning; profile-level legacy last-selected fields are not a second authority for the task-request path. Document work (extraction, outlines, guides, cards, study materials and course writing) requests no reasoning whatever the assignment says, because hidden reasoning shared the output budget and left long chapters empty; a model that cannot turn reasoning off resolves to its lowest effort. Only the interactive Tutor uses the assigned effort. Effective reasoning follows declared/probed capability and the native resolution policy, with requested/effective values retained as provenance. Do not silently increase optional reasoning to obtain a valid response. The document-schema probe runs for every implemented provider through the structured-output path document work uses. Visible structured-output reserves and hidden reasoning headroom are budgeted separately. OpenRouter's unified reasoning object sends either the resolved effort or an explicit reasoning-token cap when that capability is used, never both competing controls in one request.
 
 ## Timeouts, retries and usage
 

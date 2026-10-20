@@ -15,7 +15,6 @@ export function TutorChatSettings({ tutor, onClose, onDelete }: { tutor: TutorCo
       {tutor.detail ? <Button variant="dangerGhost" className="tw:mr-auto" disabled={locked || memoryBusy} onClick={() => { void onDelete(); }}>Delete conversation</Button> : null}
       <Button disabled={locked || memoryBusy} onClick={() => { void tutor.initialize(); void tutor.refresh(); }}>Refresh saved state</Button>
     </>}>
-    <p className={styles.muted}>Chat uses your Tutor model from Settings → AI/LLM. Search uses the selected embedding model. Switching the chat model does not reinterpret saved documents.</p>
     {tutor.conversationRetrievalAllowed ? <label className={styles.checkbox}>
       <Checkbox checked={tutor.includeConversations} disabled={locked || memoryBusy} onCheckedChange={tutor.setIncludeConversations} />
       Search permitted conversations in this material selection

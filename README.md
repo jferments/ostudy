@@ -8,11 +8,11 @@ Your cards, documents, schedules, and review history live on your device. Ordina
 
 ## Study your way
 
-**Create and organize.** Write formatted Basic, Reverse, and Fill in the blank cards, use reusable templates, organize decks into folders, and search or filter your library. Add cards individually or in bulk, apply tags, and move or copy material between decks.
+**Create and organize.** Write formatted Basic, Reverse, and Fill in the blank cards, use reusable templates, group decks and documents into subjects, and search or filter your library. Add cards individually or in bulk, apply tags, and move or copy material between decks.
 
 **Practice and remember.** Start a session from your decks or another learning context. Reveal an answer and rate it Wrong, Hard, Medium, or Easy. Spaced repetition, interval previews, daily limits, and scheduling controls help you decide what to study next. Progress shows your activity, review outcomes, workload, and areas that need attention.
 
-**Learn from documents.** Keep source documents in a managed local library, generate flashcards and source-linked study guides, and return to retained material for further learning. Generated content remains editable study material, not an unquestionable answer: check it against the source, especially for consequential subjects.
+**Learn from documents.** Keep source documents in a managed local library, mark up PDF pages with ink, highlights, shapes and notes, generate flashcards and source-linked study guides, and return to retained material for further learning. Generated content remains editable study material, not an unquestionable answer: check it against the source, especially for consequential subjects.
 
 **Keep control of your data.** Share individual decks without sharing personal review history, import compatible **Anki `.apkg` decks** and structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, converting an Anki deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
 

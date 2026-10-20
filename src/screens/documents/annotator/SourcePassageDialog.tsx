@@ -2,7 +2,7 @@ import type { ShowToast } from "../../../components/Toast";
 import { Dialog } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
-import { AnnotatorBody, useAnnotatorClose } from "./DocumentAnnotator";
+import { AnnotatorBody, useAnnotatorLeave } from "./DocumentAnnotator";
 import type { SourcePassage } from "../../../components/sourcePassage";
 import { useDocumentAnnotator } from "./useDocumentAnnotator";
 
@@ -20,7 +20,7 @@ interface SourcePassageDialogProps {
  */
 export function SourcePassageDialog({ passage, onClose, showToast }: SourcePassageDialogProps) {
   const controller = useDocumentAnnotator(passage.documentId, showToast);
-  const { close, closing } = useAnnotatorClose(controller, onClose);
+  const { leave, closing } = useAnnotatorLeave(controller);
   const failed = controller.saveState.state === "failed";
   return (
     <Dialog
@@ -30,7 +30,7 @@ export function SourcePassageDialog({ passage, onClose, showToast }: SourcePassa
       width="workspace"
       padding="none"
       busy={closing}
-      onClose={() => void close()}
+      onClose={() => void leave(onClose)}
     >
       {failed ? (
         <InlineNotice kind="error" className="tw:mx-5 tw:compact:mx-4">

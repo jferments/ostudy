@@ -10,7 +10,7 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Browse, search, create, and edit cards in the Library Workbench, and manage selections | [Library Workbench and authoring](user-guide/flashcards-workspace.md) |
 | Organize subjects, reorder decks, and understand archive/delete rules | [Subjects and deck organization](user-guide/flashcards-organization.md) |
 | Enter and edit mathematical notation | [Formula entry](user-guide/formula-entry.md) |
-| Choose a practice scope, rate answers, control schedules, and interpret results | [Practice and analytics](user-guide/practice-and-analytics.md) |
+| Choose a practice scope, rate answers, control schedules, and interpret results | [Practice, scheduling, and Progress](user-guide/practice-and-analytics.md) |
 | Configure provider credentials and task-specific models/reasoning | [AI providers](user-guide/ai-providers.md) |
 | Import source material and generate learning artifacts | [Documents and AI generation](user-guide/documents-and-ai-generation.md) |
 | Write, highlight, draw and type notes on a PDF's pages | [Annotating PDF pages](user-guide/pdf-annotation.md) |
@@ -77,7 +77,7 @@ The [generated JSON reference](reference/generated-json-import.md) and [generato
 
 ## Roadmap and historical material
 
-The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered collections/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12).
+The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered collections/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12). Main now stores lessons and can write a subject's course with AI (schema 9), but no screen shows lessons yet; see the [roadmap](roadmap.md).
 
 PR #106 is merged. Its [completion record](development/lk-followups/consolidation-qualification.md) identifies the release-v1 baseline, conversion and same-process restore owners, final source/merge identities, Linux/Android evidence and recorded disposable installed-copy acceptance. Its [original plan](history/pr-106-implementation-plan.md) is historical. Documentation cleanup does not authorize a protected-library cutover or make the proposed hardening changes current behavior.
 

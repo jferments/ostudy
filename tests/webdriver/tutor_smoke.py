@@ -45,14 +45,14 @@ def wait_for_selected_conversation(
     """Wait for the saved conversation read to reach the real chat header.
 
     History is a list (a sheet at compact widths), not the retired controlled
-    select. Settings are available only after the asynchronous selection settles.
+    select. The chat's actions are available only after the asynchronous selection settles.
     Native memory assertions below verify which persisted conversation it owns.
     """
     last: Any = None
     while time.monotonic() < deadline:
         last = ui.execute(session_id, """
             const header = document.querySelector("main [data-testid='tutor-screen'] section[aria-label='Tutor conversation'] header");
-            const settings = header?.querySelector('button[aria-label="Chat settings"]');
+            const settings = header?.querySelector('button[aria-label="Chat actions"]');
             return {
               title: header?.querySelector('h2')?.textContent?.trim() ?? null,
               settingsEnabled: settings instanceof HTMLButtonElement && !settings.disabled,
@@ -82,7 +82,7 @@ def assert_hint_controls_private(session_id: str) -> None:
         const label = (control) => (control.getAttribute('aria-label') || control.textContent || '').trim();
         return {
           sourceButtons: [...dialog.querySelectorAll('button')].some(b =>
-            ['Sources', 'Chat settings'].includes(label(b)) || label(b).startsWith('Source ')),
+            ['Add sources', 'Chat actions', 'Chat settings'].includes(label(b)) || label(b).startsWith('Source')),
           memory: [...dialog.querySelectorAll('button, summary')].some(s => label(s) === 'Conversation memory'),
           practice: Boolean(document.querySelector('main button[aria-label="Get a flashcard hint"]'))
         };
@@ -113,7 +113,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.wait_for_main_heading(session_id, "Tutor", deadline)
     if not ui.execute(session_id, "return Boolean(document.querySelector('main nav[aria-label=\"Conversations\"]')); ".strip()):
         history_button = webdriver.wait_for_enabled_element(
-            session_id, "xpath", "//main//button[normalize-space(.)='Conversations']", deadline,
+            session_id, "css selector", "main button[aria-label='Conversations']", deadline,
         )
         webdriver.click(session_id, history_button)
     saved_chat = webdriver.wait_for_enabled_element(
@@ -125,7 +125,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     ui.wait_for_overlay_inactive(session_id, deadline, "conversation history selection")
     wait_for_selected_conversation(session_id, conversation["title"], deadline)
     assert_ordinary_chat(session_id)
-    click_css(session_id, "main button[aria-label='Chat settings']", deadline)
+    webdriver.choose_menu_item(session_id, "Chat actions", "Chat settings", deadline)
     summary = webdriver.find_element(
         session_id, "xpath", "//*[@role='dialog']//button[@aria-expanded and normalize-space(.)='Conversation memory']", deadline,
     )
@@ -165,10 +165,11 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     if any(item["id"] == conversation_id for item in native(session_id, "list_tutor_conversations")):
         raise AssertionError("Confirmed conversation deletion did not persist")
 
-    # The optional checklist changes local chat scope, not the saved library or
-    # conversation permissions. It is usable offline without index preparation.
+    # Sources are optional: a new chat needs none. The checklist changes local
+    # chat scope, not the saved library or conversation permissions, and is
+    # usable offline without index preparation.
     sources_button = webdriver.wait_for_enabled_element(
-        session_id, "xpath", "//main//button[normalize-space(.)='Sources']", deadline,
+        session_id, "css selector", "main button[aria-label='Add sources']", deadline,
     )
     webdriver.click(session_id, sources_button)
     source_checkbox = webdriver.wait_for_enabled_element(
@@ -183,7 +184,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.click(session_id, use_sources)
     ui.wait_for_overlay_inactive(session_id, deadline, "source checklist selection")
     webdriver.find_element(
-        session_id, "xpath", f"//main//section[@aria-label='Tutor conversation']//header//span[normalize-space(.)={json.dumps(deck_name)}]", deadline,
+        session_id, "xpath", f"//main//section[@aria-label='Tutor conversation']//button[@aria-label={json.dumps('Sources: ' + deck_name)}]//span[normalize-space(.)={json.dumps(deck_name)}]", deadline,
     )
     if native(session_id, "list_tutor_conversations"):
         raise AssertionError("Selecting sources unexpectedly created a saved conversation")
@@ -215,4 +216,4 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     for key in ("sessionId", "position", "revealed"):
         if restored[key] != original[key]:
             raise AssertionError(f"Hint sheet changed practice {key}: {original!r} -> {restored!r}")
-    print("Tutor smoke passed: offline history selection, Sources checklist, contextual memory controls, confirmed deletion, and exact Practice return.")
+    print("Tutor smoke passed: offline history selection, optional sources checklist, contextual memory controls, confirmed deletion, and exact Practice return.")

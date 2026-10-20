@@ -75,7 +75,7 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
 - An OpenAI-compatible route is not proof of full OpenAI behavior. Capabilities
   remain `supported`, `unsupported`, or `unknown`, with `declared` versus
   `probed` evidence.
-- llama.cpp or Ollama applies the model/server token-level chat template. ostudy
+- The model server (llama.cpp today) applies the token-level chat template. ostudy
   owns task prompts and provider request envelopes, not arbitrary replacement
   Jinja/ChatML templates.
 - Store at most a chat-template presence flag and one-way fingerprint. Never

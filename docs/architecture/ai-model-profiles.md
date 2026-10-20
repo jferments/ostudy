@@ -8,9 +8,11 @@ A model profile is the unit of connection, model selection, credential policy, r
 
 Automatic resolves through capability policy. A model that requires reasoning cannot have it disabled. A stored choice no longer advertised by the selected model is reconciled against the valid advertised set; it must not be blindly emitted as an unsupported parameter. The policy does not invent an optional reasoning capability absent from evidence.
 
+Only the interactive Tutor uses the assigned effort. Document work (extraction, outlines, guides, cards and study materials) requests no reasoning whatever its assignment says, because hidden reasoning shared the output budget and left long chapters empty; a model that cannot turn reasoning off resolves to its lowest advertised effort (`ReasoningPolicy` in `ai/document_intelligence/context.rs`).
+
 Generation provenance records **requested** and **effective** reasoning effort. This makes capability adaptation visible to diagnosis instead of pretending the exact requested value was always used. Reasoning output itself is not a generic frontend result or routine diagnostic payload.
 
-OpenRouter's representative document-contract probe uses the same effective reasoning policy as document generation. A probe must not earn a green document-capability result by silently disabling optional reasoning that the assigned learning task will actually use. Structured document requests reserve visible JSON completion separately from hidden reasoning headroom; when model metadata declares an explicit reasoning-token limit, the adapter sends the matching cap so hidden reasoning cannot consume the visible structured-output reserve.
+The connection test runs a representative document-schema probe for every implemented provider through the same structured-output path document work uses, and an image probe for models whose metadata declares image input; OpenRouter document work requires matching probe evidence, and page images are sent only when that evidence supports image input. Structured document requests reserve visible JSON completion separately from hidden reasoning headroom; when model metadata declares an explicit reasoning-token limit, the adapter sends the matching cap so hidden reasoning cannot consume the visible structured-output reserve.
 
 Changing a task's default model leaves each profile's effort/key/timeout/privacy settings intact. Current document learning, including study guides, uses the flashcard-generation default; there is no requirement for a separate study-guide task-default UI in the current application.
 
@@ -24,7 +26,7 @@ The frontend's transitional optional input is removed before current Settings IP
 
 Settings → AI/LLM is a vertical flow with task/default assignment, wrapping model list, selected-model controls, and advanced configuration. Add model asks for the implemented provider, relevant endpoint/key, connection/model discovery, model selection, and profile save/test. Less frequent trust/timeout/storage/routing choices remain contextual.
 
-Only implemented adapters appear as normal choices: llama.cpp/Unsloth, DeepSeek, and OpenRouter. Other catalog enum entries remain planned. Nonsecret endpoint/model metadata is legitimate frontend state; saved credential bytes are not.
+Only implemented adapters appear as normal choices: llama.cpp/Unsloth, DeepSeek, OpenRouter, and Claude. Ollama, OpenAI, and Gemini remain planned catalog entries. Nonsecret endpoint/model metadata is legitimate frontend state; saved credential bytes are not.
 
 ## Credentials, probes, and transfer
 

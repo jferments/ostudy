@@ -1,6 +1,6 @@
 # AnyDoc document-adapter implementation contract
 
-Status: implemented architecture contract for PR #66
+Status: historical record of PR #66. AnyDoc is retired runtime history: current non-PDF formats use Xberg ([ADR 0045](../decisions/0045-xberg-non-pdf-document-adapter.md)), described in [AI and document processing](ai-and-document-processing.md). AnyDoc's persisted backend identities and migration names remain compatibility provenance; this contract is not current runtime selection.
 
 ## Scope
 

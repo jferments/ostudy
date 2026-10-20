@@ -158,9 +158,17 @@ fn the_fixture_lesson_opens_with_its_steps_and_without_check_answers() {
     assert_eq!(lesson.content.steps.len(), 3);
     assert_eq!(lesson.content.steps[0].knowledge_unit_ids, vec![UNIT]);
     assert!(lesson.content.steps[1].check_kind.is_some());
+    // The check's prompt and options are there; which one is right, and why,
+    // are not.
+    let check = lesson.content.steps[1].check.as_ref().unwrap();
+    assert_eq!(
+        check.prompt,
+        "Which part of the loop pumps salt out but keeps water in?"
+    );
+    assert_eq!(check.options.len(), 2);
     let wire = serde_json::to_string(&lesson).unwrap();
-    assert!(!wire.contains(CORRECT_OPTION), "{wire}");
     assert!(!wire.contains("correctOptionId"));
+    assert!(!wire.contains("watertight while its pumps"), "{wire}");
     assert!(wire.contains("\"kind\":\"comparison\""));
 
     // The other subject's course is empty, and an unknown subject is refused.
@@ -549,4 +557,103 @@ fn a_course_holds_a_bounded_number_of_lessons() {
         })
         .unwrap_err();
     assert_eq!(error.code, "lesson_not_written");
+}
+
+fn answer(
+    database: &Database,
+    lesson_id: &str,
+    revision_number: i64,
+    step_key: &str,
+    option_id: &str,
+    now: i64,
+) -> Result<super::checks::LessonCheckResultDto, CommandError> {
+    database.with_connection(|connection| {
+        super::checks::answer(
+            connection,
+            super::checks::AnswerLessonCheckInput {
+                lesson_id: lesson_id.to_string(),
+                revision_number,
+                step_key: step_key.to_string(),
+                option_id: option_id.to_string(),
+            },
+            now,
+        )
+    })
+}
+
+#[test]
+fn answering_a_check_grades_it_records_it_and_never_touches_reviews() {
+    let database = library();
+    let id = create(&database, loop_of_henle(&[])).unwrap();
+    let wrong = read(&database, &id, None).content.steps[1]
+        .check
+        .as_ref()
+        .unwrap()
+        .options
+        .iter()
+        .find(|option| option.id != CORRECT_OPTION)
+        .unwrap()
+        .id
+        .clone();
+
+    // A first answer starts the lesson at its step.
+    let missed = answer(&database, &id, 1, "multiplier", &wrong, NOW).unwrap();
+    assert!(!missed.correct);
+    assert_eq!(missed.correct_option_id, CORRECT_OPTION);
+    assert_eq!(
+        missed.explanation.as_deref(),
+        Some("The thick ascending limb is watertight while its pumps move salt out.")
+    );
+    assert_eq!(
+        (missed.progress.current_step, missed.progress.revision),
+        (1, 1)
+    );
+    assert!(!missed.progress.checks["multiplier"].correct);
+
+    // Answering again replaces the answer; the same answer again changes nothing.
+    let right = answer(&database, &id, 1, "multiplier", CORRECT_OPTION, NOW + 1).unwrap();
+    assert!(right.correct);
+    assert_eq!(right.progress.revision, 2);
+    let again = answer(&database, &id, 1, "multiplier", CORRECT_OPTION, NOW + 2).unwrap();
+    assert_eq!(again.progress, right.progress);
+
+    // Moving on keeps the answers, and reading the course shows them.
+    let moved = save(&database, &id, 1, 2, false, NOW + 3).unwrap();
+    assert!(moved.checks["multiplier"].correct);
+    let course = database
+        .with_connection(|connection| list_lessons(connection, SUBJECT))
+        .unwrap();
+    assert!(course.lessons[0].progress.as_ref().unwrap().checks["multiplier"].correct);
+
+    for (step, option, code) in [
+        ("two-limbs", CORRECT_OPTION, "lesson_check_missing"),
+        ("nowhere", CORRECT_OPTION, "lesson_step_missing"),
+        (
+            "multiplier",
+            "c".repeat(32).as_str(),
+            "lesson_check_option_missing",
+        ),
+    ] {
+        assert_eq!(
+            answer(&database, &id, 1, step, option, NOW)
+                .unwrap_err()
+                .code,
+            code
+        );
+    }
+    assert_eq!(
+        answer(&database, &id, 2, "multiplier", CORRECT_OPTION, NOW)
+            .unwrap_err()
+            .code,
+        "lesson_revision_missing"
+    );
+    database
+        .with_connection(|connection| {
+            let reviews: i64 = connection
+                .query_row("SELECT COUNT(*) FROM review_events", [], |row| row.get(0))
+                .map_err(CommandError::database)?;
+            assert_eq!(reviews, 0);
+            Ok(())
+        })
+        .unwrap();
 }

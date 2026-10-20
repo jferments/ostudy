@@ -173,6 +173,15 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Cards are linked to marks in the app; the upgrade only creates the table.
+    Contract {
+        version: 10,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "note_annotation_sources",
+            description: "card mark link",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
