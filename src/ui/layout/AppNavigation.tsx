@@ -22,6 +22,8 @@ export interface NavigationItem {
   active: boolean;
   onSelect: () => void;
   badge?: NavigationBadge;
+  /** Overrides the default `nav-<id>` test id. */
+  testId?: string;
 }
 
 /**
@@ -185,7 +187,7 @@ function NavigationButton({
   const descriptionId = useId();
   return (
     <ItemTrigger
-      data-testid={`nav-${item.id}`}
+      data-testid={item.testId ?? `nav-${item.id}`}
       aria-current={item.active ? "page" : undefined}
       aria-describedby={item.badge ? descriptionId : undefined}
       onClick={item.onSelect}

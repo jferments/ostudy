@@ -20,7 +20,7 @@ import tutor_smoke
 
 MEDIUM_WIDTH = 928
 MEDIUM_HEIGHT = 900
-EXPECTED_NAVIGATION = ["Home", "Library", "Review", "Tutor", "Progress"]
+EXPECTED_NAVIGATION = ["Home", "Library", "Tutor", "Progress"]
 
 
 def assert_medium_navigation(session_id: str, deadline: float) -> None:

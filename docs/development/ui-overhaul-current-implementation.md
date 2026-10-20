@@ -53,7 +53,7 @@ Progress's rich inline status content remains a specialized oStudy presentation,
 
 ## Phase 7: shell and navigation
 
-AppFrame, AppHeader and the shadcn SidebarInset content surface replace the old shell presentation. Wide and medium layouts put the brand, the five labeled destinations (Home, Library, Review, Tutor and Progress), Search and the Settings gear in one header drawn as a side rail beside the inset content surface, coloured by the `navigation` theme tokens. Compact layouts keep the brand, the page title, Search and Settings in a top bar and the same five destinations in a bottom bar. There is no new hidden More navigation or competing vendor router.
+AppFrame, AppHeader and the shadcn SidebarInset content surface replace the old shell presentation. Wide and medium layouts put the brand, the labeled destinations (Home, Library, Tutor and Progress), then Search and Settings in one header drawn as a side rail beside the inset content surface, coloured by the `navigation` theme tokens. Compact layouts keep the brand, the page title and Search in a top bar and Home, Library, Tutor, Progress and Settings in a bottom bar. There is no new hidden More navigation or competing vendor router.
 
 PageScaffold, PageHeader, CommandBar, selection toolbars and responsive action groups provide shared hierarchy and spacing. Navigation identities, lazy feature roots, dirty guards, contextual workflows, checkpoint semantics, safe areas and IME behavior stay with the existing application/platform owners. Generic error-boundary actions use the same controls.
 
