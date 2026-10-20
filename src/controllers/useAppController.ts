@@ -20,9 +20,11 @@ import {
   type SaveUiCheckpointInput,
 } from "../ipc/uiCheckpoint";
 import {
+  ALL_SUBJECTS,
   isLibrarySection,
   type LibraryScope,
   type LibrarySection,
+  type LibrarySubjectScope,
 } from "../navigation/appDestinations";
 import {
   createAnalyticsSearchRoute,
@@ -50,6 +52,8 @@ import { useRequestLane } from "./requestLane";
  */
 export type AppSection =
   | "home"
+  | "overview"
+  | "lessons"
   | "decks"
   | "study-guides"
   | "documents"
@@ -158,9 +162,9 @@ export function useAppController() {
   const analyticsCheckpointRef = useRef<AnalyticsCheckpoint | null>(null);
   const analyticsRequestSequence = useRef(1);
   const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
-  // Library reopens the view the learner used last in this process.
-  /** The subject page Home shows, or null for the subject list. Process-local, never checkpointed. */
-  const [homeSubjectId, setHomeSubjectId] = useState<string | null>(null);
+  // Library reopens the view and subject the learner used last in this process.
+  /** The subject whose materials Library shows. Process-local, never checkpointed. */
+  const [librarySubject, setLibrarySubject] = useState<LibrarySubjectScope>(ALL_SUBJECTS);
   const lastLibrarySectionRef = useRef<LibrarySection>("decks");
   if (isLibrarySection(section)) lastLibrarySectionRef.current = section;
   const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
@@ -360,16 +364,15 @@ export function useAppController() {
   }, [isLoading]);
 
   useEffect(() => {
-    // Home's subject list is the root: Android Back from a subject page or
-    // any other destination returns there.
-    if (section === "home" && homeSubjectId === null && !practiceWorkflow) return;
+    // Home is the root: Android Back from any other destination returns there.
+    if (section === "home" && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
       void (practiceWorkflow
         ? returnPracticeToOriginRef.current()
         : navigateRef.current("home"));
       return true;
     });
-  }, [homeSubjectId, practiceWorkflow, section]);
+  }, [practiceWorkflow, section]);
 
   useEffect(() => {
     if (!hasUnsavedCard && !hasUnsavedSettings) return;
@@ -536,11 +539,6 @@ export function useAppController() {
     if ((next === "home" || next === "review") && practiceWorkflow !== null) return;
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
-    if (next === "home" && section === "home" && homeSubjectId !== null && !leavingPracticeWorkflow) {
-      // Home again from a subject page returns to the subject list.
-      setHomeSubjectId(null);
-      return;
-    }
     const alreadyAtNonFlashcardsRoot = next === section && next !== "decks";
     if (alreadyAtNonFlashcardsRoot && !leavingPracticeWorkflow) return;
     if (!(await canLeaveCurrentSection())) return;
@@ -548,7 +546,6 @@ export function useAppController() {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
     }
-    setHomeSubjectId(null);
     if (
       next !== "decks" &&
       flashcardsRoute.view === "root" &&
@@ -564,14 +561,20 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, ...analytics });
     }
     if (next === "decks") {
-      // Coming back to Library reopens the deck the Workbench had open; choosing
-      // Library again from inside it returns to All cards.
+      // Coming back to Flashcards reopens the deck the Workbench had open;
+      // choosing it again from inside returns to the chosen subject's cards,
+      // or All cards.
       const requestId = nextFlashcardsRequestId();
       const returning = section !== "decks";
       setFlashcardsRoute((current) =>
         returning && current.view === "deck"
           ? createFlashcardsDeckRoute(current.deckId, requestId)
-          : createFlashcardsRootRoute("decks", requestId),
+          : librarySubject.kind === "all"
+            ? createFlashcardsRootRoute("decks", requestId)
+            : createSubjectFocusRoute(
+                librarySubject.kind === "subject" ? librarySubject.subjectId : null,
+                requestId,
+              ),
       );
       void refreshDecks().catch((error: unknown) =>
         showToast("error", getErrorMessage(error)),
@@ -618,6 +621,7 @@ export function useAppController() {
       openFlashcardsDeck(scope.deckId);
       return;
     }
+    setLibrarySubject(subjectScopeOf(scope.subjectId ?? null));
     setSection("decks");
     setFlashcardsRoute(
       createSubjectFocusRoute(scope.subjectId ?? null, nextFlashcardsRequestId()),
@@ -628,19 +632,10 @@ export function useAppController() {
   }
 
   /**
-   * Opens a subject's page inside Home. No subject has no page of its own, so
-   * it opens the Library Workbench on its unsorted cards, or Documents when it holds only
-   * documents.
+   * Opens a subject's page in Library on its Overview; `null` opens No
+   * subject's.
    */
-  async function openSubject(
-    subjectId: string | null,
-    noSubjectView: "decks" | "documents" = "decks",
-  ): Promise<void> {
-    if (subjectId === null) {
-      if (noSubjectView === "documents") await navigate("documents");
-      else await openLibrary({ subjectId: null });
-      return;
-    }
+  async function openSubject(subjectId: string | null): Promise<void> {
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     if (!(await canLeaveCurrentSection())) return;
@@ -648,8 +643,22 @@ export function useAppController() {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
     }
-    setHomeSubjectId(subjectId);
-    setSection("home");
+    setLibrarySubject(subjectScopeOf(subjectId));
+    setSection("overview");
+  }
+
+  /**
+   * Chooses the subject Library shows. On the Flashcards page the Workbench
+   * follows, opening the subject's cards.
+   */
+  function chooseLibrarySubject(next: LibrarySubjectScope): void {
+    setLibrarySubject(next);
+    if (section !== "decks") return;
+    setFlashcardsRoute(
+      next.kind === "all"
+        ? createFlashcardsRootRoute("decks", nextFlashcardsRequestId())
+        : createSubjectFocusRoute(next.kind === "subject" ? next.subjectId : null, nextFlashcardsRequestId()),
+    );
   }
 
   async function navigateFlashcardsWorkspace(
@@ -864,8 +873,11 @@ export function useAppController() {
     openSearch,
     openLibrary,
     openSubject,
-    /** The subject page shown inside Home, or null for the subject list. */
-    homeSubjectId,
+    /** The subject whose materials Library shows. */
+    librarySubject,
+    chooseLibrarySubject,
+    /** Records the subject the Workbench moved to, without sending it back. */
+    recordLibrarySubject: setLibrarySubject,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
     recordLibraryDeck,
@@ -921,6 +933,10 @@ function createCheckpointSnapshot(state: CheckpointSnapshotState): SaveUiCheckpo
     practice,
     analytics: state.section === "analytics" ? state.analytics ?? undefined : undefined,
   };
+}
+
+function subjectScopeOf(subjectId: string | null): LibrarySubjectScope {
+  return subjectId === null ? { kind: "none" } : { kind: "subject", subjectId };
 }
 
 function toCheckpointReturnTarget(target: PracticeReturnTarget): CheckpointReturnTarget {

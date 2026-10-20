@@ -31,6 +31,8 @@ PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
 ANALYTICS_SCREEN_SELECTOR = "main section[aria-label='Learning summary']"
 # Library hosts these sections as its views. Each keeps its own page heading.
 LIBRARY_VIEW_HEADINGS = {
+    "overview": "Overview",
+    "lessons": "Lessons",
     "decks": "All cards",
     "documents": "Documents",
     "study-guides": "Study Guides",
@@ -689,7 +691,7 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
     """Open one of Library's pages: the Workbench ("decks"), Documents or Study guides.
 
     Library reopens the page used last. Every page carries Library's tabs:
-    Flashcards (the Workbench), Documents and Study guides.
+    Overview, Lessons, Study guides, Documents and Flashcards (the Workbench).
     """
     library = find_element(
         session_id,

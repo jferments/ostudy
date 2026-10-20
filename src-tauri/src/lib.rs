@@ -402,6 +402,8 @@ pub fn run() {
             library_session::commands::leased_get_document_page_text,
             lessons::list_subject_lessons,
             lessons::get_lesson,
+            lessons::lecture::get_lesson_lecture,
+            lessons::pptx::prepare_lesson_lecture_pptx,
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,

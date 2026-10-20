@@ -5,6 +5,7 @@ import type {
   PreparedStudyGuidePdf,
   SourceLocator,
   StudyGuideOverview,
+  StudyGuidePdfTheme,
   StudyGuideSectionContent,
 } from "./studyGuides";
 
@@ -147,10 +148,11 @@ export async function discardCollectionStudyGuideOverlay(
 export async function prepareCollectionStudyGuidePdf(
   collectionId: string,
   includeAnnotations: boolean,
+  theme: StudyGuidePdfTheme = "navy",
   operationId = createOperationId(),
 ): Promise<PreparedStudyGuidePdf> {
   return invoke<PreparedStudyGuidePdf>("prepare_collection_study_guide_pdf", {
-    input: { collectionId, operationId, includeAnnotations },
+    input: { collectionId, operationId, includeAnnotations, theme },
   });
 }
 

@@ -212,6 +212,13 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Lecture decks rebuild prepared_exports to widen its purposes; every
+    // row and column is kept, so no table may change.
+    Contract {
+        version: 13,
+        setup: "",
+        rules: &[],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

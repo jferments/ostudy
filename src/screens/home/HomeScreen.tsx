@@ -39,11 +39,10 @@ type HomeSheet = "new-subject" | "choose-subjects" | "check-these" | null;
 interface HomeScreenProps {
   /** Starts today's scheduled review over these decks. */
   onStartReview: (deckIds: string[]) => void;
-  /**
-   * Opens a subject's page. No subject (`null`) opens in the Library view that
-   * shows it best.
-   */
-  onOpenSubject: (subjectId: string | null, noSubjectView: "decks" | "documents") => void;
+  /** Opens a subject's page in Library; `null` opens No subject's. */
+  onOpenSubject: (subjectId: string | null) => void;
+  /** Plays a lesson on its subject's Lessons page. */
+  onOpenLesson: (subjectId: string, lessonId: string) => void;
   onOpenLibrary: () => void;
   /** Practices a subject's cards beyond today's schedule. */
   onPracticeSubject: (subjectId: string) => void;
@@ -58,6 +57,7 @@ interface HomeScreenProps {
 export function HomeScreen({
   onStartReview,
   onOpenSubject,
+  onOpenLesson,
   onOpenLibrary,
   onPracticeSubject,
   onOpenProgress,
@@ -120,8 +120,7 @@ export function HomeScreen({
   );
 
   function openTile(tile: SubjectTile): void {
-    const { deckCount, sourceCount } = tile.summary;
-    onOpenSubject(tile.subjectId, deckCount === 0 && sourceCount > 0 ? "documents" : "decks");
+    onOpenSubject(tile.subjectId);
   }
 
   const subjectIds = useMemo(
@@ -131,7 +130,7 @@ export function HomeScreen({
   // Home rereads lessons and the week whenever today's summary changes.
   const refreshKey = summary ? summary.today.reviewsRemaining + summary.today.newRemaining * 100_000 : 0;
   const lessons = useHomeLessons(subjectIds, refreshKey);
-  const openSubjectPage = (subjectId: string) => onOpenSubject(subjectId, "decks");
+  const openSubjectPage = (subjectId: string) => onOpenSubject(subjectId);
 
   const readError = summaryError ?? libraryError;
   const firstRun = Boolean(tiles && tiles.subjects.length === 0 && tiles.noSubject === null);
@@ -194,7 +193,7 @@ export function HomeScreen({
             ) : null}
             <div className="tw:flex tw:flex-wrap tw:items-start tw:gap-5 tw:compact:gap-4">
               <div className="tw:grid tw:min-w-0 tw:flex-[2_1_28rem] tw:gap-5 tw:empty:hidden tw:compact:gap-4">
-                <ContinuePanel lessons={lessons} subjects={tiles.subjects} onOpenSubject={openSubjectPage} />
+                <ContinuePanel lessons={lessons} subjects={tiles.subjects} onOpenLesson={onOpenLesson} />
                 <SuggestionsPanel
                   lessons={lessons}
                   subjects={tiles.subjects}

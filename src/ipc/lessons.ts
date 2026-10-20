@@ -1,4 +1,5 @@
 import { createOperationId } from "./common";
+import type { PreparedExport } from "./externalFiles";
 import type { QuestionKind } from "./questions";
 import { invoke } from "./transport";
 
@@ -145,6 +146,57 @@ export async function getLesson(
 ): Promise<Lesson> {
   return invoke<Lesson>("get_lesson", {
     input: { lessonId, revisionNumber: revisionNumber ?? null },
+  });
+}
+
+export type LectureSlideKind = "title" | "step" | "sources";
+
+export interface LectureSlide {
+  kind: LectureSlideKind;
+  /** The step a step slide shows; its narration can be spoken. */
+  stepKey: string | null;
+  title: string;
+  points: string[];
+  /** Speaker notes: a step's narration, or the lesson's summary. */
+  notes: string;
+}
+
+/** A lesson laid out as slides, compiled natively from one saved revision. */
+export interface Lecture {
+  lessonId: string;
+  revisionNumber: number;
+  title: string;
+  slides: LectureSlide[];
+}
+
+/** The lesson as a lecture: the latest revision, or `revisionNumber` when given. */
+export async function getLessonLecture(
+  lessonId: string,
+  revisionNumber?: number,
+): Promise<Lecture> {
+  return invoke<Lecture>("get_lesson_lecture", {
+    input: { lessonId, revisionNumber: revisionNumber ?? null },
+  });
+}
+
+export interface PreparedLecturePptx {
+  preparedExport: PreparedExport;
+  /** The revision the deck was written from. */
+  revisionNumber: number;
+  slideCount: number;
+}
+
+/**
+ * Writes the lesson's lecture as an editable PowerPoint deck, ready to
+ * publish. Repeating `operationId` returns the deck already prepared.
+ */
+export async function prepareLessonLecturePptx(
+  lessonId: string,
+  revisionNumber?: number,
+  operationId = createOperationId(),
+): Promise<PreparedLecturePptx> {
+  return invoke<PreparedLecturePptx>("prepare_lesson_lecture_pptx", {
+    input: { lessonId, revisionNumber: revisionNumber ?? null, operationId },
   });
 }
 
