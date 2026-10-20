@@ -22,7 +22,7 @@ On a wide window the outline sits beside the text. It lists the overview and eve
 
 Section commands live under that section's **…** menu: **Ask Tutor about this section** when the tutor is available, **Add note** or **Edit note**, **Edit or rewrite this section**, and the matching remove and reset commands. Guide commands live in the top bar: **Ask Tutor** for the whole guide (a chat icon on a phone) and the **Study guide actions** menu with **Export as PDF…** and the guide note. **Open source** opens the retained original through the operating system; an exact deep link into an external viewer is not guaranteed.
 
-A collection guide keeps its single scrolling reader with a **Contents** list and an **Export PDF** button. Its **Guide actions** menu adds, edits or removes the guide note, and each section's **…** menu offers **Ask Tutor about this section** when the tutor is available, **Open source**, **Add note** and **Edit section**.
+A collection guide keeps its single scrolling reader with a **Contents** list and an **Export PDF…** button. Its **Guide actions** menu adds, edits or removes the guide note, and each section's **…** menu offers **Ask Tutor about this section** when the tutor is available, **Open source**, **Add note** and **Edit section**.
 
 Sections are named from what they teach; a long list of keywords is shortened into a readable title. ostudy limits section length and checks each section's structure, but a model can still omit, misunderstand, or poorly prioritize information. Check what you learn against the source.
 
@@ -60,9 +60,9 @@ Ending the session returns to Study guides. Reviews update the same schedules an
 
 ## Export a PDF
 
-In a document guide, choose **Export as PDF…** from the **Study guide actions** menu; **Include my notes** adds your notes and section edits, and **Export PDF** prepares the file. A collection guide has an **Export PDF** button with **Include my notes in PDF**. The PDF shows the same content as the reader and is made on your device; export sends nothing to a provider and does not regenerate the guide.
+Choose **Export as PDF…** from a document guide's **Study guide actions** menu, or the **Export PDF…** button in a collection guide. Pick a **Theme** (Navy, Sage, Slate or Plum change the colours and typefaces, not the layout), leave **Include my notes** on to add your notes and section edits, and choose **Export PDF**. The PDF shows the same content as the reader and is made on your device; export sends nothing to a provider and does not regenerate the guide.
 
-The PDF has a cover, a linked table of contents and bookmarks, source labels, running headers and footers, callouts, tables, examples and checks, table headers repeated across page breaks, and headings kept with the text that follows them. Source images the guide uses appear with captions. Text stays selectable and searchable.
+The PDF opens on a cover with the overview, what you will be able to do and a linked contents list, then gives each section its source label, key points, callouts, tables, worked examples and checks, with chapters as slim bands when the guide has them. It ends with a **Cram sheet** of the key concepts, key ideas, terms and warnings, and a **Self-test** of the guide's check questions with answers after them. It has bookmarks, running headers and page numbers, repeats table headers across page breaks and keeps headings with the text that follows them. Source images the guide uses appear with captions. Text stays selectable and searchable.
 
 Common mathematical notation, including fractions, roots, sub- and superscripts, Greek letters, operators, functions and small matrices, is typeset in the PDF. If an expression is outside that set or too large to fit, export asks first and then keeps it as readable LaTeX source rather than drawing a misleading formula. The reader in oStudy always shows full typeset math.
 
