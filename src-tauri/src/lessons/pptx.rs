@@ -663,6 +663,7 @@ mod tests {
             title: "Loop of Henle".to_string(),
             slides: vec![
                 LectureSlideDto {
+                    key: "title".to_string(),
                     kind: LectureSlideKind::Title,
                     step_key: None,
                     title: "Loop of Henle".to_string(),
@@ -670,6 +671,7 @@ mod tests {
                     notes: "How the loop works.".to_string(),
                 },
                 LectureSlideDto {
+                    key: "step:two-limbs".to_string(),
                     kind: LectureSlideKind::Step,
                     step_key: Some("two-limbs".to_string()),
                     title: "Salt & water <in> the \"loop\"".to_string(),
@@ -680,6 +682,7 @@ mod tests {
                     notes: "Picture two tubes.\nGoing down, water slips out.".to_string(),
                 },
                 LectureSlideDto {
+                    key: "sources".to_string(),
                     kind: LectureSlideKind::Sources,
                     step_key: None,
                     title: "Sources".to_string(),

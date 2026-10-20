@@ -2,7 +2,17 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
-import { getLessonLecture, narrateLessonStep, prepareLessonLecturePptx, type Lecture } from "../../ipc/lessons";
+import {
+  answerLectureQuestion,
+  getLessonLecture,
+  getLessonLectureScript,
+  narrateLecturePart,
+  narrateLessonStep,
+  prepareLessonLecturePptx,
+  writeLessonLectureScript,
+  type Lecture,
+  type LectureScript,
+} from "../../ipc/lessons";
 import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
 import { LectureView } from "./LectureView";
 
@@ -10,9 +20,13 @@ vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
 }));
 vi.mock("../../ipc/lessons", () => ({
+  answerLectureQuestion: vi.fn(),
   getLessonLecture: vi.fn(),
+  getLessonLectureScript: vi.fn(),
+  narrateLecturePart: vi.fn(),
   narrateLessonStep: vi.fn(),
   prepareLessonLecturePptx: vi.fn(),
+  writeLessonLectureScript: vi.fn(),
 }));
 vi.mock("../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../media/managedPlayback", () => ({
@@ -25,11 +39,11 @@ const lecture: Lecture = {
   revisionNumber: 2,
   title: "Loop of Henle",
   slides: [
-    { kind: "title", stepKey: null, title: "Loop of Henle", points: ["Explain the gradient"], notes: "How the loop works." },
-    { kind: "step", stepKey: "two-limbs", title: "Two limbs, two jobs", points: ["Water out going down"], notes: "Picture two tubes." },
-    { kind: "step", stepKey: "quiet", title: "A quiet step", points: [], notes: "" },
-    { kind: "step", stepKey: "multiplier", title: "The multiplier", points: ["Small steps stack"], notes: "Each pump adds a little." },
-    { kind: "sources", stepKey: null, title: "Sources", points: ["Renal textbook"], notes: "" },
+    { key: "title", kind: "title", stepKey: null, title: "Loop of Henle", points: ["Explain the gradient"], notes: "How the loop works." },
+    { key: "step:two-limbs", kind: "step", stepKey: "two-limbs", title: "Two limbs, two jobs", points: ["Water out going down"], notes: "Picture two tubes." },
+    { key: "step:quiet", kind: "step", stepKey: "quiet", title: "A quiet step", points: [], notes: "" },
+    { key: "step:multiplier", kind: "step", stepKey: "multiplier", title: "The multiplier", points: ["Small steps stack"], notes: "Each pump adds a little." },
+    { key: "sources", kind: "sources", stepKey: null, title: "Sources", points: ["Renal textbook"], notes: "" },
   ],
 };
 
@@ -55,6 +69,15 @@ describe("LectureView", () => {
   beforeEach(() => {
     vi.mocked(getLessonLecture).mockReset();
     vi.mocked(getLessonLecture).mockResolvedValue(lecture);
+    vi.mocked(getLessonLectureScript).mockReset();
+    vi.mocked(getLessonLectureScript).mockResolvedValue(null);
+    vi.mocked(writeLessonLectureScript).mockReset();
+    vi.mocked(answerLectureQuestion).mockReset();
+    vi.mocked(narrateLecturePart).mockReset();
+    vi.mocked(narrateLecturePart).mockImplementation(async (_lesson, _revision, slideKey, replyTo) => ({
+      segments: [{ assetId: replyTo ? `reply:${replyTo}` : `talk:${slideKey}`, characters: 20 }],
+      made: 1,
+    }));
     vi.mocked(narrateLessonStep).mockReset();
     vi.mocked(narrateLessonStep).mockImplementation(async (_lesson, _revision, stepKey) => ({
       segments: [{ assetId: stepKey, characters: 20 }],
@@ -185,6 +208,99 @@ describe("LectureView", () => {
       expect(
         (await screen.findByRole("alert")).textContent,
       ).toContain("The slides were not saved: The lesson is no longer available.");
+    });
+  });
+
+  describe("the teacher's lecture", () => {
+    const script: LectureScript = {
+      revisionNumber: 2,
+      slides: [
+        { slideKey: "title", talk: "Welcome, everyone. Today is about the kidney's loop.", question: null },
+        {
+          slideKey: "step:two-limbs",
+          talk: "Look at the first point: the two limbs do opposite jobs.",
+          question: {
+            prompt: "Which limb lets water out?",
+            options: [
+              { id: "a".repeat(32), text: "The descending limb" },
+              { id: "b".repeat(32), text: "The ascending limb" },
+            ],
+          },
+        },
+        { slideKey: "step:quiet", talk: "This slide is short, so let us move on.", question: null },
+        { slideKey: "step:multiplier", talk: "Each pump only adds a little.", question: null },
+        { slideKey: "sources", talk: "That is the loop.", question: null },
+      ],
+    };
+
+    it("offers to write it, then shows what the teacher says as the notes", async () => {
+      vi.mocked(writeLessonLectureScript).mockResolvedValue(script);
+      open("two-limbs");
+      expect(await screen.findByText(/stops to ask the class a few questions/)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: /Write the teacher's lecture/ }));
+      expect(writeLessonLectureScript).toHaveBeenCalledWith("lesson-1", 2);
+      expect(await screen.findByText("Look at the first point: the two limbs do opposite jobs.")).toBeTruthy();
+      expect(screen.getByText(/the notes are the teacher's lecture/)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Write the teacher's lecture/ })).toBeNull();
+    });
+
+    it("says why it was not written", async () => {
+      vi.mocked(writeLessonLectureScript).mockRejectedValue(new Error("Add an AI connection first."));
+      open();
+      fireEvent.click(await screen.findByRole("button", { name: /Write the teacher's lecture/ }));
+      expect(await screen.findByText(/The teacher's lecture was not written: Add an AI connection first\./)).toBeTruthy();
+    });
+
+    it("talks over every slide, stops for the class's answer, replies and goes on", async () => {
+      vi.mocked(getLessonLectureScript).mockResolvedValue(script);
+      vi.mocked(answerLectureQuestion).mockResolvedValue({
+        correct: false,
+        correctOptionId: "a".repeat(32),
+        reply: "Not quite. The ascending limb is watertight.",
+      });
+      open();
+      await screen.findByText(/the notes are the teacher's lecture/);
+      fireEvent.click(screen.getByRole("button", { name: /Play lecture/ }));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:title"));
+      expect(narrateLessonStep).not.toHaveBeenCalled();
+
+      act(() => audio().dispatchEvent(new Event("ended")));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:step:two-limbs"));
+      act(() => audio().dispatchEvent(new Event("ended")));
+
+      const dialog = within(await screen.findByRole("dialog", { name: "The teacher asks the class" }));
+      expect(dialog.getByText("Which limb lets water out?")).toBeTruthy();
+      fireEvent.click(dialog.getByRole("radio", { name: "The ascending limb" }));
+      fireEvent.click(dialog.getByRole("button", { name: "Answer" }));
+      expect(await dialog.findByText("Not quite. The ascending limb is watertight.")).toBeTruthy();
+      expect(answerLectureQuestion).toHaveBeenCalledWith("lesson-1", 2, "step:two-limbs", "b".repeat(32));
+      await vi.waitFor(() => expect(audio().src).toBe(`blob:reply:${"b".repeat(32)}`));
+      expect(narrateLecturePart).toHaveBeenLastCalledWith("lesson-1", 2, "step:two-limbs", "b".repeat(32));
+
+      // The lecture goes on when the reply ends.
+      act(() => audio().dispatchEvent(new Event("ended")));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:step:quiet"));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(slide().getByRole("heading", { name: "A quiet step" })).toBeTruthy();
+    });
+
+    it("lets a question be answered without playing, and says nothing aloud", async () => {
+      vi.mocked(getLessonLectureScript).mockResolvedValue(script);
+      vi.mocked(answerLectureQuestion).mockResolvedValue({
+        correct: true,
+        correctOptionId: "a".repeat(32),
+        reply: "Right. Water leaves the descending limb.",
+      });
+      open("two-limbs");
+      fireEvent.click(await screen.findByRole("button", { name: /Answer the teacher's question/ }));
+      const dialog = within(await screen.findByRole("dialog"));
+      fireEvent.click(dialog.getByRole("radio", { name: "The descending limb" }));
+      fireEvent.click(dialog.getByRole("button", { name: "Answer" }));
+      expect(await dialog.findByText("Right. Water leaves the descending limb.")).toBeTruthy();
+      expect(narrateLecturePart).not.toHaveBeenCalled();
+      fireEvent.click(dialog.getByRole("button", { name: "Done" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(slide().getByRole("heading", { name: "Two limbs, two jobs" })).toBeTruthy();
     });
   });
 });
