@@ -1,6 +1,10 @@
-import type { StudyTargetBundleStatus } from "../../ipc/studyMaterials";
+import { useState } from "react";
+
+import type { StudyTargetBundleStatus, StudyTargetOutputPolicy } from "../../ipc/studyMaterials";
+import { Sheet } from "../../ui/overlays/Dialog";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
+import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Progress } from "../../ui/primitives/Progress";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
@@ -19,7 +23,8 @@ interface SubjectStudyActionsProps {
 /**
  * The subject's study materials, made from all of its documents together:
  * Study and Read guide once they exist; otherwise the one action that makes
- * them, and progress with Stop while they are being made.
+ * them, and progress with Stop while they are being made. Make study materials
+ * opens a sheet that chooses which of the guide and the flashcards to make.
  */
 export function SubjectStudyActions({
   subjectId,
@@ -35,6 +40,7 @@ export function SubjectStudyActions({
     refreshKey,
   });
   const status = bundle.status;
+  const [choosing, setChoosing] = useState(false);
   if (!hasDocuments && !status) return null;
   if (bundle.busy) {
     return (
@@ -62,7 +68,7 @@ export function SubjectStudyActions({
       {study ? <Button onClick={study}>Study</Button> : null}
       {guide ? <Button onClick={guide}>Read guide</Button> : null}
       {!status ? (
-        <Button data-testid="subject-make-materials" disabled={bundle.loading} onClick={() => void bundle.run()}>
+        <Button data-testid="subject-make-materials" disabled={bundle.loading} onClick={() => setChoosing(true)}>
           <Icon name="sparkles" size={16} /> Make study materials
         </Button>
       ) : needsUpdate && update ? (
@@ -71,7 +77,60 @@ export function SubjectStudyActions({
       {bundle.error ? (
         <InlineNotice kind="warning" className="tw:basis-full">{bundle.error}</InlineNotice>
       ) : null}
+      {choosing ? (
+        <MakeMaterialsSheet
+          onClose={() => setChoosing(false)}
+          onMake={(policy) => {
+            setChoosing(false);
+            void bundle.run(policy);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+/** What to make for the subject; at least one output, both by default. */
+function MakeMaterialsSheet({ onClose, onMake }: {
+  onClose: () => void;
+  onMake: (policy: StudyTargetOutputPolicy) => void;
+}) {
+  const [policy, setPolicy] = useState<StudyTargetOutputPolicy>({ flashcards: true, studyGuide: true });
+  const nothing = !policy.flashcards && !policy.studyGuide;
+  const options: { key: keyof StudyTargetOutputPolicy; label: string; detail: string }[] = [
+    { key: "studyGuide", label: "Study guide", detail: "One guide written from all of the subject's documents." },
+    { key: "flashcards", label: "Flashcards", detail: "Each document's own deck, filed in the subject." },
+  ];
+  return (
+    <Sheet
+      title="Make study materials"
+      width="small"
+      onClose={onClose}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!nothing) onMake(policy);
+      }}
+      actions={<>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button type="submit" disabled={nothing}>Make</Button>
+      </>}
+    >
+      <fieldset className="tw:m-0 tw:grid tw:gap-2 tw:border-0 tw:p-0">
+        <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Make</legend>
+        {options.map((option) => (
+          <label key={option.key} className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-start tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:px-4 tw:py-3">
+            <Checkbox
+              checked={policy[option.key]}
+              onCheckedChange={(checked) => setPolicy((current) => ({ ...current, [option.key]: checked }))}
+            />
+            <span className="tw:grid tw:gap-0.5">
+              <span className="tw:text-label tw:font-medium">{option.label}</span>
+              <span className="tw:text-small tw:text-muted-foreground">{option.detail}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    </Sheet>
   );
 }
 

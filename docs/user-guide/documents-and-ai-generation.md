@@ -12,7 +12,7 @@ The original file is not uploaded to the model. ostudy keeps a local copy, reads
 
 ## Add a document
 
-On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While they run, the document's row shows a progress bar for each. Either can finish first. Leaving the page does not stop the work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
 
 Each document is one row: its format, length and when it was added, its reading range if it has one, what it has made so far (**Study guide**, its cards, or **Nothing made yet**), its status while it is being read or after a failure, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
@@ -22,9 +22,9 @@ Each document is one row: its format, length and when it was added, its reading 
 - **Make more cards…**, once the document has a deck.
 - **Retry**, when card generation failed or the document's deck was deleted.
 - **Make a study guide** or **Remake the study guide**, and **Stop study guide** while one is being written.
-- **Stop processing** while the document is being read or its first cards are being made.
+- **Stop** while the document is being read or its first cards are being made.
 - **Rename…**: give the document your own title. A title you choose stays; generated metadata no longer replaces it.
-- **Details**: the file, size, length, processing time and token use, and during a run the live request statistics, the provider and model serving it, and the requested and effective reasoning.
+- **Details**: the file, size, length, processing time and token use. While the document is being processed or made into study material it is **Generation details**, first in the menu, and adds each part's progress, the current stage, the live request statistics and, under **Provider and request**, the provider and model serving it and the requested and effective reasoning. **Rename…** waits until processing ends.
 - **Delete**.
 
 On a phone, **Open** also moves into the menu.
@@ -61,7 +61,7 @@ A document's **…** menu files it: **Add to a subject…** or **Move to another
 
 **Reading range…** limits what the subject's study materials use from a long source, such as pages 1–3 and 7. The row shows the range, for example "pages 1–3 studied". **Whole document** clears it. When the file changes, the row says the range needs review.
 
-A subject's own study materials are made from all of its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
+A subject's own study materials are made from all of its documents together. Nothing is made until you choose **Make study materials** beside **Upload** and, in its sheet, which to make: **Study guide**, **Flashcards** or both (both are ticked to start). Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
 Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
@@ -105,7 +105,7 @@ Diagnostics leave out credentials, prompts, responses, reasoning text, source te
 
 Progress shows the steps ostudy can actually observe. Reading a non-PDF can show an indeterminate bar until its length is known. Card progress counts finished batches and study-guide progress counts finished sections; neither bar guesses from elapsed time. **Complete** belongs to each artifact, so one can finish while the other is still running. An indeterminate bar does not mean the task has stalled.
 
-**Stop processing** and **Stop study guide** ask the work to stop at its next safe point. Work already saved is kept, and a stopped remake leaves the previous guide in place. Failures stay visible when you return to Documents.
+**Stop** and **Stop study guide** ask the work to stop at its next safe point. Work already saved is kept, and a stopped remake leaves the previous guide in place. Failures stay visible when you return to Documents.
 
 If one part of a study guide cannot be written, the guide still publishes, and that section is marked **Not written yet** and lists the facts extracted from that part of the source. Remaking the guide tries it again.
 
@@ -115,7 +115,7 @@ On desktop, closing while documents are processing warns that the work will be i
 
 ## Retry, more cards, and remaking
 
-**Retry** reuses saved reading, outlines and finished card batches when they still match the current source, settings and ostudy version, so only the remaining work is redone. Saved knowledge is reused by any model. Some ostudy updates change how documents are read; those documents are read again the next time their first cards are made. In **Details**, **Retries** counts recovery requests during a run, not failed documents or pages.
+**Retry** reuses saved reading, outlines and finished card batches when they still match the current source, settings and ostudy version, so only the remaining work is redone. Saved knowledge is reused by any model. Some ostudy updates change how documents are read; those documents are read again the next time their first cards are made. In **Generation details**, **Retries** counts recovery requests during a run, not failed documents or pages.
 
 **Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 

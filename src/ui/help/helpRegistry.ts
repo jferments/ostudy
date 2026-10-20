@@ -93,7 +93,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Document processing",
     summary: "ostudy keeps the source in your library, reads it on this device, and makes an ordinary deck.",
     details:
-      "Large files can take a while. Use Stop processing in the document's menu to stop, Retry when a document failed, and Make more cards… to add cards from it later.",
+      "Large files can take a while. Use Stop in the document's menu to stop, Retry when a document failed, and Make more cards… to add cards from it later.",
     documentation: "Documents and AI-generated learning material: Progress and stopping",
     tutorialModuleId: "documents",
   },
