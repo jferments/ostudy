@@ -614,6 +614,7 @@ pub(super) fn document_reasoning_effort_for_test(
     document_reasoning_effort(profile, models)
 }
 
+#[cfg(test)]
 pub(super) fn probe_reasoning_effort_for_test(
     profile: &ProfileSnapshot,
     models: Option<&[ProviderModel]>,
