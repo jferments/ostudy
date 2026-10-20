@@ -15,6 +15,8 @@ x64
 ostudy-unified
 ```
 
+Draft pull requests run their fast gate on a second runner in the same VM, `ostudy-ci-fast` with label `ostudy-fast`, so they never queue in front of a full gate ([second lane](unified-runner-setup.md#12a-second-lane-for-draft-checks-ostudy-ci-fast)).
+
 The runner is an isolated Ubuntu 24.04 libvirt/QEMU/KVM VM. Linux/Tauri qualification runs directly; the official Android Emulator uses nested KVM. The VM has no personal ostudy library, forwarded SSH agent, host Docker/libvirt control socket, or Android release-signing credentials.
 
 See [Unified Linux/Android runner](unified-linux-android-runner.md) and [runner operations](unified-runner-setup.md). The older split-runner note is retained only as migration context.

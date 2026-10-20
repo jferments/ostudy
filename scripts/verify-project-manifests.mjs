@@ -244,7 +244,7 @@ requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", 
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("read-only check workflow", checkWorkflow, [
   "permissions:\n  contents: read",
-  "runs-on: [self-hosted, linux, x64, ostudy-unified]",
+  '\'["self-hosted","linux","x64","ostudy-fast"]\' || \'["self-hosted","linux","x64","ostudy-unified"]\'',
   "persist-credentials: false",
   "ci-runtime-preflight.sh",
   "OSTUDY_CARGO_TARGET_DIR",

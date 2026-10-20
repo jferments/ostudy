@@ -50,7 +50,11 @@ jobs:
     # obsolete work for the abandoned PR.
     if: github.event.action != 'closed'
     name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}
-    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    # Draft pull requests run the fast gate on the second runner lane in the
+    # same VM, so they never queue in front of a full gate or a merge train.
+    # Everything else, including every full and Android gate, stays on the
+    # unified runner, the only one with the emulator and KVM.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.draft && '["self-hosted","linux","x64","ostudy-fast"]' || '["self-hosted","linux","x64","ostudy-unified"]') }}
     timeout-minutes: 300
 
     env:
@@ -75,6 +79,8 @@ jobs:
           persist-credentials: false
 
       - name: Verify CI runner identity and isolation
+        env:
+          OSTUDY_EXPECT_RUNNER_NAME: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'ostudy-ci-fast' || 'ostudy-ci-unified' }}
         run: bash ./scripts/runner/ci-runtime-preflight.sh
 
       - name: Expose pinned user toolchains and persistent caches
@@ -82,11 +88,20 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
-          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          # Each lane builds in its own Cargo target, since two jobs cannot
+          # share one. Both lanes keep their check stamps in one place, so a
+          # fast pass on a draft is reused by the full gate on the same tree.
+          if [[ "$RUNNER_NAME" == ostudy-ci-fast ]]; then
+            cargo_target="$HOME/.cache/ostudy/fast/cargo-target"
+          else
+            cargo_target="$HOME/.cache/ostudy/cargo-target"
+          fi
+          echo "OSTUDY_CARGO_TARGET_DIR=$cargo_target" >> "$GITHUB_ENV"
+          echo "OSTUDY_CHECK_STATE_DIR=$HOME/.cache/ostudy/check-state/ci" >> "$GITHUB_ENV"
           echo "OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT=$RUNNER_TEMP/ostudy-diagnostics" >> "$GITHUB_ENV"
           mkdir -p \
             "$HOME/.cache/ostudy/gradle" \
-            "$HOME/.cache/ostudy/cargo-target"
+            "$cargo_target"
 
       - name: Bound the persistent Cargo target
         run: bash ./scripts/runner/bound-cargo-target.sh
