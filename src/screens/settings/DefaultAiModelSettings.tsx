@@ -1,6 +1,5 @@
 import { Panel } from "../../ui/primitives/Panel";
-import { Disclosure } from "../../ui/primitives/FormControls";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   defaultTaskReasoning,
@@ -24,6 +23,10 @@ import {
   type EmbeddingOptions,
 } from "../../ipc/embeddings";
 import { Icon } from "../../ui/icons/Icon";
+import { cn } from "../../ui/internal/cn";
+import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { Sheet } from "../../ui/overlays/Dialog";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
@@ -46,28 +49,28 @@ interface ModelChoice {
   reasoning?: AiProviderModel["reasoning"];
 }
 
-export function DefaultAiModelSettings({ controller }: { controller: AiProfilesController }) {
+const TASKS: ReadonlyArray<{ task: AiTaskKind; label: string }> = [
+  { task: "flashcard_generation", label: "Cards and guides" },
+  { task: "tutor", label: "Tutor" },
+  { task: "embeddings", label: "Search" },
+];
+
+/** One row per task: the service, model and, for the Tutor, reasoning it uses. */
+export function DefaultAiModelSettings({ controller, extraRows }: { controller: AiProfilesController; extraRows?: ReactNode }) {
+  const wide = useLayoutMode().layoutMode === "wide";
   return (
-    <Panel headingLevel={2} title="Default AI models" description="Choose separate models for generation, tutoring, and semantic search.">
-      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:xl:grid-cols-3">
-        <TaskModelRow
-          controller={controller}
-          task="flashcard_generation"
-          label="Flashcard and study-guide generation"
-          assignment={assignmentFor(controller, "flashcard_generation")}
-        />
-        <TaskModelRow
-          controller={controller}
-          task="tutor"
-          label="Interactive tutor"
-          assignment={assignmentFor(controller, "tutor")}
-        />
-        <TaskModelRow
-          controller={controller}
-          task="embeddings"
-          label="Semantic embeddings"
-          assignment={assignmentFor(controller, "embeddings")}
-        />
+    <Panel title="Default for each task">
+      <div role="list" aria-label="Default for each task" className="tw:grid tw:min-w-0">
+        {wide ? (
+          <div aria-hidden="true" className={cn(TASK_GRID, "tw:pb-1 tw:text-caption tw:text-muted-foreground")}>
+            <span /><span>Service</span><span>Model</span><span>Reasoning</span><span />
+          </div>
+        ) : null}
+        {TASKS.map(({ task, label }) => (
+          <TaskModelRow key={task} controller={controller} task={task} label={label} wide={wide}
+            assignment={assignmentFor(controller, task)} />
+        ))}
+        {extraRows}
       </div>
       {controller.pendingTaskDefault ? (
         <p role="alert" className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
@@ -87,17 +90,23 @@ export function DefaultAiModelSettings({ controller }: { controller: AiProfilesC
   );
 }
 
+/** Wide screens line the tasks up as a table: name, service, model, reasoning, menu. */
+export const TASK_GRID = "tw:grid tw:grid-cols-[9rem_minmax(0,1fr)_minmax(0,1.2fr)_8.5rem_2.75rem] tw:items-center tw:gap-3";
+
 function TaskModelRow({
   controller,
   task,
   label,
   assignment,
+  wide,
 }: {
   controller: AiProfilesController;
   task: AiTaskKind;
   label: string;
   assignment: Assignment;
+  wide: boolean;
 }) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const eligibleProfiles = useMemo(
     () =>
       controller.profiles.filter(
@@ -241,129 +250,108 @@ function TaskModelRow({
     }
   }
 
-  return (
-    <div className="tw:grid tw:min-w-0 tw:content-start tw:gap-4 tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-background tw:p-5" data-task={task}>
-      <strong className="tw:text-body tw:font-semibold tw:tracking-tight">{label}</strong>
-      <div className="tw:grid tw:min-w-0 tw:gap-4">
-        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
-          <span>Provider</span>
-          <NativeSelect
-            aria-label={`${label} provider`}
-            value={profileId}
-            disabled={locked}
-            onChange={(event) => {
-              const next = event.currentTarget.value;
-              setProfileId(next);
-              setModelId("");
-              setReasoning(defaultTaskReasoning(task));
-              if (!next) void controller.setTaskDefault(task, null, null, null);
-            }}
-          >
-            <option value="">No provider selected</option>
-            {eligibleProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.displayName} — {profile.providerLabel}
-                {profile.configurationStatus === "ready" ? "" : " — incomplete"}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-
-        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
-          <span>Model</span>
-          <NativeSelect
-            aria-label={`${label} model`}
-            value={modelId}
-            disabled={
-              locked ||
-              !profileId ||
-              loadingModels ||
-              selectedProfile?.configurationStatus !== "ready"
-            }
-            onChange={(event) => {
-              const nextModel = event.currentTarget.value;
-              const model = models.find((candidate) => candidate.id === nextModel) ?? null;
-              const nextReasoning =
-                task === "embeddings"
-                  ? "none"
-                  : compatibleReasoning(reasoning, model?.reasoning ?? null);
-              setModelId(nextModel);
-              setReasoning(nextReasoning);
-              if (nextModel) void assign(nextModel, nextReasoning);
-            }}
-          >
-            <option value="">
-              {!profileId
-                ? "Select a provider first"
-                : loadingModels
-                  ? "Loading models…"
-                  : models.length === 0
-                    ? "No models reported"
-                    : "Select a model"}
-            </option>
-            {modelId && !models.some((model) => model.id === modelId) ? (
-              <option value={modelId}>{modelId} — saved selection</option>
-            ) : null}
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-
-        {reasons ? (
-          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
-            <span>Reasoning</span>
-            <NativeSelect
-              aria-label={`${label} reasoning`}
-              value={reasoning}
-              disabled={locked || !modelId}
-              onChange={(event) => {
-                const next = event.currentTarget.value as AiReasoningEffort;
-                setReasoning(next);
-                void assign(modelId, next);
-              }}
-            >
-              {reasoningValidationError ? (
-                <option value={reasoning} disabled>
-                  {reasoningLabel(reasoning)} — unsupported saved selection
-                </option>
-              ) : null}
-              {reasoningOptions.map((effort) => (
-                <option key={effort} value={effort}>
-                  {reasoningLabel(effort)}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        ) : null}
-
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={!modelId || testing || locked || Boolean(reasoningValidationError)}
-            onClick={() => {
-              void testModel();
-            }}
-          >
-            {testing ? "Testing…" : "Test model"}
-          </Button>
-          {status ? (
-            <Icon
-              name="check"
-              size={20}
-              label="Model test succeeded"
-              className="tw:size-5 tw:shrink-0 tw:text-success"
-            />
-          ) : null}
-        </div>
-      </div>
-
-      {task === "embeddings" && profileId && modelId ? (
-        <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} />
+  const serviceSelect = (
+    <NativeSelect
+      aria-label={`${label} service`}
+      value={profileId}
+      disabled={locked}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        setProfileId(next);
+        setModelId("");
+        setReasoning(defaultTaskReasoning(task));
+        if (!next) void controller.setTaskDefault(task, null, null, null);
+      }}
+    >
+      <option value="">None</option>
+      {eligibleProfiles.map((profile) => (
+        <option key={profile.id} value={profile.id}>
+          {profile.displayName}
+          {profile.configurationStatus === "ready" ? "" : " (needs setup)"}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+  const modelSelect = (
+    <NativeSelect
+      aria-label={`${label} model`}
+      value={modelId}
+      disabled={
+        locked ||
+        !profileId ||
+        loadingModels ||
+        selectedProfile?.configurationStatus !== "ready"
+      }
+      onChange={(event) => {
+        const nextModel = event.currentTarget.value;
+        const model = models.find((candidate) => candidate.id === nextModel) ?? null;
+        const nextReasoning =
+          task === "embeddings"
+            ? "none"
+            : compatibleReasoning(reasoning, model?.reasoning ?? null);
+        setModelId(nextModel);
+        setReasoning(nextReasoning);
+        if (nextModel) void assign(nextModel, nextReasoning);
+      }}
+    >
+      <option value="">
+        {!profileId
+          ? "Choose a service first"
+          : loadingModels
+            ? "Loading models…"
+            : models.length === 0
+              ? "No models reported"
+              : "Choose a model"}
+      </option>
+      {modelId && !models.some((model) => model.id === modelId) ? (
+        <option value={modelId}>{modelId} (saved)</option>
       ) : null}
+      {models.map((model) => (
+        <option key={model.id} value={model.id}>
+          {model.label}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+  const reasoningSelect = reasons ? (
+    <NativeSelect
+      aria-label={`${label} reasoning`}
+      value={reasoning}
+      disabled={locked || !modelId}
+      onChange={(event) => {
+        const next = event.currentTarget.value as AiReasoningEffort;
+        setReasoning(next);
+        void assign(modelId, next);
+      }}
+    >
+      {reasoningValidationError ? (
+        <option value={reasoning} disabled>
+          {reasoningLabel(reasoning)} (not supported)
+        </option>
+      ) : null}
+      {reasoningOptions.map((effort) => (
+        <option key={effort} value={effort}>
+          {reasoningLabel(effort)}
+        </option>
+      ))}
+    </NativeSelect>
+  ) : null;
+  const menu = (
+    <OverflowMenu label={`More for ${label}`} disabled={locked}
+      items={[
+        { id: "test", label: testing ? "Testing…" : "Test model", disabled: !modelId || testing || Boolean(reasoningValidationError), onSelect: () => void testModel() },
+        ...(task === "embeddings" && profileId && modelId ? [{ id: "options", label: "Embedding options", onSelect: () => setOptionsOpen(true) }] : []),
+        { id: "clear", label: "Clear", disabled: !profileId, onSelect: () => {
+          setProfileId("");
+          setModelId("");
+          setReasoning(defaultTaskReasoning(task));
+          void controller.setTaskDefault(task, null, null, null);
+        } },
+      ]} />
+  );
+  const tested = status ? <Icon name="check" size={18} label="Model test succeeded" className="tw:shrink-0 tw:text-success" /> : null;
+  const feedback = (
+    <>
       {reasoningValidationError ? (
         <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive" role="alert">
           {reasoningValidationError}
@@ -379,6 +367,36 @@ function TaskModelRow({
           {error}
         </p>
       ) : null}
+    </>
+  );
+  const options = optionsOpen && task === "embeddings" && profileId && modelId ? (
+    <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} onClose={() => setOptionsOpen(false)} />
+  ) : null;
+
+  return wide ? (
+    <div role="listitem" data-task={task} className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-2.5 tw:first:border-t-0">
+      <div className={TASK_GRID}>
+        <span className="tw:flex tw:items-center tw:gap-2 tw:font-medium">{label}{tested}</span>
+        {serviceSelect}
+        {modelSelect}
+        {reasoningSelect ?? <span />}
+        {menu}
+      </div>
+      {feedback}
+      {options}
+    </div>
+  ) : (
+    <div role="listitem" data-task={task} className="tw:grid tw:min-w-0 tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-4 tw:first:border-t-0 tw:first:pt-0">
+      <div className="tw:flex tw:items-center tw:gap-2">
+        <strong className="tw:flex-1 tw:font-medium">{label}</strong>
+        {tested}
+        {menu}
+      </div>
+      <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground"><span>Service</span>{serviceSelect}</label>
+      <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground"><span>Model</span>{modelSelect}</label>
+      {reasoningSelect ? <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground"><span>Reasoning</span>{reasoningSelect}</label> : null}
+      {feedback}
+      {options}
     </div>
   );
 }
@@ -423,10 +441,12 @@ function EmbeddingModelOptions({
   profileId,
   modelId,
   disabled,
+  onClose,
 }: {
   profileId: string;
   modelId: string;
   disabled: boolean;
+  onClose: () => void;
 }) {
   const [saved, setSaved] = useState<EmbeddingOptions | null>(null);
   const [dimensions, setDimensions] = useState("");
@@ -473,6 +493,7 @@ function EmbeddingModelOptions({
         inputPolicy: policy,
       });
       setSaved(value);
+      onClose();
     } catch (failure: unknown) {
       setError(getErrorMessage(failure));
     } finally {
@@ -481,8 +502,14 @@ function EmbeddingModelOptions({
   }
 
   return (
-    <Disclosure title="Embedding options" className="tw:mt-1">
-      <div className="tw:mt-4 tw:grid tw:min-w-0 tw:gap-4">
+    <Sheet title="Embedding options" width="small" busy={busy} onClose={onClose}
+      actions={<>
+        <Button variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={disabled || busy || !dirty || !validDimensions} onClick={() => void save()}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </>}>
+      <div className="tw:grid tw:min-w-0 tw:gap-4">
         <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Dimensions</span>
           <TextField
@@ -506,18 +533,6 @@ function EmbeddingModelOptions({
             <option value="search_types">Search query/document types</option>
           </NativeSelect>
         </label>
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={disabled || busy || !dirty || !validDimensions}
-            onClick={() => {
-              void save();
-            }}
-          >
-            {busy ? "Saving…" : "Save options"}
-          </Button>
-        </div>
       </div>
       {!validDimensions ? <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive">Use 32–4096 dimensions or leave blank.</p> : null}
       {error ? (
@@ -525,7 +540,7 @@ function EmbeddingModelOptions({
           {error}
         </p>
       ) : null}
-    </Disclosure>
+    </Sheet>
   );
 }
 

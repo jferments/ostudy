@@ -218,7 +218,7 @@ impl SecretManager {
                     Err(SecretStoreError::Unavailable | SecretStoreError::Locked) => Err(
                         CommandError::new(
                             "ai_secure_store_unavailable",
-                            "Secure credential storage is unavailable. Open Settings → AI/LLM, re-enter the API key, and choose “Keep only for this app session.”",
+                            "Secure credential storage is unavailable. Open Settings → AI, re-enter the API key, and choose “Keep only for this app session.”",
                         ),
                     ),
                     Err(_) => Err(secret_command_error(

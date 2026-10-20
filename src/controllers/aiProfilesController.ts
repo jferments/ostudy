@@ -64,9 +64,12 @@ export interface AiProfilesController {
   updateDraft: (patch: Partial<AiProfileDraft>) => void;
   setCredentialDraft: (value: string) => void;
   setCredentialPersistence: (value: AiCredentialPersistence) => void;
-  connectSetup: () => Promise<void>;
-  saveProfile: () => Promise<void>;
-  deleteProfile: () => Promise<void>;
+  /** Resolves true when the connection, and any new key, were saved. */
+  connectSetup: () => Promise<boolean>;
+  /** Resolves true when the profile was saved. */
+  saveProfile: () => Promise<boolean>;
+  /** Deletes the selected profile, or the given one from the list. */
+  deleteProfile: (target?: Pick<AiProviderProfileSummary, "id" | "revision">) => Promise<void>;
   saveCredential: () => Promise<void>;
   clearCredential: () => Promise<void>;
   refreshModels: () => Promise<void>;
@@ -252,11 +255,11 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
-  async function connectSetup(): Promise<void> {
-    if (!draft || mutating) return;
+  async function connectSetup(): Promise<boolean> {
+    if (!draft || mutating) return false;
     if (draft.authMode !== "none" && credentialDraft === "" && !profileHasCredential(selectedProfile)) {
       setErrorMessage("Enter the API key before connecting to this provider.");
-      return;
+      return false;
     }
     setMutating(true);
     setErrorMessage(null);
@@ -287,6 +290,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setDefaults(savedDefaults);
       showToast("success", wasExisting ? "AI connection updated." : "AI connection saved.");
       if (canDiscoverModels(saved)) await discoverModelsForProfile(saved, false);
+      return true;
     } catch (error: unknown) {
       if (committedProfile && committedProfile !== selectedProfile) {
         setSelectedProfile(committedProfile);
@@ -298,13 +302,14 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       }
       if (credentialCommitted) setCredentialDraft("");
       setErrorMessage(getErrorMessage(error));
+      return false;
     } finally {
       setMutating(false);
     }
   }
 
-  async function saveProfile(): Promise<void> {
-    if (!draft || mutating) return;
+  async function saveProfile(): Promise<boolean> {
+    if (!draft || mutating) return false;
     setMutating(true);
     setErrorMessage(null);
     try {
@@ -319,19 +324,22 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setModelsLoaded(false);
       await loadProfiles();
       showToast("success", wasExisting ? "AI provider saved." : "AI provider created.");
+      return true;
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
+      return false;
     } finally {
       setMutating(false);
     }
   }
 
-  async function deleteProfile(): Promise<void> {
-    if (!selectedProfile || mutating) return;
+  async function deleteProfile(target?: Pick<AiProviderProfileSummary, "id" | "revision">): Promise<void> {
+    const victim = target ?? selectedProfile;
+    if (!victim || mutating) return;
     setMutating(true);
     setErrorMessage(null);
     try {
-      await deleteAiProviderProfile(selectedProfile.id, selectedProfile.revision);
+      await deleteAiProviderProfile(victim.id, victim.revision);
       const [remaining, savedDefaults] = await Promise.all([loadProfiles(), getAiTaskDefaults()]);
       setDefaults(savedDefaults);
       setSelectedProfileId(remaining[0]?.id ?? null);

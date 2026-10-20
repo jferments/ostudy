@@ -168,7 +168,7 @@ This protects the distinction between durable provenance rows and surviving user
 
 ## AI Settings layout acceptance
 
-Open **Settings → AI/LLM** at desktop width.
+Open **Settings → AI** at desktop width.
 
 - **Default AI model** must appear at the top of the left column.
 - **Provider profiles** must follow immediately beneath it with the normal small column gap; there must not be a large blank vertical region between the two cards.

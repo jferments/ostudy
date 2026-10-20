@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { requiredTestValue as required } from "../../test/factories";
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import { listAiProviderModels, testAiProviderProfile } from "../../ipc/aiProfiles";
 import {
@@ -9,6 +8,7 @@ import {
   listEmbeddingModels,
   testEmbeddingProfile,
 } from "../../ipc/embeddings";
+import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DefaultAiModelSettings } from "./DefaultAiModelSettings";
 
 vi.mock("../../ipc/aiProfiles", async (importOriginal) => {
@@ -145,30 +145,41 @@ beforeEach(() => {
   });
 });
 
+function renderDefaults(value: AiProfilesController) {
+  render(<OverlayProvider><DefaultAiModelSettings controller={value} /></OverlayProvider>);
+}
+
+async function testModel(task: string) {
+  const model = await screen.findByRole("combobox", { name: `${task} model` });
+  await waitFor(() => expect((model as HTMLSelectElement).value).not.toBe(""));
+  fireEvent.click(screen.getByRole("button", { name: `More for ${task}` }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Test model" }));
+}
+
 describe("DefaultAiModelSettings", () => {
   it("uses one provider connection with independent task model assignments", async () => {
-    render(<DefaultAiModelSettings controller={controller()} />);
+    renderDefaults(controller());
 
-    expect(screen.getByRole("heading", { name: "Default AI models" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Default for each task" })).toBeTruthy();
     await waitFor(() => {
       expect(
         (screen.getByRole("combobox", {
-          name: "Flashcard and study-guide generation model",
+          name: "Cards and guides model",
         }) as HTMLSelectElement).value,
       ).toBe("deepseek/deepseek-v4-flash");
       expect(
-        (screen.getByRole("combobox", { name: "Interactive tutor model" }) as HTMLSelectElement)
+        (screen.getByRole("combobox", { name: "Tutor model" }) as HTMLSelectElement)
           .value,
       ).toBe("anthropic/claude-sonnet");
       expect(
-        (screen.getByRole("combobox", { name: "Semantic embeddings model" }) as HTMLSelectElement)
+        (screen.getByRole("combobox", { name: "Search model" }) as HTMLSelectElement)
           .value,
       ).toBe("qwen/qwen3-embedding");
     });
     for (const label of [
-      "Flashcard and study-guide generation provider",
-      "Interactive tutor provider",
-      "Semantic embeddings provider",
+      "Cards and guides service",
+      "Tutor service",
+      "Search service",
     ]) {
       expect((screen.getByRole("combobox", { name: label }) as HTMLSelectElement).value).toBe(
         profileId,
@@ -178,8 +189,8 @@ describe("DefaultAiModelSettings", () => {
 
   it("writes provider, model, and reasoning as one task assignment", async () => {
     const value = controller();
-    render(<DefaultAiModelSettings controller={value} />);
-    const model = await screen.findByRole("combobox", { name: "Interactive tutor model" });
+    renderDefaults(value);
+    const model = await screen.findByRole("combobox", { name: "Tutor model" });
     await waitFor(() => expect((model as HTMLSelectElement).disabled).toBe(false));
 
     fireEvent.change(model, { target: { value: "deepseek/deepseek-v4-flash" } });
@@ -191,7 +202,7 @@ describe("DefaultAiModelSettings", () => {
         "medium",
       );
     });
-    fireEvent.change(screen.getByRole("combobox", { name: "Interactive tutor reasoning" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Tutor reasoning" }), {
       target: { value: "high" },
     });
     expect(value.setTaskDefault).toHaveBeenLastCalledWith(
@@ -204,13 +215,13 @@ describe("DefaultAiModelSettings", () => {
 
   it("asks for no reasoning on document generation and offers no reasoning picker", async () => {
     const value = controller();
-    render(<DefaultAiModelSettings controller={value} />);
+    renderDefaults(value);
     const model = await screen.findByRole("combobox", {
-      name: "Flashcard and study-guide generation model",
+      name: "Cards and guides model",
     });
     await waitFor(() => expect((model as HTMLSelectElement).disabled).toBe(false));
     expect(
-      screen.queryByRole("combobox", { name: "Flashcard and study-guide generation reasoning" }),
+      screen.queryByRole("combobox", { name: "Cards and guides reasoning" }),
     ).toBeNull();
 
     fireEvent.change(model, { target: { value: "anthropic/claude-sonnet" } });
@@ -225,15 +236,14 @@ describe("DefaultAiModelSettings", () => {
   });
 
   it("shows a green success check beside Test model after a successful probe", async () => {
-    render(<DefaultAiModelSettings controller={controller()} />);
-    const tutorModel = await screen.findByRole("combobox", { name: "Interactive tutor model" });
+    renderDefaults(controller());
+    const tutorModel = await screen.findByRole("combobox", { name: "Tutor model" });
     await waitFor(() => expect((tutorModel as HTMLSelectElement).disabled).toBe(false));
-    const testButtons = screen.getAllByRole("button", { name: "Test model" });
-    fireEvent.click(testButtons[1]!);
+    await testModel("Tutor");
 
     const success = await screen.findByRole("img", { name: "Model test succeeded" });
     expect(success.classList.contains("tw:text-success")).toBe(true);
-    expect(success.getAttribute("width")).toBe("20");
+    expect(success.getAttribute("width")).toBe("18");
   });
 
   it("renders a returned failed probe as an actionable error with phase detail", async () => {
@@ -266,9 +276,8 @@ describe("DefaultAiModelSettings", () => {
       stale: false,
     });
 
-    render(<DefaultAiModelSettings controller={controller()} />);
-    const testButton = required(screen.getAllByRole("button", { name: "Test model" })[0], "Test model button");
-    fireEvent.click(testButton);
+    renderDefaults(controller());
+    await testModel("Cards and guides");
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Model verification failed.");
@@ -314,9 +323,8 @@ describe("DefaultAiModelSettings", () => {
       stale: false,
     });
 
-    render(<DefaultAiModelSettings controller={controller()} />);
-    const testButton = required(screen.getAllByRole("button", { name: "Test model" })[0], "Test model button");
-    fireEvent.click(testButton);
+    renderDefaults(controller());
+    await testModel("Cards and guides");
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("document-generation structured-output contract");
@@ -324,7 +332,7 @@ describe("DefaultAiModelSettings", () => {
   });
 
   it("contains no obsolete provider/profile implementation guidance", () => {
-    render(<DefaultAiModelSettings controller={controller()} />);
+    renderDefaults(controller());
     expect(screen.queryByText(/Each profile stores its own reasoning preference/u)).toBeNull();
     expect(screen.queryByText(/Use a separate embedding-model profile/u)).toBeNull();
     expect(screen.queryByText(/request timeout limits initial response/u)).toBeNull();
