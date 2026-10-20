@@ -19,6 +19,7 @@ use crate::{
     knowledge::authoring::KnowledgeCatalog,
     lessons::content::{
         LessonBlock, LessonContent, LessonStep, ValidatedLesson, LESSON_CONTENT_VERSION,
+        MAX_OBJECTIVES, MAX_OBJECTIVE_CHARS, MAX_SLIDE_POINTS, MAX_SLIDE_POINT_CHARS,
     },
     task_cancellation::CancellationSignal,
 };
@@ -260,7 +261,7 @@ pub(super) fn decode(
         schema_version: LESSON_CONTENT_VERSION,
         title: wire.title.trim().to_string(),
         summary: wire.summary.trim().to_string(),
-        objectives: trimmed(wire.objectives),
+        objectives: shaped(wire.objectives, MAX_OBJECTIVES, MAX_OBJECTIVE_CHARS),
         steps,
     };
     ValidatedLesson::validate(content)
@@ -289,7 +290,7 @@ fn decode_step(
         title: step.title.trim().to_string(),
         blocks: step.blocks.into_iter().map(without_empty_options).collect(),
         narration: step.narration.trim().to_string(),
-        slide_points: trimmed(step.slide_points),
+        slide_points: shaped(step.slide_points, MAX_SLIDE_POINTS, MAX_SLIDE_POINT_CHARS),
         check,
     })
 }
@@ -373,11 +374,34 @@ fn rich(text: &str) -> Value {
     json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text.trim()}]}]})
 }
 
-fn trimmed(values: Vec<String>) -> Vec<String> {
+/// Objectives and slide points summarize what the steps teach and add no
+/// claims of their own, so an answer with too many or too long ones is shaped
+/// natively instead of being refused: blank items go, the first `max_items`
+/// stay, and an item over `max_chars` is cut at a word and marked with an
+/// ellipsis.
+fn shaped(values: Vec<String>, max_items: usize, max_chars: usize) -> Vec<String> {
     values
         .into_iter()
         .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .take(max_items)
+        .map(|value| shortened(value, max_chars))
         .collect()
+}
+
+fn shortened(value: String, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value;
+    }
+    let kept: String = value.chars().take(max_chars - 1).collect();
+    let cut = kept
+        .rfind(char::is_whitespace)
+        .filter(|&at| at > 0)
+        .map_or(kept.as_str(), |at| &kept[..at]);
+    format!(
+        "{}…",
+        cut.trim_end_matches(|c: char| c.is_whitespace() || ",;:".contains(c))
+    )
 }
 
 /// Aliases to native identities. A repeated target is kept once; anything

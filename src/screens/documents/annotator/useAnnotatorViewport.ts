@@ -18,6 +18,8 @@ export const ACTUAL_SIZE_SCALE = 96 / 72;
 const MAX_FIT_SCALE = 120 / 72;
 const ZOOM_STEP = 1.25;
 const MIN_VIEWPORT_HEIGHT = 240;
+/** A page scrolled to keeps this much (CSS pixels) of the gap above it in view. */
+const PAGE_TOP_MARGIN = 8;
 /** Pages this far beyond the visible area (in viewport heights) load their images. */
 const NEAR_MARGIN = "150% 0px";
 
@@ -72,11 +74,11 @@ export function useAnnotatorViewport(
   const fitScaleRef = useRef(fitScale);
   fitScaleRef.current = fitScale;
 
-  // The page area fills the rest of the app's scroll area, so the toolbar stays put.
+  // The page area fills the rest of the app's scroll area (or its dialog's), so the toolbar stays put.
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return undefined;
-    const main = viewport.closest<HTMLElement>("[data-slot='sidebar-inset']");
+    const main = viewport.closest<HTMLElement>("[data-slot='sidebar-inset'], [data-slot='dialog-body']");
     if (main) main.scrollTop = 0;
     const content = contentRef.current;
     const update = () => {
@@ -226,6 +228,14 @@ export function useAnnotatorViewport(
     scaleRef.current = target;
   }, [anchorAt, placeAnchor, viewportCenter]);
 
+  /** Scrolls a page's top into view. */
+  const showPage = useCallback((pageNumber: number) => {
+    const viewport = viewportRef.current;
+    const element = pageElement(pageNumber);
+    if (!viewport || !element) return;
+    viewport.scrollTop = Math.max(0, element.offsetTop - PAGE_TOP_MARGIN);
+  }, [pageElement, viewportRef]);
+
   const zoomBy = useCallback((factor: number) => zoomTo(scaleRef.current * factor), [zoomTo]);
 
   useLayoutEffect(() => {
@@ -285,12 +295,15 @@ export function useAnnotatorViewport(
     height,
     scale,
     fit: zoom.mode === "fit",
+    /** The window has been measured, so pages have their fitted size. */
+    measured: fitWidth > 0,
     near,
     settled,
     zoomTo,
     zoomIn: () => zoomBy(ZOOM_STEP),
     zoomOut: () => zoomBy(1 / ZOOM_STEP),
     fitToWidth: () => zoomTo("fit"),
+    showPage,
     startFling,
     stopFling,
   };

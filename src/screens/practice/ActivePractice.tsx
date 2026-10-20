@@ -48,6 +48,9 @@ interface ActivePracticeProps {
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
   onEdit: () => void;
+  /** The page the current card cites, offered once its answer shows. */
+  sourcePage?: number | null;
+  onOpenSource?: () => void;
   onScheduleAction: (action: ScheduleAction, intent?: RescheduleIntent) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
@@ -75,6 +78,8 @@ export function ActivePractice({
   onReveal,
   onScore,
   onEdit,
+  sourcePage = null,
+  onOpenSource,
   onScheduleAction,
   onEnd,
   onLinkError,
@@ -171,6 +176,10 @@ export function ActivePractice({
     { id: "reschedule-tomorrow", label: "Reschedule for tomorrow", onSelect: () => onScheduleAction("reschedule", { kind: "tomorrow" }) },
     { id: "reset", label: "Reset schedule", destructive: true, onSelect: () => onScheduleAction("reset") },
   ];
+  // The source would give the answer away, so it is offered after the answer shows.
+  const source = revealed && sourcePage !== null && onOpenSource
+    ? { label: `Source, page ${sourcePage}`, open: onOpenSource }
+    : null;
   const modeLabel = session.mode === "extra" ? "Extra practice" : session.mode === "custom" ? "Custom practice" : "Practice";
 
   return <PageScaffold width="full" inset={false} className={view.page}>
@@ -189,7 +198,14 @@ export function ActivePractice({
             mode: revealed ? "explain" : "hint",
           }} />
           {compact ? <OverflowMenu label="Card actions" disabled={busy}
-            items={[{ id: "edit", label: "Edit card", onSelect: onEdit }, ...scheduleItems]} /> : <>
+            items={[
+              ...(source ? [{ id: "source", label: source.label, onSelect: source.open }] : []),
+              { id: "edit", label: "Edit card", onSelect: onEdit },
+              ...scheduleItems,
+            ]} /> : <>
+            {source ? <Button variant="ghost" disabled={busy} onClick={source.open} data-practice-action="source">
+              <Icon name="document" size={16} />{source.label}
+            </Button> : null}
             <OverflowMenu label="Schedule" triggerIcon="timer" disabled={busy} items={scheduleItems} />
             <Button variant="ghost" disabled={busy} onClick={onEdit}><Icon name="edit" size={16} />Edit card</Button>
           </>}

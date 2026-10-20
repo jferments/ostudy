@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 10: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, and schema 10 remembers which marks your cards were made from, the last five described below. Libraries at schemas 1–9 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 11: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, and schema 11 keeps the spoken narration of lessons, the last six described below. Libraries at schemas 1–10 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -62,6 +62,11 @@ Older builds cannot open a schema-9 library. Restoring the pre-upgrade checkpoin
 Schema 10 remembers which highlight or note on a document each card you make from it came from, with the page and a copy of the marked words, so you can study the cards from what you marked. Deleting the mark or the document keeps the card. The update itself writes nothing: the table starts empty.
 
 Older builds cannot open a schema-10 library. Restoring the pre-upgrade checkpoint returns the schema-9 library as it was. These links are part of whole-library backups but stay on the device that made them, like the annotations themselves; shared decks do not carry them.
+## The lesson narration update (schema 11)
+
+Schema 11 keeps the audio of lesson narration you have listened to, so a step is spoken by the voice service once and then plays from your library, and it records which voice lessons use. The update itself writes nothing: the tables start empty.
+
+Older builds cannot open a schema-11 library. Restoring the pre-upgrade checkpoint returns the schema-10 library as it was. Narration audio is part of whole-library backups but stays on the device that made it, like the lessons it belongs to. Deleting a lesson keeps its audio for now, because the same sentences can be spoken again in another lesson.
 
 ## What happens when migration is required
 
@@ -69,7 +74,7 @@ Before ordinary library commands become available, oStudy takes exclusive cooper
 
 The complete recovery checkpoint must verify before any migration is attempted. All required migration work happens on a separate candidate. That candidate must reach the expected schema and pass native admission, integrity, relationship and applicable preservation checks before activation. The original active library is not progressively migrated.
 
-The startup screen reports checkpoint creation, private-copy migration, verification and activation. A late-loading window can recover the current progress message. These messages do not grant database access; normal startup readiness remains independent. After successful activation, reconciliation and commit, a dismissible notice says that the library was updated and its recovery checkpoint retained.
+The startup screen reports checkpoint creation, private-copy migration, verification and activation, with a bar showing how much of the whole update is done. The bar counts the bytes the update copies and checks against an estimate made from the library's size, so it can pause just short of the end while the activated library is opened and checked. A late-loading window can recover the current progress message and bar. These messages do not grant database access; normal startup readiness remains independent. After successful activation, reconciliation and commit, a dismissible notice says that the library was updated and its recovery checkpoint retained.
 
 The shared activation journal coordinates the database and its journals with managed files. A failed operation before commit attempts to restore the previous coherent state. If the process is interrupted, the next launch reads the journal before opening the library. A committed operation is not reversed merely because bookkeeping cleanup failed.
 

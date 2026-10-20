@@ -20,6 +20,7 @@ import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { LessonBlocks } from "./LessonBlocks";
+import { StepNarration } from "./StepNarration";
 
 interface LessonPlayerProps {
   lessonId: string;
@@ -152,6 +153,16 @@ export function LessonPlayer({
             >
               {current.title}
             </h1>
+            {current.narration.trim() ? (
+              <div className="tw:pt-2">
+                <StepNarration
+                  key={`${lesson.revisionNumber}-${current.key}`}
+                  lessonId={lessonId}
+                  revisionNumber={lesson.revisionNumber}
+                  stepKey={current.key}
+                />
+              </div>
+            ) : null}
           </header>
           <LessonBlocks blocks={current.blocks} />
           {current.check ? (

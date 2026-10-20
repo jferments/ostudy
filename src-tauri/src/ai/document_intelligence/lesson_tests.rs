@@ -101,6 +101,34 @@ fn decoding_resolves_aliases_and_builds_keys_and_checks_natively() {
 }
 
 #[test]
+fn too_many_or_too_long_slide_points_and_objectives_are_shaped_not_refused() {
+    let knowledge = catalog_fixture();
+    let long = format!("{} end", "word ".repeat(60));
+    let mut wire = wire_lesson();
+    wire["steps"][0]["slidePoints"] =
+        json!(["one", " ", "two", "three", "four", "five", "six", "seven", long]);
+    wire["objectives"] = json!(["", long, "a", "b", "c", "d", "e", "f"]);
+    let lesson = decode(wire, &knowledge).unwrap();
+
+    assert_eq!(
+        lesson.steps[0].slide_points,
+        ["one", "two", "three", "four", "five", "six"]
+    );
+    assert_eq!(lesson.objectives.len(), 6);
+    let shortened = &lesson.objectives[0];
+    assert!(shortened.chars().count() <= 260, "{shortened}");
+    assert!(shortened.ends_with("word…"), "{shortened}");
+
+    let mut one_long_point = wire_lesson();
+    one_long_point["steps"][0]["slidePoints"] = json!([long]);
+    let point = &decode(one_long_point, &knowledge).unwrap().steps[0].slide_points[0];
+    assert!(
+        point.chars().count() <= 200 && point.ends_with('…'),
+        "{point}"
+    );
+}
+
+#[test]
 fn decoding_refuses_answers_that_are_not_grounded_or_well_formed() {
     let knowledge = catalog_fixture();
     let mut outside = wire_lesson();

@@ -133,7 +133,8 @@ fn reference_count(connection: &Connection, asset_id: &str) -> Result<i64, Comma
             "SELECT
                  (SELECT COUNT(*) FROM note_assets WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM card_template_assets WHERE asset_id = ?1) +
-                 (SELECT COUNT(*) FROM question_attempt_assets WHERE asset_id = ?1)",
+                 (SELECT COUNT(*) FROM question_attempt_assets WHERE asset_id = ?1) +
+                 (SELECT COUNT(*) FROM speech_segments WHERE asset_id = ?1)",
             [asset_id],
             |row| row.get(0),
         )
@@ -150,7 +151,8 @@ fn question_attempt_assets_keep_images_referenced() {
         .execute_batch(
             "CREATE TABLE note_assets (asset_id TEXT);
              CREATE TABLE card_template_assets (asset_id TEXT);
-             CREATE TABLE question_attempt_assets (asset_id TEXT);",
+             CREATE TABLE question_attempt_assets (asset_id TEXT);
+             CREATE TABLE speech_segments (asset_id TEXT);",
         )
         .unwrap();
     let asset_id = "a".repeat(32);

@@ -28,6 +28,7 @@ use crate::{
 pub(crate) mod authoring;
 pub(crate) mod checks;
 pub(crate) mod content;
+pub(crate) mod narration;
 pub(crate) mod writing;
 
 #[cfg(test)]

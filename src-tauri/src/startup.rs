@@ -97,6 +97,10 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     // Declare the activation guard before the Database: error unwinding closes
     // every SQLite connection before restoring the previous library entries.
     let mut pending_upgrade = None;
+    let _upgrade_meter = library_backup::meter::attach({
+        let app = app.clone();
+        move |permille| progress::advance(&app, permille)
+    });
     if let Some(plan) = upgrade::inspect(paths.database_path())
         .map_err(|error| startup_stage_error("upgrade_preflight", error))?
     {
@@ -146,6 +150,7 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         report_upgrade_progress(app, "Verifying library recovery and startup…");
         library_backup::checkpoint::commit_upgrade(&paths, upgrade)
             .map_err(|error| startup_stage_error("upgrade_commit", error))?;
+        library_backup::meter::finish();
         progress::publish(app, "Library updated; recovery checkpoint retained.", true);
     }
     if let Err(error) =

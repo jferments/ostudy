@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ShowToast } from "../../../components/Toast";
 import { getDocumentMarkedCards, type DocumentMarkedCards } from "../../../ipc/annotationCards";
@@ -32,6 +32,9 @@ interface DocumentAnnotatorProps {
   onCardsChanged?: () => void;
 }
 
+/** How long a page opened from a card's source stays outlined. */
+const CITED_PAGE_MARK_MS = 2500;
+
 const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
   v: "select", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
 };
@@ -44,31 +47,7 @@ const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
 export function DocumentAnnotator({ documentId, title, onClose, showToast, onPracticeCards, onCardsChanged }: DocumentAnnotatorProps) {
   useLibraryFullPage(true);
   const controller = useDocumentAnnotator(documentId, showToast);
-  const confirm = useConfirm();
-  const [closing, setClosing] = useState(false);
-  const closingRef = useRef(false);
-  const { flush, load } = controller;
-
-  // Leaving, to the documents or to a practice session, saves the annotations first.
-  const leave = useCallback(async (then: () => void | Promise<void>) => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setClosing(true);
-    try {
-      const saved = await flush();
-      if (!saved && !(await confirm({
-        title: "Leave without saving?",
-        description: "Some annotations could not be saved. If you leave now, they will be lost.",
-        confirmLabel: "Leave anyway",
-        cancelLabel: "Stay",
-        destructive: true,
-      }))) return;
-      await then();
-    } finally {
-      closingRef.current = false;
-      setClosing(false);
-    }
-  }, [confirm, flush]);
+  const { leave, closing } = useAnnotatorLeave(controller);
   const close = useCallback(() => leave(onClose), [leave, onClose]);
 
   // The cards made from this document's marks; a newer read replaces an older one.
@@ -100,12 +79,6 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
     return true;
   }), []);
 
-  // A failed save is reported once; the header keeps showing it until a save works.
-  const failed = controller.saveState.state === "failed" ? controller.saveState.message : null;
-  useEffect(() => {
-    if (failed) showToast("error", `Annotations could not be saved: ${failed}`);
-  }, [failed, showToast]);
-
   return (
     <InlineWorkspace
       presentation="page"
@@ -127,27 +100,88 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
         </div>
       }
     >
-      {load.state === "loading" ? (
-        <LoadingState label="Opening pages…" />
-      ) : load.state === "failed" ? (
-        <div className="tw:grid tw:justify-items-start tw:gap-3 tw:p-page tw:compact:p-4">
-          <InlineNotice kind="error">{load.message}</InlineNotice>
-          <Button onClick={controller.retryLoad}>Try again</Button>
-        </div>
-      ) : load.pages.length === 0 ? (
-        <EmptyState
-          title="No pages to annotate"
-          description="This document has no page images. Pages are drawn when a PDF is imported."
-        />
-      ) : (
-        <ReadyAnnotator documentId={documentId} title={title} pages={load.pages} controller={controller}
-          suggestedDeckId={marked?.suggestedDeckId ?? null} onCardSaved={cardSaved} showToast={showToast} />
-      )}
+      <AnnotatorBody documentId={documentId} title={title} controller={controller} showToast={showToast}
+        suggestedDeckId={marked?.suggestedDeckId ?? null} onCardSaved={cardSaved} />
     </InlineWorkspace>
   );
 }
 
-function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast }: {
+/**
+ * Leaving the annotator, to wherever `then` goes, saves what is pending first
+ * and asks before leaving annotations that could not be saved.
+ */
+export function useAnnotatorLeave(controller: DocumentAnnotatorController) {
+  const confirm = useConfirm();
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const { flush } = controller;
+
+  const leave = useCallback(async (then: () => void | Promise<void>) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    try {
+      const saved = await flush();
+      if (!saved && !(await confirm({
+        title: "Leave without saving?",
+        description: "Some annotations could not be saved. If you leave now, they will be lost.",
+        confirmLabel: "Leave anyway",
+        cancelLabel: "Stay",
+        destructive: true,
+      }))) return;
+      await then();
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
+    }
+  }, [confirm, flush]);
+  return { leave, closing };
+}
+
+interface AnnotatorBodyProps {
+  documentId: string;
+  title: string;
+  controller: DocumentAnnotatorController;
+  showToast: ShowToast;
+  /** The deck a card made from a mark goes to first; null uses the last one chosen. */
+  suggestedDeckId?: string | null;
+  onCardSaved?: () => void;
+  /** Opens the pages at this page and points it out. */
+  focusPage?: number;
+}
+
+/** The annotator under its frame: loading and failure states, then the toolbar and pages. */
+export function AnnotatorBody({
+  documentId, title, controller, showToast, suggestedDeckId = null, onCardSaved = ignore, focusPage,
+}: AnnotatorBodyProps) {
+  const { load } = controller;
+  // A failed save is reported once; the header keeps showing it until a save works.
+  const failed = controller.saveState.state === "failed" ? controller.saveState.message : null;
+  useEffect(() => {
+    if (failed) showToast("error", `Annotations could not be saved: ${failed}`);
+  }, [failed, showToast]);
+
+  return load.state === "loading" ? (
+    <LoadingState label="Opening pages…" />
+  ) : load.state === "failed" ? (
+    <div className="tw:grid tw:justify-items-start tw:gap-3 tw:p-page tw:compact:p-4">
+      <InlineNotice kind="error">{load.message}</InlineNotice>
+      <Button onClick={controller.retryLoad}>Try again</Button>
+    </div>
+  ) : load.pages.length === 0 ? (
+    <EmptyState
+      title="No pages to annotate"
+      description="This document has no page images. Pages are drawn when a PDF is imported."
+    />
+  ) : (
+    <ReadyAnnotator documentId={documentId} title={title} pages={load.pages} controller={controller}
+      suggestedDeckId={suggestedDeckId} onCardSaved={onCardSaved} showToast={showToast} focusPage={focusPage} />
+  );
+}
+
+function ignore(): void {}
+
+function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast, focusPage }: {
   documentId: string;
   title: string;
   pages: readonly AnnotatedPage[];
@@ -155,10 +189,27 @@ function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId,
   suggestedDeckId: string | null;
   onCardSaved: () => void;
   showToast: ShowToast;
+  focusPage?: number;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const viewport = useAnnotatorViewport(pages, viewportRef, contentRef);
+  const cited = focusPage !== undefined && pages.some((page) => page.pageNumber === focusPage) ? focusPage : null;
+  const { measured, showPage } = viewport;
+  // Once the pages have their size, the cited page is scrolled to and outlined for a moment.
+  const [outlined, setOutlined] = useState<number | null>(null);
+  const shown = useRef(false);
+  useLayoutEffect(() => {
+    if (cited === null || !measured || shown.current) return;
+    shown.current = true;
+    showPage(cited);
+    setOutlined(cited);
+  }, [cited, measured, showPage]);
+  useEffect(() => {
+    if (outlined === null) return undefined;
+    const timer = setTimeout(() => setOutlined(null), CITED_PAGE_MARK_MS);
+    return () => clearTimeout(timer);
+  }, [outlined]);
   const { layoutMode, inputMode } = useLayoutMode();
   const [lastShape, setLastShape] = useState<ShapeTool>("arrow");
   const [lastNote, setLastNote] = useState<"text" | "sticky">("text");
@@ -271,7 +322,9 @@ function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId,
           viewportRef={viewportRef}
           contentRef={contentRef}
           coarse={inputMode === "coarse"}
+          markedPage={outlined}
         />
+        {cited !== null ? <p role="status" className="tw:sr-only">Opened at page {cited}</p> : null}
       </div>
       {cardMark ? (
         <aside aria-label="New card from your mark"
@@ -302,7 +355,7 @@ function markQuote(shape: AnnotationShape): string {
   return "";
 }
 
-function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+export function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
   if (state.state === "failed") {
     return (
       <div className="tw:flex tw:items-center tw:gap-2">
