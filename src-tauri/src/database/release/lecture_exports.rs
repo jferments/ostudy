@@ -79,6 +79,8 @@ mod tests {
             ),
             1
         );
+        // Later releases build on the rebuilt table; the whole library is valid.
+        apply_migrations(&mut connection).unwrap();
         validate_input(&connection).unwrap();
     }
 
