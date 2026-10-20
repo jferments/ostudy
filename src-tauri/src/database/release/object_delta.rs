@@ -2,7 +2,9 @@
 //! objects beyond one table: every object the migration touches is compared
 //! with the bundled schema at the stored version, so a library that
 //! half-applied the migration, or applied a different one, is refused before
-//! anything writes to it.
+//! anything writes to it. Comparing with the stored version rather than with
+//! the migration's own before and after lets later migrations rebuild the same
+//! object again.
 
 use std::{collections::BTreeMap, sync::OnceLock};
 
@@ -13,9 +15,8 @@ use super::{normalize_schema_sql, BASELINE_SQL, RELEASE_MIGRATIONS};
 /// (type, name) of a schema object.
 type ObjectKey = (String, String);
 
-/// Every object one migration adds, changes or drops, with its normalized SQL
-/// before and after it. `None` means the object is absent.
-pub(super) type Delta = Vec<(ObjectKey, Option<String>, Option<String>)>;
+/// Every object one migration adds, changes or drops.
+pub(super) type Delta = Vec<ObjectKey>;
 
 /// Checks the objects migration `migration` touches against a library stored
 /// at `version`. `label` names the migration in errors; `cache` holds the
@@ -31,7 +32,10 @@ pub(super) fn validate(
         .get_or_init(|| bundled_delta(migration, label))
         .as_ref()
         .map_err(Clone::clone)?;
-    for ((kind, name), before, after) in delta {
+    let stored = objects_at(version)?;
+    for key in delta {
+        let (kind, name) = key;
+        let expected = stored.get(key);
         let actual: Option<String> = connection
             .query_row(
                 "SELECT sql FROM sqlite_schema WHERE type = ?1 AND name = ?2",
@@ -42,19 +46,37 @@ pub(super) fn validate(
             .map_err(|error| format!("Could not inspect the {label} schema: {error}"))?
             .flatten()
             .map(|sql| normalize_schema_sql(&sql));
-        if version < migration {
-            if actual != *before {
-                return Err(format!(
+        if actual.as_ref() != expected {
+            return Err(if version < migration {
+                format!(
                     "An unregistered release-v{migration} {label} change is present. The database was not modified."
-                ));
-            }
-        } else if actual != *after {
-            return Err(format!(
-                "The {label} schema does not match this build ({kind} {name}). The database was not modified."
-            ));
+                )
+            } else {
+                format!(
+                    "The {label} schema does not match this build ({kind} {name}). The database was not modified."
+                )
+            });
         }
     }
     Ok(())
+}
+
+/// The bundled schema objects at `version`, built once for every release
+/// version.
+fn objects_at(version: i64) -> Result<&'static BTreeMap<ObjectKey, String>, String> {
+    static BY_VERSION: OnceLock<Result<Vec<BTreeMap<ObjectKey, String>>, String>> = OnceLock::new();
+    let all = BY_VERSION
+        .get_or_init(|| {
+            (super::BASELINE_VERSION..=super::SCHEMA_VERSION)
+                .map(|version| bundled_objects(version, "release"))
+                .collect()
+        })
+        .as_ref()
+        .map_err(Clone::clone)?;
+    usize::try_from(version - super::BASELINE_VERSION)
+        .ok()
+        .and_then(|index| all.get(index))
+        .ok_or_else(|| format!("Release schema {version} is not one this build knows."))
 }
 
 fn bundled_delta(migration: i64, label: &str) -> Result<Delta, String> {
@@ -66,13 +88,7 @@ fn bundled_delta(migration: i64, label: &str) -> Result<Delta, String> {
     Ok(keys
         .into_iter()
         .filter(|key| before.get(*key) != after.get(*key))
-        .map(|key| {
-            (
-                (*key).clone(),
-                before.get(key).cloned(),
-                after.get(key).cloned(),
-            )
-        })
+        .cloned()
         .collect())
 }
 

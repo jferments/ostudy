@@ -33,7 +33,7 @@ mod guide_typst;
 mod math_layout;
 mod math_source;
 
-pub(crate) use guide_typst::StudyGuidePdfTheme;
+pub(crate) use guide_typst::{plain_sans_font, StudyGuidePdfTheme};
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const MAX_EXPORT_SECTIONS: usize = 512;
@@ -774,6 +774,12 @@ fn source_label(locator: &SourceLocator) -> String {
 }
 
 fn portable_filename(value: &str) -> String {
+    portable_filename_or(value, "study-guide")
+}
+
+/// A file name from a title, without characters that some systems refuse;
+/// `fallback` when nothing is left.
+pub(crate) fn portable_filename_or(value: &str, fallback: &str) -> String {
     let mut result = value
         .chars()
         .map(|character| {
@@ -791,7 +797,7 @@ fn portable_filename(value: &str) -> String {
         .collect::<String>();
     result = result.trim().trim_matches('.').trim().to_string();
     if result.is_empty() {
-        "study-guide".to_string()
+        fallback.to_string()
     } else {
         result.chars().take(120).collect()
     }

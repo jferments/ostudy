@@ -30,6 +30,12 @@ use crate::error::CommandError;
 const TEMPLATE: &str = include_str!("typst/guide.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
 const BUNDLED_FONTS: &[&[u8]] = include!(concat!(env!("OUT_DIR"), "/pdf_fonts.rs"));
+
+/// IBM Plex Sans Regular, the first face `build.rs` bundles: a Unicode sans
+/// that annotated PDFs use for typed notes.
+pub(crate) fn plain_sans_font() -> &'static [u8] {
+    BUNDLED_FONTS[0]
+}
 const MAX_CRAM_TERMS: usize = 40;
 const MAX_CRAM_WARNINGS: usize = 8;
 // Kept LaTeX has no natural break points, so long source gets zero-width break

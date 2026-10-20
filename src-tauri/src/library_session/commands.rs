@@ -87,6 +87,22 @@ pub(crate) async fn leased_send_tutor_turn(
     .await
 }
 
+#[tauri::command(rename = "draft_mark_question")]
+pub(crate) async fn leased_draft_mark_question(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::annotation_cards::draft_mark_question(
+        app.state::<crate::database::Database>().inner(),
+        app.state::<crate::ai::AiRuntimeState>().inner(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "preview_semantic_preparation")]
 pub(crate) async fn leased_preview_semantic_preparation(
     app: AppHandle,
@@ -317,6 +333,23 @@ pub(crate) async fn leased_render_document_page_tile(
         app.state::<crate::database::Database>(),
         app.state::<crate::paths::AppPaths>(),
         app.state::<crate::pdf_render_backend::PdfRenderRuntime>(),
+        input,
+    )
+    .await
+}
+
+#[tauri::command(rename = "prepare_annotated_pdf")]
+pub(crate) async fn leased_prepare_annotated_pdf(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<crate::document_annotations::PreparedAnnotatedPdfDto, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input: crate::document_annotations::PrepareAnnotatedPdfInput =
+        serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::document_annotations::prepare_annotated_pdf(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
         input,
     )
     .await

@@ -219,6 +219,12 @@ const CONTRACTS: &[Contract] = &[
         setup: "",
         rules: &[],
     },
+    // Annotated PDF copies widen prepared_exports' purposes the same way.
+    Contract {
+        version: 14,
+        setup: "",
+        rules: &[],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
