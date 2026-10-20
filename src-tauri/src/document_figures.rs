@@ -1,4 +1,4 @@
-//! The figures in a learner's PDF documents (release schema 15).
+//! The figures in a learner's PDF documents (release schema 16).
 //!
 //! When a learner imports a PDF they choose whether to use its images. With
 //! images on, oStudy searches the PDF for figures once its pages are read: the

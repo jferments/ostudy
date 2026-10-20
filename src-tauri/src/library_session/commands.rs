@@ -640,6 +640,39 @@ pub(crate) async fn leased_narrate_lesson_step(
     .await
 }
 
+#[tauri::command(rename = "write_lesson_lecture_script")]
+pub(crate) async fn leased_write_lesson_lecture_script(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::lessons::teaching::write_lesson_lecture_script(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
+#[tauri::command(rename = "narrate_lecture_part")]
+pub(crate) async fn leased_narrate_lecture_part(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::lessons::teaching::narrate_lecture_part(
+        &app.state::<crate::database::Database>(),
+        &app.state::<crate::paths::AppPaths>(),
+        &app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "prepare_library_backup_async")]
 pub(crate) async fn leased_prepare_library_backup_async(
     app: AppHandle,

@@ -50,6 +50,7 @@ export interface NativeCommandGatewayMap {
   "add_document_collection_membership": readonly [typeof GatewayModule7.addDocumentCollectionMembership];
   "amend_image_set": readonly [typeof GatewayModule22.amendImageSet];
   "analyze_bulk_cards": readonly [typeof GatewayModule6.analyzeBulkCards];
+  "answer_lecture_question": readonly [typeof GatewayModule24.answerLectureQuestion];
   "answer_lesson_check": readonly [typeof GatewayModule24.answerLessonCheck];
   "apply_document_annotation_changes": readonly [typeof GatewayModule12.applyDocumentAnnotationChanges];
   "apply_schedule_action": readonly [typeof GatewayModule33.applyScheduleAction];
@@ -140,6 +141,7 @@ export interface NativeCommandGatewayMap {
   "get_learning_task_progress": readonly [typeof GatewayModule23.getLearningTaskProgress];
   "get_lesson": readonly [typeof GatewayModule24.getLesson];
   "get_lesson_lecture": readonly [typeof GatewayModule24.getLessonLecture];
+  "get_lesson_lecture_script": readonly [typeof GatewayModule24.getLessonLectureScript];
   "get_library_session": readonly [typeof GatewayModule25.getLibrarySession];
   "get_note_source_citation": readonly [typeof GatewayModule15.getNoteSourceCitation];
   "get_pending_usb_sync_request": readonly [typeof GatewayModule10.getPendingUsbSyncRequest];
@@ -210,6 +212,7 @@ export interface NativeCommandGatewayMap {
   "move_document_to_subject": readonly [typeof GatewayModule39.moveDocumentToSubject];
   "move_subject": readonly [typeof GatewayModule39.moveSubject];
   "move_tutor_conversation": readonly [typeof GatewayModule41.moveTutorConversation];
+  "narrate_lecture_part": readonly [typeof GatewayModule24.narrateLecturePart];
   "narrate_lesson_step": readonly [typeof GatewayModule24.narrateLessonStep];
   "open_document_source": readonly [typeof GatewayModule15.openDocumentSource];
   "open_document_study_guide_section": readonly [typeof GatewayModule36.openStudyGuideSection];
@@ -306,6 +309,7 @@ export interface NativeCommandGatewayMap {
   "update_device_sync_name": readonly [typeof GatewayModule10.updateDeviceSyncName];
   "update_document_collection": readonly [typeof GatewayModule7.updateDocumentCollection];
   "update_tutor_project": readonly [typeof GatewayModule41.updateTutorProject];
+  "write_lesson_lecture_script": readonly [typeof GatewayModule24.writeLessonLectureScript];
   "write_subject_course": readonly [typeof GatewayModule24.writeSubjectCourse];
 }
 

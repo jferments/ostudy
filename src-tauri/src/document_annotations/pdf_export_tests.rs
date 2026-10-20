@@ -263,6 +263,39 @@ fn sticky_notes_carry_their_whole_text_as_a_pdf_note() {
 }
 
 #[test]
+fn a_collapsed_sticky_note_is_a_small_icon_that_keeps_its_text() {
+    let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
+    let note = shapes(
+        r##"[{"kind":"text","x":20,"y":20,"width":120,"text":"Folded away",
+              "color":"#fff3b0","fontSize":10,"sticky":true,"collapsed":true}]"##,
+    );
+    let output = export(&source, &note).unwrap();
+    let document = reread(&output);
+    let annotations = document.get_page_annotations(0).unwrap();
+    assert_eq!(annotations.len(), 1);
+    // The note covers only the 18-point icon: 20..38 by 20..38 shown.
+    let rect: Vec<f64> = annotations[0]
+        .get("Rect")
+        .and_then(PdfObject::as_array)
+        .unwrap()
+        .0
+        .iter()
+        .filter_map(PdfObject::as_real)
+        .collect();
+    assert_eq!(rect, vec![20.0, 182.0, 38.0, 200.0]);
+    let contents = annotations[0]
+        .get("Contents")
+        .and_then(PdfObject::as_string)
+        .unwrap()
+        .as_bytes();
+    let units: Vec<u16> = contents[2..]
+        .chunks_exact(2)
+        .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+        .collect();
+    assert_eq!(String::from_utf16(&units).unwrap(), "Folded away");
+}
+
+#[test]
 fn every_kind_of_mark_is_written() {
     let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
     let all = shapes(
