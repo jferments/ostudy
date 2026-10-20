@@ -184,6 +184,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             color: "#111111".into(),
             font_size: 12.0,
             sticky: None,
+            link: None,
         }),
         AnnotationShape::Text(TextNote {
             x: 300.0,
@@ -193,6 +194,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             color: "#fde047".into(),
             font_size: 10.0,
             sticky: Some(true),
+            link: None,
         }),
     ]
 }
@@ -282,6 +284,7 @@ fn shapes_outside_their_limits_are_refused() {
             color: "#000000".into(),
             font_size,
             sticky: None,
+            link: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -754,6 +757,7 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
             color: "#fde047".into(),
             font_size: 10.0,
             sticky,
+            link: None,
         })
     };
     let long = "a".repeat(MAX_TEXT_CHARS + 1);

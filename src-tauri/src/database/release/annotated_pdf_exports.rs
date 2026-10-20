@@ -80,6 +80,7 @@ mod tests {
             ),
             1
         );
+        apply_migrations(&mut connection).unwrap();
         validate_input(&connection).unwrap();
     }
 

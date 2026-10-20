@@ -57,6 +57,10 @@
           "label": "Documents"
         },
         {
+          "id": "notes",
+          "label": "Notes"
+        },
+        {
           "id": "decks",
           "label": "Flashcards"
         }
@@ -156,7 +160,7 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
-              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\")):",
+              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
               "webdriver.open_library_view(session_id, view, deadline)",
               "verify_library_subject_pages(session_id, deadline, \"wide\")",
               "verify_library_subject_pages(session_id, deadline, \"compact\")"
@@ -186,7 +190,7 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
-              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\")):",
+              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
               "webdriver.open_library_view(session_id, view, deadline)",
               "verify_library_subject_pages(session_id, deadline, \"wide\")",
               "verify_library_subject_pages(session_id, deadline, \"compact\")"
@@ -341,6 +345,36 @@
             "assertionFragments": [
               "=== 'Documents'",
               "=== 'Upload'"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "notes",
+      "label": "Notes",
+      "placement": {
+        "destination": "library",
+        "libraryView": "notes"
+      },
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
+              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
+              "webdriver.open_library_view(session_id, view, deadline)",
+              "verify_library_subject_pages(session_id, deadline, \"wide\")",
+              "verify_library_subject_pages(session_id, deadline, \"compact\")"
+            ],
+            "assertionFragments": [
+              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
+              "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
+              "Library subject placement drifted"
             ]
           }
         ]
@@ -550,6 +584,7 @@
     "decks",
     "study-guides",
     "documents",
+    "notes",
     "review",
     "tutor",
     "analytics",
@@ -580,7 +615,7 @@
             "entryFragments": [
               "//main//*[@data-testid='home-today']//button[normalize-space(.)='Start review']",
               "Opening and dismissing selected-deck Practice setup",
-              "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options\u2026\", deadline)",
+              "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options…\", deadline)",
               "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice\", deadline)",
               "//main//button[normalize-space(.)='Practice']",
               "click(session_id, practice_button)"

@@ -58,6 +58,21 @@ export interface TextShape {
   fontSize: number;
   /** A sticky note: a small note of `width` showing the start of its text; `color` is its paper. */
   sticky?: true;
+  /** Only on a notebook page: the note is a link, and `text` is its label. */
+  link?: NoteLink;
+}
+
+/** What a link on a notebook page opens. Targets are looked up when the notebook opens. */
+export type LinkTarget =
+  | { kind: "documentPage"; documentId: string; pageNumber: number }
+  | { kind: "studyGuide"; documentId: string }
+  | { kind: "deck"; deckId: string }
+  | { kind: "notebookPage"; notebookId: string; pageId: string };
+
+/** A link shown as a small link, or with `button` as a button that does the thing (a deck's starts Practice). */
+export interface NoteLink {
+  target: LinkTarget;
+  button?: true;
 }
 
 export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape;
