@@ -45,7 +45,7 @@ export async function saveSettings(input: AppSettings): Promise<AppSettings> {
   return invoke<AppSettings>("save_settings", {
     input: {
       ...input,
-      displayQuestionOnAnswer: input.displayQuestionOnAnswer ?? false,
+      displayQuestionOnAnswer: input.displayQuestionOnAnswer ?? true,
     },
   });
 }

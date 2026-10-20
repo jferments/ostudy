@@ -11,4 +11,13 @@ export function DropdownMenuContent({ className, ...props }: Omit<Menu.Popup.Pro
 export function DropdownMenuItem({ className, destructive = false, ...props }: Omit<Menu.Item.Props, "className"> & { className?: string; destructive?: boolean }) {
   return <Menu.Item {...props} data-slot="dropdown-menu-item" className={cn("tw:flex tw:min-h-10 tw:cursor-default tw:items-center tw:rounded-md tw:px-3 tw:py-2 tw:text-small tw:font-medium tw:outline-none tw:select-none tw:data-highlighted:bg-accent tw:data-highlighted:text-accent-foreground tw:data-disabled:pointer-events-none tw:data-disabled:opacity-50 tw:coarse:min-h-touch", destructive && "tw:text-destructive tw:data-highlighted:bg-destructive-soft tw:data-highlighted:text-destructive", className)} />;
 }
+/** An item that shows whether it is the current choice, such as a sort order. */
+export function DropdownMenuCheckboxItem({ className, children, ...props }: Omit<Menu.CheckboxItem.Props, "className"> & { className?: string }) {
+  return <Menu.CheckboxItem {...props} data-slot="dropdown-menu-checkbox-item" className={cn("tw:flex tw:min-h-10 tw:cursor-default tw:items-center tw:gap-2 tw:rounded-md tw:py-2 tw:pr-3 tw:pl-2 tw:text-small tw:font-medium tw:outline-none tw:select-none tw:data-highlighted:bg-accent tw:data-highlighted:text-accent-foreground tw:data-disabled:pointer-events-none tw:data-disabled:opacity-50 tw:coarse:min-h-touch", className)}>
+    <span aria-hidden="true" className="tw:grid tw:size-4 tw:shrink-0 tw:place-items-center">
+      <Menu.CheckboxItemIndicator><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg></Menu.CheckboxItemIndicator>
+    </span>
+    {children}
+  </Menu.CheckboxItem>;
+}
 export function DropdownMenuSeparator() { return <Menu.Separator className="tw:my-1.5 tw:h-px tw:bg-border" />; }
