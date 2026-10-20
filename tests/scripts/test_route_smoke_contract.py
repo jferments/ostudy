@@ -57,7 +57,7 @@ class RouteSmokeContractTests(unittest.TestCase):
         self.assertIn("8 application sections, 1 application workflow", completed.stdout)
         self.assertIn("8 checkpoint sections", completed.stdout)
         self.assertIn(
-            "5 navigation destinations, 3 Library views, 2 header actions",
+            "5 navigation destinations, 3 Library views, 1 header actions",
             completed.stdout,
         )
         self.assertIn("10 route-entry; 0 presence-only", completed.stdout)
@@ -154,21 +154,18 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("sections opened by navigation destinations drifted", completed.stderr)
 
-    def test_settings_stays_wired_to_the_header_gear(self) -> None:
+    def test_settings_destination_stays_wired_to_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             self.copy_fixture(fixture)
             shell = fixture / "src/App.tsx"
             source = shell.read_text(encoding="utf-8")
-            wiring = 'onSettings={() => navigate("settings")}'
-            self.assertIn(wiring, source)
-            shell.write_text(source.replace(wiring, "onSettings={() => undefined}", 1), encoding="utf-8")
+            opening = '  settings: "settings",\n'
+            self.assertIn(opening, source)
+            shell.write_text(source.replace(opening, '  settings: "home",\n', 1), encoding="utf-8")
             completed = self.run_verifier(fixture)
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn(
-                "header action settings does not open section settings in src/App.tsx",
-                completed.stderr,
-            )
+            self.assertIn("sections opened by navigation destinations drifted", completed.stderr)
 
     def test_rejects_flashcards_workspace_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -93,8 +93,8 @@ def xpath_literal(value: str) -> str:
 
 # The two navigations a build can have: the sidebar of section tabs
 # (Flashcards, Study Guides, Documents, Tutor, Analytics, Settings), and the
-# header of five destinations (Home, Library, Review, Tutor, Progress) with
-# Library's view switcher and Settings in the header.
+# destinations (Home, Library, Tutor, Progress and Settings; builds before
+# 2026-10-20 had Review instead of Settings) with Library's view switcher.
 SECTIONS_SHELL = "sections"
 DESTINATIONS_SHELL = "destinations"
 SHELLS = (SECTIONS_SHELL, DESTINATIONS_SHELL)
@@ -116,7 +116,6 @@ SCREENS: tuple[Screen, ...] = (
     Screen("first-run", "First run: empty library", "Home", None, "first-run"),
     # A subject's page; builds before it existed open Library from a tile and record a failure.
     Screen("subject", "Subject page", "Home", shells=(DESTINATIONS_SHELL,)),
-    Screen("review", "Review", "Review", shells=(DESTINATIONS_SHELL,)),
     Screen("library", "Library: Decks", "Library"),
     Screen("deck", "Deck card list", "Library"),
     Screen("card-editor", "Card editor", "Library"),
@@ -405,7 +404,7 @@ def close_overlays(ctx: Context) -> None:
 
 SHELL_MARKER = "//button[@data-testid='nav-library' or @data-testid='nav-decks']"
 LIBRARY_VIEWS = ("decks", "documents", "study-guides")
-DESTINATION_OF = {"home": "home", "review": "review", "tutor": "tutor", "analytics": "progress"}
+DESTINATION_OF = {"home": "home", "tutor": "tutor", "analytics": "progress"}
 
 
 def wait_for_shell(ctx: Context) -> None:
@@ -575,7 +574,8 @@ def dismiss_toasts(ctx: Context) -> None:
 
 REVIEW_BADGE_SCRIPT = """
 const done = arguments[arguments.length - 1];
-const review = document.querySelector("[data-testid='nav-review']");
+// Today's count is on Home; builds before 2026-10-20 put it on Review.
+const review = document.querySelector("[data-testid='nav-review']") || document.querySelector("[data-testid='nav-home']");
 if (!review) { done(true); return; }
 window.__TAURI_INTERNALS__.invoke('get_home_summary').then(
   (summary) => {
@@ -590,13 +590,13 @@ window.__TAURI_INTERNALS__.invoke('get_home_summary').then(
 
 
 def wait_for_review_badge(ctx: Context, seconds: int = 20) -> None:
-    """Wait until Review's badge shows what is due now, as a finished session rereads it."""
+    """Wait until today's badge shows what is due now, as a finished session rereads it."""
     deadline = ctx.deadline(seconds)
     while time.monotonic() < deadline:
         if ui.execute_async(ctx.session_id, REVIEW_BADGE_SCRIPT, []) is True:
             return
         time.sleep(0.1)
-    raise CaptureError("Review's badge did not settle on today's count.")
+    raise CaptureError("Today's badge did not settle on today's count.")
 
 
 def wait_ready(ctx: Context, seconds: int = 20) -> None:
@@ -687,12 +687,6 @@ def open_first_run(ctx: Context) -> None:
     else:
         go(ctx, "decks")
         wait_for_text(ctx, "No decks have been created yet.")
-
-
-def open_review(ctx: Context) -> None:
-    go(ctx, "review")
-    find(ctx, "//main//*[@data-testid='review-today']//h2[contains(normalize-space(.), 'due today')]")
-    find(ctx, "//main//*[@data-testid='review-subjects']/*[@data-testid='review-subject']")
 
 
 WORKBENCH = "//main//*[@data-testid='library-workbench']"
@@ -900,7 +894,6 @@ MASKS: dict[str, str] = {
 OPENERS: dict[str, Callable[[Context], None]] = {
     "home": open_home,
     "subject": open_subject,
-    "review": open_review,
     "library": open_library,
     "deck": lambda ctx: open_deck(ctx, seed.DETAIL_DECK),
     "card-editor": open_card_editor,

@@ -4,7 +4,7 @@ Open **Settings → Appearance**. Presentation preferences change how ostudy loo
 
 ## Navigation and available space
 
-The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show the five destinations (Home, Library, Review, Tutor, and Progress) with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put the destinations in a bottom bar and keep Search and Settings in the top bar, which also names the current destination.
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show Home, Library, Tutor, and Progress with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put Home, Library, Tutor, Progress, and Settings in a bottom bar and keep Search in the top bar, which also names the current destination.
 
 An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. On desktop the window uses your operating system's own title bar and controls; use them, or your window manager's shortcuts, to maximize or go full screen.
 
