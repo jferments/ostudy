@@ -6,15 +6,18 @@ ostudy is being developed in layers, but the roadmap is not a list of promises o
 
 The active codebase already includes:
 
-- a local SQLite library for folders, decks, notes, studyable card presentations, schedules, review history, sessions, settings, and analytics;
-- rich Basic, Reverse, and Fill in the blank authoring plus native single-choice, select-all, true/false, matching, grouping, ordering, and image-occlusion questions; validated math, managed image/audio/video content, reusable templates, durable drafts, tags, full-text Search/Filter, duplicate detection, and bounded bulk work;
-- FSRS-backed scheduling, exact/deck/scheduled/extra study scopes, suspend/bury/reset/reschedule controls, daily limits, resumable practice sessions, and deterministic analytics;
+- a local SQLite library for subjects, decks, notes, studyable card presentations, schedules, review history, sessions, a study activity ledger, settings, and documents;
+- a five-destination shell (Home, Library, Review, Tutor, Progress) with Search and Settings in the header: Home's subject tiles and subject pages, the Library Workbench with its Flashcards, Documents and Study guides tabs, Review's due work and Session complete, and the Progress page;
+- rich Basic, Reverse, and Fill in the blank authoring plus native single-choice, select-all, true/false, matching, grouping, ordering, and image-occlusion questions; validated math, managed image/audio/video content, reusable templates, durable drafts, tags, full-text card search and filters, duplicate detection, and bounded bulk work;
+- FSRS-backed scheduling with recorded scheduler context and active study time, exact/deck/subject/scheduled/extra study scopes, suspend/bury/reset/reschedule controls, daily limits, a configurable study-day start, resumable practice sessions, and deterministic Progress statistics built from one set of learning-metric definitions;
 - contextual `.studydeck` exchange, strict generated `.ostudy.json` import, format-4 complete `.ostudybackup` recovery, and explicit encrypted private-LAN/direct-USB trusted-device synchronization with three-way merge/conflict records;
-- the release-v1 schema-1 baseline, preserved historical readers/conversion, production/development isolation, and journaled same-process complete-library restoration;
+- the release-v1 schema-1 baseline advanced by reviewed release migrations (currently schema 9) with a per-version upgrade preservation contract and pre-upgrade checkpoints, preserved historical readers/conversion, production/development isolation, and journaled same-process complete-library restoration;
 - retained PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV sources normalized into one canonical document model;
-- native PDF extraction/rendering and selective OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
+- native PDF extraction/rendering with ruled-table rebuilding, page images for table/figure/OCR pages, and OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
+- a PDF annotator (ink, highlighter, shapes and text notes over the page renders, with sharp zoomed tiles) whose marks stay out of the source file;
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
-- implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, and OpenRouter, with native credential isolation/capability probing and no silent local-to-cloud fallback;
+- a native lesson store and AI course writing for a subject (one lesson per top-level document topic), without a learner-facing lesson screen yet;
+- implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, OpenRouter, and Claude, with native credential isolation/capability probing and no silent local-to-cloud fallback;
 - a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/collection grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
 - one React/Rust application across desktop and Android, with wide/medium/compact navigation, shared accessible overlays/patterns, themes, local typography, reduced motion, safe areas, and keyboard/touch behavior;
 - a qualified Ubuntu/Debian Linux path and a qualified Android source-build/debug-install path with API 36 emulator qualification;
@@ -22,13 +25,11 @@ The active codebase already includes:
 
 Historical stage plans under [`history/`](history/) explain how this foundation was built; they are not the current roadmap. Platform qualification always belongs to a named source/run and does not imply signed public distribution or untested physical-device behavior.
 
-## Post-baseline delivery
+## In progress
 
-PR #106 is merged; its [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover. PR #108 finishes documentation alignment without implementing the later runtime remedies.
+The PR #106 foundation and the H-01–H-10 hardening scopes in the [post-#106 hardening register](development/post-106-hardening.md) are merged; the PR #106 [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover.
 
-The [post-#106 hardening register](development/post-106-hardening.md) owns the proposed H-01–H-10 PR sequence and audit dispositions. Start with atomic save-selection-as-deck, collection activity/restore coordination, and observable asynchronous frontend behavior. Follow with durability, correctness gates, explicit IPC/typed contracts and measured native/startup performance work. Reader retirement and broad structural refactors require their own evidence; they are not automatic cleanup prerequisites.
-
-PR #105 remains deferred for responsive lessons, retained narration/TTS and PowerPoint. Those capabilities are planned, not implemented, and should consume the shared source/knowledge/guide boundaries rather than duplicate them. See the [preserved lesson plan](development/lk-followups/lessons-narration.md).
+Work under way in open pull requests, not on `main`, includes a lesson player that reads the stored course and the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. Narration/TTS and PowerPoint output remain planned; see the [preserved lesson plan](development/lk-followups/lessons-narration.md). Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
 
 ## Current priorities
 
@@ -47,9 +48,9 @@ Assisted authoring should surface uncertainty rather than turn imperfect extract
 
 ### 2. Refine everyday Flashcards and Study Guide ergonomics
 
-Recent UI work removed permanent low-frequency workspaces, quieted empty states, made transfer/actions contextual, and moved templates into Settings. Preserve that hierarchy while improving:
+Recent UI work replaced the old Flashcards, Documents and Analytics destinations with Home, the Library Workbench, Review and Progress, quieted empty states, made transfer/actions contextual, and moved templates into Settings. Preserve that hierarchy while improving:
 
-- large-library folder/deck organization and selection;
+- large-library subject/deck organization and selection;
 - narrow/tablet/keyboard/touch/assistive-technology behavior;
 - richer managed-image sizing/alignment;
 - multi-draft visibility/recovery;
@@ -64,7 +65,7 @@ The protocol, encrypted transport, package validation, merge engine, baselines, 
 - clearer conflict review/resolution;
 - large libraries, long histories, many assets, interruption/expiry/low-storage conditions;
 - transfer efficiency without weakening explicit one-way offers;
-- separately reviewed, versioned extensions for additional graph entities beyond the current allowlist, without including private Tutor state or derived caches by default.
+- separately reviewed, versioned extensions for additional graph entities beyond the current allowlist, such as PDF page annotations and lessons, without including private Tutor state or derived caches by default.
 
 Synchronization remains user initiated: pairing must not become a permanent background subscription and credential transfer must require fresh sender opt-in for each offer.
 
@@ -101,17 +102,21 @@ These are directions, not current feature claims. They should reuse managed docu
 
 Generate configurable question sets, including multiple choice/application/scenario questions, with explanations and source grounding. Quiz attempts need their own explicit evidence model and must not silently contaminate the flashcard review ledger.
 
+### Lessons
+
+A subject's course can already be written and stored natively. A learner-facing lesson player, rewriting an existing course, keeping lessons current when their sources change, sync of lessons, and narration remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
+
 ### Tutor refinement and guided study
 
 Tutor already provides conversational study with optional source grounding, projects/history, saved-knowledge retrieval, and contextual entry from supported workflows. Continue improving source-grounded explanations, multi-source navigation, question practice inside conversation, retrieval transparency, interruption/retry behavior, and learner-controlled memory. Tutor must continue using the explicitly selected provider, identify missing source evidence when the request requires grounding, and remain unable to rewrite scheduling/analytics state as an unreviewable side effect.
 
 ### Learning recommendations
 
-Use deterministic analytics plus optional model interpretation to identify weak areas, overloaded schedules, neglected topics, and useful next actions. Stored review evidence remains authoritative; model advice is explanatory rather than a hidden scoring system.
+Use deterministic Progress statistics plus optional model interpretation to identify weak areas, overloaded schedules, neglected topics, and useful next actions. Stored review evidence remains authoritative; model advice is explanatory rather than a hidden scoring system.
 
 ### Additional provider adapters
 
-Dedicated Ollama, OpenAI, and Gemini integrations remain planned; Claude is implemented. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
+Dedicated Ollama, OpenAI, and Gemini integrations remain planned; llama.cpp, DeepSeek, OpenRouter, and Claude are implemented. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
 
 ## Platform direction
 

@@ -45,7 +45,7 @@ Run the frontend build, then ask Tauri to produce the native application:
 
 ```powershell
 pnpm run build
-pnpm tauri build --debug --no-bundle --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked
 ```
 
 A packaged Windows release process is not yet committed. The command above is therefore a development build path, not a guarantee that a distributable installer has passed platform acceptance.
@@ -53,8 +53,10 @@ A packaged Windows release process is not yet committed. The command above is th
 For a live development session:
 
 ```powershell
-pnpm tauri dev
+pnpm tauri dev --config src-tauri/tauri.dev.conf.json -- --locked
 ```
+
+Both commands pass the `src-tauri/tauri.dev.conf.json` overlay, so the debug build runs as `io.github.jferments.ostudy.dev` with its own library and credential namespace. Without it, a debug build resolves the production identifier `io.github.jferments.ostudy`, and startup refuses it before opening any library. This is the same command the Bash `pnpm desktop` wrapper (`scripts/dev.sh`) runs on Linux.
 
 ## What still needs qualification
 

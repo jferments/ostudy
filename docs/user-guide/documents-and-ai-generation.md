@@ -1,129 +1,143 @@
 # Documents and AI-generated learning material
 
-Library's **Documents** view keeps a managed local source and turns it into reusable flashcards or study guides. The two learning artifacts can be generated independently from the same retained source and shared learning plan. Generated cards remain ordinary editable study cards; generated guide content remains separate from learner-owned notes and edits.
+Library's **Documents** page keeps a local copy of each source you add and turns it into flashcards and study guides. Both are made from the same saved reading of the source and can be made independently. Generated cards are ordinary editable cards; a generated guide keeps its text separate from your own notes and edits.
 
 ## Before you begin
 
-Use material you are allowed to process and choose a provider appropriate for its privacy requirements. Configure and test an implemented model profile in **Settings → AI/LLM**. The current flashcard-generation default also supplies the document learning workflows; there is not a separate required study-guide provider setup.
+Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI/LLM**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a provider is set up, Documents shows a warning saying so.
 
-For a scanned/damaged PDF on desktop, install the required OCR runtime and trained data described in the platform guide. Android packages an English Tesseract model with the application and does not require a separate OCR installation or runtime model download. A missing platform capability can make the Documents workspace unavailable rather than silently sending the original file elsewhere.
+For a scanned PDF on desktop, install the OCR runtime and trained data described in your platform's installation guide. Android packages an English Tesseract model with the application and needs no separate OCR installation or download. A missing platform capability can make the Documents page unavailable rather than sending the original file elsewhere.
 
-The original document is not uploaded to the model as an opaque file. ostudy stages a local copy, parses it, and sends bounded selected source context through the chosen provider. Selecting a local model never authorizes a cloud fallback.
+The original file is not uploaded to the model. ostudy keeps a local copy, reads it on your device, and sends bounded portions of what it read to the chosen provider. Choosing a local model never permits a cloud fallback.
 
-## Import and generate
+## Add a document
 
-Open Documents and choose **Upload → Document…**, then select a supported file; format detection is automatic rather than a parser selector. After local/source understanding and the shared learning plan are ready, initial **Flashcards** and **Study Guide** authoring start as sibling tasks instead of waiting on one another. The document's row shows separate progress bars backed by committed flashcard windows and durable Study Guide sections. Either artifact can finish first; completion is shown independently. Navigating away does not cancel the native work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While they run, the document's row shows a progress bar for each. Either can finish first. Leaving the page does not stop the work.
 
-Each document is one row: its format, length and when it was added, what it has made so far, its status, **Open**, and a **…** menu. The menu holds everything else: **Annotate** for a PDF whose pages are drawn, **Move to a collection…**, **Make more cards…**, **Retry** when generation failed or its deck was deleted, **Make a study guide** or **Remake the study guide**, **Stop processing** while it runs, **Rename…**, **Details**, and **Delete**. A title you choose with **Rename…** stays; generated metadata no longer replaces it. **Details** shows the file, size, processing time, token use and, during a run, the live request statistics and the model that is serving it. The model is chosen in **Settings → AI/LLM** and is not shown on the page.
+Each document is one row: its format, length and when it was added, what it has made so far, its status, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
-**Make more cards…** asks for optional instructions describing the focus, audience, or question style you want, for example “create cards for each cranial nerve and emphasize nursing assessment tests.” The instructions affect flashcard authoring only; they are not treated as source evidence and do not change Study Guide content. The run captures a normalized copy before provider work starts, so a later edit cannot mutate an in-flight request and an ambiguous retry reuses the same captured intent. A first upload uses no instructions.
+- **Annotate**, for a PDF whose pages have been drawn ([Annotating PDF pages](pdf-annotation.md)).
+- **Move to a collection…**, once you have a collection.
+- **Make more cards…**, once the document has a deck.
+- **Retry**, when card generation failed or the document's deck was deleted.
+- **Make a study guide** or **Remake the study guide**, and **Stop study guide** while one is being written.
+- **Stop processing** while the document is being read or its first cards are being made.
+- **Rename…**: give the document your own title. A title you choose stays; generated metadata no longer replaces it.
+- **Details**: the file, size, length, processing time and token use, and during a run the live request statistics, the provider and model serving it, and the requested and effective reasoning.
+- **Delete**.
+
+On a phone, **Open** also moves into the menu.
+
+**Make more cards…** asks for optional **Instructions** describing the focus, audience, or question style you want, for example "For each cranial nerve, make concise recall cards about how nurses test it." Instructions shape the cards only; they are not treated as source material and do not change the study guide. The instructions are captured when the run starts, so editing them later does not change a run already under way. A first upload uses no instructions.
 
 ### Upload an image collection
 
-Choose **Upload → Images…**, then **Select images** to select several screenshots or photos at once. Use the **+** button to add files from another location, drag files onto the area below the file list, press **Ctrl+V** while the paste area is focused, or use **Paste images** to read image data from the clipboard. All of those paths add to the same collection, including repeated screenshots pasted one after another. Pasting text or a URL does not fetch an image from the web.
+Choose **Upload → Images…**, then **Select images** to pick several screenshots or photos at once. Use the **+** button to add more, drop files onto the paste area, click the paste area and press **Ctrl+V** (Cmd+V on a Mac), or use **Paste images**. All of these add to the same collection, including screenshots pasted one after another. Pasting text or a web address does not fetch an image.
 
-Image collections also expose **Flashcard instructions (optional)**. The same per-run rules apply as for documents: the prompt is captured with the generation request, does not become source evidence, and can guide focus or question style without bypassing native validation.
+Image collections also have **Flashcard instructions (optional)**, with the same rules as **Make more cards…**.
 
-Processing starts automatically. ostudy retains each original, reads the images locally, resolves verified overlap across the collection, and uses the existing document-learning pipeline to create flashcards and a study guide. You do not need to order images, crop them, label text regions or run a preparation step. Upload order is not used as proof that two passages are equivalent; changed numbers, units, qualifications or source pixels are not silently merged.
+Processing starts automatically. ostudy keeps each original, reads the images on your device, works out where screenshots overlap, and makes flashcards and a study guide. You do not need to order, crop or label images. Overlap is decided from the images themselves, so passages whose numbers, units or wording differ are not merged.
 
-You can keep adding images while processing is running. They wait for the current task, then extend the same source and generated deck rather than creating a second deck. Leaving the collection page does not cancel the work. **Stop** stops the active task and prevents the next automatic stage. A genuine failure shows **Retry processing**; successfully saved sources and cards remain available. Failed files can be removed without uploading the successful selections again.
+You can keep adding images while processing runs. They wait for the current step, then extend the same source and deck rather than creating a second one. Leaving the page does not stop the work; **Stop** does. A failure shows **Retry processing**; images and cards already saved stay. A file that failed to add can be removed without re-adding the others.
 
-Use **View collection** on an existing image source to add more images or optionally inspect a retained original. Inspection is not required for generation. Previously saved source/filter state remains compatible with complete-library backup and restore; removing the old preparation controls does not alter original image bytes.
+**Open** on an image collection returns to it, to add images or **View** a saved original.
 
-Open generated cards from **Library → Decks** and generated guides from **Library → Study guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
+### Where the results go
 
-Document flashcard generation can create Basic/Fill in the blank recall plus single-best-answer, select-all, true/false, matching, grouping, and ordering questions when retained source evidence supports the required relationship. Image occlusion remains manually authored; document generation does not invent masks. The type mix is a soft planning target, not a quota: allowed types, evidence fit, topic/component coverage and compound-workload limits outrank percentages. If the source does not support a requested interaction, oStudy uses another supported opportunity or returns fewer cards instead of manufacturing filler.
+Generated cards appear in **Library → Flashcards**, in the document's own deck, and generated guides in **Library → Study guides**. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
 
-Review source-grounded output for factual errors, weak questions, duplicated concepts, and missing nuance. A source citation and valid schema are useful evidence, not proof of factual correctness.
+Document cards can be Basic or Fill in the blank recall cards, or single-best-answer, select-all, true/false, matching, grouping and ordering questions where the source supports them. Choose which formats are used, and their mix, under **Question generation** in **Settings → AI/LLM**. Image occlusion is always made by hand. The mix is a target, not a quota: if the source does not support a format, ostudy uses another or makes fewer cards rather than filler.
 
-### Document collections and coherent study materials
+Review generated material for factual errors, weak questions, duplicates and missing nuance. A source label and a valid format are useful evidence, not proof that a card is correct.
 
-A document collection is a **subject**: one grouping for a course's documents, guides and decks. The folders in **Library → Decks** are the same subjects, so a folder you create there also appears here as a collection, and the other way round. Collections are a single level. Choose **New collection** for a week, unit, exam, or other study set. A collection is drawn as a stack, set apart from single documents, and lists its documents with their reading ranges. **Add documents** on the collection uploads a new document straight into it or adds several of your existing documents at once; you can also drag a document row onto the collection, or use **Move to a collection…** from the document's **…** menu. Each listed document's **…** menu opens, annotates, renames, sets its **Reading range…**, moves it to another collection, or removes it. The collection's own **…** menu renames or deletes it.
+## Collections
 
-A document is in at most one collection. Adding it to another collection moves it there with its reading ranges and its generated flashcard deck. Removing it from a collection returns the document and its generated deck to no collection and clears its reading ranges. A generated deck that you filed in a different folder yourself stays where you put it.
+A collection is a **subject**: one grouping for a course's documents, guides and decks. The subjects in **Library → Flashcards** are the same subjects, so a subject made there appears here as a collection, and the other way round. Collections do not nest. Choose **New collection** for a course, unit, or exam.
 
-Nothing is generated for a collection until you choose **Make study materials**; afterwards the collection offers **Study** and **Read guide**, and an **Update study materials** button appears when its sources change (it is also in the collection's **…** menu). A collection's flashcards are the cards in the decks filed in it, studied live: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied. If the collection has no cards yet, generate flashcards for its documents or move a deck into it. A ready Study Guide opens the shared semantic guide reader, and its local PDF export uses the same effective guide meaning rather than a second collection-specific renderer.
+A collection is drawn as a stack and lists its documents. **Add documents…** in its **…** menu (or the collection's empty **Add documents** area) uploads a new document straight into it or adds several existing documents at once. You can also drag a document row onto the collection, or use **Move to a collection…** from the document's menu. Each listed document's **…** menu offers **Open**, **Annotate**, **Rename…**, **Reading range…**, **Move to another collection…** and **Remove from collection**. The collection's own menu also has **Rename…** and **Delete collection**.
 
-Adding an already-processed document to a collection does **not** parse, OCR, extract, or semantically interpret that document again. The collection builds a higher-level synthesis from the retained per-document knowledge: it can organize shared topics, relationships, emphasis, and explicit gaps, while exact factual support remains attached to the original document evidence. Collection Study Guides author readable narrative topic sections through the same validated rich-section contract used by document guides, selecting only retained knowledge units from the authorized collection. Internal coverage/gap receipts remain diagnostic metadata and are not learner-facing guide sections.
+A document is in at most one collection. Moving it moves its reading range and its generated deck with it. Removing it from a collection leaves the document and its deck in no subject and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
 
-Deleting a collection takes its documents out of every collection and moves its decks to **Unsorted decks**; it does not delete them. The collection study guide is deleted with it. Deleting the collection guide on its own is explicit suppression, so an ambiguous retry cannot silently recreate it; choosing **Recreate study materials** is a new deliberate action.
+Nothing is generated for a collection until you choose **Make study materials**. Afterwards the collection offers **Study** and **Read guide**, and **Update study materials** when its sources change (also in the collection's menu; it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). A collection's flashcards are the cards in the decks filed in it: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied. If the collection has no cards yet, make flashcards for its documents or move a deck into it.
 
-Libraries from before the subjects update kept collection flashcards as copies in a separate deck. The update folds unedited copies back into their original cards; see [Library upgrades](library-upgrades.md).
+Adding an already-processed document to a collection does not read or OCR it again. The collection guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
-## Supported source families
+Deleting a collection moves its documents and decks to **No subject**; it deletes neither. The collection's study guide is deleted with it. Deleting only the collection guide keeps it deleted until you choose **Recreate study materials**.
 
-The current registry supports PDF; Word DOC/DOCX-family files; PowerPoint PPT/PPTX-family files; OpenDocument ODT/ODP/ODS; EPUB; RTF; Excel XLS/XLSX-family files; and CSV.
+Libraries from before subjects kept collection flashcards as copies in a separate deck. The update folds unedited copies back into their original cards; see [Library upgrades](library-upgrades.md).
 
-Image collections are a separate first-class Documents source workflow for supported PNG/JPEG/WebP screenshots and photos. They are not routed through Xberg and are not converted into one stitched image.
+## Supported sources
 
-PDF uses the native PDF adapter. Supported non-PDF formats use **Xberg**, with immediate normalization into ostudy's own canonical representation. AnyDoc is a retired parser, not a selectable alternative or fallback.
+ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, ODP and ODS; EPUB; RTF; Excel XLS and XLSX; and CSV. Image collections accept PNG, JPEG and WebP screenshots and photos; they are not stitched into one image.
 
-Detection uses source content where a signature/container identifies the format. Legacy OLE formats additionally require an authorized DOC/PPT/XLS filename hint; CSV requires its filename hint because it lacks a unique binary signature. Renaming arbitrary bytes does not make them a supported format. HTML/web-page acquisition, audio transcription, and every format an underlying library might support are not automatically enabled product features.
+The format is detected from the file's contents. The older Word, PowerPoint and Excel formats also need their usual file extension, and CSV needs its `.csv` extension because it has no signature of its own. Renaming a file does not make it a supported format. Web pages, audio, and other formats an underlying library might read are not supported.
 
-## Local processing and source labels
+## How sources are read
 
-The application stores a managed source copy and extracts bounded source units, semantic blocks, supported images, and chunks. Knowledge is interpreted once from those sources and saved for flashcards, study guides and Tutor. Changing the chat or guide model does not repeat that interpretation. Those derivatives support a reusable outline and learning plan. Stable learning-topic identities connect guide sections with cards generated for those topics.
+ostudy keeps a managed copy of the source and extracts its text, structure, images and page renders. What is extracted is interpreted once and saved; flashcards, study guides and Tutor all reuse it, and changing the chat or guide model does not repeat it.
 
-PDF processing can extract native text, render relevant pages, and selectively recover text through OCR. Desktop uses its configured PDFium/Tesseract path; Android uses platform `PdfRenderer` and packaged open-source Tesseract. OCR is a recovery tool, not a guarantee that every diagram or table was understood.
+For PDFs, ostudy:
 
-Current non-PDF canonical provenance is persisted as **sections**. Xberg may expose richer internal slide/sheet boundaries and names, but the app does not promote all such details into exact authored page/slide/chapter promises without a coordinated locator/schema change. Non-PDF visual evidence is supported embedded images, not fabricated whole-slide renders. External image relationships are not fetched.
+- reads the text with its paragraphs, lists and headings, and reads two-column pages once rather than twice;
+- rebuilds tables drawn with cell borders from those borders;
+- reads scanned pages, and pages whose text cannot be extracted, with OCR on every such page (Tesseract on desktop and Android);
+- sends the rendered page image with the text for pages that hold a numbered table or figure, a grid of text, or OCR text, when the tested model accepts images;
+- skips end-of-chapter material such as key terms, chapter reviews, review questions, references and indexes, which only repeat or test the chapter.
 
-The guide/source action opens the retained original through the platform. It does not guarantee that an external viewer can jump to an exact page, slide, or section.
+OCR and page images help, but they do not guarantee that every diagram or table was understood.
+
+Other formats record their place in the source as **sections**, even where the file has slides or sheets; do not read a section label as an exact page. Their images are the embedded images, not renders of whole slides. Linked external images are not fetched.
+
+**Open source** in a study guide opens the original through the operating system. It cannot always jump to the exact page, slide or section.
 
 ## What the provider receives
 
-A request contains a bounded portion of canonical text, relevant outline/plan context, and selected source images only when the verified model supports image input. Large sources are processed through bounded requests rather than an unbounded prompt. Source analysis, topic planning, generation, validation, and curation are distinct stages. When an embedding model is configured, document processing also indexes saved knowledge for search. The embedding service receives saved text/knowledge, not a second request to interpret the document. Missing vectors can be indexed when you send a chat; ordinary navigation sends nothing.
+Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing.
 
-Interactive generation is knowledge-first rather than prompt-only. Native assessment opportunities point to the retained knowledge/evidence components that support each answer, correction, pairing, grouping membership or ordering relation. False statements and distractors are not recorded as if the source asserted them; their correction/rationale carries the support. Single-best-answer output must have one supported best choice, not two merely plausible choices. Native admission rejects ambiguous or unsupported relation shapes before publication.
+Model output cannot write to the library, files or commands directly. Generated content is checked for structure, size, allowed formatting, tags, Fill in the blank syntax, question rules, source references and duplicates before it is saved. A false statement or distractor in a question is never recorded as something the source asserted, and a single-best-answer question must have one supported best choice.
 
-The native provider gateway handles transport. Model output has no direct SQLite, filesystem, shell, or application-command authority. Generated content is checked for structure, limits, allowed rich content, tags, cloze grammar, typed question semantics, evidence identities and duplicates before durable use.
+Diagnostics leave out credentials, prompts, responses, reasoning text, source text, answer keys and image bytes. Still review a diagnostic export before sharing it, since it can contain file names.
 
-Diagnostics are designed to keep credentials, raw prompts/responses, reasoning text, source text, answer keys and image bytes out of ordinary logs. Still review any diagnostic export before sharing it, especially when it contains filenames or operational metadata.
+## Progress and stopping
 
-## Progress and cancellation
+Progress shows the steps ostudy can actually observe. Reading a non-PDF can show an indeterminate bar until its length is known. Card progress counts finished batches and study-guide progress counts finished sections; neither bar guesses from elapsed time. **Complete** belongs to each artifact, so one can finish while the other is still running. An indeterminate bar does not mean the task has stalled.
 
-Progress reports the phases the application can actually observe. Non-PDF native extraction may be indeterminate until the parser returns known source-unit totals. Once shared understanding is complete, Flashcards progress uses committed generation windows and Study Guide progress uses durable completed sections; neither bar guesses from elapsed time. A green **Complete** state belongs to the individual artifact, so one can complete while the other remains active. Do not interpret an indeterminate indicator as a stalled or failed task merely because a percentage is unavailable.
+**Stop processing** and **Stop study guide** ask the work to stop at its next safe point. Work already saved is kept, and a stopped remake leaves the previous guide in place. Failures stay visible when you return to Documents.
 
-Stop controls request cancellation of their task. Study guides use a single generating/stop button rather than a second permanent button. Failures remain visible when you return to Documents and are not cleared by routine refreshes. Cancellation is cooperative: local extraction, network work, validation, and publication have explicit boundaries. Already committed reusable derivatives are retained, and a canceled guide regeneration leaves the previous published guide available.
+If one part of a study guide cannot be written, the guide still publishes, and that section is marked **Not written yet** and lists the facts extracted from that part of the source. Remaking the guide tries it again.
 
-On Android, a user-started long document task uses a foreground service, visible notification, and bounded wake-lock support so work can continue when the Activity is backgrounded. This is not immunity to process termination, resource pressure, device reboot, or explicit stop. Reopening relies on durable task/checkpoint reconciliation, not a surviving WebView promise.
+On Android, a long document task uses a foreground service with a visible notification so work can continue while the app is in the background. That does not protect it from the system stopping the app, a reboot, or **Stop**. On reopening, ostudy picks up the saved state.
 
-On desktop, closing while document processing is active warns about interrupting in-flight work. Restart does not automatically authorize sending more source data to a provider. Retry deliberately after reviewing the state. Whole-library backup is blocked while active processing could make files and database snapshots incoherent.
+On desktop, closing while documents are processing warns that the work will be interrupted. Restarting never sends more of a source to a provider by itself; retry deliberately. A whole-library backup cannot be made while document work is running.
 
-## Retry, more cards, and regeneration
+## Retry, more cards, and remaking
 
-Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Current knowledge remains reusable across different consuming models. Changed parser, prompt, schema, generation policy or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists. The live **Retries** diagnostic is recovery traffic, not a count of documents or failed pages: it distinguishes contract repair, output compaction, transient transport retry, and provider-compatibility retry. Successful admitted knowledge with merely unresolved internal coverage no longer automatically buys another provider request; paid repair is reserved for actual rejected proposals or a supplied source that received no admitted/non-learning disposition.
+**Retry** reuses saved reading, outlines and finished card batches when they still match the current source, settings and ostudy version, so only the remaining work is redone. Saved knowledge is reused by any model. Some ostudy updates change how documents are read; those documents are read again the next time their first cards are made. In **Details**, **Retries** counts recovery requests during a run, not failed documents or pages.
 
-Card generation checkpoints are window-scoped. Completed source windows remain checkpointed after a later window/provider failure, so retry resumes the remaining compatible windows instead of discarding already admitted work. Generated result summaries report what was requested, admitted, rejected and covered without turning a soft type mix into a hard quota.
+**Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 
-**Make more cards…** uses retained understanding and current deck/component coverage. An unchanged source should not be reparsed/rerendered simply to request additional cards. Changed embedded assets receive immutable versioned managed paths, avoiding deletion of the last committed evidence before a replacement succeeds.
+Remake a guide from the document's menu. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
 
-Regenerate a guide from the relevant document action. The reader does not need a permanent regenerate button or internal revision badge. Compatible topic work can be reused; a complete new validated guide replaces the active generated revision atomically. Learner annotations follow the separate rules in [Study guides](study-guides.md).
+## Analysis details
 
-## Analysis diagnostics
+With diagnostics turned up, logs can show model proposals that were not accepted, rejected question candidates, parts of the source with no accepted result, provider failures and reuse of saved work. These do not necessarily mean a wrong fact or an unread page, and they do not appear as error banners on a successful run. A real failure still says why the operation could not finish. Complete coverage does not guarantee that every important idea was found.
 
-Debug logs can report unresolved knowledge proposals (model-proposed concepts or relationships that were not admitted), rejected assessment candidates, source dispositions (supplied material that still lacks an accepted analysis outcome), provider transport failures, and checkpoint reuse. It does not necessarily mean a false fact or an unprocessed page. Valid knowledge is saved and remains usable. Nonfatal analysis details are retained in diagnostics, not shown as ordinary error banners or warning text on successful generation. A true failure still explains why the requested operation could not finish. Complete protocol coverage likewise does not guarantee every important concept was found.
+## Sources, cards and deletion
 
-Older builds limited a page to 16 primary knowledge units. Saved proposals rejected only for that quota are revalidated locally on document retry without asking the model to generate them again. Other invalid or unsupported proposals remain pending. Retry document generation to repair remaining analysis; Tutor uses the saved valid knowledge and does not start a separate understanding stage.
+Generated cards remember the learning topic and source they came from, and questions keep private evidence of how they were made. These links do not depend on tags, so renaming or moving a card does not change its source.
 
-## Source relationships and lifecycles
+Deleting a document removes its managed files, its annotations and its processing state, unless a running task prevents it. Its generated decks and cards stay as ordinary study content, with a text-only note of the source they came from. Deleting a generated deck does not delete its document.
 
-Generated notes can carry primary/supporting learning-topic provenance and citations. Interactive generated questions additionally retain private component-level generation evidence tied to the note revision and generation policy. These are stable native relationships, not guesses inferred later from text or mutable tag labels. Renaming or moving a card does not turn a tag name into its source identity.
+Deleting only a study guide removes the guide, its section edits, its saved work and its prepared PDF exports, and keeps the source, its learning plan, its linked cards, and your guide and topic notes. Read the confirmation.
 
-Archiving a document retains its source, derivatives, learning plan, guide/annotation graph, and generation history. Restoring it can return it to ready state when a live artifact still exists. A guide-only document is valid; it does not need an artificial flashcard deck.
+## Backup, sync, and limits
 
-Permanent source deletion is separate from deleting generated cards. It removes document-owned files, page annotations and processing/artifact state when no active task conflicts. Already generated decks/cards remain ordinary study content, with text-only citation provenance where a live source link can no longer exist. Deleting a generated deck does not automatically delete its source document.
+A whole-library backup includes documents, their managed files, everything extracted from them, image collections, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Deleting only a study guide has a narrower scope: it removes generated guide revisions, guide-specific edits/conflicts, checkpoints, and prepared exports while preserving the source, learning plan, linked cards, and stable guide/topic notes. Read the explicit confirmation.
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
-## Backup, sync, and limitations
+Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 
-Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders, including ordered image-set manifests, each retained original image, pending image-source snapshots, Content-filter decisions, typed question definitions, retained attempt/review evidence and generation evidence. Supported older backup representations remain readable. Provider credentials are excluded.
-
-Trusted-device synchronization has explicit sender-selected scopes for Flashcards, Documents, Study Guides and provider settings/credentials. Study Guides require Documents; cross-document/card provenance is included only when both domains are selected. Typed interactive questions and their admitted retained evidence are supported within the Flashcards graph. A selected sync scope is still not a disaster-recovery substitute for the complete-library backup.
-
-Malformed, encrypted/protected, unsupported, oversized, or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits, and provider cost remain practical limits. A local parse is not a full sandbox for hostile files; process only sources you intend to trust with the application.
-
-Report a defect with the source format, phase, platform/build, provider family/model, safe error, and retry result. Distinguish extraction/OCR trouble from provider request rejection, generated wording, citations, overlays, or PDF export. Use a synthetic or redacted source rather than publishing private material.
+To report a problem, give the source format, the step that failed, platform and build, provider and model, the error message, and what happened on retry. Say whether the trouble is in reading or OCR, the provider's response, generated wording, source labels, or PDF export. Use a made-up or redacted source rather than private material.
 
 For implementation details, see [AI and document processing](../architecture/ai-and-document-processing.md), [document AI routing](../architecture/document-ai-routing.md), and the [current architecture](../architecture/overview.md).

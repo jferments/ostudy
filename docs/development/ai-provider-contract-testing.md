@@ -17,10 +17,14 @@ key. Native provider behavior is exercised against bounded local HTTP fixtures.
   fast gate + production build + Clippy + Rust tests + native smoke
 ```
 
-Same-repository pull requests also run a self-hosted rustfmt-normalization job.
-It commits canonical Rust formatting only when the PR branch actually needs it.
-Cargo lockfile changes remain explicit and reviewed rather than being silently
-rewritten.
+No workflow rewrites source: formatting and Cargo lockfile changes are made and
+committed on the branch, and `check-static.sh` rejects unformatted Rust (see
+[Testing and CI](testing-and-ci.md)).
+
+The implemented adapters are **llama.cpp / Unsloth GGUF**, **DeepSeek**,
+**OpenRouter** and **Claude** (`ProviderKind::implemented` in
+`src-tauri/src/ai/catalog.rs`). The other catalog entries (Ollama, OpenAI,
+Gemini) are reported as `planned` and Settings does not offer them.
 
 ## Credential invariants
 
@@ -43,7 +47,8 @@ depends on the runner session.
 ## Provider contract fixtures
 
 `src-tauri/src/ai/provider_contract_tests.rs` starts a minimal loopback HTTP
-server and verifies the exact initial adapter behavior.
+server and verifies the exact adapter behavior for llama.cpp, DeepSeek and
+Claude.
 
 ### llama.cpp
 
@@ -88,6 +93,29 @@ The DeepSeek capability display must show provider JSON Schema as **not offered*
 not as a red connection error. The independent **Local validation** capability is
 the evidence that ostudy checked the provider's JSON against the expected schema.
 
+### Claude
+
+- model discovery through the Messages API `GET /v1/models`, then per-model
+  details through `GET /v1/models/<id>`;
+- requests authenticate with `x-api-key` and `anthropic-version`, never an
+  `Authorization` header;
+- models that do not declare structured outputs are hidden from the Model
+  dropdown;
+- text and structured probes go through `POST /v1/messages`, and the document
+  contract probe is enforced with the provider's output configuration;
+- declared image input, context window and reasoning controls come from the
+  model details.
+
+### OpenRouter
+
+OpenRouter has no fixture in `provider_contract_tests.rs`; its coverage lives
+beside the code it exercises: typed and redacted response/error envelopes and
+fixed-host attribution in `src-tauri/src/ai/gateway/tests/`, catalog enrichment
+in `src-tauri/src/ai/providers/models.rs`, JSON Schema, document-contract and
+image-probe capability reporting and reasoning resolution in
+`src-tauri/src/ai/probes/tests/`, and first-key task-default seeding and the
+OpenRouter-only zero-data-retention setting in `src-tauri/src/ai/profiles/tests/`.
+
 ### Transport
 
 - redirects are rejected rather than followed with a bearer credential;
@@ -109,7 +137,7 @@ AI provider setup follows the dependency order required by the actual APIs:
 6. Run Test connection against the saved endpoint, credential, and model.
 
 For no-auth llama.cpp profiles, step 3 occurs immediately after the endpoint is
-saved. For credentialed providers such as DeepSeek, model discovery does not run
+saved. For credentialed providers (DeepSeek, OpenRouter, Claude), model discovery does not run
 until the credential has been submitted to the native secret boundary. Opening
 an already-configured profile also refreshes its model list automatically when
 its saved credential state permits the request. **Refresh models** remains a

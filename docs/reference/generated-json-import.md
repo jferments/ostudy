@@ -13,12 +13,13 @@ Generated JSON imports never carry internal IDs, schedules, review history, anal
 
 ## User workflow
 
-The Decks screen has one **Import deck** button. Its file picker accepts either:
+**Library → Flashcards** has one **Import deck** button, beside the Library tabs. Its file picker accepts:
 
-- `.studydeck` deck packages; or
+- `.studydeck` deck packages;
+- compatible Anki `.apkg` packages; or
 - generated `.ostudy.json` files.
 
-There is no generated-import preview window and no separate generated-import button. Selecting a valid file immediately runs the appropriate transactional importer. Success opens the imported destination deck. A validation or destination error is shown through the ordinary application error toast and leaves the library unchanged.
+There is no generated-import preview window and no separate generated-import button. Selecting a valid file immediately runs the appropriate transactional importer. Success opens the imported destination deck. A validation or destination error is shown in the import dialog and leaves the library unchanged.
 
 ## File identity
 

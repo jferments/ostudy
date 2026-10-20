@@ -6,9 +6,9 @@ Organization lives in the **Subjects** section of the Library Workbench's tree. 
 
 A subject keeps one course's decks and documents together. It is the same grouping that **Library → Documents** shows, so a document filed under a subject appears under that subject in the tree, and choosing it opens Documents. A deck belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, which the tree shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
 
-Choose **+** (**New subject**) beside the Subjects heading to create a subject. Choosing a subject lists the cards of all its decks; its header offers **Practice…** for those decks and **New deck** to start a deck in it.
+Choose **+** (**New subject**) beside the Subjects heading to create a subject, or **New subject** on Home. Choosing a subject lists the cards of all its decks; its header offers **Practice…** for those decks and **New deck** to start a deck in it.
 
-When subjects arrived, or when a sync met two choices, some entries may have had more than one sensible place. Each was given one, and **Check these (N)** appears at the top of the section. It lists those entries with the reason for each. Move any that belong elsewhere with **Move to subject…**, and choose **Dismiss** once an entry looks right.
+When subjects arrived, or when a sync met two choices, some entries may have had more than one sensible place. Each was given one, and **Check these (N)** appears at the top of the section, and Home shows the same **Check these**. It lists those entries with the reason for each. Move any that belong elsewhere with **Move to subject…**, and choose **Dismiss** once an entry looks right.
 
 ## Expand and collapse
 

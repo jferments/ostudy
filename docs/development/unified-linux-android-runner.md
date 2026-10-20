@@ -107,13 +107,14 @@ One runner can execute only one Actions job at a time, so authoritative CI is de
 The primary `Check` workflow runs:
 
 ```text
-guest preflight
+static gate
+→ guest preflight
 → Linux/shared gate
 → Android compile/package gate
 → Android emulator smoke
 ```
 
-Draft pull requests use the fast gate for iteration. Ready pull requests and pushes to `main` run the complete `all-full` sequence.
+Draft pull requests use the fast gate for iteration. Ready pull requests, pushes to `main` and drafts labelled `qualification:full` run the complete `all-full` sequence.
 
 The separate historical automatic `Android check` workflow is retired. Keeping separate automatic Linux and Android jobs on a single runner would only add queueing, repeated checkout/setup work, and ambiguous runner-label routing.
 

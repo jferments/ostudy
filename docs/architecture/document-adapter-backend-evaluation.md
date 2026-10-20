@@ -1,6 +1,6 @@
 # Document adapter backend evaluation
 
-Status: accepted research note for the canonical document foundation
+Status: accepted research note for the canonical document foundation. Its backend comparison predates the current choice: non-PDF formats now use Xberg ([ADR 0045](../decisions/0045-xberg-non-pdf-document-adapter.md)), and AnyDoc is retired.
 
 ## Decision context
 

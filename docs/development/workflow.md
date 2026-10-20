@@ -49,7 +49,7 @@ Use [Testing and CI](testing-and-ci.md) and the [command runbook](command-runboo
 
 `check-changed` is an aid, not a final certificate. Static is not native runtime testing. Full Linux/Tauri qualification and Android compile/package/emulator qualification establish different boundaries. Native UI appearance, physical devices, real credentials, and live provider behavior remain explicit manual boundaries when not exercised.
 
-`Check` tests the exact PR head. Draft PRs run the fast tier; ready PRs and explicit full dispatches run the full Linux and Android gates on the single self-hosted runner. Every push to a ready PR runs that full gate again, so mark a PR ready only when it is complete and move it back to draft for substantial rework. PR description edits do not trigger `Check`.
+`Check` tests the exact PR head. Draft PRs run the fast tier; ready PRs, pushes to `main`, drafts labelled `qualification:full` and explicit full dispatches run the full Linux and Android gates on the single self-hosted runner `ostudy-unified`. Every push to a ready PR runs that full gate again, so mark a PR ready only when it is complete and move it back to draft for substantial rework. PR description edits do not trigger `Check`.
 
 All Actions workflows are source-read-only regardless of trigger, including manual maintenance. They verify, build, test and package pushed source; they never author, format-rewrite, commit, or push it. `scripts/verify-repository-policy.mjs` enforces this.
 

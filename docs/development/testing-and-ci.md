@@ -51,7 +51,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current runtime lineage is `ostudy-release-v1`, schema 9. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
+The current runtime lineage is `ostudy-release-v1`, schema 10. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
 
 ### Exact-tree reuse
 
@@ -136,8 +136,9 @@ Automatic behavior:
 | Event/state | Gate |
 | --- | --- |
 | Draft PR source/lifecycle event | `fast` |
+| Draft PR labelled `qualification:full` ([draft full qualification](draft-full-qualification.md)) | `all-full` on its next source or lifecycle event |
 | Ready-for-review/non-draft source event | `all-full` |
-| Push to `main` | full policy selected by the gate script |
+| Push to `main` | `all-full` |
 | PR body edited only | no product `Check` |
 | PR closed | cancel/skip obsolete automatic work |
 
@@ -152,7 +153,7 @@ android-full
 all-full
 ```
 
-Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
+`scripts/select-check-gate.mjs` makes this choice. Adding or removing a label is not itself a trigger. Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
 
 For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within one successful exact-SHA `all-full` job, Android compile reuses the shared TypeScript/Vitest/host-Rust coverage already established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge APK/instrumentation package produced by Android compile. When Android compile passed by reusing an earlier qualification, the clean checkout has no APKs, so emulator smoke builds them itself. Standalone Android gates remain self-contained.
 
@@ -167,6 +168,8 @@ The retired Orchestrator PR Ledger, the branch-specific frontend source-checkpoi
 ## Actions compute and storage policy
 
 Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
+
+The Cargo target cache is bounded so it cannot fill the runner's disk. `scripts/runner/bound-cargo-target.sh` runs before the guest preflight. It deletes the incremental state earlier runs left behind, and it clears the whole target when the target is larger than `OSTUDY_CARGO_TARGET_MAX_GIB` (default 40) or the root filesystem has less than `OSTUDY_CARGO_TARGET_MIN_FREE_GIB` free (default 35, which leaves room above the preflight's 25 GiB minimum). A cleared target makes the next run a cold build.
 
 GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, failure summaries, logs, Android smoke evidence, failure bundles, Android packages, and tagged Linux release output are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
 
@@ -197,7 +200,7 @@ One unchanged-head rerun is acceptable only with evidence of a transient externa
 
 The full gate uses isolated app data and built binaries. It verifies representative first-run/public migration, supported pre-public adoption, startup reconciliation, persistence, and application workflows rather than relying only on in-memory tests.
 
-The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving recovery into the historical `ostudy-public-v1` compatibility lineage. Current runtime startup subsequently converges supported public-v1 data to `ostudy-release-v1` / schema 1; neither historical v26 nor public-v1 schema 30 should be described as the fresh-release schema.
+The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving recovery into the historical `ostudy-public-v1` compatibility lineage. Current runtime startup subsequently converts supported public-v1 data to the `ostudy-release-v1` baseline (schema 1) and migrates it forward to schema 9; neither historical v26 nor public-v1 schema 30 should be described as the fresh-release schema.
 
 Native WebDriver uses fresh isolated XDG/application data and exercises representative built-app behavior: current visible destinations/internal Practice, fresh library/authoring, deck-context Practice return and review completion, Analytics/restart persistence, responsive shell geometry, current Study Guides behavior, dialogs/focus/scroll containment, and native window behavior where applicable. Mutating interactions are not blindly retried after an ambiguous transport disconnect because the operation may already have committed.
 

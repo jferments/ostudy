@@ -4,7 +4,7 @@ The annotator lets you write, highlight, draw arrows and boxes, and type notes o
 
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages; other document formats cannot be annotated yet.
+Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
@@ -20,7 +20,7 @@ The pages scroll in one column. **Back to documents** returns to the list, and s
 | Line, Arrow, Box, Ellipse | L, A, R, O | Drag from one corner or end to the other |
 | Eraser | E | Drag across annotations to remove each one it touches. A stylus's eraser end, if it has one, erases with any tool |
 
-The row under the tools sets the color and size of what you draw next. With an annotation selected, the same row restyles it and adds **Delete** (and **Edit text** for a text note, **Open note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
+The row under the tools sets the color and size of what you draw next. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
 
 Hold Shift while dragging a line or arrow to keep it at a multiple of 45 degrees, or while dragging a box or ellipse to make a square or circle.
 
@@ -37,6 +37,12 @@ Choose **Text**, tap or click the page, and type. Escape, Ctrl+Enter, or a tap e
 ## Sticky notes
 
 Choose **Sticky note**, then tap or click the page. A small square of colored paper appears there and a window opens for its text, which can run to many paragraphs. **Done**, Escape or Ctrl+Enter closes the window and saves the note; the square on the page shows the first lines. To read or change a note, tap it with the Sticky note tool, tap it again once it is selected with the Select tool, or press Enter while it is selected. **Delete note** removes it, and so does closing it with no text. Drag a sticky note with the Select tool to move it; the color and text-size choices restyle it.
+
+## Cards from your marks
+
+Select a highlight, a note or any other annotation and choose **Make a card**. A new-card editor opens beside the pages (over them on a phone) with the highlighted words, or the note's text, already in the answer; write the question and save. The card goes in the deck the document's cards were made in, or the deck of the last card you made from this document, and you can pick another deck in the editor. **Save + another** keeps the editor open for a second card from the same mark.
+
+Each card made this way remembers its mark: its **Source** names the document and page. Once a document has cards made from its marks, **Study marked cards** in the annotator's header starts a practice session of them. A card stays when you erase its mark or delete the document, and it still counts as made from that document until the document is deleted.
 
 ## Zoom and scroll
 
@@ -63,11 +69,14 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 ## Where annotations are kept
 
-Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations.
+Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
 
-Storing annotations needs library schema 8. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
+Storing annotations needs library schema 8, and cards from marks need schema 10. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 
 ## Not available yet
+
+- Having AI draft the question for a card from a mark.
+- Opening the marked passage from a card's Source.
 
 - Handwriting recognition, and turning handwriting into searchable text.
 - Highlighting that snaps to text on Android.

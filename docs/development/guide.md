@@ -22,7 +22,8 @@ src/
 
 src-tauri/
   src/                     Rust commands, services, persistence, and startup
-  migrations/              ordered versioned SQLite migrations
+  schema/                  release-v1 baseline and forward release migrations (current)
+  migrations/              immutable public-v1 migrations 1–30 (compatibility input)
   tests/                   integration and compatibility fixtures
   capabilities/            Tauri permission configuration
   gen/android/             reviewed Android shell/project and instrumentation
@@ -39,7 +40,7 @@ A filename left from an earlier implementation is not proof of its current role.
 
 ## Sources of truth
 
-`versions.env` owns pinned tool/direct-dependency versions, mirrored where standard tools need conventional files. `package.json`/pnpm lockfiles own the JavaScript graph; Cargo manifests/lockfiles own Rust; `database.rs` registers migrations/checksums; `lib.rs` registers the Tauri command surface. Current source establishes implementation; maintained architecture and accepted ADRs explain durable intent.
+`versions.env` owns pinned tool/direct-dependency versions, mirrored where standard tools need conventional files. `package.json`/pnpm lockfiles own the JavaScript graph; Cargo manifests/lockfiles own Rust; `src-tauri/src/database/release.rs` registers the current release migrations and their checksums, and `database.rs` keeps the immutable public-v1 compatibility registry; `lib.rs` registers the Tauri command surface. Current source establishes implementation; maintained architecture and accepted ADRs explain durable intent.
 
 GitHub is authoritative for pushed source, PRs, reviews, and exact-head Actions evidence. People and coding agents follow the same [Git and pull-request workflow](workflow.md): work in a local checkout, push a branch, and open a draft PR.
 
@@ -64,7 +65,7 @@ On an already configured checkout after source changes:
 
 The build wrapper stages a standalone debug application without release bundles. `run-app.sh` verifies source/build provenance and launches that existing artifact; it does not compile or start Vite. Do not bypass a stale-build refusal by launching Cargo's mutable debug executable.
 
-`pnpm desktop` starts native hot reload. `pnpm dev` is Vite and `pnpm build` builds frontend assets. Android setup/install/testing is documented in [Android installation](../installation/android.md). `pnpm android:install` is the normal physical-device debug build/install; `pnpm android:dev` is deliberate hot reload.
+`pnpm install --frozen-lockfile` followed by `pnpm desktop` starts native hot reload as the separate `io.github.jferments.ostudy.dev` profile; it is how the maintainer tries a branch. Never use bare `pnpm tauri dev`, which the startup profile guard refuses. `pnpm dev` is Vite and `pnpm build` builds frontend assets. Android setup/install/testing is documented in [Android installation](../installation/android.md). `pnpm android:install` is the normal physical-device debug build/install; `pnpm android:dev` is deliberate hot reload.
 
 Before switching code, inspect local changes and verify the intended SHA. A separate source worktree does not isolate the learner library. Use [local-testing data isolation](local-testing-and-handoff.md) and disposable Android data for destructive/migration/restore/fresh-install tests.
 
@@ -80,7 +81,7 @@ pnpm verify:docs
 
 Use focused tests and the cheapest useful tier while editing, then required final-head qualification. `check-changed` depends on the diff and is not final certification. Exact-tree stamps can reuse valid previous tiers only when their source/tool/platform identity matches; `OSTUDY_FORCE_CHECK=1` is an explicit evidence/diagnostic override, not a substitute for understanding what was tested.
 
-GitHub Actions qualifies pushed source at an exact SHA. Draft automatic `Check` uses the fast gate. Ready PRs and explicit full dispatches provide full/platform qualification. Every Actions workflow is source-read-only.
+GitHub Actions qualifies pushed source at an exact SHA on the single self-hosted runner `ostudy-unified`. Draft automatic `Check` uses the fast gate. Ready PRs, pushes to `main`, drafts labelled `qualification:full`, and explicit full dispatches run the full Linux and Android gate. Every Actions workflow is source-read-only.
 
 When a gate fails, inspect the exact tested SHA, bounded logs/evidence, and smallest failing boundary. Fix that boundary before another broad matrix. Native compilation, frontend mocks, WebDriver persistence, Android package verification, emulator instrumentation, physical-device behavior, and live-provider calls establish different evidence.
 
@@ -90,7 +91,7 @@ Screens render data and intent. Controllers coordinate workflow identity, stale-
 
 Use shared overlays, focus/Back handling, keyboard alternatives, the committed Tailwind/semantic-token presentation layer, and responsive patterns. Feature code should use the shared UI facades rather than restoring retired CSS-Module/global-stage ownership. Preserve compact touch targets, enlarged text, themes, safe areas, reduced motion, and dirty-state guards. Independent async reads use independent lanes. A committed mutation must remain distinguishable from a following failed refresh.
 
-Current main information architecture is Flashcards, Study Guides, Documents, Tutor, Analytics, and Settings. Compact navigation keeps the first five destinations in the bottom bar with Settings in the app-bar gear. Flashcards has Decks and Search/Filter. Card templates live in Settings. Transfer is contextual. Practice is an internal contextual workflow. Do not restore retired permanent tabs, a More destination, or empty-state clutter because an old stage document still contains them.
+The main navigation names five destinations on every screen size: Home, Library, Review, Tutor and Progress (`src/navigation/appDestinations.ts`). Wider screens show them in the side-rail header with Search and the Settings gear; phones show them in a bottom bar with Search and Settings in the top app bar. Library's pages are tabs: Flashcards (the Workbench of subjects, decks, tags, cards and the card editor), Documents and Study guides, with Import deck beside them. Card templates are a Settings tab. Deck transfer is contextual. Practice is an internal workflow inside Review. Do not restore retired permanent tabs, a More destination, or empty-state clutter because an old stage document still contains them; [AGENTS.md](../../AGENTS.md) lists the UI contracts to preserve.
 
 ## Native data and learning changes
 

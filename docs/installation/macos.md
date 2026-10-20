@@ -42,14 +42,16 @@ Build the frontend and native application with locked dependencies:
 
 ```bash
 pnpm run build
-pnpm tauri build --debug --no-bundle --ci -- --locked
+pnpm tauri build --config src-tauri/tauri.dev.conf.json --debug --no-bundle --ci -- --locked
 ```
 
 For a live development session:
 
 ```bash
-pnpm tauri dev
+pnpm tauri dev --config src-tauri/tauri.dev.conf.json -- --locked
 ```
+
+This is the command the Linux `pnpm desktop` wrapper (`scripts/dev.sh`) runs; that wrapper's pinned-Node selection is written for the Ubuntu setup, so call Tauri directly here. Both commands above pass that overlay, so the debug build runs as `io.github.jferments.ostudy.dev` with its own library and credential namespace. Without it, a debug build resolves the production identifier `io.github.jferments.ostudy`, and startup refuses it before opening any library, so do not run bare `pnpm tauri dev`.
 
 The repository's Linux-specific `scripts/build.sh`, `run-app.sh`, and native WebDriver harness should not be assumed to provide complete macOS packaging or acceptance. A macOS contributor may use the underlying pnpm/Tauri commands while platform support is being completed.
 
