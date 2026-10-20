@@ -7,6 +7,7 @@ import { activeTimeForReview, useVisibleStudyTime } from "../controllers/visible
 import type { AuthoringNote } from "../ipc/authoringNotes";
 import { getCardNote } from "../ipc/cards";
 import { getNoteSourceCitation } from "../ipc/documents";
+import { getCardMarkSource } from "../ipc/annotationCards";
 import {
   createMutationId,
   createOperationId,
@@ -44,7 +45,7 @@ import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
 import { LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { sourcePassageFor, type SourcePassage } from "../components/sourcePassage";
+import { atMark, sourcePassageFor, type SourcePassage } from "../components/sourcePassage";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { SourcePassageDialog } from "./documents/annotator/SourcePassageDialog";
 import { PracticeComplete } from "./practice/PracticeComplete";
@@ -180,8 +181,14 @@ export function PracticeScreen({
   useEffect(() => {
     if (!currentNoteId) return undefined;
     let active = true;
+    // The mark a card came from narrows its page to that mark; a failed read
+    // of it still leaves the cited page.
+    const mark = getCardMarkSource(currentNoteId).catch(() => null);
     void getNoteSourceCitation(currentNoteId)
-      .then((citation) => { if (active) setCitedPassage({ noteId: currentNoteId, passage: sourcePassageFor(citation) }); })
+      .then(async (citation) => {
+        const passage = atMark(sourcePassageFor(citation), await mark);
+        if (active) setCitedPassage({ noteId: currentNoteId, passage });
+      })
       // A citation that cannot be read leaves the card without a Source action.
       .catch(() => { if (active) setCitedPassage({ noteId: currentNoteId, passage: null }); });
     return () => { active = false; };
