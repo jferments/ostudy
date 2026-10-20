@@ -187,6 +187,10 @@ fn delete_study_guide(
             &input.document_id,
         )?;
 
+        crate::document_study_guide_reading::delete_document_reading(
+            &transaction,
+            &input.document_id,
+        )?;
         transaction
             .execute(
                 "DELETE FROM document_study_guide_checkpoints WHERE document_id = ?1",

@@ -197,6 +197,21 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Guides are read in the app; the upgrade only creates the reading tables.
+    Contract {
+        version: 12,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "document_study_guide_section_reads",
+                description: "study guide reading",
+            },
+            Rule::AddedEmpty {
+                table: "document_study_guide_positions",
+                description: "study guide reading",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
