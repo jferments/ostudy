@@ -115,7 +115,7 @@ fn credential_epoch_operations_are_idempotent_and_redacted() {
                 "44444444444444444444444444444444",
                 "set_credential",
                 CredentialStorage::Session,
-                false,
+                None,
             )
         })
         .expect("credential epoch should commit");
