@@ -1,4 +1,4 @@
-# ADR 0058: One subject list in Library, with no collections in the interface
+# ADR 0059: One subject list in Library, with no collections in the interface
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
