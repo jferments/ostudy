@@ -28,6 +28,7 @@ const NUDGE = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowD
 
 const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   select: "tw:cursor-default",
+  lasso: "tw:cursor-crosshair",
   pen: "tw:cursor-crosshair",
   highlighter: "tw:cursor-crosshair",
   text: "tw:cursor-text",
@@ -106,6 +107,8 @@ export function AnnotatorCanvas({
   const [draft, setDraft] = useState<PageDraft | null>(null);
   const [preview, setPreview] = useState<Annotation | null>(null);
   const [erasing, setErasing] = useState<ReadonlyMap<number, ReadonlySet<string>>>(() => new Map());
+  const [loop, setLoop] = useState<{ pageNumber: number; points: readonly number[] } | null>(null);
+  const [groupPreview, setGroupPreview] = useState<readonly Annotation[] | null>(null);
   const pendingDraft = useRef<PageDraft | null>(null);
   const draftFrame = useRef<number | null>(null);
   const pageSizes = useMemo(() => new Map(pages.map((page) => [page.pageNumber, page])), [pages]);
@@ -176,6 +179,7 @@ export function AnnotatorCanvas({
       minScale: MIN_SCALE,
       maxScale: MAX_SCALE,
       selected: current.selected,
+      group: current.group,
       annotationsOn: (pageNumber) => current.annotationsRef.current.get(pageNumber) ?? EMPTY,
       textHeight: current.textHeight,
       pageText: (pageNumber) => pageText.current?.get(pageNumber) ?? null,
@@ -230,6 +234,18 @@ export function AnnotatorCanvas({
           break;
         case "select":
           current.select(effect.id);
+          break;
+        case "lasso":
+          setLoop(effect.loop);
+          break;
+        case "select-group":
+          current.selectGroup(effect.pageNumber, effect.ids);
+          break;
+        case "group-preview":
+          setGroupPreview(effect.annotations);
+          break;
+        case "group-change":
+          current.moveGroup(effect.after);
           break;
         case "edit-text":
           current.editText(effect.annotation);
@@ -295,6 +311,16 @@ export function AnnotatorCanvas({
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     const selected = controller.selected;
+    const lassoed = controller.group[0];
+    if (lassoed && !selected && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const direction = NUDGE[event.key as keyof typeof NUDGE];
+      const size = pageSizes.get(lassoed.pageNumber);
+      if (!direction || !size) return;
+      event.preventDefault();
+      const step = event.shiftKey ? 10 : 1;
+      controller.nudgeGroup(direction[0] * step, direction[1] * step, size);
+      return;
+    }
     if (!selected || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Enter" && selected.shape.kind === "text" && event.target === event.currentTarget) {
       event.preventDefault();
@@ -373,6 +399,8 @@ export function AnnotatorCanvas({
                 annotations={controller.annotations.get(pageNumber) ?? EMPTY}
                 draft={draft?.pageNumber === pageNumber ? draft : null}
                 preview={preview?.pageNumber === pageNumber ? preview : null}
+                group={controller.group[0]?.pageNumber === pageNumber ? (groupPreview ?? controller.group) : EMPTY}
+                loop={loop?.pageNumber === pageNumber ? loop.points : null}
                 erasing={erasing.get(pageNumber) ?? null}
                 selected={controller.selected?.pageNumber === pageNumber ? controller.selected : null}
                 editing={controller.editing?.annotation.pageNumber === pageNumber ? controller.editing : null}

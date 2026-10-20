@@ -230,6 +230,31 @@ describe("document annotator", () => {
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
   });
 
+  it("selects marks together with the lasso, then moves and deletes them as one", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [150, 150]]);
+    drag(canvas, [[200, 100], [250, 150]]);
+    drag(canvas, [[100, 400], [150, 450]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(3));
+
+    fireEvent.keyDown(canvas, { key: "q" });
+    expect(pressed("Lasso")).toBe("true");
+    drag(canvas, [[80, 80], [300, 80], [300, 200], [80, 200]]);
+    expect(await screen.findByText(/2 selected/u)).toBeTruthy();
+    expect(document.querySelectorAll("[data-lassoed]")).toHaveLength(2);
+
+    fireEvent.keyDown(canvas, { key: "ArrowRight" });
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(2));
+    expect(savedChanges(1).map((change) => change.op === "put" && change.shape.kind === "rectangle" ? change.shape.x : null))
+      .toEqual([101, 201]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(2));
+    expect(savedChanges(2).every((change) => change.op === "delete")).toBe(true);
+    expect(screen.getByText("Draw a loop around annotations to select them together.")).toBeTruthy();
+  });
+
   it("snaps the highlighter to the page's text and keeps the words it covers", async () => {
     vi.mocked(annotationIpc.getDocumentPageText).mockImplementation((_documentId, pageNumber) => pageNumber === 1
       ? Promise.resolve({

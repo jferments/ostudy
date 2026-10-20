@@ -21,7 +21,7 @@ export interface Size { width: number; height: number; }
 export interface Bounds { left: number; top: number; right: number; bottom: number; }
 
 export type AnnotatorTool =
-  | "select" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
+  | "select" | "lasso" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
 export type ShapeTool = "line" | "arrow" | "rectangle" | "ellipse";
 export const SHAPE_TOOLS: readonly ShapeTool[] = ["line", "arrow", "rectangle", "ellipse"];
 
@@ -361,6 +361,69 @@ export function moveWithinPage(
     default:
       return { ...shape, x: round(shape.x + x), y: round(shape.y + y) };
   }
+}
+
+/** Whether a point lies inside a closed loop of `x, y` pairs. */
+export function insideLoop(point: Point, loop: readonly number[]): boolean {
+  let inside = false;
+  const count = Math.floor(loop.length / 2);
+  for (let index = 0, previous = count - 1; index < count; previous = index, index += 1) {
+    const x1 = loop[index * 2] ?? 0;
+    const y1 = loop[index * 2 + 1] ?? 0;
+    const x2 = loop[previous * 2] ?? 0;
+    const y2 = loop[previous * 2 + 1] ?? 0;
+    if ((y1 > point.y) !== (y2 > point.y) && point.x < (x2 - x1) * (point.y - y1) / (y2 - y1) + x1) inside = !inside;
+  }
+  return inside;
+}
+
+/** The annotations a lasso loop takes: those whose middle it surrounds. */
+export function annotationsInLoop(
+  annotations: readonly Annotation[],
+  loop: readonly number[],
+  textHeight: (annotation: Annotation) => number,
+): Annotation[] {
+  if (loop.length < 6) return [];
+  return annotations.filter((annotation) => {
+    const bounds = shapeExtent(annotation.shape, textHeight(annotation));
+    return insideLoop({ x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 }, loop);
+  });
+}
+
+/** The box around a group of annotations, or null for none. */
+export function groupBounds(group: readonly Annotation[], textHeight: (annotation: Annotation) => number): Bounds | null {
+  if (group.length === 0) return null;
+  const all = group.map((annotation) => shapeBounds(annotation.shape, textHeight(annotation)));
+  return {
+    left: Math.min(...all.map((bounds) => bounds.left)),
+    top: Math.min(...all.map((bounds) => bounds.top)),
+    right: Math.max(...all.map((bounds) => bounds.right)),
+    bottom: Math.max(...all.map((bounds) => bounds.bottom)),
+  };
+}
+
+/** A group moved together by (dx, dy) points, as far as all of it can go without leaving the page. */
+export function moveGroupWithinPage(
+  group: readonly Annotation[],
+  dx: number,
+  dy: number,
+  page: Size,
+  textHeight: (annotation: Annotation) => number,
+): Annotation[] {
+  const extents = group.map((annotation) => shapeExtent(annotation.shape, textHeight(annotation)));
+  if (extents.length === 0) return [];
+  const right = Math.min(page.width, MAX_COORDINATE);
+  const bottom = Math.min(page.height, MAX_COORDINATE);
+  const left = Math.min(...extents.map((extent) => extent.left));
+  const top = Math.min(...extents.map((extent) => extent.top));
+  const far = Math.max(...extents.map((extent) => extent.right));
+  const low = Math.max(...extents.map((extent) => extent.bottom));
+  const x = clamp(dx, -left, Math.max(-left, right - far));
+  const y = clamp(dy, -top, Math.max(-top, bottom - low));
+  return group.map((annotation) => ({
+    ...annotation,
+    shape: moveWithinPage(annotation.shape, x, y, page, textHeight(annotation)),
+  }));
 }
 
 export type Handle = "start" | "end" | "nw" | "ne" | "sw" | "se" | "width";

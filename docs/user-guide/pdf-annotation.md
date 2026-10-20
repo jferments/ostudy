@@ -19,6 +19,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 | Tool | Key | What it does |
 | --- | --- | --- |
 | Select | V | Tap an annotation to select it, drag it to move it, and drag its handles to reshape it |
+| Lasso | Q | Draw a loop around annotations on a page to select them together, then drag any of them (or use the arrow keys) to move them all, or press **Delete** to remove them. Each move or delete is one step to undo |
 | Pen | P | Handwriting and drawing; a pen with pressure draws thicker when pressed harder |
 | Highlighter | H | Drag across the PDF's text to mark whole lines of it; anywhere else, a wide, see-through stroke that keeps the text under it readable |
 | Text | T | Tap where a note should go and type |

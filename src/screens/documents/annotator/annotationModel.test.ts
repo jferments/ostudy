@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  annotationsInLoop,
   cleanNoteText,
+  insideLoop,
+  moveGroupWithinPage,
   describeAnnotation,
   distanceToShape,
   estimateTextHeight,
@@ -66,6 +69,31 @@ describe("annotation hit testing", () => {
     const ellipse: AnnotationShape = { kind: "ellipse", x: 0, y: 0, width: 200, height: 100, color: red, strokeWidth: 2 };
     expect(distanceToShape(ellipse, { x: 200, y: 50 }, 0)).toBe(0);
     expect(distanceToShape(ellipse, { x: 100, y: 50 }, 0)).toBe(49);
+  });
+});
+
+describe("lasso groups", () => {
+  const square = [0, 0, 100, 0, 100, 100, 0, 100];
+  const at = (id: string, x: number, y: number) => ({
+    id, pageNumber: 1, createdAt: 1,
+    shape: { kind: "rectangle" as const, x, y, width: 20, height: 20, color: "#dc2626", strokeWidth: 2 },
+  });
+
+  it("takes annotations whose middle the loop surrounds", () => {
+    expect(insideLoop({ x: 50, y: 50 }, square)).toBe(true);
+    expect(insideLoop({ x: 150, y: 50 }, square)).toBe(false);
+    const inside = at("in", 10, 10);
+    const halfway = at("half", 85, 40);
+    const outside = at("out", 95, 40);
+    expect(annotationsInLoop([inside, halfway, outside], square, () => 0).map((annotation) => annotation.id))
+      .toEqual(["in", "half"]);
+    expect(annotationsInLoop([inside], [0, 0, 100, 100], () => 0)).toEqual([]);
+  });
+
+  it("moves a group only as far as all of it stays on the page", () => {
+    const moved = moveGroupWithinPage([at("a", 10, 10), at("b", 80, 50)], 50, -30, { width: 120, height: 200 }, () => 0);
+    expect(moved.map((annotation) => annotation.shape.kind === "rectangle" ? [annotation.shape.x, annotation.shape.y] : null))
+      .toEqual([[30, 0], [100, 40]]);
   });
 });
 

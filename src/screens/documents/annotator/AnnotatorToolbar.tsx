@@ -19,6 +19,7 @@ interface ToolDescription { label: string; icon: IconName; shortcut: string; }
 
 export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   select: { label: "Select", icon: "pointer", shortcut: "V" },
+  lasso: { label: "Lasso", icon: "lasso", shortcut: "Q" },
   pen: { label: "Pen", icon: "pen", shortcut: "P" },
   highlighter: { label: "Highlighter", icon: "highlighter", shortcut: "H" },
   text: { label: "Text", icon: "text", shortcut: "T" },
@@ -30,7 +31,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
 };
 
-const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "pen", "highlighter"];
+const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
 const NOTE_TOOLS: readonly AnnotatorTool[] = ["text", "sticky"];
 
 interface AnnotatorToolbarProps {
@@ -48,6 +49,9 @@ interface AnnotatorToolbarProps {
   selection: { isText: boolean; isSticky: boolean } | null;
   onDeleteSelection: () => void;
   onEditSelection: () => void;
+  /** How many annotations the lasso took. */
+  groupSize: number;
+  onDeleteGroup: () => void;
   /** Opens a new card made from the selected annotation. */
   onMakeCard?: () => void;
   canUndo: boolean;
@@ -178,6 +182,7 @@ const LETTER_SIZES = ["tw:text-caption", "tw:text-body", "tw:text-section"] as c
 
 const HINTS: Partial<Record<AnnotatorTool, string>> = {
   select: "Tap an annotation to select it.",
+  lasso: "Draw a loop around annotations to select them together.",
   eraser: "Drag across annotations to erase them.",
 };
 
@@ -214,6 +219,21 @@ const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "T
 function StyleRow(props: AnnotatorToolbarProps) {
   const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, onMakeCard, disabled } = props;
   const choices = style ? STYLE_CHOICES[style.family] : null;
+  if (tool === "lasso" && props.groupSize > 0) {
+    return (
+      <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
+        <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
+          <ToolbarAction label={`Delete ${props.groupSize} selected`} aria-keyshortcuts="Delete Backspace"
+            onClick={props.onDeleteGroup} className="tw:text-destructive">
+            <Icon name="delete" />
+          </ToolbarAction>
+        </Toolbar>
+        <span className="tw:truncate tw:text-label tw:text-muted-foreground">
+          {props.groupSize} selected{compact ? "" : ". Drag them to move them together."}
+        </span>
+      </div>
+    );
+  }
   if (!choices && !selection) {
     return (
       <p className="tw:m-0 tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:px-1 tw:text-label tw:text-muted-foreground tw:coarse:min-h-touch">

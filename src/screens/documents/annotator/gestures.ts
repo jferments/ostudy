@@ -1,11 +1,14 @@
 import {
+  annotationsInLoop,
   clampToPage,
+  groupBounds,
   handlesFor,
   isDeliberateShape,
   isShapeTool,
   isStickyNote,
   isStorable,
   MAX_STROKE_POINTS,
+  moveGroupWithinPage,
   moveWithinPage,
   resizeShape,
   round,
@@ -62,6 +65,8 @@ export interface GestureContext {
   minScale: number;
   maxScale: number;
   selected: Annotation | null;
+  /** Annotations the lasso took, all on one page. */
+  group: readonly Annotation[];
   annotationsOn(pageNumber: number): readonly Annotation[];
   textHeight(annotation: Annotation): number;
   /** The page's text, when it is known; the highlighter then snaps to it. */
@@ -84,6 +89,13 @@ export type GestureEffect =
   | { kind: "erasing"; annotations: readonly Annotation[] }
   | { kind: "erase"; annotations: readonly Annotation[] }
   | { kind: "select"; id: string | null }
+  /** The lasso loop being drawn, in points on its page. */
+  | { kind: "lasso"; loop: { pageNumber: number; points: readonly number[] } | null }
+  /** The annotations a finished lasso took; none clears the group. */
+  | { kind: "select-group"; pageNumber: number; ids: readonly string[] }
+  /** The lassoed group as it is being moved. */
+  | { kind: "group-preview"; annotations: readonly Annotation[] | null }
+  | { kind: "group-change"; before: readonly Annotation[]; after: readonly Annotation[] }
   | { kind: "edit-text"; annotation: Annotation }
   | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
   | { kind: "scroll-by"; dx: number; dy: number }
@@ -103,6 +115,8 @@ type Gesture =
   | { kind: "erase"; pointerId: number; last: Client; erased: Map<string, Annotation> }
   | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
+  | { kind: "lasso"; pointerId: number; pageNumber: number; points: number[] }
+  | { kind: "group-move"; pointerId: number; pageNumber: number; originals: readonly Annotation[]; start: Point; current: readonly Annotation[] }
   | { kind: "resize"; pointerId: number; pageNumber: number; original: Annotation; handle: Handle; current: Annotation }
   | { kind: "pan"; pointerId: number; last: Client; samples: Array<Client & { time: number }> }
   | { kind: "pinch"; ids: [number, number]; startDistance: number; startScale: number; anchor: ZoomAnchor | null }
@@ -232,6 +246,25 @@ export class AnnotatorGestures {
         this.active = { kind: "idle" };
         return [];
       }
+      case "lasso": {
+        const size = surface.pageSize(active.pageNumber);
+        if (!size) return [];
+        const point = clampToPage(surface.toPage(active.pageNumber, client.x, client.y), size);
+        const lastX = active.points[active.points.length - 2] ?? point.x;
+        const lastY = active.points[active.points.length - 1] ?? point.y;
+        if (Math.hypot(point.x - lastX, point.y - lastY) * context.scale < MIN_POINT_STEP) return [];
+        active.points.push(point.x, point.y);
+        return [{ kind: "lasso", loop: { pageNumber: active.pageNumber, points: [...active.points] } }];
+      }
+      case "group-move": {
+        const size = surface.pageSize(active.pageNumber);
+        if (!size) return [];
+        const point = surface.toPage(active.pageNumber, client.x, client.y);
+        active.current = moveGroupWithinPage(
+          active.originals, point.x - active.start.x, point.y - active.start.y, size, context.textHeight,
+        );
+        return [{ kind: "group-preview", annotations: active.current }];
+      }
       case "move": {
         const size = surface.pageSize(active.pageNumber);
         if (!size) return [];
@@ -307,6 +340,26 @@ export class AnnotatorGestures {
         ];
       case "press":
         return this.tap(active, surface, context);
+      case "lasso":
+        return [
+          { kind: "lasso", loop: null },
+          {
+            kind: "select-group",
+            pageNumber: active.pageNumber,
+            ids: annotationsInLoop(context.annotationsOn(active.pageNumber), active.points, context.textHeight)
+              .map((annotation) => annotation.id),
+          },
+        ];
+      case "group-move": {
+        const moved = active.current.some((annotation, index) => {
+          const original = active.originals[index];
+          return !original || !sameShape(annotation.shape, original.shape);
+        });
+        return [
+          { kind: "group-preview", annotations: null },
+          ...(moved ? [{ kind: "group-change", before: active.originals, after: active.current } as const] : []),
+        ];
+      }
       case "move":
       case "resize":
         return [
@@ -399,6 +452,19 @@ export class AnnotatorGestures {
       return [];
     }
     const start = clampToPage(point, size);
+    if (tool === "lasso") {
+      // Dragging the group moves it; a drag anywhere else draws a new loop.
+      const group = context.group.length > 0 && context.group[0]?.pageNumber === pageNumber ? context.group : [];
+      const bounds = groupBounds(group, context.textHeight);
+      const slop = HIT_SLOP[sample.kind] / context.scale;
+      if (bounds && point.x >= bounds.left - slop && point.x <= bounds.right + slop
+        && point.y >= bounds.top - slop && point.y <= bounds.bottom + slop) {
+        this.active = { kind: "group-move", ...base, pageNumber, originals: group, start: point, current: group };
+        return [];
+      }
+      this.active = { kind: "lasso", ...base, pageNumber, points: [start.x, start.y] };
+      return [{ kind: "lasso", loop: { pageNumber, points: [start.x, start.y] } }];
+    }
     if (tool === "eraser") {
       const gesture: Gesture = { kind: "erase", ...base, last: client, erased: new Map() };
       this.active = gesture;
@@ -557,6 +623,10 @@ export class AnnotatorGestures {
       case "move":
       case "resize":
         return [{ kind: "preview", annotation: null }];
+      case "lasso":
+        return [{ kind: "lasso", loop: null }];
+      case "group-move":
+        return [{ kind: "group-preview", annotations: null }];
       default:
         return [];
     }
