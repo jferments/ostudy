@@ -281,9 +281,11 @@ async fn make_sample(
     let result = speech::speak(
         runtime,
         request,
-        model,
-        "",
-        None,
+        &speech::Speaker {
+            model,
+            voice: "",
+            reference: None,
+        },
         &spoken,
         &accounting.context(),
         &CancellationSignal::new(),

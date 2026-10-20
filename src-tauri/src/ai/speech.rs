@@ -159,18 +159,25 @@ pub(crate) fn request_body(
     body
 }
 
+/// Who speaks: the model, a preset voice (empty for none), and a recording
+/// for a model that copies voices.
+pub(crate) struct Speaker<'a> {
+    pub model: &'a SpeechModel,
+    pub voice: &'a str,
+    pub reference: Option<&'a VoiceReference>,
+}
+
 /// Speaks one finished piece of text. The request is accounted under the
 /// caller's operation; the provider reports no token usage for speech.
 pub(crate) async fn speak(
     runtime: &AiRuntimeState,
     request: &ProfileRequestSnapshot,
-    model: &SpeechModel,
-    voice: &str,
-    reference: Option<&VoiceReference>,
+    speaker: &Speaker<'_>,
     text: &str,
     accounting: &generation::Context,
     cancellation: &CancellationSignal,
 ) -> Result<AudioResponse, CommandError> {
+    let model = speaker.model;
     let profile = &speaking_profile(&request.profile, model);
     profile.validate_for_provider_request()?;
     engine(profile.provider_kind)?;
@@ -181,7 +188,7 @@ pub(crate) async fn speak(
         ));
     }
     let url = join_endpoint(&profile.base_url, "audio/speech")?;
-    let body = request_body(model, voice, text, reference);
+    let body = request_body(model, speaker.voice, text, speaker.reference);
     let credential =
         runtime
             .secrets

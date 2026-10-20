@@ -468,9 +468,11 @@ impl Narrator<'_> {
             let audio = speech::speak(
                 self.runtime,
                 self.request,
-                self.voice.model,
-                &self.voice.voice,
-                self.voice.reference.as_ref(),
+                &speech::Speaker {
+                    model: self.voice.model,
+                    voice: &self.voice.voice,
+                    reference: self.voice.reference.as_ref(),
+                },
                 piece,
                 &accounting,
                 &cancellation,
