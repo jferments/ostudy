@@ -412,6 +412,7 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
+    // Links from cards to the marks they were made from go with the marks.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -435,7 +436,8 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM lesson_progress;
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
-             DELETE FROM lessons;",
+             DELETE FROM lessons;
+             DELETE FROM note_annotation_sources;",
         )
         .map_err(CommandError::database)?;
 
@@ -741,6 +743,40 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, 0);
         assert!(!selection.includes_table("document_annotations"));
+    }
+
+    #[test]
+    fn card_mark_links_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let document = "d".repeat(32);
+                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO decks(id, name, created_at, updated_at)
+                         VALUES ('{deck}', 'Cardiology', 1, 1);
+                         INSERT INTO notes(id, deck_id, front_doc, back_doc, front_text,
+                             back_text, created_at, updated_at)
+                         VALUES ('{note}', '{deck}', '{{}}', '{{}}', 'Q', 'A', 1, 1);
+                         INSERT INTO note_annotation_sources(note_id, document_id,
+                             annotation_id, page_number, quote, created_at, updated_at)
+                         VALUES ('{note}', '{document}', NULL, 1, 'Marked words', 1, 1);",
+                        deck = "1".repeat(32),
+                        note = "2".repeat(32),
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row("SELECT COUNT(*) FROM note_annotation_sources", [], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        assert!(!selection.includes_table("note_annotation_sources"));
     }
 
     #[test]

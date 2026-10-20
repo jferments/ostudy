@@ -51,7 +51,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current runtime lineage is `ostudy-release-v1`, schema 9. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
+The current runtime lineage is `ostudy-release-v1`, schema 10. Its immutable schema-1 baseline and reviewed forward release migrations live under `src-tauri/schema/`. The immutable `ostudy-public-v1` migration registry in `src-tauri/src/database.rs` remains a compatibility input through schema 30 for existing libraries and supported historical backups. Legacy admission validates the exact known migration/repair evidence before any conversion write, normalizes through schema 30, proves preservation on an isolated SQLite copy, and only then atomically switches lineage metadata. Older pre-public v26 terminology belongs to the explicit historical recovery input, not to the current release schema.
 
 ### Exact-tree reuse
 
@@ -168,6 +168,8 @@ The retired Orchestrator PR Ledger, the branch-specific frontend source-checkpoi
 ## Actions compute and storage policy
 
 Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
+
+The Cargo target cache is bounded so it cannot fill the runner's disk. `scripts/runner/bound-cargo-target.sh` runs before the guest preflight. It deletes the incremental state earlier runs left behind, and it clears the whole target when the target is larger than `OSTUDY_CARGO_TARGET_MAX_GIB` (default 40) or the root filesystem has less than `OSTUDY_CARGO_TARGET_MIN_FREE_GIB` free (default 35, which leaves room above the preflight's 25 GiB minimum). A cleared target makes the next run a cold build.
 
 GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, failure summaries, logs, Android smoke evidence, failure bundles, Android packages, and tagged Linux release output are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
 

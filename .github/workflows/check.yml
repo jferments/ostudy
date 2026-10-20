@@ -88,6 +88,9 @@ jobs:
             "$HOME/.cache/ostudy/gradle" \
             "$HOME/.cache/ostudy/cargo-target"
 
+      - name: Bound the persistent Cargo target
+        run: bash ./scripts/runner/bound-cargo-target.sh
+
       - name: Verify exact checkout
         run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
 
