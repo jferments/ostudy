@@ -13,9 +13,11 @@ interface DocumentsSectionProps {
   onPracticeCards: (cardIds: string[]) => Promise<void>;
   onStudyCollection?: (collectionId: string) => void;
   showToast: ShowToast;
+  /** Shows one subject's documents, or No subject's (`null`); every document when left out. */
+  subjectId?: string | null;
 }
 
-export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollection, showToast }: DocumentsSectionProps) {
+export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollection, showToast, subjectId }: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable = capabilities.native === null || capabilities.native.services.nativePdfRender.state === "available";
   const [profile, setProfile] = useState<AiProviderProfileSummary | null>(null);
@@ -56,6 +58,7 @@ export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollect
       onStudyCollection={onStudyCollection}
       showToast={showToast}
       headerSupplement={providerNotice}
+      subjectId={subjectId}
     />
   </div>;
 }

@@ -81,7 +81,9 @@ function Harness() {
           : "none"}
       </output>
       <output aria-label="library section">{controller.librarySection}</output>
-      <output aria-label="subject page">{controller.homeSubjectId ?? "none"}</output>
+      <output aria-label="library subject">
+        {controller.librarySubject.kind === "subject" ? controller.librarySubject.subjectId : controller.librarySubject.kind}
+      </output>
       <output aria-label="finished sessions">{controller.finishedPracticeSessions}</output>
       <output aria-label="subject focus">
         {controller.flashcardsRoute.view === "root" && controller.flashcardsRoute.subjectFocus
@@ -117,8 +119,8 @@ function Harness() {
       <button type="button" onClick={() => void controller.openSubject(null)}>
         Open No subject
       </button>
-      <button type="button" onClick={() => void controller.openSubject(null, "documents")}>
-        Open No subject documents
+      <button type="button" onClick={() => controller.chooseLibrarySubject({ kind: "all" })}>
+        Choose Everything
       </button>
       <button type="button" onClick={() => void controller.openLibrary()}>
         Open Library
@@ -493,33 +495,42 @@ describe("application checkpoint lifecycle", () => {
     await waitFor(() => expect(screen.getByLabelText("route view").textContent).toBe("search"));
     expect(screen.getByLabelText("section").textContent).toBe("decks");
 
+    // A subject opens on its Library page; No subject has one too.
     fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("subject page").textContent).toBe("c".repeat(32)),
-    );
-    expect(screen.getByLabelText("section").textContent).toBe("home");
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("overview"));
+    expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
+    expect(screen.getByLabelText("library section").textContent).toBe("overview");
     fireEvent.click(screen.getByRole("button", { name: "Open No subject" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("subject focus").textContent).toBe("no subject"),
-    );
+    await waitFor(() => expect(screen.getByLabelText("library subject").textContent).toBe("none"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Open No subject documents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
     expect(screen.getByLabelText("library section").textContent).toBe("documents");
+    // The subject stays chosen across Library's pages and destinations.
     fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
     expect(screen.getByLabelText("library section").textContent).toBe("documents");
+    expect(screen.getByLabelText("library subject").textContent).toBe("none");
+
+    // On Flashcards, choosing a subject opens its cards in the Workbench.
+    fireEvent.click(screen.getByRole("button", { name: "Open Decks" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Choose Everything" }));
+    await waitFor(() => expect(screen.getByLabelText("library subject").textContent).toBe("all"));
+    expect(screen.getByLabelText("subject focus").textContent).toBe("none");
 
     vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
     fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("overview"));
     lifecycle("background");
-    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
-    // The focus request is process-local, like an Analytics launch.
+    await waitFor(() =>
+      expect(vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.at(-1)?.[0].section).toBe("overview"),
+    );
     for (const [saved] of vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls) {
-      // The subject page is process-local too: Home is saved, never the subject.
+      // The focus request and the chosen subject are process-local.
       expect(JSON.stringify(saved)).not.toContain("subjectFocus");
       expect(JSON.stringify(saved)).not.toContain("c".repeat(32));
     }

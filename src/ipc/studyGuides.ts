@@ -186,11 +186,18 @@ export type StudyGuideLibrarySort =
   | "title_asc"
   | "title_desc";
 
+/** A document guide belongs to its document's subject; a collection guide to its own. */
+export type StudyGuideSubjectFilter =
+  | { kind: "all" }
+  | { kind: "subject"; subjectId: string }
+  | { kind: "none" };
+
 export interface ListStudyGuidesInput {
   query: string;
   sort: StudyGuideLibrarySort;
   offset: number;
   limit: number;
+  subject: StudyGuideSubjectFilter;
 }
 
 export type StudyGuideTargetKind = "document" | "collection";
@@ -324,6 +331,7 @@ export async function listStudyGuidePage(
       sort: input.sort ?? "recent",
       offset: input.offset ?? 0,
       limit: input.limit ?? 40,
+      subject: input.subject ?? { kind: "all" },
     },
   });
 }

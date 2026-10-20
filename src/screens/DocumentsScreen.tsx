@@ -42,6 +42,8 @@ interface DocumentsScreenProps {
   onStudyCollection?: (collectionId: string) => void;
   showToast: ShowToast;
   headerSupplement?: ReactNode;
+  /** Shows one subject's documents, or No subject's (`null`); every document when left out. */
+  subjectId?: string | null;
 }
 
 type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
@@ -103,7 +105,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     ));
   }, []);
   const contained = new Set(containedDocumentIds);
-  const looseDocuments = documents.filter((document) => !contained.has(document.id));
+  // A subject's documents are its collection's; No subject's are the loose ones.
+  const looseDocuments = typeof props.subjectId === "string"
+    ? []
+    : documents.filter((document) => !contained.has(document.id));
   const hasCollections = (collections.organization?.collections.length ?? 0) > 0;
 
   const openDocument = (document: DocumentSummary) => document.sourceFormat === "image_bundle"
@@ -155,19 +160,27 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         compact
         actions={
           <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
-            <Button
-              disabled={collections.organization === null || collections.busy}
-              onClick={() => setCollectionDialog({ kind: "create", name: "" })}
-            >
-              New collection
-            </Button>
+            {props.subjectId === undefined ? (
+              <Button
+                disabled={collections.organization === null || collections.busy}
+                onClick={() => setCollectionDialog({ kind: "create", name: "" })}
+              >
+                New collection
+              </Button>
+            ) : null}
             <OverflowMenu
               label={isUploading ? "Choose a document…" : "Upload"}
               triggerPresentation="text"
               triggerVariant="primary"
               disabled={isUploading}
               items={[
-                { id: "document", label: "Document…", onSelect: () => void uploadDocument() },
+                {
+                  id: "document",
+                  label: "Document…",
+                  onSelect: () => typeof props.subjectId === "string"
+                    ? uploadInto(props.subjectId)
+                    : void uploadDocument(),
+                },
                 { id: "images", label: "Images…", onSelect: () => setImageWorkspaceDocumentId(null) },
               ]}
             />
@@ -189,9 +202,12 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         onRenameDocument={setRenaming}
         onUploadInto={uploadInto}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
+        onlyCollectionId={props.subjectId}
       />
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
         <EmptyState title="No documents yet" icon="document" />
+      ) : props.subjectId === null && looseDocuments.length === 0 ? (
+        <EmptyState title="Every document has a subject" icon="document" />
       ) : looseDocuments.length === 0 ? null : (
         <section aria-labelledby="loose-documents-heading" className="tw:grid tw:min-w-0 tw:gap-3">
           {hasCollections ? (

@@ -885,6 +885,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Documents", deadline)
     wait_for_overlay_inactive(session_id, deadline, "compact Documents assertions")
     assert_no_horizontal_overflow(session_id, "compact Documents screen")
+    verify_library_subject_pages(session_id, deadline, "compact")
 
     home = webdriver.find_element(
         session_id,
@@ -976,6 +977,34 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     wait_for_active_label(session_id, "New deck", deadline)
 
 
+def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:
+    """Library's Overview and Lessons pages under Everything, with the subjects
+    beside the page on wide screens and behind the header's switcher otherwise."""
+    for view, heading in (("overview", "Overview"), ("lessons", "Lessons")):
+        webdriver.open_library_view(session_id, view, deadline)
+        webdriver.wait_for_element_text(
+            session_id,
+            "css selector",
+            "main [data-testid='library-subject-name']",
+            "Everything",
+            deadline,
+        )
+        wait_for_overlay_inactive(session_id, deadline, f"{layout} Library {heading} assertions")
+        assert_no_horizontal_overflow(session_id, f"{layout} Library {heading}")
+    placement = execute(
+        session_id,
+        """
+        return {
+          pane: document.querySelector("main aside[aria-label='Library subjects']") !== null,
+          switcher: document.querySelector("main [data-testid='library-switch-subject']") !== null,
+        };
+        """,
+    )
+    wide = layout == "wide"
+    if placement != {"pane": wide, "switcher": not wide}:
+        raise AssertionError(f"{layout} Library subject placement drifted: {placement!r}")
+
+
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
@@ -988,6 +1017,7 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
         deadline,
         "wide Study Guides destination",
     )
+    verify_library_subject_pages(session_id, deadline, "wide")
     more_count = execute(
         session_id,
         "return document.querySelectorAll(\"button[data-testid='nav-more']\").length;",

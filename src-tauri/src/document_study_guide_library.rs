@@ -24,6 +24,20 @@ pub(crate) enum StudyGuideLibrarySort {
     TitleDesc,
 }
 
+/// Which subject's guides a page lists. A document guide belongs to the subject
+/// its document is filed in; a collection guide to its own subject.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum StudyGuideSubjectFilter {
+    #[default]
+    All,
+    Subject {
+        #[serde(rename = "subjectId")]
+        subject_id: String,
+    },
+    None,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ListStudyGuidesInput {
@@ -35,6 +49,8 @@ pub(crate) struct ListStudyGuidesInput {
     pub offset: i64,
     #[serde(default = "default_page_size")]
     pub limit: i64,
+    #[serde(default)]
+    pub subject: StudyGuideSubjectFilter,
 }
 
 impl Default for ListStudyGuidesInput {
@@ -44,6 +60,7 @@ impl Default for ListStudyGuidesInput {
             sort: StudyGuideLibrarySort::Recent,
             offset: 0,
             limit: DEFAULT_PAGE_SIZE,
+            subject: StudyGuideSubjectFilter::All,
         }
     }
 }
@@ -95,6 +112,7 @@ WITH guide_rows AS (
         document.source_unit_kind AS source_unit_kind,
         document.source_unit_count AS source_unit_count,
         1 AS source_count,
+        document.subject_id AS subject_id,
         guide.revision AS guide_revision,
         (
             SELECT COUNT(*)
@@ -129,6 +147,7 @@ WITH guide_rows AS (
             FROM documents member
             WHERE member.subject_id = collection.id
         ) AS source_count,
+        collection.id AS subject_id,
         guide.revision AS guide_revision,
         COALESCE(json_array_length(json_extract(guide.content_json, '$.sections')), 0)
             AS section_count,
@@ -182,7 +201,17 @@ WHERE (
     OR lower(COALESCE(source_format, '')) LIKE ?2 ESCAPE '!'
     OR (target_kind = 'collection' AND 'document collection' LIKE ?2 ESCAPE '!')
 )
+AND (
+    ?3 = 'all'
+    OR (?3 = 'none' AND subject_id IS NULL)
+    OR (?3 = 'subject' AND subject_id = ?4)
+)
 "#;
+    let (subject_kind, subject_id) = match &input.subject {
+        StudyGuideSubjectFilter::All => ("all", ""),
+        StudyGuideSubjectFilter::None => ("none", ""),
+        StudyGuideSubjectFilter::Subject { subject_id } => ("subject", subject_id.as_str()),
+    };
     let order = match input.sort {
         StudyGuideLibrarySort::Recent => {
             "published_at DESC, title COLLATE NOCASE, target_kind, target_id"
@@ -201,9 +230,11 @@ WHERE (
     database.with_connection(|connection| {
         let count_sql = format!("{GUIDE_ROWS_SQL}\nSELECT COUNT(*) FROM guide_rows\n{filter}");
         let total_count = connection
-            .query_row(&count_sql, params![normalized_query, pattern], |row| {
-                row.get::<_, i64>(0)
-            })
+            .query_row(
+                &count_sql,
+                params![normalized_query, pattern, subject_kind, subject_id],
+                |row| row.get::<_, i64>(0),
+            )
             .map_err(CommandError::database)?;
 
         let sql = format!(
@@ -214,12 +245,19 @@ SELECT guide_id,target_kind,target_id,title,original_filename,source_format,
 FROM guide_rows
 {filter}
 ORDER BY {order}
-LIMIT ?3 OFFSET ?4"
+LIMIT ?5 OFFSET ?6"
         );
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
         let rows = statement
             .query_map(
-                params![normalized_query, pattern, input.limit, input.offset],
+                params![
+                    normalized_query,
+                    pattern,
+                    subject_kind,
+                    subject_id,
+                    input.limit,
+                    input.offset
+                ],
                 |row| {
                     Ok(StudyGuideLibraryItem {
                         guide_id: row.get(0)?,
@@ -357,6 +395,7 @@ mod tests {
                 sort: StudyGuideLibrarySort::TitleAsc,
                 offset: 0,
                 limit: 40,
+                subject: StudyGuideSubjectFilter::All,
             },
         )
         .expect("page should load");
@@ -373,6 +412,7 @@ mod tests {
                 sort: StudyGuideLibrarySort::TitleAsc,
                 offset: 0,
                 limit: 1,
+                subject: StudyGuideSubjectFilter::All,
             },
         )
         .expect("sorted page should load");
@@ -438,6 +478,7 @@ mod tests {
                 sort: StudyGuideLibrarySort::Recent,
                 offset: 0,
                 limit: 40,
+                subject: StudyGuideSubjectFilter::All,
             },
         )
         .expect("unified page should load");
@@ -454,6 +495,7 @@ mod tests {
                 sort: StudyGuideLibrarySort::Recent,
                 offset: 0,
                 limit: 40,
+                subject: StudyGuideSubjectFilter::All,
             },
         )
         .expect("all guides should load");
@@ -473,6 +515,64 @@ mod tests {
         assert_eq!(second_page.total_count, 2);
         assert_eq!(second_page.items.len(), 1);
         assert_eq!(second_page.items[0].guide_id, all.items[1].guide_id);
+
+        // The document is filed in the collection's subject, so both guides belong to it.
+        let subject = list_study_guides(
+            &database,
+            ListStudyGuidesInput {
+                subject: StudyGuideSubjectFilter::Subject {
+                    subject_id: "c".repeat(32),
+                },
+                ..Default::default()
+            },
+        )
+        .expect("a subject's guides should load");
+        assert_eq!(subject.total_count, 2);
+        let unfiled = list_study_guides(
+            &database,
+            ListStudyGuidesInput {
+                subject: StudyGuideSubjectFilter::None,
+                ..Default::default()
+            },
+        )
+        .expect("No subject's guides should load");
+        assert_eq!(unfiled.total_count, 0);
+        let other = list_study_guides(
+            &database,
+            ListStudyGuidesInput {
+                subject: StudyGuideSubjectFilter::Subject {
+                    subject_id: "9".repeat(32),
+                },
+                ..Default::default()
+            },
+        )
+        .expect("another subject's guides should load");
+        assert_eq!(other.total_count, 0);
+    }
+
+    #[test]
+    fn subject_filter_reads_the_ipc_shape() {
+        let input: ListStudyGuidesInput = serde_json::from_value(serde_json::json!({
+            "query": "",
+            "sort": "recent",
+            "offset": 0,
+            "limit": 40,
+            "subject": { "kind": "subject", "subjectId": "abc" },
+        }))
+        .expect("subject filter should parse");
+        assert_eq!(
+            input.subject,
+            StudyGuideSubjectFilter::Subject {
+                subject_id: "abc".to_string()
+            }
+        );
+        let none: ListStudyGuidesInput =
+            serde_json::from_value(serde_json::json!({ "subject": { "kind": "none" } }))
+                .expect("No subject should parse");
+        assert_eq!(none.subject, StudyGuideSubjectFilter::None);
+        let default: ListStudyGuidesInput =
+            serde_json::from_value(serde_json::json!({})).expect("no filter should parse");
+        assert_eq!(default.subject, StudyGuideSubjectFilter::All);
     }
 
     #[test]

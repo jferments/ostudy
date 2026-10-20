@@ -49,6 +49,7 @@ export function DocumentCollectionsWorkspace({
   onRenameDocument,
   onUploadInto,
   onContainedDocumentIdsChange,
+  onlyCollectionId,
 }: {
   controller: DocumentCollectionsController;
   dialog: CollectionDialog | null;
@@ -63,6 +64,8 @@ export function DocumentCollectionsWorkspace({
   /** Uploads a new document straight into the collection. */
   onUploadInto?: (collectionId: string) => void;
   onContainedDocumentIdsChange?: (documentIds: string[]) => void;
+  /** Shows one collection, or none for No subject (`null`); every collection when left out. */
+  onlyCollectionId?: string | null;
 }) {
   const confirm = useConfirm();
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export function DocumentCollectionsWorkspace({
 
   const loadedOrganization = organization;
   const folders = [...loadedOrganization.collections]
+    .filter((folder) => onlyCollectionId === undefined || folder.id === onlyCollectionId)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
 
   async function deleteCurrent(folder: DocumentCollection): Promise<void> {
@@ -141,7 +145,7 @@ export function DocumentCollectionsWorkspace({
       {folders.length || controller.error ? (
         <section aria-labelledby="document-collections-heading" className="tw:mb-8 tw:grid tw:gap-4">
           {folders.length ? (
-            <h2 id="document-collections-heading" className="tw:m-0 tw:text-body tw:font-semibold">Collections</h2>
+            <h2 id="document-collections-heading" className={onlyCollectionId ? "tw:sr-only" : "tw:m-0 tw:text-body tw:font-semibold"}>Collections</h2>
           ) : null}
           {controller.error ? <InlineNotice kind="error">{controller.error}</InlineNotice> : null}
           <div className="tw:grid tw:grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] tw:items-start tw:gap-5">

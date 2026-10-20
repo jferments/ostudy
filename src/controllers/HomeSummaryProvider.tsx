@@ -220,6 +220,11 @@ export function HomeSummaryProvider({
   return <HomeSummaryContext.Provider value={value}>{children}</HomeSummaryContext.Provider>;
 }
 
+/** The summary where a HomeSummaryProvider is mounted, or null outside one. */
+export function useOptionalHomeSummary(): HomeSummaryState | null {
+  return useContext(HomeSummaryContext);
+}
+
 export function useHomeSummary(): HomeSummaryState {
   const value = useContext(HomeSummaryContext);
   if (!value) throw new Error("useHomeSummary must be used inside HomeSummaryProvider.");

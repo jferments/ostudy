@@ -46,6 +46,7 @@ describe("Study Guides empty library", () => {
       sort: "recent",
       offset: 0,
       limit: 40,
+      subject: { kind: "all" },
     });
   });
 });
