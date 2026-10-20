@@ -54,7 +54,7 @@ A tag on an answer in Progress's review log opens the Workbench on that tag's ca
 Choose a deck in the tree to list its cards. The header names the deck and its subject and offers **Practice**, **New card**, and the deck's actions menu. Practice is unavailable for a deck with no cards. The menu offers:
 
 - **Bulk add…** for several plain-text cards at once.
-- **Practice with options…**, which opens **Practice selected decks**: choose **Scheduled study** or **Extra study**, optionally refine by tags, and choose whether to shuffle.
+- **Practice with options…**, which opens **Practice selected decks**: choose **Due** or **Extra** cards, optionally narrow by tags, and choose whether to shuffle.
 - **Rename…**, **Move to subject…**, and **Merge into…**.
 - **Export…** to save the deck as a portable file.
 - **Archive** and **Delete deck**.

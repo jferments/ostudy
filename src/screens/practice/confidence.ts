@@ -26,6 +26,22 @@ export function outcomeForScore(score: ConfidenceScore): ReviewOutcome {
   }
 }
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/** The next interval a rating would schedule, in the short form shown under it: "1 min", "3 h",
+ * "4 days", "2 mo", "1 yr". */
+export function formatNextInterval(intervalMs: number): string {
+  if (intervalMs < HOUR_MS) return `${Math.max(1, Math.round(intervalMs / MINUTE_MS))} min`;
+  if (intervalMs < DAY_MS) return `${Math.round(intervalMs / HOUR_MS)} h`;
+  const days = Math.round(intervalMs / DAY_MS);
+  if (days < 30) return days === 1 ? "1 day" : `${days} days`;
+  if (days < 365) return `${Math.round(days / 30)} mo`;
+  const years = Math.round((days / 365) * 10) / 10;
+  return `${years} yr`;
+}
+
 export function summarizeRecentDecks(reviews: RecentReview[]): RecentDeckSummary[] {
   const groups = new Map<string, { count: number; total: number; latest: number }>();
   for (const review of reviews) {
