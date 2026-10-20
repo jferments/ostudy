@@ -79,6 +79,8 @@ mod tests {
             ),
             1
         );
+        validate_schema(&connection, VERSION).unwrap();
+        apply_migrations(&mut connection).unwrap();
         validate_input(&connection).unwrap();
     }
 

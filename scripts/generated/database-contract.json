@@ -249,7 +249,7 @@
   "release": {
     "lineage": "ostudy-release-v1",
     "baselineVersion": 1,
-    "version": 13,
+    "version": 14,
     "name": "release_baseline",
     "checksum": "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8",
     "migrations": [
@@ -317,6 +317,11 @@
         "version": 13,
         "name": "lecture_exports",
         "checksum": "b759a0e5e7347557a1f287a43b8d1e07cba3f1ebd347727ebe7d2191740d82ce"
+      },
+      {
+        "version": 14,
+        "name": "lecture_scripts",
+        "checksum": "b342ecf7ef3c1a983d2b10c44357856965f919df4a5780477284284341180505"
       }
     ]
   }

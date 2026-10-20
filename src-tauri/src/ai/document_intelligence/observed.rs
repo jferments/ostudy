@@ -13,14 +13,14 @@ use crate::{
         StudyGuideSectionContent,
     },
     error::CommandError,
-    lessons::content::LessonContent,
+    lessons::{content::LessonContent, teaching::LectureScript},
     task_cancellation::CancellationSignal,
 };
 
 use super::{
-    flashcards, lesson, study_guide, AiRuntimeState, AuthoringEvidence,
+    flashcards, lecture_script, lesson, study_guide, AiRuntimeState, AuthoringEvidence,
     CollectionStudyGuideAuthoring, DocumentOutline, DocumentTaskContext, FlashcardGenerationLimits,
-    LessonAuthoring,
+    LectureScriptAuthoring, LessonAuthoring,
 };
 
 pub(crate) fn generate_window_flashcards<'a>(
@@ -132,6 +132,21 @@ pub(crate) fn generate_lesson<'a>(
         task.diagnostic_window_key.as_deref(),
         Kind::Lesson,
         lesson::generate_lesson(runtime, task, authoring, cancellation),
+        |_| 1,
+    )
+}
+
+pub(crate) fn generate_lecture_script<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    authoring: LectureScriptAuthoring<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl Future<Output = Result<LectureScript, CommandError>> + 'a {
+    observe(
+        task.diagnostics.as_ref(),
+        task.diagnostic_window_key.as_deref(),
+        Kind::LectureScript,
+        lecture_script::generate_lecture_script(runtime, task, authoring, cancellation),
         |_| 1,
     )
 }

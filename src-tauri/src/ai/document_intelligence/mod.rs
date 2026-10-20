@@ -10,6 +10,7 @@ mod contracts;
 mod curation;
 mod evidence;
 mod flashcards;
+mod lecture_script;
 mod lesson;
 mod observed;
 mod outline;
@@ -34,10 +35,12 @@ pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, preflight_window_flashcards, FlashcardGenerationLimits,
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
 };
+pub(crate) use lecture_script::{LectureScriptAuthoring, LECTURE_SCRIPT_PROMPT_VERSION};
 pub(crate) use lesson::{LessonAuthoring, LESSON_PROMPT_VERSION};
 pub(crate) use observed::{
     generate_collection_study_guide_topic_section, generate_document_study_guide_editorial,
-    generate_lesson, generate_study_guide_topic_section, generate_window_flashcards,
+    generate_lecture_script, generate_lesson, generate_study_guide_topic_section,
+    generate_window_flashcards,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use study_guide::{

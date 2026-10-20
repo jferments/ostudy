@@ -282,7 +282,7 @@ impl Drop for Narrating {
 fn busy() -> CommandError {
     CommandError::new(
         "narration_in_progress",
-        "This step's narration is already being made.",
+        "This narration is already being made.",
     )
 }
 
@@ -293,10 +293,10 @@ pub(crate) async fn narrate_lesson_step(
     input: NarrateLessonStepInput,
 ) -> Result<LessonStepNarrationDto, CommandError> {
     validate_entity_id(&input.lesson_id, "lesson")?;
-    let (narration, settings) = database.with_connection(|connection| {
+    let narration = database.with_connection(|connection| {
         require_lesson(connection, &input.lesson_id)?;
         let content = revision_content(connection, &input.lesson_id, input.revision_number)?;
-        let narration = content
+        content
             .content
             .steps
             .iter()
@@ -307,14 +307,37 @@ pub(crate) async fn narrate_lesson_step(
                     "lesson_step_missing",
                     "That step is not part of this lesson.",
                 )
-            })?;
-        Ok((narration, resolved(connection)?))
+            })
     })?;
-    let pieces = segments(&narration, settings.model.max_characters);
+    speak_saved(
+        database,
+        paths,
+        runtime,
+        &narration,
+        format!(
+            "{}:{}:{}",
+            input.lesson_id, input.revision_number, input.step_key
+        ),
+    )
+    .await
+}
+
+/// Speaks text the library already saved with the lesson voice, making only
+/// the pieces that are not kept yet. `key` names what is being spoken, so the
+/// same text is never made twice at once.
+pub(crate) async fn speak_saved(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    text: &str,
+    key: String,
+) -> Result<LessonStepNarrationDto, CommandError> {
+    let settings = database.with_connection(|connection| resolved(connection))?;
+    let pieces = segments(text, settings.model.max_characters);
     if pieces.is_empty() {
         return Err(CommandError::new(
             "lesson_step_unnarrated",
-            "This step has no narration to listen to.",
+            "There is nothing here to listen to.",
         ));
     }
     let profile_id = settings.profile_id.clone().ok_or_else(|| {
@@ -337,10 +360,7 @@ pub(crate) async fn narrate_lesson_step(
         },
     };
 
-    let _narrating = Narrating::begin(format!(
-        "{}:{}:{}",
-        input.lesson_id, input.revision_number, input.step_key
-    ))?;
+    let _narrating = Narrating::begin(key)?;
     let mut found = database.with_connection(|connection| {
         pieces
             .iter()
