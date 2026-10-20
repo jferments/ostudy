@@ -9,23 +9,29 @@ import { SubjectBadge } from "./SubjectBadge";
 interface SubjectTileCardProps {
   tile: SubjectTile;
   compact: boolean;
+  /** The subject's remembered rate over the last 30 days; `null` before any review, undefined while unknown. */
+  remembered?: number | null;
   onOpen: () => void;
 }
 
 /**
  * One subject on Home: a row with its badge, its name, what it holds or the
- * document it is preparing, and its due count. The name is the row's button
+ * document it is preparing, how much of it is remembered, and its due count. The name is the row's button
  * and stretches over the whole row; the rest describes it.
  */
-export function SubjectTileCard({ tile, compact, onOpen }: SubjectTileCardProps) {
+export function SubjectTileCard({ tile, compact, remembered, onOpen }: SubjectTileCardProps) {
   const id = useId();
   const pillId = `${id}-due`;
   const metaId = `${id}-meta`;
+  const rememberedId = `${id}-remembered`;
+  const percent = remembered === undefined || remembered === null ? null : Math.round(remembered * 100);
   const color = tile.colorIndex === null ? null : SUBJECT_COLORS[tile.colorIndex];
   const pill = tilePill(tile);
   const status = tileStatus(tile);
-  const meta = status ? `${status.text}` : tileMeta(tile);
-  const describedBy = [pill ? pillId : null, metaId].filter(Boolean).join(" ");
+  // Phones fold the rate into the row's line; wider rows draw it as a bar.
+  const meta = status ? `${status.text}` : compact && percent !== null ? `${tileMeta(tile)} · ${percent}% remembered` : tileMeta(tile);
+  const showBar = !compact && percent !== null;
+  const describedBy = [pill ? pillId : null, metaId, showBar ? rememberedId : null].filter(Boolean).join(" ");
 
   return (
     <article
@@ -50,6 +56,14 @@ export function SubjectTileCard({ tile, compact, onOpen }: SubjectTileCardProps)
           <span className="tw:min-w-0 tw:truncate">{meta}</span>
         </p>
       </div>
+      {showBar ? (
+        <span id={rememberedId} className="tw:grid tw:w-36 tw:shrink-0 tw:gap-1">
+          <span aria-hidden="true" className="tw:h-1.5 tw:overflow-hidden tw:rounded-full tw:bg-progress-track">
+            <span className="tw:block tw:h-full tw:rounded-full tw:bg-primary" style={{ width: `${percent}%` }} />
+          </span>
+          <span className="tw:text-label tw:text-muted-foreground tw:tabular-nums">{percent}% remembered</span>
+        </span>
+      ) : null}
       {pill ? (
         <span
           id={pillId}
