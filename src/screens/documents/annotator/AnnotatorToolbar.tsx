@@ -10,6 +10,7 @@ import {
   SHAPE_TOOLS,
   STYLE_CHOICES,
   type AnnotatorTool,
+  type EraseMode,
   type ShapeTool,
   type StyleFamily,
   type ToolStyle,
@@ -62,6 +63,8 @@ interface AnnotatorToolbarProps {
   penSeen: boolean;
   penOnly: boolean;
   onTogglePenOnly: () => void;
+  eraseMode: EraseMode;
+  onEraseMode: (mode: EraseMode) => void;
   zoomPercent: number;
   fit: boolean;
   canZoomIn: boolean;
@@ -186,6 +189,11 @@ const HINTS: Partial<Record<AnnotatorTool, string>> = {
   eraser: "Drag across annotations to erase them.",
 };
 
+const ERASE_HINTS: Record<EraseMode, string> = {
+  whole: "Drag across annotations to erase them.",
+  part: "Drag across pen and highlighter strokes to erase just that part.",
+};
+
 type StyleChoices = (typeof STYLE_CHOICES)[StyleFamily];
 type ActiveStyle = NonNullable<AnnotatorToolbarProps["style"]>;
 
@@ -231,6 +239,22 @@ function StyleRow(props: AnnotatorToolbarProps) {
         <span className="tw:truncate tw:text-label tw:text-muted-foreground">
           {props.groupSize} selected{compact ? "" : ". Drag them to move them together."}
         </span>
+      </div>
+    );
+  }
+  if (tool === "eraser" && !selection) {
+    const { eraseMode, onEraseMode } = props;
+    return (
+      <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
+        <Toolbar label="Eraser" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
+          <ToolbarAction label="Erase whole annotations" pressed={eraseMode === "whole"} onClick={() => onEraseMode("whole")}>
+            <Icon name="eraser" />
+          </ToolbarAction>
+          <ToolbarAction label="Erase part of a stroke" pressed={eraseMode === "part"} onClick={() => onEraseMode("part")}>
+            <Icon name="scissors" />
+          </ToolbarAction>
+        </Toolbar>
+        {compact ? null : <span className="tw:truncate tw:text-label tw:text-muted-foreground">{ERASE_HINTS[eraseMode]}</span>}
       </div>
     );
   }

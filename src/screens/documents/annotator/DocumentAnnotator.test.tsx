@@ -255,6 +255,28 @@ describe("document annotator", () => {
     expect(screen.getByText("Draw a loop around annotations to select them together.")).toBeTruthy();
   });
 
+  it("erases part of a highlighter stroke, as one step to undo", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "h" });
+    drag(canvas, [[50, 500], [150, 500], [250, 500]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    const strokeId = savedChanges()[0]?.id;
+
+    fireEvent.keyDown(canvas, { key: "e" });
+    expect(pressed("Erase whole annotations")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Erase part of a stroke" }));
+    expect(pressed("Erase part of a stroke")).toBe("true");
+    expect(screen.getByText("Drag across pen and highlighter strokes to erase just that part.")).toBeTruthy();
+    drag(canvas, [[150, 480], [150, 520]]);
+
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(3));
+    const [removed, ...kept] = savedChanges(1);
+    expect(removed).toEqual({ op: "delete", id: strokeId });
+    expect(kept.map((change) => change.op === "put" ? change.shape.kind : null)).toEqual(["highlight", "highlight"]);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(3));
+  });
+
   it("snaps the highlighter to the page's text and keeps the words it covers", async () => {
     vi.mocked(annotationIpc.getDocumentPageText).mockImplementation((_documentId, pageNumber) => pageNumber === 1
       ? Promise.resolve({

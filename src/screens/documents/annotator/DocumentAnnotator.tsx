@@ -336,6 +336,8 @@ function ReadyAnnotator({
           onTogglePenOnly={controller.togglePenOnly}
           groupSize={controller.group.length}
           onDeleteGroup={controller.deleteGroup}
+          eraseMode={controller.eraseMode}
+          onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
           fit={viewport.fit}
           canZoomIn={viewport.scale < MAX_SCALE}

@@ -25,7 +25,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 | Text | T | Tap where a note should go and type |
 | Sticky note | S | Tap to place a small note that holds longer text and shows its first lines on the page |
 | Line, Arrow, Box, Ellipse | L, A, R, O | Drag from one corner or end to the other |
-| Eraser | E | Drag across annotations to remove each one it touches. A stylus's eraser end, if it has one, erases with any tool |
+| Eraser | E | Drag across annotations to remove each one it touches. Choose **Erase part of a stroke** beside it to take away only the part of a pen or highlighter stroke you drag across, leaving the rest as separate strokes (text highlights, shapes and notes are still erased whole); **Erase whole annotations** goes back. A stylus's eraser end, if it has one, erases with any tool, in the chosen way |
 
 The row under the tools sets the color and size of what you draw next. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
 
