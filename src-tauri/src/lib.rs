@@ -398,6 +398,7 @@ pub fn run() {
             annotation_cards::link_card_note_to_annotation,
             annotation_cards::get_document_marked_cards,
             annotation_cards::get_card_mark_source,
+            library_session::commands::leased_draft_mark_question,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
             lessons::list_subject_lessons,

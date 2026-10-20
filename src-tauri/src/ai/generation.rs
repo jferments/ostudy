@@ -711,6 +711,7 @@ pub(crate) fn stage(file: &str) -> &'static str {
         "artifact_metadata.rs" => "artifact_metadata",
         "study_guide.rs" => "guide_authoring",
         "lesson.rs" => "lesson_authoring",
+        "mark_question.rs" => "mark_question",
         _ => "unclassified",
     }
 }
