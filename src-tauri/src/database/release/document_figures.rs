@@ -1,6 +1,6 @@
-//! Additive release-v14 admission for document figures.
+//! Additive release-v15 admission for document figures.
 //!
-//! Migration 14 adds, for each PDF document, whether the learner chose to use
+//! Migration 15 adds, for each PDF document, whether the learner chose to use
 //! its images and the figures found in it with the passages that explain them.
 //! Figures are found after import; an upgrade writes none, so the tables start
 //! empty.
@@ -11,7 +11,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 14;
+const VERSION: i64 = 15;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -34,11 +34,11 @@ mod tests {
         "document_figure_passages",
     ];
 
-    /// A schema-13 library as the previous release left it, with one document.
-    fn schema_twelve() -> Connection {
-        let connection = release_library(13);
+    /// A schema-14 library as the previous release left it, with one document.
+    fn schema_fourteen() -> Connection {
+        let connection = release_library(14);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 14);
         connection
     }
 
@@ -47,8 +47,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_twelve_upgrades_additively_with_no_figures() {
-        let mut connection = schema_twelve();
+    fn schema_fourteen_upgrades_additively_with_no_figures() {
+        let mut connection = schema_fourteen();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
@@ -77,21 +77,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_thirteenth_migration_rolls_back_to_schema_twelve_and_retries() {
-        let mut connection = schema_twelve();
+    fn interrupted_fifteenth_migration_rolls_back_to_schema_fourteen_and_retries() {
+        let mut connection = schema_fourteen();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_figures_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=14
+                 WHEN NEW.version=15
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 14);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 13).unwrap();
+        validate_schema(&connection, 14).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_figures_migration;")
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_figure_schemas_fail_read_only() {
-        let mut connection = schema_twelve();
+        let mut connection = schema_fourteen();
         for unregistered in [
             migration_sql(VERSION),
             "CREATE INDEX document_figures_in_order ON documents(id);",

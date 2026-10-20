@@ -56,7 +56,7 @@ Review generated material for factual errors, weak questions, duplicates and mis
 
 ## Documents in a subject
 
-A **subject** is one course: its documents, guides, lessons and decks. Library's subject list picks the subject, and its **Documents** tab lists that subject's documents. **Everything** lists every document under its subject's name, with **Open subject** beside each name and **No subject** last; a document in no subject has **Add to…** on its row. Subjects do not nest, and a document is in one subject at most.
+A **subject** is one course: its documents, guides, lessons and decks. Library's subject list picks the subject, and its **Documents** tab lists that subject's documents. **Everything** lists every document under its subject's name, with **Open subject** beside each name and **No subject** last; a document in no subject has **Add to…** on its row. Subjects do not nest, and a document is in one subject at most. **Search documents** above the list narrows it to the documents whose title or file name contains what you type.
 
 A document's **…** menu files it: **Add to a subject…** or **Move to another subject…**, and **Remove from subject**. Moving a document moves its reading range and its generated deck with it; removing it leaves the document and its deck in **No subject** and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
 

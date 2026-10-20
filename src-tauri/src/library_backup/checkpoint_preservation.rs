@@ -219,9 +219,15 @@ const CONTRACTS: &[Contract] = &[
         setup: "",
         rules: &[],
     },
-    // Figures are found after import; the upgrade only creates their tables.
+    // Annotated PDF copies widen prepared_exports' purposes the same way.
     Contract {
         version: 14,
+        setup: "",
+        rules: &[],
+    },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 15,
         setup: "",
         rules: &[
             Rule::AddedEmpty {

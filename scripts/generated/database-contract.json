@@ -249,7 +249,7 @@
   "release": {
     "lineage": "ostudy-release-v1",
     "baselineVersion": 1,
-    "version": 14,
+    "version": 15,
     "name": "release_baseline",
     "checksum": "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8",
     "migrations": [
@@ -320,6 +320,11 @@
       },
       {
         "version": 14,
+        "name": "annotated_pdf_exports",
+        "checksum": "689d37008214b79efc99d7954c242cac9c9c1850a0e0ee20ed6319aa86a7b0be"
+      },
+      {
+        "version": 15,
         "name": "document_figures",
         "checksum": "06bc6a3a985fc1accc63029308d174696a476ceaf75a39d6eba4fae8688f5830"
       }

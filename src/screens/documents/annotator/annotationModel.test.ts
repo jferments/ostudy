@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import type { InkShape } from "../../../ipc/documentAnnotations";
+
 import {
+  annotationsInLoop,
   cleanNoteText,
+  insideLoop,
+  moveGroupWithinPage,
+  cutStroke,
+  isCuttable,
   describeAnnotation,
   distanceToShape,
   estimateTextHeight,
@@ -66,6 +73,57 @@ describe("annotation hit testing", () => {
     const ellipse: AnnotationShape = { kind: "ellipse", x: 0, y: 0, width: 200, height: 100, color: red, strokeWidth: 2 };
     expect(distanceToShape(ellipse, { x: 200, y: 50 }, 0)).toBe(0);
     expect(distanceToShape(ellipse, { x: 100, y: 50 }, 0)).toBe(49);
+  });
+});
+
+describe("lasso groups", () => {
+  const square = [0, 0, 100, 0, 100, 100, 0, 100];
+  const at = (id: string, x: number, y: number) => ({
+    id, pageNumber: 1, createdAt: 1,
+    shape: { kind: "rectangle" as const, x, y, width: 20, height: 20, color: "#dc2626", strokeWidth: 2 },
+  });
+
+  it("takes annotations whose middle the loop surrounds", () => {
+    expect(insideLoop({ x: 50, y: 50 }, square)).toBe(true);
+    expect(insideLoop({ x: 150, y: 50 }, square)).toBe(false);
+    const inside = at("in", 10, 10);
+    const halfway = at("half", 85, 40);
+    const outside = at("out", 95, 40);
+    expect(annotationsInLoop([inside, halfway, outside], square, () => 0).map((annotation) => annotation.id))
+      .toEqual(["in", "half"]);
+    expect(annotationsInLoop([inside], [0, 0, 100, 100], () => 0)).toEqual([]);
+  });
+
+  it("moves a group only as far as all of it stays on the page", () => {
+    const moved = moveGroupWithinPage([at("a", 10, 10), at("b", 80, 50)], 50, -30, { width: 120, height: 200 }, () => 0);
+    expect(moved.map((annotation) => annotation.shape.kind === "rectangle" ? [annotation.shape.x, annotation.shape.y] : null))
+      .toEqual([[30, 0], [100, 40]]);
+  });
+});
+
+describe("erasing part of a stroke", () => {
+  const ink: InkShape = { kind: "ink", points: [0, 0, 0.2, 100, 0, 0.6], color: "#1f2328", strokeWidth: 2, simulatePressure: false };
+
+  it("cuts a stroke where the eraser crosses it, even between two far-apart points", () => {
+    expect(cutStroke(ink, { x: 50, y: 0 }, 9)).toEqual([
+      { ...ink, points: [0, 0, 0.2, 40, 0, 0.36] },
+      { ...ink, points: [60, 0, 0.44, 100, 0, 0.6] },
+    ]);
+  });
+
+  it("leaves a stroke the eraser misses, and trims one it reaches the end of", () => {
+    expect(cutStroke(ink, { x: 50, y: 30 }, 9)).toBeNull();
+    // The eraser's edge reaches the stroke's edge: its half width counts.
+    expect(cutStroke(ink, { x: 50, y: 9.5 }, 9)).not.toBeNull();
+    expect(cutStroke(ink, { x: 100, y: 0 }, 9)).toEqual([{ ...ink, points: [0, 0, 0.2, 90, 0, 0.56] }]);
+    expect(cutStroke({ ...ink, points: [5, 5, 0.5] }, { x: 5, y: 5 }, 9)).toEqual([]);
+  });
+
+  it("cuts pen and free highlighter strokes, and leaves highlights of the page's text whole", () => {
+    expect(isCuttable(ink)).toBe(true);
+    expect(isCuttable({ kind: "highlight", points: [0, 0, 10, 0], color: "#fde047", strokeWidth: 16 })).toBe(true);
+    expect(isCuttable({ kind: "highlight", points: [], color: "#fde047", strokeWidth: 14, rects: [0, 0, 10, 10], text: "SA node" })).toBe(false);
+    expect(isCuttable({ kind: "line", x1: 0, y1: 0, x2: 10, y2: 0, color: "#dc2626", strokeWidth: 3 })).toBe(false);
   });
 });
 

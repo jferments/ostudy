@@ -99,6 +99,7 @@ export interface NativeCommandGatewayMap {
   "discard_editor_draft": readonly [typeof GatewayModule16.discardEditorDraft];
   "dismiss_incoming_share": readonly [typeof GatewayModule18.dismissIncomingShare];
   "dismiss_subject_filing_review": readonly [typeof GatewayModule39.dismissSubjectFilingReview];
+  "draft_mark_question": readonly [typeof GatewayModule3.draftMarkQuestion];
   "find_document_figures": readonly [typeof GatewayModule14.findDocumentFigures];
   "find_duplicate_cards": readonly [typeof GatewayModule6.findDuplicateCards];
   "flush_diagnostics": readonly [typeof GatewayModule11.flushNativeDiagnostics];
@@ -213,6 +214,7 @@ export interface NativeCommandGatewayMap {
   "open_document_source": readonly [typeof GatewayModule15.openDocumentSource];
   "open_document_study_guide_section": readonly [typeof GatewayModule36.openStudyGuideSection];
   "open_editor_draft": readonly [typeof GatewayModule16.openEditorDraft];
+  "prepare_annotated_pdf": readonly [typeof GatewayModule12.prepareAnnotatedPdf];
   "prepare_collection_study_guide_pdf": readonly [typeof GatewayModule38.prepareCollectionStudyGuidePdf];
   "prepare_collection_synthesis": readonly [typeof GatewayModule23.prepareCollectionSynthesis];
   "prepare_deck_export": readonly [typeof GatewayModule9.prepareDeckExport];

@@ -875,6 +875,15 @@ pub(crate) use page_tiles::{
 mod page_text;
 pub(crate) use page_text::{get_document_page_text, DocumentPageTextDto, GetDocumentPageTextInput};
 
+#[path = "document_annotations/pdf_export.rs"]
+mod pdf_export;
+
+#[path = "document_annotations/annotated_pdf.rs"]
+mod annotated_pdf;
+pub(crate) use annotated_pdf::{
+    prepare_annotated_pdf, PrepareAnnotatedPdfInput, PreparedAnnotatedPdfDto,
+};
+
 #[cfg(test)]
 #[path = "document_annotations/tests.rs"]
 mod tests;

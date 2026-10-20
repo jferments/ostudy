@@ -16,10 +16,15 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
+    ai::{
+        document_intelligence, document_provider::load_document_provider_capabilities,
+        AiRuntimeState,
+    },
     database::Database,
     document_citations::upsert_document_snapshot,
     document_domain::{SourceLocator, SourceUnitKind},
     error::CommandError,
+    knowledge::runtime::TaskGuard,
     util::{unix_time_millis, validate_entity_id},
 };
 
@@ -43,6 +48,19 @@ pub struct GetDocumentMarkedCardsInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GetCardMarkSourceInput {
     pub note_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DraftMarkQuestionInput {
+    pub operation_id: String,
+    pub annotation_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkQuestionDraftDto {
+    pub question: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -91,6 +109,91 @@ pub fn get_card_mark_source(
     input: GetCardMarkSourceInput,
 ) -> Result<Option<CardMarkSourceDto>, CommandError> {
     database.with_connection(|connection| mark_source(connection, &input.note_id))
+}
+
+/// A question the learner's flashcard model writes for a mark's words. The
+/// learner edits it in the new card before anything is saved.
+pub async fn draft_mark_question(
+    database: &Database,
+    runtime: &AiRuntimeState,
+    input: DraftMarkQuestionInput,
+) -> Result<MarkQuestionDraftDto, CommandError> {
+    validate_entity_id(&input.operation_id, "question operation")?;
+    let mark =
+        database.with_connection(|connection| mark_words(connection, &input.annotation_id))?;
+    let guard = TaskGuard::begin(
+        &input.operation_id,
+        &format!("mark-question:{}", input.annotation_id),
+        false,
+    )?;
+    // The flashcard model writes it without reasoning, like the cards made
+    // from a whole document.
+    let mut task = document_intelligence::load_document_task_context(database)?;
+    let capabilities = load_document_provider_capabilities(
+        database,
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    task.apply_provider_capabilities(&capabilities);
+    let question = document_intelligence::request_mark_question(
+        runtime,
+        &task,
+        &document_intelligence::MarkQuestionSource {
+            document_title: &mark.document_title,
+            page_number: mark.page_number,
+            words: &mark.words,
+        },
+        &guard.signal,
+    )
+    .await?;
+    guard.check()?;
+    Ok(MarkQuestionDraftDto { question })
+}
+
+/// What a question for a mark is asked about.
+#[derive(Debug, PartialEq)]
+pub(crate) struct MarkWords {
+    pub document_title: String,
+    pub page_number: i64,
+    pub words: String,
+}
+
+/// A mark's words and where it is; strokes and shapes hold no words to ask about.
+pub(crate) fn mark_words(
+    connection: &Connection,
+    annotation_id: &str,
+) -> Result<MarkWords, CommandError> {
+    validate_entity_id(annotation_id, "annotation")?;
+    let (document_title, page_number, payload): (String, i64, String) = connection
+        .query_row(
+            "SELECT document.title, annotation.page_number, annotation.payload_json
+             FROM document_annotations AS annotation
+             JOIN documents AS document ON document.id = annotation.document_id
+             WHERE annotation.id = ?1",
+            [annotation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .ok_or_else(|| {
+            CommandError::new(
+                "document_annotation_not_found",
+                "That mark is no longer on the document.",
+            )
+        })?;
+    let words = quote_from_payload(&payload);
+    if words.is_empty() {
+        return Err(CommandError::new(
+            "mark_has_no_words",
+            "Only a highlight of the PDF's text or a note can suggest a question.",
+        ));
+    }
+    Ok(MarkWords {
+        document_title,
+        page_number,
+        words,
+    })
 }
 
 /// A note's link to its mark, or none for a card not made from one. An
