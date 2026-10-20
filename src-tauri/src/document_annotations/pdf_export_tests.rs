@@ -4,10 +4,12 @@ use oxidize_pdf::parser::{PdfDocument, PdfReader};
 
 use super::*;
 
+/// A fixture page: its media box, crop box and rotation.
+type FixturePage = ([f64; 4], Option<[f64; 4]>, i32);
+
 /// A small PDF whose pages each fill their media box with mid grey, so a
-/// mark only shows if it is drawn over the page's own content. Each page is
-/// `(media box, crop box, rotation)`.
-fn fixture(pages: &[([f64; 4], Option<[f64; 4]>, i32)]) -> Vec<u8> {
+/// mark only shows if it is drawn over the page's own content.
+fn fixture(pages: &[FixturePage]) -> Vec<u8> {
     let kids: Vec<String> = (0..pages.len())
         .map(|index| format!("{} 0 R", 3 + 2 * index))
         .collect();
