@@ -817,7 +817,7 @@ def verify_fresh_home(session_id: str, deadline: float) -> None:
         deadline,
     )
     wait_for_main_heading(session_id, "Your library is empty", deadline)
-    for label in ("Create a subject", "Import a document", "Open Library"):
+    for label in ("Create a subject", "Import a document", "Import a deck"):
         find_element(
             session_id,
             "xpath",
