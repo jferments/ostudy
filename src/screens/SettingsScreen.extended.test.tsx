@@ -153,8 +153,7 @@ function renderSettings(showToast = vi.fn()) {
 }
 
 async function openAiTab(): Promise<void> {
-  await waitFor(() => expect(settingsIpc.getAppInfo).toHaveBeenCalledOnce());
-  fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
+  fireEvent.click(await screen.findByRole("tab", { name: "AI" }));
 }
 
 async function readyAddProviderButton(): Promise<HTMLButtonElement> {

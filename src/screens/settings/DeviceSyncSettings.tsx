@@ -268,7 +268,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     : "Waiting for the Android device to accept the request…";
 
   return (
-    <Panel headingLevel={2} title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
+    <Panel title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
       actions={<Button variant="text" disabled={busyAction !== null} onClick={() => void refresh()}>Refresh</Button>}>
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {!state && busyAction === "refresh" ? <InlineProgress>Opening the device synchronization store…</InlineProgress> : null}
@@ -280,7 +280,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
           <Button disabled={busyAction !== null || deviceName.trim() === state.identity.displayName} onClick={() => void saveDeviceName()}>{busyAction === "name" ? "Saving…" : "Save device name"}</Button>
         </div>
         <div className="tw:grid tw:items-start tw:gap-6 tw:xl:grid-cols-2">
-          <Panel as="article" title="Send to another device" description="Choose exactly which categories this one-way transfer may contain. The receiving device never uploads its own library in response.">
+          <Panel as="article" headingLevel={4} title="Send to another device" description="Choose exactly which categories this one-way transfer may contain. The receiving device never uploads its own library in response.">
             <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-4">
               <legend className="tw:px-2 tw:text-label tw:font-semibold">What to synchronize</legend>
               <SyncChoice title="Flashcards" description="Decks, folders, cards, templates, tags, schedules, review history, and managed card images."
@@ -317,7 +317,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
               <Button className="tw:w-full" onClick={() => void copyInvitation()}>Copy invitation text</Button>
             </div> : null}
           </Panel>
-          <Panel as="article" title="Receive from another device" description="Network offers can be scanned on Android or pasted below. Direct USB transfers are presented as an explicit Accept or Reject request on Android. Accepting a transfer never uploads this device's library back.">
+          <Panel as="article" headingLevel={4} title="Receive from another device" description="Network offers can be scanned on Android or pasted below. Direct USB transfers are presented as an explicit Accept or Reject request on Android. Accepting a transfer never uploads this device's library back.">
             {state.qrScanAvailable ? <>
               <p className="tw:m-0 tw:text-label tw:text-muted-foreground">Center the complete QR code inside the camera frame and hold the phone steady. After detection, ostudy accepts the network offer and begins receiving automatically.</p>
               <Button disabled={busyAction !== null} onClick={() => void scanPairingCode()}>{busyAction === "scan" ? "Scanning…" : busyAction === "receive" ? "Receiving…" : "Scan and receive"}</Button>
@@ -343,14 +343,14 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <Button variant="text" disabled={cancelingSessionId !== null} aria-label={`Cancel ${session.direction === "host" ? "sending" : "receiving"} request`} onClick={() => void cancelSession(session)}>{cancelingSessionId === session.id ? "Canceling…" : "Cancel"}</Button>
           </div>)}
         </section> : null}
-        <Panel title="Trusted devices" actions={<Badge>{state.peers.length}</Badge>}>
+        <Panel headingLevel={4} title="Trusted devices" actions={<Badge>{state.peers.length}</Badge>}>
           {state.peers.length === 0 ? <p className="tw:m-0 tw:text-label tw:text-muted-foreground">No devices have been paired yet.</p> : state.peers.map((peer) =>
             <article key={peer.id} className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-4 tw:rounded-lg tw:bg-muted tw:p-4">
               <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words"><strong className="tw:font-medium">{peer.displayName}</strong><span className="tw:text-caption tw:text-muted-foreground">{formatFingerprint(peer.fingerprint)}</span><small className="tw:text-muted-foreground">{peer.lastSyncedAt ? `Last synchronized ${formatDateTime(peer.lastSyncedAt)}` : `Paired ${formatDateTime(peer.pairedAt)}`}</small></div>
               <Button variant="dangerGhost" disabled={busyAction !== null} onClick={() => void removePeer(peer.id, peer.displayName)}>{busyAction === `remove:${peer.id}` ? "Removing…" : "Remove"}</Button>
             </article>)}
         </Panel>
-        <Panel title="Conflicts requiring a decision" actions={<Badge tone={state.conflicts.length ? "warning" : "neutral"}>{state.conflicts.length}</Badge>}>
+        <Panel headingLevel={4} title="Conflicts requiring a decision" actions={<Badge tone={state.conflicts.length ? "warning" : "neutral"}>{state.conflicts.length}</Badge>}>
           {state.conflicts.length === 0 ? <p className="tw:m-0 tw:text-label tw:text-muted-foreground">No unresolved synchronization conflicts.</p> : state.conflicts.map((conflict) =>
             <article key={conflict.id} className="tw:grid tw:min-w-0 tw:gap-4 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-4">
               <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-3"><div className="tw:grid tw:min-w-0 tw:gap-1"><strong>{humanizeTable(conflict.tableName)}</strong><span className="tw:text-caption tw:text-muted-foreground">{conflict.conflictingFields.join(", ") || "Whole record"}</span></div><small>{formatDateTime(conflict.createdAt)}</small></div>

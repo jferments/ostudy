@@ -252,7 +252,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const notices = (
     <div className={hintOnly ? "tw:grid tw:gap-2" : styles.notices}>
       {!tutor.profiles.length && !tutor.loading ? (
-        <InlineNotice>Choose a Tutor model in Settings → AI/LLM to send messages.</InlineNotice>
+        <InlineNotice>Choose a Tutor model in Settings → AI to send messages.</InlineNotice>
       ) : null}
       {sourceError ? <InlineNotice kind="error">{sourceError}</InlineNotice> : null}
       {tutor.error ? <InlineNotice kind="error">{tutor.error}</InlineNotice> : null}

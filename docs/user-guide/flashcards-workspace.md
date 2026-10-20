@@ -1,6 +1,6 @@
 # Library Workbench, authoring, and search
 
-**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup/Sync.
+**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
 Library's pages are tabs along its top: **Flashcards** (the Workbench), **Documents**, and **Study guides**. **Import deck** sits at the end of the tabs on the Flashcards page.
 

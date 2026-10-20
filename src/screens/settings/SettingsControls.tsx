@@ -1,7 +1,7 @@
 import type { AppSettings } from "../../ipc/settings";
 import { FONT_PRESET_OPTIONS } from "../../ui/appearance/appearanceTypes";
 import { FormField } from "../../ui/primitives/FormField";
-import { Slider } from "../../ui/primitives/FormControls";
+import { Slider, Switch } from "../../ui/primitives/FormControls";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
 
@@ -100,4 +100,14 @@ export function NumberControl({ label, value, onChange }: {
 
 export function PathRow({ label, value }: { label: string; value: string }) {
   return <div className="tw:grid tw:min-w-0 tw:gap-0.5"><dt className="tw:text-caption tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:break-all tw:text-small" title={value}>{value}</dd></div>;
+}
+
+/** One on/off preference: its name beside a switch, the whole row toggling it. */
+export function SwitchRow({ label, checked, onChange }: {
+  label: string; checked: boolean; onChange: (checked: boolean) => void;
+}) {
+  return <label className="tw:flex tw:min-h-12 tw:cursor-pointer tw:items-center tw:justify-between tw:gap-6 tw:text-body tw:font-medium">
+    <span className="tw:min-w-0">{label}</span>
+    <Switch checked={checked} onCheckedChange={onChange} />
+  </label>;
 }

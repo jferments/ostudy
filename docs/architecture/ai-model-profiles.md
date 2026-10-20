@@ -24,7 +24,7 @@ The frontend's transitional optional input is removed before current Settings IP
 
 ## Current Settings flow
 
-Settings → AI/LLM is a vertical flow with task/default assignment, wrapping model list, selected-model controls, and advanced configuration. Add model asks for the implemented provider, relevant endpoint/key, connection/model discovery, model selection, and profile save/test. Less frequent trust/timeout/storage/routing choices remain contextual.
+Settings → AI is a vertical flow with task/default assignment, wrapping model list, selected-model controls, and advanced configuration. Add model asks for the implemented provider, relevant endpoint/key, connection/model discovery, model selection, and profile save/test. Less frequent trust/timeout/storage/routing choices remain contextual.
 
 Only implemented adapters appear as normal choices: llama.cpp/Unsloth, DeepSeek, OpenRouter, and Claude. Ollama, OpenAI, and Gemini remain planned catalog entries. Nonsecret endpoint/model metadata is legitimate frontend state; saved credential bytes are not.
 
