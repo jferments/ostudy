@@ -46,7 +46,9 @@ You can keep adding images while processing runs. They wait for the current step
 
 Generated cards appear in **Library → Flashcards**, in the document's own deck, and generated guides in **Library → Study guides**. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
 
-Document cards can be Basic or Fill in the blank recall cards, or single-best-answer, select-all, true/false, matching, grouping and ordering questions where the source supports them. Choose which formats are used, and their mix, under **Question generation** in **Settings → AI**. Image occlusion is always made by hand. The mix is a target, not a quota: if the source does not support a format, ostudy uses another or makes fewer cards rather than filler.
+### Generated card formats
+
+Document cards can be Basic or Fill in the blank recall cards, or single-best-answer, select-all, true/false, matching, grouping and ordering questions where the source supports them. Choose which formats AI writes under **Built-in templates** in **Settings → Card templates**: each format has a switch, and **Question mix** sets how strongly each one is preferred and how many parts one question may have. Switches save at once and never change existing cards or running tasks. Image occlusion is always made by hand. The mix is a target, not a quota: if the source does not support a format, ostudy uses another or makes fewer cards rather than filler.
 
 Review generated material for factual errors, weak questions, duplicates and missing nuance. A source label and a valid format are useful evidence, not proof that a card is correct.
 

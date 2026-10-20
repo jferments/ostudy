@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as aiIpc from "../ipc/aiProfiles";
@@ -157,7 +157,7 @@ async function openAiTab(): Promise<void> {
 }
 
 async function readyAddProviderButton(): Promise<HTMLButtonElement> {
-  const button = (await screen.findByRole("button", { name: "Add provider" })) as HTMLButtonElement;
+  const button = (await screen.findByRole("button", { name: "Add a service" })) as HTMLButtonElement;
   await waitFor(() => expect(button.disabled).toBe(false));
   return button;
 }
@@ -226,13 +226,11 @@ describe("SettingsScreen AI provider/model behavior", () => {
     renderSettings();
     await openAiTab();
     fireEvent.click(await readyAddProviderButton());
-    const provider = (await screen.findByRole("combobox", {
-      name: "Provider",
-    })) as HTMLSelectElement;
-    expect(provider.value).toBe("openrouter");
-    const apiKey = await screen.findByLabelText("API key");
+    const sheet = await screen.findByRole("dialog", { name: "Add a service" });
+    expect(within(sheet).getByRole("radio", { name: /^OpenRouter/u }).getAttribute("aria-checked")).toBe("true");
+    const apiKey = await within(sheet).findByLabelText("API key");
     fireEvent.change(apiKey, { target: { value: "sentinel-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Connect" }));
 
     await waitFor(() => {
       expect(aiIpc.createAiProviderProfile).toHaveBeenCalledWith(
@@ -247,39 +245,39 @@ describe("SettingsScreen AI provider/model behavior", () => {
       expect(aiIpc.getAiTaskDefaults).toHaveBeenCalledTimes(2);
       expect(aiIpc.listAiProviderModels).toHaveBeenCalledWith(profileId, 2);
     });
-    expect((apiKey as HTMLInputElement).value).toBe("");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a service" })).toBeNull());
     expect(screen.queryByText("sentinel-secret")).toBeNull();
 
     await waitFor(() => {
       expect(
         (screen.getByRole("combobox", {
-          name: "Flashcard and study-guide generation provider",
+          name: "Cards and guides service",
         }) as HTMLSelectElement).value,
       ).toBe(profileId);
       expect(
         (screen.getByRole("combobox", {
-          name: "Flashcard and study-guide generation model",
+          name: "Cards and guides model",
         }) as HTMLSelectElement).value,
       ).toBe("deepseek/deepseek-v4.1-flash");
       // Document work never reasons, so only the Tutor row offers the choice.
       expect(
         screen.queryByRole("combobox", {
-          name: "Flashcard and study-guide generation reasoning",
+          name: "Cards and guides reasoning",
         }),
       ).toBeNull();
       expect(
         (screen.getByRole("combobox", {
-          name: "Interactive tutor model",
+          name: "Tutor model",
         }) as HTMLSelectElement).value,
       ).toBe("deepseek/deepseek-v4.1-flash");
       expect(
         (screen.getByRole("combobox", {
-          name: "Interactive tutor reasoning",
+          name: "Tutor reasoning",
         }) as HTMLSelectElement).value,
       ).toBe("low");
       expect(
         (screen.getByRole("combobox", {
-          name: "Semantic embeddings model",
+          name: "Search model",
         }) as HTMLSelectElement).value,
       ).toBe("qwen/qwen3-embedding-4b");
     });
@@ -302,23 +300,25 @@ describe("SettingsScreen AI provider/model behavior", () => {
     renderSettings();
     await openAiTab();
     fireEvent.click(await readyAddProviderButton());
-    fireEvent.click(await screen.findByText("Advanced settings"));
+    const sheet = await screen.findByRole("dialog", { name: "Add a service" });
+    fireEvent.click(within(sheet).getByText("More options"));
     await act(async () => loadFirst(first));
-    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
+    expect((within(sheet).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe(
       "OpenRouter 3",
     );
   });
 
-  it("keeps model and reasoning controls out of the provider connection editor", async () => {
+  it("keeps model and reasoning controls out of the service sheet", async () => {
     const connected = profile();
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(connected)]);
     vi.mocked(aiIpc.getAiProviderProfile).mockResolvedValue(connected);
 
     renderSettings();
     await openAiTab();
-    await screen.findByRole("button", { name: "Refresh model catalog" });
-    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /^OpenRouter/u }));
+    const sheet = await screen.findByRole("dialog", { name: "OpenRouter" });
+    await within(sheet).findByRole("button", { name: "Refresh models" });
+    expect(within(sheet).queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(within(sheet).queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
   });
 });

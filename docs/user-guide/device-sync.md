@@ -2,32 +2,32 @@
 
 Device synchronization lets one ostudy installation send selected data directly to another trusted installation. There is no ostudy cloud account, and accepting a transfer never uploads the receiving device's library back to the sender.
 
-Open **Settings → Backup and sync → Device synchronization**.
+Open **Settings → Backup and sync**. **Devices** lists this device and the devices it has synchronized with; **Send to a device** and **Receive** start a transfer, and **Rename** in this device's menu changes the name other devices see.
 
 ## Two connection paths
 
 ostudy has two transport adapters under the same authenticated synchronization protocol:
 
-- **USB Sync** is the preferred cable workflow on a supported Linux desktop sending to Android. Plug in one Android phone with a data-capable USB cable, choose the data, and click **USB Sync**. There is no USB tethering, IP address, network-adapter selection, QR scan, ADB, developer-mode, or USB-debugging setup in the product workflow.
-- **Local network** uses Wi-Fi or Ethernet. The sender creates a short-lived QR/text invitation containing its private LAN endpoint; the receiver scans or pastes it.
+- **USB Sync** is the preferred cable workflow on a supported Linux desktop sending to Android. Plug in one Android phone with a data-capable USB cable, choose **Send to a device**, pick **USB cable** under **How to send**, choose the data, and choose **Send over USB**. There is no USB tethering, IP address, network-adapter selection, QR scan, ADB, developer-mode, or USB-debugging setup in the product workflow.
+- **Local network** uses Wi-Fi or Ethernet. The sender shows a short-lived sync code, as a QR code or text, containing its private LAN endpoint; the receiver scans or pastes it.
 
 The transport changes only how the two native processes exchange bytes. Device identity, pairing proof, authenticated key exchange, encryption, package validation, selected data scopes, merge rules, conflicts, typed-question admission, and cancellation are shared.
 
 ## Choose what to synchronize
 
-Every outgoing transfer has a **What to synchronize** section. The sender chooses the categories included in that transfer:
+Every outgoing transfer has a **What to send** section. The sender chooses the categories included in that transfer:
 
 - **Flashcards** — decks, Basic/Fill in the blank and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, source-citation snapshots, and managed card/question images.
 - **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
-- **Study Guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
-- **API provider settings** — AI provider profiles and task defaults. Ordinary app preferences are not included.
-- **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from provider settings.
+- **Study guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
+- **AI services** — AI service profiles and task defaults. Ordinary app preferences are not included.
+- **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from AI services.
 
 Subjects, which hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device. If one device deletes a subject while the other files a deck or document in it, the deck or document ends up in No subject, the way deleting a subject leaves the decks and documents it held.
 
-Flashcards, Documents, and Study Guides are selected by default. **API provider settings** and **Saved API keys** are off by default.
+Flashcards, Documents, and Study guides are selected by default. **AI services** and **Saved API keys** are off by default. **Saved API keys** is unavailable when this device has no secure key storage.
 
-Selecting **Study Guides** also selects **Documents**. Selecting **Saved API keys** also selects **API provider settings**. Turning a required parent category off turns its dependent category off too. Native validation repeats these rules; they do not rely only on checkbox state.
+Selecting **Study guides** also selects **Documents**. Selecting **Saved API keys** also selects **AI services**. Turning a required parent category off turns its dependent category off too. Native validation repeats these rules; they do not rely only on switch state.
 
 At least one transferable category must be selected.
 
@@ -44,7 +44,7 @@ Some data always stays on the device, whatever is selected:
 - The knowledge ostudy extracted from documents, so a transferred document may be read again before new material is made from it on the receiving device.
 - PDF annotations.
 - Lessons and lesson progress.
-- How generated questions were made (their generation evidence) and your **Question generation** preferences.
+- How generated questions were made (their generation evidence) and your **Question mix** in **Settings → Card templates**.
 - AI model test results.
 
 Use a whole-library backup to move these.
@@ -55,8 +55,8 @@ For a supported Linux desktop sending to Android:
 
 1. Open ostudy on the desktop and Android phone.
 2. Connect **one Android phone** with a data-capable USB cable.
-3. On the desktop, select the categories under **What to synchronize**.
-4. Click **USB Sync**.
+3. On the desktop, choose **Send to a device**, pick **USB cable** under **How to send**, and select the categories under **What to send**.
+4. Choose **Send over USB**.
 5. Keep both devices connected until ostudy reports completion.
 
 That is the normal cable workflow. You do **not** enable USB tethering, locate a USB interface, enter an IP address, change firewall rules, scan a QR code, enable Android developer options, or enable USB debugging.
@@ -69,7 +69,7 @@ If no compatible phone is found, multiple phones are attached, Linux denies the 
 
 ### Direction of a USB transfer
 
-The desktop **USB Sync** action creates the outgoing transfer and sends the selected data to the attached Android phone. The Android app accepts the cable invitation automatically from the accessory stream.
+The desktop **Send over USB** action creates the outgoing transfer and sends the selected data to the attached Android phone. The Android app accepts the cable invitation automatically from the accessory stream.
 
 To send phone changes back later, create a new outgoing transfer on the phone using the available supported sender transport, such as local-network sync. Device identity and merge baselines belong to the installations, not to the transport.
 
@@ -77,36 +77,36 @@ To send phone changes back later, create a new outgoing transfer on the phone us
 
 For Wi-Fi/Ethernet:
 
-1. On the sending device, select the categories to transfer.
-2. Click **Create network sync offer**.
-3. Keep ostudy open while the short-lived QR/text invitation is waiting.
-4. On Android, use **Scan and receive**, or copy/paste the invitation through another trusted channel.
+1. On the sending device, choose **Send to a device** and select the categories under **What to send**.
+2. Choose **Show a code**.
+3. Keep ostudy open while the short-lived code is waiting.
+4. On the receiving device, choose **Receive** and then **Scan the code**, or use **Copy as text** on the sender and paste the code through another trusted channel.
 
-Only one unclaimed outgoing offer is retained at a time. Creating another outgoing offer cancels the previous unclaimed listener. ostudy also prevents overlapping active synchronization sessions with the same peer.
+Only one unclaimed outgoing offer is retained at a time. **Make a new code** cancels the previous unclaimed listener. ostudy also prevents overlapping active synchronization sessions with the same peer.
 
-The sender normally detects its LAN address automatically. **Advanced LAN address override** exists only for unusual LAN routing problems and is never part of USB Sync.
+The sender normally detects its LAN address automatically. **Network address**, under **More options**, exists only for unusual LAN routing problems and is never part of USB Sync.
 
 ## Receive a local-network offer on Android
 
 On the receiving Android device:
 
-1. Open **Settings → Backup and sync → Device synchronization**.
-2. Select **Scan and receive**.
+1. Open **Settings → Backup and sync**.
+2. Choose **Receive**, then **Scan the code**.
 3. Grant camera access if Android asks for it.
 4. Center the complete QR code inside the camera frame, including the white border.
 5. Hold the phone steady until the scanner detects it.
 
 A successful QR scan is the acceptance gesture. ostudy immediately connects to the sender, authenticates the offer, receives the sender-selected package, validates it, and merges it locally. There is no reverse invitation.
 
-If the initial network connection fails, the scanned invitation remains loaded and the action changes to **Retry connection** while the offer is still valid. Canceling the scanner starts nothing.
+If the initial network connection fails, the scanned invitation remains loaded and the button changes to **Try again** while the offer is still valid. Canceling the scanner starts nothing.
 
-When camera scanning is unavailable or permission is declined, paste the sender's **Copy invitation text** value into **Synchronization invitation** and choose **Accept sync offer**.
+When camera scanning is unavailable or permission is declined, paste the text from the sender's **Copy as text** into **Paste the code as text** and choose **Receive**.
 
 Direct USB does not use either of these QR/text receive controls; Android receives the cable bootstrap from the native accessory descriptor automatically.
 
 ## API provider settings and saved API keys
 
-These are intentionally separate choices. Selecting **API provider settings** transfers provider profiles and task defaults but does not authorize key bytes. Selecting **Saved API keys** opts into credentials and automatically selects provider settings.
+These are intentionally separate choices. Selecting **AI services** transfers service profiles and task defaults but does not authorize key bytes. Selecting **Saved API keys** opts into credentials and automatically selects **AI services**.
 
 Credential bytes are sent only when all of the following are true:
 
@@ -119,7 +119,7 @@ If study data merges successfully but a credential cannot be stored securely on 
 
 ## Canceling a request
 
-Active requests show their direction, current phase, peer name when known, and a **Cancel** action.
+Transfers in progress show their direction, current phase, peer name when known, and a **Cancel** action.
 
 Waiting, connecting, and transferring sessions can be canceled. Cancellation invokes the active transport's abort capability as well as marking the durable session canceled, so the same behavior works for TCP and USB.
 
@@ -143,17 +143,17 @@ Document files use the same validated file-ledger rules as complete library back
 
 When **Documents** is selected but **Flashcards** is not, document processing remains transferable while document↔generated-card relationships are detached from the package. When both are selected, supported provenance links can travel with both graphs.
 
-## Study Guides
+## Study guides
 
-Study Guides are a separate category so Documents can be synchronized without generated guide artifacts. Because guide identity depends on document learning topics and source-document state, **Study Guides** requires **Documents**.
+Study guides are a separate category so Documents can be synchronized without generated guide artifacts. Because guide identity depends on document learning topics and source-document state, **Study guides** requires **Documents**.
 
-Turning Study Guides off while leaving Documents on removes guide rows and guide artifact jobs from the copied snapshot before transmission.
+Turning Study guides off while leaving Documents on removes guide rows and guide artifact jobs from the copied snapshot before transmission.
 
 ## Conflicts
 
 ostudy merges compatible edits automatically. When both devices changed the same synchronized field, or one deleted a record while the other edited it, ostudy records an explicit conflict instead of silently discarding one side.
 
-A card's schedule is also merged as a whole: when both devices studied or changed the same card, the schedule studied last is kept and the other is recorded as a conflict, so one card never mixes two schedules. Question attempt/evidence rows are treated atomically when concurrent changes cannot be reconciled field-by-field safely. Open **Conflicts requiring a decision** to inspect the versions and choose the desired result. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
+A card's schedule is also merged as a whole: when both devices studied or changed the same card, the schedule studied last is kept and the other is recorded as a conflict, so one card never mixes two schedules. Question attempt/evidence rows are treated atomically when concurrent changes cannot be reconciled field-by-field safely. When changes need a decision, **Backup and sync** says how many; choose **Review** to see both versions of each one side by side and choose **Keep this** for the one you want, or **Delete this record**. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
 
 ## Local-network requirements
 

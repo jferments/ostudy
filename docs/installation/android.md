@@ -140,7 +140,7 @@ A user-started long document task can acquire a foreground service with a visibl
 
 ## 7. Trusted-device synchronization
 
-Open **Settings → Backup and sync → Device synchronization**. The sender chooses among Flashcards, Documents, Study Guides, API provider settings, and Saved API keys. Flashcards/Documents/Study Guides default on; provider settings/keys default off. Study Guides require Documents and Saved API keys require API provider settings. Native validation repeats those dependency rules.
+Open **Settings → Backup and sync** and choose **Send to a device**. Under **What to send** the sender chooses among Flashcards, Documents, Study guides, AI services, and Saved API keys. Flashcards/Documents/Study guides default on; AI services and keys default off. Study guides require Documents and Saved API keys require AI services. Native validation repeats those dependency rules.
 
 Selecting Documents transfers the managed source/page/source-asset files and durable processing graph, including canonical/semantic/OCR state, outlines/checkpoints, durable LLM generation state, learning plans/topics, and document artifact metadata. Study Guides remain a separate selectable graph.
 
@@ -153,7 +153,7 @@ The maintained product cable workflow is intentionally simple:
 1. install/open ostudy on both devices;
 2. plug one Android phone into the Linux desktop with a data-capable USB cable;
 3. select what to share on the desktop;
-4. click **USB Sync**;
+4. choose **USB cable** under **How to send**, then **Send over USB**;
 5. keep the cable attached until completion.
 
 There is **no USB tethering, USB-network interface, IP address, firewall setup, QR scan, ADB, Developer options, or USB debugging requirement** for the synchronization itself.
@@ -168,11 +168,11 @@ Current direct-USB hosting is Linux desktop → Android. Unsupported desktop bui
 
 ### Local-network synchronization
 
-LAN sync remains available over a trusted private Wi-Fi/Ethernet network. The sender creates **Create network sync offer**; Android can accept with the local open-source ZXing scanner or pasted invitation text.
+LAN sync remains available over a trusted private Wi-Fi/Ethernet network. The sender chooses **Show a code**; Android accepts with **Receive**, using **Scan the code** (the local open-source ZXing scanner) or **Paste the code as text**.
 
 A successful scan provides decoded invitation data to native protocol validation. The receiver does not get a second independent scope selector; the authenticated sender selection defines the package.
 
-LAN uses private TCP ports 49251–49258. **Advanced LAN address override** is a LAN-only fallback and is never used for direct USB.
+LAN uses private TCP ports 49251–49258. **Network address**, under **More options** when sending, is a LAN-only fallback and is never used for direct USB.
 
 Receiving never uploads the receiver's library back. A later reverse transfer is a separate explicit offer from the other installation and may use a different supported transport.
 
@@ -210,7 +210,7 @@ The USB-accessory declaration does not grant broad storage or arbitrary USB-host
 
 Saved provider credentials use the Android Keystore-backed secure store; session-only credentials disappear with process lifetime. Credential bytes are excluded from learner SQLite, drafts, deck exports, complete backups, routine diagnostics, and ordinary file shares.
 
-Device synchronization can transfer supported saved credentials only after explicit sender opt-in for **Saved API keys**, with **API provider settings** included as its required parent scope.
+Device synchronization can transfer supported saved credentials only after explicit sender opt-in for **Saved API keys**, with **AI services** included as its required parent scope.
 
 ## Manual acceptance for Android-affecting changes
 
@@ -219,7 +219,7 @@ Use the maintained install wrapper and test only relevant real-device paths. Hum
 For direct USB acceptance specifically verify:
 
 1. one data-capable cable and one attached Android phone;
-2. **USB Sync** succeeds without tethering or address entry;
+2. **Send over USB** succeeds without tethering or address entry;
 3. first accessory association prompt behaves correctly when present;
 4. selected/unselected synchronization categories are respected;
 5. cancellation interrupts active USB I/O;

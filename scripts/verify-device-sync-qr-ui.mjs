@@ -90,33 +90,30 @@ expectContains(usbCoordinator, "joinUsbDevicePairing()", "automatic Android USB 
 expectContains(usbCoordinator, "listenToAndroidUsbSync", "USB attachment event coordinator");
 
 expectContains(settingsUi, 'role="status"', "accessible scanner result status");
-expectContains(settingsUi, "Sync offer detected", "visual offer detection result");
+expectContains(settingsUi, "Found the code", "visual offer detection result");
 expectContains(settingsUi, "await receiveOffer(scanned, true)", "automatic receive after QR detection");
-expectContains(settingsUi, "Accept sync offer", "text-invitation acceptance action");
-expectContains(settingsUi, "Retry connection", "failed automatic scan retry action");
+expectContains(settingsUi, "Paste the code as text", "text-invitation acceptance field");
+expectContains(settingsUi, '"Try again" : "Receive"', "failed automatic scan retry action");
 expectContains(settingsUi, "connection did not complete", "failed automatic scan explanation");
-expectContains(settingsUi, "Replace with network offer", "single unclaimed outgoing network offer behavior");
-expectContains(settingsUi, 'aria-label={`Cancel ${session.direction', "active-session cancellation affordance");
-expectContains(settingsUi, "What to synchronize", "sender category selection group");
-expectContains(settingsUi, "Flashcards", "Flashcards scope checkbox");
-expectContains(settingsUi, "Documents", "Documents scope checkbox");
-expectContains(settingsUi, "Study Guides", "Study Guide scope checkbox");
-expectContains(settingsUi, "API provider settings", "API provider settings scope checkbox");
-expectContains(settingsUi, "Saved API keys", "saved API credential scope checkbox");
+expectContains(settingsUi, '"Make a new code"', "single unclaimed outgoing network offer behavior");
+expectContains(settingsUi, 'aria-label={`Cancel ${sending', "active-session cancellation affordance");
+expectContains(settingsUi, "What to send", "sender category selection group");
+expectContains(settingsUi, 'label="Flashcards"', "Flashcards scope switch");
+expectContains(settingsUi, 'label="Documents"', "Documents scope switch");
+expectContains(settingsUi, 'label="Study guides"', "Study Guide scope switch");
+expectContains(settingsUi, 'label="AI services"', "API provider settings scope switch");
+expectContains(settingsUi, 'label="Saved API keys"', "saved API credential scope switch");
 expectContains(settingsUi, 'changeSelection("documents"', "Documents dependency handler");
 expectContains(settingsUi, 'changeSelection("studyGuides"', "Study Guide dependency handler");
 expectContains(settingsUi, 'changeSelection("apiCredentials"', "API credential dependency handler");
-expectContainsNormalized(settingsUi, "app settings always stay local", "device-local app-settings explanation");
-expectContains(settingsUi, "entire white border visible", "LAN QR framing guidance");
 expectContains(settingsUi, 'onClick={() => void startUsbSync()}', "one-click direct USB action");
-expectContains(settingsUi, '"USB Sync"', "direct USB action label");
+expectContains(settingsUi, '"Send over USB"', "direct USB action label");
 expectContains(settingsUi, 'transport: "usb"', "USB transport selection without address input");
-expectContains(settingsUi, "no tethering, IP address, QR code", "direct USB user-flow explanation");
 expectNotContains(settingsUi, "USB interface address", "manual USB endpoint field");
 expectNotContains(settingsUi, 'value="usb-network"', "USB-network transport selector");
 expectNotContains(settingsUi, "USB tethering", "manual USB tethering instruction");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
-expectContains(settingsUi, "<SyncChoice", "shared accessible scope controls");
+expectContains(settingsUi, "<SwitchRow", "shared accessible scope controls");
 expectContains(settingsCss, "background: var(--ostudy-color-neutral-0);", "token-owned high-contrast QR quiet-zone background");
 if (referenceTokenData?.color?.neutral?.["0"]?.$value !== "#ffffff") {
   failures.push("Reference token color.neutral.0 must remain literal #ffffff for QR quiet-zone contrast.");
@@ -124,7 +121,7 @@ if (referenceTokenData?.color?.neutral?.["0"]?.$value !== "#ffffff") {
 expectContains(settingsUi, 'tw:data-[state=receiving]:bg-accent', "visible receiving-state treatment");
 expectContains(settingsUi, 'tw:data-[state=received]:bg-success-soft', "visible completed-state treatment");
 expectContains(settingsUi, 'tw:data-[state=detected]:bg-warning-soft', "detected-but-incomplete state is not success");
-expectContains(settingsUi, 'aria-label="Active synchronization sessions"', "active-session cancellation presentation");
+expectContains(settingsUi, 'aria-label="Transfers in progress"', "active-session cancellation presentation");
 
 expectContains(syncCore, "const PROTOCOL_VERSION: u32 = 3;", "transport-bound offer protocol version");
 expectContains(syncCore, "PairingTransport", "typed LAN/direct-USB invitation transport");

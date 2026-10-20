@@ -103,7 +103,7 @@ describe("TemplatesScreen durable managed assets", () => {
   it("uses the persistent draft asset identity when saving a template", async () => {
     renderTemplates();
 
-    await screen.findByRole("heading", { name: "Create a reusable card template" });
+    await screen.findByRole("heading", { name: "Your templates" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Medication" },
@@ -123,7 +123,7 @@ describe("TemplatesScreen durable managed assets", () => {
     durableDraftMock.hasUnsavedLocalChanges = true;
     renderTemplates();
 
-    await screen.findByRole("heading", { name: "Create a reusable card template" });
+    await screen.findByRole("heading", { name: "Your templates" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Medication" },
@@ -135,7 +135,7 @@ describe("TemplatesScreen durable managed assets", () => {
 
     await waitFor(() => expect(durableDraftMock.discard).toHaveBeenCalledOnce());
     expect(
-      await screen.findByRole("heading", { name: "Create a reusable card template" }),
+      await screen.findByRole("heading", { name: "Your templates" }),
     ).toBeTruthy();
   });
 
@@ -145,7 +145,7 @@ describe("TemplatesScreen durable managed assets", () => {
     durableDraftMock.hasUnsavedLocalChanges = true;
     renderTemplates();
 
-    await screen.findByRole("heading", { name: "Create a reusable card template" });
+    await screen.findByRole("heading", { name: "Your templates" });
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
       target: { value: "Medication" },

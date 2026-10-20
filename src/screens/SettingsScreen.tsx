@@ -17,10 +17,10 @@ import { ListRow, ListRowMedia, ListRows } from "../ui/primitives/ListRow";
 import { PaneTabs } from "../ui/primitives/Tabs";
 import { TemplatesScreen } from "./TemplatesScreen";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
+import { BuiltInTemplates } from "./settings/BuiltInTemplates";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
-import { QuestionGenerationSettings } from "./settings/QuestionGenerationSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
@@ -88,7 +88,6 @@ export function SettingsScreen({
   const [compactOpen, setCompactOpen] = useState(initialSection !== "appearance");
   // Sections mount when first opened and then stay mounted, so their unsaved drafts survive.
   const [visited, setVisited] = useState<ReadonlySet<SettingsTab>>(() => new Set([initialSection]));
-  const [questionDirty, setQuestionDirty] = useState(false);
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [templateDirty, setTemplateDirty] = useState(false);
@@ -97,7 +96,7 @@ export function SettingsScreen({
   const savingRef = useRef(false);
   const aiController = useAiProfilesController(showToast);
   const preferencesDirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
-  const dirty = preferencesDirty || aiController.dirty || templateDirty || questionDirty;
+  const dirty = preferencesDirty || aiController.dirty || templateDirty;
   const showingSection = !compact || compactOpen;
 
   useEffect(() => {
@@ -197,15 +196,12 @@ export function SettingsScreen({
       case "review":
         return <ReviewSchedulingSettings draft={draft} update={update} />;
       case "templates":
-        return <TemplatesScreen onDirtyChange={setTemplateDirty} showToast={showToast} />;
+        return <TemplatesScreen builtIn={<BuiltInTemplates />} onDirtyChange={setTemplateDirty} showToast={showToast} />;
       case "ai":
         return (
           <AiLlmSettings
             controller={aiController}
-            defaultBlock={<>
-              <DefaultAiModelSettings controller={aiController} />
-              <QuestionGenerationSettings showToast={showToast} onDirtyChange={setQuestionDirty} />
-            </>}
+            defaultBlock={<DefaultAiModelSettings controller={aiController} />}
           />
         );
       case "storage":
