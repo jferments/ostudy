@@ -133,17 +133,17 @@ SCREENS: tuple[Screen, ...] = (
     Screen("analytics-details", "Progress topics and card strength", "Progress"),
     Screen("tutor", "Tutor conversation", "Tutor"),
     Screen("settings-appearance", "Settings: Appearance", "Settings"),
-    Screen("settings-backup", "Settings: Backup/Sync", "Settings"),
-    Screen("settings-ai", "Settings: AI/LLM", "Settings"),
-    Screen("settings-review", "Settings: Review/Scheduling", "Settings"),
+    Screen("settings-backup", "Settings: Backup and sync", "Settings"),
+    Screen("settings-ai", "Settings: AI", "Settings"),
+    Screen("settings-review", "Settings: Review", "Settings"),
     Screen("settings-templates", "Settings: Card templates", "Settings"),
     Screen("settings-diagnostics", "Settings: Diagnostics", "Settings"),
 )
 SETTINGS_TABS = {
     "settings-appearance": "Appearance",
-    "settings-backup": "Backup/Sync",
-    "settings-ai": "AI/LLM",
-    "settings-review": "Review/Scheduling",
+    "settings-backup": "Backup and sync",
+    "settings-ai": "AI",
+    "settings-review": "Review",
     "settings-templates": "Card templates",
     "settings-diagnostics": "Diagnostics",
 }
@@ -878,9 +878,16 @@ def open_tutor(ctx: Context) -> None:
 
 def open_settings_tab(ctx: Context, tab: str) -> None:
     go(ctx, "settings")
+    # Wider screens list the sections as tabs in a pane; a phone opens on a list of section buttons
+    # and then shows the chosen section under its own heading, with Back to Settings beside it.
+    back = "//main//button[@aria-label='Back to Settings']"
+    find(ctx, f"//main//h1[normalize-space(.)='Settings'] | {back}")
+    if exists(ctx, back):
+        click(ctx, back)
     webdriver.wait_for_element_text(ctx.session_id, "css selector", "main h1", "Settings", ctx.deadline())
-    click(ctx, f"//main//*[@role='tab'][normalize-space(.)={xpath_literal(tab)}]")
-    find(ctx, f"//main//*[@role='tab'][normalize-space(.)={xpath_literal(tab)}][@aria-selected='true']")
+    name = xpath_literal(tab)
+    click(ctx, f"//main//*[@role='tab' or self::button][normalize-space(.)={name}]")
+    find(ctx, f"//main//*[@role='tab'][normalize-space(.)={name}][@aria-selected='true'] | //main//h1[normalize-space(.)={name}]")
     if tab == "Card templates":
         find(ctx, f"//main//*[normalize-space(.)={xpath_literal(seed.TEMPLATE_NAME)}]")
 

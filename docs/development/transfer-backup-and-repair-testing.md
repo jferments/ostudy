@@ -86,7 +86,7 @@ a processed document, its guide/learner edits, a collection and Tutor history fo
 current full-library coverage. Existing completed document work can be reused;
 there is no reason to repeat paid generation just to check persistence.
 
-Open **Settings → Backup/Sync → Back up library** and save outside application
+Open **Settings → Backup and sync → Back up library** and save outside application
 data. Inspect the selected package's embedded snapshot and managed-file inventory,
 not only the UI summary. An empty destination that passes SQLite integrity is not
 proof of a completed restore.

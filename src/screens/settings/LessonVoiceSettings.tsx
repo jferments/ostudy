@@ -4,16 +4,21 @@ import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { getSpeechSettings, saveSpeechSettings, type SpeechSettings } from "../../ipc/speech";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
-import { Panel } from "../../ui/primitives/Panel";
+import { TASK_GRID } from "./DefaultAiModelSettings";
 
 const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground";
 
 /**
- * The voice that reads lessons aloud. It reloads when the AI connections
- * change, since only an OpenRouter connection can speak.
+ * The Voice row of "Default for each task": the connection, model and, for
+ * models with preset voices, the voice that reads lessons aloud. It reloads
+ * when the AI connections change, since only an OpenRouter connection can
+ * speak.
  */
 export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknown }) {
+  const wide = useLayoutMode().layoutMode === "wide";
   const lane = useRequestLane();
   const [settings, setSettings] = useState<SpeechSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -28,11 +33,15 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
     );
   }, [lane, connectionsKey]);
 
+  const rowClass = wide
+    ? "tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-2.5"
+    : "tw:grid tw:min-w-0 tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-4";
+
   if (!settings) {
     return error ? (
-      <Panel headingLevel={2} title="Lesson voice">
+      <div role="listitem" data-task="voice" className={rowClass}>
         <InlineNotice kind="error">The lesson voice could not load: {error}</InlineNotice>
-      </Panel>
+      </div>
     ) : null;
   }
 
@@ -49,65 +58,102 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       .finally(() => setSaving(false));
   };
 
-  return (
-    <Panel headingLevel={2} title="Lesson voice">
-      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:xl:grid-cols-3">
-        <label className={fieldClass}>
-          <span>Connection</span>
-          <NativeSelect
-            aria-label="Lesson voice connection"
-            value={settings.profileId ?? ""}
-            disabled={saving}
-            onChange={(event) =>
-              save(event.currentTarget.value || null, settings.modelId, settings.voice)
-            }
-          >
-            <option value="">{settings.connections.length ? "No connection selected" : "No OpenRouter connection"}</option>
-            {settings.connections.map((connection) => (
-              <option key={connection.id} value={connection.id}>
-                {connection.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className={fieldClass}>
-          <span>Voice model</span>
-          <NativeSelect
-            aria-label="Lesson voice model"
-            value={settings.modelId}
-            disabled={saving}
-            onChange={(event) => {
-              const next = settings.models.find((candidate) => candidate.id === event.currentTarget.value);
-              if (next) save(settings.profileId, next.id, next.defaultVoice);
-            }}
-          >
-            {settings.models.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        {model && model.voices.length > 0 ? (
-          <label className={fieldClass}>
-            <span>Voice</span>
-            <NativeSelect
-              aria-label="Lesson voice"
-              value={settings.voice}
-              disabled={saving}
-              onChange={(event) => save(settings.profileId, settings.modelId, event.currentTarget.value)}
-            >
-              {model.voices.map((voice) => (
-                <option key={voice} value={voice}>
-                  {voiceLabel(voice)}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        ) : null}
+  const connectionSelect = (
+    <NativeSelect
+      aria-label="Lesson voice connection"
+      value={settings.profileId ?? ""}
+      disabled={saving}
+      onChange={(event) => save(event.currentTarget.value || null, settings.modelId, settings.voice)}
+    >
+      <option value="">{settings.connections.length ? "Choose a service" : "No OpenRouter service"}</option>
+      {settings.connections.map((connection) => (
+        <option key={connection.id} value={connection.id}>
+          {connection.name}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+  const modelSelect = (
+    <NativeSelect
+      aria-label="Lesson voice model"
+      value={settings.modelId}
+      disabled={saving}
+      onChange={(event) => {
+        const next = settings.models.find((candidate) => candidate.id === event.currentTarget.value);
+        if (next) save(settings.profileId, next.id, next.defaultVoice);
+      }}
+    >
+      {settings.models.map((candidate) => (
+        <option key={candidate.id} value={candidate.id}>
+          {candidate.label}
+        </option>
+      ))}
+    </NativeSelect>
+  );
+  const voiceSelect =
+    model && model.voices.length > 0 ? (
+      <NativeSelect
+        aria-label="Lesson voice"
+        value={settings.voice}
+        disabled={saving}
+        onChange={(event) => save(settings.profileId, settings.modelId, event.currentTarget.value)}
+      >
+        {model.voices.map((voice) => (
+          <option key={voice} value={voice}>
+            {voiceLabel(voice)}
+          </option>
+        ))}
+      </NativeSelect>
+    ) : null;
+  const menu = (
+    <OverflowMenu
+      label="More for Voice"
+      disabled={saving}
+      items={[
+        {
+          id: "clear",
+          label: "Clear",
+          disabled: !settings.profileId,
+          onSelect: () => save(null, settings.modelId, settings.voice),
+        },
+      ]}
+    />
+  );
+  const feedback = error ? <InlineNotice kind="error">The lesson voice was not saved: {error}</InlineNotice> : null;
+
+  return wide ? (
+    <div role="listitem" data-task="voice" className={rowClass}>
+      <div className={TASK_GRID}>
+        <span className="tw:font-medium">Voice</span>
+        {connectionSelect}
+        {modelSelect}
+        {voiceSelect ?? <span />}
+        {menu}
       </div>
-      {error ? <InlineNotice kind="error">The lesson voice was not saved: {error}</InlineNotice> : null}
-    </Panel>
+      {feedback}
+    </div>
+  ) : (
+    <div role="listitem" data-task="voice" className={rowClass}>
+      <div className="tw:flex tw:items-center tw:gap-2">
+        <strong className="tw:flex-1 tw:font-medium">Voice</strong>
+        {menu}
+      </div>
+      <label className={fieldClass}>
+        <span>Service</span>
+        {connectionSelect}
+      </label>
+      <label className={fieldClass}>
+        <span>Model</span>
+        {modelSelect}
+      </label>
+      {voiceSelect ? (
+        <label className={fieldClass}>
+          <span>Voice</span>
+          {voiceSelect}
+        </label>
+      ) : null}
+      {feedback}
+    </div>
   );
 }
 

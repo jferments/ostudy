@@ -51,6 +51,7 @@ export const ICON_NAMES = [
   "media",
   "menu",
   "minus",
+  "monitor",
   "move",
   "overflow",
   "pan",
@@ -61,6 +62,7 @@ export const ICON_NAMES = [
   "redo",
   "restore",
   "save",
+  "scan",
   "schedule",
   "search",
   "settings",
@@ -68,6 +70,7 @@ export const ICON_NAMES = [
   "shape-ellipse",
   "shape-line",
   "shape-rectangle",
+  "smartphone",
   "sort",
   "sparkles",
   "sticky-note",
@@ -78,9 +81,11 @@ export const ICON_NAMES = [
   "timer",
   "undo",
   "upload",
+  "usb",
   "view",
   "view-off",
   "warning",
+  "wifi",
   "zoom-in",
   "zoom-out",
 ] as const;
@@ -359,6 +364,52 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
           <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </>
+      );
+    case "monitor": // Lucide: monitor
+      return (
+        <>
+          <rect width="20" height="14" x="2" y="3" rx="2" />
+          <path d="M8 21h8" />
+          <path d="M12 17v4" />
+        </>
+      );
+    case "smartphone": // Lucide: smartphone
+      return (
+        <>
+          <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+          <path d="M12 18h.01" />
+        </>
+      );
+    case "usb": // Lucide: usb
+      return (
+        <>
+          <circle cx="10" cy="7" r="1" />
+          <circle cx="4" cy="20" r="1" />
+          <path d="M4.7 19.3 19 5" />
+          <path d="m21 3-3 1 2 2Z" />
+          <path d="M9.26 7.68 5 12l2 5" />
+          <path d="m10 14 5 2 3.5-3.5" />
+          <path d="m18 12 1-1 1 1-1 1Z" />
+        </>
+      );
+    case "wifi": // Lucide: wifi
+      return (
+        <>
+          <path d="M12 20h.01" />
+          <path d="M2 8.82a15 15 0 0 1 20 0" />
+          <path d="M5 12.859a10 10 0 0 1 14 0" />
+          <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+        </>
+      );
+    case "scan": // Lucide: scan-line
+      return (
+        <>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+          <path d="M7 12h10" />
         </>
       );
     case "image": // Lucide: image

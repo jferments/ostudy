@@ -84,7 +84,8 @@ describe("LessonVoiceSettings", () => {
     vi.mocked(getSpeechSettings).mockResolvedValue(settings({ profileId: null, connections: [] }));
     render(<LessonVoiceSettings connectionsKey={1} />);
     const connection = await screen.findByRole("combobox", { name: "Lesson voice connection" });
-    expect((connection as HTMLSelectElement).options[0]?.text).toBe("No OpenRouter connection");
+    expect((connection as HTMLSelectElement).options[0]?.text).toBe("No OpenRouter service");
+    expect(screen.getByRole("listitem").textContent).toContain("Voice");
   });
 
   it("labels Kokoro voices and leaves other names alone", () => {

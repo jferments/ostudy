@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../test/factories";
@@ -6,6 +6,7 @@ import * as aiIpc from "../ipc/aiProfiles";
 import * as backupIpc from "../ipc/backup";
 import * as settingsIpc from "../ipc/settings";
 import * as platformFiles from "../platform/files";
+import { dispatchPlatformBack } from "../platform/backNavigation";
 import { refreshLibraryView } from "../platform/libraryView";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { SettingsScreen } from "./SettingsScreen";
@@ -26,6 +27,11 @@ vi.mock("../controllers/useDurableDraft", () => ({
     commit: vi.fn().mockResolvedValue(undefined),
     restart: vi.fn().mockResolvedValue(undefined),
   }),
+}));
+const layout = vi.hoisted(() => ({ mode: "wide" as "wide" | "compact" }));
+vi.mock("../ui/layout/LayoutModeProvider", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../ui/layout/LayoutModeProvider")>(),
+  useLayoutMode: () => ({ layoutMode: layout.mode, inputMode: "fine" }),
 }));
 vi.mock("../platform/libraryView", () => ({ refreshLibraryView: vi.fn() }));
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn(), publishExport: vi.fn() }));
@@ -129,6 +135,7 @@ function providerCatalog(): aiIpc.AiProviderCatalogEntry[] {
 
 describe("SettingsScreen", () => {
   beforeEach(() => {
+    layout.mode = "wide";
     vi.clearAllMocks();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(platformFiles.publishExport).mockResolvedValue({
@@ -177,30 +184,32 @@ describe("SettingsScreen", () => {
     vi.mocked(aiIpc.getAiProviderProbeResult).mockResolvedValue(null);
   });
 
-  it("puts Appearance first and exposes the renamed Backup/Sync tab", () => {
+  it("lists the sections in a pane with Appearance open first", () => {
     renderSettings();
+    expect(screen.getByRole("tablist", { name: "Settings sections" }).getAttribute("aria-orientation")).toBe("vertical");
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       "Appearance",
-      "Backup/Sync",
-      "AI/LLM",
-      "Review/Scheduling",
+      "Review",
       "Card templates",
+      "AI",
+      "Backup and sync",
       "Diagnostics",
     ]);
     expect(required(tabs[0], "Appearance tab").getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByRole("tabpanel").textContent).toContain("Typography");
+    expect(screen.getByRole("heading", { level: 2, name: "Appearance" })).toBeTruthy();
+    expect(screen.getByRole("tabpanel").textContent).toContain("Interface font");
+    expect(screen.queryByRole("region", { name: "Unsaved changes" })).toBeNull();
   });
 
-  it("keeps Backup/Sync focused on backup and device synchronization without a storage help tile", async () => {
+  it("keeps Backup and sync focused on backup and device synchronization without a storage help tile", async () => {
     renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Backup and sync" }));
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByRole("heading", { name: "Data safety" })).toBeTruthy();
-    expect(within(panel).getByRole("heading", { name: "Device synchronization" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "Backup" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "Devices" })).toBeTruthy();
     expect(within(panel).queryByRole("heading", { name: "Storage" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "View storage details" })).toBeNull();
-    expect(settingsIpc.getAppInfo).toHaveBeenCalledOnce();
   });
 
   it("previews and saves appearance preferences without touching AI provider state", async () => {
@@ -210,7 +219,8 @@ describe("SettingsScreen", () => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "light" }));
       expect(onDirtyChange).toHaveBeenLastCalledWith(true);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+    expect(screen.getByRole("region", { name: "Unsaved changes" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(settingsIpc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
       expect(onSavedSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
@@ -220,7 +230,7 @@ describe("SettingsScreen", () => {
 
   it("restores Plex typography while leaving non-appearance settings unchanged", async () => {
     const { onPreviewSettings } = renderSettings();
-    fireEvent.click(screen.getByRole("button", { name: "Restore appearance defaults" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore defaults" }));
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith({
         ...settings,
@@ -240,10 +250,9 @@ describe("SettingsScreen", () => {
 
   it("keeps review limits in the dedicated scheduling tab and leaves shuffle on Practice", async () => {
     const { onPreviewSettings } = renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));
-    const schedulingPanel = screen.getByRole("tabpanel", { name: "Review/Scheduling" });
-    const restoreDefaults = screen.getByRole("button", { name: "Restore scheduling defaults" });
-    expect(schedulingPanel.contains(restoreDefaults)).toBe(true);
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
+    const schedulingPanel = screen.getByRole("tabpanel", { name: "Review" });
+    const restoreDefaults = screen.getByRole("button", { name: "Restore defaults" });
     fireEvent.change(screen.getByRole("spinbutton", { name: "New cards per day" }), {
       target: { value: "12" },
     });
@@ -272,51 +281,46 @@ describe("SettingsScreen", () => {
       );
     });
     expect(screen.queryByRole("checkbox", { name: /shuffle/iu })).toBeNull();
-    expect(screen.getByText(/shuffling, are chosen on the Practice screen/u)).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: /shuffle/iu })).toBeNull();
   });
 
   it("saves the hour a new study day starts", async () => {
     const { onSavedSettings } = renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
     fireEvent.change(screen.getByRole("combobox", { name: "New day starts at" }), {
       target: { value: "6" },
     });
-    expect(screen.getByText("Reviews before this time count toward the previous day.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(settingsIpc.saveSettings).toHaveBeenCalledWith({ ...settings, newDayStartHour: 6 });
       expect(onSavedSettings).toHaveBeenCalledWith(expect.objectContaining({ newDayStartHour: 6 }));
     });
   });
 
-  it("separates provider connections from the three default model assignments", async () => {
+  it("separates services from the default model for each task", async () => {
     renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
-    expect(await screen.findByRole("heading", { name: "Default AI models" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "AI providers" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add provider" })).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: "Flashcard and study-guide generation provider" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: "Flashcard and study-guide generation model" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Interactive tutor provider" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Semantic embeddings provider" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+    expect(await screen.findByRole("heading", { name: "Default for each task" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Services" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Cards and guides service" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Cards and guides model" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Tutor service" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Search service" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Question generation" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    const provider = await screen.findByRole("combobox", { name: "Provider" });
-    expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
-    fireEvent.change(provider, { target: { value: "deepseek" } });
-    await waitFor(() => expect((provider as HTMLSelectElement).value).toBe("deepseek"));
-    expect(await screen.findByLabelText("API key")).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add a service" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a service" });
+    const llama = within(sheet).getByRole("radio", { name: /^llama\.cpp/u });
+    expect(llama.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(sheet).getByRole("radio", { name: /^DeepSeek/u }));
+    expect(await within(sheet).findByLabelText("API key")).toBeTruthy();
+    expect(within(sheet).queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(within(sheet).queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {
     const { showToast } = renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Backup and sync" }));
     fireEvent.click(await screen.findByRole("button", { name: "Back up library" }));
     await waitFor(() => {
       expect(backupIpc.prepareLibraryBackup).toHaveBeenCalled();
@@ -326,7 +330,7 @@ describe("SettingsScreen", () => {
         "Backed up 3 decks, 2 templates, and 41 review events.",
       );
     });
-    expect(screen.getByText(/API keys and session-only credentials are never stored/u)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Help with backups" })).toBeTruthy();
   });
 
   it("restores immediately only after shared destructive confirmation", async () => {
@@ -341,7 +345,7 @@ describe("SettingsScreen", () => {
       expiresAt: Date.now() + 60_000,
     });
     const { showToast } = renderSettings();
-    fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Backup and sync" }));
     fireEvent.click(await screen.findByRole("button", { name: "Restore backup" }));
     expect(
       await screen.findByRole("alertdialog", { name: "Restore this complete library?" }),
@@ -357,5 +361,47 @@ describe("SettingsScreen", () => {
         "Restored 3 decks, 189 cards, and 1 document. Your library is ready.",
       );
     });
+  });
+  it("discards unsaved preferences back to the saved ones", async () => {
+    const { onPreviewSettings, onDirtyChange } = renderSettings();
+    fireEvent.click(screen.getByRole("radio", { name: /Light/u }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => {
+      expect(onPreviewSettings).toHaveBeenLastCalledWith(settings);
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+    expect(screen.queryByRole("region", { name: "Unsaved changes" })).toBeNull();
+    expect(settingsIpc.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("opens on a list of sections on a phone and steps back to it", () => {
+    layout.mode = "compact";
+    renderSettings();
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    const sections = within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("button");
+    expect(sections.map((button) => button.textContent)).toEqual([
+      "Appearance",
+      "Review",
+      "Card templates",
+      "AI",
+      "Backup and sync",
+      "Diagnostics",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Review" })).toBeTruthy();
+    expect(screen.getByRole("spinbutton", { name: "New cards per day" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Settings sections" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Settings" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Appearance" })).toBeTruthy();
+    act(() => { expect(dispatchPlatformBack()).toBe(true); });
+    expect(screen.getByRole("navigation", { name: "Settings sections" })).toBeTruthy();
+    expect(dispatchPlatformBack()).toBe(false);
   });
 });

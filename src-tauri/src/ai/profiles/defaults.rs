@@ -360,9 +360,9 @@ pub(crate) fn load_task_profile_request(
         CommandError::new(
             "ai_task_profile_required",
             match task {
-                AiTaskKind::FlashcardGeneration => "Choose a default Flashcard generation model in Settings → AI/LLM before analyzing a document.",
-                AiTaskKind::Tutor => "Choose a default Tutor model in Settings → AI/LLM before starting a conversation.",
-                AiTaskKind::Embeddings => "Choose and test a Semantic embeddings model in Settings → AI/LLM before semantic preparation.",
+                AiTaskKind::FlashcardGeneration => "Choose a default Flashcard generation model in Settings → AI before analyzing a document.",
+                AiTaskKind::Tutor => "Choose a default Tutor model in Settings → AI before starting a conversation.",
+                AiTaskKind::Embeddings => "Choose and test a Semantic embeddings model in Settings → AI before semantic preparation.",
             },
         )
     })?;

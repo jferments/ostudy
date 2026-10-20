@@ -31,7 +31,7 @@ Basic and Fill in the blank cards use recall and reveal. Try recalling the answe
 
 **Show answer** and, once the answer shows, the four ratings sit together at the bottom of the practice screen. A long card scrolls under them, and on a phone they stay just above the bottom navigation, within reach of your thumb. Each rating shows its keyboard number. Space or Enter reveals the answer when no button, field, or overlay has focus, and rating shortcuts do not intercept typing in an editor. The ratings wait until ostudy has worked out each one's next interval; if that could not be calculated, **Retry interval preview** asks again.
 
-By default, a Basic card shows the **question on the front and the answer on the revealed back**. Turn on **Display both question and answer when card is flipped** in **Settings → Review/Scheduling** to keep the question visible beside the answer. Fill in the blank cards always keep the surrounding text with the revealed answer, so multi-blank questions stay understandable.
+By default, a Basic card shows the **question on the front and the answer on the revealed back**. Turn on **Display both question and answer when card is flipped** in **Settings → Review** to keep the question visible beside the answer. Fill in the blank cards always keep the surrounding text with the revealed answer, so multi-blank questions stay understandable.
 
 When motion is on, the card turns over to show the answer. **Show question** and **Show answer** at the card's top corner turn a revealed card back and forth without changing the review, and clicking the card face does the same. The card itself is ordinary content, so a screen reader reads the question and answer rather than a button label.
 
@@ -75,11 +75,11 @@ Scheduling controls are deliberate actions, not review outcomes. During practice
 
 Archived decks are kept but cannot be practiced until restored. Deletion is different: once its **Undo** period ends, the deleted material's review history is removed too.
 
-Set defaults in **Settings → Review/Scheduling**: **Desired retention**, **New cards per day**, **Reviews per day**, and **New day starts at**. Every screen counts due cards and daily limits with the same study-day rules. Schedule actions on several cards apply to all of them together or not at all.
+Set defaults in **Settings → Review**: **Desired retention**, **New cards per day**, **Reviews per day**, and **New day starts at**. Every screen counts due cards and daily limits with the same study-day rules. Schedule actions on several cards apply to all of them together or not at all.
 
 ### When a new day starts
 
-A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review/Scheduling**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
+A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
 
 Changing the hour re-groups all of your existing history by the new boundary; nothing stored is changed, so you can switch back at any time. Each review keeps the time-zone offset of the place where you made it, so travelling does not move your earlier reviews to different days.
 
