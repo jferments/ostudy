@@ -9,6 +9,8 @@ import { Button } from "../ui/primitives/Button";
 import { TextField } from "../ui/primitives/TextField";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { Progress } from "../ui/primitives/Progress";
+import type { ContinueReadingItem } from "../ipc/studyGuideReading";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
@@ -97,6 +99,14 @@ export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = nu
               {controller.page.totalCount} guide{controller.page.totalCount === 1 ? "" : "s"} matching “{controller.query}”
             </p>
           ) : null}
+          {controller.continueReading && !controller.query && controller.page.offset === 0 ? (
+            <ContinueReadingBand item={controller.continueReading} onResume={(item) => controller.openGuide({
+              targetKind: "document",
+              targetId: item.documentId,
+              title: item.title,
+              source: sourceForDocument(controller.page.items, item.documentId),
+            })} />
+          ) : null}
           {controller.errorMessage ? <InlineNotice kind="error" title="Study Guides could not be refreshed." className="tw:mb-4">{controller.errorMessage}</InlineNotice> : null}
           {controller.isLoading && controller.page.items.length === 0 ? <LoadingState label="Loading study guides…" /> : controller.page.items.length === 0 ? (
             <EmptyState icon={<Icon name="study-guide" size={30} />} title={controller.query ? "No matching study guides" : "No study guides yet"}
@@ -167,6 +177,7 @@ function GuideCard({
             </div>
             {menu.length ? <OverflowMenu label={`More actions for ${item.title}`} items={menu} /> : null}
           </div>
+          {collection ? null : <ReadingProgress item={item} />}
           <div className="tw:mt-auto tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-3 tw:gap-y-2">
             <span className={styles.metrics}>
               <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
@@ -180,6 +191,43 @@ function GuideCard({
     </li>
   );
 }
+function sourceForDocument(items: StudyGuidePageItem[], documentId: string) {
+  const row = items.find((candidate) => candidate.targetKind === "document" && candidate.targetId === documentId);
+  return row ? guideSourceFromItem(row) : undefined;
+}
+
+/** How much of a document guide is read; a guide not opened yet says so. */
+function ReadingProgress({ item }: { item: StudyGuidePageItem }) {
+  const read = Math.min(item.readSectionCount, item.sectionCount);
+  const finished = item.sectionCount > 0 && read === item.sectionCount;
+  const status = finished ? "Finished" : read === 0 && item.lastOpenedAt === null ? "Not started"
+    : `${read} of ${item.sectionCount} section${item.sectionCount === 1 ? "" : "s"} read`;
+  return (
+    <Progress value={read} max={Math.max(1, item.sectionCount)} size="small" tone={finished ? "success" : "accent"}
+      label={`${item.title} reading progress`} valueText={status}
+      text={<span className={cn("tw:tabular-nums", finished && "tw:font-semibold tw:text-success")}>{status}</span>} />
+  );
+}
+
+/** The guide the learner opened last and has not finished, to pick up where they stopped. */
+function ContinueReadingBand({ item, onResume }: { item: ContinueReadingItem; onResume: (item: ContinueReadingItem) => void }) {
+  const headingId = `continue-${useId().replaceAll(":", "")}`;
+  return (
+    <section aria-labelledby={headingId} className="tw:mb-5 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:shadow-sm tw:compact:p-3">
+      <span aria-hidden="true" className={styles.cover}><Icon name="study-guide" size={20} /></span>
+      <div className="tw:grid tw:min-w-0 tw:flex-[1_1_16rem] tw:gap-1.5">
+        <p className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">Continue reading</p>
+        <h2 id={headingId} className="tw:m-0 tw:wrap-anywhere tw:text-body-large tw:font-semibold tw:leading-snug">{item.title}</h2>
+        <Progress value={item.readSectionCount} max={Math.max(1, item.sectionCount)} size="small" className="tw:max-w-[24rem]"
+          label={`${item.title} reading progress`}
+          valueText={`${item.readSectionCount} of ${item.sectionCount} sections read`}
+          text={<span className="tw:tabular-nums">Section {item.sectionIndex + 1} of {item.sectionCount} · {item.readSectionCount} read</span>} />
+      </div>
+      <Button variant="primary" onClick={() => onResume(item)}>Resume</Button>
+    </section>
+  );
+}
+
 function sourceSummary(item: StudyGuidePageItem): string {
   if (item.targetKind === "collection") {
     return `Collection · ${item.sourceCount.toLocaleString()} document${item.sourceCount === 1 ? "" : "s"}`;

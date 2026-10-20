@@ -14,6 +14,10 @@ mod study_guide_artifact_backup_tests {
             ensure_document_learning_plan, DocumentLearningPlanInput, LearningEvidenceChunk,
             LearningTopicInput,
         },
+        document_study_guide_reading::{
+            open_section, reading as guide_reading, set_section_read,
+            OpenDocumentStudyGuideSectionInput, SetDocumentStudyGuideSectionReadInput,
+        },
         document_study_guides::{
             publish_document_study_guide, save_study_guide_overlay, SaveStudyGuideOverlayInput,
             StudyGuideOverlayKind, StudyGuideOverview, StudyGuideSectionContent,
@@ -272,6 +276,30 @@ mod study_guide_artifact_backup_tests {
                 Ok(())
             })
             .expect("note-topic provenance");
+        let reading = source
+            .with_connection(|connection| {
+                open_section(
+                    connection,
+                    OpenDocumentStudyGuideSectionInput {
+                        document_id: document_id.clone(),
+                        guide_id: guide.id.clone(),
+                        topic_id: topic_id.clone(),
+                    },
+                    50,
+                )?;
+                set_section_read(
+                    connection,
+                    SetDocumentStudyGuideSectionReadInput {
+                        document_id: document_id.clone(),
+                        guide_id: guide.id.clone(),
+                        topic_id: topic_id.clone(),
+                        read: true,
+                    },
+                    60,
+                )
+            })
+            .expect("guide reading");
+        assert_eq!(reading.read_topic_ids, vec![topic_id.clone()]);
 
         let backup_path = source_paths.app_data_dir().join("study-guide.ostudybackup");
         export_backup(&source, &source_paths, &backup_path).expect("backup");
@@ -356,6 +384,8 @@ mod study_guide_artifact_backup_tests {
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(relationship, "primary");
+                // What was read, and where to resume, comes back too.
+                assert_eq!(guide_reading(connection, &document_id, &guide.id)?, reading);
                 Ok(())
             })
             .expect("study-guide graph should survive restore");

@@ -19,6 +19,12 @@ import {
   type PreparedStudyGuidePdf,
   type StudyGuideOverlay,
 } from "../ipc/studyGuides";
+import {
+  getStudyGuideReading,
+  openStudyGuideSection,
+  setStudyGuideSectionRead,
+  type StudyGuideReading,
+} from "../ipc/studyGuideReading";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { StudyGuideDialog } from "./StudyGuideDialog";
@@ -42,6 +48,12 @@ vi.mock("../ipc/studyGuides", async () => {
     saveDocumentStudyGuideOverlay: vi.fn(),
   };
 });
+
+vi.mock("../ipc/studyGuideReading", () => ({
+  getStudyGuideReading: vi.fn(),
+  openStudyGuideSection: vi.fn(),
+  setStudyGuideSectionRead: vi.fn(),
+}));
 
 vi.mock("../ipc/externalFiles", async () => {
   const actual = await vi.importActual<typeof import("../ipc/externalFiles")>(
@@ -333,7 +345,27 @@ const mockedPreparePdf = vi.mocked(prepareDocumentStudyGuidePdf);
 const mockedPublish = vi.mocked(publishPreparedExport);
 const mockedRelease = vi.mocked(releasePreparedExport);
 const mockedOpenSource = vi.mocked(openDocumentSource);
+const mockedGetReading = vi.mocked(getStudyGuideReading);
+const mockedOpenSection = vi.mocked(openStudyGuideSection);
+const mockedSetRead = vi.mocked(setStudyGuideSectionRead);
 const originalMatchMedia = window.matchMedia;
+
+/** A stand-in for the native reading store: marks and the last opened section. */
+function readingStore(initial: Partial<StudyGuideReading> = {}) {
+  let state: StudyGuideReading = {
+    documentId, guideId, sectionCount: 2, readTopicIds: [], lastTopicId: null, lastOpenedAt: null, ...initial,
+  };
+  mockedGetReading.mockImplementation(async () => state);
+  mockedOpenSection.mockImplementation(async (_documentId, _guideId, topic) => {
+    state = { ...state, lastTopicId: topic, lastOpenedAt: 10 };
+    return state;
+  });
+  mockedSetRead.mockImplementation(async (_documentId, _guideId, topic, read) => {
+    const others = state.readTopicIds.filter((id) => id !== topic);
+    state = { ...state, readTopicIds: read ? [...others, topic] : others };
+    return state;
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -349,6 +381,7 @@ beforeEach(() => {
   mockedDiscardOverlay.mockResolvedValue(undefined);
   mockedRelease.mockResolvedValue(undefined);
   mockedOpenSource.mockResolvedValue(undefined);
+  readingStore();
 });
 
 afterEach(() => {
@@ -675,7 +708,54 @@ describe("StudyGuideDialog", () => {
 
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
-    expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Add note", "Edit or rewrite this section"]);
+    expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Add note", "Edit or rewrite this section"]);
+  });
+
+  it("reopens on the section last opened and records each section opened", async () => {
+    readingStore({ lastTopicId: afterloadTopicId, readTopicIds: [topicId] });
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Afterload" })).toBeTruthy();
+    await waitFor(() => expect(mockedOpenSection).toHaveBeenCalledWith(documentId, guideId, afterloadTopicId));
+    const contents = screen.getByRole("navigation", { name: "Study guide contents" });
+    expect(within(contents).getByRole("link", { name: "Preload, read" })).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Sections read" }).getAttribute("aria-valuetext")).toBe("1 of 2 sections read");
+
+    fireEvent.click(within(contents).getByRole("link", { name: "Preload, read" }));
+    await screen.findByRole("heading", { level: 1, name: "Preload" });
+    await waitFor(() => expect(mockedOpenSection).toHaveBeenLastCalledWith(documentId, guideId, topicId));
+  });
+
+  it("counts a section read on moving on, and the last one from its own button", async () => {
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    await openSection("Preload");
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Previous and next" })).getByRole("link", { name: "Next 2 · Afterload" }));
+    await screen.findByRole("heading", { level: 1, name: "Afterload" });
+    await waitFor(() => expect(mockedSetRead).toHaveBeenCalledWith(documentId, guideId, topicId, true));
+    const contents = screen.getByRole("navigation", { name: "Study guide contents" });
+    expect(await within(contents).findByRole("link", { name: "Preload, read" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark as read" }));
+    await waitFor(() => expect(mockedSetRead).toHaveBeenLastCalledWith(documentId, guideId, afterloadTopicId, true));
+    expect(await screen.findByText("Read")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("progressbar", { name: "Sections read" }).getAttribute("aria-valuetext")).toBe("2 of 2 sections read"));
+
+    await chooseSectionAction("Mark as unread");
+    await waitFor(() => expect(mockedSetRead).toHaveBeenLastCalledWith(documentId, guideId, afterloadTopicId, false));
+    expect(await screen.findByRole("button", { name: "Mark as read" })).toBeTruthy();
+  });
+
+  it("keeps reading when the reading store cannot be reached", async () => {
+    mockedGetReading.mockRejectedValue(new Error("offline"));
+    mockedOpenSection.mockRejectedValue(new Error("offline"));
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Physiology" })).toBeTruthy();
+    expect(await openSection("Preload")).toBeTruthy();
   });
 
   it("saves a topic note through the note dialog, independently of the guide revision", async () => {

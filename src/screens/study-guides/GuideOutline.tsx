@@ -30,10 +30,12 @@ const marker = "tw:grid tw:size-6 tw:shrink-0 tw:place-items-center tw:rounded-f
  * The guide's contents: the overview and every section, grouped under editorial chapters when the
  * guide has them. The current section opens to its headed blocks, which jump within the page.
  */
-export function GuideOutline({ order, currentTopicId, blocks, onNavigate, showLabel = true }: {
+export function GuideOutline({ order, currentTopicId, readTopicIds, blocks, onNavigate, showLabel = true }: {
   order: GuideReadingOrder;
   /** The section being read, or null on the overview. */
   currentTopicId: string | null;
+  /** Sections the learner has read, which show a check instead of their number. */
+  readTopicIds: ReadonlySet<string>;
   /** The headed blocks of the current section, in page order. */
   blocks: GuideBlock[];
   onNavigate: (destination: GuideDestination) => void;
@@ -48,6 +50,7 @@ export function GuideOutline({ order, currentTopicId, blocks, onNavigate, showLa
   function sectionItem(entry: GuideSectionEntry): ReactNode {
     const topicId = entry.section.topicId;
     const current = topicId === currentTopicId;
+    const read = readTopicIds.has(topicId);
     const prefix = guideBlockPrefix(topicId);
     return (
       <li key={topicId} className="tw:min-w-0">
@@ -56,10 +59,12 @@ export function GuideOutline({ order, currentTopicId, blocks, onNavigate, showLa
           onClick={(event) => follow(event, { kind: "page", topicId })}>
           <span aria-hidden="true" className={cn(marker, current
             ? "tw:border-transparent tw:bg-primary tw:font-semibold tw:text-primary-foreground"
+            : read ? "tw:border-success/30 tw:bg-success-soft tw:text-success"
             : "tw:border-border-strong tw:text-muted-foreground")}>
-            {entry.number}
+            {read && !current ? <Icon name="check" size={14} /> : entry.number}
           </span>
           <span className="tw:min-w-0 tw:flex-1 tw:break-words"><StudyMarkdown text={entry.title} inline /></span>
+          {read ? <span className="sr-only">, read</span> : null}
         </a>
         {current && blocks.length > 0 ? (
           <ol aria-label="In this section"
