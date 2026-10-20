@@ -63,6 +63,10 @@ pub(crate) struct StudyGuideLibraryItem {
     pub guide_revision: i64,
     pub section_count: i64,
     pub note_count: i64,
+    /// Sections marked read in their current text; 0 for subject guides.
+    pub read_section_count: i64,
+    /// When a section of this guide was last opened; null for subject guides.
+    pub last_opened_at: Option<i64>,
     pub published_at: i64,
 }
 
@@ -108,6 +112,22 @@ WITH guide_rows AS (
               AND overlay.state <> 'discarded'
               AND (overlay.guide_id IS NULL OR overlay.guide_id = guide.id)
         ) AS note_count,
+        (
+            SELECT COUNT(*)
+            FROM document_study_guide_sections section
+            JOIN document_study_guide_section_reads mark
+              ON mark.document_id = document.id
+             AND mark.topic_id = section.topic_id
+             AND mark.content_hash = section.content_hash
+            WHERE section.guide_id = guide.id
+        ) AS read_section_count,
+        (
+            SELECT position.opened_at
+            FROM document_study_guide_positions position
+            JOIN document_study_guide_sections section
+              ON section.guide_id = guide.id AND section.topic_id = position.topic_id
+            WHERE position.document_id = document.id
+        ) AS last_opened_at,
         guide.published_at AS published_at
     FROM document_study_guides guide
     JOIN documents document ON document.id = guide.document_id
@@ -139,6 +159,8 @@ WITH guide_rows AS (
               AND overlay.guide_id = guide.id
               AND overlay.state <> 'discarded'
         ) AS note_count,
+        0 AS read_section_count,
+        NULL AS last_opened_at,
         guide.published_at AS published_at
     FROM study_target_guides guide
     JOIN study_targets target ON target.id = guide.target_id
@@ -210,7 +232,7 @@ WHERE (
             "{GUIDE_ROWS_SQL}
 SELECT guide_id,target_kind,target_id,title,original_filename,source_format,
        source_unit_kind,source_unit_count,source_count,guide_revision,
-       section_count,note_count,published_at
+       section_count,note_count,read_section_count,last_opened_at,published_at
 FROM guide_rows
 {filter}
 ORDER BY {order}
@@ -234,7 +256,9 @@ LIMIT ?3 OFFSET ?4"
                         guide_revision: row.get(9)?,
                         section_count: row.get(10)?,
                         note_count: row.get(11)?,
-                        published_at: row.get(12)?,
+                        read_section_count: row.get(12)?,
+                        last_opened_at: row.get(13)?,
+                        published_at: row.get(14)?,
                     })
                 },
             )

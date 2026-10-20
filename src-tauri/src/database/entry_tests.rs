@@ -13,53 +13,68 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
     let mut current = fixture_at(MIGRATIONS.len());
     initialize_connection(&mut current).unwrap();
     let expected_schema = schema_objects(&current).unwrap();
-    for version in 1..=MIGRATIONS.len() {
-        let mut connection = fixture_at(version);
-        connection
-            .execute_batch(
-                "INSERT INTO decks (id, name, created_at, updated_at)
-                 VALUES ('00000000000000000000000000000001', 'Retained deck', 10, 20);
-                 INSERT INTO app_settings (key, value_json, updated_at)
-                 VALUES ('lk02-preservation-sentinel', '{\"value\":17}', 30);",
-            )
-            .unwrap();
-        let before_admission = connection.total_changes();
-        validate_backup_lineage(&connection).expect("supported backup input");
-        assert_eq!(connection.total_changes(), before_admission);
-        initialize_connection(&mut connection).expect("normalize before runtime");
-        assert_eq!(
-            entry::user_version(&connection).unwrap(),
-            CURRENT_SCHEMA_VERSION
-        );
-        assert_eq!(
-            schema_identity(&connection).unwrap(),
-            (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
-        );
-        assert_eq!(schema_objects(&connection).unwrap(), expected_schema);
-        let retained: (String, i64, i64) = connection
-            .query_row(
-                "SELECT name, created_at, updated_at FROM decks",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .unwrap();
-        assert_eq!(retained, ("Retained deck".to_string(), 10, 20));
-        let setting: (String, i64) = connection
-            .query_row(
-                "SELECT value_json, updated_at FROM app_settings WHERE key = 'lk02-preservation-sentinel'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(setting, ("{\"value\":17}".to_string(), 30));
-        let changes = connection.total_changes();
-        initialize_connection(&mut connection).expect("current-to-current entry");
-        assert_eq!(
-            connection.total_changes(),
-            changes,
-            "input schema {version}"
-        );
-    }
+    // Every input schema replays the whole migration chain, so the walk is
+    // quadratic in the migration count. The entries are independent in-memory
+    // databases, so each runs on its own thread.
+    std::thread::scope(|scope| {
+        for version in 1..=MIGRATIONS.len() {
+            let expected_schema = &expected_schema;
+            std::thread::Builder::new()
+                .name(format!("entry-from-schema-{version}"))
+                .spawn_scoped(scope, move || {
+                    assert_entry_reaches_current_schema(version, expected_schema)
+                })
+                .unwrap();
+        }
+    });
+}
+
+fn assert_entry_reaches_current_schema(version: usize, expected_schema: &[SchemaObject]) {
+    let mut connection = fixture_at(version);
+    connection
+        .execute_batch(
+            "INSERT INTO decks (id, name, created_at, updated_at)
+             VALUES ('00000000000000000000000000000001', 'Retained deck', 10, 20);
+             INSERT INTO app_settings (key, value_json, updated_at)
+             VALUES ('lk02-preservation-sentinel', '{\"value\":17}', 30);",
+        )
+        .unwrap();
+    let before_admission = connection.total_changes();
+    validate_backup_lineage(&connection).expect("supported backup input");
+    assert_eq!(connection.total_changes(), before_admission);
+    initialize_connection(&mut connection).expect("normalize before runtime");
+    assert_eq!(
+        entry::user_version(&connection).unwrap(),
+        CURRENT_SCHEMA_VERSION
+    );
+    assert_eq!(
+        schema_identity(&connection).unwrap(),
+        (CURRENT_SCHEMA_LINEAGE.to_string(), CURRENT_SCHEMA_VERSION)
+    );
+    assert_eq!(schema_objects(&connection).unwrap(), expected_schema);
+    let retained: (String, i64, i64) = connection
+        .query_row(
+            "SELECT name, created_at, updated_at FROM decks",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(retained, ("Retained deck".to_string(), 10, 20));
+    let setting: (String, i64) = connection
+        .query_row(
+            "SELECT value_json, updated_at FROM app_settings WHERE key = 'lk02-preservation-sentinel'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(setting, ("{\"value\":17}".to_string(), 30));
+    let changes = connection.total_changes();
+    initialize_connection(&mut connection).expect("current-to-current entry");
+    assert_eq!(
+        connection.total_changes(),
+        changes,
+        "input schema {version}"
+    );
 }
 
 #[test]

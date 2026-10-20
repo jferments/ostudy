@@ -9,6 +9,7 @@ import {
   type StudyGuideLibraryPage,
   type StudyGuideLibrarySort,
 } from "../ipc/studyGuides";
+import { listContinueReading, type ContinueReadingItem } from "../ipc/studyGuideReading";
 import { useRequestLane } from "./requestLane";
 
 export const STUDY_GUIDE_PAGE_SIZE = 40;
@@ -71,7 +72,9 @@ export function useStudyGuidesController({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingGuideId, setDeletingGuideId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [continueReading, setContinueReading] = useState<ContinueReadingItem | null>(null);
   const readLane = useRequestLane();
+  const continueLane = useRequestLane();
   const consumedRequest = useRef<number | null>(null);
   const deleteOperations = useRef(new Map<string, string>());
 
@@ -109,6 +112,21 @@ export function useStudyGuidesController({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The guide to pick up again is its own read: its failure leaves the list alone.
+  const loadContinueReading = useCallback(async (): Promise<void> => {
+    const token = continueLane.begin();
+    try {
+      const [latest] = await listContinueReading(1);
+      if (continueLane.isCurrent(token)) setContinueReading(latest ?? null);
+    } catch {
+      if (continueLane.isCurrent(token)) setContinueReading(null);
+    }
+  }, [continueLane]);
+
+  useEffect(() => {
+    void loadContinueReading();
+  }, [loadContinueReading]);
 
   useEffect(() => {
     if (!openRequest || consumedRequest.current === openRequest.requestId) return;
@@ -172,6 +190,7 @@ export function useStudyGuidesController({
   function closeGuide(): void {
     setSelected(null);
     void load(true);
+    void loadContinueReading();
   }
 
   async function deleteGuide(target: StudyGuideDeleteTarget): Promise<boolean> {
@@ -200,6 +219,7 @@ export function useStudyGuidesController({
           : `Study guide deleted with ${result.removedRevisionCount} generated revisions. The source, linked flashcards, and your stable notes were preserved.`,
       );
       await load(true);
+      void loadContinueReading();
       return true;
     } catch (error: unknown) {
       const message = getErrorMessage(error);
@@ -222,6 +242,7 @@ export function useStudyGuidesController({
     isRefreshing,
     deletingGuideId,
     errorMessage,
+    continueReading,
     pageNumber,
     pageCount,
     canGoPrevious,

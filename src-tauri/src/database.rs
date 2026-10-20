@@ -768,6 +768,25 @@ mod tests {
     }
 
     #[test]
+    fn bundled_sqlite_keeps_no_global_memory_statistics() {
+        // With statistics on, every SQLite allocation takes one process-wide
+        // mutex, which serialized concurrent connections (and the test suite).
+        // `.cargo/config.toml` sets the flag for the bundled build.
+        let connection = Connection::open_in_memory().unwrap();
+        let options = connection
+            .prepare("PRAGMA compile_options")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(
+            options.iter().any(|option| option == "DEFAULT_MEMSTATUS=0"),
+            "{options:?}"
+        );
+    }
+
+    #[test]
     fn regenerate_public_baseline_schema_manifest() {
         if std::env::var_os("OSTUDY_REGENERATE_PUBLIC_SCHEMA_MANIFEST").is_none() {
             return;

@@ -414,6 +414,7 @@ pub(crate) fn sanitize_snapshot(
     // lessons: the knowledge units they are written from are removed below.
     // Lesson narration, its audio and the speech setting go with them, and
     // links from cards to the marks they were made from go with the marks.
+    // How far a learner has read each guide stays on the device too.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -443,7 +444,9 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM speech_segments;
              DELETE FROM speech_settings;
              DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
-             DROP TABLE sync_narration_assets;",
+             DROP TABLE sync_narration_assets;
+             DELETE FROM document_study_guide_section_reads;
+             DELETE FROM document_study_guide_positions;",
         )
         .map_err(CommandError::database)?;
 

@@ -1,2 +1,8 @@
 [net]
 retry = 3
+
+[env]
+# Without this the bundled SQLite counts memory under one process-wide mutex,
+# so concurrent connections contend on every allocation. oStudy never reads
+# sqlite3_memory_used() or sets a soft heap limit.
+LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"

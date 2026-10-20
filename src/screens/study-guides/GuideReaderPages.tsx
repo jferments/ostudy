@@ -158,7 +158,7 @@ export function GuideOverviewPage({
 
 export function GuideSectionPage({
   guide, entry, sectionCount, layoutMode, projection, previous, next, checkProgress, onCheckProgressChange,
-  actionsDisabled, onNavigate, onPractice, onEditNote, onRemoveNote, onEditSection, onResetSection, onDiscardConflict,
+  actionsDisabled, onNavigate, read, onSetRead, onPractice, onEditNote, onRemoveNote, onEditSection, onResetSection, onDiscardConflict,
   ...sourceProps
 }: GuideSourceProps & {
   guide: DocumentStudyGuide;
@@ -172,6 +172,9 @@ export function GuideSectionPage({
   onCheckProgressChange: (next: CheckProgressMap) => void;
   actionsDisabled: boolean;
   onNavigate: (destination: GuideDestination) => void;
+  /** Whether the learner has read this section's current text. */
+  read: boolean;
+  onSetRead: (read: boolean) => void;
   onPractice: () => void;
   onEditNote: () => void;
   onRemoveNote: (note: StudyGuideOverlay) => void;
@@ -194,6 +197,7 @@ export function GuideSectionPage({
   const menuItems: OverflowMenuItem[] = [
     ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
       onSelect: () => tutor.openContext(tutorTarget) }] : []),
+    { id: "read", label: read ? "Mark as unread" : "Mark as read", onSelect: () => onSetRead(!read) },
     { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
     { id: "edit", label: "Edit or rewrite this section", disabled: actionsDisabled, onSelect: onEditSection },
     ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled, onSelect: () => onRemoveNote(note) }] : []),
@@ -267,6 +271,18 @@ export function GuideSectionPage({
         {/* Narrower screens have no margin, so its blocks follow the section's end. */}
         {!wide ? <aside aria-label="About this section" className={cn(railClass, "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-6")}>{aboutBlocks}</aside> : null}
         <GuidePageNav previous={previous} next={next} onNavigate={onNavigate} />
+        {/* The last section has no Next to count it read, so it says so itself. */}
+        {next === null ? (
+          read ? (
+            <p className="tw:m-0 tw:flex tw:items-center tw:gap-2 tw:font-sans tw:text-small tw:font-semibold tw:text-success">
+              <Icon name="check" size={16} />Read
+            </p>
+          ) : (
+            <Button variant="primary" className="tw:self-start" onClick={() => onSetRead(true)}>
+              <Icon name="check" size={16} />Mark as read
+            </Button>
+          )
+        ) : null}
       </div>
       {layoutMode === "compact" ? (
         <GuideBottomBar previous={previous} next={next} cardCount={cardCount} position={`Section ${number} of ${sectionCount}`}
