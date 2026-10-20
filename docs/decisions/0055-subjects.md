@@ -69,4 +69,4 @@ Finally purging a surviving card's deck or note also purges the retired copies m
 - A `.ostudybackup` made before the update still restores: the restore upgrades its private copy with the same migration, so it gets the subjects an in-place upgrade makes.
 - A collection's study bundle deck is no longer where its flashcards live. Existing bundle decks stay as ordinary decks, archived when the merge emptied them.
 - A synchronization package from a device without the update can repeat choices the upgrade made, such as a folder and collection name merge, or file a deck differently. The merge keeps one result and lists the item. Upgrading every device before the next sync avoids this.
-- The Library screens that replace folders and collections came later; [One subject list in Library](0058-one-subject-list-in-library.md) records them. The folder and collection commands remain as native adapters.
+- The Library screens that replace folders and collections came later; [One subject list in Library](0059-one-subject-list-in-library.md) records them. The folder and collection commands remain as native adapters.
