@@ -21,6 +21,18 @@ for test_filter in "$@"; do
     exit 1
   fi
   printf '\n==> Native contract %s: %s selected tests\n' "$test_filter" "$count"
+  if [[ "${OSTUDY_NATIVE_CONTRACTS_LIST_ONLY:-0}" == "1" ]]; then
+    # check.sh runs the whole native suite next, which runs these tests. Here
+    # only refuse a selection that has gone empty or has ignored tests in it.
+    cargo "${args[@]}" -- --list --ignored --color never > "$TEMP_DIR/ignored"
+    ignored="$(awk '/: test$/ { n++ } END { print n+0 }' "$TEMP_DIR/ignored")"
+    if (( ignored > 0 )); then
+      printf 'ERROR: native contract has %s ignored tests: %s\n' "$ignored" "$test_filter" >&2
+      exit 1
+    fi
+    printf 'LISTED Native contract %s: %s selected, none ignored; the full native suite runs them\n' "$test_filter" "$count"
+    continue
+  fi
   cargo "${args[@]}" -- --color never | tee "$TEMP_DIR/result"
   if ! grep -Eq "^test result: ok\\. ${count} passed; 0 failed; 0 ignored;" "$TEMP_DIR/result"; then
     printf 'ERROR: native contract did not execute every selected test: %s\n' "$test_filter" >&2
