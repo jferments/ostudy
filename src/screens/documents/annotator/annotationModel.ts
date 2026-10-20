@@ -23,6 +23,8 @@ export interface Bounds { left: number; top: number; right: number; bottom: numb
 export type AnnotatorTool =
   | "select" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
 export type ShapeTool = "line" | "arrow" | "rectangle" | "ellipse";
+/** What the eraser takes: whole annotations, or only the parts of pen and highlighter strokes it passes over. */
+export type EraseMode = "whole" | "part";
 export const SHAPE_TOOLS: readonly ShapeTool[] = ["line", "arrow", "rectangle", "ellipse"];
 
 export function isShapeTool(tool: AnnotatorTool): tool is ShapeTool {
@@ -325,6 +327,74 @@ export function topmostAt(
     }
   }
   return null;
+}
+
+/** Whether the eraser can take part of this shape: a pen stroke or a free highlighter stroke. */
+export function isCuttable(shape: AnnotationShape): shape is InkShape | HighlightShape {
+  return shape.kind === "ink" || (shape.kind === "highlight" && !isTextHighlight(shape) && shape.points.length > 0);
+}
+
+/**
+ * What is left of a pen or free highlighter stroke after the eraser covers a
+ * circle: the parts of it outside the circle, each its own stroke, cut where
+ * the stroke's edge meets the circle. Null when the circle misses the stroke.
+ */
+export function cutStroke(shape: InkShape | HighlightShape, center: Point, radius: number): Array<InkShape | HighlightShape> | null {
+  const stride = shape.kind === "ink" ? 3 : 2;
+  const points = shape.points;
+  const count = Math.floor(points.length / stride);
+  if (count === 0) return null;
+  const reach = radius + shape.strokeWidth / 2;
+  const value = (index: number) => points[index] ?? 0;
+  const at = (index: number): number[] => Array.from({ length: stride }, (_, axis) => value(index * stride + axis));
+  const inside = (index: number) => Math.hypot(value(index * stride) - center.x, value(index * stride + 1) - center.y) <= reach;
+  const between = (from: readonly number[], to: readonly number[], t: number) =>
+    from.map((start, axis) => round(start + ((to[axis] ?? start) - start) * t));
+
+  const runs: number[][] = [];
+  let run: number[] = inside(0) ? [] : at(0);
+  let cut = inside(0);
+  const close = () => {
+    if (run.length >= stride * 2) runs.push(run);
+    run = [];
+  };
+  for (let index = 1; index < count; index += 1) {
+    const from = at(index - 1);
+    const to = at(index);
+    const span = segmentInsideCircle(
+      value((index - 1) * stride), value((index - 1) * stride + 1), value(index * stride), value(index * stride + 1), center, reach,
+    );
+    if (!span) {
+      run.push(...to);
+      continue;
+    }
+    cut = true;
+    const [enter, leave] = span;
+    if (enter > 0) run.push(...between(from, to, enter));
+    close();
+    if (leave < 1) run.push(...between(from, to, leave), ...to);
+  }
+  if (!cut) return null;
+  close();
+  return runs.map((kept) => ({ ...shape, points: kept }));
+}
+
+/** The part of the segment from (ax, ay) to (bx, by) inside a circle, as fractions of its length. */
+function segmentInsideCircle(ax: number, ay: number, bx: number, by: number, center: Point, radius: number): [number, number] | null {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const fx = ax - center.x;
+  const fy = ay - center.y;
+  const a = dx * dx + dy * dy;
+  const c = fx * fx + fy * fy - radius * radius;
+  if (a === 0) return c <= 0 ? [0, 1] : null;
+  const b = 2 * (fx * dx + fy * dy);
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const root = Math.sqrt(discriminant);
+  const enter = Math.max(0, (-b - root) / (2 * a));
+  const leave = Math.min(1, (-b + root) / (2 * a));
+  return enter < leave || (enter === leave && c <= 0) ? [enter, leave] : null;
 }
 
 function mapPoints(points: readonly number[], stride: number, dx: number, dy: number): number[] {

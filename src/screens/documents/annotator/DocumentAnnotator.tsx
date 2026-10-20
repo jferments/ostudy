@@ -305,6 +305,8 @@ function ReadyAnnotator({ documentId, title, pages, controller, suggestedDeckId,
           penSeen={controller.penSeen}
           penOnly={controller.penOnly}
           onTogglePenOnly={controller.togglePenOnly}
+          eraseMode={controller.eraseMode}
+          onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
           fit={viewport.fit}
           canZoomIn={viewport.scale < MAX_SCALE}

@@ -35,6 +35,7 @@ import {
   TEXT_LINE_HEIGHT,
   type Annotation,
   type AnnotatorTool,
+  type EraseMode,
   type Point,
   type TextShape,
   type ToolStyle,
@@ -71,6 +72,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   const [tool, setToolState] = useState<AnnotatorTool>("pen");
   const [styles, setStyles] = useState<ToolStyles>(DEFAULT_STYLES);
   const [penOnly, setPenOnly] = useState(false);
+  const [eraseMode, setEraseMode] = useState<EraseMode>("whole");
   const [penSeen, setPenSeen] = useState(false);
   /** The learner's own pen-only choice, which a detected pen never overrides. */
   const penChoice = useRef<boolean | null>(null);
@@ -353,6 +355,8 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
     activeStyle,
     chooseStyle,
     penOnly,
+    eraseMode,
+    setEraseMode,
     penSeen,
     notePen,
     togglePenOnly,
