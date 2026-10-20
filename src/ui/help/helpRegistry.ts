@@ -11,6 +11,7 @@ export type HelpTopicId =
   | "documents.processing"
   | "practice.confidence"
   | "practice.dailyLimits"
+  | "progress.solidCards"
   | "settings.motion"
   | "settings.retention"
   | "settings.reveal"
@@ -113,6 +114,14 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     details:
       "Scheduled study keeps to New cards per day and Reviews per day from Settings → Review, and Cards available to study shows what the limits leave out. A limit of 0 pauses that kind of card in scheduled sessions. Reviews before New day starts at count toward the previous day. Choose Extra study when you want to study beyond today's schedule; shuffling is chosen when you start a session.",
     documentation: "Practice, scheduling, and Progress: Choose a scope",
+  },
+  "progress.solidCards": {
+    id: "progress.solidCards",
+    title: "Solid cards",
+    summary: "Cards expected to stay remembered for about three weeks or more.",
+    details:
+      "Card strength sorts every studied card by how long it is expected to stay remembered. Solid cards have the longest expected memory; Getting there, Learning, and New cards come back sooner.",
+    documentation: "Practice, scheduling, and Progress: Read Progress",
   },
   "settings.motion": {
     id: "settings.motion",
