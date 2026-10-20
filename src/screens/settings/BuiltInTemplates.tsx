@@ -113,14 +113,14 @@ export function BuiltInTemplates() {
         <ListRows>
           {GENERATION_FAMILIES.map(({ value, label }) => {
             const on = allowed.includes(value);
-            return <ListRow key={value} density="dense" className="tw:min-h-14 tw:items-center"
+            return <ListRow key={value}
               leading={<ListRowMedia label={FAMILY_MARKS[value]} className="tw:normal-case" />}
               title={label}
               trailing={<Switch aria-label={`AI writes ${label}`} checked={on}
                 disabled={saving || (on && allowed.length === 1)}
                 onCheckedChange={(checked) => toggle(value, checked)} />} />;
           })}
-          <ListRow density="dense" className="tw:min-h-14 tw:items-center"
+          <ListRow
             leading={<ListRowMedia icon="image" />} title="Image occlusion" />
         </ListRows>
       </> : null}
