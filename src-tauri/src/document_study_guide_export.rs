@@ -6,19 +6,8 @@
 //! `oxidize-pdf` backend, and registers the result with the existing prepared-
 //! export boundary. It never calls an AI provider or scrapes the React DOM.
 
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs};
 
-use oxidize_pdf::{
-    annotations::{HighlightMode, LinkAction, LinkAnnotation, LinkDestination},
-    geometry::{Point, Rectangle},
-    graphics::{Color, Image as PdfImage},
-    structure::{Destination, NamedDestinations, OutlineItem, OutlineTree, PageDestination},
-    Document, Font, Page,
-};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -40,21 +29,15 @@ use crate::{
     util::validate_entity_id,
 };
 
+mod guide_typst;
 mod math_layout;
 mod math_source;
 
+pub(crate) use guide_typst::StudyGuidePdfTheme;
+
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
-const PAGE_WIDTH: f64 = 595.0;
-const PAGE_HEIGHT: f64 = 842.0;
-const MARGIN_X: f64 = 54.0;
-const MARGIN_TOP: f64 = 64.0;
-const MARGIN_BOTTOM: f64 = 48.0;
-const BODY_SIZE: f64 = 10.25;
-const BODY_LINE_HEIGHT: f64 = 14.25;
 const MAX_EXPORT_SECTIONS: usize = 512;
 const MAX_EXPORT_TEXT_CHARS: usize = 5_000_000;
-const EMBEDDED_FONT_REGULAR_NAME: &str = "OStudyGuideSans";
-const EMBEDDED_FONT_BOLD_NAME: &str = "OStudyGuideSansBold";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -63,6 +46,8 @@ pub(crate) struct PrepareStudyGuidePdfInput {
     pub operation_id: String,
     #[serde(default)]
     pub include_annotations: bool,
+    #[serde(default)]
+    pub theme: StudyGuidePdfTheme,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +57,8 @@ pub(crate) struct PrepareCollectionStudyGuidePdfInput {
     pub operation_id: String,
     #[serde(default)]
     pub include_annotations: bool,
+    #[serde(default)]
+    pub theme: StudyGuidePdfTheme,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -125,28 +112,8 @@ struct EffectiveExportSection {
 }
 
 #[derive(Clone, Debug)]
-enum InlinePiece {
-    Text { value: String, width: f64 },
-    Formula(math_layout::MathLayout),
-}
-
-#[derive(Clone, Debug, Default)]
-struct InlineLine {
-    pieces: Vec<InlinePiece>,
-    width: f64,
-    height: f64,
-    depth: f64,
-}
-
-#[derive(Clone, Debug)]
-enum FlowLine {
-    Inline(InlineLine),
-    Block(math_layout::MathLayout),
-}
-
-#[derive(Clone, Debug)]
 struct ExportFigure {
-    image: PdfImage,
+    image: guide_typst::FigureImage,
     title: String,
     caption: String,
 }
@@ -181,41 +148,6 @@ enum ExportBlock {
         answer: String,
     },
     Spacer,
-}
-
-#[derive(Clone, Debug)]
-enum PdfFontChoice {
-    Custom { regular: String, bold: String },
-}
-
-impl PdfFontChoice {
-    fn font(&self, bold: bool) -> Font {
-        match self {
-            Self::Custom {
-                regular,
-                bold: bold_name,
-            } => Font::Custom(if bold { bold_name } else { regular }.clone()),
-        }
-    }
-}
-
-fn color_ink() -> Color {
-    Color::rgb(0.10, 0.14, 0.18)
-}
-fn color_muted() -> Color {
-    Color::rgb(0.38, 0.43, 0.48)
-}
-fn color_accent() -> Color {
-    Color::rgb(0.08, 0.42, 0.45)
-}
-fn color_cover() -> Color {
-    Color::rgb(0.07, 0.18, 0.25)
-}
-fn color_cover_text() -> Color {
-    Color::rgb(0.96, 0.98, 0.99)
-}
-fn color_cover_muted() -> Color {
-    Color::rgb(0.72, 0.81, 0.84)
 }
 
 #[tauri::command]
@@ -261,7 +193,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(CommandError::io)?;
     }
-    render_study_guide_pdf(&effective, &destination)?;
+    guide_typst::render(&effective, input.theme, &destination)?;
 
     let summary = StudyGuidePdfSummary {
         guide_revision: effective.guide_revision,
@@ -350,7 +282,7 @@ pub(crate) fn prepare_collection_study_guide_pdf(
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(CommandError::io)?;
     }
-    render_study_guide_pdf(&effective, &destination)?;
+    guide_typst::render(&effective, input.theme, &destination)?;
 
     let summary = StudyGuidePdfSummary {
         guide_revision: effective.guide_revision,
@@ -718,9 +650,7 @@ fn load_export_figures(
                 Err(_) => return None,
             };
             let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
-            let width = decoded.width();
-            let height = decoded.height();
-            let image = PdfImage::from_rgba_data(decoded.into_raw(), width, height).ok()?;
+            let image = guide_typst::FigureImage::from_rgba(decoded)?;
             Some(ExportFigure {
                 image,
                 title: explanation.title.clone(),
@@ -830,1109 +760,6 @@ fn generated_content_blocks(
     blocks
 }
 
-fn render_study_guide_pdf(
-    export: &EffectiveGuideExport,
-    destination: &Path,
-) -> Result<(), CommandError> {
-    let mut document = Document::new();
-    document.set_title(&export.document_title);
-    let font_choice = install_unicode_font(&mut document)?;
-    let mut writer = PdfFlowWriter::new(document, font_choice);
-
-    writer.cover_page(
-        &export.document_title,
-        &export.source_filename,
-        export.sections.len(),
-    )?;
-    writer.page_break()?;
-    writer.enable_running_pages(&export.document_title)?;
-
-    writer.register_navigation("contents", "Contents");
-    writer.heading("Contents", 20.0, 25.0)?;
-    writer.muted_paragraph(
-        "A source-grounded map of the topics in this guide.",
-        10.0,
-        14.0,
-    )?;
-    writer.spacer(5.0)?;
-    writer.toc_entry("Overview", None, "overview")?;
-    if export.chapters.is_empty() {
-        for (index, section) in export.sections.iter().enumerate() {
-            let destination = format!("section-{}", index + 1);
-            writer.toc_entry(
-                &format!("{}. {}", index + 1, section.title),
-                section.source_locator.as_ref(),
-                &destination,
-            )?;
-        }
-    } else {
-        for (index, chapter) in export.chapters.iter().enumerate() {
-            writer.toc_entry(
-                &format!("{}. {}", index + 1, chapter.title),
-                None,
-                &format!("chapter-{}", index + 1),
-            )?;
-        }
-    }
-    writer.spacer(12.0)?;
-    writer.rule()?;
-    writer.spacer(10.0)?;
-
-    writer.ensure_space(80.0)?;
-    writer.register_navigation("overview", "Overview");
-    writer.heading("Overview", 20.0, 25.0)?;
-    writer.paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
-    if !export.learning_objectives.is_empty() {
-        writer.heading("Learning objectives", 14.0, 19.0)?;
-        writer.bullets(&export.learning_objectives, false)?;
-    }
-    if !export.key_concepts.is_empty() {
-        writer.heading("Key concepts", 14.0, 19.0)?;
-        writer.bullets(&export.key_concepts, false)?;
-    }
-    if !export.guide_notes.is_empty() {
-        writer.heading("My guide notes", 14.0, 19.0)?;
-        writer.bullets(&export.guide_notes, false)?;
-    }
-    if math_source::requires_source_fallback(export) {
-        writer.muted_paragraph(math_source::NOTICE, 9.0, 12.5)?;
-    }
-    writer.page_break()?;
-
-    if export.chapters.is_empty() {
-        for (index, section) in export.sections.iter().enumerate() {
-            let heading = format!("{}. {}", index + 1, section.title);
-            render_export_section(
-                &mut writer,
-                section,
-                &heading,
-                18.0,
-                23.0,
-                Some(&format!("section-{}", index + 1)),
-            )?;
-        }
-    } else {
-        for (chapter_index, chapter) in export.chapters.iter().enumerate() {
-            writer.ensure_space(100.0)?;
-            let chapter_heading = format!("{}. {}", chapter_index + 1, chapter.title);
-            writer.register_navigation(&format!("chapter-{}", chapter_index + 1), &chapter_heading);
-            writer.heading(&chapter_heading, 19.0, 24.0)?;
-            writer.paragraph(&chapter.introduction, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
-            writer.spacer(8.0)?;
-            for (section_position, section_index) in chapter.section_indices.iter().enumerate() {
-                let section = export.sections.get(*section_index).ok_or_else(|| {
-                    CommandError::new(
-                        "document_study_guide_invalid",
-                        "The study-guide chapter references a missing section.",
-                    )
-                })?;
-                let heading = format!(
-                    "{}.{}. {}",
-                    chapter_index + 1,
-                    section_position + 1,
-                    section.title
-                );
-                render_export_section(&mut writer, section, &heading, 14.5, 19.5, None)?;
-            }
-            writer.spacer(10.0)?;
-        }
-    }
-
-    writer.finish(destination)
-}
-
-fn render_export_section(
-    writer: &mut PdfFlowWriter,
-    section: &EffectiveExportSection,
-    heading: &str,
-    heading_size: f64,
-    heading_line_height: f64,
-    navigation: Option<&str>,
-) -> Result<(), CommandError> {
-    writer.ensure_space(90.0)?;
-    if let Some(destination) = navigation {
-        writer.register_navigation(destination, heading);
-    }
-    writer.heading(heading, heading_size, heading_line_height)?;
-    if let Some(locator) = section.source_locator.as_ref() {
-        writer.muted_paragraph(&source_label(locator), 9.25, 12.5)?;
-    }
-    writer.spacer(5.0)?;
-    for block in &section.body_lines {
-        writer.block(block)?;
-    }
-    for figure in &section.figures {
-        writer.figure(figure)?;
-    }
-    if !section.notes.is_empty() {
-        writer.heading("My notes", 13.0, 18.0)?;
-        writer.bullets(&section.notes, false)?;
-    }
-    writer.spacer(12.0)?;
-    Ok(())
-}
-
-struct PdfFlowWriter {
-    document: Document,
-    font: PdfFontChoice,
-    page: Page,
-    page_number: usize,
-    y: f64,
-    page_has_content: bool,
-    running_title: Option<String>,
-    running_pages: bool,
-    navigation: Vec<(String, String, u32)>,
-    image_sequence: usize,
-}
-
-impl PdfFlowWriter {
-    fn new(document: Document, font: PdfFontChoice) -> Self {
-        Self {
-            document,
-            font,
-            page: Page::a4(),
-            page_number: 1,
-            y: PAGE_HEIGHT - MARGIN_TOP,
-            page_has_content: false,
-            running_title: None,
-            running_pages: false,
-            navigation: Vec::new(),
-            image_sequence: 0,
-        }
-    }
-
-    fn cover_page(
-        &mut self,
-        title: &str,
-        source_filename: &str,
-        section_count: usize,
-    ) -> Result<(), CommandError> {
-        self.page
-            .graphics()
-            .set_fill_color(color_cover())
-            .rectangle(0.0, 0.0, PAGE_WIDTH, PAGE_HEIGHT)
-            .fill();
-        self.page
-            .graphics()
-            .set_fill_color(color_accent())
-            .rectangle(0.0, 0.0, PAGE_WIDTH, 72.0)
-            .fill();
-        self.page
-            .graphics()
-            .set_stroke_color(Color::rgb(0.68, 0.79, 0.82))
-            .set_line_width(0.8)
-            .move_to(MARGIN_X, PAGE_HEIGHT - 78.0)
-            .line_to(PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 78.0)
-            .stroke();
-        self.absolute_text(
-            "OSTUDY  /  STUDY GUIDE",
-            MARGIN_X,
-            PAGE_HEIGHT - 60.0,
-            9.5,
-            true,
-            color_cover_muted(),
-        )?;
-        let title_lines = wrap_text(title, PAGE_WIDTH - (2.0 * MARGIN_X), 29.0);
-        let mut y = PAGE_HEIGHT - 145.0;
-        for line in title_lines {
-            self.absolute_text(&line, MARGIN_X, y, 29.0, true, color_cover_text())?;
-            y -= 35.0;
-        }
-        y -= 18.0;
-        self.absolute_text(
-            &format!("Source: {source_filename}"),
-            MARGIN_X,
-            y,
-            11.0,
-            false,
-            color_cover_muted(),
-        )?;
-        y -= 22.0;
-        self.absolute_text(
-            &format!(
-                "{section_count} source-grounded section{}",
-                if section_count == 1 { "" } else { "s" }
-            ),
-            MARGIN_X,
-            y,
-            10.0,
-            false,
-            color_cover_muted(),
-        )?;
-        self.absolute_text(
-            "SOURCE-GROUNDED  /  LOCAL EXPORT",
-            MARGIN_X,
-            38.0,
-            9.0,
-            true,
-            color_cover_text(),
-        )?;
-        self.page_has_content = true;
-        Ok(())
-    }
-
-    fn enable_running_pages(&mut self, title: &str) -> Result<(), CommandError> {
-        self.running_title = Some(title.to_string());
-        self.running_pages = true;
-        self.draw_running_header()
-    }
-
-    fn draw_running_header(&mut self) -> Result<(), CommandError> {
-        if !self.running_pages {
-            return Ok(());
-        }
-        if let Some(title) = self.running_title.clone() {
-            self.absolute_text(
-                &compact_header(&title),
-                MARGIN_X,
-                PAGE_HEIGHT - 31.0,
-                8.5,
-                true,
-                color_muted(),
-            )?;
-        }
-        self.page
-            .graphics()
-            .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
-            .set_line_width(0.6)
-            .move_to(MARGIN_X, PAGE_HEIGHT - 42.0)
-            .line_to(PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 42.0)
-            .stroke();
-        self.y = PAGE_HEIGHT - MARGIN_TOP;
-        Ok(())
-    }
-
-    fn current_page_index(&self) -> u32 {
-        u32::try_from(self.page_number.saturating_sub(1)).unwrap_or(u32::MAX)
-    }
-
-    fn register_navigation(&mut self, name: &str, title: &str) {
-        let page = self.current_page_index();
-        if self
-            .navigation
-            .iter()
-            .any(|(existing, _, _)| existing == name)
-        {
-            return;
-        }
-        self.navigation
-            .push((name.to_string(), title.to_string(), page));
-    }
-
-    fn toc_entry(
-        &mut self,
-        title: &str,
-        locator: Option<&SourceLocator>,
-        destination: &str,
-    ) -> Result<(), CommandError> {
-        let title_lines = wrap_text(title, PAGE_WIDTH - (2.0 * MARGIN_X), 10.5);
-        let source = locator.map(source_label);
-        let source_lines = source
-            .as_deref()
-            .map(|value| wrap_text(value, PAGE_WIDTH - (2.0 * MARGIN_X), 9.0))
-            .unwrap_or_default();
-        let needed = title_lines.len() as f64 * 14.0 + source_lines.len() as f64 * 12.0 + 9.0;
-        self.ensure_space(needed)?;
-        let top = self.y + 3.0;
-        self.paragraph(title, 10.5, 14.0, true)?;
-        if let Some(source) = source {
-            self.muted_paragraph(&source, 9.0, 12.0)?;
-        }
-        let bottom = self.y + 2.0;
-        let rect = Rectangle::new(
-            Point::new(MARGIN_X, bottom),
-            Point::new(PAGE_WIDTH - MARGIN_X, top),
-        );
-        let link = LinkAnnotation::new(
-            rect,
-            LinkAction::GoTo(LinkDestination::Named(destination.to_string())),
-        )
-        .with_highlight_mode(HighlightMode::None);
-        self.page.add_annotation(link.to_annotation());
-        Ok(())
-    }
-
-    fn heading(&mut self, text: &str, size: f64, line_height: f64) -> Result<(), CommandError> {
-        let available_width = PAGE_WIDTH - (2.0 * MARGIN_X);
-        let line_count = wrap_text(text, available_width, size).len().max(1) as f64;
-        let heading_height = (line_count * line_height) + (line_height * 0.35).max(2.0);
-        self.ensure_space(heading_height + (2.0 * BODY_LINE_HEIGHT))?;
-        self.text_color(text, size, line_height, true, 0.0, color_accent())
-    }
-
-    fn paragraph(
-        &mut self,
-        text: &str,
-        size: f64,
-        line_height: f64,
-        bold: bool,
-    ) -> Result<(), CommandError> {
-        self.text_color(text, size, line_height, bold, 0.0, color_ink())
-    }
-
-    fn muted_paragraph(
-        &mut self,
-        text: &str,
-        size: f64,
-        line_height: f64,
-    ) -> Result<(), CommandError> {
-        self.text_color(text, size, line_height, false, 0.0, color_muted())
-    }
-
-    fn rule(&mut self) -> Result<(), CommandError> {
-        self.ensure_space(3.0)?;
-        self.page
-            .graphics()
-            .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
-            .set_line_width(0.6)
-            .move_to(MARGIN_X, self.y)
-            .line_to(PAGE_WIDTH - MARGIN_X, self.y)
-            .stroke();
-        self.y -= 3.0;
-        Ok(())
-    }
-
-    fn bullets(&mut self, items: &[String], numbered: bool) -> Result<(), CommandError> {
-        for (index, item) in items.iter().enumerate() {
-            let prefix = if numbered {
-                format!("{}. ", index + 1)
-            } else {
-                "• ".to_string()
-            };
-            self.text_color(
-                &format!("{prefix}{item}"),
-                BODY_SIZE,
-                BODY_LINE_HEIGHT,
-                false,
-                12.0,
-                color_ink(),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn block(&mut self, block: &ExportBlock) -> Result<(), CommandError> {
-        match block {
-            ExportBlock::Heading(text) => self.heading(text, 12.5, 17.5),
-            ExportBlock::Paragraph(text) => {
-                self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false)
-            }
-            ExportBlock::Bullets(items) => self.bullets(items, false),
-            ExportBlock::Numbered(items) => self.bullets(items, true),
-            ExportBlock::Terms(entries) => {
-                for (term, explanation) in entries {
-                    self.text_color(
-                        &format!("{term}: {explanation}"),
-                        BODY_SIZE,
-                        BODY_LINE_HEIGHT,
-                        false,
-                        12.0,
-                        color_ink(),
-                    )?;
-                }
-                Ok(())
-            }
-            ExportBlock::Callout { label, title, body } => self.callout(label, title, body),
-            ExportBlock::Table {
-                title,
-                columns,
-                rows,
-                caption,
-            } => self.table(title, columns, rows, caption),
-            ExportBlock::WorkedExample {
-                title,
-                prompt,
-                steps,
-                answer,
-                takeaway,
-            } => {
-                self.heading(&format!("Worked example: {title}"), 12.5, 17.5)?;
-                self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
-                self.bullets(steps, true)?;
-                self.paragraph(
-                    &format!("Answer: {answer}"),
-                    BODY_SIZE,
-                    BODY_LINE_HEIGHT,
-                    true,
-                )?;
-                if !takeaway.is_empty() {
-                    self.muted_paragraph(
-                        &format!("Takeaway: {takeaway}"),
-                        BODY_SIZE,
-                        BODY_LINE_HEIGHT,
-                    )?;
-                }
-                Ok(())
-            }
-            ExportBlock::RetrievalCheck { prompt, answer } => {
-                self.heading("Check yourself", 12.5, 17.5)?;
-                self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, true)?;
-                self.muted_paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT)
-            }
-            ExportBlock::Spacer => self.spacer(5.0),
-        }
-    }
-
-    fn figure(&mut self, figure: &ExportFigure) -> Result<(), CommandError> {
-        let pixel_width = f64::from(figure.image.width().max(1));
-        let pixel_height = f64::from(figure.image.height().max(1));
-        let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X);
-        let maximum_height = 280.0;
-        let scale = (maximum_width / pixel_width)
-            .min(maximum_height / pixel_height)
-            .min(1.0);
-        let width = (pixel_width * scale).max(1.0);
-        let height = (pixel_height * scale).max(1.0);
-        let caption = if figure.title.trim().is_empty() {
-            figure.caption.trim().to_string()
-        } else if figure.caption.trim().is_empty() {
-            figure.title.trim().to_string()
-        } else {
-            format!("{} — {}", figure.title.trim(), figure.caption.trim())
-        };
-        let caption_height = if caption.is_empty() {
-            0.0
-        } else {
-            wrap_text(&caption, maximum_width, 9.0).len() as f64 * 12.5 + 5.0
-        };
-        self.ensure_space(height + caption_height + 12.0)?;
-        let x = MARGIN_X + ((maximum_width - width) / 2.0);
-        let bottom = self.y - height;
-        self.image_sequence = self.image_sequence.saturating_add(1);
-        let name = format!("StudyGuideFigure{}", self.image_sequence);
-        self.page.add_image(name.clone(), figure.image.clone());
-        self.page
-            .draw_image(&name, x, bottom, width, height)
-            .map_err(pdf_error)?;
-        self.y = bottom - 6.0;
-        self.page_has_content = true;
-        if !caption.is_empty() {
-            self.muted_paragraph(&caption, 9.0, 12.5)?;
-        }
-        self.spacer(6.0)
-    }
-
-    fn callout(&mut self, label: &str, title: &str, body: &str) -> Result<(), CommandError> {
-        let width = PAGE_WIDTH - (2.0 * MARGIN_X);
-        let inner_width = width - 28.0;
-        let heading = format!("{label}: {title}");
-        let heading_lines = wrap_text(&heading, inner_width, 10.5);
-        let body_lines = wrap_text(body, inner_width, 9.75);
-        let height =
-            18.0 + (heading_lines.len() as f64 * 14.0) + (body_lines.len() as f64 * 13.0) + 10.0;
-        self.ensure_space(height + 8.0)?;
-        let bottom = self.y - height;
-        self.page
-            .graphics()
-            .set_fill_color(Color::rgb(0.93, 0.97, 0.97))
-            .rectangle(MARGIN_X, bottom, width, height)
-            .fill();
-        self.page
-            .graphics()
-            .set_fill_color(color_accent())
-            .rectangle(MARGIN_X, bottom, 4.0, height)
-            .fill();
-        let mut line_y = self.y - 17.0;
-        for line in heading_lines {
-            self.absolute_text(&line, MARGIN_X + 14.0, line_y, 10.5, true, color_accent())?;
-            line_y -= 14.0;
-        }
-        line_y -= 2.0;
-        for line in body_lines {
-            self.absolute_text(&line, MARGIN_X + 14.0, line_y, 9.75, false, color_ink())?;
-            line_y -= 13.0;
-        }
-        self.y = bottom - 8.0;
-        self.page_has_content = true;
-        Ok(())
-    }
-
-    fn table(
-        &mut self,
-        title: &str,
-        columns: &[String],
-        rows: &[Vec<String>],
-        caption: &str,
-    ) -> Result<(), CommandError> {
-        if columns.len() < 2 || rows.is_empty() {
-            return Ok(());
-        }
-        self.heading(title, 12.5, 17.5)?;
-        let table_width = PAGE_WIDTH - (2.0 * MARGIN_X);
-        let column_width = table_width / columns.len() as f64;
-        self.draw_table_row(columns, column_width, true, false)?;
-        for (index, row) in rows.iter().enumerate() {
-            let height = table_row_height(row, column_width, 8.8, 11.5);
-            if self.y - height < MARGIN_BOTTOM {
-                self.commit_page()?;
-                self.draw_table_row(columns, column_width, true, false)?;
-            }
-            self.draw_table_row(row, column_width, false, index % 2 == 1)?;
-        }
-        self.spacer(4.0)?;
-        if !caption.is_empty() {
-            self.muted_paragraph(caption, 9.0, 12.5)?;
-        }
-        Ok(())
-    }
-
-    fn draw_table_row(
-        &mut self,
-        cells: &[String],
-        column_width: f64,
-        header: bool,
-        shaded: bool,
-    ) -> Result<(), CommandError> {
-        let font_size = if header { 8.9 } else { 8.8 };
-        let line_height = 11.5;
-        let height = table_row_height(cells, column_width, font_size, line_height);
-        self.ensure_space(height)?;
-        let top = self.y;
-        let bottom = top - height;
-        let fill = if header {
-            Color::rgb(0.88, 0.94, 0.94)
-        } else if shaded {
-            Color::rgb(0.975, 0.98, 0.98)
-        } else {
-            Color::rgb(1.0, 1.0, 1.0)
-        };
-        self.page
-            .graphics()
-            .set_fill_color(fill)
-            .rectangle(MARGIN_X, bottom, column_width * cells.len() as f64, height)
-            .fill();
-        let border = Color::rgb(0.78, 0.81, 0.82);
-        self.page
-            .graphics()
-            .set_stroke_color(border)
-            .set_line_width(0.45)
-            .move_to(MARGIN_X, top)
-            .line_to(MARGIN_X + column_width * cells.len() as f64, top)
-            .move_to(MARGIN_X, bottom)
-            .line_to(MARGIN_X + column_width * cells.len() as f64, bottom)
-            .stroke();
-        for index in 0..=cells.len() {
-            let x = MARGIN_X + column_width * index as f64;
-            self.page
-                .graphics()
-                .set_stroke_color(border)
-                .set_line_width(0.45)
-                .move_to(x, top)
-                .line_to(x, bottom)
-                .stroke();
-        }
-        for (index, cell) in cells.iter().enumerate() {
-            let lines = wrap_text(cell, column_width - 10.0, font_size);
-            let mut line_y = top - 11.0;
-            for line in lines {
-                self.absolute_text(
-                    &line,
-                    MARGIN_X + column_width * index as f64 + 5.0,
-                    line_y,
-                    font_size,
-                    header,
-                    color_ink(),
-                )?;
-                line_y -= line_height;
-            }
-        }
-        self.y = bottom;
-        self.page_has_content = true;
-        Ok(())
-    }
-
-    fn spacer(&mut self, points: f64) -> Result<(), CommandError> {
-        self.ensure_space(points)?;
-        self.y -= points;
-        Ok(())
-    }
-
-    fn page_break(&mut self) -> Result<(), CommandError> {
-        if self.page_has_content {
-            self.commit_page()?;
-        }
-        Ok(())
-    }
-
-    fn text_color(
-        &mut self,
-        text: &str,
-        size: f64,
-        line_height: f64,
-        bold: bool,
-        indent: f64,
-        color: Color,
-    ) -> Result<(), CommandError> {
-        if math_source::contains_math(text) {
-            return self.math_text(text, size, line_height, bold, indent, color);
-        }
-        let available_width = PAGE_WIDTH - (2.0 * MARGIN_X) - indent;
-        let lines = wrap_text(text, available_width, size);
-        for line in lines {
-            self.ensure_space(line_height)?;
-            self.page
-                .text()
-                .set_font(self.font.font(bold), size)
-                .set_fill_color(color)
-                .at(MARGIN_X + indent, self.y)
-                .write(&line)
-                .map_err(pdf_error)?;
-            self.page_has_content = true;
-            self.y -= line_height;
-        }
-        self.spacer((line_height * 0.35).max(2.0))
-    }
-
-    fn math_text(
-        &mut self,
-        text: &str,
-        size: f64,
-        line_height: f64,
-        bold: bool,
-        indent: f64,
-        color: Color,
-    ) -> Result<(), CommandError> {
-        let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X) - indent;
-        let mut flow = Vec::<FlowLine>::new();
-        let mut current = InlineLine::default();
-        let mut pending_space = false;
-
-        for segment in math_source::segments(text) {
-            match segment {
-                math_source::MathSegment::Text(value) => {
-                    let normalized = value.replace('\r', "");
-                    for (line_index, line) in normalized.split('\n').enumerate() {
-                        if line_index > 0 {
-                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
-                            pending_space = false;
-                        }
-                        let mut cursor = 0_usize;
-                        while cursor < line.len() {
-                            let rest = &line[cursor..];
-                            let first = rest.chars().next().expect("nonempty text suffix");
-                            let whitespace = first.is_whitespace();
-                            let mut end = first.len_utf8();
-                            for (offset, character) in rest[first.len_utf8()..].char_indices() {
-                                if character.is_whitespace() != whitespace {
-                                    end = first.len_utf8() + offset;
-                                    break;
-                                }
-                                end = first.len_utf8() + offset + character.len_utf8();
-                            }
-                            let token = &rest[..end];
-                            cursor += end;
-                            if whitespace {
-                                pending_space = true;
-                                continue;
-                            }
-                            let space_width = if pending_space && !current.pieces.is_empty() {
-                                approximate_text_width(" ", size)
-                            } else {
-                                0.0
-                            };
-                            let token_width = approximate_text_width(token, size);
-                            if !current.pieces.is_empty()
-                                && current.width + space_width + token_width > maximum_width
-                            {
-                                flow.push(FlowLine::Inline(std::mem::take(&mut current)));
-                            }
-                            if pending_space && !current.pieces.is_empty() {
-                                let width = approximate_text_width(" ", size);
-                                current.pieces.push(InlinePiece::Text {
-                                    value: " ".to_string(),
-                                    width,
-                                });
-                                current.width += width;
-                            }
-                            current.pieces.push(InlinePiece::Text {
-                                value: token.to_string(),
-                                width: token_width,
-                            });
-                            current.width += token_width;
-                            current.height = current.height.max(size * 0.78);
-                            current.depth = current.depth.max(size * 0.22);
-                            pending_space = false;
-                        }
-                    }
-                }
-                math_source::MathSegment::Formula {
-                    latex,
-                    source,
-                    block,
-                } => {
-                    let base_size = if block { size * 1.08 } else { size };
-                    let mut formula = math_source::native_layout(latex, base_size);
-                    if let Some(layout) = formula.as_ref() {
-                        if layout.width > maximum_width {
-                            let scale = (maximum_width / layout.width).clamp(0.62, 1.0);
-                            formula = math_source::native_layout(latex, base_size * scale);
-                        }
-                    }
-                    if block {
-                        if !current.pieces.is_empty() {
-                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
-                        }
-                        pending_space = false;
-                        if let Some(layout) = formula.filter(|layout| layout.width <= maximum_width)
-                        {
-                            flow.push(FlowLine::Block(layout));
-                        } else {
-                            flow.extend(source_fallback_lines(source, size, maximum_width));
-                        }
-                    } else if let Some(layout) =
-                        formula.filter(|layout| layout.width <= maximum_width)
-                    {
-                        let space_width = if pending_space && !current.pieces.is_empty() {
-                            approximate_text_width(" ", size)
-                        } else {
-                            0.0
-                        };
-                        if !current.pieces.is_empty()
-                            && current.width + space_width + layout.width > maximum_width
-                        {
-                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
-                        }
-                        if pending_space && !current.pieces.is_empty() {
-                            let width = approximate_text_width(" ", size);
-                            current.pieces.push(InlinePiece::Text {
-                                value: " ".to_string(),
-                                width,
-                            });
-                            current.width += width;
-                        }
-                        current.height = current.height.max(layout.height);
-                        current.depth = current.depth.max(layout.depth);
-                        current.width += layout.width;
-                        current.pieces.push(InlinePiece::Formula(layout));
-                        pending_space = false;
-                    } else {
-                        if !current.pieces.is_empty() {
-                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
-                        }
-                        flow.extend(source_fallback_lines(source, size, maximum_width));
-                        pending_space = false;
-                    }
-                }
-            }
-        }
-        if !current.pieces.is_empty() || flow.is_empty() {
-            flow.push(FlowLine::Inline(current));
-        }
-
-        for line in flow {
-            match line {
-                FlowLine::Inline(line) if line.pieces.is_empty() => {
-                    self.ensure_space(line_height)?;
-                    self.y -= line_height;
-                }
-                FlowLine::Inline(line) => {
-                    let height = line.height.max(size * 0.78);
-                    let depth = line.depth.max(size * 0.22);
-                    let used = (height + depth + 2.0).max(line_height);
-                    self.ensure_space(used)?;
-                    let baseline = self.y - (height - (size * 0.78)).max(0.0);
-                    let mut x = MARGIN_X + indent;
-                    for piece in line.pieces {
-                        match piece {
-                            InlinePiece::Text { value, width } => {
-                                self.absolute_text(&value, x, baseline, size, bold, color)?;
-                                x += width;
-                            }
-                            InlinePiece::Formula(layout) => {
-                                self.draw_math_layout(&layout, x, baseline, bold, color)?;
-                                x += layout.width;
-                            }
-                        }
-                    }
-                    self.page_has_content = true;
-                    self.y -= used;
-                }
-                FlowLine::Block(layout) => {
-                    let used = layout.height + layout.depth + (line_height * 0.55);
-                    self.ensure_space(used)?;
-                    let x = MARGIN_X + indent + ((maximum_width - layout.width) / 2.0);
-                    let baseline = self.y - layout.height;
-                    self.draw_math_layout(&layout, x, baseline, bold, color)?;
-                    self.page_has_content = true;
-                    self.y = baseline - layout.depth - (line_height * 0.35);
-                }
-            }
-        }
-        self.spacer((line_height * 0.35).max(2.0))
-    }
-
-    fn draw_math_layout(
-        &mut self,
-        layout: &math_layout::MathLayout,
-        x: f64,
-        baseline: f64,
-        bold: bool,
-        color: Color,
-    ) -> Result<(), CommandError> {
-        for operation in &layout.ops {
-            match operation {
-                math_layout::DrawOp::Text {
-                    x: offset_x,
-                    y: offset_y,
-                    text,
-                    size,
-                } => {
-                    self.absolute_text(text, x + offset_x, baseline + offset_y, *size, bold, color)?
-                }
-                math_layout::DrawOp::Line {
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    width,
-                } => {
-                    self.page
-                        .graphics()
-                        .set_stroke_color(color)
-                        .set_line_width(*width)
-                        .move_to(x + x1, baseline + y1)
-                        .line_to(x + x2, baseline + y2)
-                        .stroke();
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn absolute_text(
-        &mut self,
-        text: &str,
-        x: f64,
-        y: f64,
-        size: f64,
-        bold: bool,
-        color: Color,
-    ) -> Result<(), CommandError> {
-        self.page
-            .text()
-            .set_font(self.font.font(bold), size)
-            .set_fill_color(color)
-            .at(x, y)
-            .write(text)
-            .map_err(pdf_error)?;
-        Ok(())
-    }
-
-    fn ensure_space(&mut self, needed: f64) -> Result<(), CommandError> {
-        if self.y - needed < MARGIN_BOTTOM {
-            self.commit_page()?;
-        }
-        Ok(())
-    }
-
-    fn commit_page(&mut self) -> Result<(), CommandError> {
-        if self.page_has_content && self.running_pages {
-            let footer = format!("oStudy  •  Study guide  •  Page {}", self.page_number);
-            self.absolute_text(&footer, MARGIN_X, 24.0, 8.0, false, color_muted())?;
-        }
-        let next = Page::a4();
-        let finished = std::mem::replace(&mut self.page, next);
-        self.document.add_page(finished);
-        self.page_number = self.page_number.saturating_add(1);
-        self.y = PAGE_HEIGHT - MARGIN_TOP;
-        self.page_has_content = false;
-        self.draw_running_header()?;
-        Ok(())
-    }
-
-    fn finish(mut self, destination: &Path) -> Result<(), CommandError> {
-        if self.page_has_content {
-            self.commit_page()?;
-        }
-        if !self.navigation.is_empty() {
-            let mut named = NamedDestinations::new();
-            let mut outline = OutlineTree::new();
-            for (name, title, page) in &self.navigation {
-                let target = Destination::fit(PageDestination::PageNumber(*page));
-                named.add_destination(name.clone(), target.to_array());
-                outline.add_item(
-                    OutlineItem::new(title.clone())
-                        .with_destination(Destination::fit(PageDestination::PageNumber(*page))),
-                );
-            }
-            self.document.set_named_destinations(named);
-            self.document.set_outline(outline);
-        }
-        self.document.save(destination).map_err(pdf_error)
-    }
-}
-
-fn table_row_height(cells: &[String], column_width: f64, font_size: f64, line_height: f64) -> f64 {
-    let lines = cells
-        .iter()
-        .map(|cell| wrap_text(cell, column_width - 10.0, font_size).len())
-        .max()
-        .unwrap_or(1);
-    (lines as f64 * line_height) + 10.0
-}
-
-fn compact_header(value: &str) -> String {
-    let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if clean.chars().count() <= 72 {
-        return clean;
-    }
-    let mut result = clean.chars().take(69).collect::<String>();
-    result.push_str("...");
-    result
-}
-
-fn install_unicode_font(document: &mut Document) -> Result<PdfFontChoice, CommandError> {
-    let Some((regular_path, bold_path)) = find_unicode_fonts() else {
-        return Err(CommandError::new(
-            "study_guide_pdf_font_missing",
-            "oStudy could not find local Unicode TrueType/OpenType fonts for study-guide PDF export.",
-        ));
-    };
-    let regular_bytes = fs::read(&regular_path).map_err(CommandError::io)?;
-    let bold_bytes = fs::read(&bold_path).map_err(CommandError::io)?;
-    document
-        .add_font_from_bytes(EMBEDDED_FONT_REGULAR_NAME, regular_bytes)
-        .map_err(pdf_error)?;
-    document
-        .add_font_from_bytes(EMBEDDED_FONT_BOLD_NAME, bold_bytes)
-        .map_err(pdf_error)?;
-    Ok(PdfFontChoice::Custom {
-        regular: EMBEDDED_FONT_REGULAR_NAME.to_string(),
-        bold: EMBEDDED_FONT_BOLD_NAME.to_string(),
-    })
-}
-
-fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
-    let pairs = [
-        (
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-        ),
-        (
-            "/usr/share/fonts/opentype/noto/NotoSans-Regular.otf",
-            "/usr/share/fonts/opentype/noto/NotoSans-Bold.otf",
-        ),
-        (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ),
-        (
-            "/system/fonts/NotoSans-Regular.ttf",
-            "/system/fonts/NotoSans-Bold.ttf",
-        ),
-        (
-            "/system/fonts/Roboto-Regular.ttf",
-            "/system/fonts/Roboto-Bold.ttf",
-        ),
-        (
-            "C:\\Windows\\Fonts\\arial.ttf",
-            "C:\\Windows\\Fonts\\arialbd.ttf",
-        ),
-    ];
-    for (regular, bold) in pairs {
-        let regular = PathBuf::from(regular);
-        let bold = PathBuf::from(bold);
-        if regular.is_file() && bold.is_file() {
-            return Some((regular, bold));
-        }
-    }
-    [
-        "/Library/Fonts/Arial Unicode.ttf",
-        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-    ]
-    .into_iter()
-    .map(PathBuf::from)
-    .find(|path| path.is_file())
-    .map(|path| (path.clone(), path))
-}
-
-fn source_fallback_lines(source: &str, size: f64, maximum_width: f64) -> Vec<FlowLine> {
-    let approximate_character_width = (size * 0.53).max(1.0);
-    let maximum = (maximum_width / approximate_character_width)
-        .floor()
-        .max(8.0) as usize;
-    math_source::wrap_source(source, maximum)
-        .into_iter()
-        .map(|value| {
-            let width = approximate_text_width(&value, size);
-            FlowLine::Inline(InlineLine {
-                pieces: vec![InlinePiece::Text { value, width }],
-                width,
-                height: size * 0.78,
-                depth: size * 0.22,
-            })
-        })
-        .collect()
-}
-
-fn approximate_text_width(text: &str, size: f64) -> f64 {
-    text.chars()
-        .map(|character| {
-            if character.is_whitespace() {
-                size * 0.32
-            } else if character.is_ascii_punctuation() {
-                size * 0.42
-            } else {
-                size * 0.53
-            }
-        })
-        .sum()
-}
-
-fn wrap_text(text: &str, available_width: f64, font_size: f64) -> Vec<String> {
-    let approximate_character_width = (font_size * 0.53).max(1.0);
-    let maximum = (available_width / approximate_character_width)
-        .floor()
-        .max(8.0) as usize;
-    if math_source::contains_math(text) {
-        return math_source::wrap_source(text, maximum);
-    }
-    let mut lines = Vec::new();
-    for paragraph in text.replace('\r', "").split('\n') {
-        if paragraph.trim().is_empty() {
-            lines.push(String::new());
-            continue;
-        }
-        let mut current = String::new();
-        for word in paragraph.split_whitespace() {
-            if current.is_empty() && word.chars().count() > maximum {
-                split_long_word(word, maximum, &mut lines, &mut current);
-                continue;
-            }
-            let proposed = current
-                .chars()
-                .count()
-                .saturating_add(usize::from(!current.is_empty()))
-                .saturating_add(word.chars().count());
-            if proposed > maximum && !current.is_empty() {
-                lines.push(std::mem::take(&mut current));
-            }
-            if !current.is_empty() {
-                current.push(' ');
-            }
-            current.push_str(word);
-        }
-        if !current.is_empty() {
-            lines.push(current);
-        }
-    }
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-    lines
-}
-
-fn split_long_word(word: &str, maximum: usize, lines: &mut Vec<String>, current: &mut String) {
-    let mut chunk = String::new();
-    for character in word.chars() {
-        chunk.push(character);
-        if chunk.chars().count() >= maximum {
-            lines.push(std::mem::take(&mut chunk));
-        }
-    }
-    *current = chunk;
-}
-
 fn source_label(locator: &SourceLocator) -> String {
     let label = if locator.unit_numbers.len() == 1 {
         locator.unit_kind.singular_label()
@@ -1992,13 +819,6 @@ fn effective_text(export: &EffectiveGuideExport) -> String {
     text
 }
 
-fn pdf_error(error: impl std::fmt::Display) -> CommandError {
-    CommandError::new(
-        "study_guide_pdf_export_failed",
-        format!("Could not generate the study-guide PDF: {error}"),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2007,7 +827,7 @@ mod tests {
     use crate::document_domain::SourceUnitKind;
     use oxidize_pdf::parser::{PdfDocument, PdfReader};
 
-    fn test_export() -> EffectiveGuideExport {
+    pub(super) fn test_export() -> EffectiveGuideExport {
         EffectiveGuideExport {
             document_title: "Cardiovascular Physiology".to_string(),
             source_filename: "lecture.pdf".to_string(),
@@ -2029,6 +849,72 @@ mod tests {
                 figures: Vec::new(),
             }],
             annotation_count: 2,
+        }
+    }
+
+    pub(super) fn rendered_pages(
+        export: &EffectiveGuideExport,
+        theme: StudyGuidePdfTheme,
+    ) -> (Vec<u8>, Vec<String>) {
+        let bytes = guide_typst::render_bytes(export, theme).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        let parsed = PdfDocument::new(PdfReader::new(Cursor::new(bytes.clone())).unwrap());
+        let pages = (0..parsed.page_count().unwrap())
+            .map(|page| parsed.extract_text_from_page(page).unwrap().text)
+            .collect();
+        (bytes, pages)
+    }
+
+    fn rich_section(title: &str) -> EffectiveExportSection {
+        EffectiveExportSection {
+            title: title.to_string(),
+            source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
+            body_lines: vec![
+                ExportBlock::Paragraph(
+                    "Afterload is the load the ventricle ejects against.".into(),
+                ),
+                ExportBlock::Heading("Key points".into()),
+                ExportBlock::Bullets(vec!["Raised by hypertension.".into()]),
+                ExportBlock::Numbered(vec![
+                    "Pressure rises.".into(),
+                    "Valve opens.".into(),
+                    "Blood ejects.".into(),
+                ]),
+                ExportBlock::Terms(vec![("Afterload".into(), "Ejection load.".into())]),
+                ExportBlock::Callout {
+                    label: "Key idea".into(),
+                    title: "Load opposes ejection".into(),
+                    body: "Higher afterload lowers stroke volume.".into(),
+                },
+                ExportBlock::Callout {
+                    label: "Watch out".into(),
+                    title: "Not preload".into(),
+                    body: "Afterload is not filling.".into(),
+                },
+                ExportBlock::Table {
+                    title: "Compare".into(),
+                    columns: vec!["Concept".into(), "Meaning".into()],
+                    rows: vec![
+                        vec!["Afterload".into(), "Ejection load".into()],
+                        vec!["Short".into()],
+                    ],
+                    caption: "High-yield comparison".into(),
+                },
+                ExportBlock::WorkedExample {
+                    title: "Trace a change".into(),
+                    prompt: "Aortic stenosis develops.".into(),
+                    steps: vec!["Outflow narrows.".into()],
+                    answer: "Afterload rises.".into(),
+                    takeaway: "Follow cause before effect.".into(),
+                },
+                ExportBlock::RetrievalCheck {
+                    prompt: "What raises afterload?".into(),
+                    answer: "Hypertension and stenosis.".into(),
+                },
+                ExportBlock::Spacer,
+            ],
+            notes: Vec::new(),
+            figures: Vec::new(),
         }
     }
 
@@ -2116,115 +1002,82 @@ mod tests {
     }
 
     #[test]
-    fn wrapping_is_deterministic_and_bounded() {
-        let text = "one two three four five six seven eight nine ten eleven twelve";
-        let first = wrap_text(text, 100.0, 10.0);
-        let second = wrap_text(text, 100.0, 10.0);
-        assert_eq!(first, second);
-        assert!(first.len() > 1);
+    fn rendered_pdf_opens_on_a_cover_and_omits_internal_guide_revision() {
+        let (_, pages) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);
+        let all = pages.join("\n");
+        assert!(pages[0].contains("Physiology"));
+        assert!(pages[0].contains("1 section ·"));
+        assert!(all.contains("Preload reflects ventricular filling before systole."));
+        assert!(all.contains("Compare with afterload."));
+        assert!(all.contains("Review this before lab."));
+        assert!(!all.contains("Guide revision"));
+        assert!(!all.contains("Revision 2"));
     }
 
     #[test]
-    fn wrapped_heading_moves_with_following_body_instead_of_splitting_at_page_bottom() {
-        let mut document = Document::new();
-        document.set_title("Heading pagination fixture");
-        let font = install_unicode_font(&mut document).unwrap();
-        let mut writer = PdfFlowWriter::new(document, font);
-        writer
-            .enable_running_pages("Heading pagination fixture")
-            .unwrap();
-        writer
-            .paragraph("Earlier page content.", BODY_SIZE, BODY_LINE_HEIGHT, false)
-            .unwrap();
-        writer.y = MARGIN_BOTTOM + 60.0;
-        let heading = "A deliberately long study-guide heading that wraps across several lines and must move as one readable unit with the explanation that immediately follows it rather than leaving part of the heading stranded on the previous page";
-        writer.heading(heading, 12.5, 17.5).unwrap();
-        writer
-            .paragraph(
-                "Following explanation stays with the wrapped heading.",
-                BODY_SIZE,
-                BODY_LINE_HEIGHT,
-                false,
-            )
-            .unwrap();
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-heading-pagination-{}.pdf",
-            std::process::id()
-        ));
-        writer.finish(&root).unwrap();
-
-        let parsed =
-            PdfDocument::new(PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap());
-        assert_eq!(parsed.page_count().unwrap(), 2);
-        let first = parsed.extract_text_from_page(0).unwrap().text;
-        let second = parsed.extract_text_from_page(1).unwrap().text;
-        assert!(first.contains("Earlier page content."));
-        assert!(!first.contains("deliberately long study-guide heading"));
-        assert!(second.contains("deliberately long study-guide heading"));
-        assert!(second.contains("Following explanation stays with"));
-        fs::remove_file(root).unwrap();
-    }
-
-    #[test]
-    fn long_tables_repeat_headers_after_page_breaks() {
-        let mut document = Document::new();
-        document.set_title("Table fixture");
-        let font = install_unicode_font(&mut document).unwrap();
-        let mut writer = PdfFlowWriter::new(document, font);
-        writer.enable_running_pages("Table fixture").unwrap();
-        let columns = vec!["Concept".to_string(), "Meaning".to_string()];
-        let rows = (0..70)
-            .map(|index| {
-                vec![
-                    format!("Concept {index}"),
-                    "A compact explanation that remains selectable.".to_string(),
-                ]
-            })
-            .collect::<Vec<_>>();
-        writer
-            .table("Reference table", &columns, &rows, "")
-            .unwrap();
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-table-{}.pdf",
-            std::process::id()
-        ));
-        writer.finish(&root).unwrap();
-        let bytes = fs::read(&root).unwrap();
-        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
-        let parsed = PdfDocument::new(reader);
-        let page_count = parsed.page_count().unwrap();
-        assert!(page_count > 1);
-        for page in 0..page_count {
-            let text = parsed.extract_text_from_page(page).unwrap().text;
-            assert!(text.contains("Concept"));
-            assert!(text.contains("Meaning"));
+    fn every_theme_renders_every_block_kind_and_the_review_pages() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        for theme in [
+            StudyGuidePdfTheme::Navy,
+            StudyGuidePdfTheme::Sage,
+            StudyGuidePdfTheme::Slate,
+            StudyGuidePdfTheme::Plum,
+        ] {
+            let (_, pages) = rendered_pages(&export, theme);
+            let all = pages.join("\n");
+            for expected in [
+                "Raised by hypertension.",
+                "Valve opens.",
+                "Ejection load.",
+                "Load opposes ejection",
+                "High-yield comparison",
+                "Follow cause before effect.",
+                "Cram sheet",
+                "Self-test",
+                "What raises afterload?",
+                "Hypertension and stenosis.",
+            ] {
+                assert!(all.contains(expected), "{theme:?} lost {expected:?}");
+            }
         }
-        fs::remove_file(root).unwrap();
     }
 
     #[test]
-    fn rendered_pdf_omits_internal_guide_revision() {
-        let export = test_export();
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-no-revision-{}.pdf",
-            std::process::id()
-        ));
-        render_study_guide_pdf(&export, &root).unwrap();
-        let bytes = fs::read(&root).unwrap();
-        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
-        let parsed = PdfDocument::new(reader);
-        let text = parsed.extract_text_from_page(0).unwrap().text;
-        assert!(text.contains("Cardiovascular Physiology"));
-        assert!(!text.contains("Guide revision"));
-        assert!(!text.contains("Revision 2"));
-        fs::remove_file(root).unwrap();
+    fn cram_sheet_and_self_test_come_from_the_guide_content() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        let cram = pages
+            .iter()
+            .find(|page| page.contains("The whole guide on one page."))
+            .expect("cram sheet page");
+        assert!(cram.contains("Frank-Starling mechanism"));
+        assert!(cram.contains("Higher afterload lowers stroke volume."));
+        assert!(cram.contains("Afterload is not filling."));
+        let test_page = pages
+            .iter()
+            .find(|page| page.contains("answers follow the questions"))
+            .expect("self-test page");
+        assert!(test_page.contains("What raises afterload?"));
+        assert!(test_page.contains("Hypertension and stenosis."));
+
+        let plain = test_export();
+        let (_, pages) = rendered_pages(
+            &EffectiveGuideExport {
+                key_concepts: Vec::new(),
+                ..plain
+            },
+            StudyGuidePdfTheme::Navy,
+        );
+        assert!(!pages.join("\n").contains("Cram sheet"));
+        assert!(!pages.join("\n").contains("Self-test"));
     }
 
     #[test]
     fn editorial_pdf_uses_major_chapters_for_contents_and_nested_section_headings() {
         let mut export = test_export();
         export.document_title = "Cardiovascular drugs".to_string();
-        export.overview = "Cardiovascular pharmacology connects mechanisms with treatment goals and clinical safety. The guide moves from hemodynamic foundations into therapeutic pathways.".to_string();
         export.sections.push(EffectiveExportSection {
             title: "Renin–angiotensin system".to_string(),
             source_locator: Some(
@@ -2241,98 +1094,130 @@ mod tests {
             introduction: "These sections establish the physiologic relationships needed to understand later cardiovascular therapies.".to_string(),
             section_indices: vec![0, 1],
         }];
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-editorial-{}.pdf",
-            std::process::id()
-        ));
-        render_study_guide_pdf(&export, &root).unwrap();
-        let parsed =
-            PdfDocument::new(PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap());
-        assert!(parsed.page_count().unwrap() >= 3);
-        let cover = parsed.extract_text_from_page(0).unwrap().text;
-        let contents = parsed.extract_text_from_page(1).unwrap().text;
-        let all = (0..parsed.page_count().unwrap())
-            .map(|page| parsed.extract_text_from_page(page).unwrap().text)
-            .collect::<Vec<_>>()
-            .join("\n");
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        let cover = &pages[0];
+        let all = pages.join("\n");
         assert!(cover.contains("Cardiovascular drugs"));
-        assert!(contents.contains("1. Hemodynamic foundations"));
-        assert!(!contents.contains("1.1. Preload"));
-        assert!(!contents.contains("1.2. Renin"));
+        assert!(cover.contains("Hemodynamic foundations"));
+        assert!(!cover.contains("Renin"));
         assert!(all.contains("These sections establish the physiologic relationships"));
-        assert!(all.contains("1.1. Preload"));
-        assert!(all.contains("1.2. Renin"));
-        fs::remove_file(root).unwrap();
+        assert!(all.contains("1.1"));
+        assert!(all.contains("1.2"));
+        assert!(all.contains("Renin–angiotensin system"));
     }
 
     #[test]
-    fn rendered_pdf_embeds_verified_figure_shape_and_selectable_caption() {
+    fn long_guides_move_contents_to_their_own_page() {
         let mut export = test_export();
+        for index in 0..14 {
+            export.sections.push(EffectiveExportSection {
+                title: format!("Topic number {index}"),
+                ..export.sections[0].clone()
+            });
+        }
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        assert!(pages[0].contains("more on the next page"));
+        assert!(pages[1].contains("Topic number 13"));
+    }
+
+    #[test]
+    fn long_tables_break_across_pages_and_repeat_headers() {
+        let mut export = test_export();
+        export.sections[0].body_lines.push(ExportBlock::Table {
+            title: "Reference table".into(),
+            columns: vec!["Concept".into(), "Meaning".into()],
+            rows: (0..90)
+                .map(|index| {
+                    vec![
+                        format!("Concept {index}"),
+                        "A compact explanation that remains selectable.".into(),
+                    ]
+                })
+                .collect(),
+            caption: String::new(),
+        });
+        let pages = guide_typst::page_texts(&export, StudyGuidePdfTheme::Navy);
+        let table_pages = pages
+            .iter()
+            .filter(|page| page.contains("A compact explanation"))
+            .collect::<Vec<_>>();
+        assert!(table_pages.len() > 1);
+        for page in table_pages {
+            assert!(page.contains("Concept Meaning"));
+        }
+    }
+
+    #[test]
+    fn rendered_pdf_embeds_figure_image_and_selectable_caption() {
+        let mut export = test_export();
+        let mut pixels = image::RgbaImage::new(4, 3);
+        pixels.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
         export.sections[0].figures.push(ExportFigure {
-            image: PdfImage::from_rgba_data(vec![255, 0, 0, 255], 1, 1).unwrap(),
+            image: guide_typst::FigureImage::from_rgba(pixels).unwrap(),
             title: "Pressure-volume loop".to_string(),
             caption: "Trace filling before ejection.".to_string(),
         });
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-figure-{}.pdf",
-            std::process::id()
-        ));
-        render_study_guide_pdf(&export, &root).unwrap();
-        let bytes = fs::read(&root).unwrap();
-        let raw = String::from_utf8_lossy(&bytes);
-        assert!(raw.contains("/Subtype /Image"));
-        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
-        let parsed = PdfDocument::new(reader);
-        let text = (0..parsed.page_count().unwrap())
-            .map(|page| parsed.extract_text_from_page(page).unwrap().text)
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(text.contains("Pressure-volume loop"));
-        assert!(text.contains("Trace filling before ejection."));
-        fs::remove_file(root).unwrap();
+        let (bytes, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        assert!(String::from_utf8_lossy(&bytes).contains("/Subtype/Image"));
+        let all = pages.join("\n");
+        assert!(all.contains("Pressure-volume loop"));
+        assert!(all.contains("Trace filling before ejection."));
     }
 
     #[test]
-    fn rendered_pdf_contains_bookmarks_named_destinations_and_toc_links() {
-        let export = test_export();
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-navigation-{}.pdf",
-            std::process::id()
-        ));
-        render_study_guide_pdf(&export, &root).unwrap();
-        let bytes = fs::read(&root).unwrap();
+    fn rendered_pdf_contains_bookmarks_and_contents_links() {
+        let (bytes, _) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);
         let raw = String::from_utf8_lossy(&bytes);
-        assert!(raw.contains("/Outlines"));
-        assert!(raw.contains("/Dests"));
-        assert!(raw.contains("/Subtype /Link"));
-        assert!(raw.contains("(section-1)"));
-        fs::remove_file(root).unwrap();
+        assert!(raw.contains("/Type/Outlines"));
+        assert!(raw.contains("/Title(1 Preload)"));
+        assert!(raw.contains("/Subtype/Link"));
     }
 
     #[test]
-    fn unicode_pdf_round_trips_as_selectable_text() {
-        let export = test_export();
-        let mut document = Document::new();
-        document.set_title(&export.document_title);
-        let font = install_unicode_font(&mut document).unwrap();
-        let mut writer = PdfFlowWriter::new(document, font);
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-study-guide-export-{}.pdf",
-            std::process::id()
-        ));
-        writer.heading(&export.document_title, 20.0, 26.0).unwrap();
-        writer
-            .paragraph("β preload – naïve", BODY_SIZE, BODY_LINE_HEIGHT, false)
+    fn learner_text_is_placed_as_text_not_evaluated_as_markup() {
+        let mut export = test_export();
+        export.document_title = "#panic() *b* $x$".to_string();
+        export.overview = "#read(\"/data.json\") ]) #{panic()} <label> @ref".to_string();
+        export.sections[0].title = "#set page(width: 1pt)".to_string();
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        let all = pages.join("\n");
+        assert!(all.contains("#panic() *b* $x$"));
+        assert!(all.contains("#read(\"/data.json\")"));
+        assert!(all.contains("#set page(width: 1pt)"));
+    }
+
+    #[test]
+    fn unicode_text_round_trips_as_selectable_text() {
+        let mut export = test_export();
+        export.overview = "β preload – naïve".to_string();
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Sage);
+        assert!(pages.join("\n").contains("β preload – naïve"));
+    }
+
+    #[test]
+    fn themes_parse_from_ipc_and_default_to_navy() {
+        let input: PrepareStudyGuidePdfInput = serde_json::from_value(serde_json::json!({
+            "documentId": "a".repeat(32),
+            "operationId": "b".repeat(32),
+        }))
+        .unwrap();
+        assert_eq!(input.theme, StudyGuidePdfTheme::Navy);
+        let input: PrepareCollectionStudyGuidePdfInput =
+            serde_json::from_value(serde_json::json!({
+                "collectionId": "a".repeat(32),
+                "operationId": "b".repeat(32),
+                "theme": "plum",
+            }))
             .unwrap();
-        writer.finish(&root).unwrap();
-        let bytes = fs::read(&root).unwrap();
-        assert!(bytes.starts_with(b"%PDF-"));
-        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
-        let parsed = PdfDocument::new(reader);
-        let text = parsed.extract_text_from_page(0).unwrap().text;
-        assert!(text.contains("Cardiovascular Physiology"));
-        assert!(text.contains("β preload – naïve"));
-        fs::remove_file(root).unwrap();
+        assert_eq!(input.theme, StudyGuidePdfTheme::Plum);
+        assert!(
+            serde_json::from_value::<PrepareStudyGuidePdfInput>(serde_json::json!({
+                "documentId": "a".repeat(32),
+                "operationId": "b".repeat(32),
+                "theme": "neon",
+            }))
+            .is_err()
+        );
     }
 }
 

@@ -289,6 +289,9 @@ export interface SaveStudyGuideOverlayInput {
   expectedRevision?: number;
 }
 
+/** The PDF's colour and type theme. Every theme has the same layout. */
+export type StudyGuidePdfTheme = "navy" | "sage" | "slate" | "plum";
+
 export interface PreparedStudyGuidePdf {
   preparedExport: PreparedExport;
   guideRevision: number;
@@ -399,9 +402,10 @@ export async function getDocumentTopicCardIds(
 export async function prepareDocumentStudyGuidePdf(
   documentId: string,
   includeAnnotations: boolean,
+  theme: StudyGuidePdfTheme = "navy",
   operationId = createOperationId(),
 ): Promise<PreparedStudyGuidePdf> {
   return invoke<PreparedStudyGuidePdf>("prepare_document_study_guide_pdf", {
-    input: { documentId, operationId, includeAnnotations },
+    input: { documentId, operationId, includeAnnotations, theme },
   });
 }

@@ -217,7 +217,9 @@ reconstruction. Dedicated equation recognition and universal source-format
 fidelity remain deferred. Generated-card conversion preserves supplied TeX; it
 cannot recover math already lost during extraction.
 
-Study-guide PDF export uses the native PDF backend rather than browser KaTeX. Its
-fallback preserves readable formula source and discloses source-only math output
+Study-guide PDF export typesets math with Typst rather than browser KaTeX. The
+native subset parser translates each supported expression to Typst math markup
+(`math_layout::typst_markup`); anything outside the subset, or wider than the
+subset's width bound, stays readable LaTeX source, and the export discloses that
 instead of silently omitting equations. Final target-system visual acceptance
 remains required.
