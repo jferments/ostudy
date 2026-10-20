@@ -17,7 +17,7 @@ use super::{
     repository as profile_repository,
 };
 
-fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
+pub(super) fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
     CreateAiProviderProfileInput {
         operation_id: String::new(),
         display_name: provider_kind.display_name().to_string(),

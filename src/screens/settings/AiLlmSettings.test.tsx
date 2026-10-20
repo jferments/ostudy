@@ -10,6 +10,10 @@ import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AiLlmSettings } from "./AiLlmSettings";
 
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+let browserSignIn: "available" | "unavailable" = "unavailable";
+vi.mock("../../platform/PlatformProvider", () => ({
+  usePlatformCapabilities: () => ({ native: { services: { browserSignIn: { state: browserSignIn } } } }),
+}));
 vi.mock("../../platform/externalLinks", () => ({ openExternalUrl: vi.fn().mockResolvedValue(undefined) }));
 
 const profileId = "a".repeat(32);
@@ -123,6 +127,9 @@ function controller(selected = profile()): AiProfilesController {
     setCredentialPersistence: vi.fn(),
     saveProfile: vi.fn().mockResolvedValue(true),
     connectSetup: vi.fn().mockResolvedValue(true),
+    signInWithOpenRouter: vi.fn().mockResolvedValue(true),
+    signingIn: false,
+    cancelSignIn: vi.fn(),
     deleteProfile: vi.fn().mockResolvedValue(undefined),
     saveCredential: vi.fn().mockResolvedValue(undefined),
     clearCredential: vi.fn().mockResolvedValue(undefined),
@@ -333,5 +340,37 @@ describe("AiLlmSettings", () => {
     fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
     expect(await screen.findByRole("dialog", { name: "Add a service" })).toBeTruthy();
     expect(value.beginCreate).toHaveBeenLastCalledWith("llama_cpp");
+  });
+
+  it("connects OpenRouter in one click where the browser can return to oStudy", async () => {
+    browserSignIn = "available";
+    vi.mocked(getSpeechSettings).mockResolvedValue(speech());
+    const value = firstRun();
+    value.credentialDraft = "";
+    renderSettings(value);
+    fireEvent.click(screen.getByRole("button", { name: "Set up AI" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
+    expect(within(wizard()).getByRole("heading", { name: "Connect oStudy to OpenRouter" })).toBeTruthy();
+    expect(within(wizard()).queryByLabelText("API key")).toBeNull();
+
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Connect with OpenRouter" }));
+    await waitFor(() => expect(value.signInWithOpenRouter).toHaveBeenCalledWith(openExternalUrl));
+    expect(await within(wizard()).findByRole("heading", { name: /^You're set up/u })).toBeTruthy();
+    browserSignIn = "unavailable";
+  });
+
+  it("keeps paste-a-key as the way in beside one-click sign-in", () => {
+    browserSignIn = "available";
+    const value = firstRun();
+    renderSettings(value);
+    fireEvent.click(screen.getByRole("button", { name: "Set up AI" }));
+    for (let step = 0; step < 3; step += 1) fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Paste a key instead" }));
+    expect(value.cancelSignIn).toHaveBeenCalled();
+    expect(within(wizard()).getByRole("heading", { name: "Paste an OpenRouter key" })).toBeTruthy();
+    expect(within(wizard()).getByLabelText("API key")).toBeTruthy();
+    browserSignIn = "unavailable";
   });
 });

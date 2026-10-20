@@ -4,11 +4,12 @@ import type { AiProfilesController } from "../../controllers/aiProfilesControlle
 import { getErrorMessage } from "../../ipc/common";
 import { getSpeechSettings, type SpeechSettings } from "../../ipc/speech";
 import { openExternalUrl } from "../../platform/externalLinks";
+import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { Icon, type IconName } from "../../ui/icons/Icon";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { RadioGroup } from "../../ui/primitives/FormControls";
-import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 import { ListRowMedia } from "../../ui/primitives/ListRow";
 import { TextField } from "../../ui/primitives/TextField";
 
@@ -136,6 +137,9 @@ export function AiSetupWizard({
   const [step, setStep] = useState<Step>(start.service ? "account" : "choose");
   const [service, setService] = useState<AiSetupService>(start.service ?? "openrouter");
   const [keyVisible, setKeyVisible] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  // One-click sign-in needs the browser to return to oStudy; elsewhere the key is pasted.
+  const browserSignIn = usePlatformCapabilities().native?.services.browserSignIn?.state === "available";
   const [voice, setVoice] = useState<SpeechSettings | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const hosted = service === "llama_cpp" ? null : GUIDES[service];
@@ -164,8 +168,14 @@ export function AiSetupWizard({
     setStep(next);
   }
 
+  function leave(next: () => void): void {
+    controller.cancelSignIn();
+    next();
+  }
+
   function addOpenRouter(): void {
     setService("openrouter");
+    setPasting(false);
     setVoice(null);
     setStep("account");
   }
@@ -174,11 +184,15 @@ export function AiSetupWizard({
     if (await controller.connectSetup()) setStep("ready");
   }
 
+  async function signIn(): Promise<void> {
+    if (await controller.signInWithOpenRouter(openExternalUrl)) setStep("ready");
+  }
+
   const number = NUMBERED.indexOf(step);
   const title = step === "custom" ? "Choose a service for each task" : "Set up AI";
   const busy = controller.mutating;
   const back = (to: Step) => (
-    <Button variant="secondary" className="tw:me-auto" disabled={busy} onClick={() => setStep(to)}>Back</Button>
+    <Button variant="secondary" className="tw:me-auto" disabled={busy} onClick={() => leave(() => setStep(to))}>Back</Button>
   );
 
   let body: ReactNode;
@@ -288,6 +302,38 @@ export function AiSetupWizard({
       );
       break;
     case "connect":
+      if (service === "openrouter" && browserSignIn && !pasting) {
+        body = (
+          <>
+            <Heading>Connect oStudy to OpenRouter</Heading>
+            <div className="tw:grid tw:gap-2">
+              <Button variant="primary" className="tw:min-h-13 tw:text-body" disabled={busy || controller.signingIn} onClick={() => void signIn()}>
+                <Icon name="link" size={18} />Connect with OpenRouter
+              </Button>
+              <span className="tw:text-center tw:text-label tw:text-muted-foreground">
+                Opens OpenRouter in your browser to approve a key for oStudy.
+              </span>
+            </div>
+            {controller.signingIn ? (
+              <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+                <InlineProgress>Waiting for you to approve oStudy in your browser…</InlineProgress>
+                <Button variant="secondary" size="small" onClick={controller.cancelSignIn}>Stop waiting</Button>
+              </div>
+            ) : null}
+            {busy && !controller.signingIn ? <InlineProgress>Connecting…</InlineProgress> : null}
+            {controller.errorMessage ? <InlineNotice kind="error">{controller.errorMessage}</InlineNotice> : null}
+            <p className="tw:m-0 tw:text-label tw:text-muted-foreground">
+              You can set a credit limit for the key later under Settings → API Keys on OpenRouter.
+            </p>
+            <Button variant="text" className="tw:justify-self-start" disabled={busy}
+              onClick={() => leave(() => setPasting(true))}>
+              Paste a key instead
+            </Button>
+          </>
+        );
+        actions = back("account");
+        break;
+      }
       body = hosted ? (
         <>
           <Heading>Paste {hosted.name === "OpenRouter" ? "an" : "a"} {hosted.name} key</Heading>
@@ -402,7 +448,7 @@ export function AiSetupWizard({
   }
 
   return (
-    <Dialog title={title} width="medium" busy={busy} onClose={onClose}
+    <Dialog title={title} width="medium" busy={busy} onClose={() => leave(onClose)}
       description={number >= 0 ? `Step ${number + 1} of ${NUMBERED.length}` : undefined}
       actions={actions}>
       <div className="tw:grid tw:min-w-0 tw:gap-5">{body}</div>
