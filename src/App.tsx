@@ -137,6 +137,7 @@ function App() {
     onChooseSubject: controller.chooseLibrarySubject,
     onSelectView: navigate,
     onStartReview: startReview,
+    onPracticeSubject: (subjectId: string) => void controller.practiceSubject(subjectId),
   };
   const subjectFilter =
     librarySubject.kind === "all" ? undefined : librarySubject.kind === "none" ? null : librarySubject.subjectId;

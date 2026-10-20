@@ -1,12 +1,12 @@
 # Library Workbench, authoring, and search
 
-**Library** opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
+Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: a tree of subjects, decks, and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
-Library's pages are tabs along its top: **Flashcards** (the Workbench), **Documents**, and **Study guides**. **Import deck** sits at the end of the tabs on the Flashcards page.
+Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page. The Workbench shows the subject you chose in Library; under **Everything** its tree lists every subject.
 
 ## The tree
 
-The tree starts with **All cards**, then has two sections:
+The tree starts with **All cards**, which also chooses **Everything** for the rest of Library, then has two sections:
 
 - **Subjects** lists your subjects in your order, each with its card count. Expand a subject to see its decks and documents. **No subject** holds decks and documents that are not filed under a subject. Archived decks sit behind **Archived decks (N)** at the end of the section. See [Subjects and deck organization](flashcards-organization.md).
 - **Tags** shows your eight most used tags; **Show all N tags** lists the rest.

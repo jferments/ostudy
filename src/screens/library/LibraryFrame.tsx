@@ -54,6 +54,7 @@ interface LibraryFrameProps {
   subject: LibrarySubjectScope;
   onChooseSubject: (subject: LibrarySubjectScope) => void;
   onStartReview: (deckIds: string[]) => void;
+  onPracticeSubject: (subjectId: string) => void;
   /** The page fills the frame's height and scrolls its own panes, like the Workbench. */
   fill?: boolean;
   children: ReactNode;
@@ -71,6 +72,7 @@ export function LibraryFrame({
   subject,
   onChooseSubject,
   onStartReview,
+  onPracticeSubject,
   fill = false,
   children,
 }: LibraryFrameProps) {
@@ -120,6 +122,7 @@ export function LibraryFrame({
               subjects={subjects}
               onSwitch={wide ? undefined : () => setSwitching(true)}
               onStartReview={onStartReview}
+              onPracticeSubject={onPracticeSubject}
             />
           ) : null}
           {shown ? (

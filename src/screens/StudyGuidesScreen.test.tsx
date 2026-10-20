@@ -173,7 +173,7 @@ describe("StudyGuidesScreen", () => {
     render(
       <LayoutModeProvider>
         <OverlayProvider>
-          <LibraryFrame view="study-guides" onSelectView={vi.fn()} subject={{ kind: "all" }} onChooseSubject={vi.fn()} onStartReview={vi.fn()}>
+          <LibraryFrame view="study-guides" onSelectView={vi.fn()} subject={{ kind: "all" }} onChooseSubject={vi.fn()} onStartReview={vi.fn()} onPracticeSubject={vi.fn()}>
             <StudyGuidesScreen showToast={vi.fn()} onPracticeCards={vi.fn()} />
           </LibraryFrame>
         </OverlayProvider>

@@ -171,13 +171,15 @@ interface LibrarySubjectHeaderProps {
   /** Opens the subject list where the side pane does not fit. */
   onSwitch?: () => void;
   onStartReview: (deckIds: string[]) => void;
+  /** One extra session mixing cards from every deck in the subject. */
+  onPracticeSubject: (subjectId: string) => void;
 }
 
 /**
  * The chosen subject's name, what it holds and its Review button; Everything
  * totals every subject.
  */
-export function LibrarySubjectHeader({ scope, subjects, onSwitch, onStartReview }: LibrarySubjectHeaderProps) {
+export function LibrarySubjectHeader({ scope, subjects, onSwitch, onStartReview, onPracticeSubject }: LibrarySubjectHeaderProps) {
   const all = [...subjects.subjects, ...(subjects.noSubject ? [subjects.noSubject] : [])];
   const shown = scope.kind === "all" ? all : subjects.current ? [subjects.current] : [];
   const sources = shown.reduce((sum, tile) => sum + tile.summary.sourceCount, 0);
@@ -205,21 +207,25 @@ export function LibrarySubjectHeader({ scope, subjects, onSwitch, onStartReview 
       {subjects.current ? <SubjectBadge subject={subjects.current} size="large" className="tw:compact:size-11" /> : null}
       <div className="tw:min-w-0 tw:flex-[1_1_12rem]">
         {onSwitch ? (
-          <button
-            type="button"
+          <ItemTrigger
             data-testid="library-switch-subject"
             aria-label={`${name}, choose a subject`}
             onClick={onSwitch}
-            className="tw:flex tw:max-w-full tw:min-h-11 tw:items-center tw:gap-1.5 tw:rounded-md tw:border-0 tw:bg-transparent tw:p-0 tw:text-start tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
+            className="tw:max-w-full tw:min-h-11 tw:gap-1.5 tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
           >
             {title}
             <Icon name="chevron-down" size={18} className="tw:shrink-0 tw:text-muted-foreground" />
-          </button>
+          </ItemTrigger>
         ) : (
           title
         )}
         {subjects.ready ? <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{counts}</p> : null}
       </div>
+      {scope.kind === "subject" && cards > 0 ? (
+        <Button data-testid="library-practice" onClick={() => onPracticeSubject(scope.subjectId)}>
+          Practice a mix
+        </Button>
+      ) : null}
       {due > 0 ? (
         <Button
           variant="primary"

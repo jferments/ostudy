@@ -95,6 +95,7 @@ export function LibraryOverview({ subject, decks, onSelectView, onOpenLesson, on
           <OverviewGroup
             title="Lessons"
             count={subjectLessons.length}
+            countNoun="lesson"
             action="All lessons"
             onAction={() => onSelectView("lessons")}
             testId="library-overview-lessons"
@@ -118,6 +119,7 @@ export function LibraryOverview({ subject, decks, onSelectView, onOpenLesson, on
           <OverviewGroup
             title="Study guides"
             count={guides.totalCount}
+            countNoun="guide"
             action="All guides"
             onAction={() => onSelectView("study-guides")}
             testId="library-overview-guides"
@@ -140,6 +142,7 @@ export function LibraryOverview({ subject, decks, onSelectView, onOpenLesson, on
           <OverviewGroup
             title="Documents"
             count={documents.length}
+            countNoun="document"
             action="All documents"
             onAction={() => onSelectView("documents")}
             testId="library-overview-documents"
@@ -193,7 +196,7 @@ function OverviewGroup({
 }: {
   title: string;
   count: number;
-  countNoun?: string;
+  countNoun: string;
   action: string;
   onAction: () => void;
   testId: string;
@@ -202,7 +205,7 @@ function OverviewGroup({
   return (
     <Panel
       title={title}
-      description={countNoun ? countLabel(count, countNoun) : count.toLocaleString()}
+      description={countLabel(count, countNoun)}
       data-testid={testId}
       headingLevel={2}
       actions={

@@ -117,6 +117,7 @@ function renderWorkbench(width = 1400, launch?: WorkbenchLaunch, subject?: Libra
           subject={subject ?? { kind: "all" }}
           onChooseSubject={vi.fn()}
           onStartReview={vi.fn()}
+          onPracticeSubject={vi.fn()}
         >
           <LibraryWorkbench {...props} />
         </LibraryFrame>
