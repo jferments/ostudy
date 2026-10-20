@@ -36,7 +36,7 @@ A deck's actions menu also has **Merge into…**, **Export…**, **Archive**, an
 
 ## Practice a small session
 
-Use **Start review** on Home or in Review for everything due today, **Practice** on a deck, or **Practice with options…** in a deck's actions menu (or **Practice…** on a subject) to open the practice setup. There you choose **Scheduled study**, which keeps to today's schedule and daily limits, or **Extra study**, and **Cards available to study** shows what the session will include. Suspended, buried, or archived cards are not studied.
+Use **Start review** on Home or in Review for everything due today, **Practice** on a deck, or **Practice with options…** in a deck's actions menu (or **Practice…** on a subject) to open the practice setup. There you choose **Due**, which keeps to today's schedule and daily limits, or **Extra**; each shows how many cards it would study. Suspended, buried, or archived cards are not studied.
 
 Think of the answer before choosing **Show answer**. Then choose **Wrong**, **Hard**, **Medium**, or **Easy** based on how well you recalled it. On a keyboard, Space or Enter reveals the answer, and 0–3 chooses a rating when no editor or overlay has focus. Each rating is saved as a review and updates the card's schedule; it is not merely a visual score.
 
