@@ -132,7 +132,7 @@ it("renders collection sections through the shared semantic reader with one over
   expect(screen.getByText("Hemodynamic comparison")).toBeTruthy();
   expect(screen.getByText("Remember")).toBeTruthy();
   expect(screen.getByText("What raises preload?")).toBeTruthy();
-  expect(screen.getByText("Source-grounded sections synthesized from the collection’s retained document knowledge.")).toBeTruthy();
+  expect(screen.getByText("Source-grounded sections synthesized from the subject’s retained document knowledge.")).toBeTruthy();
   expect(screen.queryByText(/Prepared knowledge exists without/iu)).toBeNull();
   expect(screen.queryByRole("heading", { name: "Coverage notes" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Open source" })).toBeNull();
@@ -162,7 +162,7 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     expect(externalFiles.publishPreparedExport).toHaveBeenCalledWith("3".repeat(32));
     expect(showToast).toHaveBeenCalledWith(
       "success",
-      "Exported collection study guide with 1 section.",
+      "Exported the subject study guide with 1 section.",
     );
   });
   expect(externalFiles.releasePreparedExport).toHaveBeenCalledWith("3".repeat(32));

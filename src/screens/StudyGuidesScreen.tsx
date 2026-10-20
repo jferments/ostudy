@@ -168,7 +168,7 @@ function GuideCard({
   return (
     <li data-testid="guide-card" className={styles.card}>
       <article aria-labelledby={headingId} className="tw:relative tw:h-full tw:min-w-0">
-        {/* A collection's guide sits on a sheet, like its collection on Documents. */}
+        {/* A subject's guide covers several documents, so it sits on a stack. */}
         {collection ? <span aria-hidden="true" className={styles.stack} /> : null}
         <div className={cn(styles.cardSurface, collection && styles.collectionSurface)}>
           <div className="tw:flex tw:min-w-0 tw:items-start tw:gap-3">

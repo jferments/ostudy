@@ -186,7 +186,7 @@ export type StudyGuideLibrarySort =
   | "title_asc"
   | "title_desc";
 
-/** A document guide belongs to its document's subject; a collection guide to its own. */
+/** A document guide belongs to its document's subject; a subject guide (target kind "collection") to its own. */
 export type StudyGuideSubjectFilter =
   | { kind: "all" }
   | { kind: "subject"; subjectId: string }

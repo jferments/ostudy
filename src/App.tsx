@@ -293,7 +293,10 @@ function App() {
                                   <DocumentsSection
                                     refreshDecks={controller.refreshDecks}
                                     onPracticeCards={controller.practiceCards}
-                                    onStudyCollection={controller.practiceSubject}
+                                    onStudySubject={controller.practiceSubject}
+                                    onOpenSubject={(subjectId) =>
+                                      controller.chooseLibrarySubject(subjectId === null ? { kind: "none" } : { kind: "subject", subjectId })
+                                    }
                                     subjectId={subjectFilter}
                                     showToast={controller.showToast}
                                   />

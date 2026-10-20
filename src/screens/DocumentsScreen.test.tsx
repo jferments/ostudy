@@ -1,22 +1,22 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as collectionIpc from "../ipc/collections";
 import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as annotationIpc from "../ipc/documentAnnotations";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as studyMaterialsIpc from "../ipc/studyMaterials";
+import * as subjectsIpc from "../ipc/subjects";
 import * as platformFiles from "../platform/files";
+import { makeSubject, makeSubjectLibrary } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
-import { DOCUMENT_FOLDER_DRAG_TYPE } from "./documents/documentFolderDrag";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
-vi.mock("../ipc/collections", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../ipc/collections")>(),
-  getDocumentCollectionOrganization: vi.fn(),
-  addDocumentCollectionMembership: vi.fn(),
+vi.mock("../ipc/subjects", () => ({
+  getSubjectLibrary: vi.fn(),
+  moveDocumentToSubject: vi.fn(),
+  setDocumentStudyRanges: vi.fn(),
 }));
 vi.mock("../ipc/studyMaterials", () => ({
   getStudyTargetBundle: vi.fn(),
@@ -143,10 +143,14 @@ function makeProgress(phase: string): documentIpc.DocumentGenerationProgress {
   };
 }
 
-function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolvedValue([])) {
+function renderDocuments(
+  showToast = vi.fn(),
+  refreshDecks = vi.fn().mockResolvedValue([]),
+  props: { subjectId?: string | null; onOpenSubject?: (subjectId: string | null) => void } = {},
+) {
   render(
     <OverlayProvider>
-      <DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} />
+      <DocumentsScreen refreshDecks={refreshDecks} showToast={showToast} {...props} />
     </OverlayProvider>,
   );
   return { showToast, refreshDecks };
@@ -186,9 +190,7 @@ describe("DocumentsScreen", () => {
     vi.resetAllMocks();
     // All independent mount reads have explicit native fixtures. An absent
     // Tauri bridge is not the error scenario exercised by document retry tests.
-    vi.mocked(collectionIpc.getDocumentCollectionOrganization).mockResolvedValue({
-      revision: 1, collections: [], memberships: [], ranges: [],
-    });
+    vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
     vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
@@ -357,8 +359,7 @@ describe("DocumentsScreen", () => {
 
     expect(await screen.findByText(failed.safeErrorMessage)).toBeTruthy();
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "New collection" }) as HTMLButtonElement).disabled)
-        .toBe(false);
+      expect(subjectsIpc.getSubjectLibrary).toHaveBeenCalled();
       expect(artifactIpc.listLatestDocumentStudyGuideJobs).toHaveBeenCalled();
     });
     await chooseDocumentAction("Retry");
@@ -607,28 +608,6 @@ describe("DocumentsScreen", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
-  it("exposes ready document content as a folder drag source without making row actions the drag handle", async () => {
-    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
-    renderDocuments();
-
-    await screen.findByRole("heading", { name: "Cardiac physiology" });
-    const source = document.querySelector(`[data-document-drag-source="${documentId}"]`) as HTMLElement;
-    expect(source).toBeTruthy();
-    expect(source.getAttribute("draggable")).toBe("true");
-
-    const values = new Map<string, string>();
-    const transfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      get types() { return Array.from(values.keys()); },
-      setData(type: string, value: string) { values.set(type, value); },
-      getData(type: string) { return values.get(type) ?? ""; },
-    } as unknown as DataTransfer;
-    fireEvent.dragStart(source, { dataTransfer: transfer });
-    expect(transfer.getData(DOCUMENT_FOLDER_DRAG_TYPE)).toBe(documentId);
-    expect(transfer.effectAllowed).toBe("copy");
-  });
-
   it("opens a PDF's pages for annotation and returns to the list", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages: [], annotations: [] });
@@ -757,67 +736,107 @@ describe("DocumentsScreen", () => {
     });
   });
 
-  describe("with a collection", () => {
-    const collectionId = "e".repeat(32);
-    const organization: collectionIpc.DocumentCollectionOrganization = {
-      revision: 4,
-      collections: [{
-        id: collectionId, name: "Week 1", sortOrder: 0, revision: 1, createdAt: 1, updatedAt: 1,
-      } as collectionIpc.DocumentCollection],
-      memberships: [],
-      ranges: [],
-    };
-    const filed = (id: string): collectionIpc.DocumentCollectionOrganization => ({
-      ...organization,
-      revision: 5,
-      memberships: [{ id: "f".repeat(32), collectionId, documentId: id, revision: 1 } as collectionIpc.DocumentCollectionMembership],
+  describe("with subjects", () => {
+    const cardiology = makeSubject({ id: "e".repeat(32), name: "Cardiology", sortOrder: 0 });
+    const renal = makeSubject({ id: "f".repeat(32), name: "Renal", sortOrder: 1 });
+    const looseId = "b".repeat(32);
+    const library = makeSubjectLibrary({
+      documentFilingRevision: 4,
+      subjects: [cardiology, renal],
+      documents: [{ documentId, subjectId: cardiology.id }, { documentId: looseId, subjectId: null }],
+      studyRanges: [{
+        id: "1".repeat(32), documentId, unitKind: "page", startUnit: 1, endUnit: 3, sourceSha256: "a".repeat(64), createdAt: 1,
+      }],
     });
+    const loose = () => makeDocument({ id: looseId, title: "Medical terminology" });
 
     beforeEach(() => {
-      vi.mocked(collectionIpc.getDocumentCollectionOrganization).mockResolvedValue(organization);
+      vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(library);
       vi.mocked(studyMaterialsIpc.getStudyTargetBundle).mockResolvedValue(null);
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument({ sha256: "a".repeat(64) }), loose()]);
     });
 
-    it("moves a loose document into a collection from its menu", async () => {
-      vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
-      vi.mocked(collectionIpc.addDocumentCollectionMembership).mockResolvedValue(filed(documentId));
-      renderDocuments();
+    it("groups every document under its subject, with No subject last and Add to… on its rows", async () => {
+      const onOpenSubject = vi.fn();
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { onOpenSubject });
 
-      await screen.findByRole("heading", { name: "Week 1" });
+      const groups = await screen.findAllByTestId("document-group");
+      expect(groups.map((group) => within(group).getByRole("heading", { level: 2 }).textContent))
+        .toEqual(["Cardiology1 document", "No subject1 document"]);
+      expect(within(groups[0]!).getByText(/pages 1–3 studied/u)).toBeTruthy();
+      expect(within(groups[1]!).getByRole("button", { name: "Add to…" })).toBeTruthy();
+      expect(screen.queryByText(/collection/iu)).toBeNull();
+      fireEvent.click(within(groups[0]!).getByRole("button", { name: "Open Cardiology" }));
+      expect(onOpenSubject).toHaveBeenCalledWith(cardiology.id);
+    });
+
+    it("lists one subject's documents with its study materials action and no collection", async () => {
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id });
+
       await screen.findByRole("heading", { name: "Cardiac physiology" });
-      await chooseDocumentAction("Move to a collection…");
-      const dialog = await screen.findByRole("dialog", { name: "Move to a collection" });
-      fireEvent.change(within(dialog).getByRole("combobox", { name: "Collection" }), { target: { value: collectionId } });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-
-      await waitFor(() => {
-        expect(collectionIpc.addDocumentCollectionMembership).toHaveBeenCalledWith(expect.objectContaining({
-          collectionId, documentId, expectedOrganizationRevision: 4,
-        }));
-      });
-      expect(await screen.findByRole("list", { name: "Documents in Week 1" })).toBeTruthy();
-      expect(screen.queryByTestId("document-row")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Medical terminology" })).toBeNull();
+      expect(await screen.findByRole("button", { name: /Make study materials/u })).toBeTruthy();
+      expect(screen.queryByText(/collection/iu)).toBeNull();
+      const menu = await openDocumentActions();
+      expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expect.arrayContaining([
+        "Reading range…", "Move to another subject…", "Remove from subject",
+      ]));
     });
 
-    it("uploads a new document straight into an empty collection", async () => {
+    it("files a loose document in a subject from Add to…", async () => {
+      vi.mocked(subjectsIpc.moveDocumentToSubject).mockResolvedValue({
+        ...library,
+        documentFilingRevision: 5,
+        documents: [{ documentId, subjectId: cardiology.id }, { documentId: looseId, subjectId: renal.id }],
+      });
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: null });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Add to…" }));
+      const sheet = await screen.findByRole("dialog", { name: "Move “Medical terminology”" });
+      fireEvent.click(within(sheet).getByRole("radio", { name: "Renal" }));
+      fireEvent.click(within(sheet).getByRole("button", { name: "Move" }));
+
+      await waitFor(() => expect(subjectsIpc.moveDocumentToSubject).toHaveBeenCalledWith({
+        documentId: looseId, subjectId: renal.id, expectedDocumentFilingRevision: 4,
+      }));
+      expect(await screen.findByRole("heading", { name: "Every document has a subject" })).toBeTruthy();
+    });
+
+    it("sets a document's reading range in its subject", async () => {
+      vi.mocked(subjectsIpc.setDocumentStudyRanges).mockResolvedValue({ ...library, documentFilingRevision: 5, studyRanges: [] });
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id });
+
+      await screen.findByRole("heading", { name: "Cardiac physiology" });
+      await chooseDocumentAction("Reading range…");
+      const dialog = await screen.findByRole("dialog", { name: "Reading range" });
+      const field = within(dialog).getByRole("textbox", { name: "Pages" }) as HTMLInputElement;
+      expect(field.value).toBe("1-3");
+      fireEvent.change(field, { target: { value: "2-4, 7" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save range" }));
+
+      await waitFor(() => expect(subjectsIpc.setDocumentStudyRanges).toHaveBeenCalledWith({
+        documentId,
+        ranges: [{ unitKind: "page", startUnit: 2, endUnit: 4 }, { unitKind: "page", startUnit: 7, endUnit: 7 }],
+        expectedDocumentFilingRevision: 4,
+      }));
+    });
+
+    it("uploads into the chosen subject before processing starts", async () => {
       vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({ id: "1".repeat(32) } as
         NonNullable<Awaited<ReturnType<typeof platformFiles.selectExternalImport>>>);
-      vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId });
+      vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId: looseId });
       vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
-      vi.mocked(collectionIpc.addDocumentCollectionMembership).mockResolvedValue(filed(documentId));
-      renderDocuments();
+      vi.mocked(subjectsIpc.moveDocumentToSubject).mockResolvedValue(library);
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: renal.id });
 
-      fireEvent.click(await screen.findByRole("button", { name: "Add documents" }));
-      const dialog = await screen.findByRole("dialog", { name: "Add documents" });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Upload a new document" }));
+      await screen.findByRole("heading", { name: "No documents in this subject yet" });
+      await chooseUpload("Document…");
 
       await waitFor(() => {
-        expect(collectionIpc.addDocumentCollectionMembership).toHaveBeenCalledWith(expect.objectContaining({
-          collectionId, documentId,
-        }));
-        expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+        expect(subjectsIpc.moveDocumentToSubject).toHaveBeenCalledWith(expect.objectContaining({ documentId: looseId, subjectId: renal.id }));
+        expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(looseId, undefined);
       });
-      expect(vi.mocked(collectionIpc.addDocumentCollectionMembership).mock.invocationCallOrder[0])
+      expect(vi.mocked(subjectsIpc.moveDocumentToSubject).mock.invocationCallOrder[0])
         .toBeLessThan(vi.mocked(documentIpc.startDocumentFlashcardGeneration).mock.invocationCallOrder[0] ?? 0);
     });
   });

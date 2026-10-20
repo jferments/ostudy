@@ -238,7 +238,7 @@ describe("StudyGuidesScreen", () => {
     expect(screen.getByRole("navigation", { name: "Library pages" }).closest("div.tw\\:px-5")).toBeTruthy();
   });
 
-  it("lists and opens collection study guides from the main Study Guides page", async () => {
+  it("lists and opens subject study guides from the main Study Guides page", async () => {
     vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(
       page({
         items: [{
