@@ -9,6 +9,7 @@ mod context;
 mod contracts;
 mod curation;
 mod evidence;
+mod figure_reading;
 mod flashcards;
 mod lesson;
 mod mark_question;
@@ -31,6 +32,9 @@ pub(crate) use context::{
 pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
+pub(crate) use figure_reading::{
+    request_figure_readings, FigurePage, FigureReading, FigureToRead, NearbyText,
+};
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, preflight_window_flashcards, FlashcardGenerationLimits,
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,

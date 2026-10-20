@@ -675,7 +675,7 @@ describe("DocumentsScreen", () => {
   it("opens a PDF's figures and returns to the list", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue({
-      documentId, useImages: true, state: "none", scannedAt: null, figures: [],
+      documentId, useImages: true, state: "none", scannedAt: null, reading: "none", readAt: null, figures: [],
     });
     renderDocuments();
 
