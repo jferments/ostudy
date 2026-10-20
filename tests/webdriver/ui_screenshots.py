@@ -860,7 +860,7 @@ def open_tutor(ctx: Context) -> None:
     go(ctx, "tutor")
     title = seed.TUTOR_CONVERSATION_TITLE
     conversation = f"//nav[@aria-label='Conversations']//button[normalize-space(.)={xpath_literal(title)}]"
-    toggle = "//main//button[normalize-space(.)='Conversations']"
+    toggle = "//main//button[@aria-label='Conversations']"
     wait_until(ctx, "the Tutor conversation list", lambda: exists(ctx, conversation) or exists(ctx, toggle))
     if not exists(ctx, conversation):
         click(ctx, toggle)
