@@ -3,6 +3,8 @@ import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as studyGuides from "../ipc/studyGuides";
+import { listContinueReading } from "../ipc/studyGuideReading";
+import { requiredTestValue as required } from "../test/factories";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { LibraryFrame } from "./library/LibraryFrame";
@@ -19,6 +21,8 @@ vi.mock("../ipc/studyGuides", async () => {
     deleteDocumentStudyGuide: vi.fn(),
   };
 });
+
+vi.mock("../ipc/studyGuideReading", () => ({ listContinueReading: vi.fn() }));
 
 vi.mock("./CollectionStudyGuideDialog", () => ({
   CollectionStudyGuideDialog: ({
@@ -106,6 +110,7 @@ describe("StudyGuidesScreen", () => {
     vi.clearAllMocks();
     setLayoutMode("wide");
     vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(page());
+    vi.mocked(listContinueReading).mockResolvedValue([]);
     vi.mocked(studyGuides.deleteDocumentStudyGuide).mockResolvedValue({
       documentId: "a".repeat(32),
       guideId: "b".repeat(32),
@@ -121,6 +126,43 @@ describe("StudyGuidesScreen", () => {
 
   afterEach(() => {
     window.matchMedia = originalMatchMedia;
+  });
+
+  it("shows how far each document guide is read", async () => {
+    const base = required(page().items[0]);
+    vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(page({
+      items: [
+        base,
+        { ...base, guideId: "c".repeat(32), targetId: "d".repeat(32), title: "Renal physiology", readSectionCount: 2, sectionCount: 4, lastOpenedAt: 5 },
+        { ...base, guideId: "e".repeat(32), targetId: "f".repeat(32), title: "Cardiac cycle", readSectionCount: 3, sectionCount: 3, lastOpenedAt: 6 },
+      ],
+      totalCount: 3,
+    }));
+    renderScreen();
+
+    const cards = await screen.findAllByTestId("guide-card");
+    expect(cards.map((card) => within(card).getByRole("progressbar").getAttribute("aria-valuetext"))).toEqual([
+      "Not started", "2 of 4 sections read", "Finished",
+    ]);
+  });
+
+  it("offers to resume the guide last opened and opens it with its source", async () => {
+    vi.mocked(listContinueReading).mockResolvedValue([{
+      documentId: "a".repeat(32), guideId: "b".repeat(32), title: "Distributive shock", subjectId: null,
+      sectionCount: 6, readSectionCount: 2, topicId: "9".repeat(32), sectionIndex: 2, openedAt: 20,
+    }]);
+    renderScreen();
+
+    const band = await screen.findByRole("region", { name: "Distributive shock" });
+    expect(within(band).getByText("Continue reading")).toBeTruthy();
+    expect(within(band).getByText("Section 3 of 6 · 2 read")).toBeTruthy();
+    expect(listContinueReading).toHaveBeenCalledWith(1);
+    fireEvent.click(within(band).getByRole("button", { name: "Resume" }));
+
+    const reader = await screen.findByRole("dialog", { name: "Guide Distributive shock" });
+    expect(within(reader).getByText("Source shock.pdf pdf 12 page")).toBeTruthy();
+    fireEvent.click(within(reader).getByRole("button", { name: "Close guide" }));
+    await waitFor(() => expect(listContinueReading).toHaveBeenCalledTimes(2));
   });
 
   it("loads a bounded projection, searches, sorts, and opens through screen state", async () => {
