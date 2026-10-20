@@ -81,7 +81,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         &user,
         AuthoringEvidence { images, knowledge },
     )?;
-    request_study_guide_section_with_retry(
+    let section = request_study_guide_section_with_retry(
         runtime,
         task,
         &system,
@@ -90,7 +90,43 @@ pub(crate) async fn generate_study_guide_topic_section(
         completion_plan,
         None,
     )
-    .await
+    .await?;
+    let budget =
+        WritingBudget::for_knowledge(knowledge).fit_output(completion_plan.initial_visible_tokens);
+    if !budget.thin(knowledge.units.len(), &section.content) {
+        return Ok(section);
+    }
+    // One fresh request; the longer section wins, and a failed second request
+    // keeps the first, so this can never cost a written section.
+    let user = format!("{user}\n\nAn earlier answer to this request introduced the topic but taught almost none of the catalog. Teach the catalog's facts themselves.");
+    let second = request_study_guide_section_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        AuthoringEvidence { images, knowledge },
+        completion_plan,
+        None,
+    )
+    .await;
+    let chosen = match second {
+        Ok(second)
+            if generated_section_char_count(&second.content)
+                > generated_section_char_count(&section.content) =>
+        {
+            second
+        }
+        _ => section,
+    };
+    crate::logging::debug_target(
+        "ai.document.study_guide",
+        "study_guide_thin_section_retried",
+        "Asked once more for a section that came back far below its writing target; content is not logged.",
+        json!({"units": knowledge.units.len(),
+            "chars": generated_section_char_count(&chosen.content),
+            "target": budget.target_chars}),
+    );
+    Ok(chosen)
 }
 
 /// Ask once for explanations of the core knowledge units a written section did
@@ -111,16 +147,26 @@ pub(crate) async fn complete_study_guide_section_coverage(
         let system = coverage::system_prompt();
         let user = coverage::user_prompt(document_title, topic, &section.content, &plan)?;
         let schema = coverage::schema(&section.content, &plan);
-        let request = JsonTaskRequest {
-            system_prompt: &system,
-            user_text: &user,
-            schema: &schema,
-            max_tokens: task.completion_token_ceiling(coverage::visible_tokens(&plan)),
-            images: &[],
+        let [first, retry] = coverage::visible_tokens(&plan);
+        let (section, plan) = (&section, &plan);
+        let attempt = |visible_tokens| {
+            let request = JsonTaskRequest {
+                system_prompt: &system,
+                user_text: &user,
+                schema: &schema,
+                max_tokens: task.completion_token_ceiling(visible_tokens),
+                images: &[],
+            };
+            async move {
+                ensure_context_budget(task, &request)?;
+                let value = request_json(runtime, task, request).await?;
+                coverage::admit(section, knowledge, plan, value)
+            }
         };
-        ensure_context_budget(task, &request)?;
-        let value = request_json(runtime, task, request).await?;
-        coverage::admit(&section, knowledge, &plan, value)
+        match attempt(first).await {
+            Err(error) if coverage::retryable(&error) => attempt(retry).await,
+            other => other,
+        }
     }
     .await;
     match outcome {
