@@ -1,4 +1,4 @@
--- Release migration 14: lecture scripts.
+-- Release migration 15: lecture scripts.
 --
 -- A teacher's lecture for one saved lesson revision: what the teacher says
 -- over each of the revision's lecture slides, and the few questions they stop

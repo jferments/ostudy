@@ -219,8 +219,14 @@ const CONTRACTS: &[Contract] = &[
         setup: "",
         rules: &[],
     },
+    // Annotated PDF copies widen prepared_exports' purposes the same way.
     Contract {
         version: 14,
+        setup: "",
+        rules: &[],
+    },
+    Contract {
+        version: 15,
         setup: "",
         rules: &[Rule::AddedEmpty {
             table: "lecture_scripts",

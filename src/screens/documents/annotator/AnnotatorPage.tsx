@@ -50,6 +50,10 @@ interface AnnotatorPageProps {
   /** The rest of these belong to this page, or are null. */
   draft: PageDraft | null;
   preview: Annotation | null;
+  /** The lassoed annotations on this page, as they are being moved while a drag is under way. */
+  group: readonly Annotation[];
+  /** The lasso loop being drawn on this page, as `x, y` pairs. */
+  loop: readonly number[] | null;
   erasing: ReadonlySet<string> | null;
   selected: Annotation | null;
   editing: TextEditing | null;
@@ -96,10 +100,11 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
 });
 
 function PageContent({
-  page, scale, annotations, draft, preview, erasing, selected, editing, selectable, coarse, textHeight,
+  page, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse, textHeight,
   onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
-  const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : annotation);
+  const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
+  const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
   const viewBox = `0 0 ${page.width} ${page.height}`;
   const faded = (annotation: Annotation) => erasing?.has(annotation.id) ? 0.25 : undefined;
   const highlights = shown.filter((annotation) => annotation.shape.kind === "highlight");
@@ -163,6 +168,23 @@ function PageContent({
         {openSticky ? <StickyNote annotation={openSticky} opacity={undefined} open /> : null}
         {editing && !openSticky ? <TextNoteEditor editing={editing} onType={onTypeText} onFinish={onFinishText} /> : null}
       </div>
+      {group.length > 0 || loop ? (
+        <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:overflow-visible">
+          {group.map((annotation) => {
+            const bounds = shapeBounds(annotation.shape, textHeight(annotation));
+            return (
+              <rect key={annotation.id} data-lassoed="" x={bounds.left - 2 / scale} y={bounds.top - 2 / scale}
+                width={bounds.right - bounds.left + 4 / scale} height={bounds.bottom - bounds.top + 4 / scale}
+                fill="none" className="tw:stroke-primary" strokeWidth={1.5 / scale}
+                strokeDasharray={`${4 / scale} ${3 / scale}`} />
+            );
+          })}
+          {loop ? (
+            <polygon data-lasso-loop="" points={pairs(loop)} className="tw:fill-primary tw:stroke-primary" fillOpacity={0.06}
+              strokeWidth={1.5 / scale} strokeDasharray={`${4 / scale} ${3 / scale}`} />
+          ) : null}
+        </svg>
+      ) : null}
       {selected && !editing ? (
         <SelectionOutline page={page} scale={scale} coarse={coarse}
           annotation={preview?.id === selected.id ? preview : selected} textHeight={textHeight} />
@@ -423,4 +445,10 @@ function SelectionOutline({ page, scale, coarse, annotation, textHeight }: {
       ))}
     </svg>
   );
+}
+
+function pairs(points: readonly number[]): string {
+  const out: string[] = [];
+  for (let index = 0; index + 1 < points.length; index += 2) out.push(`${points[index]},${points[index + 1]}`);
+  return out.join(" ");
 }

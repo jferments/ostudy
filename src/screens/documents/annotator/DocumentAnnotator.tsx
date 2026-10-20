@@ -18,6 +18,7 @@ import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
 import { MarkCardEditor, type CardMark } from "./MarkCardEditor";
+import { useAnnotatedPdfExport } from "./useAnnotatedPdfExport";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "./useAnnotatorViewport";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "./useDocumentAnnotator";
 
@@ -36,7 +37,7 @@ interface DocumentAnnotatorProps {
 const CITED_PAGE_MARK_MS = 2500;
 
 const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -49,6 +50,8 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
   const controller = useDocumentAnnotator(documentId, showToast);
   const { leave, closing } = useAnnotatorLeave(controller);
   const close = useCallback(() => leave(onClose), [leave, onClose]);
+  const { exporting, exportPdf } = useAnnotatedPdfExport(documentId, controller.flush, showToast);
+  const hasAnnotations = [...controller.annotations.values()].some((page) => page.length > 0);
 
   // The cards made from this document's marks; a newer read replaces an older one.
   const [marked, setMarked] = useState<DocumentMarkedCards | null>(null);
@@ -90,6 +93,13 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
       actions={
         <div className="tw:flex tw:items-center tw:gap-3">
           <SaveStatus state={controller.saveState} onRetry={controller.retrySave} />
+          {hasAnnotations ? (
+            <Button size="small" variant="secondary" disabled={closing || exporting}
+              aria-label="Save PDF with your annotations" onClick={() => void exportPdf()}>
+              <Icon name="download" />
+              <span className="tw:compact:hidden">{exporting ? "Saving PDF…" : "Save PDF"}</span>
+            </Button>
+          ) : null}
           {onPracticeCards && markedCardIds.length > 0 ? (
             <Button size="small" variant="secondary" disabled={closing}
               onClick={() => void leave(() => onPracticeCards(markedCardIds))}>
@@ -287,12 +297,20 @@ function ReadyAnnotator({
       if (controller.selected) {
         event.preventDefault();
         controller.select(null);
+      } else if (controller.group.length > 0) {
+        event.preventDefault();
+        controller.selectGroup(0, []);
       }
       return;
     }
     if ((event.key === "Delete" || event.key === "Backspace") && controller.selected) {
       event.preventDefault();
       controller.deleteSelected();
+      return;
+    }
+    if ((event.key === "Delete" || event.key === "Backspace") && controller.group.length > 0) {
+      event.preventDefault();
+      controller.deleteGroup();
       return;
     }
     const tool = event.shiftKey ? undefined : SHORTCUTS[key];
@@ -326,6 +344,10 @@ function ReadyAnnotator({
           penSeen={controller.penSeen}
           penOnly={controller.penOnly}
           onTogglePenOnly={controller.togglePenOnly}
+          groupSize={controller.group.length}
+          onDeleteGroup={controller.deleteGroup}
+          eraseMode={controller.eraseMode}
+          onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
           fit={viewport.fit}
           canZoomIn={viewport.scale < MAX_SCALE}

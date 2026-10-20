@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as annotationCardsIpc from "../../../ipc/annotationCards";
 import * as annotationIpc from "../../../ipc/documentAnnotations";
+import * as externalFilesIpc from "../../../ipc/externalFiles";
 import * as studyGuideIpc from "../../../ipc/studyGuides";
 import { layoutWidths, matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
@@ -16,7 +17,9 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   applyDocumentAnnotationChanges: vi.fn(),
   renderDocumentPageTile: vi.fn(),
   getDocumentPageText: vi.fn(),
+  prepareAnnotatedPdf: vi.fn(),
 }));
+vi.mock("../../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 vi.mock("../../../ipc/annotationCards", () => ({ getDocumentMarkedCards: vi.fn(), linkCardNoteToAnnotation: vi.fn() }));
 // The card editor has its own tests; here it shows what it was given and saves on a click.
@@ -230,6 +233,53 @@ describe("document annotator", () => {
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
   });
 
+  it("selects marks together with the lasso, then moves and deletes them as one", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [150, 150]]);
+    drag(canvas, [[200, 100], [250, 150]]);
+    drag(canvas, [[100, 400], [150, 450]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(3));
+
+    fireEvent.keyDown(canvas, { key: "q" });
+    expect(pressed("Lasso")).toBe("true");
+    drag(canvas, [[80, 80], [300, 80], [300, 200], [80, 200]]);
+    expect(await screen.findByText(/2 selected/u)).toBeTruthy();
+    expect(document.querySelectorAll("[data-lassoed]")).toHaveLength(2);
+
+    fireEvent.keyDown(canvas, { key: "ArrowRight" });
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(2));
+    expect(savedChanges(1).map((change) => change.op === "put" && change.shape.kind === "rectangle" ? change.shape.x : null))
+      .toEqual([101, 201]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(2));
+    expect(savedChanges(2).every((change) => change.op === "delete")).toBe(true);
+    expect(screen.getByText("Draw a loop around annotations to select them together.")).toBeTruthy();
+  });
+
+  it("erases part of a highlighter stroke, as one step to undo", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "h" });
+    drag(canvas, [[50, 500], [150, 500], [250, 500]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    const strokeId = savedChanges()[0]?.id;
+
+    fireEvent.keyDown(canvas, { key: "e" });
+    expect(pressed("Erase whole annotations")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Erase part of a stroke" }));
+    expect(pressed("Erase part of a stroke")).toBe("true");
+    expect(screen.getByText("Drag across pen and highlighter strokes to erase just that part.")).toBeTruthy();
+    drag(canvas, [[150, 480], [150, 520]]);
+
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(3));
+    const [removed, ...kept] = savedChanges(1);
+    expect(removed).toEqual({ op: "delete", id: strokeId });
+    expect(kept.map((change) => change.op === "put" ? change.shape.kind : null)).toEqual(["highlight", "highlight"]);
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(3));
+  });
+
   it("snaps the highlighter to the page's text and keeps the words it covers", async () => {
     vi.mocked(annotationIpc.getDocumentPageText).mockImplementation((_documentId, pageNumber) => pageNumber === 1
       ? Promise.resolve({
@@ -288,6 +338,37 @@ describe("document annotator", () => {
     await waitFor(() => expect(onPracticeCards).toHaveBeenCalledWith(["c".repeat(32)]));
   });
 
+  it("saves a copy of the PDF with its annotations once pending ones are saved", async () => {
+    const exportId = "x".repeat(32);
+    vi.mocked(annotationIpc.prepareAnnotatedPdf).mockResolvedValue({
+      preparedExport: {
+        id: exportId, purpose: "annotated_pdf", suggestedFilename: `${title}-annotated.pdf`, mediaType: "application/pdf",
+        byteSize: 10, sha256: "e".repeat(64), expiresAt: 2,
+      },
+      annotationCount: 1,
+      pageCount: 1,
+    });
+    vi.mocked(externalFilesIpc.publishPreparedExport).mockResolvedValue({
+      preparedExportId: exportId, displayName: `${title}-annotated.pdf`, destinationKind: "file", completedAt: 3,
+    });
+    vi.mocked(externalFilesIpc.releasePreparedExport).mockResolvedValue(undefined);
+    const { canvas, showToast } = await openAnnotator();
+    // Nothing to save before the first mark.
+    expect(screen.queryByRole("button", { name: "Save PDF with your annotations" })).toBeNull();
+
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [200, 160]]);
+    fireEvent.click(await screen.findByRole("button", { name: "Save PDF with your annotations" }));
+    await waitFor(() => expect(externalFilesIpc.releasePreparedExport).toHaveBeenCalledWith(exportId));
+    // The new mark was saved before the copy was made.
+    const saved = vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mock.invocationCallOrder.at(0) ?? Infinity;
+    const prepared = vi.mocked(annotationIpc.prepareAnnotatedPdf).mock.invocationCallOrder.at(0) ?? -Infinity;
+    expect(saved).toBeLessThan(prepared);
+    expect(annotationIpc.prepareAnnotatedPdf).toHaveBeenCalledWith(documentId);
+    expect(externalFilesIpc.publishPreparedExport).toHaveBeenCalledWith(exportId);
+    expect(showToast).toHaveBeenCalledWith("success", "Saved a copy with 1 annotation on 1 page.");
+  });
+
   it("zooms with the keyboard and with two fingers, without drawing", async () => {
     const { canvas, onClose } = await openAnnotator();
     const zoomButton = () => screen.getByRole("button", { name: /^Automatic zoom/ });
@@ -337,7 +418,8 @@ describe("document annotator", () => {
     drag(canvas, [[100, 100], [200, 200]]);
 
     expect(await screen.findByText("Not saved")).toBeTruthy();
-    expect(showToast).toHaveBeenCalledWith("error", "Annotations could not be saved: The library is busy.");
+    // The toast comes from an effect, which can run after the header shows the failure.
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith("error", "Annotations could not be saved: The library is busy."));
 
     fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Leave without saving?" });

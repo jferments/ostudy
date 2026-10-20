@@ -40,10 +40,12 @@ function context(overrides: Partial<GestureContext> = {}, annotations: readonly 
     tool: "pen",
     styles: DEFAULT_STYLES,
     penOnly: false,
+    eraseMode: "whole",
     scale: 1,
     minScale: 0.25,
     maxScale: 4,
     selected: null,
+    group: [],
     annotationsOn: (pageNumber) => annotations.filter((item) => item.pageNumber === pageNumber),
     textHeight: (item) => (item.shape.kind === "text" ? estimateTextHeight(item.shape) : 0),
     newId: () => `new${(ids += 1)}`,
@@ -193,6 +195,37 @@ describe("drawing", () => {
     ]);
   });
 
+  it("erases only the part of a pen stroke the eraser passes over, and whole shapes", () => {
+    const stroke = annotation("ink", {
+      kind: "ink", points: [100, 300, 0.5, 300, 300, 0.5], color: "#1f2328", strokeWidth: 2, simulatePressure: false,
+    });
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "eraser", eraseMode: "part" }, [box, stroke]);
+    // Crossing the middle of the stroke cuts it in two, cut where the eraser's edge meets the stroke's.
+    const down = only(gestures.down(at(1, "mouse", 200, 300), surface, ctx), "erasing")[0];
+    expect(down?.annotations).toEqual([]);
+    expect(down?.cuts).toEqual([{
+      original: stroke,
+      kept: [
+        { id: "ink-0", pageNumber: 1, createdAt: 1, shape: { ...stroke.shape, points: [100, 300, 0.5, 191, 300, 0.5] } },
+        { id: "ink-1", pageNumber: 1, createdAt: 1, shape: { ...stroke.shape, points: [209, 300, 0.5, 300, 300, 0.5] } },
+      ],
+    }]);
+    // A shape is still erased whole.
+    gestures.move(at(1, "mouse", 120, 100), surface, ctx);
+    const up = only(gestures.up(at(1, "mouse", 120, 100), surface, ctx), "erase")[0];
+    expect(up?.annotations).toEqual([box]);
+    expect(up?.cuts?.[0]?.kept.map((piece) => piece.id)).toEqual(["new1", "new2"]);
+  });
+
+  it("erases a stroke whole when nothing long enough is left of it", () => {
+    const dot = annotation("dot", { kind: "highlight", points: [100, 300, 104, 300], color: "#fde047", strokeWidth: 16 });
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "eraser", eraseMode: "part" }, [dot]);
+    gestures.down(at(1, "mouse", 102, 300), surface, ctx);
+    expect(only(gestures.up(at(1, "mouse", 102, 300), surface, ctx), "erase")[0]?.cuts).toEqual([{ original: dot, kept: [] }]);
+  });
+
   it("erases with a stylus's eraser end whichever tool is chosen", () => {
     const gestures = new AnnotatorGestures();
     const ctx = context({ tool: "pen" }, [box, line]);
@@ -207,6 +240,40 @@ describe("drawing", () => {
     // The writing end draws again.
     gestures.down(at(2, "pen", 300, 300), surface, ctx);
     expect(created(gestures.up(at(2, "pen", 300, 300), surface, ctx))).toMatchObject([{ kind: "ink" }]);
+  });
+});
+
+describe("lasso", () => {
+  it("selects the annotations a drawn loop surrounds, on the page it was drawn on", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "lasso" }, [box, line, note, lowerBox]);
+    expect(only(gestures.down(at(1, "mouse", 80, 80), surface, ctx), "lasso")[0]?.loop)
+      .toEqual({ pageNumber: 1, points: [80, 80] });
+    gestures.move(at(1, "mouse", 420, 80), surface, ctx);
+    gestures.move(at(1, "mouse", 420, 170), surface, ctx);
+    gestures.move(at(1, "mouse", 80, 170), surface, ctx);
+    expect(gestures.up(at(1, "mouse", 80, 170), surface, ctx)).toEqual([
+      { kind: "lasso", loop: null },
+      { kind: "select-group", pageNumber: 1, ids: ["box", "line"] },
+    ]);
+
+    // A tap with the lasso takes nothing, which clears the group.
+    gestures.down(at(2, "mouse", 500, 600), surface, ctx);
+    expect(only(gestures.up(at(2, "mouse", 500, 600), surface, ctx), "select-group")[0]?.ids).toEqual([]);
+  });
+
+  it("moves the whole group when dragged, as one change", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "lasso", group: [box, line] }, [box, line, note]);
+    gestures.down(at(1, "mouse", 125, 125), surface, ctx);
+    const preview = only(gestures.move(at(1, "mouse", 135, 145), surface, ctx), "group-preview")[0]?.annotations;
+    expect(preview?.map((annotation) => annotation.shape)).toEqual([
+      { ...box.shape, x: 110, y: 120 },
+      { ...line.shape, x1: 310, y1: 120, x2: 410, y2: 120 },
+    ]);
+    const up = gestures.up(at(1, "mouse", 135, 145), surface, ctx);
+    expect(up[0]).toEqual({ kind: "group-preview", annotations: null });
+    expect(only(up, "group-change")[0]).toEqual({ kind: "group-change", before: [box, line], after: preview });
   });
 });
 

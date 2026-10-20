@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 14: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, and schema 14 keeps a lesson's teacher's lecture, the last nine described below. Libraries at schemas 1–13 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 15: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, schema 14 lets a PDF be saved with your annotations drawn in, and schema 15 keeps a lesson's teacher's lecture, the last ten described below. Libraries at schemas 1–14 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -80,11 +80,17 @@ Schema 13 lets a lesson's lecture be saved as a PowerPoint deck. It rebuilds the
 
 Older builds cannot open a schema-13 library. Restoring the pre-upgrade checkpoint returns the schema-12 library as it was.
 
-## The teacher's lecture update (schema 14)
+## The annotated PDF update (schema 14)
 
-Schema 14 keeps the teacher's lecture written for a lesson: what the teacher says over each slide and the questions they ask the class, with the teacher's reply to each answer. A lecture belongs to one saved version of its lesson and goes when the lesson does. Answering the teacher's questions is practice: it is not saved and never changes when cards are due. The update itself writes nothing: the table starts empty.
+Schema 14 lets a PDF be saved with your annotations drawn into its pages. It rebuilds the small table of exports waiting to be saved so it accepts an annotated PDF, keeping every entry. The update adds no rows.
 
-Older builds cannot open a schema-14 library. Restoring the pre-upgrade checkpoint returns the schema-13 library as it was. Lectures are part of whole-library backups; device sync leaves them out, like the lessons they belong to.
+Older builds cannot open a schema-14 library. Restoring the pre-upgrade checkpoint returns the schema-13 library as it was.
+
+## The teacher's lecture update (schema 15)
+
+Schema 15 keeps the teacher's lecture written for a lesson: what the teacher says over each slide and the questions they ask the class, with the teacher's reply to each answer. A lecture belongs to one saved version of its lesson and goes when the lesson does. Answering the teacher's questions is practice: it is not saved and never changes when cards are due. The update itself writes nothing: the table starts empty.
+
+Older builds cannot open a schema-15 library. Restoring the pre-upgrade checkpoint returns the schema-14 library as it was. Lectures are part of whole-library backups; device sync leaves them out, like the lessons they belong to.
 
 ## What happens when migration is required
 
