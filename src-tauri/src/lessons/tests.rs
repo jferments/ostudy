@@ -657,3 +657,94 @@ fn answering_a_check_grades_it_records_it_and_never_touches_reviews() {
         })
         .unwrap();
 }
+
+#[test]
+fn a_lecture_is_compiled_from_the_saved_lesson_with_narration_as_notes() {
+    use super::lecture::{read_lecture, LectureSlideKind};
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let lesson = read(&database, &id, None);
+    let document_title: String = database
+        .with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT title FROM documents WHERE id = ?1",
+                    [DOCUMENT],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id.clone(),
+                    revision_number: None,
+                },
+            )
+        })
+        .unwrap();
+
+    assert_eq!(lecture.revision_number, 1);
+    assert_eq!(lecture.title, "Loop of Henle");
+    let kinds: Vec<_> = lecture.slides.iter().map(|slide| slide.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            LectureSlideKind::Title,
+            LectureSlideKind::Step,
+            LectureSlideKind::Step,
+            LectureSlideKind::Step,
+            LectureSlideKind::Sources
+        ]
+    );
+    let title = &lecture.slides[0];
+    assert_eq!(title.points, lesson.content.objectives);
+    assert_eq!(title.notes, lesson.content.summary);
+    for (slide, step) in lecture.slides[1..4].iter().zip(&lesson.content.steps) {
+        assert_eq!(slide.step_key.as_deref(), Some(step.key.as_str()));
+        assert_eq!(slide.title, step.title);
+        assert_eq!(slide.points, step.slide_points);
+        assert_eq!(slide.notes, step.narration);
+    }
+    assert_eq!(lecture.slides[4].points, [document_title]);
+
+    // A check's answer and explanation never reach a slide.
+    let text = serde_json::to_string(&lecture).unwrap();
+    assert!(!text.contains(CORRECT_OPTION));
+    assert!(!text.contains("watertight while its pumps"));
+}
+
+#[test]
+fn a_lecture_without_source_documents_has_no_sources_slide() {
+    use super::lecture::{read_lecture, LectureSlideKind};
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    database
+        .with_connection(|connection| {
+            connection
+                .execute("DELETE FROM knowledge_units WHERE id = ?1", [UNIT])
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id,
+                    revision_number: Some(1),
+                },
+            )
+        })
+        .unwrap();
+    assert_eq!(lecture.slides.len(), 4);
+    assert!(lecture
+        .slides
+        .iter()
+        .all(|slide| slide.kind != LectureSlideKind::Sources));
+}

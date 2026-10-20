@@ -148,6 +148,36 @@ export async function getLesson(
   });
 }
 
+export type LectureSlideKind = "title" | "step" | "sources";
+
+export interface LectureSlide {
+  kind: LectureSlideKind;
+  /** The step a step slide shows; its narration can be spoken. */
+  stepKey: string | null;
+  title: string;
+  points: string[];
+  /** Speaker notes: a step's narration, or the lesson's summary. */
+  notes: string;
+}
+
+/** A lesson laid out as slides, compiled natively from one saved revision. */
+export interface Lecture {
+  lessonId: string;
+  revisionNumber: number;
+  title: string;
+  slides: LectureSlide[];
+}
+
+/** The lesson as a lecture: the latest revision, or `revisionNumber` when given. */
+export async function getLessonLecture(
+  lessonId: string,
+  revisionNumber?: number,
+): Promise<Lecture> {
+  return invoke<Lecture>("get_lesson_lecture", {
+    input: { lessonId, revisionNumber: revisionNumber ?? null },
+  });
+}
+
 /**
  * Saves where the learner is in one revision. Saving the same state again
  * changes nothing; progress for a newer revision starts over on it.
