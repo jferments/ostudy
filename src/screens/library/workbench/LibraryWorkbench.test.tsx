@@ -258,7 +258,9 @@ describe("LibraryWorkbench", () => {
     const tree = screen.getByRole("navigation", { name: "Library" });
     fireEvent.click(await within(tree).findByRole("button", { name: /^Loose deck\s*\d/u }));
     await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe(loose.name));
-    act(() => { expect(dispatchPlatformBack()).toBe(true); });
+    // The Back handler registers in an effect after the deck's title paints;
+    // an unhandled Back changes nothing, so retrying until it is handled is safe.
+    await waitFor(() => expect(dispatchPlatformBack()).toBe(true));
     await waitFor(() => expect(screen.getByTestId("workbench-title").textContent).toBe("All cards"));
   });
 
