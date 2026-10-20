@@ -4,10 +4,15 @@ import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import {
   cancelSubjectCourseWriting,
+  getSubjectCourseWritingProgress,
   listSubjectLessons,
   writeSubjectCourse,
+  type CourseWritingProgress,
   type SubjectLessons,
 } from "../../ipc/lessons";
+
+/** How often a running course is asked how far it is. */
+export const COURSE_PROGRESS_INTERVAL_MS = 1500;
 
 /**
  * A course being written keeps going when its subject page closes, so the
@@ -17,6 +22,7 @@ import {
 interface CourseRun {
   operationId: string;
   stopping: boolean;
+  progress: CourseWritingProgress | null;
   /** Set when the run ends; the page that sees it clears it. */
   outcome: { lessons: SubjectLessons } | { error: string } | { stopped: true } | null;
 }
@@ -38,7 +44,8 @@ function subscribe(listener: () => void) {
 function startRun(subjectId: string) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
-  publish(subjectId, { operationId, stopping: false, outcome: null });
+  publish(subjectId, { operationId, stopping: false, progress: null, outcome: null });
+  watchProgress(subjectId, operationId);
   void writeSubjectCourse(subjectId, operationId).then(
     (lessons) => settle(subjectId, operationId, { lessons }),
     (error: unknown) =>
@@ -50,6 +57,30 @@ function startRun(subjectId: string) {
           : { error: getErrorMessage(error) },
       ),
   );
+}
+
+/**
+ * Asks how far the run is until it ends. Progress is advisory: a failed ask
+ * is tried again, and the run's own result is what ends it.
+ */
+function watchProgress(subjectId: string, operationId: string) {
+  const current = () => {
+    const run = runs.get(subjectId);
+    return run?.operationId === operationId && !run.outcome ? run : null;
+  };
+  const ask = () => {
+    if (!current()) return;
+    getSubjectCourseWritingProgress(operationId).then(
+      (progress) => {
+        const run = current();
+        if (run) publish(subjectId, { ...run, progress });
+      },
+      () => undefined,
+    ).finally(() => {
+      if (current()) setTimeout(ask, COURSE_PROGRESS_INTERVAL_MS);
+    });
+  };
+  setTimeout(ask, COURSE_PROGRESS_INTERVAL_MS);
 }
 
 function settle(subjectId: string, operationId: string, outcome: NonNullable<CourseRun["outcome"]>) {
@@ -81,6 +112,8 @@ export interface SubjectCourse {
   readError: string | null;
   writing: boolean;
   stopping: boolean;
+  /** How far the running course is, once it has said. */
+  progress: CourseWritingProgress | null;
   writeError: string | null;
   refresh: () => void;
   write: () => void;
@@ -139,6 +172,7 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
     readError,
     writing: run !== null && run.outcome === null,
     stopping: run?.stopping ?? false,
+    progress: run && !run.outcome ? run.progress : null,
     writeError,
     refresh,
     write: () => {

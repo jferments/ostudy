@@ -5,7 +5,9 @@ import {
   answerLessonCheck,
   cancelSubjectCourseWriting,
   getLesson,
+  getSubjectCourseWritingProgress,
   listSubjectLessons,
+  narrateLessonStep,
   saveLessonProgress,
   writeSubjectCourse,
 } from "./lessons";
@@ -39,6 +41,13 @@ describe("lesson IPC", () => {
     });
   });
 
+  it("asks how far a course being written is by its operation", async () => {
+    await getSubjectCourseWritingProgress("c".repeat(32));
+    expect(invoke).toHaveBeenLastCalledWith("get_subject_course_writing_progress", {
+      input: { operationId: "c".repeat(32) },
+    });
+  });
+
   it("saves whole progress states, so a repeated request is safe", async () => {
     await saveLessonProgress(lessonId, 2, 3, true);
     expect(invoke).toHaveBeenCalledWith("save_lesson_progress", {
@@ -69,5 +78,12 @@ describe("lesson IPC", () => {
       input: { operationId: string };
     };
     expect(generated.input.operationId).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("narrates one step of a saved revision", async () => {
+    await narrateLessonStep(lessonId, 2, "two-limbs");
+    expect(invoke).toHaveBeenLastCalledWith("narrate_lesson_step", {
+      input: { lessonId, revisionNumber: 2, stepKey: "two-limbs" },
+    });
   });
 });

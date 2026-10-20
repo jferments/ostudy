@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { listenToLifecycle, type LifecyclePhase } from "../ipc/platform";
 
 /** Why the current card is not visible to the learner right now. */
-export type StudyTimePause = "hidden" | "lifecycle" | "editor";
+export type StudyTimePause = "hidden" | "lifecycle" | "editor" | "source";
 
 /** The largest active time a review can record (24 hours). */
 export const MAX_ACTIVE_TIME_MS = 86_400_000;
@@ -23,7 +23,7 @@ function monotonicNow(): number {
 /**
  * Accumulates the time one card is actually visible. The clock runs only while
  * no pause reason is active, so time with the app hidden, paused by the
- * platform, or replaced by the card editor does not count.
+ * platform, or replaced by the card editor or its source document does not count.
  */
 export class VisibleStudyTime {
   readonly #now: () => number;

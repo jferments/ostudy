@@ -4,6 +4,7 @@ import { getSettings } from "../ipc/settings";
 import { observeLibraryUpgrade, type LibraryUpgradeProgress } from "../ipc/libraryUpgrade";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Button } from "../ui/primitives/Button";
+import { Progress } from "../ui/primitives/Progress";
 import { LibraryRestoreObserver } from "./LibraryRestoreObserver";
 import { BrandMark } from "./Brand";
 
@@ -122,6 +123,16 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
           ? "Preparing this library is taking longer than usual. ostudy will open automatically when native startup finishes."
           : "Preparing your library…"}
       </p>
+      {state !== "failed" && upgrade && typeof upgrade.permille === "number" ? (
+        <Progress
+          className="tw:mx-auto tw:w-full tw:max-w-md"
+          value={upgrade.permille}
+          max={1000}
+          label="Library update progress"
+          valueText={`${Math.floor(upgrade.permille / 10)}%`}
+          text={<span className="tw:w-full tw:text-center tw:tabular-nums">{Math.floor(upgrade.permille / 10)}% done</span>}
+        />
+      ) : null}
     </div>
   );
 }

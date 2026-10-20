@@ -29,11 +29,17 @@ describe("library upgrade progress", () => {
     deliver({ sequence: 3, message: 14, completed: false });
     deliver({ sequence: 3, message: "x".repeat(513), completed: false });
     deliver({ sequence: 2, message: "duplicate phase", completed: false });
+    deliver({ sequence: 3, message: "Verifying the updated library…", completed: false, permille: 1001 });
+    deliver({ sequence: 3, message: "Verifying the updated library…", completed: false, permille: 2.5 });
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenLastCalledWith(current);
+    const measured = { ...current, sequence: 3, permille: 420 };
+    deliver(measured);
+    expect(changed).toHaveBeenLastCalledWith(measured);
+    expect(changed).toHaveBeenCalledTimes(2);
     unsubscribe();
     deliver({ sequence: 4, message: "late phase", completed: true });
-    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledTimes(2);
     expect(cleanup).toHaveBeenCalledOnce();
   });
 

@@ -4,7 +4,7 @@
 //! Activation and rollback use the existing library replacement journal.
 
 use super::{
-    check_path, hash_file, hash_tree, install_prepared_restore, io_error, move_synced,
+    check_path, hash_file, hash_tree, install_prepared_restore, io_error, meter, move_synced,
     new_transaction, sync, sync_tree, transaction_committed, write_new_file, AppPaths, Database,
     Layout, Path, PathBuf, PendingRestoreGuard, PreparedRestore, JOURNAL, TRANSACTIONS,
 };
@@ -181,6 +181,7 @@ where
         );
     }
     let source_revision = data_version(&source)?;
+    meter::plan(planned_upgrade_work(root, paths.database_path())?);
     let transaction = new_transaction(root)?;
     let operation_id = operation_id(&transaction)?;
     write_intent(
@@ -198,6 +199,7 @@ where
     let checkpoint = transaction.join("checkpoint");
     fs::create_dir(&checkpoint).map_err(io_error)?;
     snapshot_database(&source, &checkpoint.join("library.sqlite3"), page_limit)?;
+    meter::advance(file_size(&checkpoint.join("library.sqlite3"))?);
     for relative in MANAGED {
         copy_managed_directory(root, &checkpoint, relative)?;
     }
@@ -232,6 +234,7 @@ where
     let candidate = transaction.join("candidate");
     copy_tree(&checkpoint, &candidate)?;
     migrate(&candidate.join("library.sqlite3"))?;
+    meter::advance(file_size(&candidate.join("library.sqlite3"))?);
     progress("Verifying the updated library…");
     let migrated = read_database(&candidate.join("library.sqlite3"))?;
     let target = validate_database(&migrated)?;
@@ -244,6 +247,7 @@ where
         &manifest.source_lineage,
         manifest.source_schema,
     )?;
+    meter::advance(file_size(&candidate.join("library.sqlite3"))?.saturating_mul(2));
     drop(migrated);
     // Schema migration may change the database, never source document bytes.
     for relative in MANAGED {
@@ -589,7 +593,20 @@ fn copy_managed_directory(source: &Path, destination: &Path, relative: &str) -> 
     }
 }
 
+/// Copies a directory tree, then proves the whole copy once against its
+/// source. Each file is also checked as it is copied.
 fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    copy_entries(source, destination)?;
+    if hash_tree(source)? != hash_tree(destination)? {
+        return Err("Checkpoint copy verification failed.".into());
+    }
+    Ok(())
+}
+
+// Hashing both trees at every level read each file once per folder above it,
+// which made deep document folders slow to checkpoint; the copy is proved
+// once, by `copy_tree`.
+fn copy_entries(source: &Path, destination: &Path) -> Result<(), String> {
     if !fs::symlink_metadata(source)
         .map_err(io_error)?
         .file_type()
@@ -602,18 +619,57 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), String> {
         let entry = entry.map_err(io_error)?;
         let kind = entry.file_type().map_err(io_error)?;
         if kind.is_dir() {
-            copy_tree(&entry.path(), &destination.join(entry.file_name()))?;
+            copy_entries(&entry.path(), &destination.join(entry.file_name()))?;
         } else if kind.is_file() {
             copy_verified_file(&entry.path(), &destination.join(entry.file_name()))?;
         } else {
             return Err("Recovery checkpoints refuse symbolic links and special files.".into());
         }
     }
-    sync(destination)?;
-    if hash_tree(source)? != hash_tree(destination)? {
-        return Err("Checkpoint copy verification failed.".into());
+    sync(destination)
+}
+
+/// The bytes an update reads and writes, for its progress bar. A managed
+/// byte is copied twice (checkpoint, then candidate) at five units a copy
+/// (the write, both file hashes, both tree hashes) and hashed seven more
+/// times (the manifest, two checkpoint checks, and the candidate and source
+/// comparisons at two each): 17. The database is snapshotted, hashed for the
+/// manifest and both checkpoint checks, copied once at five, migrated and
+/// read twice to compare: 12. One more of each stands for opening and
+/// checking the activated library. Advisory only: a plan that is too small
+/// holds the bar just short of done until the update ends.
+fn planned_upgrade_work(root: &Path, database: &Path) -> Result<u64, String> {
+    let mut managed = 0_u64;
+    for relative in MANAGED {
+        let path = root.join(relative);
+        if path.try_exists().map_err(io_error)? {
+            managed = managed.saturating_add(tree_size(&path)?);
+        }
     }
-    Ok(())
+    let database = file_size(database)?;
+    Ok(managed
+        .saturating_mul(18)
+        .saturating_add(database.saturating_mul(13)))
+}
+
+fn tree_size(path: &Path) -> Result<u64, String> {
+    let mut total = 0_u64;
+    for entry in fs::read_dir(path).map_err(io_error)? {
+        let entry = entry.map_err(io_error)?;
+        let kind = entry.file_type().map_err(io_error)?;
+        if kind.is_dir() {
+            total = total.saturating_add(tree_size(&entry.path())?);
+        } else if kind.is_file() {
+            total = total.saturating_add(entry.metadata().map_err(io_error)?.len());
+        }
+    }
+    Ok(total)
+}
+
+fn file_size(path: &Path) -> Result<u64, String> {
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(io_error)
 }
 
 fn copy_verified_file(source: &Path, destination: &Path) -> Result<(), String> {
