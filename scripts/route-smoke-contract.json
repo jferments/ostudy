@@ -162,7 +162,7 @@
               "verify_library_subject_pages(session_id, deadline, \"compact\")"
             ],
             "assertionFragments": [
-              "\"main [data-testid='library-subject-name']\"",
+              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
               "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
               "Library subject placement drifted"
             ]
@@ -192,7 +192,7 @@
               "verify_library_subject_pages(session_id, deadline, \"compact\")"
             ],
             "assertionFragments": [
-              "\"main [data-testid='library-subject-name']\"",
+              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
               "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
               "Library subject placement drifted"
             ]
