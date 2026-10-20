@@ -18,7 +18,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 
 | Tool | Key | What it does |
 | --- | --- | --- |
-| Select | V | Tap an annotation to select it, drag it to move it, and drag its handles to reshape it |
+| Select | V | Tap an annotation to select it, drag it to move it, and drag its handles to reshape it. A box or an ellipse can be picked up anywhere inside it. With a mouse or pen, dragging across empty page draws a rectangle that selects every annotation whose middle it takes; drag any of them (or use the arrow keys) to move them together, press **Delete** to remove them, or tap one to select just that one |
 | Lasso | Q | Draw a loop around annotations on a page to select them together, then drag any of them (or use the arrow keys) to move them all, or press **Delete** to remove them. Each move or delete is one step to undo |
 | Pen | P | Handwriting and drawing; a pen with pressure draws thicker when pressed harder |
 | Highlighter | H | Drag across the PDF's text to mark whole lines of it; anywhere else, a wide, see-through stroke that keeps the text under it readable |
@@ -27,7 +27,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 | Line, Arrow, Box, Ellipse | L, A, R, O | Drag from one corner or end to the other |
 | Eraser | E | Drag across annotations to remove each one it touches. Choose **Erase part of a stroke** beside it to take away only the part of a pen or highlighter stroke you drag across, leaving the rest as separate strokes (text highlights, shapes and notes are still erased whole); **Erase whole annotations** goes back. A stylus's eraser end, if it has one, erases with any tool, in the chosen way |
 
-The row under the tools sets the color and size of what you draw next. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
+The row under the tools sets the color and size of what you draw next. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** and **Collapse to an icon** or **Expand note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
 
 Hold Shift while dragging a line or arrow to keep it at a multiple of 45 degrees, or while dragging a box or ellipse to make a square or circle.
 
@@ -43,7 +43,9 @@ Choose **Text**, tap or click the page, and type. Escape, Ctrl+Enter, or a tap e
 
 ## Sticky notes
 
-Choose **Sticky note**, then tap or click the page. A small square of colored paper appears there and a window opens for its text, which can run to many paragraphs. **Done**, Escape or Ctrl+Enter closes the window and saves the note; the square on the page shows the first lines. To read or change a note, tap it with the Sticky note tool, tap it again once it is selected with the Select tool, or press Enter while it is selected. **Delete note** removes it, and so does closing it with no text. Drag a sticky note with the Select tool to move it; the color and text-size choices restyle it.
+Choose **Sticky note**, then tap or click the page. A small square of colored paper appears there and a window opens for its text, which can run to many paragraphs. **Done**, Escape or Ctrl+Enter closes the window and saves the note; the square on the page shows the first lines. To read or change a note, tap it with the Sticky note tool, tap it again once it is selected with the Select tool, or press Enter while it is selected. **Delete note** removes it, and so does closing it with no text. Drag a sticky note with the Select tool or the Sticky note tool to move it (the Text tool drags text notes the same way); the color and text-size choices restyle it.
+
+To fit a sticky note into a narrow margin, select it and choose **Collapse to an icon**: it folds down to a small square of its paper that keeps all of its text. Double-click the icon with the Select tool (or tap it with the Sticky note tool) to read or change the note, and choose **Expand note** to open it back out. Saving the PDF draws a collapsed note as the same small icon.
 
 ## Cards from your marks
 
@@ -80,16 +82,12 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 ## Where annotations are kept
 
-Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
+Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes, and for a collapsed sticky note, from before notes could collapse) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
 
 Storing annotations needs library schema 8, cards from marks need schema 10, and saving an annotated copy needs schema 14. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 
 ## Not available yet
 
-- Having AI draft the question for a card from a mark.
-- Opening the marked passage from a card's Source.
-
 - Handwriting recognition, and turning handwriting into searchable text.
 - Highlighting that snaps to text on Android.
-- Erasing part of a stroke, and selecting several annotations at once.
 - Annotating documents other than PDFs, such as Word or PowerPoint files and image sets.

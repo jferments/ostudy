@@ -3,6 +3,7 @@ import {
   clampToPage,
   groupBounds,
   cutStroke,
+  frameAround,
   handlesFor,
   isCuttable,
   isDeliberateShape,
@@ -12,6 +13,7 @@ import {
   MAX_STROKE_POINTS,
   moveGroupWithinPage,
   moveWithinPage,
+  rectangleLoop,
   resizeShape,
   round,
   shapeBounds,
@@ -131,7 +133,16 @@ type Gesture =
   | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "lasso"; pointerId: number; pageNumber: number; points: number[] }
-  | { kind: "group-move"; pointerId: number; pageNumber: number; originals: readonly Annotation[]; start: Point; current: readonly Annotation[] }
+  /** A selection rectangle dragged with the Select tool, from corner to corner in points. */
+  | { kind: "marquee"; pointerId: number; pageNumber: number; from: Point; to: Point }
+  | {
+    kind: "group-move"; pointerId: number; pageNumber: number; originals: readonly Annotation[]; start: Point; current: readonly Annotation[];
+    /**
+     * With the Select tool, a press that never moves is a tap: it selects the
+     * annotation under it, or clears the group. `undefined` for the lasso.
+     */
+    tap?: { hit: Annotation | null; pointer: PointerKind; client: Client; moved: boolean };
+  }
   | { kind: "resize"; pointerId: number; pageNumber: number; original: Annotation; handle: Handle; current: Annotation }
   | { kind: "pan"; pointerId: number; last: Client; samples: Array<Client & { time: number }> }
   | { kind: "pinch"; ids: [number, number]; startDistance: number; startScale: number; anchor: ZoomAnchor | null }
@@ -247,9 +258,10 @@ export class AnnotatorGestures {
         return this.erase(active, client, pointer.kind, surface, context);
       case "press": {
         if (clientDistance(client, active.start) < TAP_SLOP[active.pointer]) return [];
-        if (active.purpose === "select" && active.hit && active.pageNumber !== null) {
+        // Select moves what it pressed; the note tools drag their notes.
+        if (active.hit && active.pageNumber !== null) {
           const effects: GestureEffect[] = [];
-          if (context.selected?.id !== active.hit.id) effects.push({ kind: "select", id: active.hit.id });
+          if (active.purpose === "select" && context.selected?.id !== active.hit.id) effects.push({ kind: "select", id: active.hit.id });
           const start = surface.toPage(active.pageNumber, active.start.x, active.start.y);
           this.active = { kind: "move", pointerId: active.pointerId, pageNumber: active.pageNumber, original: active.hit, start, current: active.hit };
           return [...effects, ...this.move(sample, surface, context)];
@@ -258,8 +270,21 @@ export class AnnotatorGestures {
           this.active = { kind: "pan", pointerId: active.pointerId, last: active.start, samples: [] };
           return this.move(sample, surface, context);
         }
+        const size = active.pageNumber === null ? null : surface.pageSize(active.pageNumber);
+        if (active.purpose === "select" && active.pageNumber !== null && size) {
+          // A mouse or pen drag across empty page selects what the rectangle takes.
+          const from = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
+          this.active = { kind: "marquee", pointerId: active.pointerId, pageNumber: active.pageNumber, from, to: from };
+          return this.move(sample, surface, context);
+        }
         this.active = { kind: "idle" };
         return [];
+      }
+      case "marquee": {
+        const size = surface.pageSize(active.pageNumber);
+        if (!size) return [];
+        active.to = clampToPage(surface.toPage(active.pageNumber, client.x, client.y), size);
+        return [{ kind: "lasso", loop: { pageNumber: active.pageNumber, points: rectangleLoop(active.from, active.to) } }];
       }
       case "lasso": {
         const size = surface.pageSize(active.pageNumber);
@@ -274,6 +299,10 @@ export class AnnotatorGestures {
       case "group-move": {
         const size = surface.pageSize(active.pageNumber);
         if (!size) return [];
+        if (active.tap && !active.tap.moved) {
+          if (clientDistance(client, active.tap.client) < TAP_SLOP[active.tap.pointer]) return [];
+          active.tap.moved = true;
+        }
         const point = surface.toPage(active.pageNumber, client.x, client.y);
         active.current = moveGroupWithinPage(
           active.originals, point.x - active.start.x, point.y - active.start.y, size, context.textHeight,
@@ -369,7 +398,21 @@ export class AnnotatorGestures {
               .map((annotation) => annotation.id),
           },
         ];
+      case "marquee":
+        return [
+          { kind: "lasso", loop: null },
+          {
+            kind: "select-group",
+            pageNumber: active.pageNumber,
+            ids: annotationsInLoop(context.annotationsOn(active.pageNumber), rectangleLoop(active.from, active.to), context.textHeight)
+              .map((annotation) => annotation.id),
+          },
+        ];
       case "group-move": {
+        if (active.tap && !active.tap.moved) {
+          const { hit } = active.tap;
+          return hit ? [{ kind: "select", id: hit.id }] : [{ kind: "select-group", pageNumber: active.pageNumber, ids: [] }];
+        }
         const moved = active.current.some((annotation, index) => {
           const original = active.originals[index];
           return !original || !sameShape(annotation.shape, original.shape);
@@ -456,11 +499,22 @@ export class AnnotatorGestures {
           this.active = { kind: "resize", ...base, pageNumber, original: selected, handle, current: selected };
           return [];
         }
-        hit = topmostAt(
-          context.annotationsOn(pageNumber), point, slop, context.textHeight,
-          tool === "select" ? undefined
-            : (annotation) => annotation.shape.kind === "text" && (tool === "text" || isStickyNote(annotation.shape)),
-        );
+        const annotations = context.annotationsOn(pageNumber);
+        hit = tool === "select"
+          // A box or an ellipse can be picked up anywhere inside it.
+          ? topmostAt(annotations, point, slop, context.textHeight) ?? frameAround(annotations, point)
+          : topmostAt(
+            annotations, point, slop, context.textHeight,
+            (annotation) => annotation.shape.kind === "text" && (tool === "text" || isStickyNote(annotation.shape)),
+          );
+        if (tool === "select" && insideGroup(context.group, pageNumber, point, slop, context)) {
+          // Dragging a selected group moves it; tapping in it selects one annotation.
+          this.active = {
+            kind: "group-move", ...base, pageNumber, originals: context.group, start: point, current: context.group,
+            tap: { hit, pointer: sample.kind, client, moved: false },
+          };
+          return [];
+        }
       }
       this.active = { kind: "press", ...base, pointer: sample.kind, start: client, pageNumber, hit, purpose: tool };
       return [];
@@ -473,12 +527,8 @@ export class AnnotatorGestures {
     const start = clampToPage(point, size);
     if (tool === "lasso") {
       // Dragging the group moves it; a drag anywhere else draws a new loop.
-      const group = context.group.length > 0 && context.group[0]?.pageNumber === pageNumber ? context.group : [];
-      const bounds = groupBounds(group, context.textHeight);
-      const slop = HIT_SLOP[sample.kind] / context.scale;
-      if (bounds && point.x >= bounds.left - slop && point.x <= bounds.right + slop
-        && point.y >= bounds.top - slop && point.y <= bounds.bottom + slop) {
-        this.active = { kind: "group-move", ...base, pageNumber, originals: group, start: point, current: group };
+      if (insideGroup(context.group, pageNumber, point, HIT_SLOP[sample.kind] / context.scale, context)) {
+        this.active = { kind: "group-move", ...base, pageNumber, originals: context.group, start: point, current: context.group };
         return [];
       }
       this.active = { kind: "lasso", ...base, pageNumber, points: [start.x, start.y] };
@@ -607,7 +657,12 @@ export class AnnotatorGestures {
       const point = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
       return [{ kind: "new-text", pageNumber: active.pageNumber, point, sticky: active.purpose === "sticky" }];
     }
-    if (!active.hit) return context.selected ? [{ kind: "select", id: null }] : [];
+    if (!active.hit) {
+      if (context.selected) return [{ kind: "select", id: null }];
+      return context.group.length > 0 && active.pageNumber !== null
+        ? [{ kind: "select-group", pageNumber: active.pageNumber, ids: [] }]
+        : [];
+    }
     // A tap on the selected text note opens it, so a double tap edits.
     if (active.hit.shape.kind === "text" && context.selected?.id === active.hit.id) {
       return [{ kind: "edit-text", annotation: active.hit }];
@@ -669,6 +724,7 @@ export class AnnotatorGestures {
       case "resize":
         return [{ kind: "preview", annotation: null }];
       case "lasso":
+      case "marquee":
         return [{ kind: "lasso", loop: null }];
       case "group-move":
         return [{ kind: "group-preview", annotations: null }];
@@ -686,6 +742,14 @@ export class AnnotatorGestures {
   private involves(active: Exclude<Gesture, { kind: "idle" }>, pointerId: number): boolean {
     return active.kind === "pinch" ? active.ids.includes(pointerId) : active.pointerId === pointerId;
   }
+}
+
+/** Whether a point lies within the selected group's box, when the group is on this page. */
+function insideGroup(group: readonly Annotation[], pageNumber: number, point: Point, slop: number, context: GestureContext): boolean {
+  if (group[0]?.pageNumber !== pageNumber) return false;
+  const bounds = groupBounds(group, context.textHeight);
+  return bounds !== null && point.x >= bounds.left - slop && point.x <= bounds.right + slop
+    && point.y >= bounds.top - slop && point.y <= bounds.bottom + slop;
 }
 
 function handleAt(selected: Annotation, point: Point, slop: number, context: GestureContext): Handle | null {

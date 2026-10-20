@@ -4,6 +4,10 @@ import type { InkShape } from "../../../ipc/documentAnnotations";
 
 import {
   annotationsInLoop,
+  frameAround,
+  isCollapsedSticky,
+  rectangleLoop,
+  shapeBounds,
   cleanNoteText,
   insideLoop,
   moveGroupWithinPage,
@@ -250,5 +254,37 @@ describe("stored shapes", () => {
 
   it("estimates a note's height from its lines before it is laid out", () => {
     expect(estimateTextHeight({ ...note, text: "a\nb", fontSize: 10 })).toBe(30);
+  });
+});
+
+describe("picking up and folding marks", () => {
+  const frame = (kind: "rectangle" | "ellipse", id: string) => ({
+    id, pageNumber: 1, createdAt: 1,
+    shape: { kind, x: 0, y: 0, width: 100, height: 60, color: "#dc2626", strokeWidth: 2 },
+  });
+
+  it("finds the topmost box or ellipse around a point, but not outside an ellipse's curve", () => {
+    const box = frame("rectangle", "box");
+    const ring = frame("ellipse", "ring");
+    expect(frameAround([box, ring], { x: 50, y: 30 })?.id).toBe("ring");
+    expect(frameAround([box, ring], { x: 3, y: 3 })?.id).toBe("box");
+    expect(frameAround([ring], { x: 3, y: 3 })).toBeNull();
+    expect(frameAround([box], { x: 101, y: 30 })).toBeNull();
+  });
+
+  it("makes a rectangle loop from two corners", () => {
+    expect(rectangleLoop({ x: 10, y: 20 }, { x: 5, y: 40 })).toEqual([10, 20, 5, 20, 5, 40, 10, 40]);
+  });
+
+  it("shows a collapsed sticky note as its small icon, and keeps only sticky notes collapsible", () => {
+    const sticky = { kind: "text" as const, x: 10, y: 10, width: 120, text: "Folded", color: "#fde047", fontSize: 10, sticky: true as const };
+    const folded = { ...sticky, collapsed: true as const };
+    expect(isCollapsedSticky(folded)).toBe(true);
+    expect(isCollapsedSticky(sticky)).toBe(false);
+    expect(estimateTextHeight(folded)).toBe(18);
+    expect(shapeBounds(folded, estimateTextHeight(folded))).toEqual({ left: 10, top: 10, right: 28, bottom: 28 });
+    expect(isStorable(folded)).toBe(true);
+    const { sticky: _sticky, ...plain } = folded;
+    expect(isStorable(plain)).toBe(false);
   });
 });

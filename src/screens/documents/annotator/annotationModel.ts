@@ -48,6 +48,8 @@ export const MIN_TEXT_WIDTH = 24;
 /** A sticky note's size on the page, in points; its text opens in full when tapped. */
 export const STICKY_WIDTH = 120;
 export const STICKY_HEIGHT = 72;
+/** A collapsed sticky note's icon: a square this many points wide. */
+export const STICKY_ICON_SIZE = 18;
 /** Shapes smaller than this on both sides are taken as a slip and not kept. */
 const MIN_SHAPE_EXTENT = 2;
 
@@ -122,6 +124,21 @@ export function isStickyNote(shape: AnnotationShape): shape is TextShape & { sti
   return shape.kind === "text" && shape.sticky === true;
 }
 
+/** Whether a sticky note is folded down to its small icon. */
+export function isCollapsedSticky(shape: AnnotationShape): boolean {
+  return isStickyNote(shape) && shape.collapsed === true;
+}
+
+/** How wide a text note shows on the page: a collapsed sticky note is only its icon. */
+export function noteWidth(shape: TextShape): number {
+  return shape.collapsed ? STICKY_ICON_SIZE : shape.width;
+}
+
+/** A sticky note's height on the page. */
+export function stickyHeight(shape: TextShape): number {
+  return shape.collapsed ? STICKY_ICON_SIZE : STICKY_HEIGHT;
+}
+
 export function shapeStyle(shape: AnnotationShape): ToolStyle {
   return { color: shape.color, size: shape.kind === "text" ? shape.fontSize : shape.strokeWidth };
 }
@@ -156,7 +173,7 @@ export function createAnnotationId(): string {
 
 /** A text note's height from its text, for pages whose notes have not been laid out yet. */
 export function estimateTextHeight(shape: TextShape): number {
-  if (shape.sticky) return STICKY_HEIGHT;
+  if (shape.sticky) return stickyHeight(shape);
   const perLine = Math.max(1, Math.floor((shape.width - 2 * TEXT_PADDING) / (shape.fontSize * 0.55)));
   const lines = shape.text.split("\n")
     .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / perLine)), 0);
@@ -226,7 +243,7 @@ export function shapeExtent(shape: AnnotationShape, textHeight: number): Bounds 
     case "ellipse":
       return { left: shape.x, top: shape.y, right: shape.x + shape.width, bottom: shape.y + shape.height };
     case "text":
-      return { left: shape.x, top: shape.y, right: shape.x + shape.width, bottom: shape.y + textHeight };
+      return { left: shape.x, top: shape.y, right: shape.x + noteWidth(shape), bottom: shape.y + textHeight };
   }
 }
 
@@ -458,6 +475,39 @@ export function annotationsInLoop(
     const bounds = shapeExtent(annotation.shape, textHeight(annotation));
     return insideLoop({ x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 }, loop);
   });
+}
+
+/** A dragged selection rectangle from one corner to the other, as a loop. */
+export function rectangleLoop(from: Point, to: Point): number[] {
+  return [from.x, from.y, to.x, from.y, to.x, to.y, from.x, to.y];
+}
+
+/**
+ * The topmost box or ellipse whose inside holds a point, so a frame can be
+ * picked up by its middle as well as by its outline.
+ */
+export function frameAround(
+  annotations: readonly Annotation[],
+  point: Point,
+  accept: (annotation: Annotation) => boolean = () => true,
+): Annotation | null {
+  for (let index = annotations.length - 1; index >= 0; index -= 1) {
+    const annotation = annotations[index];
+    if (!annotation || !accept(annotation)) continue;
+    const { shape } = annotation;
+    if (shape.kind === "rectangle") {
+      if (point.x >= shape.x && point.x <= shape.x + shape.width && point.y >= shape.y && point.y <= shape.y + shape.height) {
+        return annotation;
+      }
+    } else if (shape.kind === "ellipse") {
+      const rx = shape.width / 2;
+      const ry = shape.height / 2;
+      if (Math.hypot((point.x - shape.x - rx) / Math.max(rx, 0.01), (point.y - shape.y - ry) / Math.max(ry, 0.01)) <= 1) {
+        return annotation;
+      }
+    }
+  }
+  return null;
 }
 
 /** The box around a group of annotations, or null for none. */
@@ -730,6 +780,7 @@ export function isStorable(shape: AnnotationShape): boolean {
         && shape.width > 0 && shape.x + shape.width <= MAX_COORDINATE
         && shape.text.trim().length > 0
         && (shape.sticky === undefined || shape.sticky === true)
+        && (shape.collapsed === undefined || (shape.collapsed === true && shape.sticky === true))
         && [...shape.text].length <= (shape.sticky ? MAX_STICKY_CHARS : MAX_TEXT_CHARS)
         && !CONTROL.test(shape.text)
         && Number.isFinite(shape.fontSize)
