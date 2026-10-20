@@ -138,6 +138,7 @@ function App() {
     onSelectView: navigate,
     onStartReview: startReview,
     onPracticeSubject: (subjectId: string) => void controller.practiceSubject(subjectId),
+    showToast: controller.showToast,
   };
   const subjectFilter =
     librarySubject.kind === "all" ? undefined : librarySubject.kind === "none" ? null : librarySubject.subjectId;
@@ -270,7 +271,6 @@ function App() {
                                   onPracticeCards={controller.practiceCards}
                                   onPracticeSelected={(request) => controller.practiceSelected(request, [])}
                                   practiceShuffle={controller.activeSettings.practiceShuffle}
-                                  onOpenDocuments={() => navigate("documents")}
                                   onCardDirtyChange={controller.setHasUnsavedCard}
                                   onDeckScopeChange={controller.recordLibraryDeck}
                                   subject={librarySubject}

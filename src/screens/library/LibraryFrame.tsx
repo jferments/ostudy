@@ -1,5 +1,6 @@
 import { createContext, useContext, useLayoutEffect, useState, type ReactNode } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import type { LibrarySection, LibrarySubjectScope } from "../../navigation/appDestinations";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { cn } from "../../ui/internal/cn";
@@ -55,6 +56,7 @@ interface LibraryFrameProps {
   onChooseSubject: (subject: LibrarySubjectScope) => void;
   onStartReview: (deckIds: string[]) => void;
   onPracticeSubject: (subjectId: string) => void;
+  showToast: ShowToast;
   /** The page fills the frame's height and scrolls its own panes, like the Workbench. */
   fill?: boolean;
   children: ReactNode;
@@ -73,6 +75,7 @@ export function LibraryFrame({
   onChooseSubject,
   onStartReview,
   onPracticeSubject,
+  showToast,
   fill = false,
   children,
 }: LibraryFrameProps) {
@@ -121,6 +124,8 @@ export function LibraryFrame({
               scope={subject}
               subjects={subjects}
               onSwitch={wide ? undefined : () => setSwitching(true)}
+              onChooseSubject={onChooseSubject}
+              showToast={showToast}
               onStartReview={onStartReview}
               onPracticeSubject={onPracticeSubject}
             />

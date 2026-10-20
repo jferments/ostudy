@@ -38,7 +38,7 @@ function renderLibrary(view: LibrarySection, width = 1440) {
   return { ...result, onSelectView };
 }
 
-const SUBJECT_PROPS = { subject: { kind: "all" }, onChooseSubject: vi.fn(), onStartReview: vi.fn(), onPracticeSubject: vi.fn() } as const;
+const SUBJECT_PROPS = { subject: { kind: "all" }, onChooseSubject: vi.fn(), onStartReview: vi.fn(), onPracticeSubject: vi.fn(), showToast: vi.fn() } as const;
 
 function views() {
   return within(screen.getByRole("navigation", { name: "Library pages" })).getAllByRole("button");

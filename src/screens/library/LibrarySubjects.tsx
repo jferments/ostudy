@@ -1,18 +1,25 @@
 import { useMemo, useState } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import { useOptionalHomeSummary } from "../../controllers/HomeSummaryProvider";
+import { getErrorMessage } from "../../ipc/common";
+import { deleteSubject, getSubjectLibrary, moveSubject, renameSubject, type SubjectLibrary } from "../../ipc/subjects";
 import type { LibrarySubjectScope } from "../../navigation/appDestinations";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Sheet } from "../../ui/overlays/Dialog";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
+import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { buildSubjectTiles, countLabel, type SubjectTile } from "../home/homeModel";
 import { NewSubjectSheet } from "../home/NewSubjectSheet";
 import { SubjectBadge } from "../home/SubjectBadge";
 import { MAX_SESSION_DECKS } from "../home/TodayStrip";
+import { NameSheet } from "./workbench/WorkbenchSheets";
 
 const NO_PREPARATIONS = new Map();
+const MAX_SUBJECT_NAME = 120;
 
 export interface LibrarySubjects {
   subjects: readonly SubjectTile[];
@@ -170,16 +177,26 @@ interface LibrarySubjectHeaderProps {
   subjects: LibrarySubjects;
   /** Opens the subject list where the side pane does not fit. */
   onSwitch?: () => void;
+  onChooseSubject: (subject: LibrarySubjectScope) => void;
   onStartReview: (deckIds: string[]) => void;
   /** One extra session mixing cards from every deck in the subject. */
   onPracticeSubject: (subjectId: string) => void;
+  showToast: ShowToast;
 }
 
 /**
- * The chosen subject's name, what it holds and its Review button; Everything
- * totals every subject.
+ * The chosen subject's name, what it holds, its Review button and its own
+ * actions (rename, reorder, delete); Everything totals every subject.
  */
-export function LibrarySubjectHeader({ scope, subjects, onSwitch, onStartReview, onPracticeSubject }: LibrarySubjectHeaderProps) {
+export function LibrarySubjectHeader({
+  scope,
+  subjects,
+  onSwitch,
+  onChooseSubject,
+  onStartReview,
+  onPracticeSubject,
+  showToast,
+}: LibrarySubjectHeaderProps) {
   const all = [...subjects.subjects, ...(subjects.noSubject ? [subjects.noSubject] : [])];
   const shown = scope.kind === "all" ? all : subjects.current ? [subjects.current] : [];
   const sources = shown.reduce((sum, tile) => sum + tile.summary.sourceCount, 0);
@@ -236,7 +253,107 @@ export function LibrarySubjectHeader({ scope, subjects, onSwitch, onStartReview,
           <Icon name="practice" size={15} /> Review {due.toLocaleString()} due
         </Button>
       ) : null}
+      {scope.kind === "subject" && subjects.current ? (
+        <SubjectActions
+          subjectId={scope.subjectId}
+          name={subjects.current.name}
+          subjects={subjects}
+          onChooseSubject={onChooseSubject}
+          showToast={showToast}
+        />
+      ) : null}
     </header>
+  );
+}
+
+/** Rename, Move up, Move down and Delete for the chosen subject. */
+function SubjectActions({
+  subjectId,
+  name,
+  subjects,
+  onChooseSubject,
+  showToast,
+}: {
+  subjectId: string;
+  name: string;
+  subjects: LibrarySubjects;
+  onChooseSubject: (subject: LibrarySubjectScope) => void;
+  showToast: ShowToast;
+}) {
+  const home = useOptionalHomeSummary();
+  const confirm = useConfirm();
+  const [renaming, setRenaming] = useState(false);
+  const index = subjects.subjects.findIndex((tile) => tile.subjectId === subjectId);
+
+  /** Runs one subject write against the current revisions and shares its answer with the rest of the app. */
+  async function write(run: (current: SubjectLibrary) => Promise<SubjectLibrary>): Promise<boolean> {
+    try {
+      const next = await run(await getSubjectLibrary());
+      home?.acceptLibrary(next);
+      return true;
+    } catch (caught: unknown) {
+      showToast("error", getErrorMessage(caught));
+      home?.refresh();
+      return false;
+    }
+  }
+  const revisionOf = (current: SubjectLibrary) => current.subjects.find((subject) => subject.id === subjectId)?.revision ?? 0;
+
+  async function remove(): Promise<void> {
+    const accepted = await confirm({
+      title: `Delete “${name}”?`,
+      description: "Its decks and documents move to No subject, with their cards and schedules. The subject's lessons and overview guide are deleted.",
+      confirmLabel: "Delete subject",
+      destructive: true,
+    });
+    if (!accepted) return;
+    const deleted = await write((current) =>
+      deleteSubject({ subjectId, revision: revisionOf(current), expectedLibraryRevision: current.libraryRevision }),
+    );
+    if (!deleted) return;
+    showToast("success", `Deleted “${name}”.`);
+    onChooseSubject({ kind: "all" });
+  }
+
+  return (
+    <>
+      <OverflowMenu
+        label={`${name} actions`}
+        items={[
+          { id: "rename", label: "Rename…", onSelect: () => setRenaming(true) },
+          {
+            id: "up",
+            label: "Move up",
+            disabled: index <= 0,
+            onSelect: () =>
+              void write((current) => moveSubject({ subjectId, targetIndex: index - 1, expectedLibraryRevision: current.libraryRevision })),
+          },
+          {
+            id: "down",
+            label: "Move down",
+            disabled: index < 0 || index >= subjects.subjects.length - 1,
+            onSelect: () =>
+              void write((current) => moveSubject({ subjectId, targetIndex: index + 1, expectedLibraryRevision: current.libraryRevision })),
+          },
+          { id: "delete", label: "Delete subject…", destructive: true, onSelect: () => void remove() },
+        ]}
+      />
+      {renaming ? (
+        <NameSheet
+          title="Rename subject"
+          label="Name"
+          initialName={name}
+          submitLabel="Rename"
+          maxLength={MAX_SUBJECT_NAME}
+          onClose={() => setRenaming(false)}
+          onSubmit={(next) =>
+            write((current) =>
+              renameSubject({ subjectId, name: next, revision: revisionOf(current), expectedLibraryRevision: current.libraryRevision }),
+            )
+          }
+        />
+      ) : null}
+    </>
   );
 }
 
