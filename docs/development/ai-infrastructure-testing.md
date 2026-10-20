@@ -66,10 +66,14 @@ Gateway tests cover:
 - streamed content and strict-tool arguments;
 - in-band errors after partial output;
 - content and wire bounds;
-- OpenAI and llama.cpp usage normalization;
+- OpenAI-compatible (llama.cpp, DeepSeek, OpenRouter) and Anthropic Messages
+  stream events and usage normalization;
 - safe OpenRouter metadata and raw-message redaction;
 - redirect and HTTP status classification; and
 - the exact transient retry allowlist and bounded delay.
+
+The implemented providers are llama.cpp / Unsloth GGUF, DeepSeek, OpenRouter
+and Claude; Ollama, OpenAI and Gemini remain `planned` catalog entries.
 
 A new provider envelope must add deterministic parser/redaction tests before it
 is accepted.

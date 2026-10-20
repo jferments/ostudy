@@ -8,7 +8,7 @@ A **note** owns editable content, tags, type/template-origin information where a
 
 Frontend `CardNote` carries editable source. `CardPresentation` carries a rendered scheduled/search identity and relevant asset metadata. A single generic card DTO would confuse edits to shared source with changes to one presentation's learning history.
 
-Decks contain notes/cards. A deck is filed in at most one subject (shown as a folder in Flashcards and as a collection in Documents) through `decks.subject_id`, or in No subject. Subject membership/order does not define another scheduler: studying a subject studies its decks' own cards. Deleting a subject returns its decks to No subject; archiving and deleting a deck have different lifecycle semantics. See [ADR 0055](../decisions/0055-subjects.md).
+Decks contain notes/cards. A deck is filed in at most one subject (shown in the Library Workbench tree and on Home; the Documents page still calls a subject a collection) through `decks.subject_id`, or in No subject. Subject membership/order does not define another scheduler: studying a subject studies its decks' own cards. Deleting a subject returns its decks to No subject; archiving and deleting a deck have different lifecycle semantics. See [ADR 0055](../decisions/0055-subjects.md).
 
 ## Two rich-content versions with different purposes
 
@@ -64,7 +64,9 @@ A revision checks freshness, an operation ID identifies a retryable intent, and 
 
 A review validates the session/card/submission and previewed schedule revision, records the event, updates the schedule, and advances session progress transactionally. In the same transaction it records what the scheduler knew in `review_event_scheduler_context`: the previous review time, the elapsed days and recall prediction FSRS used, the counts before the review, the retention target, a hash of the other scheduler parameters, and the visible study time the client measured. Reviews recorded before schema 5 have no such row; see [ADR 0053](../decisions/0053-review-scheduler-context-and-active-time.md). Suspend/bury/reset/reschedule are administrative actions; they do not fabricate review outcomes. Resetting current scheduling does not imply erasing retained review history.
 
-Schema 6 folded collection copies back into their original cards. A retired copy keeps its own `review_events`, which are never re-pointed, and `card_merges` maps it to its surviving card. Every reader of review history resolves the merge (`COALESCE(merged.surviving_card_id, r.card_id)`), so a copy's reviews count under its original in analytics, history, search filters, learning signals and practice ordering. Finalized purge of a surviving card also purges the copies retired into it.
+Schema 6 folded collection copies back into their original cards. A retired copy keeps its own `review_events`, which are never re-pointed, and `card_merges` maps it to its surviving card. Every reader of review history resolves the merge (`COALESCE(merged.surviving_card_id, r.card_id)`), so a copy's reviews count under its original in Progress statistics, history, search filters, learning signals, the per-deck review rollups and practice ordering. Finalized purge of a surviving card also purges the copies retired into it.
+
+The study activity ledger (release schema 7) counts the learner's own days, streaks and study time from every stored review plus `study_activity_retained`, the per-day totals a finalized deletion keeps when it purges review history, so deleting cards never shortens a streak. The `review_day_rollups` cache is rebuildable per-deck history and never travels in sync.
 
 Studyability includes lifecycle, availability, scope, calendar, and applicable daily limits—not only due timestamps. Current workload, current inventory, historical review totals, and remembered percentages are different read models and must not be used as substitutes for each other.
 
@@ -80,10 +82,10 @@ Select visible resolves loaded rows; select all matching resolves the complete c
 | --- | --- |
 | `.studydeck` | One portable content/asset graph, no donor schedule or review history; fresh local schedules on import |
 | `.ostudy.json` | Strict content-only authoring input, whole-file validation then one transaction; no arbitrary internal IDs or history |
-| `.ostudybackup` | Coherent personal library plus required managed files, including history, templates, documents/guide graph and supported drafts; no credentials |
-| Device sync | Explicit authenticated one-way offer/merge of its allowed study graph; not every current database table |
+| `.ostudybackup` | Coherent personal library plus required managed files, including history, templates, documents/guide graph, PDF page annotations, lessons and supported drafts; no credentials |
+| Device sync | Explicit authenticated one-way offer/merge of its allowed study graph; not every current database table (PDF page annotations, lessons, Tutor/knowledge state and drafts stay local) |
 | UI checkpoint | Device-local navigation/session hint, not learner-content interchange |
 
 Each has its own version and validation policy. A database migration number does not determine every external format version. Released migrations/checksums and supported readers are not stale merely because UI controls or parser names changed.
 
-For exact schemas use [migrations](../../src-tauri/migrations/), native type/reader definitions, the [generated JSON reference](../reference/generated-json-import.md), [backups guide](../user-guide/backups-imports-and-sharing.md), and [sync architecture](device-sync.md). AI-produced or imported validity proves a data contract, not factual correctness of study material.
+For exact schemas use the [release baseline and migrations](../../src-tauri/schema/) registered in [`database/release.rs`](../../src-tauri/src/database/release.rs), the retained [public-v1 migrations](../../src-tauri/migrations/) for legacy input, native type/reader definitions, the [generated JSON reference](../reference/generated-json-import.md), [backups guide](../user-guide/backups-imports-and-sharing.md), and [sync architecture](device-sync.md). AI-produced or imported validity proves a data contract, not factual correctness of study material.

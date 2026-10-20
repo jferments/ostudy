@@ -31,7 +31,7 @@ For an already configured checkout after source changes:
 ./run-app.sh
 ```
 
-The build produces a staged standalone **oStudy Dev** app without release bundles. Maintained desktop development uses `io.github.jferments.ostudy.dev`, separate from the production `io.github.jferments.ostudy` library and credential namespace. The launcher verifies its source fingerprint, development-profile stamp, and binary checksum; it does not rebuild or start Vite. `pnpm desktop` is native hot reload, while `pnpm dev` and `pnpm build` are frontend operations.
+The build produces a staged standalone **oStudy Dev** app without release bundles. Maintained desktop development uses `io.github.jferments.ostudy.dev`, separate from the production `io.github.jferments.ostudy` library and credential namespace. The launcher verifies its source fingerprint, development-profile stamp, and binary checksum; it does not rebuild or start Vite. For native hot reload, run `pnpm install --frozen-lockfile` and then `pnpm desktop`; it also runs as `io.github.jferments.ostudy.dev`. Do not run bare `pnpm tauri dev`: that debug build resolves the production identifier and startup refuses it. `pnpm dev` and `pnpm build` are frontend operations.
 
 Linux and Android are the maintained build/test paths. See [installation](docs/installation/README.md), [Android setup](docs/installation/android.md), and [local testing/handoff](docs/development/local-testing-and-handoff.md). The maintained desktop development profile is isolated from production, but a new source worktree does not create another independent development profile: multiple worktrees can still address the same `io.github.jferments.ostudy.dev` library. Use temporary XDG/application storage for destructive, migration, restore, and parallel-worktree tests; never silently clear/uninstall a valuable desktop or Android library to make a test pass.
 
@@ -62,7 +62,7 @@ Use focused tests and the cheapest useful tier while editing, then required fina
 
 Documentation changes require documentation/repository checks and source review of claims. Removing source also requires its relevant compile/behavior/ownership checks. No tool proves all prose true or all code reachable.
 
-The automatic **Check** workflow checks out the actual source head and qualifies it. Draft PRs run the fast tier; ready PRs and explicit full dispatches run full Linux and Android qualification, so mark a PR ready only when it is complete. Description edits do not run product tests.
+The automatic **Check** workflow checks out the actual source head and qualifies it. Draft PRs run the fast tier; ready PRs, pushes to `main` and explicit full dispatches run full Linux and Android qualification on the single self-hosted runner, so mark a PR ready only when it is complete. Description edits do not run product tests.
 
 A green result belongs to its exact tested commit, not indefinitely to a branch. See [Testing and CI](docs/development/testing-and-ci.md) for current mechanics.
 

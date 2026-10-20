@@ -8,7 +8,8 @@ The repository contains a Tauri Android project, private Kotlin platform plugin,
 
 The Android application supports:
 
-- deck/folder/card/tag/template authoring, Search/Filter, bulk operations, and managed images;
+- the same Home, Library, Review, Tutor and Progress destinations as desktop, in a bottom bar;
+- subject/deck/card/tag/template authoring in the Library Workbench, card search/filter, bulk operations, and managed images;
 - Practice, scheduling controls, Progress, and interrupted-session restoration;
 - durable authoring drafts and complete personal backup/restore;
 - `.studydeck` and generated `.ostudy.json` import, system picker/export, Sharesheet send, and confirmed incoming shares;
@@ -17,7 +18,7 @@ The Android application supports:
 - native PDF rendering through Android `PdfRenderer` and selective bundled open-source Tesseract OCR;
 - source-grounded flashcard generation and Study Guides through shared Rust/provider task boundaries;
 - foreground execution for user-started long document work with durable restart/checkpoint semantics;
-- encrypted same-LAN trusted-device synchronization with one-way offers, common-base merge, explicit conflicts, and optional per-offer API credential transfer;
+- encrypted trusted-device synchronization over the local network or a direct USB cable from a Linux desktop, with one-way offers, common-base merge, explicit conflicts, and optional per-offer API credential transfer;
 - local JourneyApps ZXing/ZXing-core QR acquisition for device sync, with pasted invitation fallback.
 
 Android does not package desktop PDFium or require a system-installed Tesseract/tessdata runtime. The APK includes Tesseract4Android and the pinned English trained-data asset used by the local OCR adapter. Shared Rust owns document planning, OCR selection, provider task semantics, validation, scheduling, synchronization merge, and durable database transactions. Kotlin is an operating-system adapter rather than a separate study-domain implementation.
@@ -34,7 +35,7 @@ A future iOS target needs file/document-provider integration, protected credenti
 
 Desktop and Android share:
 
-- deck/note/card/tag/template, scheduling, review history, analytics, and deletion rules;
+- subject/deck/note/card/tag/template, scheduling, review history, analytics, and deletion rules;
 - SQLite migrations/data repairs and managed-file lifecycle;
 - validated rich-content/import/backup formats;
 - provider-profile metadata and narrow AI task contracts;
