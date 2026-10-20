@@ -26,6 +26,7 @@ import {
   estimateTextHeight,
   isStickyNote,
   isStorable,
+  moveGroupWithinPage,
   moveWithinPage,
   restyle,
   styleFamilyForShape,
@@ -61,6 +62,8 @@ export interface TextEditing {
  * Every change goes through `commit`, which records one undo step and queues
  * the write.
  */
+const EMPTY_GROUP: readonly Annotation[] = [];
+
 export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   const [load, setLoad] = useState<AnnotatorLoad>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -69,6 +72,8 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   const [history, setHistoryState] = useState<AnnotationHistory>(EMPTY_HISTORY);
   const historyRef = useRef(history);
   const [selection, setSelection] = useState<{ id: string; pageNumber: number } | null>(null);
+  /** What the lasso took: one page's annotations. Selecting one annotation drops it. */
+  const [lassoed, setLassoed] = useState<{ ids: readonly string[]; pageNumber: number } | null>(null);
   const [tool, setToolState] = useState<AnnotatorTool>("pen");
   const [styles, setStyles] = useState<ToolStyles>(DEFAULT_STYLES);
   const [penOnly, setPenOnly] = useState(false);
@@ -145,6 +150,25 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   useEffect(() => {
     if (selection && !selected) setSelection(null);
   }, [selected, selection]);
+  useEffect(() => {
+    if (selection) setLassoed(null);
+  }, [selection]);
+
+  const group = useMemo(() => {
+    if (!lassoed) return EMPTY_GROUP;
+    const page = annotations.get(lassoed.pageNumber) ?? [];
+    return page.filter((annotation) => lassoed.ids.includes(annotation.id));
+  }, [annotations, lassoed]);
+  // An undo or an erase can take away the whole group too.
+  useEffect(() => {
+    if (lassoed && group.length === 0) setLassoed(null);
+  }, [group, lassoed]);
+
+  /** Takes these annotations of one page as the group; none clears it. */
+  const selectGroup = useCallback((pageNumber: number, ids: readonly string[]) => {
+    setSelection(null);
+    setLassoed(ids.length > 0 ? { ids, pageNumber } : null);
+  }, []);
 
   const textHeight = useCallback((annotation: Annotation): number => {
     if (annotation.shape.kind !== "text") return 0;
@@ -253,6 +277,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   const setTool = useCallback((next: AnnotatorTool) => {
     finishEditing();
     if (next !== "select") setSelection(null);
+    if (next !== "lasso") setLassoed(null);
     setToolState(next);
   }, [finishEditing]);
 
@@ -280,6 +305,25 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
     commit([{ id: selected.id, before: selected, after: null }]);
     setSelection(null);
   }, [commit, selected]);
+
+  const deleteGroup = useCallback(() => {
+    if (group.length === 0) return;
+    commit(group.map((annotation) => ({ id: annotation.id, before: annotation, after: null })));
+    setLassoed(null);
+  }, [commit, group]);
+
+  /** Moves the lassoed group together, kept on its page, as one step to undo. */
+  const moveGroup = useCallback((after: readonly Annotation[]) => {
+    const edits = after.flatMap((moved) => {
+      const before = group.find((annotation) => annotation.id === moved.id);
+      return before ? [{ id: moved.id, before, after: moved }] : [];
+    });
+    commit(edits);
+  }, [commit, group]);
+
+  const nudgeGroup = useCallback((dx: number, dy: number, page: { width: number; height: number }) => {
+    moveGroup(moveGroupWithinPage(group, dx, dy, page, textHeight));
+  }, [group, moveGroup, textHeight]);
 
   const nudgeSelected = useCallback((dx: number, dy: number, page: { width: number; height: number }) => {
     if (!selected) return;
@@ -349,6 +393,11 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
     annotationsRef,
     selected,
     select,
+    group,
+    selectGroup,
+    deleteGroup,
+    moveGroup,
+    nudgeGroup,
     tool,
     setTool,
     styles,

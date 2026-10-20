@@ -45,6 +45,7 @@ function context(overrides: Partial<GestureContext> = {}, annotations: readonly 
     minScale: 0.25,
     maxScale: 4,
     selected: null,
+    group: [],
     annotationsOn: (pageNumber) => annotations.filter((item) => item.pageNumber === pageNumber),
     textHeight: (item) => (item.shape.kind === "text" ? estimateTextHeight(item.shape) : 0),
     newId: () => `new${(ids += 1)}`,
@@ -239,6 +240,40 @@ describe("drawing", () => {
     // The writing end draws again.
     gestures.down(at(2, "pen", 300, 300), surface, ctx);
     expect(created(gestures.up(at(2, "pen", 300, 300), surface, ctx))).toMatchObject([{ kind: "ink" }]);
+  });
+});
+
+describe("lasso", () => {
+  it("selects the annotations a drawn loop surrounds, on the page it was drawn on", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "lasso" }, [box, line, note, lowerBox]);
+    expect(only(gestures.down(at(1, "mouse", 80, 80), surface, ctx), "lasso")[0]?.loop)
+      .toEqual({ pageNumber: 1, points: [80, 80] });
+    gestures.move(at(1, "mouse", 420, 80), surface, ctx);
+    gestures.move(at(1, "mouse", 420, 170), surface, ctx);
+    gestures.move(at(1, "mouse", 80, 170), surface, ctx);
+    expect(gestures.up(at(1, "mouse", 80, 170), surface, ctx)).toEqual([
+      { kind: "lasso", loop: null },
+      { kind: "select-group", pageNumber: 1, ids: ["box", "line"] },
+    ]);
+
+    // A tap with the lasso takes nothing, which clears the group.
+    gestures.down(at(2, "mouse", 500, 600), surface, ctx);
+    expect(only(gestures.up(at(2, "mouse", 500, 600), surface, ctx), "select-group")[0]?.ids).toEqual([]);
+  });
+
+  it("moves the whole group when dragged, as one change", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "lasso", group: [box, line] }, [box, line, note]);
+    gestures.down(at(1, "mouse", 125, 125), surface, ctx);
+    const preview = only(gestures.move(at(1, "mouse", 135, 145), surface, ctx), "group-preview")[0]?.annotations;
+    expect(preview?.map((annotation) => annotation.shape)).toEqual([
+      { ...box.shape, x: 110, y: 120 },
+      { ...line.shape, x1: 310, y1: 120, x2: 410, y2: 120 },
+    ]);
+    const up = gestures.up(at(1, "mouse", 135, 145), surface, ctx);
+    expect(up[0]).toEqual({ kind: "group-preview", annotations: null });
+    expect(only(up, "group-change")[0]).toEqual({ kind: "group-change", before: [box, line], after: preview });
   });
 });
 

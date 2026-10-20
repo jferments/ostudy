@@ -44,6 +44,7 @@ export const ICON_NAMES = [
   "information",
   "keyboard",
   "library",
+  "lasso",
   "lightbulb",
   "link",
   "listen",
@@ -456,6 +457,16 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M13 13.74a2 2 0 0 1-2 0L2.5 8.87a1 1 0 0 1 0-1.74L11 2.26a2 2 0 0 1 2 0l8.5 4.87a1 1 0 0 1 0 1.74z" />
           <path d="m20 14.285 1.5.845a1 1 0 0 1 0 1.74L13 21.74a2 2 0 0 1-2 0l-8.5-4.87a1 1 0 0 1 0-1.74l1.5-.845" />
+        </>
+      );
+    case "lasso": // Lucide: lasso-select
+      return (
+        <>
+          <path d="M7 22a5 5 0 0 1-2-4" />
+          <path d="M7 16.93c.96.43 1.96.74 2.99.91" />
+          <path d="M3.34 14A6.8 6.8 0 0 1 2 10c0-4.42 4.48-8 10-8s10 3.58 10 8a7.19 7.19 0 0 1-.33 2" />
+          <path d="M5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+          <path d="M14.33 22h-.09a.35.35 0 0 1-.24-.32v-10a.34.34 0 0 1 .33-.34c.08 0 .15.03.21.08l7.34 6a.33.33 0 0 1-.21.59h-4.49l-2.57 3.85a.35.35 0 0 1-.28.14z" />
         </>
       );
     case "lightbulb": // Lucide: lightbulb

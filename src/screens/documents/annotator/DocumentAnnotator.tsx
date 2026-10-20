@@ -36,7 +36,7 @@ interface DocumentAnnotatorProps {
 const CITED_PAGE_MARK_MS = 2500;
 
 const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -287,12 +287,20 @@ function ReadyAnnotator({
       if (controller.selected) {
         event.preventDefault();
         controller.select(null);
+      } else if (controller.group.length > 0) {
+        event.preventDefault();
+        controller.selectGroup(0, []);
       }
       return;
     }
     if ((event.key === "Delete" || event.key === "Backspace") && controller.selected) {
       event.preventDefault();
       controller.deleteSelected();
+      return;
+    }
+    if ((event.key === "Delete" || event.key === "Backspace") && controller.group.length > 0) {
+      event.preventDefault();
+      controller.deleteGroup();
       return;
     }
     const tool = event.shiftKey ? undefined : SHORTCUTS[key];
@@ -326,6 +334,8 @@ function ReadyAnnotator({
           penSeen={controller.penSeen}
           penOnly={controller.penOnly}
           onTogglePenOnly={controller.togglePenOnly}
+          groupSize={controller.group.length}
+          onDeleteGroup={controller.deleteGroup}
           eraseMode={controller.eraseMode}
           onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
