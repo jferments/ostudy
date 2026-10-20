@@ -10,6 +10,7 @@ import {
   importDocument,
   listDocuments,
   openDocumentSource,
+  renameDocument,
   startDocumentFlashcardGeneration,
   type DocumentGenerationProgress,
   type DocumentSummary,
@@ -465,6 +466,17 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }
 
+  /** Returns null once the title is saved, or the message to show beside the field. */
+  async function renameDocumentRecord(document: DocumentSummary, title: string): Promise<string | null> {
+    try {
+      await renameDocument(document.id, document.revision, title);
+    } catch (error: unknown) {
+      return getErrorMessage(error);
+    }
+    await refreshDocuments().catch(() => undefined);
+    return null;
+  }
+
   async function deleteDocumentRecord(document: DocumentSummary): Promise<void> {
     if (document.lifecycleState === "processing"
       || busyDocumentIds.has(document.id)
@@ -521,6 +533,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     stopStudyGuide,
     stopGeneration,
     openSource,
+    renameDocument: renameDocumentRecord,
     deleteDocument: deleteDocumentRecord,
     imageCollections,
   };

@@ -141,6 +141,12 @@ export interface AdditionalDocumentGenerationResult {
   skippedDuplicateCount: number;
 }
 
+export interface RenameDocumentResult {
+  documentId: string;
+  title: string;
+  revision: number;
+}
+
 export interface DeleteDocumentResult {
   documentId: string;
   preservedDeckCitationCount: number;
@@ -221,6 +227,16 @@ export async function cancelDocumentFlashcardGeneration(documentId: string): Pro
 
 export async function openDocumentSource(documentId: string): Promise<void> {
   await invoke("open_document_source", { documentId });
+}
+
+export async function renameDocument(
+  documentId: string,
+  revision: number,
+  title: string,
+): Promise<RenameDocumentResult> {
+  return invoke<RenameDocumentResult>("rename_document", {
+    input: { documentId, revision, title },
+  });
 }
 
 export async function deleteDocument(

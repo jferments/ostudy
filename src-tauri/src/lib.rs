@@ -389,6 +389,7 @@ pub fn run() {
             document_operations::cancel_document_flashcard_generation,
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
+            document_operations::rename_document,
             document_operations::delete_document,
             document_annotations::get_document_annotations,
             document_annotations::apply_document_annotation_changes,

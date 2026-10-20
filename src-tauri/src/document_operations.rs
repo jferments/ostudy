@@ -46,6 +46,24 @@ pub struct DeleteDocumentResultDto {
     pub preserved_deck_citation_count: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameDocumentInput {
+    pub document_id: String,
+    pub revision: i64,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameDocumentResultDto {
+    pub document_id: String,
+    pub title: String,
+    pub revision: i64,
+}
+
+const DOCUMENT_TITLE_MAX_CHARS: usize = 200;
+
 /// Start the format-neutral document pipeline under native ownership and return
 /// after its durable processing state and cancellation identity both exist.
 /// React observes document/job state; navigation no longer owns this long-lived
@@ -165,6 +183,72 @@ pub fn open_document_source(
                 format!("The operating system could not open the managed document: {error}"),
             )
         })
+}
+
+/// Give one document a title the learner chose. Generated metadata later
+/// replaces only titles it set itself, so a chosen title stays.
+#[tauri::command]
+pub fn rename_document(
+    database: State<'_, Database>,
+    input: RenameDocumentInput,
+) -> Result<RenameDocumentResultDto, CommandError> {
+    database.with_connection(|connection| rename_document_title(connection, &input))
+}
+
+fn rename_document_title(
+    connection: &rusqlite::Connection,
+    input: &RenameDocumentInput,
+) -> Result<RenameDocumentResultDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    if input.revision < 1 {
+        return Err(CommandError::new(
+            "invalid_revision",
+            "The document revision is invalid.",
+        ));
+    }
+    let title = input.title.trim();
+    if title.is_empty()
+        || title.chars().count() > DOCUMENT_TITLE_MAX_CHARS
+        || title.chars().any(char::is_control)
+    {
+        return Err(CommandError::new(
+            "invalid_document_title",
+            "Document titles must contain between 1 and 200 characters.",
+        ));
+    }
+    let now = unix_time_millis()?;
+    connection
+        .execute(
+            "UPDATE documents
+             SET title = ?1, updated_at = MAX(updated_at, ?2), revision = revision + 1
+             WHERE id = ?3 AND revision = ?4 AND title <> ?1",
+            params![title, now, input.document_id, input.revision],
+        )
+        .map_err(CommandError::database)?;
+    let current: Option<(String, i64)> = connection
+        .query_row(
+            "SELECT title, revision FROM documents WHERE id = ?1",
+            [input.document_id.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    match current {
+        None => Err(CommandError::new(
+            "document_not_found",
+            "That document no longer exists.",
+        )),
+        // A repeated request finds its title already in place.
+        Some((current_title, revision)) if current_title == title => Ok(RenameDocumentResultDto {
+            document_id: input.document_id.clone(),
+            title: current_title,
+            revision,
+        }),
+        Some(_) => Err(CommandError::new(
+            "document_changed",
+            "This document changed. Reload it and try again.",
+        )),
+    }
 }
 
 /// Permanently delete one managed source and all document-owned derivatives.
@@ -364,4 +448,63 @@ fn sync_directory(path: &Path) -> Result<(), CommandError> {
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> Result<(), CommandError> {
     Ok(())
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::*;
+    use crate::collections::test_support::seed_document;
+
+    const DOCUMENT: &str = "0123456789abcdef0123456789abcdef";
+
+    fn input(revision: i64, title: &str) -> RenameDocumentInput {
+        RenameDocumentInput {
+            document_id: DOCUMENT.to_owned(),
+            revision,
+            title: title.to_owned(),
+        }
+    }
+
+    #[test]
+    fn renames_a_document_and_repeats_safely() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                seed_document(connection, DOCUMENT, 2, 'a')?;
+                let revision: i64 = connection
+                    .query_row(
+                        "SELECT revision FROM documents WHERE id = ?1",
+                        [DOCUMENT],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let renamed =
+                    rename_document_title(connection, &input(revision, "  Cardiac cycle  "))?;
+                assert_eq!(renamed.title, "Cardiac cycle");
+                assert_eq!(renamed.revision, revision + 1);
+                let repeated =
+                    rename_document_title(connection, &input(revision, "Cardiac cycle"))?;
+                assert_eq!(repeated, renamed);
+                let stale = rename_document_title(connection, &input(revision, "Something else"));
+                assert_eq!(stale.unwrap_err().code, "document_changed");
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn rejects_empty_long_and_missing() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .with_connection(|connection| {
+                for title in ["   ", &"x".repeat(201), "line\nbreak"] {
+                    let error = rename_document_title(connection, &input(1, title)).unwrap_err();
+                    assert_eq!(error.code, "invalid_document_title");
+                }
+                let missing = rename_document_title(connection, &input(1, "Title")).unwrap_err();
+                assert_eq!(missing.code, "document_not_found");
+                Ok(())
+            })
+            .unwrap();
+    }
 }
