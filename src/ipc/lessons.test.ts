@@ -6,6 +6,7 @@ import {
   cancelSubjectCourseWriting,
   getLesson,
   getLessonLecture,
+  prepareLessonLecturePptx,
   getSubjectCourseWritingProgress,
   listSubjectLessons,
   narrateLessonStep,
@@ -57,6 +58,14 @@ describe("lesson IPC", () => {
     await getLessonLecture(lessonId, 2);
     expect(invoke).toHaveBeenLastCalledWith("get_lesson_lecture", {
       input: { lessonId, revisionNumber: 2 },
+    });
+  });
+
+  it("prepares a lecture deck under one operation", async () => {
+    const operationId = "e".repeat(32);
+    await prepareLessonLecturePptx(lessonId, 2, operationId);
+    expect(invoke).toHaveBeenLastCalledWith("prepare_lesson_lecture_pptx", {
+      input: { lessonId, revisionNumber: 2, operationId },
     });
   });
 

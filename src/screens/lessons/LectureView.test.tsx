@@ -1,14 +1,20 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getLessonLecture, narrateLessonStep, type Lecture } from "../../ipc/lessons";
+import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
+import { getLessonLecture, narrateLessonStep, prepareLessonLecturePptx, type Lecture } from "../../ipc/lessons";
 import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
 import { LectureView } from "./LectureView";
 
 vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
 }));
-vi.mock("../../ipc/lessons", () => ({ getLessonLecture: vi.fn(), narrateLessonStep: vi.fn() }));
+vi.mock("../../ipc/lessons", () => ({
+  getLessonLecture: vi.fn(),
+  narrateLessonStep: vi.fn(),
+  prepareLessonLecturePptx: vi.fn(),
+}));
+vi.mock("../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(),
   revokeManagedMediaObjectUrl: vi.fn(),
@@ -124,5 +130,61 @@ describe("LectureView", () => {
     expect(await screen.findByText(/This lecture could not open: That version/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Loop of Henle/ }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe("saving the slides", () => {
+    const prepared = {
+      preparedExport: {
+        id: "export-1",
+        purpose: "lecture_pptx" as const,
+        suggestedFilename: "Loop of Henle.pptx",
+        mediaType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        byteSize: 2048,
+        sha256: "f".repeat(64),
+        expiresAt: 1,
+      },
+      revisionNumber: 2,
+      slideCount: 5,
+    };
+
+    beforeEach(() => {
+      vi.mocked(prepareLessonLecturePptx).mockReset();
+      vi.mocked(publishPreparedExport).mockReset();
+      vi.mocked(releasePreparedExport).mockReset();
+      vi.mocked(releasePreparedExport).mockResolvedValue(undefined as never);
+    });
+
+    it("writes the revision it shows, saves it where the learner picks, and lets the copy go", async () => {
+      vi.mocked(prepareLessonLecturePptx).mockResolvedValue(prepared);
+      vi.mocked(publishPreparedExport).mockResolvedValue({
+        preparedExportId: "export-1",
+        displayName: "Loop of Henle.pptx",
+        destinationKind: "file",
+        completedAt: 1,
+      });
+      open();
+      fireEvent.click(await screen.findByRole("button", { name: "Save as .pptx" }));
+      expect(await screen.findByText("Saved Loop of Henle.pptx.")).toBeTruthy();
+      expect(prepareLessonLecturePptx).toHaveBeenCalledWith("lesson-1", 2);
+      expect(publishPreparedExport).toHaveBeenCalledWith("export-1");
+      expect(releasePreparedExport).toHaveBeenCalledWith("export-1");
+    });
+
+    it("says nothing when the save dialog is closed, and why when writing fails", async () => {
+      vi.mocked(prepareLessonLecturePptx).mockResolvedValueOnce(prepared);
+      vi.mocked(publishPreparedExport).mockResolvedValueOnce(null);
+      open();
+      const save = await screen.findByRole("button", { name: "Save as .pptx" });
+      fireEvent.click(save);
+      await screen.findByRole("button", { name: "Save as .pptx" });
+      expect(releasePreparedExport).toHaveBeenCalledWith("export-1");
+      expect(screen.queryByRole("status")).toBeNull();
+
+      vi.mocked(prepareLessonLecturePptx).mockRejectedValueOnce(new Error("The lesson is no longer available."));
+      fireEvent.click(screen.getByRole("button", { name: "Save as .pptx" }));
+      expect(
+        (await screen.findByRole("alert")).textContent,
+      ).toContain("The slides were not saved: The lesson is no longer available.");
+    });
   });
 });

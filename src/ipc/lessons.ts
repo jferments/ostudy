@@ -1,4 +1,5 @@
 import { createOperationId } from "./common";
+import type { PreparedExport } from "./externalFiles";
 import type { QuestionKind } from "./questions";
 import { invoke } from "./transport";
 
@@ -175,6 +176,27 @@ export async function getLessonLecture(
 ): Promise<Lecture> {
   return invoke<Lecture>("get_lesson_lecture", {
     input: { lessonId, revisionNumber: revisionNumber ?? null },
+  });
+}
+
+export interface PreparedLecturePptx {
+  preparedExport: PreparedExport;
+  /** The revision the deck was written from. */
+  revisionNumber: number;
+  slideCount: number;
+}
+
+/**
+ * Writes the lesson's lecture as an editable PowerPoint deck, ready to
+ * publish. Repeating `operationId` returns the deck already prepared.
+ */
+export async function prepareLessonLecturePptx(
+  lessonId: string,
+  revisionNumber?: number,
+  operationId = createOperationId(),
+): Promise<PreparedLecturePptx> {
+  return invoke<PreparedLecturePptx>("prepare_lesson_lecture_pptx", {
+    input: { lessonId, revisionNumber: revisionNumber ?? null, operationId },
   });
 }
 

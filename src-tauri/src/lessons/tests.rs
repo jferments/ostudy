@@ -748,3 +748,56 @@ fn a_lecture_without_source_documents_has_no_sources_slide() {
         .iter()
         .all(|slide| slide.kind != LectureSlideKind::Sources));
 }
+
+#[test]
+fn a_lecture_is_prepared_once_as_a_pptx_export_for_its_operation() {
+    use super::pptx::{prepare, PrepareLessonLecturePptxInput};
+    use crate::paths::AppPaths;
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let root = std::env::temp_dir().join(format!(
+        "ostudy-lecture-pptx-{}-{}",
+        std::process::id(),
+        crate::util::unix_time_millis().unwrap()
+    ));
+    let paths = AppPaths::new(root.clone()).unwrap();
+    let input = |operation: char| PrepareLessonLecturePptxInput {
+        lesson_id: id.clone(),
+        revision_number: None,
+        operation_id: operation.to_string().repeat(32),
+    };
+
+    let prepared = prepare(&database, &paths, input('a')).unwrap();
+    assert_eq!(prepared.slide_count, 5);
+    assert_eq!(prepared.revision_number, 1);
+    let export = &prepared.prepared_export;
+    assert_eq!(export.purpose, "lecture_pptx");
+    assert_eq!(export.suggested_filename, "Loop of Henle.pptx");
+    assert_eq!(
+        export.media_type,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    );
+    let bytes = std::fs::read(
+        paths.resolve_relative(&AppPaths::prepared_export_relative_path(&export.id, "pptx")),
+    )
+    .unwrap();
+    assert!(bytes.starts_with(b"PK"), "a .pptx is a zip package");
+    assert_eq!(i64::try_from(bytes.len()).unwrap(), export.byte_size);
+
+    // The same operation returns what it prepared instead of a second file.
+    let again = prepare(&database, &paths, input('a')).unwrap();
+    assert_eq!(again.prepared_export.id, export.id);
+    assert_eq!(again.prepared_export.sha256, export.sha256);
+
+    let missing = prepare(
+        &database,
+        &paths,
+        PrepareLessonLecturePptxInput {
+            lesson_id: "9".repeat(32),
+            ..input('b')
+        },
+    );
+    assert!(missing.is_err());
+    let _ = std::fs::remove_dir_all(root);
+}

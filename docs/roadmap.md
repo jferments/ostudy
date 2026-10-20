@@ -16,7 +16,7 @@ The active codebase already includes:
 - native PDF extraction/rendering with ruled-table rebuilding, page images for table/figure/OCR pages, and OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
 - a PDF annotator (ink, highlighter, shapes and text notes over the page renders, with sharp zoomed tiles) whose marks stay out of the source file;
 - source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
-- a native lesson store, AI course writing for a subject (one lesson per top-level document topic), a step-by-step lesson player with native check grading, narration spoken by an OpenRouter voice and kept in the library, and a lecture view that shows a lesson as slides with the narration as speaker notes;
+- a native lesson store, AI course writing for a subject (one lesson per top-level document topic), a step-by-step lesson player with native check grading, narration spoken by an OpenRouter voice and kept in the library, and a lecture view that shows a lesson as slides with the narration as speaker notes and saves it as an editable PowerPoint deck;
 - implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, OpenRouter, and Claude, with native credential isolation/capability probing and no silent local-to-cloud fallback;
 - a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/collection grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
 - one React/Rust application across desktop and Android, with wide/medium/compact navigation, shared accessible overlays/patterns, themes, local typography, reduced motion, safe areas, and keyboard/touch behavior;
@@ -29,7 +29,7 @@ Historical stage plans under [`history/`](history/) explain how this foundation 
 
 The PR #106 foundation and the H-01–H-10 hardening scopes in the [post-#106 hardening register](development/post-106-hardening.md) are merged; the PR #106 [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover.
 
-Work under way in open pull requests, not on `main`, includes the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. PowerPoint export of a lecture, podcasts and local voices remain planned; the [preserved lesson plan](development/lk-followups/lessons-narration.md) records an earlier design. Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
+Work under way in open pull requests, not on `main`, includes the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. Podcasts and local voices remain planned; the [preserved lesson plan](development/lk-followups/lessons-narration.md) records an earlier design. Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
 
 ## Current priorities
 
@@ -104,7 +104,7 @@ Generate configurable question sets, including multiple choice/application/scena
 
 ### Lessons
 
-A subject's course can be written, played step by step, listened to and viewed as a lecture. PowerPoint export of a lecture, two-host podcasts, local voices (a local Kokoro server and the phone's own speech engine), rewriting an existing course, keeping lessons current when their sources change, and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
+A subject's course can be written, played step by step, listened to, viewed as a lecture and saved as a PowerPoint deck. Two-host podcasts, local voices (a local Kokoro server and the phone's own speech engine), rewriting an existing course, keeping lessons current when their sources change, and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
 
 ### Tutor refinement and guided study
 

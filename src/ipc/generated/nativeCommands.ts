@@ -214,6 +214,7 @@ export interface NativeCommandGatewayMap {
   "prepare_deck_export": readonly [typeof GatewayModule9.prepareDeckExport];
   "prepare_document_study_guide_pdf": readonly [typeof GatewayModule36.prepareDocumentStudyGuidePdf];
   "prepare_image_set": readonly [typeof GatewayModule21.prepareImageSet];
+  "prepare_lesson_lecture_pptx": readonly [typeof GatewayModule23.prepareLessonLecturePptx];
   "prepare_library_backup_async": readonly [typeof GatewayModule5.prepareLibraryBackup];
   "prepare_library_restore_async": readonly [typeof GatewayModule5.prepareLibraryRestore];
   "prepare_occlusion_image": readonly [typeof GatewayModule25.prepareOcclusionImage];

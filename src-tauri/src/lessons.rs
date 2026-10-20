@@ -30,6 +30,7 @@ pub(crate) mod checks;
 pub(crate) mod content;
 pub(crate) mod lecture;
 pub(crate) mod narration;
+pub(crate) mod pptx;
 pub(crate) mod writing;
 
 #[cfg(test)]

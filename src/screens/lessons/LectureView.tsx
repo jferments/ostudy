@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
-import { getLessonLecture, type Lecture, type LectureSlide } from "../../ipc/lessons";
+import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
+import { getLessonLecture, prepareLessonLecturePptx, type Lecture, type LectureSlide } from "../../ipc/lessons";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
@@ -31,6 +32,8 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const [readError, setReadError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [lecturing, setLecturing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
@@ -91,6 +94,25 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
     setLecturing(false);
   };
 
+  // The deck is written natively, handed to the save dialog, then released;
+  // closing the dialog without saving is not an error.
+  const saveDeck = async () => {
+    setSaving(true);
+    setSaved(null);
+    let preparedId: string | null = null;
+    try {
+      const prepared = await prepareLessonLecturePptx(lessonId, revisionNumber);
+      preparedId = prepared.preparedExport.id;
+      const receipt = await publishPreparedExport(preparedId);
+      if (receipt) setSaved({ kind: "success", text: `Saved ${receipt.displayName}.` });
+    } catch (error: unknown) {
+      setSaved({ kind: "error", text: `The slides were not saved: ${getErrorMessage(error)}` });
+    } finally {
+      if (preparedId) await releasePreparedExport(preparedId).catch(() => undefined);
+      setSaving(false);
+    }
+  };
+
   const show = (next: number) => {
     stopLecture();
     setIndex(next);
@@ -108,17 +130,23 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
             {lecture.title} · lecture
           </h1>
         </div>
-        {/* A failed voice leaves the lecture where it stopped. */}
-        {lecturing && voice.listening !== "idle" ? (
-          <Button className="tw:rounded-full" onClick={stopLecture}>
-            <Icon name="stop" size={16} /> {voice.listening === "preparing" ? "Preparing…" : "Stop"}
+        <div className="tw:flex tw:flex-wrap tw:gap-2">
+          <Button className="tw:rounded-full" disabled={saving} onClick={() => void saveDeck()}>
+            <Icon name="download" size={16} /> {saving ? "Saving…" : "Save as .pptx"}
           </Button>
-        ) : (
-          <Button variant="primary" className="tw:rounded-full" disabled={!canLecture} onClick={startLecture}>
-            <Icon name="listen" size={16} /> Play lecture
-          </Button>
-        )}
+          {/* A failed voice leaves the lecture where it stopped. */}
+          {lecturing && voice.listening !== "idle" ? (
+            <Button className="tw:rounded-full" onClick={stopLecture}>
+              <Icon name="stop" size={16} /> {voice.listening === "preparing" ? "Preparing…" : "Stop"}
+            </Button>
+          ) : (
+            <Button variant="primary" className="tw:rounded-full" disabled={!canLecture} onClick={startLecture}>
+              <Icon name="listen" size={16} /> Play lecture
+            </Button>
+          )}
+        </div>
       </header>
+      {saved ? <InlineNotice kind={saved.kind}>{saved.text}</InlineNotice> : null}
       {voice.error ? <InlineNotice kind="error">The lecture could not be read aloud: {voice.error}</InlineNotice> : null}
       <div className="tw:grid tw:items-start tw:gap-6 tw:wide:grid-cols-[15rem_minmax(0,1fr)] tw:medium:grid-cols-[13rem_minmax(0,1fr)]">
         <nav
