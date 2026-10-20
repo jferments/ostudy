@@ -348,7 +348,7 @@ def click(ctx: Context, xpath: str, seconds: int = 30) -> None:
     try:
         webdriver.click(ctx.session_id, element)
     except webdriver.WebDriverProtocolError as error:
-        # The Workbench re-renders its tree as subjects expand; find the target again.
+        # The Workbench re-renders its tree as it loads; find the target again.
         if error.error != "stale element reference":
             raise
         webdriver.click(ctx.session_id, find(ctx, xpath, seconds))
@@ -694,7 +694,7 @@ def open_subject(ctx: Context) -> None:
     )
     # A subject opens on its Library Overview.
     find(ctx, f"//main//*[@data-testid='library-subject-name'][normalize-space(.)={xpath_literal(name)}]")
-    find(ctx, "//main//*[@data-testid='library-overview']//*[@data-testid='library-overview-documents']")
+    find(ctx, "//main//*[@data-testid='library-overview']//*[@data-testid='library-overview-facts']")
 
 
 def open_first_run(ctx: Context) -> None:
@@ -711,20 +711,10 @@ WORKBENCH = "//main//*[@data-testid='library-workbench']"
 WORKBENCH_TREE = "//main//*[@data-testid='library-workbench']//nav[@aria-label='Library']"
 
 
-def expand_workbench_subjects(ctx: Context) -> None:
-    """Open every collapsed subject in the Workbench's tree, so all decks show."""
-    for _ in range(len(seed.SUBJECTS) + 1):
-        collapsed = f"{WORKBENCH_TREE}//button[@aria-expanded='false'][starts-with(@aria-label, 'Expand ')]"
-        if not exists(ctx, collapsed):
-            return
-        click(ctx, collapsed)
-
-
 def open_library(ctx: Context) -> None:
     go(ctx, "decks")
     if exists(ctx, WORKBENCH):
         find(ctx, WORKBENCH_TREE)
-        expand_workbench_subjects(ctx)
         for deck in seed.DECKS:
             find(ctx, f"{WORKBENCH_TREE}//button[.//span[normalize-space(.)={xpath_literal(deck.name)}]]")
         if ctx.layout != "compact":
@@ -827,15 +817,15 @@ def open_guide_reader(ctx: Context) -> None:
 
 
 def open_documents(ctx: Context) -> None:
-    """Documents shows each subject as a collection with its documents, then the documents in no subject."""
+    """Everything's Documents groups the documents under their subjects, then No subject."""
     go(ctx, "documents")
-    for subject in seed.SUBJECTS:
-        find(ctx, f"//main//article[@data-testid='document-collection']//h3[normalize-space(.)={xpath_literal(subject)}]")
     for document in seed.DOCUMENTS:
-        if document.subject is None:
-            find(ctx, f"//main//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]")
-        else:
-            find(ctx, f"//main//ul[starts-with(@aria-label, 'Documents in ')]//*[normalize-space(text())={xpath_literal(document.title)}]")
+        group = document.subject or "No subject"
+        find(
+            ctx,
+            f"//main//section[@data-testid='document-group'][.//h2[normalize-space(text())={xpath_literal(group)}]]"
+            f"//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]",
+        )
 
 
 def open_document_info(ctx: Context) -> None:
