@@ -13,6 +13,7 @@ import { TemplatesScreen } from "./TemplatesScreen";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
+import { LessonVoiceSettings } from "./settings/LessonVoiceSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { QuestionGenerationSettings } from "./settings/QuestionGenerationSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
@@ -169,6 +170,7 @@ export function SettingsScreen({
           controller={aiController}
           defaultBlock={<>
             <DefaultAiModelSettings controller={aiController} />
+            <LessonVoiceSettings connectionsKey={aiController.profiles} />
             {generationMounted ? <QuestionGenerationSettings
               showToast={showToast}
               onDirtyChange={setQuestionDirty}

@@ -9,7 +9,7 @@ use super::{
     errors::classify_reqwest_error,
     metadata::is_openrouter_url,
     request::ordinary_request,
-    response::read_json_response,
+    response::{read_audio_response, read_json_response, AudioResponse},
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
@@ -77,6 +77,30 @@ impl AiGateway {
         .await
     }
 
+    /// Posts a JSON request whose successful answer is audio bytes, such as
+    /// an OpenAI-style `/audio/speech` call. Errors still arrive as JSON.
+    pub(crate) async fn post_json_for_audio<'a>(
+        &self,
+        url: Url,
+        access: impl Into<ProviderAccess<'a>>,
+        body: &Value,
+        timeout_ms: i64,
+        maximum_bytes: usize,
+    ) -> Result<AudioResponse, AiGatewayError> {
+        let openrouter = is_openrouter_url(&url);
+        let request = ordinary_request(
+            &self.client,
+            Method::POST,
+            url,
+            access.into(),
+            Some(body),
+            timeout_ms,
+            "audio/*, application/json",
+        );
+        let response = request.send().await.map_err(classify_reqwest_error)?;
+        read_audio_response(response, maximum_bytes, openrouter).await
+    }
+
     async fn request_json(
         &self,
         method: Method,
@@ -87,7 +111,15 @@ impl AiGateway {
         maximum_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
         let openrouter = is_openrouter_url(&url);
-        let request = ordinary_request(&self.client, method, url, access, body, timeout_ms);
+        let request = ordinary_request(
+            &self.client,
+            method,
+            url,
+            access,
+            body,
+            timeout_ms,
+            "application/json",
+        );
         let response = request.send().await.map_err(classify_reqwest_error)?;
         read_json_response(response, maximum_bytes, openrouter).await
     }

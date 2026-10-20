@@ -202,3 +202,30 @@ export async function cancelSubjectCourseWriting(
     input: { operationId },
   });
 }
+
+/** One kept piece of a step's spoken narration, in speaking order. */
+export interface NarrationSegment {
+  /** A managed audio asset. */
+  assetId: string;
+  characters: number;
+}
+
+export interface LessonStepNarration {
+  segments: NarrationSegment[];
+  /** How many pieces the voice spoke now; 0 when all were already kept. */
+  made: number;
+}
+
+/**
+ * Speaks a step's saved narration with the lesson voice and keeps the audio,
+ * so listening again plays from the library without asking the voice.
+ */
+export async function narrateLessonStep(
+  lessonId: string,
+  revisionNumber: number,
+  stepKey: string,
+): Promise<LessonStepNarration> {
+  return invoke<LessonStepNarration>("narrate_lesson_step", {
+    input: { lessonId, revisionNumber, stepKey },
+  });
+}
