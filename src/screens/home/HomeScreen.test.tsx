@@ -125,6 +125,7 @@ function renderHome({
   setViewport(width);
   const onStartReview = vi.fn();
   const onOpenSubject = vi.fn();
+  const onOpenLesson = vi.fn();
   const onOpenLibrary = vi.fn();
   const onPracticeSubject = vi.fn();
   const onOpenProgress = vi.fn();
@@ -138,6 +139,7 @@ function renderHome({
             <HomeScreen
               onStartReview={onStartReview}
               onOpenSubject={onOpenSubject}
+              onOpenLesson={onOpenLesson}
               onOpenLibrary={onOpenLibrary}
               onPracticeSubject={onPracticeSubject}
               onOpenProgress={onOpenProgress}
@@ -147,7 +149,7 @@ function renderHome({
       </AppearanceProvider>
     </LayoutModeProvider>,
   );
-  return { onStartReview, onOpenSubject, onOpenLibrary, onPracticeSubject, onOpenProgress, unmount: view.unmount };
+  return { onStartReview, onOpenSubject, onOpenLesson, onOpenLibrary, onPracticeSubject, onOpenProgress, unmount: view.unmount };
 }
 
 const DECKS = [makeDeck()];
@@ -281,11 +283,11 @@ describe("HomeScreen", () => {
     const { onOpenSubject } = renderHome();
     await screen.findByTestId("home-today");
     fireEvent.click(screen.getByRole("button", { name: "Cardiac physiology" }));
-    expect(onOpenSubject).toHaveBeenLastCalledWith("cardiac", "decks");
+    expect(onOpenSubject).toHaveBeenLastCalledWith("cardiac");
     fireEvent.click(screen.getByRole("button", { name: "Renal physiology" }));
-    expect(onOpenSubject).toHaveBeenLastCalledWith("renal", "documents");
+    expect(onOpenSubject).toHaveBeenLastCalledWith("renal");
     fireEvent.click(screen.getByRole("button", { name: "No subject" }));
-    expect(onOpenSubject).toHaveBeenLastCalledWith(null, "decks");
+    expect(onOpenSubject).toHaveBeenLastCalledWith(null);
   });
 
   it("describes each tile's button with its due count and contents", async () => {
@@ -488,7 +490,7 @@ describe("HomeScreen", () => {
             ]
           : [],
     }));
-    const { onOpenSubject } = renderHome();
+    const { onOpenLesson } = renderHome();
     const panel = await screen.findByTestId("home-continue");
     const rows = within(panel).getAllByRole("listitem");
     expect(rows.map((row) => within(row).getByText(/^(Valves|The cardiac cycle)$/u).textContent)).toEqual([
@@ -498,7 +500,7 @@ describe("HomeScreen", () => {
     expect(within(panel).getByText("Lesson · Cardiac physiology · step 3 of 8")).toBeTruthy();
     expect(within(panel).queryByText("Finished one")).toBeNull();
     fireEvent.click(within(panel).getByRole("button", { name: "Resume The cardiac cycle" }));
-    expect(onOpenSubject).toHaveBeenCalledWith("cardiac", "decks");
+    expect(onOpenLesson).toHaveBeenCalledWith("cardiac", "lesson-new");
   });
 
   it("suggests reviewing a slipping subject and a lesson for a subject with sources and none", async () => {

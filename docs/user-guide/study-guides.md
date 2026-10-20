@@ -1,16 +1,16 @@
 # Study guides
 
-A study guide teaches what a source says, in sections sized for one sitting. A document's guide is written from what ostudy extracted from that document; a collection's guide is written from what it extracted from the collection's documents and their reading ranges. Both have an overview, learning objectives, a short list of key concepts, ordered sections, source labels, and links to the flashcards made from each section. A guide does not replace checking the original sources.
+A study guide teaches what a source says, in sections sized for one sitting. A document's guide is written from what ostudy extracted from that document; a subject's guide is written from what it extracted from the subject's documents and their reading ranges. Both have an overview, learning objectives, a short list of key concepts, ordered sections, source labels, and links to the flashcards made from each section. A guide does not replace checking the original sources.
 
 ## Create and find a guide
 
-Choose a model for **Flashcard and study-guide generation** in **Settings → AI**. For one document, open **Library → Documents**, upload a supported source, and choose **Make a study guide** from its **…** menu. For a collection, choose **Make study materials** on the collection, or **Update study materials** once it has them; a collection has one guide alongside its decks. A collection guide is written from what ostudy already extracted from each document, so its documents are not read again and do not need guides of their own. Large collections are split into many bounded requests rather than refused. A document guide can exist without a flashcard deck.
+Choose a model for **Flashcard and study-guide generation** in **Settings → AI**. For one document, open **Library → Documents**, upload a supported source, and choose **Make a study guide** from its **…** menu. For a whole subject, choose the subject in Library, open **Documents** and choose **Make study materials**, or **Update study materials** once it has them; a subject has one guide alongside its decks. A subject guide is written from what ostudy already extracted from each document, so its documents are not read again and do not need guides of their own. Large subjects are split into many bounded requests rather than refused. A document guide can exist without a flashcard deck.
 
 ostudy aims to teach each core fact once, in the most specific section it belongs to. After a section is written, a short follow-up adds explanations for core facts it left out, and additions that only restate the section are dropped. Key points, terms, tables, steps and callouts appear only when they add something the explanations do not already say. A textbook chapter usually becomes about ten sections, grouped into chapters with headings when the guide is long.
 
-Open **Library** and choose **Study guides**. Each guide is a card with its source, its number of sections and notes, the date it was made, an **Open** button and a **…** menu with **Open the source** and **Delete study guide**. A collection's guide sits on a stacked card, as its collection does on Documents. **Search guides** filters as you type; **Sort** orders guides by Newest, Oldest, Title A–Z or Title Z–A, and **Previous** and **Next** appear when there are many.
+Open **Library** and choose **Study guides**. Each guide is a card with its source, its number of sections and notes, the date it was made, an **Open** button and a **…** menu with **Open the source** and **Delete study guide**. A subject's guide sits on a stacked card, since it covers several documents. **Search guides** filters as you type; **Sort** orders guides by Newest, Oldest, Title A–Z or Title Z–A, and **Previous** and **Next** appear when there are many.
 
-Choose **Open** to read a guide. The reader opens as a page inside Library, under the header, with the main navigation still available. **Back to Study Guides** at the top of a document guide, or **Close collection study guide** on a collection guide, returns to the library. Choosing **Library** in the main navigation also returns to that library rather than leaving you trapped in the current viewer.
+Choose **Open** to read a guide. The reader opens as a page inside Library, under the header, with the main navigation still available. **Back to Study Guides** at the top of a document guide, or **Close subject study guide** on a subject guide, returns to the library. Choosing **Library** in the main navigation also returns to that library rather than leaving you trapped in the current viewer.
 
 The reader has no revision numbers or Regenerate button; remake a guide from its document in Documents.
 
@@ -22,7 +22,7 @@ On a wide window the outline sits beside the text. It lists the overview and eve
 
 Section commands live under that section's **…** menu: **Ask Tutor about this section** when the tutor is available, **Add note** or **Edit note**, **Edit or rewrite this section**, and the matching remove and reset commands. Guide commands live in the top bar: **Ask Tutor** for the whole guide (a chat icon on a phone) and the **Study guide actions** menu with **Export as PDF…** and the guide note. **Open source** opens the retained original through the operating system; an exact deep link into an external viewer is not guaranteed.
 
-A collection guide keeps its single scrolling reader with a **Contents** list and an **Export PDF…** button. Its **Guide actions** menu adds, edits or removes the guide note, and each section's **…** menu offers **Ask Tutor about this section** when the tutor is available, **Open source**, **Add note** and **Edit section**.
+A subject guide keeps its single scrolling reader with a **Contents** list and an **Export PDF…** button. Its **Guide actions** menu adds, edits or removes the guide note, and each section's **…** menu offers **Ask Tutor about this section** when the tutor is available, **Open source**, **Add note** and **Edit section**.
 
 Sections are named from what they teach; a long list of keywords is shortened into a readable title. ostudy limits section length and checks each section's structure, but a model can still omit, misunderstand, or poorly prioritize information. Check what you learn against the source.
 
@@ -44,11 +44,11 @@ The guide keeps learner-owned information separate from generated revisions:
 | Topic note | Belongs to a stable learning topic, not just its current display title |
 | Generated-section edit | A non-destructive override tied to the generated base content it edits |
 
-In a document guide, **Add note** under **Your note** opens the note dialog: on the overview for the whole guide, and beside or below a section for that topic. The section menu and the **Study guide actions** menu offer the same commands. Write the note, then **Save**. Existing notes offer **Edit note** and **Remove note**. Clearing an existing note and saving removes it through the same deliberate ownership boundary. **Edit or rewrite this section** opens the section's text in the same kind of dialog; your version replaces the generated text in the reader, and **Reset section edit** returns to the generated section, which is never deleted. In a collection guide, the section menu's **Add note** and **Edit section** open the editor below the guide.
+In a document guide, **Add note** under **Your note** opens the note dialog: on the overview for the whole guide, and beside or below a section for that topic. The section menu and the **Study guide actions** menu offer the same commands. Write the note, then **Save**. Existing notes offer **Edit note** and **Remove note**. Clearing an existing note and saving removes it through the same deliberate ownership boundary. **Edit or rewrite this section** opens the section's text in the same kind of dialog; your version replaces the generated text in the reader, and **Reset section edit** returns to the generated section, which is never deleted. In a subject guide, the section menu's **Add note** and **Edit section** open the editor below the guide.
 
 If regenerated content changes enough that an old section override cannot safely apply, the old edit becomes a visible conflict instead of being silently attached to different material. Review the preserved text and discard an older edit only when that is what you intend. Stable guide/topic notes survive ordinary regeneration.
 
-Notes and section edits are plain text; the formatting tools of the card editor are not available in guides. Collection-guide notes and edits follow the same rules.
+Notes and section edits are plain text; the formatting tools of the card editor are not available in guides. Subject-guide notes and edits follow the same rules.
 
 ## Practice linked cards
 
@@ -60,7 +60,7 @@ Ending the session returns to Study guides. Reviews update the same schedules an
 
 ## Export a PDF
 
-Choose **Export as PDF…** from a document guide's **Study guide actions** menu, or the **Export PDF…** button in a collection guide. Pick a **Theme** (Navy, Sage, Slate or Plum change the colours and typefaces, not the layout), leave **Include my notes** on to add your notes and section edits, and choose **Export PDF**. The PDF shows the same content as the reader and is made on your device; export sends nothing to a provider and does not regenerate the guide.
+Choose **Export as PDF…** from a document guide's **Study guide actions** menu, or the **Export PDF…** button in a subject guide. Pick a **Theme** (Navy, Sage, Slate or Plum change the colours and typefaces, not the layout), leave **Include my notes** on to add your notes and section edits, and choose **Export PDF**. The PDF shows the same content as the reader and is made on your device; export sends nothing to a provider and does not regenerate the guide.
 
 The PDF opens on a cover with the overview, what you will be able to do and a linked contents list, then gives each section its source label, key points, callouts, tables, worked examples and checks, with chapters as slim bands when the guide has them. It ends with a **Cram sheet** of the key concepts, key ideas, terms and warnings, and a **Self-test** of the guide's check questions with answers after them. It has bookmarks, running headers and page numbers, repeats table headers across page breaks and keeps headings with the text that follows them. Source images the guide uses appear with captions. Text stays selectable and searchable.
 
@@ -70,7 +70,7 @@ You choose where the file is saved through the platform's usual save dialog. Che
 
 ## Regeneration, stopping, and failures
 
-To remake a document's guide, choose **Remake the study guide** from the document's **…** menu in Documents. For a collection guide, use the collection's **Update study materials**; it updates the same guide rather than making a second one. While a document's guide is being written, its menu offers **Stop study guide**; if you open that document's guide before it exists, the **Generating study guide…** button stops it too. You can go elsewhere while it runs and come back to its current state. Stopping does not delete the source or anything already made.
+To remake a document's guide, choose **Remake the study guide** from the document's **…** menu in Documents. For a subject guide, use **Update study materials** on the subject's Documents tab; it updates the same guide rather than making a second one. While a document's guide is being written, its menu offers **Stop study guide**; if you open that document's guide before it exists, the **Generating study guide…** button stops it too. You can go elsewhere while it runs and come back to its current state. Stopping does not delete the source or anything already made.
 
 A new version is checked in full before it replaces the old one, so a failed or stopped remake leaves the previous guide in place. Failures stay visible after you leave and return. Saved work from the previous attempt is reused where it still matches the source and ostudy version. Restarting oStudy never sends anything to a provider by itself.
 
@@ -78,7 +78,7 @@ A new version is checked in full before it replaces the old one, so a failed or 
 
 **Delete study guide** in a guide card's **…** menu asks for confirmation. It removes every version of the generated guide, your section edits and their conflicts, the guide's saved generation work, and prepared PDF exports.
 
-For a document's guide, deletion keeps the source document, its learning plan, its linked flashcards, and your guide and topic notes, so a new guide can be made later. Deleting a collection's guide keeps the collection, its documents and decks, and your schedules and reviews, and the guide stays deleted until you choose **Recreate study materials** on the collection. Neither deletes source material. Read the confirmation.
+For a document's guide, deletion keeps the source document, its learning plan, its linked flashcards, and your guide and topic notes, so a new guide can be made later. Deleting a subject's guide keeps the subject, its documents and decks, and your schedules and reviews, and the guide stays deleted until you choose **Recreate study materials** on the subject's Documents tab. Neither deletes source material. Read the confirmation.
 
 ## Protect and report
 

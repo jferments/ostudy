@@ -30,7 +30,7 @@ class StudyGuideLayoutContractTests(unittest.TestCase):
         self.assertIn("tw:min-w-0", title_column)
         title = next(tokens for tokens in classes if "tw:wrap-anywhere" in tokens)
         self.assertIn("tw:m-0", title)
-        row = next(tokens for tokens in classes if "tw:items-center" in tokens and "tw:cursor-grab" in tokens)
+        row = next(tokens for tokens in classes if "tw:items-center" in tokens and "tw:gap-4" in tokens)
         self.assertIn("tw:min-w-0", row)
         self.assertNotIn("tw:flex-nowrap", row)
         self.assertIn("OverflowMenu", source)

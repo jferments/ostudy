@@ -177,6 +177,7 @@ describe("StudyGuidesScreen", () => {
       sort: "recent",
       offset: 0,
       limit: 40,
+      subject: { kind: "all" },
     });
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search guides" }), {
@@ -189,6 +190,7 @@ describe("StudyGuidesScreen", () => {
         sort: "recent",
         offset: 0,
         limit: 40,
+        subject: { kind: "all" },
       }),
     );
 
@@ -201,6 +203,7 @@ describe("StudyGuidesScreen", () => {
         sort: "title_asc",
         offset: 0,
         limit: 40,
+        subject: { kind: "all" },
       }),
     );
 
@@ -214,7 +217,7 @@ describe("StudyGuidesScreen", () => {
     render(
       <LayoutModeProvider>
         <OverlayProvider>
-          <LibraryFrame view="study-guides" onSelectView={vi.fn()}>
+          <LibraryFrame view="study-guides" onSelectView={vi.fn()} subject={{ kind: "all" }} onChooseSubject={vi.fn()} onStartReview={vi.fn()} onPracticeSubject={vi.fn()} showToast={vi.fn()}>
             <StudyGuidesScreen showToast={vi.fn()} onPracticeCards={vi.fn()} />
           </LibraryFrame>
         </OverlayProvider>
@@ -232,10 +235,10 @@ describe("StudyGuidesScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close guide" }));
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
-    expect(screen.getByTestId("library").className).toContain("tw:px-5");
+    expect(screen.getByRole("navigation", { name: "Library pages" }).closest("div.tw\\:px-5")).toBeTruthy();
   });
 
-  it("lists and opens collection study guides from the main Study Guides page", async () => {
+  it("lists and opens subject study guides from the main Study Guides page", async () => {
     vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(
       page({
         items: [{
