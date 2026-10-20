@@ -248,6 +248,8 @@ requireText("read-only check workflow", checkWorkflow, [
   "persist-credentials: false",
   "ci-runtime-preflight.sh",
   "OSTUDY_CARGO_TARGET_DIR",
+  "CARGO_INCREMENTAL=0",
+  "bound-cargo-target.sh",
   "select-check-gate.mjs",
   "write-qualification-result.mjs",
   "cargo metadata",
