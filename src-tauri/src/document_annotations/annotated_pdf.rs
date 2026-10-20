@@ -171,9 +171,7 @@ fn write_annotated_copy(
     let font = shapes
         .iter()
         .any(|(_, shape)| matches!(shape, AnnotationShape::Text(_)))
-        .then(crate::document_study_guide_export::find_unicode_fonts)
-        .flatten()
-        .and_then(|(regular, _)| fs::read(regular).ok());
+        .then(|| crate::document_study_guide_export::plain_sans_font().to_vec());
     let output = annotated_pdf(&bytes, &pages, font).map_err(|error| {
         crate::logging::warn_target(
             "documents.annotations",

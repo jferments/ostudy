@@ -289,6 +289,27 @@ fn every_kind_of_mark_is_written() {
 }
 
 #[test]
+fn typed_text_embeds_the_bundled_font() {
+    let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
+    let note = shapes(
+        r##"[{"kind":"text","x":20,"y":20,"width":150,"text":"Δp = ρgh, ≈ 3 kPa","color":"#1f2328","fontSize":10}]"##,
+    );
+    let output = annotated_pdf(
+        &source,
+        &[PageAnnotations {
+            page_number: 1,
+            shapes: note.iter().collect(),
+        }],
+        Some(crate::document_study_guide_export::plain_sans_font().to_vec()),
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&output);
+    // Embedded as a Unicode (Type 0) font rather than drawn in Helvetica.
+    assert!(text.contains("/FontFile2"), "the font is embedded");
+    assert!(text.contains("/Subtype /Type0"));
+}
+
+#[test]
 fn a_page_the_pdf_lacks_is_refused() {
     let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
     let marks = highlight();

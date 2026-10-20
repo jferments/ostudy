@@ -77,7 +77,8 @@ fn write_failed(error: impl std::fmt::Display) -> ExportError {
 }
 
 /// The source PDF with every page in `pages` drawn over. `font` is a Unicode
-/// TrueType font for typed text; without one, text uses Helvetica and
+/// TrueType font for typed text (the app passes its bundled IBM Plex Sans);
+/// without one, text uses Helvetica and
 /// characters it lacks show as `?`.
 pub fn annotated_pdf(
     source: &[u8],
