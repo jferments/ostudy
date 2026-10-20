@@ -21,8 +21,8 @@ pub(crate) const LESSON_CONTENT_VERSION: u32 = 1;
 
 pub(crate) const MAX_TITLE_CHARS: usize = 160;
 const MAX_SUMMARY_CHARS: usize = 600;
-const MAX_OBJECTIVES: usize = 6;
-const MAX_OBJECTIVE_CHARS: usize = 260;
+pub(crate) const MAX_OBJECTIVES: usize = 6;
+pub(crate) const MAX_OBJECTIVE_CHARS: usize = 260;
 pub(crate) const MAX_STEPS: usize = 24;
 const MAX_STEP_KEY_CHARS: usize = 40;
 const MAX_BLOCKS_PER_STEP: usize = 12;
@@ -34,8 +34,8 @@ const MAX_TABLE_COLUMNS: usize = 8;
 const MAX_TABLE_ROWS: usize = 32;
 const MAX_TABLE_CELL_CHARS: usize = 1_000;
 const MAX_NARRATION_CHARS: usize = 8_000;
-const MAX_SLIDE_POINTS: usize = 6;
-const MAX_SLIDE_POINT_CHARS: usize = 200;
+pub(crate) const MAX_SLIDE_POINTS: usize = 6;
+pub(crate) const MAX_SLIDE_POINT_CHARS: usize = 200;
 const MAX_UNITS_PER_STEP: usize = 32;
 /// Matches the revision table's own content check.
 pub(crate) const MAX_CONTENT_BYTES: usize = 1_048_576;

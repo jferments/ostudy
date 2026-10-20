@@ -177,9 +177,9 @@ describe("TemplatesScreen", () => {
   it("loads one full template graph only when editing", async () => {
     renderTemplates();
 
-    expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
+    expect(await screen.findByText("1 field · 1 card")).toBeTruthy();
     expect(templatesIpc.getCardTemplate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Edit Concept review" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Concept review/u }));
 
     expect(await screen.findByRole("heading", { name: "Edit card template" })).toBeTruthy();
     expect(templatesIpc.getCardTemplate).toHaveBeenCalledWith(template.id);
@@ -188,10 +188,8 @@ describe("TemplatesScreen", () => {
   it("deletes only the authoring template after shared confirmation", async () => {
     const showToast = renderTemplates();
 
-    expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
-    const deleteButton = screen.getByRole("button", { name: "Delete Concept review" });
-    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
-    fireEvent.click(deleteButton);
+    fireEvent.click(await screen.findByRole("button", { name: "More for Concept review" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     expect(
       await screen.findByRole("alertdialog", { name: "Delete “Concept review”?" }),
     ).toBeTruthy();

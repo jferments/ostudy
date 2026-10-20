@@ -4,11 +4,18 @@ import { getErrorMessage } from "../ipc/common";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Badge } from "../ui/primitives/Badge";
 import { Panel } from "../ui/primitives/Panel";
+import { Button } from "../ui/primitives/Button";
+import { Icon } from "../ui/icons/Icon";
+import { sourcePassageFor, type SourcePassage } from "./sourcePassage";
 
-interface SourceCitationPanelProps { deckId?: string; noteId?: string; compact?: boolean; }
+interface SourceCitationPanelProps {
+  deckId?: string; noteId?: string; compact?: boolean;
+  /** Offered for a cited page of a PDF still in the library; other citations stay text. */
+  onOpenPassage?: (passage: SourcePassage) => void;
+}
 
 /** Domain-facing provenance. Snapshot citations remain readable after source removal. */
-export function SourceCitationPanel({ deckId, noteId, compact = false }: SourceCitationPanelProps) {
+export function SourceCitationPanel({ deckId, noteId, compact = false, onOpenPassage }: SourceCitationPanelProps) {
   const [citations, setCitations] = useState<SourceCitation[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -32,15 +39,23 @@ export function SourceCitationPanel({ deckId, noteId, compact = false }: SourceC
         <span>{citations.length} preserved {citations.length === 1 ? "citation" : "citations"}</span>
       </div>
       <div className="tw:grid tw:min-w-0 tw:gap-3">
-        {citations.map((citation) => (
-          <article className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:rounded-lg tw:bg-background tw:p-3" key={citation.citationId}>
-            <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words tw:[&>span]:text-small tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground">
-              <strong>{citation.sourceTitle}</strong><span>{formatSource(citation)}</span>
-              {citation.sourceLocator ? <small>{formatLocator(citation)}</small> : null}
-            </div>
-            {citation.sourceRemoved ? <Badge tone="warning">Source removed · citation preserved</Badge> : null}
-          </article>
-        ))}
+        {citations.map((citation) => {
+          const passage = onOpenPassage ? sourcePassageFor(citation) : null;
+          return (
+            <article className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3 tw:rounded-lg tw:bg-background tw:p-3" key={citation.citationId}>
+              <div className="tw:grid tw:min-w-0 tw:gap-1 tw:break-words tw:[&>span]:text-small tw:[&>span]:text-muted-foreground tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground">
+                <strong>{citation.sourceTitle}</strong><span>{formatSource(citation)}</span>
+                {citation.sourceLocator ? <small>{formatLocator(citation)}</small> : null}
+              </div>
+              {citation.sourceRemoved ? <Badge tone="warning">Source removed · citation preserved</Badge> : null}
+              {passage && onOpenPassage ? (
+                <Button size="small" onClick={() => onOpenPassage(passage)}>
+                  <Icon name="document" size={16} />Open page {passage.pageNumber}
+                </Button>
+              ) : null}
+            </article>
+          );
+        })}
       </div>
     </Panel>
   );

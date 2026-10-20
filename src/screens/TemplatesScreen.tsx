@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ShowToast } from "../components/Toast";
 import { TemplatesController } from "../controllers/templatesController";
 import { useDurableDraft } from "../controllers/useDurableDraft";
@@ -7,21 +7,23 @@ import type { Asset } from "../ipc/assets";
 import { getErrorMessage, type RichDocument } from "../ipc/common";
 import type { CardTemplate, CardTemplateFieldInput, CardTemplateRuleInput, CardTemplateSummary } from "../ipc/templates";
 import { useConfirm } from "../ui/overlays/overlayContext";
-import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
+import { OverflowMenu } from "../ui/overlays/OverflowMenu";
+import { Icon } from "../ui/icons/Icon";
+import { ListRow, ListRowMedia, ListRows } from "../ui/primitives/ListRow";
 import { PageScaffold, PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
 import { Badge } from "../ui/primitives/Badge";
 import { Panel } from "../ui/primitives/Panel";
-import { Surface } from "../ui/primitives/Surface";
 import { FormField } from "../ui/primitives/FormField";
 import { TextField } from "../ui/primitives/TextField";
 import { Textarea } from "../ui/primitives/FormControls";
 import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
-import { EmptyState } from "../ui/primitives/EmptyState";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 
 interface TemplatesScreenProps {
   onBack?: () => void | Promise<void>;
+  /** The built-in formats, listed above the learner's own templates. */
+  builtIn?: ReactNode;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -32,7 +34,7 @@ interface TemplateDraft {
   fields: FieldDraft[]; rules: RuleDraft[]; assets: Asset[];
 }
 
-export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesScreenProps) {
+export function TemplatesScreen({ onBack, builtIn, onDirtyChange, showToast }: TemplatesScreenProps) {
   const [templates, setTemplates] = useState<CardTemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
@@ -247,31 +249,35 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
     </PageScaffold>;
   }
 
-  return <PageScaffold width="wide">
-    {onBack ? <Button variant="back" onClick={() => void onBack()}>← Decks</Button> : null}
-    <PageHeader title="Templates" eyebrow="Author once · reuse often" description="Build reusable rich entry forms that generate permanent Basic cards." actions={<Button variant="primary" onClick={beginCreate}>New template</Button>} />
-    <div className="tw:grid tw:gap-6">
+  return <div className="tw:grid tw:min-w-0 tw:gap-5">
+    {onBack ? <Button variant="back" className="tw:justify-self-start" onClick={() => void onBack()}>← Decks</Button> : null}
+    {builtIn}
+    <Panel title="Your templates" aria-busy={isLoading || isOpening}
+      actions={<Button variant="secondary" onClick={beginCreate}><Icon name="plus" size={16} />New template</Button>}>
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {isLoading ? <InlineProgress>Loading templates…</InlineProgress> : null}
       {isOpening ? <InlineProgress>Opening template…</InlineProgress> : null}
-      {!isLoading && templates.length === 0 ? <EmptyState title="Create a reusable card template" description="Define the facts you enter once, then design one or more cards that use those fields as rich text, lists, or images." actions={<Button variant="primary" onClick={beginCreate}>Create template</Button>} /> : null}
-      {templates.length > 0 ? <section className="tw:grid tw:gap-4 tw:lg:grid-cols-2" aria-label="Card templates">
-        {templates.map((template) => <Surface as="article" key={template.id} interactive className="tw:gap-0 tw:py-0">
-          <Button variant="ghost" className="tw:grid tw:h-auto tw:w-full tw:justify-start tw:justify-items-start tw:gap-3 tw:whitespace-normal tw:p-6 tw:text-left" disabled={isOpening} onClick={() => void beginEdit(template)}>
-            <strong className="tw:break-words tw:text-section tw:font-semibold">{template.name}</strong>
-            {template.description ? <span className="tw:break-words tw:text-label tw:font-normal tw:text-muted-foreground">{template.description}</span> : null}
-            <span className="tw:flex tw:flex-wrap tw:gap-2"><Badge>{template.fieldCount} fields</Badge><Badge>{template.generatedCardRuleCount} cards</Badge>{template.imageCount > 0 ? <Badge>{template.imageCount} images</Badge> : null}</span>
-          </Button>
-          <div className="tw:flex tw:justify-end tw:border-0 tw:border-t tw:border-solid tw:border-border tw:px-4 tw:py-3">
-            <ResponsiveActionGroup label={`Actions for ${template.name}`} actions={[
-              { id: `edit-${template.id}`, label: `Edit ${template.name}`, icon: "edit", presentation: "icon", placement: "always-visible", disabled: isOpening, onSelect: () => void beginEdit(template) },
-              { id: `delete-${template.id}`, label: `Delete ${template.name}`, icon: "delete", presentation: "icon", placement: "wide-only", destructive: true, onSelect: () => void removeTemplate(template) },
-            ]} overflowLabel={`More actions for ${template.name}`} />
-          </div>
-        </Surface>)}
-      </section> : null}
-    </div>
-  </PageScaffold>;
+      {templates.length > 0 ? <ListRows aria-label="Your templates">
+        {templates.map((template) => <ListRow key={template.id} className="tw:items-center"
+          leading={<ListRowMedia label={initials(template.name)} className="tw:normal-case" />}
+          title={template.name}
+          meta={[`${template.fieldCount} ${template.fieldCount === 1 ? "field" : "fields"}`, `${template.generatedCardRuleCount} ${template.generatedCardRuleCount === 1 ? "card" : "cards"}`,
+            ...(template.imageCount > 0 ? [`${template.imageCount} ${template.imageCount === 1 ? "image" : "images"}`] : [])].join(" · ")}
+          onActivate={() => void beginEdit(template)} activateDisabled={isOpening}
+          trailing={<OverflowMenu label={`More for ${template.name}`} items={[
+            { id: "edit", label: "Edit", disabled: isOpening, onSelect: () => void beginEdit(template) },
+            { id: "delete", label: "Delete", destructive: true, onSelect: () => void removeTemplate(template) },
+          ]} />} />)}
+      </ListRows> : null}
+    </Panel>
+  </div>;
+}
+
+/** The first letters of a template's first two words, for its row tile. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/u).filter(Boolean);
+  const letters = words.length > 1 ? `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}` : (words[0] ?? "").slice(0, 2);
+  return letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase();
 }
 
 function newTemplateDraft(): TemplateDraft {

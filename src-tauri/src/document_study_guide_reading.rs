@@ -1,4 +1,4 @@
-//! How far a learner has read each document study guide (release schema 11).
+//! How far a learner has read each document study guide (release schema 12).
 //!
 //! A section is read when the learner marked it read and its text is still the
 //! text they read: marks are kept by topic with the section's content hash, so

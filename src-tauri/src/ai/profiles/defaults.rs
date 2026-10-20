@@ -114,6 +114,14 @@ pub(super) fn load_task_defaults(
     })
 }
 
+/// The connection assigned to a task, if one is.
+pub(crate) fn task_profile_id(
+    connection: &Connection,
+    task: AiTaskKind,
+) -> Result<Option<String>, CommandError> {
+    task_assignment(connection, task).map(|assignment| assignment.map(|value| value.profile_id))
+}
+
 fn task_assignment(
     connection: &Connection,
     task: AiTaskKind,
@@ -352,9 +360,9 @@ pub(crate) fn load_task_profile_request(
         CommandError::new(
             "ai_task_profile_required",
             match task {
-                AiTaskKind::FlashcardGeneration => "Choose a default Flashcard generation model in Settings → AI/LLM before analyzing a document.",
-                AiTaskKind::Tutor => "Choose a default Tutor model in Settings → AI/LLM before starting a conversation.",
-                AiTaskKind::Embeddings => "Choose and test a Semantic embeddings model in Settings → AI/LLM before semantic preparation.",
+                AiTaskKind::FlashcardGeneration => "Choose a default Flashcard generation model in Settings → AI before analyzing a document.",
+                AiTaskKind::Tutor => "Choose a default Tutor model in Settings → AI before starting a conversation.",
+                AiTaskKind::Embeddings => "Choose and test a Semantic embeddings model in Settings → AI before semantic preparation.",
             },
         )
     })?;

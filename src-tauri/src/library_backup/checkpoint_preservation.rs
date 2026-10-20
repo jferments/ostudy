@@ -182,9 +182,24 @@ const CONTRACTS: &[Contract] = &[
             description: "card mark link",
         }],
     },
-    // Guides are read in the app; the upgrade only creates the reading tables.
+    // Narration is made in the app; the upgrade only creates its tables.
     Contract {
         version: 11,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "speech_settings",
+                description: "speech setting",
+            },
+            Rule::AddedEmpty {
+                table: "speech_segments",
+                description: "lesson narration",
+            },
+        ],
+    },
+    // Guides are read in the app; the upgrade only creates the reading tables.
+    Contract {
+        version: 12,
         setup: "",
         rules: &[
             Rule::AddedEmpty {

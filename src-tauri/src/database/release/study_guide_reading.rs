@@ -1,6 +1,6 @@
-//! Additive release-v11 admission for study guide reading.
+//! Additive release-v12 admission for study guide reading.
 //!
-//! Migration 11 adds the sections a learner marked as read in each document's
+//! Migration 12 adds the sections a learner marked as read in each document's
 //! guide and the section they last opened, with their indexes. Both are written
 //! in the reader; an upgrade writes none, so the tables start empty.
 
@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 11;
+const VERSION: i64 = 12;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -32,11 +32,11 @@ mod tests {
         "document_study_guide_positions",
     ];
 
-    /// A schema-10 library as the previous release left it, with one document.
-    fn schema_ten() -> Connection {
-        let connection = release_library(10);
+    /// A schema-11 library as the previous release left it, with one document.
+    fn schema_eleven() -> Connection {
+        let connection = release_library(11);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 10);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 11);
         connection
     }
 
@@ -45,8 +45,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_ten_upgrades_additively_with_nothing_read() {
-        let mut connection = schema_ten();
+    fn schema_eleven_upgrades_additively_with_nothing_read() {
+        let mut connection = schema_eleven();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
@@ -74,21 +74,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_eleventh_migration_rolls_back_to_schema_ten_and_retries() {
-        let mut connection = schema_ten();
+    fn interrupted_twelfth_migration_rolls_back_to_schema_eleven_and_retries() {
+        let mut connection = schema_eleven();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_reading_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=11
+                 WHEN NEW.version=12
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 10);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 11);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 10).unwrap();
+        validate_schema(&connection, 11).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_reading_migration;")
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_reading_schemas_fail_read_only() {
-        let mut connection = schema_ten();
+        let mut connection = schema_eleven();
         for unregistered in [
             migration_sql(VERSION),
             "CREATE INDEX document_study_guide_positions_by_opened ON documents(id);",

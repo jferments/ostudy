@@ -18,23 +18,24 @@ A model available through OpenRouter is not a dedicated adapter for its original
 
 ## Add a provider
 
-Open **Settings → AI/LLM** and choose **Add provider** in **AI providers**. Pick the **Provider**. For llama.cpp enter its **Server URL**; for a cloud provider enter the **API key**. Choose **Connect**, then **Save provider**. Saved providers appear as tiles marked **Ready**, **Needs API key** or **Disabled**; select one to change it. **Refresh model catalog** reloads the provider's model list.
+Open **Settings → AI** and choose **Add a service** in **Services**. Pick the **Service**. For llama.cpp enter its **Server address**; for a cloud service enter the **API key**, and leave **Keep the key on this device** on to save it in the system's secure storage, or turn it off to keep it for this session only. Choose **Connect**. Saved services are listed with **Ready**, **Needs a key** or **Off**; select one to change it, or use its menu to **Edit** or **Remove** it. **Refresh models** reloads the service's model list.
 
-**Advanced settings** under a provider hold the **Profile name**, the **Provider inactivity timeout**, **Enable this provider**, **API key storage** (**Save securely** or **This session only**), **Remove API key** and **Delete provider**. A llama.cpp provider also offers **Server authentication** and, for a private-network address over plain HTTP, **Allow unencrypted LAN connection**. An OpenRouter provider offers **Require OpenRouter zero-data-retention routing**.
+**More options** in a service hold **Use this service**, **Give up after** (the inactivity timeout) and **Remove API key**. A llama.cpp service also offers **Server needs a key** and, for a private-network address over plain HTTP, **Allow an unencrypted network connection**. An OpenRouter service offers **Only zero-data-retention routes**.
 
-The first OpenRouter provider you save with a key also fills any task that has no model yet with suggested OpenRouter models. That does not test them; change or test them like any other choice.
+The first OpenRouter service you save with a key also fills any task that has no model yet with suggested OpenRouter models. That does not test them; change or test them like any other choice.
 
 ## Choose a model for each task
 
-**Default AI models**, at the top of the same tab, has one row per task:
+**Default for each task**, below **Services** on the same page, has one row per task:
 
 | Task | Used for | Reasoning |
 | --- | --- | --- |
-| **Flashcard and study-guide generation** | Reading documents and image collections, making cards, study guides and collection study materials | Always off |
-| **Interactive tutor** | Tutor chat, including **Ask Tutor** from a study guide | Your choice; starts at Low |
-| **Semantic embeddings** | Searching saved knowledge and conversations in Tutor | Not used; llama.cpp and OpenRouter only |
+| **Cards and guides** | Reading documents and image collections, making cards, study guides and collection study materials | Always off |
+| **Tutor** | Tutor chat, including **Ask Tutor** from a study guide | Your choice; starts at Low |
+| **Search** | Searching saved knowledge and conversations in Tutor | Not used; llama.cpp and OpenRouter only |
+| **Voice** | Reading lesson steps aloud with **Listen** | Not used; OpenRouter only. The model is **Drama 3** (the default) or **Kokoro**, which adds a voice choice in the Reasoning column |
 
-In each row choose the **Provider** and then the **Model**. The choice is saved as soon as you make it. **Test model** checks that the selected model can do that task; a check mark and a message show the result, and a failure names the step that failed. Embedding models also have **Embedding options** for dimensions and input policy.
+In each row choose the **Service** and then the **Model**. The choice is saved as soon as you make it. The row's menu has **Test model**, which checks that the selected model can do that task (a check mark and a message show the result, and a failure names the step that failed), and **Clear**, which leaves the task without a model. The **Search** row's menu also has **Embedding options** for dimensions and input policy. The **Voice** row's menu has only **Clear**: a voice is checked by listening to a lesson step, and each step it reads costs about a cent or less the first time, after which its audio is kept.
 
 ## Reasoning
 

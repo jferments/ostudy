@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as documents from "../ipc/documents";
@@ -67,5 +67,24 @@ describe("SourceCitationPanel", () => {
       expect(documents.listDeckSourceCitations).toHaveBeenCalledWith("f".repeat(32)),
     );
     expect(container.querySelector("[data-source-citation-panel]")).toBeNull();
+  });
+
+  it("offers the cited page of a PDF still in the library", async () => {
+    vi.mocked(documents.getNoteSourceCitation).mockResolvedValue(citation);
+    const onOpenPassage = vi.fn();
+
+    render(<SourceCitationPanel noteId={"e".repeat(32)} compact onOpenPassage={onOpenPassage} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open page 8" }));
+    expect(onOpenPassage).toHaveBeenCalledWith({ documentId: "b".repeat(32), title: "Shock physiology", pageNumber: 8 });
+  });
+
+  it("keeps a removed source as text", async () => {
+    vi.mocked(documents.getNoteSourceCitation).mockResolvedValue({ ...citation, sourceRemoved: true });
+
+    render(<SourceCitationPanel noteId={"e".repeat(32)} compact onOpenPassage={vi.fn()} />);
+
+    expect(await screen.findByText("Source removed · citation preserved")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Open page/ })).toBeNull();
   });
 });

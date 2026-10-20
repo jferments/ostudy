@@ -152,6 +152,14 @@ describe("ActivePractice", () => {
     expect(Boolean(schedule.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(schedule.querySelector("svg")).not.toBeNull();
   });
+  it("opens the card's cited page from beside Edit card once the answer shows", () => {
+    const onOpenSource = vi.fn();
+    const { rerender, props } = renderActive({ sourcePage: 12, onOpenSource });
+    expect(screen.queryByRole("button", { name: "Source, page 12" })).toBeNull();
+    rerender(<LayoutModeProvider><ActivePractice {...props} revealed previewSet={previews} /></LayoutModeProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Source, page 12" }));
+    expect(onOpenSource).toHaveBeenCalledOnce();
+  });
   it("opens the card editor from an active session", () => {
     const { props } = renderActive(); fireEvent.click(screen.getByRole("button", { name: "Edit card" })); expect(props.onEdit).toHaveBeenCalledOnce();
   });
@@ -227,5 +235,12 @@ describe("ActivePractice on a phone", () => {
     renderActive({ isManaging: true });
     expect((screen.getByRole("button", { name: "Card actions" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "End session" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("offers the card's source in its menu once the answer shows", () => {
+    const onOpenSource = vi.fn();
+    renderActive({ sourcePage: 12, onOpenSource, revealed: true, previewSet: previews });
+    fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Card actions" })).getByRole("button", { name: "Source, page 12" }));
+    expect(onOpenSource).toHaveBeenCalledOnce();
   });
 });

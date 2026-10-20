@@ -1,4 +1,4 @@
--- Release migration 11: how far a learner has read each document study guide.
+-- Release migration 12: how far a learner has read each document study guide.
 --
 -- document_study_guide_section_reads keeps one row for each guide section the
 -- learner marked as read, keyed by the section's topic, with the hash of the

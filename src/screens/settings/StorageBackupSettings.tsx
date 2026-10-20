@@ -1,4 +1,3 @@
-import { Checkbox } from "../../ui/primitives/FormControls";
 import { Panel } from "../../ui/primitives/Panel";
 import { useRef, useState } from "react";
 
@@ -12,7 +11,9 @@ import type { AppSettings } from "../../ipc/settings";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
+import { SwitchRow } from "./SettingsControls";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
@@ -118,21 +119,12 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
         <InlineNotice kind="error">{errorMessage}</InlineNotice>
       ) : null}
 
-      <Panel className="tw:min-w-0 tw:self-start" headingLevel={2} title="Data safety">
-        <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
-          <span>
-            <strong>Confirm deletions</strong>
-            <small>Ask before destructive content removal.</small>
-          </span>
-          <Checkbox
-            checked={draft.confirmDeletions}
-            onCheckedChange={(checked) => update({ confirmDeletions: checked })}
-          />
-        </label>
+      <Panel className="tw:min-w-0 tw:self-start" title="Backup"
+        actions={<HelpTrigger topicId="settings.backup" label="Help with backups" />}>
         <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
           <Button
             type="button"
-            variant="secondary"
+            variant="primary"
             disabled={isTransferringLibrary}
             onClick={() => void backupLibrary()}
           >
@@ -157,15 +149,14 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             Restore backup
           </Button>
         </div>
-        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
-          Complete backups include documents, source files, study guides, collections, Tutor history,
-          decks, templates, managed images, drafts, schedules, reviews, provider metadata, and settings.
-        </p>
-        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
-          API keys and session-only credentials are never stored in SQLite and are never included
-          in an ostudy backup.
-        </p>
         {transferLabel ? <InlineProgress>{transferLabel}</InlineProgress> : null}
+        <div className="tw:border-0 tw:border-t tw:border-solid tw:border-border/70">
+          <SwitchRow
+            label="Confirm deletions"
+            checked={draft.confirmDeletions}
+            onChange={(confirmDeletions) => update({ confirmDeletions })}
+          />
+        </div>
       </Panel>
 
       <DeviceSyncSettings showToast={showToast} />
