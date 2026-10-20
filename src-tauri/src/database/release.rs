@@ -21,6 +21,9 @@ mod deck_merge;
 #[path = "release/document_annotations.rs"]
 mod document_annotations;
 
+#[path = "release/document_figures.rs"]
+mod document_figures;
+
 #[path = "release/generation_instructions.rs"]
 mod generation_instructions;
 
@@ -56,7 +59,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 12;
+pub(crate) const SCHEMA_VERSION: i64 = 13;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -136,6 +139,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "study_guide_reading",
         checksum: "b4dec3afded959aeaf1df5267d81790bb5a9c7de7b0bfd84bf2679ae5a3e8b4e",
         sql: include_str!("../../schema/0012_study_guide_reading.sql"),
+    },
+    ReleaseMigration {
+        version: 13,
+        name: "document_figures",
+        checksum: "06bc6a3a985fc1accc63029308d174696a476ceaf75a39d6eba4fae8688f5830",
+        sql: include_str!("../../schema/0013_document_figures.sql"),
     },
 ];
 
@@ -350,6 +359,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     note_annotation_sources::validate_schema(connection, user_version)?;
     lesson_narration::validate_schema(connection, user_version)?;
     study_guide_reading::validate_schema(connection, user_version)?;
+    document_figures::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as collectionIpc from "../ipc/collections";
 import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as annotationIpc from "../ipc/documentAnnotations";
+import * as figureIpc from "../ipc/documentFigures";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as studyMaterialsIpc from "../ipc/studyMaterials";
@@ -28,6 +29,13 @@ vi.mock("../ipc/documentAnnotations", () => ({
   getDocumentAnnotations: vi.fn(),
   applyDocumentAnnotationChanges: vi.fn(),
   MAX_ANNOTATION_CHANGES_PER_REQUEST: 500,
+  renderDocumentPageTile: vi.fn(),
+}));
+vi.mock("../ipc/documentFigures", () => ({
+  getDocumentFigures: vi.fn(),
+  findDocumentFigures: vi.fn(),
+  setDocumentFiguresUseImages: vi.fn(),
+  setDocumentFigureHidden: vi.fn(),
 }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
@@ -230,13 +238,22 @@ describe("DocumentsScreen", () => {
       documentId,
     });
     vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
-    vi.mocked(documentIpc.listDocuments)
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([completed]);
+    // The library holds the document only once it is imported, which now
+    // waits for the import dialog while Documents keeps polling.
+    vi.mocked(documentIpc.listDocuments).mockImplementation(async () => (
+      vi.mocked(documentIpc.importDocument).mock.calls.length > 0 ? [completed] : []
+    ));
     const { showToast, refreshDecks } = renderDocuments();
     await screen.findByRole("heading", { name: "No documents yet" });
 
     await chooseUpload("Document…");
+    // A PDF asks whether to use its images, which are on unless turned off.
+    const importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    expect(within(importDialog).getByText("cardiac-physiology.pdf")).toBeTruthy();
+    expect(within(importDialog).getByRole("checkbox", { name: "Use images from this document" })
+      .getAttribute("aria-checked")).toBe("true");
+    expect(documentIpc.importDocument).not.toHaveBeenCalled();
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Import" }));
 
     await waitFor(() => {
       expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
@@ -244,7 +261,7 @@ describe("DocumentsScreen", () => {
         "info",
         "Document processing started. You can add more documents while this job runs.",
       );
-      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: true });
       expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
@@ -260,6 +277,38 @@ describe("DocumentsScreen", () => {
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("12 sec")).toBeTruthy();
     expect(within(dialog).getByText("45,678")).toBeTruthy();
+  });
+
+  it("imports a PDF without its images when the learner turns them off, and not at all on cancel", async () => {
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "document",
+      detectedKind: "pdf",
+      displayName: "renal.pdf",
+      mediaType: "application/pdf",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
+    vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId });
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
+    renderDocuments();
+    await screen.findByRole("heading", { name: "No documents yet" });
+
+    await chooseUpload("Document…");
+    let importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import document" })).toBeNull());
+    expect(documentIpc.importDocument).not.toHaveBeenCalled();
+
+    await chooseUpload("Document…");
+    importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    fireEvent.click(within(importDialog).getByRole("checkbox", { name: "Use images from this document" }));
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Import" }));
+    await waitFor(() => {
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: false });
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+    });
   });
 
   it("shows detected non-PDF formats with truthful canonical section counts in metadata", async () => {
@@ -567,7 +616,7 @@ describe("DocumentsScreen", () => {
 
     const menu = await openDocumentActions();
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Annotate", "Make more cards…", "Make a study guide", "Rename…", "Details", "Delete",
+      "Annotate", "Figures", "Make more cards…", "Make a study guide", "Rename…", "Details", "Delete",
     ]);
   });
 
@@ -642,6 +691,22 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
     expect(annotationIpc.applyDocumentAnnotationChanges).not.toHaveBeenCalled();
+  });
+
+  it("opens a PDF's figures and returns to the list", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue({
+      documentId, useImages: true, state: "none", scannedAt: null, figures: [],
+    });
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Figures");
+
+    expect(await screen.findByText("No figures found yet")).toBeTruthy();
+    expect(figureIpc.getDocumentFigures).toHaveBeenCalledWith(documentId);
+    fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
+    expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
   });
 
   it("offers annotation only for PDFs whose pages were drawn", async () => {

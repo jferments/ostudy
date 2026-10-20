@@ -279,6 +279,18 @@ describe("Document collections workspace", () => {
     expect(screen.queryByRole("menuitem", { name: "Annotate" })).toBeNull();
   });
 
+  it("opens a PDF's figures from its collection row", async () => {
+    const onShowFigures = vi.fn();
+    render(
+      <OverlayProvider>
+        <Workspace documents={[document]} onShowFigures={onShowFigures} />
+      </OverlayProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Figures" }));
+    expect(onShowFigures).toHaveBeenCalledWith(document);
+  });
+
   it("shows determinate collection-generation progress from durable artifact status", async () => {
     let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
     const running = {

@@ -46,6 +46,7 @@ export function DocumentCollectionsWorkspace({
   onOpenGuide,
   onOpenDocument,
   onAnnotateDocument,
+  onShowFigures,
   onRenameDocument,
   onUploadInto,
   onContainedDocumentIdsChange,
@@ -59,6 +60,7 @@ export function DocumentCollectionsWorkspace({
   onOpenGuide?: (collectionId: string, title: string) => void;
   onOpenDocument?: (document: DocumentSummary) => void;
   onAnnotateDocument?: (document: DocumentSummary) => void;
+  onShowFigures?: (document: DocumentSummary) => void;
   onRenameDocument?: (document: DocumentSummary) => void;
   /** Uploads a new document straight into the collection. */
   onUploadInto?: (collectionId: string) => void;
@@ -157,6 +159,7 @@ export function DocumentCollectionsWorkspace({
                 onOpenGuide={onOpenGuide}
                 onOpenDocument={onOpenDocument}
                 onAnnotateDocument={onAnnotateDocument}
+                onShowFigures={onShowFigures}
                 onRenameDocument={onRenameDocument}
                 onRename={() => open({ kind: "rename", folder, name: folder.name })}
                 onDelete={() => void deleteCurrent(folder)}
@@ -207,6 +210,7 @@ function CollectionCard({
   onOpenGuide,
   onOpenDocument,
   onAnnotateDocument,
+  onShowFigures,
   onRenameDocument,
   onRename,
   onDelete,
@@ -225,6 +229,7 @@ function CollectionCard({
   onOpenGuide?: (collectionId: string, title: string) => void;
   onOpenDocument?: (document: DocumentSummary) => void;
   onAnnotateDocument?: (document: DocumentSummary) => void;
+  onShowFigures?: (document: DocumentSummary) => void;
   onRenameDocument?: (document: DocumentSummary) => void;
   onRename: () => void;
   onDelete: () => void;
@@ -281,6 +286,7 @@ function CollectionCard({
                     disabled={mutationBusy}
                     onOpen={onOpenDocument}
                     onAnnotate={onAnnotateDocument}
+                    onShowFigures={onShowFigures}
                     onRenameDocument={onRenameDocument}
                     onRanges={onRanges}
                     onMove={onMove}
@@ -319,7 +325,7 @@ function CollectionCard({
   );
 }
 
-function CollectionMember({ membership, organization, document, canMove, disabled, onOpen, onAnnotate, onRenameDocument, onRanges, onMove, onRemove }: {
+function CollectionMember({ membership, organization, document, canMove, disabled, onOpen, onAnnotate, onShowFigures, onRenameDocument, onRanges, onMove, onRemove }: {
   membership: DocumentCollectionMembership;
   organization: DocumentCollectionOrganization;
   document: DocumentSummary | undefined;
@@ -327,6 +333,7 @@ function CollectionMember({ membership, organization, document, canMove, disable
   disabled: boolean;
   onOpen?: (document: DocumentSummary) => void;
   onAnnotate?: (document: DocumentSummary) => void;
+  onShowFigures?: (document: DocumentSummary) => void;
   onRenameDocument?: (document: DocumentSummary) => void;
   onRanges: (membership: DocumentCollectionMembership) => void;
   onMove: (membership: DocumentCollectionMembership) => void;
@@ -337,6 +344,9 @@ function CollectionMember({ membership, organization, document, canMove, disable
   if (document && onOpen) items.push({ id: "open", label: "Open", onSelect: () => onOpen(document) });
   if (document && onAnnotate && canAnnotateDocument(document)) {
     items.push({ id: "annotate", label: "Annotate", onSelect: () => onAnnotate(document) });
+  }
+  if (document && onShowFigures && canAnnotateDocument(document)) {
+    items.push({ id: "figures", label: "Figures", onSelect: () => onShowFigures(document) });
   }
   if (document && onRenameDocument) {
     items.push({ id: "rename", label: "Rename…", onSelect: () => onRenameDocument(document) });

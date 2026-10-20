@@ -46,6 +46,10 @@ const DOCUMENT_KINDS: &[ExternalFileKind] = &[
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportDocumentInput {
     pub staged_file_id: String,
+    /// Whether to find and use the document's figures; a PDF imported without
+    /// a choice uses them.
+    #[serde(default)]
+    pub use_images: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -66,13 +70,19 @@ pub fn import_document(
     paths: State<'_, AppPaths>,
     input: ImportDocumentInput,
 ) -> Result<ImportedDocumentDto, CommandError> {
-    import_staged_document(database.inner(), paths.inner(), &input.staged_file_id)
+    import_staged_document(
+        database.inner(),
+        paths.inner(),
+        &input.staged_file_id,
+        input.use_images,
+    )
 }
 
 pub(crate) fn import_staged_document(
     database: &Database,
     paths: &AppPaths,
     staged_file_id: &str,
+    use_images: Option<bool>,
 ) -> Result<ImportedDocumentDto, CommandError> {
     validate_entity_id(staged_file_id, "staged document")?;
     if let Some(result) = database.with_connection(|connection| {
@@ -97,6 +107,7 @@ pub(crate) fn import_staged_document(
         &staged.display_name,
         staged_file_id,
         format,
+        use_images,
     )
 }
 
@@ -107,6 +118,7 @@ fn import_managed_document(
     source_display_name: &str,
     staged_file_id: &str,
     format: DocumentFormat,
+    use_images: Option<bool>,
 ) -> Result<ImportedDocumentDto, CommandError> {
     let source = fs::canonicalize(source_path).map_err(CommandError::io)?;
     if !source.is_file() {
@@ -211,6 +223,14 @@ fn import_managed_document(
                     error,
                 )
             })?;
+        if let (DocumentFormat::Pdf, Some(use_images)) = (format, use_images) {
+            crate::document_figures::record_import_choice(
+                &transaction,
+                &document_id,
+                use_images,
+                now,
+            )?;
+        }
         external_files::mark_import_consumed(&transaction, staged_file_id, &result, now)?;
         transaction.commit().map_err(CommandError::database)
     });

@@ -29,6 +29,10 @@ import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
+import { DocumentFiguresWorkspace } from "./documents/figures/DocumentFiguresWorkspace";
+import { ImportImagesDialog } from "./documents/figures/ImportImagesDialog";
+import type { ImportDocumentOptions } from "../ipc/documents";
+import type { StagedExternalFile } from "../ipc/externalFiles";
 import { type CollectionDialog, DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
 import { useDocumentCollectionsController } from "./documents/useDocumentCollectionsController";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
@@ -92,6 +96,20 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
+  const [viewingFigures, setViewingFigures] = useState<{ id: string; title: string } | null>(null);
+  const closeFigures = useCallback(() => setViewingFigures(null), []);
+  // A chosen PDF waits here while the learner says whether to use its images.
+  const [importing, setImporting] = useState<{
+    fileName: string;
+    resolve: (options: ImportDocumentOptions | null) => void;
+  } | null>(null);
+  const chooseImportOptions = (selected: StagedExternalFile) => selected.detectedKind === "pdf"
+    ? new Promise<ImportDocumentOptions | null>((resolve) => setImporting({ fileName: selected.displayName, resolve }))
+    : Promise.resolve({});
+  const finishImporting = (options: ImportDocumentOptions | null) => {
+    importing?.resolve(options);
+    setImporting(null);
+  };
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
@@ -109,7 +127,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   const openDocument = (document: DocumentSummary) => document.sourceFormat === "image_bundle"
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
   const uploadInto = (collectionId: string) => void uploadDocument(undefined,
-    (documentId) => latestCollections.current.addDocument(collectionId, documentId));
+    (documentId) => latestCollections.current.addDocument(collectionId, documentId), chooseImportOptions);
 
   if (collectionGuide) {
     return (
@@ -133,6 +151,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+      />
+    );
+  }
+
+  if (viewingFigures) {
+    return (
+      <DocumentFiguresWorkspace
+        documentId={viewingFigures.id}
+        title={viewingFigures.title}
+        onClose={closeFigures}
+        showToast={props.showToast}
       />
     );
   }
@@ -167,7 +196,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
               triggerVariant="primary"
               disabled={isUploading}
               items={[
-                { id: "document", label: "Document…", onSelect: () => void uploadDocument() },
+                { id: "document", label: "Document…", onSelect: () => void uploadDocument(undefined, undefined, chooseImportOptions) },
                 { id: "images", label: "Images…", onSelect: () => setImageWorkspaceDocumentId(null) },
               ]}
             />
@@ -186,6 +215,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
         onOpenDocument={openDocument}
         onAnnotateDocument={(document) => setAnnotating({ id: document.id, title: document.title })}
+        onShowFigures={(document) => setViewingFigures({ id: document.id, title: document.title })}
         onRenameDocument={setRenaming}
         onUploadInto={uploadInto}
         onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
@@ -218,6 +248,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
               if (canAnnotateDocument(document)) items.push({
                 id: "annotate", label: "Annotate", disabled: deleting,
                 onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+              });
+              if (canAnnotateDocument(document)) items.push({
+                id: "figures", label: "Figures", disabled: deleting,
+                onSelect: () => setViewingFigures({ id: document.id, title: document.title }),
               });
               if (hasCollections && !processing) items.push({
                 id: "move", label: "Move to a collection…", disabled: collections.busy,
@@ -316,6 +350,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           </ul>
         </section>
       )}
+      {importing ? (
+        <ImportImagesDialog
+          fileName={importing.fileName}
+          onImport={(useImages) => finishImporting({ useImages })}
+          onCancel={() => finishImporting(null)}
+        />
+      ) : null}
       {detailsDocument ? (
         <DocumentDetails
           document={detailsDocument}

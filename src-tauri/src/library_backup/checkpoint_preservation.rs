@@ -212,6 +212,25 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 13,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "document_figure_scans",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figures",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figure_passages",
+                description: "document figures",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

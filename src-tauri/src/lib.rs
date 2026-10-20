@@ -43,6 +43,7 @@ mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
+mod document_figures;
 mod document_generation;
 mod document_import;
 mod document_ingestion;
@@ -400,6 +401,10 @@ pub fn run() {
             annotation_cards::get_card_mark_source,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
+            document_figures::get_document_figures,
+            document_figures::set_document_figures_use_images,
+            document_figures::set_document_figure_hidden,
+            library_session::commands::leased_find_document_figures,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::save_lesson_progress,
