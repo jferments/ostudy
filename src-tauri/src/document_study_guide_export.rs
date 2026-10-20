@@ -870,7 +870,9 @@ mod tests {
             title: title.to_string(),
             source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
             body_lines: vec![
-                ExportBlock::Paragraph("Afterload is the load the ventricle ejects against.".into()),
+                ExportBlock::Paragraph(
+                    "Afterload is the load the ventricle ejects against.".into(),
+                ),
                 ExportBlock::Heading("Key points".into()),
                 ExportBlock::Bullets(vec!["Raised by hypertension.".into()]),
                 ExportBlock::Numbered(vec![
@@ -892,7 +894,10 @@ mod tests {
                 ExportBlock::Table {
                     title: "Compare".into(),
                     columns: vec!["Concept".into(), "Meaning".into()],
-                    rows: vec![vec!["Afterload".into(), "Ejection load".into()], vec!["Short".into()]],
+                    rows: vec![
+                        vec!["Afterload".into(), "Ejection load".into()],
+                        vec!["Short".into()],
+                    ],
                     caption: "High-yield comparison".into(),
                 },
                 ExportBlock::WorkedExample {
@@ -1197,19 +1202,22 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(input.theme, StudyGuidePdfTheme::Navy);
-        let input: PrepareCollectionStudyGuidePdfInput = serde_json::from_value(serde_json::json!({
-            "collectionId": "a".repeat(32),
-            "operationId": "b".repeat(32),
-            "theme": "plum",
-        }))
-        .unwrap();
+        let input: PrepareCollectionStudyGuidePdfInput =
+            serde_json::from_value(serde_json::json!({
+                "collectionId": "a".repeat(32),
+                "operationId": "b".repeat(32),
+                "theme": "plum",
+            }))
+            .unwrap();
         assert_eq!(input.theme, StudyGuidePdfTheme::Plum);
-        assert!(serde_json::from_value::<PrepareStudyGuidePdfInput>(serde_json::json!({
-            "documentId": "a".repeat(32),
-            "operationId": "b".repeat(32),
-            "theme": "neon",
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<PrepareStudyGuidePdfInput>(serde_json::json!({
+                "documentId": "a".repeat(32),
+                "operationId": "b".repeat(32),
+                "theme": "neon",
+            }))
+            .is_err()
+        );
     }
 }
 

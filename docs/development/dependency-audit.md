@@ -61,9 +61,14 @@ those local bytes offline. If the IBM face cannot be read, the semantic family
 resolves through the operating-system sans-serif stack; the fallback contract
 does not claim identical glyph metrics across platforms.
 
-This audit covers browser UI/card packaging only. IBM Plex faces for the native
-Study Guide PDF renderer, including print-specific styles and embedding, remain
-Stage 9 work.
+This audit covers browser UI/card packaging. Study-guide PDFs embed their own
+TrueType copies of IBM Plex Sans, Lato, Sora, Roboto Slab and Caladea, which the
+same install script downloads into `src-tauri/resources/pdf-fonts` and the
+native build compiles in ([ADR 0058](../decisions/0058-typst-study-guide-pdf-export.md)).
+Their notices are in `public/licenses/` (`IBM-Plex-Sans-OFL-1.1.txt`,
+`Lato-OFL-1.1.txt`, `Sora-OFL-1.1.txt`, `Roboto-Slab-Apache-2.0.txt`,
+`Caladea-OFL-1.1.txt`), with `Typst-Assets-Fonts-NOTICE.txt` for the Typst
+fonts.
 
 ### Interface icons
 
@@ -86,6 +91,7 @@ copies into the distribution.
 - url `2.5.7`
 - base64 `0.22.1`
 - oxidize-pdf `5.5.0`, default features disabled, with `compression` and `semantic`
+- typst, typst-layout, typst-pdf and typst-assets `0.15.1` (Apache-2.0; `typst-assets` with `fonts`): study-guide PDF layout, isolated in `src-tauri/src/document_study_guide_export/guide_typst.rs` and compiled against an in-memory world with no file or network access
 - image `0.25.10` for PNG encoding of PDFium bitmaps on desktop
 - pdfium-render `0.9.3`, compiled against PDFium API build `7881`
 - sysinfo `0.39.6` for cross-platform available-memory observation used by document concurrency planning

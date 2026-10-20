@@ -22,7 +22,7 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    math_layout, math_source, source_label, EffectiveGuideExport, EffectiveExportSection,
+    math_layout, math_source, source_label, EffectiveExportSection, EffectiveGuideExport,
     ExportBlock,
 };
 use crate::error::CommandError;
@@ -534,7 +534,10 @@ mod tests {
         export.overview = r"Rate \(\frac{\Delta V}{\Delta t}\) and $$x^2$$.".into();
         let mut files = HashMap::new();
         let data = guide_data(&export, StudyGuidePdfTheme::Sage, &mut files);
-        files.insert(file_id("/data.json"), Bytes::new(serde_json::to_vec(&data).unwrap()));
+        files.insert(
+            file_id("/data.json"),
+            Bytes::new(serde_json::to_vec(&data).unwrap()),
+        );
         let world = GuideWorld {
             main: Source::new(file_id("/guide.typ"), TEMPLATE.to_string()),
             themes: Source::new(file_id("/themes.typ"), THEMES.to_string()),

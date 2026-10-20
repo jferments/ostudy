@@ -46,7 +46,10 @@ fn embed_pdf_fonts() {
     for name in PDF_FONT_FILES {
         let path = directory.join(name);
         println!("cargo:rerun-if-changed={}", path.display());
-        generated.push_str(&format!("    include_bytes!({:?}),\n", path.display().to_string()));
+        generated.push_str(&format!(
+            "    include_bytes!({:?}),\n",
+            path.display().to_string()
+        ));
     }
     generated.push(']');
     let output = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR")).join("pdf_fonts.rs");

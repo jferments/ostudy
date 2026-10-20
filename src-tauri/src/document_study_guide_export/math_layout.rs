@@ -183,7 +183,10 @@ fn write_typst_text(text: &str, output: &mut String) {
             output.push(' ');
             output.push(character);
             output.push(' ');
-        } else if matches!(character, '+' | '-' | '=' | '<' | '>' | '!' | '\'' | '|' | '.' | ':') {
+        } else if matches!(
+            character,
+            '+' | '-' | '=' | '<' | '>' | '!' | '\'' | '|' | '.' | ':'
+        ) {
             output.push(' ');
             output.push(character);
             output.push(' ');

@@ -38,22 +38,31 @@ export function GuideTextDialog({ title, description, label, initialValue, width
   );
 }
 
-const PDF_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string; type: string }> = [
-  { value: "navy", name: "Navy", type: "Plex Sans and Libertinus" },
-  { value: "sage", name: "Sage", type: "Caladea and Lato" },
-  { value: "slate", name: "Slate", type: "Sora and Plex Sans" },
-  { value: "plum", name: "Plum", type: "Roboto Slab and Libertinus" },
+const PDF_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string; type: string; colors: PdfThemeColors }> = [
+  { value: "navy", name: "Navy", type: "Plex Sans and Libertinus", colors: {
+    paper: "var(--ostudy-pdf-theme-preview-navy-paper)", primary: "var(--ostudy-pdf-theme-preview-navy-primary)",
+    accent: "var(--ostudy-pdf-theme-preview-navy-accent)", highlight: "var(--ostudy-pdf-theme-preview-navy-highlight)" } },
+  { value: "sage", name: "Sage", type: "Caladea and Lato", colors: {
+    paper: "var(--ostudy-pdf-theme-preview-sage-paper)", primary: "var(--ostudy-pdf-theme-preview-sage-primary)",
+    accent: "var(--ostudy-pdf-theme-preview-sage-accent)", highlight: "var(--ostudy-pdf-theme-preview-sage-highlight)" } },
+  { value: "slate", name: "Slate", type: "Sora and Plex Sans", colors: {
+    paper: "var(--ostudy-pdf-theme-preview-slate-paper)", primary: "var(--ostudy-pdf-theme-preview-slate-primary)",
+    accent: "var(--ostudy-pdf-theme-preview-slate-accent)", highlight: "var(--ostudy-pdf-theme-preview-slate-highlight)" } },
+  { value: "plum", name: "Plum", type: "Roboto Slab and Libertinus", colors: {
+    paper: "var(--ostudy-pdf-theme-preview-plum-paper)", primary: "var(--ostudy-pdf-theme-preview-plum-primary)",
+    accent: "var(--ostudy-pdf-theme-preview-plum-accent)", highlight: "var(--ostudy-pdf-theme-preview-plum-highlight)" } },
 ];
 
+interface PdfThemeColors { paper: string; primary: string; accent: string; highlight: string; }
+
 /** A miniature of the PDF's cover colours beside the theme's name and typefaces. */
-function PdfThemeSwatch({ theme, name, type }: { theme: StudyGuidePdfTheme; name: string; type: string }) {
-  const color = (part: string) => `var(--ostudy-pdf-theme-preview-${theme}-${part})`;
+function PdfThemeSwatch({ name, type, colors }: { name: string; type: string; colors: PdfThemeColors }) {
   return <span className="tw:grid tw:w-full tw:gap-1.5">
-    <span aria-hidden="true" className="tw:flex tw:h-10 tw:w-full tw:flex-col tw:overflow-hidden tw:rounded-md tw:ring-1 tw:ring-border" style={{ background: color("paper") }}>
-      <span className="tw:flex tw:h-6 tw:items-center tw:justify-end tw:px-2" style={{ background: color("primary") }}>
-        <span className="tw:size-2.5 tw:rounded-full" style={{ background: color("highlight") }} />
+    <span aria-hidden="true" className="tw:flex tw:h-10 tw:w-full tw:flex-col tw:overflow-hidden tw:rounded-md tw:ring-1 tw:ring-border" style={{ background: colors.paper }}>
+      <span className="tw:flex tw:h-6 tw:items-center tw:justify-end tw:px-2" style={{ background: colors.primary }}>
+        <span className="tw:size-2.5 tw:rounded-full" style={{ background: colors.highlight }} />
       </span>
-      <span className="tw:m-1.5 tw:h-1 tw:w-1/2 tw:rounded-full" style={{ background: color("accent") }} />
+      <span className="tw:m-1.5 tw:h-1 tw:w-1/2 tw:rounded-full" style={{ background: colors.accent }} />
     </span>
     <span className="tw:grid">
       <strong className="tw:text-small tw:font-medium tw:text-foreground">{name}</strong>
@@ -87,7 +96,7 @@ export function GuideExportDialog({ exporting, onExport, onClose }: {
               value: option.value,
               ariaLabel: option.name,
               className: "tw:p-3",
-              label: <PdfThemeSwatch theme={option.value} name={option.name} type={option.type} />,
+              label: <PdfThemeSwatch name={option.name} type={option.type} colors={option.colors} />,
             }))} />
         </div>
         <div className="tw:grid tw:gap-0.5">
