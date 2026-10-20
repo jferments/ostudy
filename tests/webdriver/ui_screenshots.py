@@ -1292,17 +1292,14 @@ class Run:
 
     def capture_dialog(self, ctx: Context, screen: Screen, widths: tuple[int, ...]) -> None:
         deck = seed.deck_name(seed.PRACTICE_DECK)
-        checkbox = f"//*[@role='checkbox' and @aria-label={xpath_literal('Select ' + deck)}]"
         for width in widths:
             started = time.monotonic()
             set_viewport(ctx, width)
             try:
                 open_library(ctx)
-                click_direct(ctx, find(ctx, checkbox))
-                find(ctx, checkbox + "[@aria-checked='true']", 10)
-                click(ctx, "//*[@aria-label='Selected deck actions']//button[normalize-space(.)='Practice']")
+                webdriver.choose_menu_item(ctx.session_id, f"{deck} actions", "Practice with options…", ctx.deadline(15))
                 find(ctx, "//*[@role='dialog'][.//h2[normalize-space(.)='Practice selected decks']]")
-                find(ctx, "//*[@role='dialog']//*[normalize-space(.)='Cards available to study']")
+                find(ctx, "//*[@role='dialog']//*[@role='radiogroup' and @aria-label='Cards']//*[@role='radio' and not(@disabled) and not(@data-disabled)]")
                 self.prepare_capture(ctx, screen)
                 self.record(ctx, screen, started)
             except Exception as error:  # noqa: BLE001
@@ -1311,8 +1308,6 @@ class Run:
                 if exists(ctx, "//*[@role='dialog']//button[@aria-label='Close dialog']"):
                     click(ctx, "//*[@role='dialog']//button[@aria-label='Close dialog']", 5)
                     ui.wait_for_overlay_inactive(ctx.session_id, ctx.deadline(10), "practice setup close")
-                if exists(ctx, checkbox + "[@aria-checked='true']"):
-                    click_direct(ctx, find(ctx, checkbox, 5))
 
     def capture_practice(self, ctx: Context, widths: tuple[int, ...]) -> None:
         wanted = [screen for screen in self.selected if screen.flow == "practice"]
