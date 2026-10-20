@@ -750,7 +750,7 @@ export function PracticeScreen({
       ratedCount={ratedCount} previewSet={previewSet} isRevealing={isRevealing} isRating={isRating} isEnding={isEnding}
       isManaging={isStarting || isManaging || isLoadingWindow || isLoadingEditor}
       flipAnimationEnabled={flipAnimationEnabled}
-      displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? false} errorMessage={errorMessage}
+      displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? true} errorMessage={errorMessage}
       onReveal={() => void revealAnswer()} onScore={(score) => void submitScore(score)} onEdit={() => void editCurrentCard()}
       sourcePage={currentPassage?.pageNumber ?? null} onOpenSource={() => setReadingSource(currentPassage)}
       onScheduleAction={(action, intent) => void manageCurrent(action, intent)} onEnd={() => void endSession()}

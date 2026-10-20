@@ -46,7 +46,7 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof PracticeSetu
 // Assert the accessible control, not the implementation's hidden native input.
 function expectRadioState(element: HTMLElement, checked: boolean, disabled = false) {
   expect(element.getAttribute("aria-checked")).toBe(String(checked));
-  if (disabled) expect(element.getAttribute("aria-disabled")).toBe("true");
+  if (disabled) expect(element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true" || element.hasAttribute("data-disabled")).toBe(true);
 }
 
 describe("PracticeSetupSheet", () => {
@@ -64,12 +64,11 @@ describe("PracticeSetupSheet", () => {
     renderSheet();
     const dialog = await screen.findByRole("dialog", { name: "Practice selected decks" });
     expect(within(dialog).getByText("Anatomy")).toBeTruthy();
-    expect(within(dialog).getByText(/matching cards must have at least one selected tag/u)).toBeTruthy();
+    // No explanations: the counts sit on the two choices.
+    expect(dialog.querySelector("p")).toBeNull();
     // Dialog presentation is immediate; authoritative workload is a separate async read.
-    expect(await within(dialog).findByText("Due reviews")).toBeTruthy();
-    expect(within(dialog).getByText("Omitted new")).toBeTruthy();
-    const scheduled = within(dialog).getByRole("radio", { name: /Scheduled study/u });
-    const extra = within(dialog).getByRole("radio", { name: /Extra study/u });
+    const scheduled = await within(dialog).findByRole("radio", { name: "Due · 0" });
+    const extra = within(dialog).getByRole("radio", { name: "Extra · 8" });
     expectRadioState(scheduled, true, true);
     expectRadioState(extra, false);
     fireEvent.click(scheduled);
@@ -80,11 +79,11 @@ describe("PracticeSetupSheet", () => {
   it("launches the exact displayed tag, shuffle, and explicit extra mode once", async () => {
     const onStart = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onStart });
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Bones/u }));
+    fireEvent.click(await screen.findByRole("button", { name: "Bones" }));
+    expect(screen.getByRole("button", { name: "Bones" }).getAttribute("aria-pressed")).toBe("true");
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenLastCalledWith([deck.id], [tag.id]));
-    fireEvent.click(screen.getByRole("radio", { name: /Extra study/u }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Shuffle cards/u }));
-    expect(screen.getByText(/1 deck, 1 tag, extra mode, shuffle off/u)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("radio", { name: "Extra · 8" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Shuffle" }));
     const start = screen.getByRole("button", { name: "Start practice" });
     fireEvent.click(start);
     fireEvent.click(start);
@@ -99,9 +98,9 @@ describe("PracticeSetupSheet", () => {
       .mockResolvedValueOnce(workload);
     renderSheet();
     expect(await screen.findByText(/Study counts are unavailable: Planner unavailable/u)).toBeTruthy();
-    expect(screen.queryByText("Due reviews")).toBeNull();
+    expect(screen.getByRole("radio", { name: "Due" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry study counts" }));
-    expect(await screen.findByText("Due reviews")).toBeTruthy();
+    expect(await screen.findByRole("radio", { name: "Due · 0" })).toBeTruthy();
   });
 
   it("rejects an invalidated snapshot with clear reselect guidance", async () => {
@@ -110,9 +109,7 @@ describe("PracticeSetupSheet", () => {
     expect(screen.getByRole("button", { name: "Start practice" }).hasAttribute("disabled")).toBe(true);
     expect(practiceIpc.getPracticeWorkload).not.toHaveBeenCalled();
     expect(screen.queryByText("Loading tags…")).toBeNull();
-    expect(screen.queryByText("Updating…")).toBeNull();
-    expect(screen.queryByText("Due reviews")).toBeNull();
-    expect(screen.queryByRole("radio", { name: /Scheduled study/u })).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Due/u })).toBeNull();
   });
 
   it("synchronously hides an obsolete workload until the exact tagged query resolves", async () => {
@@ -124,29 +121,27 @@ describe("PracticeSetupSheet", () => {
     const onStart = vi.fn();
     renderSheet({ onStart });
     unfiltered.resolve({ ...workload, scheduledReviews: 4, scheduledNew: 0 });
-    await screen.findByText(/1 deck, 0 tags, scheduled mode/u);
-    fireEvent.click(await screen.findByRole("checkbox", { name: /Bones/u }));
-    expect(screen.queryByText(/1 deck, 0 tags, scheduled mode/u)).toBeNull();
-    expect(screen.queryByText("Due reviews")).toBeNull();
+    await screen.findByRole("radio", { name: "Due · 4" });
+    fireEvent.click(await screen.findByRole("button", { name: "Bones" }));
+    expect(screen.queryByRole("radio", { name: "Due · 4" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start practice" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
     expect(onStart).not.toHaveBeenCalled();
     tagged.resolve({ ...workload, scheduledReviews: 7, scheduledNew: 0 });
-    await screen.findByText(/1 deck, 1 tag, scheduled mode/u);
+    await screen.findByRole("radio", { name: "Due · 7" });
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
     expect(onStart).toHaveBeenCalledWith({ deckIds: [deck.id], tagIds: [tag.id], shuffle: true, mode: "scheduled" });
   });
 
   it("clears ready setup data when a valid snapshot becomes stale", async () => {
     const rendered = renderSheet();
-    await screen.findByText("Due reviews");
+    await screen.findByRole("radio", { name: "Due · 0" });
     rendered.rerender(<LayoutModeProvider><OverlayProvider>
       <PracticeSetupSheet {...rendered.props} currentDecks={[{ ...deck, revision: deck.revision + 1 }]} />
     </OverlayProvider></LayoutModeProvider>);
     expect(await screen.findByText(/changed while setup was open/u)).toBeTruthy();
-    expect(screen.queryByText("Due reviews")).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Due/u })).toBeNull();
     expect(screen.queryByText("Loading tags…")).toBeNull();
-    expect(screen.queryByText("Updating…")).toBeNull();
   });
 
   it("opens compact setup at the top, closes with Escape, and restores the opener", async () => {
@@ -180,7 +175,7 @@ describe("PracticeSetupSheet", () => {
     vi.mocked(tagsIpc.listTags).mockRejectedValue(new Error("Tags unavailable"));
     const onClose = vi.fn();
     renderSheet({ onClose, onStart: () => pendingStart.promise });
-    fireEvent.click(await screen.findByRole("radio", { name: /Extra study/u }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Extra · 8" }));
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
     await waitFor(() => expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true"));
     const retry = screen.getByRole("button", { name: "Retry tags" });

@@ -130,7 +130,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         tutorials_enabled: get_setting(connection, "tutorialsEnabled", false)?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
-        display_question_on_answer: get_setting(connection, "displayQuestionOnAnswer", false)?,
+        display_question_on_answer: get_setting(connection, "displayQuestionOnAnswer", true)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
         daily_new_limit: get_setting(connection, "dailyNewLimit", 20_i64)?,
         daily_review_limit: get_setting(connection, "dailyReviewLimit", 200_i64)?,
@@ -413,12 +413,12 @@ mod tests {
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         assert!(!settings.tutorials_enabled);
-        assert!(!settings.display_question_on_answer);
+        assert!(settings.display_question_on_answer);
         assert_eq!(settings.new_day_start_hour, 4);
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.tutorials_enabled = true;
-        settings.display_question_on_answer = true;
+        settings.display_question_on_answer = false;
         settings.new_day_start_hour = 0;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
@@ -429,7 +429,7 @@ mod tests {
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
         assert!(loaded.tutorials_enabled);
-        assert!(loaded.display_question_on_answer);
+        assert!(!loaded.display_question_on_answer);
         assert_eq!(loaded.new_day_start_hour, 0);
         assert_eq!(
             database
