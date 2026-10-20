@@ -319,7 +319,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
 
   async function uploadDocument(
     generationInstructions?: string,
-    /** Runs once the document is saved, before its processing starts, such as to file it in a collection. */
+    /** Runs once the document is saved, before its processing starts, such as to file it in a subject. */
     onImported?: (documentId: string) => Promise<unknown>,
     /** Asks how to import the chosen file; `null` leaves it unimported. */
     chooseOptions?: (selected: StagedExternalFile) => Promise<ImportDocumentOptions | null>,

@@ -11,11 +11,14 @@ import { providerStyles as styles } from "./documents/presentation";
 interface DocumentsSectionProps {
   refreshDecks: () => Promise<unknown>;
   onPracticeCards: (cardIds: string[]) => Promise<void>;
-  onStudyCollection?: (collectionId: string) => void;
+  onStudySubject?: (subjectId: string) => void;
+  onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
+  /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
+  subjectId?: string | null;
 }
 
-export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollection, showToast }: DocumentsSectionProps) {
+export function DocumentsSection({ refreshDecks, onPracticeCards, onStudySubject, onOpenSubject, showToast, subjectId }: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable = capabilities.native === null || capabilities.native.services.nativePdfRender.state === "available";
   const [profile, setProfile] = useState<AiProviderProfileSummary | null>(null);
@@ -53,9 +56,11 @@ export function DocumentsSection({ refreshDecks, onPracticeCards, onStudyCollect
     <DocumentsScreen
       refreshDecks={refreshDecks}
       onPracticeCards={onPracticeCards}
-      onStudyCollection={onStudyCollection}
+      onStudySubject={onStudySubject}
+      onOpenSubject={onOpenSubject}
       showToast={showToast}
       headerSupplement={providerNotice}
+      subjectId={subjectId}
     />
   </div>;
 }

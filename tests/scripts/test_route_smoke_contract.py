@@ -54,13 +54,13 @@ class RouteSmokeContractTests(unittest.TestCase):
     def test_repository_contract_passes(self) -> None:
         completed = self.run_verifier(ROOT)
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("8 application sections, 1 application workflow", completed.stdout)
-        self.assertIn("8 checkpoint sections", completed.stdout)
+        self.assertIn("10 application sections, 1 application workflow", completed.stdout)
+        self.assertIn("10 checkpoint sections", completed.stdout)
         self.assertIn(
-            "5 navigation destinations, 3 Library views, 1 header actions",
+            "5 navigation destinations, 5 Library views, 1 header actions",
             completed.stdout,
         )
-        self.assertIn("10 route-entry; 0 presence-only", completed.stdout)
+        self.assertIn("12 route-entry; 0 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
 
     def test_internal_practice_retains_protected_smoke(self) -> None:

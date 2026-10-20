@@ -14,16 +14,18 @@ import {
   type CollectionStudyGuide,
   type CollectionStudyGuideOverlay,
 } from "../ipc/studyMaterials";
+import type { StudyGuidePdfTheme } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { useOptionalTutor } from "./tutor/TutorContext";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
-import { Checkbox, Textarea } from "../ui/primitives/FormControls";
+import { Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
+import { GuideExportDialog } from "./study-guides/GuideDialogs";
 import { StudyGuideStructuredContent } from "./study-guides/StudyGuideContent";
 
 type CollectionEditingMode = "note" | "override";
@@ -47,7 +49,7 @@ export function CollectionStudyGuideDialog({
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [includeAnnotations, setIncludeAnnotations] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<CollectionEditingState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const refresh = useCallback(async () => {
@@ -130,12 +132,13 @@ export function CollectionStudyGuideDialog({
     }
   }
 
-  async function exportPdf(): Promise<void> {
+  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
     if (!guide || isExporting) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
+    let failed = false;
     try {
-      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations);
+      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations, theme);
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
@@ -148,13 +151,15 @@ export function CollectionStudyGuideDialog({
         const notes = prepared.annotationCount > 0
           ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}`
           : "";
-        showToast("success", `Exported collection study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
+        showToast("success", `Exported the subject study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
       }
     } catch (error: unknown) {
+      failed = true;
       showToast("error", getErrorMessage(error));
     } finally {
       if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
+      if (!failed) setExportOpen(false);
     }
   }
 
@@ -170,16 +175,16 @@ export function CollectionStudyGuideDialog({
   return (
     <InlineWorkspace
       title={`Study guide · ${collectionTitle}`}
-      description="Source-grounded sections synthesized from the collection’s retained document knowledge."
+      description="Source-grounded sections synthesized from the subject’s retained document knowledge."
       onClose={onClose}
-      closeLabel="Close collection study guide"
+      closeLabel="Close subject study guide"
       className={styles.workspace}
       dismissible={!isExporting && !isSaving}
       busy={isExporting || isSaving}
     >
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>Collection learning artifact</p>
+          <p className={styles.eyebrow}>Subject study guide</p>
           <strong>
             {guide
               ? `${guide.content.sections.length} section${guide.content.sections.length === 1 ? "" : "s"}`
@@ -188,18 +193,8 @@ export function CollectionStudyGuideDialog({
         </div>
         <div className={styles.headerActions}>
           {guide ? (
-            <label className={styles.annotationToggle}>
-              <Checkbox
-                checked={includeAnnotations}
-                disabled={isExporting}
-                onCheckedChange={setIncludeAnnotations}
-              />
-              Include my notes in PDF
-            </label>
-          ) : null}
-          {guide ? (
-            <Button variant="secondary" disabled={isExporting} onClick={() => void exportPdf()}>
-              {isExporting ? "Exporting…" : "Export PDF"}
+            <Button variant="secondary" disabled={isExporting} onClick={() => setExportOpen(true)}>
+              Export PDF…
             </Button>
           ) : null}
           {guide ? (
@@ -216,15 +211,15 @@ export function CollectionStudyGuideDialog({
       </header>
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {isLoading ? (
-        <LoadingState label="Loading collection study guide…" />
+        <LoadingState label="Loading subject study guide…" />
       ) : !guide ? (
         <EmptyState
-          title="No collection study guide yet"
-          description="Create or update this collection’s study materials from Documents."
+          title="No subject study guide yet"
+          description="Make this subject’s study materials from its Documents page."
         />
       ) : (
         <div className={styles.layout}>
-          <nav className={styles.contents} aria-label="Collection study guide contents">
+          <nav className={styles.contents} aria-label="Subject study guide contents">
             <strong>Contents</strong>
             <a href="#collection-guide-overview">Overview</a>
             {guide.content.sections.map((section, index) => (
@@ -311,7 +306,7 @@ export function CollectionStudyGuideDialog({
       </label>
       <p>
         {editing.mode === "override"
-          ? "This non-destructive edit is tied to the current collection-guide section. Clear the text and save to reset it."
+          ? "This non-destructive edit is tied to the current subject-guide section. Clear the text and save to reset it."
           : "Personal notes remain learner-owned. Clear the text and save to remove an existing note."}
       </p>
       <div className={styles.editorActions}>
@@ -321,6 +316,10 @@ export function CollectionStudyGuideDialog({
         <Button variant="secondary" disabled={isSaving} onClick={() => setEditing(null)}>Cancel</Button>
       </div>
     </div> : null}
+    {exportOpen ? (
+      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)}
+        onClose={() => setExportOpen(false)} />
+    ) : null}
     </InlineWorkspace>
   );
 }
@@ -428,7 +427,7 @@ function CollectionSection({
       {conflict ? (
         <InlineNotice kind="warning">
           <strong>Older section edit needs review.</strong>
-          <p>The collection guide changed, so the older edit was preserved without silently applying it.</p>
+          <p>The subject guide changed, so the older edit was preserved without silently applying it.</p>
           <div className={styles.overrideText}><StudyMarkdown text={conflict.plainText} /></div>
         </InlineNotice>
       ) : null}

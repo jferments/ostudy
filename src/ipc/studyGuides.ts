@@ -186,11 +186,18 @@ export type StudyGuideLibrarySort =
   | "title_asc"
   | "title_desc";
 
+/** A document guide belongs to its document's subject; a subject guide (target kind "collection") to its own. */
+export type StudyGuideSubjectFilter =
+  | { kind: "all" }
+  | { kind: "subject"; subjectId: string }
+  | { kind: "none" };
+
 export interface ListStudyGuidesInput {
   query: string;
   sort: StudyGuideLibrarySort;
   offset: number;
   limit: number;
+  subject: StudyGuideSubjectFilter;
 }
 
 export type StudyGuideTargetKind = "document" | "collection";
@@ -282,6 +289,9 @@ export interface SaveStudyGuideOverlayInput {
   expectedRevision?: number;
 }
 
+/** The PDF's colour and type theme. Every theme has the same layout. */
+export type StudyGuidePdfTheme = "navy" | "sage" | "slate" | "plum";
+
 export interface PreparedStudyGuidePdf {
   preparedExport: PreparedExport;
   guideRevision: number;
@@ -328,6 +338,7 @@ export async function listStudyGuidePage(
       sort: input.sort ?? "recent",
       offset: input.offset ?? 0,
       limit: input.limit ?? 40,
+      subject: input.subject ?? { kind: "all" },
     },
   });
 }
@@ -391,9 +402,10 @@ export async function getDocumentTopicCardIds(
 export async function prepareDocumentStudyGuidePdf(
   documentId: string,
   includeAnnotations: boolean,
+  theme: StudyGuidePdfTheme = "navy",
   operationId = createOperationId(),
 ): Promise<PreparedStudyGuidePdf> {
   return invoke<PreparedStudyGuidePdf>("prepare_document_study_guide_pdf", {
-    input: { documentId, operationId, includeAnnotations },
+    input: { documentId, operationId, includeAnnotations, theme },
   });
 }

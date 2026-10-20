@@ -20,8 +20,10 @@ import {
 } from "./controllers/useAppController";
 import { isLibrarySection, type AppDestination } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
+import type { StudyGuideOpenRequest } from "./controllers/useStudyGuidesController";
 import { HomeScreen } from "./screens/home/HomeScreen";
-import { SubjectScreen } from "./screens/subject/SubjectScreen";
+import { LibraryLessons } from "./screens/library/LibraryLessons";
+import { LibraryOverview } from "./screens/library/LibraryOverview";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -89,6 +91,9 @@ export type {
 function App() {
   const controller = useAppController();
   const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
+  // The lesson Library's Lessons page is playing.
+  const [openLessonState, setOpenLesson] = useState<{ subjectId: string; lessonId: string } | null>(null);
+  const [guideOpenRequest, setGuideOpenRequest] = useState<StudyGuideOpenRequest | null>(null);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   useEffect(() => {
@@ -122,11 +127,30 @@ function App() {
     void controller.practiceScope(deckIds, []);
   }
 
+  function openLesson(subjectId: string, lessonId: string): void {
+    setOpenLesson({ subjectId, lessonId });
+    controller.chooseLibrarySubject({ kind: "subject", subjectId });
+    navigate("lessons");
+  }
+
+  const librarySubject = controller.librarySubject;
+  const libraryFrame = {
+    subject: librarySubject,
+    onChooseSubject: controller.chooseLibrarySubject,
+    onSelectView: navigate,
+    onStartReview: startReview,
+    onPracticeSubject: (subjectId: string) => void controller.practiceSubject(subjectId),
+    showToast: controller.showToast,
+  };
+  const subjectFilter =
+    librarySubject.kind === "all" ? undefined : librarySubject.kind === "none" ? null : librarySubject.subjectId;
+
   // Review lives on Home, so Home also stands in for the legacy Review section.
   const homeScreen = (
     <HomeScreen
       onStartReview={startReview}
-      onOpenSubject={(subjectId, view) => void controller.openSubject(subjectId, view)}
+      onOpenSubject={(subjectId) => void controller.openSubject(subjectId)}
+      onOpenLesson={openLesson}
       onOpenLibrary={() => void controller.openLibrary()}
       onPracticeSubject={(subjectId) => void controller.practiceSubject(subjectId)}
       onOpenProgress={() => navigate("analytics")}
@@ -208,52 +232,85 @@ function App() {
                                 onChooseDecks={controller.choosePracticeDecks}
                                 showToast={controller.showToast}
                               />
-                            ) : controller.section === "home" && controller.homeSubjectId ? (
-                              <SubjectScreen
-                                key={controller.homeSubjectId}
-                                subjectId={controller.homeSubjectId}
-                                decks={controller.decks}
-                                onBack={() => navigate("home")}
-                                onStartReview={startReview}
-                                onPracticeSubject={(subjectId) =>
-                                  void controller.practiceSubject(subjectId)
-                                }
-                                onOpenLibrary={(scope) => void controller.openLibrary(scope)}
-                                onOpenDocuments={() => navigate("documents")}
-                                showToast={controller.showToast}
-                              />
                             ) : controller.section === "home" ? (
                               homeScreen
+                            ) : controller.section === "overview" ? (
+                              <LibraryFrame view="overview" {...libraryFrame}>
+                                {/* The tabs name the page; its title is for headings navigation. */}
+                                <h1 className="tw:sr-only">Overview</h1>
+                                <LibraryOverview
+                                  subject={librarySubject}
+                                  decks={controller.decks}
+                                  onSelectView={navigate}
+                                  onOpenLesson={openLesson}
+                                  onOpenDeck={(deckId) => void controller.openLibrary({ deckId })}
+                                  onPracticeDeck={(deckId) => void controller.practiceDeck(deckId)}
+                                  onOpenGuide={(documentId, documentTitle) => {
+                                    setGuideOpenRequest({ requestId: Date.now(), documentId, documentTitle });
+                                    navigate("study-guides");
+                                  }}
+                                  onOpenSubject={(subjectId) => controller.chooseLibrarySubject({ kind: "subject", subjectId })}
+                                  onOpenProgress={() => selectDestination("progress")}
+                                />
+                              </LibraryFrame>
+                            ) : controller.section === "lessons" ? (
+                              <LibraryFrame view="lessons" {...libraryFrame}>
+                                <h1 className="tw:sr-only">Lessons</h1>
+                                <LibraryLessons
+                                  subject={librarySubject}
+                                  openLessonId={
+                                    openLessonState !== null &&
+                                    librarySubject.kind === "subject" &&
+                                    openLessonState.subjectId === librarySubject.subjectId
+                                      ? openLessonState.lessonId
+                                      : null
+                                  }
+                                  onOpenLesson={openLesson}
+                                  onCloseLesson={() => setOpenLesson(null)}
+                                  showToast={controller.showToast}
+                                />
+                              </LibraryFrame>
                             ) : controller.section === "decks" ? (
-                              <LibraryWorkbench
-                                decks={controller.decks}
-                                refreshDecks={controller.refreshDecks}
-                                launch={workbenchLaunchFor(controller.flashcardsRoute)}
-                                onPracticeDeck={controller.practiceDeck}
-                                onPracticeCards={controller.practiceCards}
-                                onPracticeSelected={(request) => controller.practiceSelected(request, [])}
-                                practiceShuffle={controller.activeSettings.practiceShuffle}
-                                onOpenDocuments={() => navigate("documents")}
-                                onOpenStudyGuides={() => navigate("study-guides")}
-                                onCardDirtyChange={controller.setHasUnsavedCard}
-                                onDeckScopeChange={controller.recordLibraryDeck}
-                                showToast={controller.showToast}
-                              />
+                              <LibraryFrame view="decks" fill {...libraryFrame}>
+                                <LibraryWorkbench
+                                  decks={controller.decks}
+                                  refreshDecks={controller.refreshDecks}
+                                  launch={workbenchLaunchFor(controller.flashcardsRoute)}
+                                  onPracticeDeck={controller.practiceDeck}
+                                  onPracticeCards={controller.practiceCards}
+                                  onPracticeSelected={(request) => controller.practiceSelected(request, [])}
+                                  practiceShuffle={controller.activeSettings.practiceShuffle}
+                                  onCardDirtyChange={controller.setHasUnsavedCard}
+                                  onDeckScopeChange={controller.recordLibraryDeck}
+                                  subject={librarySubject}
+                                  onSubjectChange={controller.recordLibrarySubject}
+                                  showToast={controller.showToast}
+                                />
+                              </LibraryFrame>
                             ) : controller.section === "study-guides" ? (
-                              <LibraryFrame view="study-guides" onSelectView={navigate}>
+                              <LibraryFrame view="study-guides" {...libraryFrame}>
                                 <StudyGuidesRoute
                                   key={studyGuidesNavigationKey}
+                                  openRequest={guideOpenRequest}
+                                  onOpenRequestConsumed={(requestId) =>
+                                    setGuideOpenRequest((current) => (current?.requestId === requestId ? null : current))
+                                  }
+                                  subject={librarySubject}
                                   showToast={controller.showToast}
                                   onPracticeCards={controller.practiceCards}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "documents" ? (
-                              <LibraryFrame view="documents" onSelectView={navigate}>
+                              <LibraryFrame view="documents" {...libraryFrame}>
                                 <PerformanceProfiler id="documents">
                                   <DocumentsSection
                                     refreshDecks={controller.refreshDecks}
                                     onPracticeCards={controller.practiceCards}
-                                    onStudyCollection={controller.practiceSubject}
+                                    onStudySubject={controller.practiceSubject}
+                                    onOpenSubject={(subjectId) =>
+                                      controller.chooseLibrarySubject(subjectId === null ? { kind: "none" } : { kind: "subject", subjectId })
+                                    }
+                                    subjectId={subjectFilter}
                                     showToast={controller.showToast}
                                   />
                                 </PerformanceProfiler>

@@ -212,9 +212,16 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
-    // Figures are found after import; the upgrade only creates their tables.
+    // Lecture decks rebuild prepared_exports to widen its purposes; every
+    // row and column is kept, so no table may change.
     Contract {
         version: 13,
+        setup: "",
+        rules: &[],
+    },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 14,
         setup: "",
         rules: &[
             Rule::AddedEmpty {

@@ -144,7 +144,7 @@ export const helpRegistry: Readonly<Record<HelpTopicId, HelpTopic>> = {
     title: "Library backups",
     summary: "A backup holds your whole library. API keys and session-only credentials are never included.",
     details:
-      "Backups include documents, source files, study guides, collections, Tutor history, decks, templates, images, drafts, schedules, reviews, provider settings and app settings. Restoring replaces the current library after it checks the backup.",
+      "Backups include documents, source files, study guides, subjects, Tutor history, decks, templates, images, drafts, schedules, reviews, provider settings and app settings. Restoring replaces the current library after it checks the backup.",
     documentation: "Backups, imports, and sharing: Create a whole-library backup",
   },
   "settings.aiServices": {

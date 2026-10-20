@@ -4,7 +4,7 @@ The annotator lets you write, highlight, draw arrows and boxes, and type notes o
 
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu, on its own row or in its collection's list. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
+Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
@@ -88,4 +88,4 @@ Storing annotations needs library schema 8, and cards from marks need schema 10.
 - Highlighting that snaps to text on Android.
 - Saving or exporting a copy of the PDF with its annotations.
 - Erasing part of a stroke, and selecting several annotations at once.
-- Annotating documents other than PDFs, such as Word or PowerPoint files and image collections.
+- Annotating documents other than PDFs, such as Word or PowerPoint files and image sets.

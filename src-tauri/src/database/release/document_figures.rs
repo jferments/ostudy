@@ -1,6 +1,6 @@
-//! Additive release-v13 admission for document figures.
+//! Additive release-v14 admission for document figures.
 //!
-//! Migration 13 adds, for each PDF document, whether the learner chose to use
+//! Migration 14 adds, for each PDF document, whether the learner chose to use
 //! its images and the figures found in it with the passages that explain them.
 //! Figures are found after import; an upgrade writes none, so the tables start
 //! empty.
@@ -11,7 +11,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 13;
+const VERSION: i64 = 14;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -34,11 +34,11 @@ mod tests {
         "document_figure_passages",
     ];
 
-    /// A schema-12 library as the previous release left it, with one document.
+    /// A schema-13 library as the previous release left it, with one document.
     fn schema_twelve() -> Connection {
-        let connection = release_library(12);
+        let connection = release_library(13);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 12);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
         connection
     }
 
@@ -84,14 +84,14 @@ mod tests {
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_figures_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=13
+                 WHEN NEW.version=14
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 12);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 13);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 12).unwrap();
+        validate_schema(&connection, 13).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_figures_migration;")

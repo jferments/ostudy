@@ -12,13 +12,14 @@ The original file is not uploaded to the model. ostudy keeps a local copy, reads
 
 ## Add a document
 
-On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. For a PDF, **Import document** then asks whether to **Use images from this document** (on unless you turn it off): with it on, oStudy finds the document's figures once its pages are read (see [Figures](#figures)); with it off, the document is used as text. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While they run, the document's row shows a progress bar for each. Either can finish first. Leaving the page does not stop the work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. For a PDF, **Import document** then asks whether to **Use images from this document** (on unless you turn it off): with it on, oStudy finds the document's figures once its pages are read (see [Figures](#figures)); with it off, the document is used as text. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While they run, the document's row shows a progress bar for each. Either can finish first. Leaving the page does not stop the work.
 
-Each document is one row: its format, length and when it was added, what it has made so far, its status, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
+Each document is one row: its format, length and when it was added, its reading range if it has one, what it has made so far (**Study guide**, its cards, or **Nothing made yet**), its status while it is being read or after a failure, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
 - **Annotate**, for a PDF whose pages have been drawn ([Annotating PDF pages](pdf-annotation.md)).
 - **Figures**, for the same PDFs: the figures oStudy found in it ([Figures](#figures)).
-- **Move to a collection…**, once you have a collection.
+- **Reading range…**, for a document in a subject (see [Documents in a subject](#documents-in-a-subject)).
+- **Add to a subject…** or **Move to another subject…**, and **Remove from subject**.
 - **Make more cards…**, once the document has a deck.
 - **Retry**, when card generation failed or the document's deck was deleted.
 - **Make a study guide** or **Remake the study guide**, and **Stop study guide** while one is being written.
@@ -31,17 +32,17 @@ On a phone, **Open** also moves into the menu.
 
 **Make more cards…** asks for optional **Instructions** describing the focus, audience, or question style you want, for example "For each cranial nerve, make concise recall cards about how nurses test it." Instructions shape the cards only; they are not treated as source material and do not change the study guide. The instructions are captured when the run starts, so editing them later does not change a run already under way. A first upload uses no instructions.
 
-### Upload an image collection
+### Upload a set of images
 
-Choose **Upload → Images…**, then **Select images** to pick several screenshots or photos at once. Use the **+** button to add more, drop files onto the paste area, click the paste area and press **Ctrl+V** (Cmd+V on a Mac), or use **Paste images**. All of these add to the same collection, including screenshots pasted one after another. Pasting text or a web address does not fetch an image.
+Choose **Upload → Images…**, then **Select images** to pick several screenshots or photos at once. Use the **+** button to add more, drop files onto the paste area, click the paste area and press **Ctrl+V** (Cmd+V on a Mac), or use **Paste images**. All of these add to the same set, including screenshots pasted one after another. Pasting text or a web address does not fetch an image.
 
-Image collections also have **Flashcard instructions (optional)**, with the same rules as **Make more cards…**.
+Image sets also have **Flashcard instructions (optional)**, with the same rules as **Make more cards…**.
 
 Processing starts automatically. ostudy keeps each original, reads the images on your device, works out where screenshots overlap, and makes flashcards and a study guide. You do not need to order, crop or label images. Overlap is decided from the images themselves, so passages whose numbers, units or wording differ are not merged.
 
 You can keep adding images while processing runs. They wait for the current step, then extend the same source and deck rather than creating a second one. Leaving the page does not stop the work; **Stop** does. A failure shows **Retry processing**; images and cards already saved stay. A file that failed to add can be removed without re-adding the others.
 
-**Open** on an image collection returns to it, to add images or **View** a saved original.
+**Open** on an image set returns to it, to add images or **View** a saved original.
 
 ### Where the results go
 
@@ -53,25 +54,25 @@ Document cards can be Basic or Fill in the blank recall cards, or single-best-an
 
 Review generated material for factual errors, weak questions, duplicates and missing nuance. A source label and a valid format are useful evidence, not proof that a card is correct.
 
-## Collections
+## Documents in a subject
 
-A collection is a **subject**: one grouping for a course's documents, guides and decks. The subjects in **Library → Flashcards** are the same subjects, so a subject made there appears here as a collection, and the other way round. Collections do not nest. Choose **New collection** for a course, unit, or exam.
+A **subject** is one course: its documents, guides, lessons and decks. Library's subject list picks the subject, and its **Documents** tab lists that subject's documents. **Everything** lists every document under its subject's name, with **Open subject** beside each name and **No subject** last; a document in no subject has **Add to…** on its row. Subjects do not nest, and a document is in one subject at most.
 
-A collection is drawn as a stack and lists its documents. **Add documents…** in its **…** menu (or the collection's empty **Add documents** area) uploads a new document straight into it or adds several existing documents at once. You can also drag a document row onto the collection, or use **Move to a collection…** from the document's menu. Each listed document's **…** menu offers **Open**, **Annotate**, **Rename…**, **Reading range…**, **Move to another collection…** and **Remove from collection**. The collection's own menu also has **Rename…** and **Delete collection**.
+A document's **…** menu files it: **Add to a subject…** or **Move to another subject…**, and **Remove from subject**. Moving a document moves its reading range and its generated deck with it; removing it leaves the document and its deck in **No subject** and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
 
-A document is in at most one collection. Moving it moves its reading range and its generated deck with it. Removing it from a collection leaves the document and its deck in no subject and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
+**Reading range…** limits what the subject's study materials use from a long source, such as pages 1–3 and 7. The row shows the range, for example "pages 1–3 studied". **Whole document** clears it. When the file changes, the row says the range needs review.
 
-Nothing is generated for a collection until you choose **Make study materials**. Afterwards the collection offers **Study** and **Read guide**, and **Update study materials** when its sources change (also in the collection's menu; it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). A collection's flashcards are the cards in the decks filed in it: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied. If the collection has no cards yet, make flashcards for its documents or move a deck into it.
+A subject's own study materials are made from all of its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
-Adding an already-processed document to a collection does not read or OCR it again. The collection guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
+Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
-Deleting a collection moves its documents and decks to **No subject**; it deletes neither. The collection's study guide is deleted with it. Deleting only the collection guide keeps it deleted until you choose **Recreate study materials**.
+Deleting a subject (from the **…** menu beside its name in Library) moves its documents and decks to **No subject**; it deletes neither. The subject's guide and lessons are deleted with it. Deleting only the subject guide keeps it deleted until you choose **Recreate study materials**.
 
-Libraries from before subjects kept collection flashcards as copies in a separate deck. The update folds unedited copies back into their original cards; see [Library upgrades](library-upgrades.md).
+Earlier versions called a subject's documents a "collection" and kept its flashcards as copies in a separate deck. The update folds unedited copies back into their original cards; see [Library upgrades](library-upgrades.md).
 
 ## Supported sources
 
-ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, ODP and ODS; EPUB; RTF; Excel XLS and XLSX; and CSV. Image collections accept PNG, JPEG and WebP screenshots and photos; they are not stitched into one image.
+ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, ODP and ODS; EPUB; RTF; Excel XLS and XLSX; and CSV. Image sets accept PNG, JPEG and WebP screenshots and photos; they are not stitched into one image.
 
 The format is detected from the file's contents. The older Word, PowerPoint and Excel formats also need their usual file extension, and CSV needs its `.csv` extension because it has no signature of its own. Renaming a file does not make it a supported format. Web pages, audio, and other formats an underlying library might read are not supported.
 
@@ -145,7 +146,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 ## Backup, sync, and limits
 
-A whole-library backup includes documents, their managed files, everything extracted from them, image collections, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
+A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
 Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 

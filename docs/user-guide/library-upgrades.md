@@ -19,19 +19,19 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 13: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, and schema 13 keeps the figures found in your PDF documents, the last eight described below. Libraries at schemas 1–12 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 14: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, and schema 13 lets a lesson be saved as a slide deck, and schema 14 keeps the figures found in your PDF documents, the last nine described below. Libraries at schemas 1–13 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
 ## The subjects update (schema 6)
 
-A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Flashcards and Documents pages show the same subjects: in the Workbench tree and as Documents' collections. Each deck and each document is in at most one subject.
+A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects; Library lists the subjects once, beside tabs for each subject's lessons, guides, documents and flashcards. Each deck and each document is in at most one subject.
 
 - Every folder becomes a subject with its decks. A folder and a collection with the same name, ignoring capitals and surrounding spaces, become one subject, but only when no other folder or collection uses that name. Otherwise both are kept under their own names.
 - A document that was in several collections stays in the one it joined first and leaves the others, keeping the page ranges set there. A document in no collection joins the folder of its generated deck.
 - A deck generated from a document, or a collection's study bundle deck, joins that document's or collection's subject. Other decks stay in their folders.
 - Collection flashcards were copies of the original cards, each with its own schedule. Unedited copies fold back into their originals: the original keeps the schedule of whichever card you studied, reset or rescheduled most recently, and reviews of the copy count under the original in Progress, history and Search/Filter. No review is moved, changed or deleted. Copies you edited, and copies whose original is gone, stay as cards of their own.
-- A study bundle deck left without cards is archived. Studying a collection now studies the decks filed in it, live.
+- A study bundle deck left without cards is archived. Studying a subject's materials now studies the decks filed in it, live.
 
 Older builds cannot open a schema-6 library. Restoring the pre-upgrade checkpoint returns the schema-5 library as it was. A `.ostudybackup` made before the update still restores, and the restored library gets the same subjects as updating in place.
 
@@ -74,11 +74,17 @@ Schema 12 remembers which sections of a document's study guide you marked as rea
 
 Older builds cannot open a schema-12 library. Restoring the pre-upgrade checkpoint returns the schema-11 library as it was. Reading progress is part of whole-library backups but stays on the device that made it: device sync does not carry it.
 
-## The document figures update (schema 13)
+## The lecture export update (schema 13)
 
-Schema 13 keeps the figures oStudy finds in your PDF documents: the page each is on, where it sits on the page, its caption, the passages elsewhere in the document that refer to it, and any you chose to hide. It also remembers whether you chose to use a document's images when you imported it. Figures are drawn again from the document when they are shown, so no extra copies of its pictures are stored. Deleting the document clears its figures. The update itself writes nothing: the tables start empty, and documents imported before it can be searched for figures from their Figures page.
+Schema 13 lets a lesson's lecture be saved as a PowerPoint deck. It rebuilds the small table of exports waiting to be saved so it accepts a slide deck, keeping every entry. The update adds no rows.
 
-Older builds cannot open a schema-13 library. Restoring the pre-upgrade checkpoint returns the schema-12 library as it was. Figures are part of whole-library backups but stay on the device that found them: device sync does not carry them.
+Older builds cannot open a schema-13 library. Restoring the pre-upgrade checkpoint returns the schema-12 library as it was.
+
+## The document figures update (schema 14)
+
+Schema 14 keeps the figures oStudy finds in your PDF documents: the page each is on, where it sits on the page, its caption, the passages elsewhere in the document that refer to it, and any you chose to hide. It also remembers whether you chose to use a document's images when you imported it. Figures are drawn again from the document when they are shown, so no extra copies of its pictures are stored. Deleting the document clears its figures. The update itself writes nothing: the tables start empty, and documents imported before it can be searched for figures from their Figures page.
+
+Older builds cannot open a schema-14 library. Restoring the pre-upgrade checkpoint returns the schema-13 library as it was. Figures are part of whole-library backups but stay on the device that found them: device sync does not carry them.
 
 ## What happens when migration is required
 
