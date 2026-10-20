@@ -6,7 +6,7 @@ This audit accompanies the repository-wide documentation refresh after merged PR
 
 The audit used active composition/route code, native command and migration owners, targeted repository searches, current tests, workflow definitions, manifests, and exact-head CI. It is not a proof that no unreachable line exists or a substitute for a security audit. Cleanup claims below identify a concrete owner/caller check rather than relying only on filenames.
 
-**Later change (October 2026):** the GitHub-direct Connector procedure, the `PR Contract` workflow and its PR-description ledger, the agent handoff renderer, and the separate agent process guides were retired. Contributors and agents now share the [Git and pull-request workflow](workflow.md); the product rules from those guides moved to `docs/architecture/` and `docs/development/`. References to those mechanisms below describe the state at the time of this audit.
+**Later change (October 2026):** the GitHub-direct Connector procedure, the `PR Contract` workflow and its PR-description ledger, the agent handoff renderer, and the separate agent process guides were retired. Contributors and agents now share the [Git and pull-request workflow](workflow.md); the product rules from those guides moved to `docs/architecture/` and `docs/development/`. Later still, the navigation was rebuilt around five destinations (Home, Library, Review, Tutor, Progress), Library's Workbench replaced the Flashcards deck library and Search/Filter workspace, and deck folders became subjects; [AGENTS.md](../../AGENTS.md) holds the current UI contracts. References to those mechanisms and screens below describe the state at the time of this audit.
 
 ## Documentation drift corrected
 

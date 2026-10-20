@@ -27,14 +27,14 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
       {
         id: "library-workbench",
         title: "Everything for flashcards lives together",
-        body: "Library lists your subjects with their decks and documents. Choose a subject, deck, view or tag to see its cards; open a card to edit it beside the list. Each subject and deck has a menu for renaming, moving, import and export.",
+        body: "Library lists your subjects with their decks and documents. Choose All cards, a subject, a deck or a tag to see its cards, and open a card to edit it beside the list. Each subject and deck has a menu for actions such as renaming, moving and exporting.",
         anchor: "library.workbench",
         placement: "bottom",
       },
       {
         id: "navigation",
         title: "Move between study tools",
-        body: "Home, Library, Review, Tutor and Progress are the same on desktop, tablet and phone, with Search and Settings in the header. Android Back closes overlays and nested work first, then returns to Home.",
+        body: "Home, Library, Review, Tutor and Progress are the same on every screen: in the side rail on wider screens and the bottom bar on a phone, with Search and Settings beside them. Android Back closes overlays and nested work first, then returns to Home.",
         anchor: "app.navigation",
         placement: "auto",
       },
@@ -48,7 +48,7 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
       {
         id: "filters",
         title: "Search inside what you chose",
-        body: "Search and sort work inside the subject, deck, view or tag chosen on the left, and the filters below them narrow it to due, new or suspended cards. Select cards to move, tag, suspend or reschedule them together.",
+        body: "Search, Show and Sort work inside what you chose on the left: All cards, a subject, a deck or a tag. Show narrows the list to cards due today, new, often missed or suspended. Select cards to move, tag, suspend or reschedule them together.",
         anchor: "search.filters",
         placement: "bottom",
         helpTopicId: "flashcards.search.studyState",
@@ -63,14 +63,14 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
       {
         id: "card",
         title: "Recall before revealing",
-        body: "Read the question and answer from memory before revealing. The backing layers show the remaining stack without adding extra card content to the accessibility tree.",
+        body: "Read the question and recall the answer before you choose Show answer or press Space or Enter. The cards stacked behind it are decoration, not extra questions.",
         anchor: "practice.card",
         placement: "top",
       },
       {
         id: "confidence",
         title: "Rate the difficulty",
-        body: "After revealing, choose 0 through 3. Each generated card keeps its own schedule and review history, even when it came from a reversible note or template.",
+        body: "Choose Wrong, Hard, Medium or Easy, or press 0 to 3. Each card keeps its own schedule and review history, even the reverse card of the same note.",
         anchor: "practice.confidence",
         placement: "top",
         helpTopicId: "practice.confidence",
@@ -85,7 +85,7 @@ export const tutorialModules: Readonly<Record<TutorialModuleId, TutorialModule>>
       {
         id: "upload",
         title: "Choose a local study source",
-        body: "Upload a supported document through the system picker. ostudy keeps the managed source local and uses your configured AI profile to generate a normal deck.",
+        body: "Choose Upload, then Document… or Images…. ostudy keeps the source in your library, reads it on this device, and uses the AI model chosen in Settings to make an ordinary deck.",
         anchor: "documents.upload",
         placement: "bottom",
         helpTopicId: "documents.provider",

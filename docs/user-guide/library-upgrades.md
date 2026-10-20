@@ -25,7 +25,7 @@ Builds may still share the application version `0.1.0`. Do not identify a candid
 
 ## The subjects update (schema 6)
 
-A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Decks and Documents views show the same subjects as folders and as collections. Each deck and each document is in at most one subject.
+A subject is one course: it holds the course's documents, guides and decks. Deck folders and document collections both become subjects, and Library's Flashcards and Documents pages show the same subjects: in the Workbench tree and as Documents' collections. Each deck and each document is in at most one subject.
 
 - Every folder becomes a subject with its decks. A folder and a collection with the same name, ignoring capitals and surrounding spaces, become one subject, but only when no other folder or collection uses that name. Otherwise both are kept under their own names.
 - A document that was in several collections stays in the one it joined first and leaves the others, keeping the page ranges set there. A document in no collection joins the folder of its generated deck.
@@ -53,7 +53,7 @@ Older builds cannot open a schema-8 library. Restoring the pre-upgrade checkpoin
 
 ## The lessons update (schema 9)
 
-Schema 9 adds a place for a subject's lessons: short teaching sequences written from the subject's documents, each kept with every earlier version of its text, and where you stopped in each one. Finishing a lesson is not a review: it never changes a card's schedule. The update itself writes nothing: the tables start empty.
+Schema 9 adds a place for a subject's lessons: short teaching sequences written from the subject's documents, each kept with every earlier version of its text, and where you stopped in each one. Finishing a lesson is not a review: it never changes a card's schedule. The update itself writes nothing: the tables start empty. This release has no screen for writing or reading lessons yet, so the tables stay empty in ordinary use.
 
 Older builds cannot open a schema-9 library. Restoring the pre-upgrade checkpoint returns the schema-8 library as it was. Lessons are part of whole-library backups but stay on the device that made them: device sync does not carry them yet, because it does not carry the extracted knowledge they are written from.
 

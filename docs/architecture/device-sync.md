@@ -141,13 +141,15 @@ Direct USB does not use the camera scanner.
 
 Synchronization never inherits every SQLite table automatically. The sender creates a package from an explicit, versioned selection of application-owned domains. Package v3 exposes five categories:
 
-- **Flashcards** — decks, notes/cards, collection copies retired into their originals (`card_merges`), tags, templates, managed card images, schedules, practice sessions/snapshots, review history, and portable source-citation records.
+- **Flashcards** — decks, notes/cards, collection copies retired into their originals (`card_merges`), tags, templates, managed card images, schedules, practice sessions/snapshots, review history with its scheduler context, the study-day totals kept after finalized deletions (`study_activity_retained`), and portable source-citation records.
 - **Documents** — canonical records, study ranges, managed source/page/source-asset files, source units/blocks/assets, page and semantic/OCR-derived state, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata.
 - **Study Guides** — guide revisions, sections, overlays, checkpoints, and guide artifact state. Study Guides require Documents.
 - **API provider settings** — supported provider profile metadata and task defaults.
 - **Saved API keys** — eligible secure-store credential bytes. Keys are separate opt-in data and require API provider settings.
 
 Subjects (`document_collections` and the document filing revision) travel with Flashcards or Documents, so decks and documents keep their `subject_id` with either category alone; only a package with neither removes them. The **Check these** list (`subject_filing_reviews`) is device-local and never travels.
+
+Some learner state stays on the device that made it whatever the selection: PDF page annotations (`document_annotations`) until sync defines how two devices' marks combine, a subject's lessons and lesson progress because the package does not carry the knowledge units they are written from, Tutor and shared-knowledge state, editor drafts, and the rebuildable per-deck review rollups (`review_day_rollups`). A whole-library backup is a snapshot of the library and keeps them.
 
 Flashcards, Documents, and Study Guides default on. API provider settings and Saved API keys default off. Native validation rejects empty selections and invalid dependency combinations.
 

@@ -63,7 +63,7 @@ Platform code does **not** own SQLite migrations, card validation, FSRS scheduli
 - Generated `.ostudy.json` is strict content-only input, whole-file validated and transactional.
 - `.ostudybackup` is complete personal-library recovery and excludes credential bytes.
 - Trusted-device sync is an explicit encrypted one-way offer over an allowlisted graph, not a live database copy or automatic inclusion of every table.
-- Analytics are deterministic projections over ostudy-owned schedules, sessions, review evidence, current relationships, and historical attribution.
+- Progress statistics are deterministic projections over ostudy-owned schedules, sessions, review evidence, the study activity ledger, current relationships, and historical attribution, using the metric definitions in `learning_metrics.rs`.
 
 ## Current document and AI invariants
 
@@ -75,14 +75,14 @@ Document/AI/synchronization are implemented optional subsystems; do not describe
 - A reusable learning plan/stable topics can connect generated flashcards and Study Guides without using mutable display tags as provenance.
 - Model output is untrusted assisted-authoring input and cannot write the database directly.
 - Provider HTTP stays inside the native gateway; profile persistence, secure secrets, probes, provider dialects, and document tasks are separate owners.
-- Implemented provider families are llama.cpp-compatible/Unsloth GGUF, DeepSeek, and OpenRouter. Catalog/planned entries are not implementation evidence.
+- Implemented providers are llama.cpp-compatible/Unsloth GGUF, DeepSeek, OpenRouter, and Claude (lowered to Anthropic's Messages API at the provider edge). Ollama, OpenAI, and Gemini are planned catalog entries; catalog entries are not implementation evidence.
 - A local/LAN provider never silently falls back to cloud or another model/provider.
 - Study Guide generated revisions and learner notes/overrides/conflicts have separate ownership; regeneration publishes atomically.
-- Device-sync package v3 has explicit Documents and Study Guides scopes, but the local learning graph is still broader than the transfer allowlist. Private/derived Tutor semantic state and any newly added graph entities do not transfer automatically; widening the graph requires an explicit versioned sync extension.
+- Device-sync package v3 has explicit Documents and Study Guides scopes, but the local learning graph is still broader than the transfer allowlist. Private/derived Tutor semantic state, shared knowledge, PDF page annotations, lessons and any newly added graph entities do not transfer automatically; widening the graph requires an explicit versioned sync extension.
 
 ## UI and accessibility invariants
 
-Current top-level destinations are Flashcards, Study Guides, Documents, Tutor, Analytics, and Settings. Practice is an internal contextual workflow. Flashcards has Decks and Search/Filter; Card templates live in Settings; transfer is contextual.
+The main navigation names five destinations on every screen size: Home, Library, Review, Tutor, and Progress, with Search and the Settings gear in the header. Library's pages are its Flashcards (the Workbench), Documents and Study guides tabs. Practice is an internal contextual workflow that runs inside Review. Card templates live in Settings; deck transfer is contextual. Subjects organize both decks and documents; there are no deck folders, Analytics screen, More menu, or Templates/Import destinations.
 
 Responsive presentation can move an action but cannot change its meaning, stable identity, authorization, destructive status, accessible name, or domain operation. Primary next steps stay discoverable. Empty states omit controls with no meaningful target rather than presenting filler tiles/disabled toolbars.
 

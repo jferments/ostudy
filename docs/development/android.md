@@ -26,10 +26,11 @@ Android values that Tauri exposes as configuration belong in `src-tauri/tauri.an
 
 Supported Android capabilities include:
 
-- deck, card, tag, template, search, and bulk authoring;
+- the same five destinations (Home, Library, Review, Tutor, Progress) in a bottom bar;
+- subject, deck, card, tag, template, search, and bulk authoring;
 - all native interactive question types, including manual image occlusion;
 - FSRS practice and scheduling controls;
-- analytics;
+- Progress analytics;
 - managed images and durable drafts;
 - interrupted-practice restoration;
 - Storage Access Framework import/export;
@@ -168,10 +169,11 @@ See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.
 
 ## GitHub Actions
 
-`.github/workflows/check.yml` remains the **single automatic pull-request qualification workflow** introduced by the unified-runner refactor. Draft pull requests use the fast shared gate. Ready pull requests and pushes to `main` run the complete serialized sequence:
+`.github/workflows/check.yml` remains the **single automatic pull-request qualification workflow** introduced by the unified-runner refactor. Draft pull requests use the fast shared gate. Ready pull requests, pushes to `main` and drafts labelled `qualification:full` run the complete serialized sequence:
 
 ```text
-check.sh
+check-static.sh
+→ check.sh
 → android-test.sh
 → android-emulator-smoke.sh
 ```

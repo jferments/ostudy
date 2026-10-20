@@ -10,9 +10,9 @@ Anki **notes** contain named fields. A **note type** defines field order and que
 
 A supported Anki card becomes an independently scheduled oStudy presentation with a fresh schedule. Multiple cards generated from one Anki note do not retain linked Anki editing. Ordinary Basic/reverse presentations become editable oStudy Basic notes. Compatible simple Anki cloze presentations become native **Fill in the blank** notes; each source Anki cloze card receives an independent oStudy cloze note/schedule so importing c1/c2 does not accidentally collapse distinct source schedules. Complex cloze templates that contain extra answer fields or media fall back to a rendered Basic card rather than silently discarding information.
 
-For ordinary Basic cards, Anki's common `{{FrontSide}}` back-template expansion is treated as presentation, not answer data. oStudy stores an answer-only back. The learner can enable **Settings → Appearance → Display both question and answer when card is flipped** when they want the front repeated after reveal. Native Fill in the blank imports carry their blank context in the revealed content automatically.
+For ordinary Basic cards, Anki's common `{{FrontSide}}` back-template expansion is treated as presentation, not answer data. oStudy stores an answer-only back. The learner can enable **Settings → Review/Scheduling → Display both question and answer when card is flipped** when they want the front repeated after reveal. Native Fill in the blank imports carry their blank context in the revealed content automatically.
 
-Source subdeck paths are retained as `Anki deck::...` tags in one imported deck, not reconstructed as folders. Tags follow oStudy's 32-per-note and 64-character limits, with omissions/truncation reported. Import does not overwrite an existing deck.
+Source subdeck paths are retained as `Anki deck::...` tags in one imported deck, not reconstructed as subjects. Tags follow oStudy's 32-per-note and 64-character limits, with omissions/truncation reported. Import does not overwrite an existing deck.
 
 ## Supported package profile
 

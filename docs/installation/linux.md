@@ -51,10 +51,11 @@ After changing source code:
 For a live development session instead:
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm desktop
 ```
 
-The live development command is useful while editing the interface; the standalone build is the artifact used for final manual acceptance.
+`pnpm desktop` runs Tauri hot reload through `scripts/dev.sh` with the development overlay, so it also uses `io.github.jferments.ostudy.dev` and its separate library. Install first: pnpm refuses to run scripts while `node_modules` is older than the lockfile. Do not run bare `pnpm tauri dev`; that debug build resolves the production identifier and startup refuses it. The live development command is useful while editing the interface and is how the maintainer tries a branch; the standalone build is the artifact for testing the built application.
 
 ## Control compilation parallelism
 

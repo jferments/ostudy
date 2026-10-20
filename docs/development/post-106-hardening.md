@@ -1,6 +1,6 @@
 # Post-#106 hardening and audit disposition
 
-Status: **H-01/H-02 are merged in PR #109; H-03/H-04/H-05 are merged in PR #110; H-06/H-07 are merged in PR #111; H-08/H-09 are merged in PR #112; H-10 is implemented in draft PR #113 and awaiting terminal qualification/human acceptance.** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
+Status: **H-01/H-02 are merged in PR #109; H-03/H-04/H-05 are merged in PR #110; H-06/H-07 are merged in PR #111; H-08/H-09 are merged in PR #112; H-10 is merged in PR #113 (7283216).** This register preserves the September 26, 2026 documentation, native and frontend review decisions. The external reviews used `f28abfd5`; the follow-up source reviews used `7f3c35d57325fbf371ff254c7f2e3ec3c02133fb` and `d1d3b176a2542e7f1b89408c8a6bf88b7d84b36b`. Recheck the relevant owner at the implementation branch's exact head before changing it. Review counts and hypotheses are not executed-test evidence.
 
 Merged foundation: PR #106, squash `9ef91e79346b6d0d0ace983da3c1583303f15a43`. See the [completion record](lk-followups/consolidation-qualification.md). PR #108 is documentation-only relative to that foundation. The H identifiers below are scope labels, **not reserved GitHub PR numbers**, and do not authorize starting all scopes at once. PR #105 remains the deferred lessons/narration/PowerPoint plan; structural cleanup must not become an endless prerequisite to product work.
 
@@ -116,7 +116,7 @@ Exit: current reopen, unsupported/corrupt input refusal, historical compatibilit
 
 ### H-10 — obsolete bundled interfaces, not supported data readers
 
-Status: **implemented in draft PR #113; terminal qualification and human acceptance remain.**
+Status: **merged in PR #113 (7283216).**
 
 Owners: Dialog callers, current settings/appearance interfaces, live routing, fixture-only props and profile DTO consumers.
 
