@@ -114,8 +114,8 @@ SCREENS: tuple[Screen, ...] = (
     Screen("home", "Home", "Home", shells=(DESTINATIONS_SHELL,)),
     # The landing page of a library with nothing in it.
     Screen("first-run", "First run: empty library", "Home", None, "first-run"),
-    # A subject's page; builds before it existed open Library from a tile and record a failure.
-    Screen("subject", "Subject page", "Home", shells=(DESTINATIONS_SHELL,)),
+    # A subject's page, its Library Overview; builds before it existed record a failure.
+    Screen("subject", "Subject page", "Library", shells=(DESTINATIONS_SHELL,)),
     Screen("library", "Library: Decks", "Library"),
     Screen("deck", "Deck card list", "Library"),
     Screen("card-editor", "Card editor", "Library"),
@@ -403,7 +403,7 @@ def close_overlays(ctx: Context) -> None:
 
 
 SHELL_MARKER = "//button[@data-testid='nav-library' or @data-testid='nav-decks']"
-LIBRARY_VIEWS = ("decks", "documents", "study-guides")
+LIBRARY_VIEWS = ("overview", "lessons", "decks", "documents", "study-guides")
 DESTINATION_OF = {"home": "home", "tutor": "tutor", "analytics": "progress"}
 
 
@@ -431,6 +431,21 @@ def show_workbench_tree(ctx: Context) -> None:
     find(ctx, f"{workbench}//nav[@aria-label='Library']")
 
 
+def choose_everything(ctx: Context) -> None:
+    """Library keeps the subject chosen last; its screens are photographed on Everything."""
+    name = "//main//*[@data-testid='library-subject-name']"
+    if not exists(ctx, name) or exists(ctx, f"{name}[normalize-space(.)='Everything']"):
+        return
+    switcher = "//main//button[@data-testid='library-switch-subject']"
+    if exists(ctx, switcher):
+        click(ctx, switcher)
+        click(ctx, "//*[@role='dialog']//button[@data-testid='library-subject-all']")
+    else:
+        click(ctx, "//main//aside//button[@data-testid='library-subject-all']")
+    find(ctx, f"{name}[normalize-space(.)='Everything']")
+    settle_dialogs(ctx)
+
+
 def go(ctx: Context, section: str) -> None:
     """Navigate to a top-level section through the visible navigation.
 
@@ -445,6 +460,8 @@ def go(ctx: Context, section: str) -> None:
             settle_dialogs(ctx)
             # Library opens its last page; every page carries Library's tabs.
             find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages']")
+            show_workbench_tree(ctx)
+            choose_everything(ctx)
             show_workbench_tree(ctx)
             if section == "decks" and exists(ctx, WORKBENCH):
                 # The Workbench is Library's first page.
@@ -675,8 +692,9 @@ def open_subject(ctx: Context) -> None:
         ctx,
         f"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={xpath_literal(name)}]]//button",
     )
-    find(ctx, f"//main//*[@data-testid='subject-screen']//h1[normalize-space(.)={xpath_literal(name)}]")
-    find(ctx, "//main//*[@data-testid='subject-sources']//*[@data-testid='subject-source']")
+    # A subject opens on its Library Overview.
+    find(ctx, f"//main//*[@data-testid='library-subject-name'][normalize-space(.)={xpath_literal(name)}]")
+    find(ctx, "//main//*[@data-testid='library-overview']//*[@data-testid='library-overview-documents']")
 
 
 def open_first_run(ctx: Context) -> None:

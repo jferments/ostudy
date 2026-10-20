@@ -43,6 +43,8 @@ interface WorkbenchTreeProps extends WorkbenchTreeActions {
   checkTheseCount: number;
   /** Phones show the tree as its own page with larger rows. */
   compact: boolean;
+  /** Shows only this subject (`null` is No subject); every subject when left out. */
+  onlySubjectId?: string | null;
 }
 
 /**
@@ -50,8 +52,11 @@ interface WorkbenchTreeProps extends WorkbenchTreeActions {
  * documents, and tags. Choosing an entry scopes the card list; each subject,
  * deck and document carries its own actions menu.
  */
-export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, ...actions }: WorkbenchTreeProps) {
-  const nodes = useMemo(() => subjectNodes(library), [library]);
+export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, onlySubjectId, ...actions }: WorkbenchTreeProps) {
+  const nodes = useMemo(
+    () => subjectNodes(library).filter((node) => onlySubjectId === undefined || node.subjectId === onlySubjectId),
+    [library, onlySubjectId],
+  );
   const archived = useMemo(() => archivedDecks(library), [library]);
   const colors = useMemo(() => subjectColorIndexes(library.subjects), [library.subjects]);
   const totalCards = useMemo(

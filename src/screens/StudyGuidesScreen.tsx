@@ -1,6 +1,6 @@
 import { useId, type FormEvent } from "react";
 import type { ShowToast } from "../components/Toast";
-import type { StudyGuidePageItem, StudyGuideLibrarySort } from "../ipc/studyGuides";
+import type { StudyGuidePageItem, StudyGuideLibrarySort, StudyGuideSubjectFilter } from "../ipc/studyGuides";
 import { getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
 import { PerformanceProfiler } from "../testing/PerformanceProfiler";
@@ -23,15 +23,17 @@ import { guideLibraryStyles as styles } from "./documents/presentation";
 import { useLibraryFullPage } from "./library/LibraryFrame";
 
 interface StudyGuidesScreenProps {
+  /** Lists one subject's guides; every guide when left out. */
+  subject?: StudyGuideSubjectFilter;
   showToast: ShowToast;
   onPracticeCards: (cardIds: string[]) => Promise<void>;
   openRequest?: StudyGuideOpenRequest | null;
   onOpenRequestConsumed?: (requestId: number) => void;
 }
 
-export function StudyGuidesScreen({ showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed }: StudyGuidesScreenProps) {
+export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed }: StudyGuidesScreenProps) {
   const confirm = useConfirm();
-  const controller = useStudyGuidesController({ showToast, openRequest, onOpenRequestConsumed });
+  const controller = useStudyGuidesController({ subject, showToast, openRequest, onOpenRequestConsumed });
   // An open guide is a page of its own in Library, without the view switcher.
   useLibraryFullPage(controller.selected !== null);
   async function confirmDelete(target: StudyGuideDeleteTarget): Promise<boolean> {

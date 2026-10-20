@@ -12,6 +12,8 @@ import { makeDeck, makeSubject, makeSubjectLibrary } from "../../../test/factori
 import { matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../../ui/overlays/OverlayProvider";
+import type { LibrarySubjectScope } from "../../../navigation/appDestinations";
+import { LibraryFrame } from "../LibraryFrame";
 import { LibraryWorkbench, type WorkbenchLaunch } from "./LibraryWorkbench";
 
 vi.mock("../../../ipc/cards", () => ({
@@ -89,9 +91,11 @@ function row(overrides: Partial<cardsIpc.CardBrowserRow> = {}): cardsIpc.CardBro
   };
 }
 
-function renderWorkbench(width = 1400, launch?: WorkbenchLaunch) {
+function renderWorkbench(width = 1400, launch?: WorkbenchLaunch, subject?: LibrarySubjectScope) {
   setViewport(width);
   const props = {
+    subject,
+    onSubjectChange: vi.fn(),
     decks,
     refreshDecks: vi.fn(async () => decks),
     launch,
@@ -100,14 +104,23 @@ function renderWorkbench(width = 1400, launch?: WorkbenchLaunch) {
     onPracticeSelected: vi.fn(),
     practiceShuffle: true,
     onOpenDocuments: vi.fn(),
-    onOpenStudyGuides: vi.fn(),
     onCardDirtyChange: vi.fn(),
     showToast: vi.fn(),
   };
   render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <LibraryWorkbench {...props} />
+        <LibraryFrame
+          view="decks"
+          fill
+          onSelectView={vi.fn()}
+          subject={subject ?? { kind: "all" }}
+          onChooseSubject={vi.fn()}
+          onStartReview={vi.fn()}
+          onPracticeSubject={vi.fn()}
+        >
+          <LibraryWorkbench {...props} />
+        </LibraryFrame>
       </OverlayProvider>
     </LayoutModeProvider>,
   );
@@ -185,12 +198,24 @@ describe("LibraryWorkbench", () => {
   it("puts Library's pages in tabs above the tree, with Import deck beside them", async () => {
     renderWorkbench();
     const tabs = screen.getByRole("navigation", { name: "Library pages" });
-    expect(within(tabs).getAllByRole("button").map((button) => button.textContent)).toEqual(["Flashcards", "Documents", "Study guides"]);
     expect(within(tabs).getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
     const tree = screen.getByRole("navigation", { name: "Library" });
     expect(within(tree).queryByRole("button", { name: "Documents" })).toBeNull();
     expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
+  });
+
+  it("shows only Library's chosen subject in its tree and reports the subject chosen here", async () => {
+    const props = renderWorkbench(1400, { requestId: 1, scope: { kind: "subject", subjectId: cardiac.id } }, {
+      kind: "subject",
+      subjectId: cardiac.id,
+    });
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    await waitFor(() => expect(within(tree).getAllByRole("button", { name: /Cardiac physiology/u }).length).toBeGreaterThan(0));
+    expect(within(tree).queryAllByRole("button", { name: /Renal/u })).toEqual([]);
+    await waitFor(() => expect(props.onSubjectChange).toHaveBeenLastCalledWith({ kind: "subject", subjectId: cardiac.id }));
+    fireEvent.click(within(tree).getByRole("button", { name: /^All cards/u }));
+    await waitFor(() => expect(props.onSubjectChange).toHaveBeenLastCalledWith({ kind: "all" }));
   });
 
   it("scopes a subject to its own decks", async () => {

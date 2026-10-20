@@ -36,7 +36,8 @@ import { DeckTransferDialog, type DeckTransferDialogRequest } from "../../flashc
 import { PracticeSetupSheet } from "../../flashcards/deck-library/PracticeSetupSheet";
 import type { PracticeDeckScope } from "../../flashcards/deck-library/practiceSetupModel";
 import { CheckTheseSheet } from "../../home/CheckTheseSheet";
-import { LibraryTabs } from "../LibraryTabs";
+import { useLibraryFullPage, useLibraryTabActions } from "../LibraryFrame";
+import { ALL_SUBJECTS, type LibrarySubjectScope } from "../../../navigation/appDestinations";
 import { NewSubjectSheet } from "../../home/NewSubjectSheet";
 import { CardScheduleSummary } from "./CardScheduleSummary";
 import { useWorkbenchCards, PAGE_SIZE } from "./useWorkbenchCards";
@@ -77,10 +78,12 @@ export interface LibraryWorkbenchProps {
   onPracticeSelected: (request: SelectedPracticeRequest) => void | Promise<void>;
   practiceShuffle: boolean;
   onOpenDocuments: () => void;
-  onOpenStudyGuides: () => void;
   onCardDirtyChange: (dirty: boolean) => void;
   /** The open deck, or null for any other place, so practice can return to it. */
   onDeckScopeChange?: (deckId: string | null) => void;
+  /** Library's chosen subject: the tree shows only it, and a subject chosen here becomes Library's. */
+  subject?: LibrarySubjectScope;
+  onSubjectChange?: (subject: LibrarySubjectScope) => void;
   showToast: ShowToast;
 }
 
@@ -127,9 +130,10 @@ export function LibraryWorkbench({
   onPracticeSelected,
   practiceShuffle,
   onOpenDocuments,
-  onOpenStudyGuides,
   onCardDirtyChange,
   onDeckScopeChange,
+  subject,
+  onSubjectChange,
   showToast,
 }: LibraryWorkbenchProps) {
   const { layoutMode } = useLayoutMode();
@@ -174,6 +178,18 @@ export function LibraryWorkbench({
   useEffect(() => {
     onDeckScopeChange?.(scopeDeckId);
   }, [onDeckScopeChange, scopeDeckId]);
+
+  // Choosing All cards or a subject here chooses it for the rest of Library too.
+  const reportedSubject: LibrarySubjectScope | null =
+    scope.kind === "view" && scope.view === "all"
+      ? ALL_SUBJECTS
+      : scope.kind === "subject"
+        ? scope.subjectId === null ? { kind: "none" } : { kind: "subject", subjectId: scope.subjectId }
+        : null;
+  const reportedSubjectKey = reportedSubject === null ? null : JSON.stringify(reportedSubject);
+  useEffect(() => {
+    if (reportedSubjectKey !== null) onSubjectChange?.(JSON.parse(reportedSubjectKey) as LibrarySubjectScope);
+  }, [onSubjectChange, reportedSubjectKey]);
 
   // A launch from Home, a subject's Manage button or the header's Search.
   const appliedLaunch = useRef<number | null>(launch?.requestId ?? null);
@@ -600,6 +616,7 @@ export function LibraryWorkbench({
         scope={scope}
         checkTheseCount={library.organization?.checkTheseCount ?? 0}
         compact={compact}
+        onlySubjectId={subject === undefined || subject.kind === "all" ? undefined : subject.kind === "none" ? null : subject.subjectId}
         onSelectScope={(next) => void chooseScope(next)}
         onNewSubject={() => setSheet({ kind: "new-subject" })}
         onRenameSubject={(subjectId) => setSheet({ kind: "rename-subject", subjectId, name: library.subjects.find((subject) => subject.id === subjectId)?.name ?? "" })}
@@ -677,6 +694,21 @@ export function LibraryWorkbench({
     />
   ) : null;
 
+  // Import deck sits at the end of Library's tabs while the Workbench is open.
+  const importAction = useMemo(
+    () => compact ? (
+      <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
+    ) : (
+      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
+        Import deck
+      </Button>
+    ),
+    [compact],
+  );
+  useLibraryTabActions(importAction);
+  // A phone's card editor is a page of its own, without Library's header and tabs.
+  useLibraryFullPage(compact && page === "editor");
+
   let body;
   if (compact) {
     body = page === "editor" && editorPane ? editorPane : page === "cards" ? list : tree;
@@ -716,28 +748,8 @@ export function LibraryWorkbench({
   return (
     <div
       data-testid="library-workbench"
-      className={compact
-        ? "tw:min-w-0 tw:px-4 tw:pt-4 tw:pb-[calc(5rem+var(--safe-bottom))]"
-        : "tw:flex tw:h-full tw:min-h-0 tw:flex-col tw:px-5 tw:pt-5 tw:pb-4"}
+      className={compact ? "tw:min-w-0" : "tw:flex tw:h-full tw:min-h-0 tw:flex-1 tw:flex-col"}
     >
-      {compact && page === "editor" ? null : (
-        <LibraryTabs
-          view="decks"
-          onSelectView={(view) => {
-            if (view === "documents") onOpenDocuments();
-            else if (view === "study-guides") onOpenStudyGuides();
-            else void chooseScope(DEFAULT_SCOPE);
-          }}
-          actions={compact ? (
-            <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
-          ) : (
-            <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
-              Import deck
-            </Button>
-          )}
-          className="tw:mb-4 tw:shrink-0"
-        />
-      )}
       {opening ? <span className="sr-only" role="status">Opening card…</span> : null}
       {libraryState.loading && !library.organization ? <InlineProgress>Loading your library…</InlineProgress> : null}
       <div className={compact ? "tw:min-w-0" : "tw:flex tw:min-h-0 tw:flex-1"}>{body}</div>
