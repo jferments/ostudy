@@ -48,6 +48,8 @@ interface AnnotatorCanvasProps {
   viewportRef: RefObject<HTMLDivElement | null>;
   contentRef: RefObject<HTMLDivElement | null>;
   coarse: boolean;
+  /** A page to outline, such as the one a card's source opened at. */
+  markedPage?: number | null;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -74,7 +76,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  * own page only.
  */
 export function AnnotatorCanvas({
-  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse,
+  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -362,6 +364,7 @@ export function AnnotatorCanvas({
                 page={page}
                 scale={scale}
                 near={near.has(pageNumber)}
+                marked={markedPage === pageNumber}
                 images={images}
                 tiles={tiles}
                 tileScale={settled?.scale ?? 0}
