@@ -23,7 +23,7 @@ class TutorSmokeSelectorTests(unittest.TestCase):
         for call in execute.call_args_list:
             script = call.args[1]
             self.assertIn("section[aria-label='Tutor conversation'] header", script)
-            self.assertIn('button[aria-label="Chat settings"]', script)
+            self.assertIn('button[aria-label="Chat actions"]', script)
             self.assertIn("!settings.disabled", script)
 
     def test_missing_wrong_or_busy_conversation_cannot_pass_readiness(self):
@@ -59,7 +59,7 @@ class TutorSmokeSelectorTests(unittest.TestCase):
         self.assertIn('section[aria-label="Flashcard hints"]', script)
         self.assertIn("getAttribute('aria-label')", script)
         self.assertIn("querySelectorAll('button, summary')", script)
-        self.assertIn("['Sources', 'Chat settings']", script)
+        self.assertIn("['Add sources', 'Chat actions', 'Chat settings']", script)
         self.assertIn("if (!dialog) return null", script)
 
     def test_hint_privacy_rejects_sources_memory_missing_region_or_replaced_practice(self):

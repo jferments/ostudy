@@ -9,7 +9,10 @@ vi.mock("./TutorContext", () => ({ useTutor: () => ({
   needsRefresh: false, error: null, initialize: vi.fn(), setDraft: vi.fn(),
 }) }));
 vi.mock("../../platform/externalLinks", () => ({ openExternalUrl: vi.fn() }));
-vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => vi.fn() }));
+vi.mock("../../ui/overlays/overlayContext", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../ui/overlays/overlayContext")>(),
+  useConfirm: () => vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks(); state.target = null;
@@ -29,15 +32,22 @@ describe("Conversational Tutor presentation", () => {
     expect(state.send).toHaveBeenCalledWith("explain");
   });
 
-  it("omits empty source copy and keeps the chat-settings glyph centered at its explicit size", () => {
-    const { container } = render(<TutorWorkspace />);
+  it("never requires a source and keeps chat actions in one menu", () => {
+    render(<TutorWorkspace />);
     expect(screen.queryByText("No sources")).toBeNull();
-    const settings = screen.getByRole("button", { name: "Chat settings" });
-    const icon = settings.querySelector("svg") as SVGElement;
+    expect(screen.getByRole("button", { name: "Add sources" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+    const actions = screen.getByRole("button", { name: "Chat actions" });
+    const icon = actions.querySelector("svg") as SVGElement;
     expect(icon.getAttribute("width")).toBe("20");
-    expect(icon.getAttribute("height")).toBe("20");
-    expect(icon.classList.contains("tw:size-5")).toBe(true);
-    expect(container.querySelector('[aria-label="Chat settings"]')).toBe(settings);
+    expect(screen.queryByText("fixture")).toBeNull();
+  });
+
+  it("offers a quiz on the latest answer without sending the draft", () => {
+    render(<TutorWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Quiz me on this" }));
+    expect(state.send).toHaveBeenCalledWith("quiz", "");
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
   });
 
   it("keeps hint-only messages plain and does not add a quiz shortcut", () => {

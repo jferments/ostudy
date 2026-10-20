@@ -1,11 +1,22 @@
 import { useId, useState } from "react";
-import { scopeMembers, selectedScope, studyScopeKey, type MaterialScope, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
+import { sameStudyScope, scopeMembers, selectedScope, studyScopeKey, type MaterialScope, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Button } from "../../ui/primitives/Button";
 import { styles } from "./presentation";
+
+/** The title of a chat's chosen material, or null when it has none (general knowledge only). */
+export function sourcesLabel(scope: StudyScope, choices: ScopeChoice[]): string | null {
+  if (scope.kind === "general") return null;
+  if (scope.kind === "library") return "Library";
+  const members = scopeMembers(scope);
+  if (members.length > 1) return `${members.length} sources`;
+  const member = members[0];
+  if (!member) return null;
+  return choices.find((choice) => sameStudyScope(choice.scope, member))?.title ?? "Selected source";
+}
 
 /** Selection is local-only. Applying creates a new scope, never edits a saved chat's permissions. */
 export function TutorSources({
@@ -14,8 +25,6 @@ export function TutorSources({
   onApply,
   onClose,
   title = "Sources",
-  description = "Choose study material to ground this conversation. No selection means general discussion.",
-  note = "Changing sources starts a new chat; previous chats keep their sources. Saved knowledge is reused. Selecting material here sends nothing.",
   applyLabel = "Use sources",
 }: {
   scope: StudyScope;
@@ -23,8 +32,6 @@ export function TutorSources({
   onApply: (scope: StudyScope) => void;
   onClose: () => void;
   title?: string;
-  description?: string;
-  note?: string;
   applyLabel?: string;
 }) {
   const id = useId();
@@ -45,7 +52,7 @@ export function TutorSources({
     if (next.length > 16) { setError("Select at most 16 sources for one conversation."); return; }
     setSelected(next); setError(null);
   }
-  return <Dialog title={title} description={description} onClose={onClose} width="medium"
+  return <Dialog title={title} onClose={onClose} width="medium"
     actions={<>
       <Button className="tw:mr-auto" onClick={() => { setSelected([]); setError(null); }}>Clear selection</Button>
       <Button onClick={onClose}>Cancel</Button>
@@ -62,9 +69,9 @@ export function TutorSources({
           <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : member.kind === "collection" ? "Document folder" : "Document"}</small></span>
         </label>;
       })}
-      {!available.length ? <p className={styles.muted}>Import a document or create flashcards to add study sources.</p> : null}
+      {!available.length ? <p className={styles.muted}>No study material yet.</p> : null}
     </div>
-    <p className={styles.muted}>{selected.length} selected. {note}</p>
+    <p className={styles.muted}>{selected.length} selected</p>
     {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
   </Dialog>;
 }

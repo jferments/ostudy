@@ -210,7 +210,7 @@ describe("Tutor workspace consent and source reads", () => {
       });
     });
     expect(screen.queryByRole("button", { name: "Chat settings" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Sources: |Add sources)/u })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: /Search permitted conversations/ })).toBeNull();
     expect(controller.includeConversations).toBe(false);
   });
@@ -219,7 +219,7 @@ describe("Tutor workspace consent and source reads", () => {
     render(<Harness />);
     await act(async () => { await controller.selectConversation(detail.conversation.id); });
     expect(screen.getByRole("textbox", { name: "Message" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sources" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Sources: /u })).toBeTruthy();
     expect(screen.queryByText("Search index maintenance")).toBeNull();
     expect(screen.queryByText("Restore message to composer")).toBeNull();
     expect(screen.queryByText("Prepare selected material")).toBeNull();
@@ -237,7 +237,7 @@ describe("Tutor workspace consent and source reads", () => {
     render(<Harness />);
     await act(async () => { await controller.selectConversation(detail.conversation.id); });
     await act(async () => { controller.setDraft("Compare the ideas"); });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sources" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Sources: /u })); });
     fireEvent.click(screen.getByRole("checkbox", { name: /Physics document/ }));
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use sources" })); });
     expect(controller.scope.kind).toBe("selection");
