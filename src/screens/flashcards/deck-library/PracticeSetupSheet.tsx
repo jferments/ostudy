@@ -11,7 +11,6 @@ import { Sheet } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
 import {
-  MAX_PRACTICE_TAGS,
   canAddPracticeTag,
   canonicalPracticeWorkloadQuery,
   createPracticeSetupRequest,
@@ -21,9 +20,10 @@ import {
   type PracticeDeckScope,
   type SetupResource,
 } from "./practiceSetupModel";
-import { Checkbox, RadioGroup } from "../../../ui/primitives/FormControls";
-import { Panel } from "../../../ui/primitives/Panel";
-import { Badge } from "../../../ui/primitives/Badge";
+import { Switch } from "../../../ui/primitives/FormControls";
+import { Chip, ChipButton } from "../../../ui/primitives/Chip";
+import { SegmentedControl } from "../../../ui/primitives/SegmentedControl";
+import { Icon } from "../../../ui/icons/Icon";
 
 interface PracticeSetupSheetProps {
   scope: PracticeDeckScope;
@@ -150,69 +150,64 @@ export function PracticeSetupSheet({
     }
   }
 
+  const scheduledCount = availability?.scheduled.count;
+  const extraCount = availability?.extra.count;
+  const readyTags = currentTags?.status === "ready" ? currentTags.value : null;
+
   return (
     <PerformanceProfiler id="practice-setup">
-      <Sheet title="Practice selected decks" description="Review the selected decks and optional tags before starting scheduled or extra study."
+      <Sheet title="Practice selected decks"
         width="medium" onClose={onClose} busy={isStarting} dismissible={!isStarting}
         actions={<>
           <Button disabled={isStarting} onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={isStarting} disabled={!request || isStarting} onClick={() => void start()}>Start practice</Button>
         </>}>
         <div className="tw:grid tw:min-w-0 tw:gap-6" data-layout-mode={layoutMode}>
-          <Panel title="Selected decks" actions={<Badge>{scope.decks.length} {scope.decks.length === 1 ? "deck" : "decks"}</Badge>}>
-            <ul className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
-              {scope.decks.map((deck) => <li key={deck.id} className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-                <strong className="tw:min-w-0 tw:break-words tw:font-medium">{deck.name}</strong>
-                <span className="tw:text-caption tw:text-muted-foreground">{deck.generatedCardCount} generated cards</span>
-              </li>)}
+          <section className="tw:grid tw:gap-2" aria-labelledby="practice-setup-decks">
+            <h3 id="practice-setup-decks" className={SECTION_LABEL}>{scope.decks.length === 1 ? "Deck" : "Decks"}</h3>
+            <ul className="tw:m-0 tw:flex tw:list-none tw:flex-wrap tw:gap-2 tw:p-0">
+              {scope.decks.map((deck) => <li key={deck.id} className="tw:min-w-0"><Chip selected className="tw:max-w-full tw:break-words">{deck.name}</Chip></li>)}
             </ul>
-          </Panel>
+          </section>
           {!scopeValidation.valid ? <InlineNotice kind="error">{scopeValidation.message}</InlineNotice> : null}
           {scopeValidation.valid ? <>
-            <Panel title="Refine by tags" description="Optional · matching cards must have at least one selected tag."
-              actions={<Badge>{selectedTagIds.length}/{MAX_PRACTICE_TAGS}</Badge>}>
-              {!currentTags || currentTags.status === "loading" ? <InlineProgress>Loading tags…</InlineProgress> : null}
-              {currentTags?.status === "error" ? <InlineNotice kind="error">Tags are unavailable: {currentTags.message}{" "}
-                <Button size="small" variant="text" disabled={isStarting} onClick={() => void loadTags()}>Retry tags</Button>
-              </InlineNotice> : null}
-              {currentTags?.status === "ready" && currentTags.value.length === 0 ? <p className="tw:m-0 tw:text-label tw:text-muted-foreground">None of the selected decks use tags yet.</p> : null}
-              {currentTags?.status === "ready" && currentTags.value.length > 0 ? <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2">
-                {currentTags.value.map((tag) => <label key={tag.id} className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-3 tw:has-[[data-checked]]:border-primary tw:has-[[data-checked]]:bg-accent">
-                  <Checkbox checked={selectedTagIds.includes(tag.id)} disabled={!canAddPracticeTag(selectedTagIds, tag.id) || isStarting}
-                    onCheckedChange={(checked) => setSelectedTagIds((current) => {
+            {!currentTags || currentTags.status === "loading" ? <InlineProgress>Loading tags…</InlineProgress> : null}
+            {currentTags?.status === "error" ? <InlineNotice kind="error">Tags are unavailable: {currentTags.message}{" "}
+              <Button size="small" variant="text" disabled={isStarting} onClick={() => void loadTags()}>Retry tags</Button>
+            </InlineNotice> : null}
+            {readyTags && readyTags.length > 0 ? <section className="tw:grid tw:gap-2" aria-labelledby="practice-setup-tags">
+              <h3 id="practice-setup-tags" className={SECTION_LABEL}>Tags</h3>
+              <div className="tw:flex tw:flex-wrap tw:gap-2" role="group" aria-labelledby="practice-setup-tags">
+                {readyTags.map((tag) => {
+                  const selected = selectedTagIds.includes(tag.id);
+                  return <ChipButton key={tag.id} selected={selected}
+                    disabled={(!selected && !canAddPracticeTag(selectedTagIds, tag.id)) || isStarting}
+                    onClick={() => setSelectedTagIds((current) => {
                       const next = new Set(current);
-                      if (checked) next.add(tag.id); else next.delete(tag.id);
-                      return reconcilePracticeTagIds(next, currentTags.value);
-                    })} />
-                  <span className="tw:grid tw:min-w-0 tw:gap-1"><strong className="tw:break-words tw:font-medium">{tag.name}</strong>
-                    <small className="tw:text-muted-foreground">{tag.generatedCardCount} generated · {tag.studyableDueCount} ready</small></span>
-                </label>)}
-              </div> : null}
-            </Panel>
-            <Panel title="Cards available to study" aria-live="polite">
-              {!currentWorkload || currentWorkload.status === "loading" ? <InlineProgress>Updating…</InlineProgress> : null}
+                      if (selected) next.delete(tag.id); else next.add(tag.id);
+                      return reconcilePracticeTagIds(next, readyTags);
+                    })}>
+                    {selected ? <Icon name="check" size={14} /> : null}{tag.name}
+                  </ChipButton>;
+                })}
+              </div>
+            </section> : null}
+            <section className="tw:grid tw:gap-2" aria-labelledby="practice-setup-cards" aria-live="polite">
+              <h3 id="practice-setup-cards" className={SECTION_LABEL}>Cards</h3>
               {currentWorkload?.status === "error" ? <InlineNotice kind="error">Study counts are unavailable: {currentWorkload.message}{" "}
                 <Button size="small" variant="text" disabled={isStarting} onClick={() => void loadWorkload()}>Retry study counts</Button>
               </InlineNotice> : null}
-              {currentWorkload?.status === "ready" ? <WorkloadMetrics workload={currentWorkload.value} /> : null}
-            </Panel>
-            <Panel title="Study mode">
-              <RadioGroup label="Study mode" name="practice-mode" value={mode} onValueChange={setMode} disabled={isStarting}
-                options={([
-                  { value: "scheduled", title: "Scheduled study", availability: availability?.scheduled },
-                  { value: "extra", title: "Extra study", availability: availability?.extra },
-                ] as const).map((option) => ({ value: option.value, disabled: !option.availability?.available,
-                  label: <span className="tw:grid tw:gap-1"><strong className="tw:font-medium">{option.title}</strong>
-                    <small className="tw:font-normal tw:leading-relaxed tw:text-muted-foreground">{option.availability?.explanation ?? "Checking available cards…"}</small></span>,
-                }))} />
-              <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:text-label">
-                <Checkbox checked={shuffle} disabled={isStarting} onCheckedChange={setShuffle} />
-                <span>Shuffle cards while keeping study priorities</span>
-              </label>
-            </Panel>
-            {request ? <p className="tw:m-0 tw:text-caption tw:text-muted-foreground">
-              Starting exactly {request.deckIds.length} {request.deckIds.length === 1 ? "deck" : "decks"}, {request.tagIds.length} {request.tagIds.length === 1 ? "tag" : "tags"}, {request.mode} mode, shuffle {request.shuffle ? "on" : "off"}.
-            </p> : null}
+              <SegmentedControl label="Cards" value={mode} onChange={setMode}
+                disabled={isStarting || currentWorkload?.status !== "ready"}
+                options={[
+                  { value: "scheduled", label: scheduledCount === undefined ? "Due" : `Due · ${scheduledCount.toLocaleString()}`, disabled: !availability?.scheduled.available },
+                  { value: "extra", label: extraCount === undefined ? "Extra" : `Extra · ${extraCount.toLocaleString()}`, disabled: !availability?.extra.available },
+                ]} />
+            </section>
+            <label className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:justify-between tw:gap-4 tw:text-body tw:font-medium">
+              <span>Shuffle</span>
+              <Switch checked={shuffle} disabled={isStarting} onCheckedChange={setShuffle} />
+            </label>
             {startError ? <InlineNotice kind="error">{startError}</InlineNotice> : null}
           </> : null}
         </div>
@@ -221,16 +216,4 @@ export function PracticeSetupSheet({
   );
 }
 
-function WorkloadMetrics({ workload }: { workload: PracticeWorkloadOverview }) {
-  const metrics = [
-    ["Due reviews", workload.studyableDueReviews], ["Due new", workload.studyableDueNew],
-    ["Scheduled reviews", workload.scheduledReviews], ["Scheduled new", workload.scheduledNew],
-    ["Omitted reviews", workload.omittedDueReviews], ["Omitted new", workload.omittedDueNew],
-    ["Extra available", workload.extraAvailable],
-  ] as const;
-  return <dl className="tw:m-0 tw:grid tw:grid-cols-2 tw:gap-3 tw:sm:grid-cols-3">
-    {metrics.map(([label, count]) => <div key={label} className="tw:rounded-lg tw:bg-muted tw:p-3">
-      <dt className="tw:text-caption tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:mt-1 tw:text-section tw:font-semibold tw:tabular-nums">{count}</dd>
-    </div>)}
-  </dl>;
-}
+const SECTION_LABEL = "tw:m-0 tw:text-label tw:font-semibold tw:text-muted-foreground";
