@@ -402,6 +402,7 @@ pub fn run() {
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::save_lesson_progress,
+            lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,
             lessons::writing::cancel_subject_course_writing,
             document_citations::list_deck_source_citations,

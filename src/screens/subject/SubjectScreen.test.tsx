@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
 import type { DocumentSummary } from "../../ipc/documents";
 import * as homeIpc from "../../ipc/home";
+import * as lessonsIpc from "../../ipc/lessons";
 import * as subjectsIpc from "../../ipc/subjects";
 import {
   makeDeck,
@@ -12,12 +13,23 @@ import {
   makeSubject,
   makeSubjectLibrary,
 } from "../../test/factories";
+import { resetCourseRunsForTests } from "../lessons/useSubjectCourse";
 import { SubjectScreen } from "./SubjectScreen";
 
 const jobs = vi.hoisted(() => ({ value: null as unknown }));
 
 vi.mock("../../ipc/common", () => ({
+  createOperationId: () => "operation-1",
+  getErrorCode: () => null,
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
+}));
+vi.mock("../../ipc/lessons", () => ({
+  listSubjectLessons: vi.fn(),
+  getLesson: vi.fn(),
+  saveLessonProgress: vi.fn(),
+  answerLessonCheck: vi.fn(),
+  writeSubjectCourse: vi.fn(),
+  cancelSubjectCourseWriting: vi.fn(),
 }));
 vi.mock("../../ipc/home", () => ({ getHomeSummary: vi.fn() }));
 vi.mock("../../ipc/subjects", () => ({ getSubjectLibrary: vi.fn() }));
@@ -57,6 +69,25 @@ function makeDocument(overrides: Partial<DocumentSummary>): DocumentSummary {
   } as DocumentSummary;
 }
 
+function makeLessonSummary(): lessonsIpc.LessonSummary {
+  return {
+    id: "lesson-filling",
+    subjectId: "cardiac",
+    title: "How the heart fills",
+    revision: 1,
+    written: {
+      revisionNumber: 1,
+      origin: "generated",
+      stepCount: 1,
+      checkCount: 0,
+      estimatedMinutes: 6,
+      sources: "current",
+      createdAt: 1,
+    },
+    progress: null,
+  };
+}
+
 const DECKS = [
   makeDeck({ id: "deck-guyton", name: "Guyton cards", generatedCardCount: 52 }),
   makeDeck({ id: "deck-lecture", name: "Lecture 7 cards", generatedCardCount: 41 }),
@@ -84,6 +115,11 @@ function renderSubject(subjectId = "cardiac") {
 describe("SubjectScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetCourseRunsForTests();
+    vi.mocked(lessonsIpc.listSubjectLessons).mockImplementation(async (subjectId) => ({
+      subjectId,
+      lessons: subjectId === "cardiac" ? [makeLessonSummary()] : [],
+    }));
     jobs.value = {
       isLoading: false,
       documents: [
@@ -206,6 +242,53 @@ describe("SubjectScreen", () => {
     expect(screen.queryByRole("button", { name: "Read overview" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
     expect(props.onOpenDocuments).toHaveBeenCalledOnce();
+  });
+
+  it("lists the course and opens a lesson in place", async () => {
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue({
+      lesson: makeLessonSummary(),
+      revisionNumber: 1,
+      sources: "current",
+      content: {
+        title: "How the heart fills",
+        summary: "",
+        objectives: [],
+        estimatedMinutes: 6,
+        steps: [
+          {
+            key: "s1",
+            title: "Filling",
+            blocks: [{ kind: "explanation", heading: null, body: "The ventricles fill in diastole." }],
+            narration: "",
+            slidePoints: [],
+            checkKind: null,
+            check: null,
+            knowledgeUnitIds: [],
+          },
+        ],
+      },
+    } as lessonsIpc.Lesson);
+    renderSubject();
+    const lessons = await screen.findByTestId("subject-lessons");
+    expect(within(lessons).getByText("0 of 1 done")).toBeTruthy();
+    expect(within(lessons).getAllByTestId("subject-lesson").map((row) => row.textContent)).toEqual([
+      "1How the heart fills6 min",
+    ]);
+    fireEvent.click(within(lessons).getByRole("button", { name: /Start lesson/u }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Filling" })).toBeTruthy();
+    expect(screen.getByText("The ventricles fill in diastole.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Cardiac physiology/u }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Cardiac physiology" })).toBeTruthy();
+  });
+
+  it("offers Create lessons when a subject with sources has none", async () => {
+    vi.mocked(lessonsIpc.writeSubjectCourse).mockReturnValue(new Promise(() => {}));
+    renderSubject("pharm");
+    const lessons = await screen.findByTestId("subject-lessons");
+    fireEvent.click(await within(lessons).findByRole("button", { name: "Create lessons" }));
+    expect(lessonsIpc.writeSubjectCourse).toHaveBeenCalledWith("pharm", "operation-1");
+    expect(await within(lessons).findByText("Writing lessons…")).toBeTruthy();
   });
 
   it("says when the subject no longer exists", async () => {
