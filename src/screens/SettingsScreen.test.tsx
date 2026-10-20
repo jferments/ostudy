@@ -207,7 +207,7 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Backup and sync" }));
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByRole("heading", { name: "Backup" })).toBeTruthy();
-    expect(within(panel).getByRole("heading", { name: "Device synchronization" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "Devices" })).toBeTruthy();
     expect(within(panel).queryByRole("heading", { name: "Storage" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "View storage details" })).toBeNull();
   });
@@ -297,29 +297,25 @@ describe("SettingsScreen", () => {
     });
   });
 
-  it("separates provider connections from the three default model assignments", async () => {
+  it("separates services from the default model for each task", async () => {
     renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "AI" }));
-    expect(await screen.findByRole("heading", { name: "Default AI models" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "AI providers" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add provider" })).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: "Flashcard and study-guide generation provider" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("combobox", { name: "Flashcard and study-guide generation model" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Interactive tutor provider" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Semantic embeddings provider" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Default for each task" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Services" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Cards and guides service" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Cards and guides model" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Tutor service" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Search service" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Question generation" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    const provider = await screen.findByRole("combobox", { name: "Provider" });
-    expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
-    fireEvent.change(provider, { target: { value: "deepseek" } });
-    await waitFor(() => expect((provider as HTMLSelectElement).value).toBe("deepseek"));
-    expect(await screen.findByLabelText("API key")).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add a service" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a service" });
+    const llama = within(sheet).getByRole("radio", { name: /^llama\.cpp/u });
+    expect(llama.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(sheet).getByRole("radio", { name: /^DeepSeek/u }));
+    expect(await within(sheet).findByLabelText("API key")).toBeTruthy();
+    expect(within(sheet).queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(within(sheet).queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {

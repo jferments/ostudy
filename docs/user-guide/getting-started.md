@@ -54,7 +54,7 @@ Use **Settings → Backup and sync** for a complete `.ostudybackup` and restorat
 
 ## Add AI only when it is useful
 
-In **Settings → AI**, choose **Add provider**, pick a provider, enter its **Server URL** or API key, choose **Connect**, and **Save provider**. Then, under **Default AI models**, choose the provider and model for each task: flashcard and study-guide generation, the interactive tutor, and semantic embeddings. **Test model** checks that a model can do the work before a long job. Setting up a provider does not install a local server.
+In **Settings → AI**, choose **Add a service**, pick a service, enter its **Server address** or API key, and choose **Connect**. Then, under **Default for each task**, choose the service and model for each task: cards and guides, the Tutor, and search. **Test model**, in each row's menu, checks that a model can do the work before a long job. Setting up a provider does not install a local server.
 
 The available providers are llama.cpp / Unsloth GGUF (a local or LAN server), DeepSeek, OpenRouter, and Claude. Other names in the catalog are not yet usable. A local provider never silently falls back to a cloud one. See [AI providers](ai-providers.md).
 

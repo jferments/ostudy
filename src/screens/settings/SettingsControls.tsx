@@ -103,11 +103,11 @@ export function PathRow({ label, value }: { label: string; value: string }) {
 }
 
 /** One on/off preference: its name beside a switch, the whole row toggling it. */
-export function SwitchRow({ label, checked, onChange }: {
-  label: string; checked: boolean; onChange: (checked: boolean) => void;
+export function SwitchRow({ label, checked, disabled, onChange }: {
+  label: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void;
 }) {
-  return <label className="tw:flex tw:min-h-12 tw:cursor-pointer tw:items-center tw:justify-between tw:gap-6 tw:text-body tw:font-medium">
+  return <label className="tw:flex tw:min-h-12 tw:cursor-pointer tw:items-center tw:justify-between tw:gap-6 tw:text-body tw:font-medium tw:has-[[data-disabled]]:cursor-default tw:has-[[data-disabled]]:text-muted-foreground">
     <span className="tw:min-w-0">{label}</span>
-    <Switch checked={checked} onCheckedChange={onChange} />
+    <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
   </label>;
 }

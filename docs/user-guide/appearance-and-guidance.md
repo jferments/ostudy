@@ -50,7 +50,7 @@ Escape or Android Back closes an active tutorial before ordinary navigation. Tur
 
 ## Other Settings sections
 
-Settings has six sections: Appearance, Review, Card templates, AI, Backup and sync, and Diagnostics. On a wider screen they are listed in a shaded pane beside the open section; on a phone Settings opens on the list, and Back returns to it from a section. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup and sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
+Settings has six sections: Appearance, Review, Card templates, AI, Backup and sync, and Diagnostics. On a wider screen they are listed in a shaded pane beside the open section; on a phone Settings opens on the list, and Back returns to it from a section. Card templates lists **Built-in templates**, where you choose which formats AI writes, above **Your templates**, a full editing workspace. AI holds only **Services** (the connected AI services and their keys) and **Default for each task**. Backup and sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
 
 Changes to Appearance, Review and Backup and sync preview at once. While any are unsaved, a bar at the bottom offers **Discard** and **Save**. **Restore defaults** in a section's header puts that section's preferences back to their defaults, still unsaved until you choose Save.
 
