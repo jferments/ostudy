@@ -1,6 +1,8 @@
 import {
   clampToPage,
+  cutStroke,
   handlesFor,
+  isCuttable,
   isDeliberateShape,
   isShapeTool,
   isStickyNote,
@@ -9,12 +11,14 @@ import {
   moveWithinPage,
   resizeShape,
   round,
+  shapeBounds,
   shapeFromDrag,
   simplifyPairs,
   topmostAt,
   type Annotation,
   type AnnotationShape,
   type AnnotatorTool,
+  type EraseMode,
   type Handle,
   type HighlightShape,
   type InkShape,
@@ -57,6 +61,7 @@ export interface GestureContext {
   styles: ToolStyles;
   /** Fingers pan and zoom instead of drawing. */
   penOnly: boolean;
+  eraseMode: EraseMode;
   /** CSS pixels per point. */
   scale: number;
   minScale: number;
@@ -80,9 +85,12 @@ export type GestureEffect =
   /** The selected annotation as it is being moved or reshaped. */
   | { kind: "preview"; annotation: Annotation | null }
   | { kind: "change"; before: Annotation; after: Annotation }
-  /** Annotations the eraser has passed over; they are removed when it lifts. */
-  | { kind: "erasing"; annotations: readonly Annotation[] }
-  | { kind: "erase"; annotations: readonly Annotation[] }
+  /**
+   * Annotations the eraser has passed over; they are removed when it lifts.
+   * Strokes it cut are replaced by what is left of them.
+   */
+  | { kind: "erasing"; annotations: readonly Annotation[]; cuts?: readonly StrokeCut[] }
+  | { kind: "erase"; annotations: readonly Annotation[]; cuts?: readonly StrokeCut[] }
   | { kind: "select"; id: string | null }
   | { kind: "edit-text"; annotation: Annotation }
   | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
@@ -92,6 +100,9 @@ export type GestureEffect =
   | { kind: "zoom"; scale: number; anchor: ZoomAnchor; clientX: number; clientY: number }
   | { kind: "pen-seen" };
 
+/** A stroke the eraser cut, and the strokes left of it. */
+export interface StrokeCut { original: Annotation; kept: readonly Annotation[]; }
+
 interface Client { x: number; y: number; }
 
 type Gesture =
@@ -100,7 +111,11 @@ type Gesture =
   /** A highlighter drag that began on the page's text, from one character to another. */
   | { kind: "text-highlight"; pointerId: number; pointer: PointerKind; start: Client; moved: boolean; pageNumber: number; text: PageText; from: number; to: number }
   | { kind: "shape"; pointerId: number; pageNumber: number; tool: ShapeTool; start: Point; shape: AnnotationShape | null }
-  | { kind: "erase"; pointerId: number; last: Client; erased: Map<string, Annotation> }
+  | {
+    kind: "erase"; pointerId: number; last: Client; erased: Map<string, Annotation>;
+    /** Strokes the eraser has cut so far, and the strokes left of each. */
+    cuts: Map<string, { original: Annotation; shapes: ReadonlyArray<InkShape | HighlightShape> }>;
+  }
   | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "resize"; pointerId: number; pageNumber: number; original: Annotation; handle: Handle; current: Annotation }
@@ -300,11 +315,15 @@ export class AnnotatorGestures {
           { kind: "draft", draft: null },
           ...(active.shape ? [this.create(active.pageNumber, active.shape, context)] : []),
         ];
-      case "erase":
+      case "erase": {
+        const cuts = strokeCuts(active.cuts, () => context.newId());
         return [
           { kind: "erasing", annotations: [] },
-          ...(active.erased.size > 0 ? [{ kind: "erase", annotations: [...active.erased.values()] } as const] : []),
+          ...(active.erased.size > 0 || cuts.length > 0
+            ? [{ kind: "erase", annotations: [...active.erased.values()], ...(cuts.length > 0 ? { cuts } : {}) } as const]
+            : []),
         ];
+      }
       case "press":
         return this.tap(active, surface, context);
       case "move":
@@ -400,7 +419,7 @@ export class AnnotatorGestures {
     }
     const start = clampToPage(point, size);
     if (tool === "eraser") {
-      const gesture: Gesture = { kind: "erase", ...base, last: client, erased: new Map() };
+      const gesture: Gesture = { kind: "erase", ...base, last: client, erased: new Map(), cuts: new Map() };
       this.active = gesture;
       return this.erase(gesture, client, sample.kind, surface, context);
     }
@@ -468,23 +487,49 @@ export class AnnotatorGestures {
     const radius = ERASER_RADIUS[pointer];
     const steps = Math.max(1, Math.ceil(clientDistance(active.last, client) / (radius / 2)));
     const before = active.erased.size;
+    let cutMore = false;
+    const partly = context.eraseMode === "part";
     for (let step = 1; step <= steps; step += 1) {
       const x = active.last.x + (client.x - active.last.x) * step / steps;
       const y = active.last.y + (client.y - active.last.y) * step / steps;
       const pageNumber = surface.pageAt(x, y);
       if (pageNumber === null) continue;
       const point = surface.toPage(pageNumber, x, y);
+      const reach = radius / context.scale;
+      const annotations = context.annotationsOn(pageNumber);
+      if (partly) {
+        for (const annotation of annotations) {
+          if (!isCuttable(annotation.shape) || active.erased.has(annotation.id)) continue;
+          const bounds = shapeBounds(annotation.shape, 0);
+          if (point.x < bounds.left - reach || point.x > bounds.right + reach
+            || point.y < bounds.top - reach || point.y > bounds.bottom + reach) continue;
+          const current = active.cuts.get(annotation.id)?.shapes ?? [annotation.shape];
+          let changed = false;
+          const shapes = current.flatMap((shape) => {
+            const left = cutStroke(shape, point, reach);
+            if (left === null) return [shape];
+            changed = true;
+            return left;
+          });
+          if (!changed) continue;
+          active.cuts.set(annotation.id, { original: annotation, shapes });
+          cutMore = true;
+        }
+      }
       for (;;) {
         const hit = topmostAt(
-          context.annotationsOn(pageNumber), point, radius / context.scale, context.textHeight,
-          (annotation) => !active.erased.has(annotation.id),
+          annotations, point, reach, context.textHeight,
+          (annotation) => !active.erased.has(annotation.id) && !(partly && isCuttable(annotation.shape)),
         );
         if (!hit) break;
         active.erased.set(hit.id, hit);
       }
     }
     active.last = client;
-    return active.erased.size === before ? [] : [{ kind: "erasing", annotations: [...active.erased.values()] }];
+    if (active.erased.size === before && !cutMore) return [];
+    // Until the eraser lifts, what is left of a cut stroke is only drawn, under ids of its own.
+    const cuts = strokeCuts(active.cuts, (original, index) => `${original.id}-${index}`);
+    return [{ kind: "erasing", annotations: [...active.erased.values()], ...(cuts.length > 0 ? { cuts } : {}) }];
   }
 
   private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext): GestureEffect[] {
@@ -594,3 +639,16 @@ function sameShape(a: AnnotationShape, b: AnnotationShape): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
+
+/** The strokes the eraser cut, each with what is left of it drawn where it was. */
+function strokeCuts(
+  cuts: Extract<Gesture, { kind: "erase" }>["cuts"],
+  newId: (original: Annotation, index: number) => string,
+): StrokeCut[] {
+  return [...cuts.values()].map(({ original, shapes }) => ({
+    original,
+    kept: shapes.filter(isStorable).map((shape, index) => ({
+      id: newId(original, index), pageNumber: original.pageNumber, shape, createdAt: original.createdAt,
+    })),
+  }));
+}

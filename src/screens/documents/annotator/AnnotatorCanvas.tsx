@@ -106,6 +106,8 @@ export function AnnotatorCanvas({
   const [draft, setDraft] = useState<PageDraft | null>(null);
   const [preview, setPreview] = useState<Annotation | null>(null);
   const [erasing, setErasing] = useState<ReadonlyMap<number, ReadonlySet<string>>>(() => new Map());
+  // Strokes the eraser is cutting, by page: each drawn as what is left of it.
+  const [cutting, setCutting] = useState<ReadonlyMap<number, ReadonlyMap<string, readonly Annotation[]>>>(() => new Map());
   const pendingDraft = useRef<PageDraft | null>(null);
   const draftFrame = useRef<number | null>(null);
   const pageSizes = useMemo(() => new Map(pages.map((page) => [page.pageNumber, page])), [pages]);
@@ -172,6 +174,7 @@ export function AnnotatorCanvas({
       tool: current.tool,
       styles: current.styles,
       penOnly: current.penOnly,
+      eraseMode: current.eraseMode,
       scale: currentScale,
       minScale: MIN_SCALE,
       maxScale: MAX_SCALE,
@@ -223,10 +226,24 @@ export function AnnotatorCanvas({
             byPage.set(annotation.pageNumber, ids);
           }
           setErasing(byPage);
+          const cutByPage = new Map<number, Map<string, readonly Annotation[]>>();
+          for (const { original, kept } of effect.cuts ?? []) {
+            const page = cutByPage.get(original.pageNumber) ?? new Map<string, readonly Annotation[]>();
+            page.set(original.id, kept);
+            cutByPage.set(original.pageNumber, page);
+          }
+          setCutting(cutByPage);
           break;
         }
         case "erase":
-          current.commit(effect.annotations.map((annotation) => ({ id: annotation.id, before: annotation, after: null })));
+          // A cut stroke is replaced by what is left of it, in one step to undo.
+          current.commit([
+            ...effect.annotations.map((annotation) => ({ id: annotation.id, before: annotation, after: null })),
+            ...(effect.cuts ?? []).flatMap(({ original, kept }) => [
+              { id: original.id, before: original, after: null },
+              ...kept.map((annotation) => ({ id: annotation.id, before: null, after: annotation })),
+            ]),
+          ]);
           break;
         case "select":
           current.select(effect.id);
@@ -370,7 +387,7 @@ export function AnnotatorCanvas({
                 tileScale={settled?.scale ?? 0}
                 pixelRatio={settled?.pixelRatio ?? 1}
                 region={settled?.regions.get(pageNumber) ?? null}
-                annotations={controller.annotations.get(pageNumber) ?? EMPTY}
+                annotations={withCuts(controller.annotations.get(pageNumber) ?? EMPTY, cutting.get(pageNumber))}
                 draft={draft?.pageNumber === pageNumber ? draft : null}
                 preview={preview?.pageNumber === pageNumber ? preview : null}
                 erasing={erasing.get(pageNumber) ?? null}
@@ -395,4 +412,10 @@ export function AnnotatorCanvas({
       ) : null}
     </>
   );
+}
+
+/** A page's annotations with each stroke being cut drawn as what is left of it. */
+function withCuts(annotations: readonly Annotation[], cuts: ReadonlyMap<string, readonly Annotation[]> | undefined): readonly Annotation[] {
+  if (!cuts || cuts.size === 0) return annotations;
+  return annotations.flatMap((annotation) => cuts.get(annotation.id) ?? [annotation]);
 }
