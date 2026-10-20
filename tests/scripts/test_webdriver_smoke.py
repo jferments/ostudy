@@ -325,7 +325,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         heading.assert_called_once_with("session-1", "Your library is empty", 42.0)
         selectors = [call.args[2] for call in find_element.call_args_list]
         self.assertEqual(selectors[0], "button[data-testid='nav-home'][aria-current='page']")
-        for label in ("Create a subject", "Import a document", "Open Library"):
+        for label in ("Create a subject", "Import a document", "Import a deck"):
             self.assertTrue(any(json.dumps(label) in selector for selector in selectors), label)
 
     def test_native_smoke_pins_x11_software_rendering_before_driver_launch(self) -> None:

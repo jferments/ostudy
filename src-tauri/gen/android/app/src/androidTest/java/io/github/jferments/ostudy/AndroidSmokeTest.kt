@@ -77,6 +77,7 @@ class AndroidSmokeTest {
                     settingsGear: Boolean(navigation?.querySelector('[data-testid="app-settings"]')),
                     createSubject: has('Create a subject'),
                     importDocument: has('Import a document'),
+                    importDeck: has('Import a deck'),
                     openLibrary: has('Open Library'),
                     todayStrip: Boolean(document.querySelector('main [data-testid="home-today"]')),
                     subjectTiles: document.querySelectorAll('main [data-testid="subject-tile"]').length
@@ -91,16 +92,17 @@ class AndroidSmokeTest {
             assertTrue(homeSnapshot.getBoolean("settingsGear"))
             assertTrue(homeSnapshot.getBoolean("createSubject"))
             assertTrue(homeSnapshot.getBoolean("importDocument"))
-            assertTrue(homeSnapshot.getBoolean("openLibrary"))
+            assertTrue(homeSnapshot.getBoolean("importDeck"))
+            assertFalse(homeSnapshot.getBoolean("openLibrary"))
             assertFalse(homeSnapshot.getBoolean("todayStrip"))
             assertEquals(0, homeSnapshot.getInt("subjectTiles"))
 
-            // Open Library leads to the Workbench, which opens on its tree on a
+            // Library leads to the Workbench, which opens on its tree on a
             // phone. An empty library offers one way to start a deck there and
             // no controls that only mean something with decks in it.
             evaluateSync(
                 webView,
-                "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'Open Library')?.click(); true"
+                "document.querySelector('main [data-testid=\"home-first-run\"]') && document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
             )
             waitUntil(
                 webView,

@@ -1,17 +1,22 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
+import type { DeckSummary } from "../../ipc/decks";
+import { getProgressSubjects } from "../../ipc/progress";
 import { Icon } from "../../ui/icons/Icon";
+import { IconButton } from "../../ui/icons/IconButton";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Panel } from "../../ui/primitives/Panel";
 import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
 import { processingPhaseLabel } from "../documents/DocumentProgress";
+import { DeckTransferDialog } from "../flashcards/DeckTransferDialog";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
 import { HomeFirstRun } from "./HomeFirstRun";
@@ -34,7 +39,7 @@ import { TodayStrip } from "./TodayStrip";
 /** The order chosen on Home lasts until the app closes. */
 let sessionSort: SubjectSort = "most-due";
 
-type HomeSheet = "new-subject" | "choose-subjects" | "check-these" | null;
+type HomeSheet = "new-subject" | "choose-subjects" | "check-these" | "import-deck" | null;
 
 interface HomeScreenProps {
   /** Starts today's scheduled review over these decks. */
@@ -47,12 +52,17 @@ interface HomeScreenProps {
   /** Practices a subject's cards beyond today's schedule. */
   onPracticeSubject: (subjectId: string) => void;
   onOpenProgress: () => void;
+  /** Opens a deck in Library, such as one just imported. */
+  onOpenDeck: (deckId: string) => void;
+  refreshDecks: () => Promise<DeckSummary[]>;
+  showToast: ShowToast;
 }
 
 /**
- * Home: the Today strip with Start review, then lessons to pick up, suggestions,
- * the week at a glance and the learner's subjects with what is due in each. A
- * library with nothing in it shows a welcome instead.
+ * Home: the Today strip with Start review, then the learner's subjects with
+ * what is due in each and how well each is remembered, beside lessons to pick
+ * up, suggestions and the week at a glance. A library with nothing in it shows
+ * a welcome instead.
  */
 export function HomeScreen({
   onStartReview,
@@ -61,6 +71,9 @@ export function HomeScreen({
   onOpenLibrary,
   onPracticeSubject,
   onOpenProgress,
+  onOpenDeck,
+  refreshDecks,
+  showToast,
 }: HomeScreenProps) {
   const {
     summary,
@@ -130,6 +143,7 @@ export function HomeScreen({
   // Home rereads lessons and the week whenever today's summary changes.
   const refreshKey = summary ? summary.today.reviewsRemaining + summary.today.newRemaining * 100_000 : 0;
   const lessons = useHomeLessons(subjectIds, refreshKey);
+  const remembered = useSubjectsRemembered(refreshKey);
   const openSubjectPage = (subjectId: string) => onOpenSubject(subjectId);
 
   const readError = summaryError ?? libraryError;
@@ -157,6 +171,7 @@ export function HomeScreen({
             importing={jobs?.isUploading ?? false}
             onCreateSubject={() => setSheet("new-subject")}
             onImportDocument={() => void jobs?.uploadDocument()}
+            onImportDeck={() => setSheet("import-deck")}
             onOpenLibrary={onOpenLibrary}
           />
         ) : (
@@ -192,7 +207,48 @@ export function HomeScreen({
               </p>
             ) : null}
             <div className="tw:flex tw:flex-wrap tw:items-start tw:gap-5 tw:compact:gap-4">
-              <div className="tw:grid tw:min-w-0 tw:flex-[2_1_28rem] tw:gap-5 tw:empty:hidden tw:compact:gap-4">
+              <div className="tw:grid tw:min-w-0 tw:flex-[2_1_30rem] tw:gap-5 tw:compact:gap-4">
+                <Panel
+                  title="Your subjects"
+                  headingId={subjectsHeadingId}
+                  data-tour-anchor="home.subjects"
+                  actions={
+                    <>
+                      <IconButton
+                        icon="plus"
+                        label="New subject"
+                        data-testid="home-new-subject"
+                        onClick={() => setSheet("new-subject")}
+                      />
+                      {tiles.subjects.length > 1 ? (
+                        <OverflowMenu
+                          label="Sort subjects"
+                          items={SUBJECT_SORT_OPTIONS.map((option) => ({
+                            id: option.value,
+                            label: option.label,
+                            checked: option.value === sort,
+                            onSelect: () => setSort(option.value),
+                          }))}
+                        />
+                      ) : null}
+                    </>
+                  }
+                >
+                  <ul className="tw:m-0 tw:grid tw:list-none tw:divide-y tw:divide-border tw:p-0">
+                    {shownTiles.map((tile) => (
+                      <li key={tile.key} className="tw:min-w-0">
+                        <SubjectTileCard
+                          tile={tile}
+                          compact={compact}
+                          remembered={remembered?.get(tile.subjectId)}
+                          onOpen={() => openTile(tile)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              </div>
+              <div className="tw:grid tw:min-w-0 tw:flex-[1_1_22rem] tw:gap-5 tw:compact:gap-4">
                 <ContinuePanel lessons={lessons} subjects={tiles.subjects} onOpenLesson={onOpenLesson} />
                 <SuggestionsPanel
                   lessons={lessons}
@@ -202,51 +258,7 @@ export function HomeScreen({
                   onPracticeSubject={onPracticeSubject}
                   onOpenSubject={openSubjectPage}
                 />
-              </div>
-              <div className="tw:grid tw:min-w-0 tw:flex-[1_1_20rem] tw:gap-5 tw:compact:gap-4">
                 <HomeWeekPanel refreshKey={refreshKey} onOpenProgress={onOpenProgress} />
-                <Panel
-                  title="Your subjects"
-                  headingId={subjectsHeadingId}
-                  data-tour-anchor="home.subjects"
-                  description={`${countLabel(tiles.subjects.length, "subject")} · ${countLabel(
-                    shownTiles.reduce((sum, tile) => sum + tile.summary.sourceCount, 0),
-                    "source",
-                  )} · ${countLabel(
-                    shownTiles.reduce((sum, tile) => sum + tile.summary.cardCount, 0),
-                    "card",
-                  )}`}
-                  actions={
-                    <Button
-                      variant="secondary"
-                      data-testid="home-new-subject"
-                      onClick={() => setSheet("new-subject")}
-                    >
-                      <Icon name="plus" size={16} /> New subject
-                    </Button>
-                  }
-                >
-                  {tiles.subjects.length > 1 ? (
-                    <NativeSelect
-                      aria-label="Sort subjects"
-                      value={sort}
-                      onChange={(event) => setSort(event.currentTarget.value as SubjectSort)}
-                    >
-                      {SUBJECT_SORT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  ) : null}
-                  <ul className="tw:m-0 tw:grid tw:list-none tw:divide-y tw:divide-border tw:p-0">
-                    {shownTiles.map((tile) => (
-                      <li key={tile.key} className="tw:min-w-0">
-                        <SubjectTileCard tile={tile} compact={compact} onOpen={() => openTile(tile)} />
-                      </li>
-                    ))}
-                  </ul>
-                </Panel>
               </div>
             </div>
           </div>
@@ -275,6 +287,37 @@ export function HomeScreen({
       {sheet === "check-these" ? (
         <CheckTheseSheet onClose={() => setSheet(null)} onChanged={refresh} />
       ) : null}
+      {sheet === "import-deck" ? (
+        <DeckTransferDialog
+          request={{ kind: "import" }}
+          refreshDecks={refreshDecks}
+          onImportedDeck={(outcome) => onOpenDeck(outcome.deckId)}
+          onClose={() => setSheet(null)}
+          showToast={showToast}
+        />
+      ) : null}
     </PageScaffold>
   );
+}
+
+/**
+ * Each subject's remembered rate over the last 30 days, keyed by subject id
+ * (`null` is No subject). A glance: it stays empty while loading and when it
+ * cannot load, and Progress reports its own errors.
+ */
+function useSubjectsRemembered(refreshKey: number): Map<string | null, number | null> | null {
+  const [rates, setRates] = useState<Map<string | null, number | null> | null>(null);
+  useEffect(() => {
+    let current = true;
+    void getProgressSubjects({ range: "30d", subjectIds: [], deckIds: [], tagIds: [] })
+      .then((rows) => {
+        // Like This week, falls back to the correct rate before any due review.
+        if (current) setRates(new Map(rows.map((row) => [row.subjectId, row.trueRetention ?? row.correctRate])));
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [refreshKey]);
+  return rates;
 }
