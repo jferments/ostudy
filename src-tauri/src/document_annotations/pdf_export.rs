@@ -30,6 +30,8 @@ const TEXT_PADDING: f64 = 2.0;
 const STICKY_HEIGHT: f64 = 72.0;
 const STICKY_PADDING: f64 = 6.0;
 const STICKY_FOLD: f64 = 12.0;
+/// A collapsed sticky note's icon, a square this many points wide.
+const STICKY_ICON_SIZE: f64 = 18.0;
 const HIGHLIGHT_OPACITY: f64 = 0.75;
 /// The annotator's rough glyph width for wrapping, as a share of the font size.
 const CHARACTER_WIDTH: f64 = 0.55;
@@ -450,6 +452,9 @@ impl Canvas<'_> {
 
     fn sticky(&mut self, note: &TextNote) -> Result<(), ExportError> {
         let paper = parse_color(&note.color);
+        if note.collapsed == Some(true) {
+            return self.sticky_icon(note.x, note.y, paper);
+        }
         let (x, top, width) = (note.x, note.y, note.width);
         let bottom = self.y(top + STICKY_HEIGHT);
         let right = x + width;
@@ -488,6 +493,38 @@ impl Canvas<'_> {
             note.font_size,
             ink_black(),
         )
+    }
+
+    /// A collapsed sticky note: a small square of paper with three lines of
+    /// writing, as the annotator draws it. Its text is in the PDF note.
+    fn sticky_icon(&mut self, x: f64, top: f64, paper: Color) -> Result<(), ExportError> {
+        let bottom = self.y(top + STICKY_ICON_SIZE);
+        let inset = 4.0;
+        // Lines of writing, 1.5 points thick, 3.5 apart around the middle.
+        let lines: Vec<(f64, f64)> = [1.0, 0.75, 1.0]
+            .into_iter()
+            .enumerate()
+            .map(|(index, share)| {
+                let line_top = top + STICKY_ICON_SIZE / 2.0 - 4.25 + index as f64 * 3.5;
+                (self.y(line_top + 1.5), share)
+            })
+            .collect();
+        let graphics = self.page.graphics();
+        graphics
+            .save_state()
+            .set_fill_color(paper)
+            .rect(x, bottom, STICKY_ICON_SIZE, STICKY_ICON_SIZE)
+            .fill();
+        graphics
+            .apply_extgstate(ExtGState::new().with_alpha_fill(0.5))
+            .map_err(write_failed)?;
+        graphics.set_fill_color(ink_black());
+        let width = STICKY_ICON_SIZE - 2.0 * inset;
+        for (line_bottom, share) in lines {
+            graphics.rect(x + inset, line_bottom, width * share, 1.5);
+        }
+        graphics.fill().restore_state();
+        Ok(())
     }
 
     /// Lines of text from `top`, each centred in its line height as CSS does.
@@ -692,9 +729,14 @@ fn sticky_notes(page: &PageAnnotations<'_>, frame: &PageFrame) -> Vec<StickyNote
         })
         .map(|note| {
             // The note covers the paper drawn on the page, so selecting it opens its text.
+            let (width, height) = if note.collapsed == Some(true) {
+                (STICKY_ICON_SIZE, STICKY_ICON_SIZE)
+            } else {
+                (note.width, STICKY_HEIGHT)
+            };
             let corners = [
                 frame.to_page(note.x, note.y),
-                frame.to_page(note.x + note.width, note.y + STICKY_HEIGHT),
+                frame.to_page(note.x + width, note.y + height),
             ];
             let color = parse_color(&note.color);
             StickyNote {

@@ -209,6 +209,38 @@ describe("document annotator", () => {
     expect(document.querySelector("[data-sticky-note]")).toBeNull();
   });
 
+  it("collapses a sticky note to an icon, opens it with a double click and expands it again", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "s" });
+    drag(canvas, [[300, 300]]);
+    const dialog = await screen.findByRole("dialog", { name: "New sticky note" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Note" }), { target: { value: "Margin note" } });
+    fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "Note" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+
+    // The note just written stays selected.
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.click(await screen.findByRole("button", { name: "Collapse to an icon" }));
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(1));
+    expect(savedChanges(1)[0]).toMatchObject({ op: "put", shape: { sticky: true, collapsed: true, x: 300, y: 300 } });
+    expect(document.querySelector("[data-sticky-note][data-collapsed]")).toBeTruthy();
+
+    // A double click on the icon opens the whole note.
+    drag(canvas, [[305, 305]]);
+    drag(canvas, [[305, 305]]);
+    const reopened = await screen.findByRole("dialog", { name: "Sticky note" });
+    expect((within(reopened).getByRole("textbox", { name: "Note" }) as HTMLTextAreaElement).value).toBe("Margin note");
+    fireEvent.keyDown(within(reopened).getByRole("textbox", { name: "Note" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expand note" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(1));
+    const expanded = savedChanges(2)[0];
+    expect(expanded?.op === "put" && "collapsed" in expanded.shape).toBe(false);
+    expect(document.querySelector("[data-sticky-note][data-collapsed]")).toBeNull();
+  });
+
   it("draws arrows and boxes, highlights, and erases", async () => {
     const { canvas } = await openAnnotator();
     fireEvent.click(screen.getByRole("button", { name: "Arrow" }));

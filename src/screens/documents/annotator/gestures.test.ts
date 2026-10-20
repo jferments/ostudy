@@ -444,6 +444,65 @@ describe("selecting and text", () => {
     ]);
   });
 
+  it("picks up a box by its middle, and selects what a rectangle dragged across the page takes", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "select" }, [box, line, note, lowerBox]);
+    gestures.down(at(1, "mouse", 125, 125), surface, ctx);
+    expect(gestures.up(at(1, "mouse", 125, 125), surface, ctx)).toEqual([{ kind: "select", id: "box" }]);
+
+    gestures.down(at(2, "pen", 80, 80), surface, ctx);
+    expect(only(gestures.move(at(2, "pen", 420, 170), surface, ctx), "lasso")[0]?.loop)
+      .toEqual({ pageNumber: 1, points: [80, 80, 420, 80, 420, 170, 80, 170] });
+    expect(gestures.up(at(2, "pen", 420, 170), surface, ctx)).toEqual([
+      { kind: "lasso", loop: null },
+      { kind: "select-group", pageNumber: 1, ids: ["box", "line"] },
+    ]);
+
+    // A finger across empty page still scrolls.
+    gestures.down(at(3, "touch", 500, 600), surface, ctx);
+    expect(only(gestures.move(at(3, "touch", 500, 560), surface, ctx), "scroll-by")).toHaveLength(1);
+    gestures.up(at(3, "touch", 500, 560), surface, ctx);
+  });
+
+  it("moves the selected group with the Select tool, and a tap picks one annotation or clears the group", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "select", group: [box, line] }, [box, line, note]);
+    gestures.down(at(1, "mouse", 125, 125), surface, ctx);
+    // Within a click's slop nothing moves yet.
+    expect(gestures.move(at(1, "mouse", 127, 126), surface, ctx)).toEqual([]);
+    expect(only(gestures.move(at(1, "mouse", 135, 145), surface, ctx), "group-preview")[0]?.annotations?.map((item) => item.shape))
+      .toEqual([{ ...box.shape, x: 110, y: 120 }, { ...line.shape, x1: 310, y1: 120, x2: 410, y2: 120 }]);
+    expect(only(gestures.up(at(1, "mouse", 135, 145), surface, ctx), "group-change")).toHaveLength(1);
+
+    gestures.down(at(2, "mouse", 125, 125), surface, ctx);
+    expect(gestures.up(at(2, "mouse", 125, 125), surface, ctx)).toEqual([{ kind: "select", id: "box" }]);
+    // Empty space inside the group's box, then outside it, clears the group.
+    gestures.down(at(3, "mouse", 220, 125), surface, ctx);
+    expect(gestures.up(at(3, "mouse", 220, 125), surface, ctx)).toEqual([{ kind: "select-group", pageNumber: 1, ids: [] }]);
+    gestures.down(at(4, "mouse", 500, 600), surface, ctx);
+    expect(gestures.up(at(4, "mouse", 500, 600), surface, ctx)).toEqual([{ kind: "select-group", pageNumber: 1, ids: [] }]);
+  });
+
+  it("drags a sticky note with the sticky tool and a text note with the text tool", () => {
+    const gestures = new AnnotatorGestures();
+    const sticky = annotation("sticky", {
+      kind: "text", x: 40, y: 40, width: 120, text: "Ask about this", color: "#fde047", fontSize: 10, sticky: true,
+    });
+    const stickyTool = context({ tool: "sticky" }, [sticky, note]);
+    gestures.down(at(1, "pen", 80, 60), surface, stickyTool);
+    const moving = gestures.move(at(1, "pen", 100, 90), surface, stickyTool);
+    expect(only(moving, "select")).toEqual([]);
+    expect(only(moving, "preview")[0]?.annotation?.shape).toMatchObject({ x: 60, y: 70 });
+    expect(only(gestures.up(at(1, "pen", 100, 90), surface, stickyTool), "change")[0])
+      .toMatchObject({ before: sticky, after: { shape: { x: 60, y: 70 } } });
+
+    const textTool = context({ tool: "text" }, [sticky, note]);
+    gestures.down(at(2, "mouse", 320, 305), surface, textTool);
+    gestures.move(at(2, "mouse", 330, 325), surface, textTool);
+    expect(only(gestures.up(at(2, "mouse", 330, 325), surface, textTool), "change")[0]?.after.shape)
+      .toMatchObject({ x: 310, y: 320 });
+  });
+
   it("opens the selected note with another tap", () => {
     const gestures = new AnnotatorGestures();
     const ctx = context({ tool: "select", selected: note }, [note]);
