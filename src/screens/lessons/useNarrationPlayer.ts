@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getErrorMessage } from "../../ipc/common";
-import { narrateLessonStep } from "../../ipc/lessons";
+import { narrateLessonStep, type LessonStepNarration } from "../../ipc/lessons";
 import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
 
 export type Listening = "idle" | "preparing" | "playing";
 
 /**
- * Speaks lesson steps' narration through one hidden audio element. The first
- * play of a step asks the lesson voice and keeps its audio; later plays use
- * what was kept. Unmounting stops the voice.
+ * Speaks a lesson's saved text through one hidden audio element: a step's
+ * narration, or with `speak` any part the lesson keeps, such as the teacher's
+ * lecture. The first play asks the lesson voice and keeps its audio; later
+ * plays use what was kept. Unmounting stops the voice.
  */
 export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -56,10 +57,10 @@ export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
   };
 
   /**
-   * Speaks one step from its start. `onFinished` runs only when the last piece
-   * ends, never after Stop or a failure.
+   * Speaks what `narrate` returns from its start. `onFinished` runs only when
+   * the last piece ends, never after Stop or a failure.
    */
-  const play = (stepKey: string, onFinished?: () => void) => {
+  const speak = (narrate: () => Promise<LessonStepNarration>, onFinished?: () => void) => {
     const id = ++run.current;
     const audio = audioRef.current;
     if (audio) {
@@ -69,7 +70,7 @@ export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
     release();
     setError(null);
     setListening("preparing");
-    narrateLessonStep(lessonId, revisionNumber, stepKey)
+    narrate()
       .then((narration) =>
         Promise.all(narration.segments.map((segment) => createManagedMediaObjectUrl(segment.assetId, "audio"))),
       )
@@ -87,6 +88,10 @@ export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
       );
   };
 
+  /** Speaks one step's narration from its start. */
+  const play = (stepKey: string, onFinished?: () => void) =>
+    speak(() => narrateLessonStep(lessonId, revisionNumber, stepKey), onFinished);
+
   const stop = () => {
     run.current += 1;
     const audio = audioRef.current;
@@ -99,5 +104,5 @@ export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
     setListening("idle");
   };
 
-  return { audioRef, listening, error, play, stop };
+  return { audioRef, listening, error, play, speak, stop };
 }

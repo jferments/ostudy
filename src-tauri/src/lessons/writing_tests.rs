@@ -471,3 +471,169 @@ fn subtopics_join_their_top_level_topic_in_plan_order() {
         ]
     );
 }
+
+/// A teacher's lecture over every slide, asking one question on the step.
+fn lecture_answer(lecture: &crate::lessons::lecture::LectureDto) -> String {
+    json!({"slides": lecture.slides.iter().map(|slide| json!({
+        "slideKey": slide.key,
+        "talk": format!("Look at {} with me, because it matters.", slide.title),
+        "question": if slide.key == "step:step-1" {
+            json!({
+                "prompt": "If the heart beats faster, what happens to cardiac output?",
+                "options": [
+                    {"text": "It rises", "reply": "Right. Output depends on heart rate, so it rises."},
+                    {"text": "It falls", "reply": "Not quite. Output depends on heart rate, so it rises."}
+                ],
+                "correctOption": 0
+            })
+        } else {
+            Value::Null
+        },
+    })).collect::<Vec<_>>()})
+    .to_string()
+}
+
+#[test]
+fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
+    use crate::ai::document_intelligence::LECTURE_SCRIPT_PROMPT_VERSION;
+    use crate::lessons::{
+        lecture::read_lecture,
+        teaching::{self, AnswerLectureQuestionInput, WriteLectureScriptInput},
+        GetLessonInput,
+    };
+
+    let (database, subject, first, second, _) = fixture().unwrap();
+    let (base_url, _, _) = spawn_provider(lesson_answer());
+    use_profile(&database, &base_url, 'b');
+    plan(&database, &[&first, &second]);
+    let course = write(&database, &subject, &operation('c')).unwrap();
+    let lesson_id = course.lessons[0].id.clone();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: lesson_id.clone(),
+                    revision_number: Some(1),
+                },
+            )
+        })
+        .unwrap();
+
+    let (lecture_url, served, bodies) = spawn_provider(lecture_answer(&lecture));
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE ai_provider_profiles SET base_url = ?1",
+                    [&lecture_url],
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    let script = tauri::async_runtime::block_on(teaching::write(
+        &database,
+        &runtime(),
+        WriteLectureScriptInput {
+            lesson_id: lesson_id.clone(),
+            revision_number: 1,
+            operation_id: operation('d'),
+        },
+    ))
+    .unwrap();
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert!(bodies.lock().unwrap()[0].contains("LECTURE writer"));
+    assert_eq!(script.slides.len(), lecture.slides.len());
+    let asked = script.slides[1].question.as_ref().unwrap();
+    // The learner sees the question but not its answer or the replies.
+    let shown = serde_json::to_string(&script).unwrap();
+    assert!(!shown.contains("correctOptionId"));
+    assert!(!shown.contains("Not quite"));
+    assert_eq!(
+        count(
+            &database,
+            "SELECT COUNT(*) FROM generation_requests WHERE stage = 'lecture_authoring'"
+        ),
+        1
+    );
+    let provenance: Value = serde_json::from_str(
+        &database
+            .with_connection(|connection| {
+                connection
+                    .query_row("SELECT provenance_json FROM lecture_scripts", [], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(provenance["promptVersion"], LECTURE_SCRIPT_PROMPT_VERSION);
+
+    // Answering is graded from the kept script, with no provider call and no
+    // review written.
+    let reviews = count(&database, "SELECT COUNT(*) FROM review_events");
+    let answer = |option: usize| {
+        database
+            .with_connection(|connection| {
+                teaching::answer(
+                    connection,
+                    &AnswerLectureQuestionInput {
+                        lesson_id: lesson_id.clone(),
+                        revision_number: 1,
+                        slide_key: "step:step-1".into(),
+                        option_id: asked.options[option].id.clone(),
+                    },
+                )
+            })
+            .unwrap()
+    };
+    let right = answer(0);
+    assert!(right.correct);
+    assert!(right.reply.starts_with("Right."));
+    let wrong = answer(1);
+    assert!(!wrong.correct);
+    assert_eq!(wrong.correct_option_id, asked.options[0].id);
+    assert!(wrong.reply.starts_with("Not quite."));
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        count(&database, "SELECT COUNT(*) FROM review_events"),
+        reviews
+    );
+
+    // The teacher speaks only the kept text.
+    let reply = database
+        .with_connection(|connection| {
+            teaching::spoken_text(
+                connection,
+                &lesson_id,
+                1,
+                "step:step-1",
+                Some(&asked.options[1].id),
+            )
+        })
+        .unwrap();
+    assert!(reply.starts_with("Not quite."));
+
+    // Writing again replaces the revision's script; deleting the lesson
+    // deletes it.
+    tauri::async_runtime::block_on(teaching::write(
+        &database,
+        &runtime(),
+        WriteLectureScriptInput {
+            lesson_id: lesson_id.clone(),
+            revision_number: 1,
+            operation_id: operation('e'),
+        },
+    ))
+    .unwrap();
+    assert_eq!(count(&database, "SELECT COUNT(*) FROM lecture_scripts"), 1);
+    database
+        .with_connection(|connection| {
+            connection
+                .execute("DELETE FROM lessons WHERE id = ?1", [&lesson_id])
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    assert_eq!(count(&database, "SELECT COUNT(*) FROM lecture_scripts"), 0);
+}

@@ -101,7 +101,7 @@
             "assertionFragments": [
               "button[data-testid='nav-home'][aria-current='page']",
               "wait_for_main_heading(session_id, \"Your library is empty\", deadline)",
-              "for label in (\"Create a subject\", \"Import a document\", \"Open Library\"):",
+              "for label in (\"Create a subject\", \"Import a document\", \"Import a deck\"):",
               "//main//*[@data-testid='home-today']//h2[normalize-space(.)={json.dumps(expected)}]",
               "verify_due_today(session_id, \"1 card due today\", deadline)"
             ]
@@ -133,7 +133,7 @@
               "heading.textContent?.trim() === 'Your library is empty'",
               "assertEquals(\"Home|Library|Tutor|Progress|Settings\", homeSnapshot.getString(\"navigation\"))",
               "assertEquals(\"nav-home\", homeSnapshot.getString(\"current\"))",
-              "assertTrue(homeSnapshot.getBoolean(\"openLibrary\"))",
+              "assertTrue(homeSnapshot.getBoolean(\"importDeck\"))",
               "assertFalse(homeSnapshot.getBoolean(\"todayStrip\"))"
             ]
           }
@@ -247,7 +247,7 @@
             },
             "entryFragments": [
               "fun a1_freshLibraryUsesQuietNavigation()",
-              "button.textContent?.trim() === 'Open Library')?.click()"
+              "document.querySelector('main [data-testid=\\\"home-first-run\\\"]') && document.querySelector('[data-testid=\\\"nav-library\\\"]')?.click(); true"
             ],
             "assertionFragments": [
               "main [data-testid='library-workbench'] nav[aria-label='Library']",

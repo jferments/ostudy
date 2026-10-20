@@ -152,6 +152,8 @@ export async function getLesson(
 export type LectureSlideKind = "title" | "step" | "sources";
 
 export interface LectureSlide {
+  /** `title`, `step:<step key>` or `sources`; a teacher's lecture is keyed by it. */
+  key: string;
   kind: LectureSlideKind;
   /** The step a step slide shows; its narration can be spoken. */
   stepKey: string | null;
@@ -294,5 +296,83 @@ export async function narrateLessonStep(
 ): Promise<LessonStepNarration> {
   return invoke<LessonStepNarration>("narrate_lesson_step", {
     input: { lessonId, revisionNumber, stepKey },
+  });
+}
+
+/** A question the teacher asks the class; its answer stays native until answered. */
+export interface LectureQuestion {
+  prompt: string;
+  options: { id: string; text: string }[];
+}
+
+export interface LectureScriptSlide {
+  slideKey: string;
+  /** What the teacher says over the slide. */
+  talk: string;
+  /** Asked after the talk, on a few step slides. */
+  question: LectureQuestion | null;
+}
+
+/** The teacher's lecture kept for one saved revision. */
+export interface LectureScript {
+  revisionNumber: number;
+  slides: LectureScriptSlide[];
+}
+
+export interface LectureAnswer {
+  correct: boolean;
+  correctOptionId: string;
+  /** What the teacher says back. */
+  reply: string;
+}
+
+/** The teacher's lecture kept for a revision, or null when none is written. */
+export async function getLessonLectureScript(
+  lessonId: string,
+  revisionNumber: number,
+): Promise<LectureScript | null> {
+  return invoke<LectureScript | null>("get_lesson_lecture_script", {
+    input: { lessonId, revisionNumber },
+  });
+}
+
+/**
+ * Writes the teacher's lecture for a revision with the default document model
+ * and keeps it, replacing an earlier one.
+ */
+export async function writeLessonLectureScript(
+  lessonId: string,
+  revisionNumber: number,
+  operationId: string = createOperationId(),
+): Promise<LectureScript> {
+  return invoke<LectureScript>("write_lesson_lecture_script", {
+    input: { lessonId, revisionNumber, operationId },
+  });
+}
+
+/** Grades an answer to the teacher's question. Nothing is saved. */
+export async function answerLectureQuestion(
+  lessonId: string,
+  revisionNumber: number,
+  slideKey: string,
+  optionId: string,
+): Promise<LectureAnswer> {
+  return invoke<LectureAnswer>("answer_lecture_question", {
+    input: { lessonId, revisionNumber, slideKey, optionId },
+  });
+}
+
+/**
+ * Speaks a slide's talk, or with `replyTo` the teacher's reply to that
+ * answer, with the lesson voice and keeps the audio.
+ */
+export async function narrateLecturePart(
+  lessonId: string,
+  revisionNumber: number,
+  slideKey: string,
+  replyTo: string | null = null,
+): Promise<LessonStepNarration> {
+  return invoke<LessonStepNarration>("narrate_lecture_part", {
+    input: { lessonId, revisionNumber, slideKey, replyTo },
   });
 }
