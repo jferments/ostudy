@@ -12,6 +12,8 @@
 //! backups; device sync leaves them out because it does not carry the
 //! knowledge units they are written from.
 
+use std::collections::BTreeMap;
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -24,6 +26,7 @@ use crate::{
 };
 
 pub(crate) mod authoring;
+pub(crate) mod checks;
 pub(crate) mod content;
 pub(crate) mod writing;
 
@@ -113,6 +116,8 @@ pub struct LessonProgressDto {
     pub revision_number: i64,
     pub current_step: i64,
     pub furthest_step: i64,
+    /// The latest answer to each step's check, by step key.
+    pub checks: BTreeMap<String, checks::AnsweredCheckDto>,
     pub started_at: i64,
     pub updated_at: i64,
     pub finished_at: Option<i64>,
@@ -129,8 +134,8 @@ pub struct LessonDto {
     pub content: LessonViewDto,
 }
 
-/// A lesson as the reader shows it. Checks are named but not included: their
-/// answers stay native until a learner answers.
+/// A lesson as the reader shows it. Checks come without their answers, which
+/// stay native until a learner answers.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LessonViewDto {
@@ -150,6 +155,8 @@ pub struct LessonStepViewDto {
     pub narration: String,
     pub slide_points: Vec<String>,
     pub check_kind: Option<QuestionKind>,
+    /// The check to answer, when its kind can be answered in a lesson.
+    pub check: Option<checks::LessonCheckDto>,
     pub knowledge_unit_ids: Vec<String>,
 }
 
@@ -245,7 +252,8 @@ pub(crate) fn read_lesson(
                     blocks: step.blocks,
                     narration: step.narration,
                     slide_points: step.slide_points,
-                    check_kind: step.check.map(|check| check.question.kind()),
+                    check_kind: step.check.as_ref().map(|check| check.question.kind()),
+                    check: step.check.as_ref().and_then(checks::view),
                     knowledge_unit_ids: step.knowledge_unit_ids,
                 })
                 .collect(),
@@ -348,6 +356,7 @@ pub(crate) fn save_progress(
                 revision_number: input.revision_number,
                 current_step: input.current_step,
                 furthest_step: input.current_step,
+                checks: BTreeMap::new(),
                 started_at: now,
                 updated_at: now,
                 finished_at,
@@ -464,23 +473,34 @@ fn progress(
     connection
         .query_row(
             "SELECT revision_number, current_step, furthest_step, started_at, updated_at,
-                    finished_at, revision
+                    finished_at, revision, checks_json
              FROM lesson_progress WHERE lesson_id = ?1",
             [lesson_id],
             |row| {
-                Ok(LessonProgressDto {
-                    revision_number: row.get(0)?,
-                    current_step: row.get(1)?,
-                    furthest_step: row.get(2)?,
-                    started_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    finished_at: row.get(5)?,
-                    revision: row.get(6)?,
-                })
+                Ok((
+                    LessonProgressDto {
+                        revision_number: row.get(0)?,
+                        current_step: row.get(1)?,
+                        furthest_step: row.get(2)?,
+                        checks: BTreeMap::new(),
+                        started_at: row.get(3)?,
+                        updated_at: row.get(4)?,
+                        finished_at: row.get(5)?,
+                        revision: row.get(6)?,
+                    },
+                    row.get::<_, String>(7)?,
+                ))
             },
         )
         .optional()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?
+        .map(|(progress, checks)| {
+            Ok(LessonProgressDto {
+                checks: checks::parse_answers(&checks)?,
+                ..progress
+            })
+        })
+        .transpose()
 }
 
 fn require_subject(connection: &Connection, subject_id: &str) -> Result<(), CommandError> {

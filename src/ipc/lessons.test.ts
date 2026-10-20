@@ -2,6 +2,7 @@ import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  answerLessonCheck,
   cancelSubjectCourseWriting,
   getLesson,
   listSubjectLessons,
@@ -42,6 +43,14 @@ describe("lesson IPC", () => {
     await saveLessonProgress(lessonId, 2, 3, true);
     expect(invoke).toHaveBeenCalledWith("save_lesson_progress", {
       input: { lessonId, revisionNumber: 2, currentStep: 3, finished: true },
+    });
+  });
+
+  it("answers one step's check by its option", async () => {
+    const optionId = "d".repeat(32);
+    await answerLessonCheck(lessonId, 1, "step-2", optionId);
+    expect(invoke).toHaveBeenCalledWith("answer_lesson_check", {
+      input: { lessonId, revisionNumber: 1, stepKey: "step-2", optionId },
     });
   });
 

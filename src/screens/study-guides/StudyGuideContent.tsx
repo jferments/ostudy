@@ -218,7 +218,7 @@ export function GuideTermList({ terms, className }: { terms: StudyGuideSectionCo
 // instead of squeezing their columns to a word each.
 const tableMinimumWidths = ["", "", "tw:min-w-[14rem]", "tw:min-w-[20rem]", "tw:min-w-[27rem]"] as const;
 
-function GuideTable({ table, uiText }: { table: StudyGuideTable; uiText: string }) {
+export function GuideTable({ table, uiText }: { table: StudyGuideTable; uiText: string }) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-2 tw:font-sans">
       <div className="tw:max-w-full tw:overflow-x-auto tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-card">
@@ -262,7 +262,7 @@ const calloutTones: Record<StudyGuideCalloutKind, { label: string; icon: IconNam
   note: { label: "Note", icon: "information", box: "tw:border tw:border-solid tw:border-border tw:bg-card", mark: "tw:text-muted-foreground" },
 };
 
-function GuideCallout({ kind, title, body, uiText }: { kind: StudyGuideCalloutKind; title: string; body: string; uiText: string }) {
+export function GuideCallout({ kind, title, body, uiText }: { kind: StudyGuideCalloutKind; title: string; body: string; uiText: string }) {
   const tone = calloutTones[kind] ?? calloutTones.note;
   return (
     <div role="note" aria-label={tone.label} className={cn("tw:flex tw:min-w-0 tw:items-start tw:gap-3.5 tw:rounded-md tw:px-4.5 tw:py-4 tw:font-sans tw:compact:gap-3 tw:compact:px-4", tone.box, uiText)}>
