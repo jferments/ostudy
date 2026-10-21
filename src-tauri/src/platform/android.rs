@@ -30,6 +30,14 @@ use crate::{
     },
 };
 
+/// The manifest registers the application identifier as a link scheme with
+/// this host; debug builds carry the development identifier.
+pub(super) const BROWSER_RETURN_URL: &str = if cfg!(debug_assertions) {
+    "io.github.jferments.ostudy.dev://openrouter-signed-in"
+} else {
+    "io.github.jferments.ostudy://openrouter-signed-in"
+};
+
 pub(super) fn runtime(app: AppHandle) -> PlatformRuntime {
     pdf_render_backend::install_android_app(app.clone());
     let clock = Arc::new(AndroidSystemClock);
@@ -114,9 +122,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 system_share: ServiceCapability::available(),
                 local_network: environment_capability(),
                 background_execution: ServiceCapability::available(),
-                browser_sign_in: ServiceCapability::unavailable(
-                    "android_browser_return_not_implemented",
-                ),
+                browser_sign_in: ServiceCapability::available(),
             },
         }
     }
