@@ -179,12 +179,15 @@ pub(crate) fn rewrite_generated_course(
     Ok(written)
 }
 
+/// A lesson id with the document and topic its newest revision teaches.
+type CourseLesson = (String, Option<(String, String)>);
+
 /// The subject's lessons in course order, each with the part its newest
 /// revision teaches; none for a hand-written one.
 fn course_lessons(
     connection: &Connection,
     subject_id: &str,
-) -> Result<Vec<(String, Option<(String, String)>)>, CommandError> {
+) -> Result<Vec<CourseLesson>, CommandError> {
     let mut statement = connection
         .prepare(
             "SELECT lesson.id,
