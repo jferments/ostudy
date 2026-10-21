@@ -58,6 +58,8 @@ export interface TextShape {
   fontSize: number;
   /** A sticky note: a small note of `width` showing the start of its text; `color` is its paper. */
   sticky?: true;
+  /** A sticky note folded down to a small icon; it still holds all of its text. */
+  collapsed?: true;
 }
 
 export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape;

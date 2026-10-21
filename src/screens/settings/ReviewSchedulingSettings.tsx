@@ -49,7 +49,7 @@ export function ReviewSchedulingSettings({ draft, update }: ReviewSchedulingSett
         actions={<HelpTrigger topicId="settings.reveal" label="Help with the answer side" />}>
         <SwitchRow
           label="Display both question and answer when card is flipped"
-          checked={draft.displayQuestionOnAnswer ?? false}
+          checked={draft.displayQuestionOnAnswer ?? true}
           onChange={(displayQuestionOnAnswer) => update({ displayQuestionOnAnswer })}
         />
       </Panel>

@@ -48,6 +48,8 @@ mod study_activity;
 mod annotated_pdf_exports;
 #[path = "release/lecture_exports.rs"]
 mod lecture_exports;
+#[path = "release/lecture_scripts.rs"]
+mod lecture_scripts;
 #[path = "release/study_guide_reading.rs"]
 mod study_guide_reading;
 
@@ -60,7 +62,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 14;
+pub(crate) const SCHEMA_VERSION: i64 = 15;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -152,6 +154,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "annotated_pdf_exports",
         checksum: "689d37008214b79efc99d7954c242cac9c9c1850a0e0ee20ed6319aa86a7b0be",
         sql: include_str!("../../schema/0014_annotated_pdf_exports.sql"),
+    },
+    ReleaseMigration {
+        version: 15,
+        name: "lecture_scripts",
+        checksum: "61892d73c101e80515f4df96b1f53ba2bbbce3d2e9c8a530c7d0655bbd362e1f",
+        sql: include_str!("../../schema/0015_lecture_scripts.sql"),
     },
 ];
 
@@ -368,6 +376,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     study_guide_reading::validate_schema(connection, user_version)?;
     lecture_exports::validate_schema(connection, user_version)?;
     annotated_pdf_exports::validate_schema(connection, user_version)?;
+    lecture_scripts::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

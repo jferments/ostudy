@@ -801,3 +801,118 @@ fn a_lecture_is_prepared_once_as_a_pptx_export_for_its_operation() {
     assert!(missing.is_err());
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn a_kept_lecture_script_must_follow_its_revisions_slides() {
+    use super::{
+        lecture::read_lecture,
+        teaching::{
+            answer, keep_script, kept_script, option_id, AnswerLectureQuestionInput, ClassOption,
+            ClassQuestion, LectureScript, ScriptSlide, LECTURE_SCRIPT_VERSION,
+        },
+    };
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id.clone(),
+                    revision_number: Some(1),
+                },
+            )
+        })
+        .unwrap();
+    let keys: Vec<_> = lecture
+        .slides
+        .iter()
+        .map(|slide| slide.key.clone())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "title",
+            "step:two-limbs",
+            "step:multiplier",
+            "step:why-it-matters",
+            "sources"
+        ]
+    );
+    let question = |slide_key: &str| ClassQuestion {
+        prompt: "Which limb pumps salt out?".into(),
+        options: (0..2)
+            .map(|index| ClassOption {
+                id: option_id(slide_key, index),
+                text: format!("Limb {index}"),
+                reply: format!("Reply {index}"),
+            })
+            .collect(),
+        correct_option_id: option_id(slide_key, 1),
+    };
+    let script = |asks: &str| LectureScript {
+        schema_version: LECTURE_SCRIPT_VERSION,
+        slides: keys
+            .iter()
+            .map(|key| ScriptSlide {
+                slide_key: key.clone(),
+                talk: format!("Talk over {key}."),
+                question: (key == asks).then(|| question(key)),
+            })
+            .collect(),
+    };
+    let keep = |script: &LectureScript| {
+        database
+            .with_connection(|connection| keep_script(connection, &id, 1, script, &json!({}), NOW))
+    };
+
+    // A question on the title slide, a missing slide or a newer script
+    // version is never kept.
+    assert!(keep(&script("title")).is_err());
+    let mut short = script("step:two-limbs");
+    short.slides.pop();
+    assert!(keep(&short).is_err());
+    let mut newer = script("step:two-limbs");
+    newer.schema_version += 1;
+    assert!(keep(&newer).is_err());
+    assert_eq!(count(&database, "SELECT COUNT(*) FROM lecture_scripts"), 0);
+
+    keep(&script("step:two-limbs")).unwrap();
+    let ask = |slide_key: &str, option: usize| {
+        database.with_connection(|connection| {
+            answer(
+                connection,
+                &AnswerLectureQuestionInput {
+                    lesson_id: id.clone(),
+                    revision_number: 1,
+                    slide_key: slide_key.into(),
+                    option_id: option_id(slide_key, option),
+                },
+            )
+        })
+    };
+    let graded = ask("step:two-limbs", 0).unwrap();
+    assert!(!graded.correct);
+    assert_eq!(graded.reply, "Reply 0");
+    assert_eq!(graded.correct_option_id, option_id("step:two-limbs", 1));
+    assert_eq!(
+        ask("step:multiplier", 0).unwrap_err().code,
+        "lecture_question_missing"
+    );
+
+    // A damaged row is refused rather than played.
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE lecture_scripts SET script_json = '{\"slides\":[]}'",
+                    [],
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    assert!(database
+        .with_connection(|connection| kept_script(connection, &id, 1))
+        .is_err());
+}
