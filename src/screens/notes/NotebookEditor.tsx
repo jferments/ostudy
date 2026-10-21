@@ -41,6 +41,7 @@ import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from ".
 import { useTextFormat } from "../documents/annotator/textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "../documents/annotator/useDocumentAnnotator";
 import { useLibraryFullPage } from "../library/LibraryFrame";
+import { ChooseDocumentDialog, DocumentBeside } from "./DocumentBeside";
 import { LinkDialog, type LinkChoice } from "./LinkDialog";
 import { notebookSource, rememberPictureDraft } from "./notebookSource";
 import { PaperBackground } from "./paper";
@@ -98,8 +99,19 @@ function NotebookSession({
   const source = useMemo(() => notebookSource(setContents), []);
   const base = useDocumentAnnotator(notebookId, showToast, source);
   const { leave, closing } = useAnnotatorLeave(base);
-  const close = useCallback(() => leave(onClose), [leave, onClose]);
+  const close = useCallback(() => leave(async () => {
+    // The document beside saves its marks too; its unmount saves anything left.
+    await besideFlush.current?.();
+    await onClose();
+  }), [leave, onClose]);
   const [passage, setPassage] = useState<SourcePassage | null>(null);
+  // On a wide screen, a document can be open beside the notebook.
+  const { layoutMode } = useLayoutMode();
+  const wide = layoutMode !== "compact";
+  const [beside, setBeside] = useState<SourcePassage | null>(null);
+  const [choosingBeside, setChoosingBeside] = useState(false);
+  const besideFlush = useRef<(() => Promise<boolean>) | null>(null);
+  const shownBeside = wide ? beside : null;
   const [showPage, setShowPage] = useState<((pageNumber: number) => void) | null>(null);
 
   const unavailable = useMemo(() => new Set(contents?.unavailableLinkIds ?? []), [contents]);
@@ -114,7 +126,9 @@ function NotebookSession({
     const target = link.target;
     switch (target.kind) {
       case "documentPage":
-        setPassage({ documentId: target.documentId, title: label, pageNumber: target.pageNumber });
+        // With a document beside the notes, a page link opens there.
+        if (shownBeside) setBeside({ documentId: target.documentId, title: label, pageNumber: target.pageNumber });
+        else setPassage({ documentId: target.documentId, title: label, pageNumber: target.pageNumber });
         return;
       case "studyGuide":
         void leave(() => links.onOpenGuide(target.documentId, label));
@@ -128,7 +142,7 @@ function NotebookSession({
         else void leave(() => links.onOpenNotebook(target.notebookId, target.pageId));
       }
     }
-  }, [contents, leave, links, notebookId, showPage, showToast, unavailable]);
+  }, [contents, leave, links, notebookId, shownBeside, showPage, showToast, unavailable]);
 
   // A link opens rather than being typed in: a tap selects it, a second tap follows it.
   const { editText: typeInto, select } = base;
@@ -176,6 +190,17 @@ function NotebookSession({
           <Button onClick={controller.retryLoad}>Try again</Button>
         </div>
       ) : contents ? (
+        <div className="tw:flex tw:min-h-0 tw:min-w-0">
+        {shownBeside ? (
+          <DocumentBeside
+            key={`${shownBeside.documentId}:${shownBeside.pageNumber}`}
+            passage={shownBeside}
+            showToast={showToast}
+            flushRef={besideFlush}
+            onClose={() => setBeside(null)}
+          />
+        ) : null}
+        <div className="tw:flex tw:min-w-0 tw:flex-1 tw:basis-0 tw:flex-col">
         <ReadyNotebook
           notebookId={notebookId}
           contents={contents}
@@ -187,6 +212,19 @@ function NotebookSession({
           onFollow={follow}
           onReopen={onReopen}
           onShowPage={setShowPage}
+          onOpenBeside={wide ? () => setChoosingBeside(true) : undefined}
+          besideOpen={shownBeside !== null}
+        />
+        </div>
+        </div>
+      ) : null}
+      {choosingBeside ? (
+        <ChooseDocumentDialog
+          onClose={() => setChoosingBeside(false)}
+          onChoose={(document) => {
+            setChoosingBeside(false);
+            setBeside({ documentId: document.id, title: document.title, pageNumber: 1 });
+          }}
         />
       ) : null}
       {passage ? <SourcePassageDialog passage={passage} onClose={() => setPassage(null)} showToast={showToast} /> : null}
@@ -200,6 +238,7 @@ function linkOf(annotation: Annotation | null): NoteLink | null {
 
 function ReadyNotebook({
   notebookId, contents, pages, controller, unavailable, openAtPageId, showToast, onFollow, onReopen, onShowPage,
+  onOpenBeside, besideOpen,
 }: {
   notebookId: string;
   contents: NotebookContents;
@@ -211,6 +250,9 @@ function ReadyNotebook({
   onFollow: (annotation: Annotation) => void;
   onReopen: (pageId?: string) => void;
   onShowPage: (show: (pageNumber: number) => void) => void;
+  /** Chooses a document to open beside the notebook; wide screens only. */
+  onOpenBeside?: () => void;
+  besideOpen: boolean;
 }) {
   const confirm = useConfirm();
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -464,6 +506,12 @@ function ReadyNotebook({
           <Icon name="image" />
           Add picture
         </Button>
+        {onOpenBeside ? (
+          <Button size="small" variant="secondary" onClick={onOpenBeside}>
+            <Icon name="document" />
+            {besideOpen ? "Change document" : "Document beside"}
+          </Button>
+        ) : null}
         {selected && selectedLink ? (
           <>
             <Button size="small" variant="secondary" onClick={() => onFollow(selected)}>
