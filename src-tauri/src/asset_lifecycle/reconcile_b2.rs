@@ -135,6 +135,7 @@ fn reference_count(connection: &Connection, asset_id: &str) -> Result<i64, Comma
                  (SELECT COUNT(*) FROM card_template_assets WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM question_attempt_assets WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM speech_segments WHERE asset_id = ?1) +
+                 (SELECT COUNT(*) FROM speech_voices WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM notebook_item_assets WHERE asset_id = ?1)",
             [asset_id],
             |row| row.get(0),
@@ -154,6 +155,7 @@ fn question_attempt_assets_keep_images_referenced() {
              CREATE TABLE card_template_assets (asset_id TEXT);
              CREATE TABLE question_attempt_assets (asset_id TEXT);
              CREATE TABLE speech_segments (asset_id TEXT);
+             CREATE TABLE speech_voices (asset_id TEXT);
              CREATE TABLE notebook_item_assets (asset_id TEXT);",
         )
         .unwrap();

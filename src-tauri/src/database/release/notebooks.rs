@@ -1,6 +1,6 @@
-//! Additive release-v16 admission for notebooks.
+//! Additive release-v17 admission for notebooks.
 //!
-//! Migration 16 adds notebooks, their pages and the marks on those pages, with
+//! Migration 17 adds notebooks, their pages and the marks on those pages, with
 //! their indexes. Learners make notebooks in Library's Notes page; an upgrade
 //! writes none, so the tables start empty.
 
@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 16;
+const VERSION: i64 = 17;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -29,11 +29,11 @@ mod tests {
     const DOCUMENT: &str = "11111111111111111111111111111111";
     const NOTEBOOK_TABLES: [&str; 3] = ["notebooks", "notebook_pages", "notebook_items"];
 
-    /// A schema-15 library as the previous release left it, with one document.
-    fn schema_fifteen() -> Connection {
-        let connection = release_library(15);
+    /// A schema-16 library as the previous release left it, with one document.
+    fn schema_sixteen() -> Connection {
+        let connection = release_library(16);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 15);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 16);
         connection
     }
 
@@ -42,8 +42,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_fifteen_upgrades_additively_with_no_notebooks() {
-        let mut connection = schema_fifteen();
+    fn schema_sixteen_upgrades_additively_with_no_notebooks() {
+        let mut connection = schema_sixteen();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
@@ -72,21 +72,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_sixteenth_migration_rolls_back_to_schema_fifteen_and_retries() {
-        let mut connection = schema_fifteen();
+    fn interrupted_sixteenth_migration_rolls_back_to_schema_sixteen_and_retries() {
+        let mut connection = schema_sixteen();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_notebook_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=16
+                 WHEN NEW.version=17
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 15);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 16);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 15).unwrap();
+        validate_schema(&connection, 16).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_notebook_migration;")
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_notebook_schemas_fail_read_only() {
-        let mut connection = schema_fifteen();
+        let mut connection = schema_sixteen();
         for unregistered in [
             migration_sql(VERSION),
             "CREATE INDEX notebook_items_by_page ON documents(id);",

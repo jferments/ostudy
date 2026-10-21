@@ -17,7 +17,7 @@ export function ForecastPanel({ forecast, loading }: { forecast: ProgressForecas
     : days.map((day, index) => `${index === 0 ? "Today" : formatWeekday(day.localDate)} ${day.dueCount}`).join(", ");
 
   return (
-    <Panel headingLevel={2} title="Coming up" description="Cards due each day, next two weeks" aria-busy={loading || undefined}>
+    <Panel headingLevel={2} title="Coming up" aria-busy={loading || undefined}>
       <div role="img" aria-label={`Reviews due: ${summary}.`} className="tw:grid tw:h-36 tw:grid-flow-col tw:auto-cols-fr tw:items-end tw:gap-1 tw:border-0 tw:border-b tw:border-solid tw:border-border">
         {days.map((day, index) => (
           <span key={day.localDate} title={`${index === 0 ? "Today" : formatWeekday(day.localDate)}: ${plural(day.dueCount, "review")} due`}
@@ -37,14 +37,6 @@ export function ForecastPanel({ forecast, loading }: { forecast: ProgressForecas
           </span>
         ))}
       </div>
-      {forecast ? (
-        <p className={cn("tw:m-0 tw:rounded-md tw:p-3 tw:text-small", peak ? "tw:bg-warning-soft" : "tw:bg-muted/50")}>
-          {peak
-            ? <><strong>{formatWeekday(peak.localDate)} has {peak.dueCount} due</strong>, the busiest day in the next two weeks.</>
-            : <>{plural(counts[0] ?? 0, "review")} due today{forecast.overdueCount > 0 ? `, ${forecast.overdueCount.toLocaleString()} of them overdue` : ""}.</>}
-          {forecast.newAvailableCount > 0 ? <> {plural(forecast.newAvailableCount, "new card")} waiting.</> : null}
-        </p>
-      ) : null}
     </Panel>
   );
 }

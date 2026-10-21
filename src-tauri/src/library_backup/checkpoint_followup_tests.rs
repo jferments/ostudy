@@ -93,6 +93,8 @@ fn kept(connection: &Connection) -> Kept {
         "document_study_guide_section_reads",
         "document_study_guide_positions",
         "lecture_scripts",
+        "speech_voices",
+        "lesson_voices",
         "notebooks",
         "notebook_pages",
         "notebook_items",

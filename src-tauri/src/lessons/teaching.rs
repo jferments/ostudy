@@ -408,7 +408,7 @@ pub(crate) async fn narrate_lecture_part(
         input.slide_key,
         input.reply_to.as_deref().unwrap_or("talk")
     );
-    speak_saved(database, paths, runtime, &text, key).await
+    speak_saved(database, paths, runtime, &input.lesson_id, &text, key).await
 }
 
 fn script_missing() -> CommandError {
