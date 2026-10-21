@@ -8,6 +8,7 @@ import {
   getStudyTargetBundle,
   type StudyTargetArtifactKind,
   type StudyTargetBundleStatus,
+  type StudyTargetOutputPolicy,
   type StudyTargetRef,
 } from "../../ipc/studyMaterials";
 
@@ -129,7 +130,8 @@ export function useStudyTargetBundleController({
     }
   }
 
-  async function run(): Promise<boolean> {
+  /** Makes both outputs unless `outputPolicy` asks for one; a retry keeps the receipt's identity. */
+  async function run(outputPolicy: StudyTargetOutputPolicy = { flashcards: true, studyGuide: true }): Promise<boolean> {
     if (!target || busy) return false;
     const key = targetKey(target);
     const existing = receipt.current?.key === key ? receipt.current : null;
@@ -142,8 +144,9 @@ export function useStudyTargetBundleController({
       const begun = await beginStudyTargetBundle({
         operationId,
         target,
-        outputPolicy: { flashcards: true, studyGuide: true },
-        recreateArtifacts: suppressedArtifacts(status),
+        outputPolicy,
+        recreateArtifacts: suppressedArtifacts(status).filter((kind) =>
+          kind === "flashcards" ? outputPolicy.flashcards : outputPolicy.studyGuide),
       });
       setStatus(begun);
       const result = await composeStudyTargetBundle({ operationId });

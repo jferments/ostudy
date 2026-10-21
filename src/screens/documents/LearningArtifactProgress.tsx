@@ -65,6 +65,28 @@ export function guideUsageDetail(job: DocumentArtifactJob): string {
     : `Study Guide usage · ${tokens}+ reported tokens`;
 }
 
+/** Flashcards and the study guide as one row bar while both are on track; null once either needs attention. */
+export function combinedArtifactProgress(
+  document: DocumentSummary,
+  progress: DocumentGenerationProgress | null,
+  guideJob: DocumentArtifactJob | null,
+  guideStarting: boolean,
+): { label: string; value: number | null } | null {
+  const cards = flashcardProgress(document, progress);
+  const guide = guideProgress(guideJob, guideStarting);
+  if (cards.failed || guide.failed || guideJob?.safeErrorMessage) return null;
+  // Only what is actually being made: cards while the document is processing, a guide once one is asked for.
+  const active = [
+    document.lifecycleState === "processing" && !cards.complete ? { name: "flashcards", progress: cards } : null,
+    (guideJob !== null || guideStarting) && !guide.complete ? { name: "a study guide", progress: guide } : null,
+  ].filter((item): item is { name: string; progress: ArtifactProgress } => item !== null);
+  const making = active.map((item) => item.name);
+  const values = active.map((item) => item.progress.value);
+  const value = values.length > 0 && values.every((item) => item !== null)
+    ? Math.round((values as number[]).reduce((sum, item) => sum + item, 0) / values.length) : null;
+  return { label: making.length === 0 ? "Saving" : `Making ${making.join(" and ")}`, value };
+}
+
 function ArtifactRow({ label, progress }: { label: string; progress: ArtifactProgress }) {
   return <div className="tw:grid tw:min-w-0 tw:gap-2">
     <div className={progressStyles.heading}>
