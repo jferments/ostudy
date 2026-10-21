@@ -20,6 +20,8 @@ interface SubjectStudyActionsProps {
   /** Studies the decks the subject's materials made. */
   onStudy?: (subjectId: string) => void;
   onOpenGuide?: (subjectId: string, title: string) => void;
+  /** Set while no model is chosen: Make and Update open AI setup instead. */
+  onSetUpAi?: () => void;
 }
 
 /** What one Make asks for: the bundle's outputs, and the subject's lessons. */
@@ -42,6 +44,7 @@ export function SubjectStudyActions({
   refreshDecks,
   onStudy,
   onOpenGuide,
+  onSetUpAi,
 }: SubjectStudyActionsProps) {
   const bundle = useStudyTargetBundleController({
     target: { kind: "collection", id: subjectId },
@@ -89,12 +92,12 @@ export function SubjectStudyActions({
       {study ? <Button onClick={study}>Study</Button> : null}
       {guide ? <Button onClick={guide}>Read guide</Button> : null}
       {canMake ? (
-        <Button data-testid="subject-make-materials" disabled={bundle.loading} onClick={() => setChoosing(true)}>
+        <Button data-testid="subject-make-materials" disabled={bundle.loading} onClick={onSetUpAi ?? (() => setChoosing(true))}>
           <Icon name="sparkles" size={16} /> Make study materials
         </Button>
       ) : null}
       {needsUpdate && update ? (
-        <Button disabled={bundle.loading} onClick={() => void bundle.run()}>{update}</Button>
+        <Button disabled={bundle.loading} onClick={onSetUpAi ?? (() => void bundle.run())}>{update}</Button>
       ) : null}
       {bundle.error ? (
         <InlineNotice kind="warning" className="tw:basis-full">{bundle.error}</InlineNotice>

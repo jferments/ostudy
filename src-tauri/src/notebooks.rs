@@ -247,7 +247,7 @@ pub enum NotebookItemChange {
     Put {
         id: String,
         page_id: String,
-        shape: AnnotationShape,
+        shape: Box<AnnotationShape>,
         #[serde(default)]
         asset_draft_id: Option<String>,
     },
@@ -653,7 +653,7 @@ pub(crate) fn apply_changes(
             if asset_draft_id.is_some() && shape.image_asset().is_none() {
                 return Err(invalid("Only a picture names an image draft."));
             }
-            if matches!(shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
+            if matches!(&**shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
                 return Err(invalid("A notebook page has no text to highlight."));
             }
         }
@@ -708,7 +708,7 @@ pub(crate) fn apply_changes(
                     &input.notebook_id,
                     id,
                     page_id,
-                    shape,
+                    *shape,
                     now,
                     &mut next_created_at,
                 )?;
