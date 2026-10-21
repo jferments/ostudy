@@ -80,8 +80,12 @@ mod tests {
             ),
             1
         );
-        // Later releases build on the rebuilt table; the whole library is valid.
+        // Later migrations keep the annotated PDFs.
         apply_migrations(&mut connection).unwrap();
+        assert_eq!(
+            count(&connection, "SELECT COUNT(*) FROM prepared_exports"),
+            4
+        );
         validate_input(&connection).unwrap();
     }
 

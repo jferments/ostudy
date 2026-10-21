@@ -47,7 +47,9 @@ interface AnnotatorToolbarProps {
   /** The style the color and size choices change: the selection's, or the tool's. */
   style: { family: StyleFamily; style: ToolStyle } | null;
   onStyle: (patch: Partial<ToolStyle>) => void;
-  selection: { isText: boolean; isSticky: boolean } | null;
+  selection: { isText: boolean; isSticky: boolean; isCollapsed: boolean } | null;
+  /** Folds the selected sticky note to its icon, or opens it back out. */
+  onToggleCollapsed: () => void;
   onDeleteSelection: () => void;
   onEditSelection: () => void;
   /** How many annotations the lasso took. */
@@ -184,7 +186,7 @@ const SAMPLE_DOT_SIZES = ["tw:size-3", "tw:size-4", "tw:size-5"] as const;
 const LETTER_SIZES = ["tw:text-caption", "tw:text-body", "tw:text-section"] as const;
 
 const HINTS: Partial<Record<AnnotatorTool, string>> = {
-  select: "Tap an annotation to select it.",
+  select: "Tap an annotation to select it, or drag across several.",
   lasso: "Draw a loop around annotations to select them together.",
   eraser: "Drag across annotations to erase them.",
 };
@@ -227,7 +229,7 @@ const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "T
 function StyleRow(props: AnnotatorToolbarProps) {
   const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, onMakeCard, disabled } = props;
   const choices = style ? STYLE_CHOICES[style.family] : null;
-  if (tool === "lasso" && props.groupSize > 0) {
+  if ((tool === "lasso" || tool === "select") && props.groupSize > 0 && !selection) {
     return (
       <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
         <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
@@ -270,6 +272,11 @@ function StyleRow(props: AnnotatorToolbarProps) {
       {selection.isText ? (
         <ToolbarAction label={selection.isSticky ? "Open note" : "Edit text"} onClick={onEditSelection}>
           <Icon name="edit" />
+        </ToolbarAction>
+      ) : null}
+      {selection.isSticky ? (
+        <ToolbarAction label={selection.isCollapsed ? "Expand note" : "Collapse to an icon"} onClick={props.onToggleCollapsed}>
+          <Icon name={selection.isCollapsed ? "maximize" : "minimize"} />
         </ToolbarAction>
       ) : null}
       {onMakeCard ? (

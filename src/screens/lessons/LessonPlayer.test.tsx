@@ -12,6 +12,7 @@ vi.mock("../../ipc/lessons", () => ({
   saveLessonProgress: vi.fn(),
   answerLessonCheck: vi.fn(),
   getLessonLecture: vi.fn(),
+  getLessonLectureScript: vi.fn(async () => null),
   narrateLessonStep: vi.fn(),
 }));
 
@@ -159,9 +160,9 @@ describe("LessonPlayer", () => {
       revisionNumber: 2,
       title: "Cardiac output",
       slides: [
-        { kind: "title", stepKey: null, title: "Cardiac output", points: [], notes: "" },
-        { kind: "step", stepKey: "rate", title: "Heart rate", points: [], notes: "" },
-        { kind: "step", stepKey: "volume", title: "Stroke volume", points: ["Filling"], notes: "" },
+        { key: "title", kind: "title", stepKey: null, title: "Cardiac output", points: [], notes: "" },
+        { key: "step:rate", kind: "step", stepKey: "rate", title: "Heart rate", points: [], notes: "" },
+        { key: "step:volume", kind: "step", stepKey: "volume", title: "Stroke volume", points: ["Filling"], notes: "" },
       ],
     });
     renderPlayer();

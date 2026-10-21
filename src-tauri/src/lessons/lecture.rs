@@ -28,6 +28,9 @@ pub struct LectureDto {
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LectureSlideDto {
+    /// Names the slide within its lesson: `title`, `step:<step key>` or
+    /// `sources`. A teacher's lecture script is keyed by it.
+    pub key: String,
     pub kind: LectureSlideKind,
     /// The step a step slide shows, whose narration can be spoken.
     pub step_key: Option<String>,
@@ -43,6 +46,14 @@ pub enum LectureSlideKind {
     Title,
     Step,
     Sources,
+}
+
+pub(crate) const TITLE_KEY: &str = "title";
+pub(crate) const SOURCES_KEY: &str = "sources";
+
+/// A step's slide key. The prefix keeps a step key from naming another slide.
+pub(crate) fn step_slide_key(step_key: &str) -> String {
+    format!("step:{step_key}")
 }
 
 #[tauri::command]
@@ -66,6 +77,7 @@ fn compile(lesson: LessonDto, documents: Vec<String>) -> LectureDto {
     let content = lesson.content;
     let mut slides = Vec::with_capacity(content.steps.len() + 2);
     slides.push(LectureSlideDto {
+        key: TITLE_KEY.to_string(),
         kind: LectureSlideKind::Title,
         step_key: None,
         title: content.title.clone(),
@@ -73,6 +85,7 @@ fn compile(lesson: LessonDto, documents: Vec<String>) -> LectureDto {
         notes: content.summary,
     });
     slides.extend(content.steps.into_iter().map(|step| LectureSlideDto {
+        key: step_slide_key(&step.key),
         kind: LectureSlideKind::Step,
         step_key: Some(step.key),
         title: step.title,
@@ -81,6 +94,7 @@ fn compile(lesson: LessonDto, documents: Vec<String>) -> LectureDto {
     }));
     if !documents.is_empty() {
         slides.push(LectureSlideDto {
+            key: SOURCES_KEY.to_string(),
             kind: LectureSlideKind::Sources,
             step_key: None,
             title: "Sources".to_string(),

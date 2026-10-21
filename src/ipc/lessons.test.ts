@@ -10,6 +10,10 @@ import {
   getSubjectCourseWritingProgress,
   listSubjectLessons,
   narrateLessonStep,
+  getLessonLectureScript,
+  writeLessonLectureScript,
+  answerLectureQuestion,
+  narrateLecturePart,
   saveLessonProgress,
   writeSubjectCourse,
 } from "./lessons";
@@ -105,6 +109,31 @@ describe("lesson IPC", () => {
     await narrateLessonStep(lessonId, 2, "two-limbs");
     expect(invoke).toHaveBeenLastCalledWith("narrate_lesson_step", {
       input: { lessonId, revisionNumber: 2, stepKey: "two-limbs" },
+    });
+  });
+
+  it("reads, writes, answers and speaks the teacher's lecture of a revision", async () => {
+    const operationId = "f".repeat(32);
+    await getLessonLectureScript(lessonId, 2);
+    expect(invoke).toHaveBeenLastCalledWith("get_lesson_lecture_script", {
+      input: { lessonId, revisionNumber: 2 },
+    });
+    await writeLessonLectureScript(lessonId, 2, operationId);
+    expect(invoke).toHaveBeenLastCalledWith("write_lesson_lecture_script", {
+      input: { lessonId, revisionNumber: 2, operationId },
+    });
+    await answerLectureQuestion(lessonId, 2, "step:two-limbs", operationId);
+    expect(invoke).toHaveBeenLastCalledWith("answer_lecture_question", {
+      input: {
+        lessonId,
+        revisionNumber: 2,
+        slideKey: "step:two-limbs",
+        optionId: operationId,
+      },
+    });
+    await narrateLecturePart(lessonId, 2, "title");
+    expect(invoke).toHaveBeenLastCalledWith("narrate_lecture_part", {
+      input: { lessonId, revisionNumber: 2, slideKey: "title", replyTo: null },
     });
   });
 });
