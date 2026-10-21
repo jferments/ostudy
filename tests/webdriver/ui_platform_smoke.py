@@ -979,9 +979,10 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 
 
 def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:
-    """Library's Overview and Lessons pages under Everything, with the subjects
-    beside the page on wide screens and behind the header's switcher otherwise."""
-    for view, heading in (("overview", "Overview"), ("lessons", "Lessons")):
+    """Library's Overview, Lessons and Notes pages under Everything, with the
+    subjects beside the page on wide screens and behind the header's switcher
+    otherwise."""
+    for view, heading in (("overview", "Overview"), ("lessons", "Lessons"), ("notes", "Notes")):
         webdriver.open_library_view(session_id, view, deadline)
         # WebKitGTK reports no element text for these headings, so match the DOM text.
         webdriver.find_element(

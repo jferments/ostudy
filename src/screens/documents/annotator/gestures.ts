@@ -20,6 +20,7 @@ import {
   shapeFromDrag,
   simplifyPairs,
   topmostAt,
+  withTheirGroups,
   type Annotation,
   type AnnotationShape,
   type AnnotatorTool,
@@ -259,6 +260,16 @@ export class AnnotatorGestures {
       case "press": {
         if (clientDistance(client, active.start) < TAP_SLOP[active.pointer]) return [];
         // Select moves what it pressed; the note tools drag their notes.
+        if (active.hit && active.pageNumber !== null && active.purpose === "select" && active.hit.shape.group) {
+          // A grouped mark moves with the rest of its group.
+          const members = withTheirGroups(context.annotationsOn(active.pageNumber), [active.hit]);
+          const start = surface.toPage(active.pageNumber, active.start.x, active.start.y);
+          this.active = { kind: "group-move", pointerId: active.pointerId, pageNumber: active.pageNumber, originals: members, start, current: members };
+          return [
+            { kind: "select-group", pageNumber: active.pageNumber, ids: members.map((member) => member.id) },
+            ...this.move(sample, surface, context),
+          ];
+        }
         if (active.hit && active.pageNumber !== null) {
           const effects: GestureEffect[] = [];
           if (active.purpose === "select" && context.selected?.id !== active.hit.id) effects.push({ kind: "select", id: active.hit.id });

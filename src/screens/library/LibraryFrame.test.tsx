@@ -49,9 +49,9 @@ function names(buttons: HTMLElement[]) {
 }
 
 describe("LibraryFrame", () => {
-  it.each([390, 1000, 1440])("names the five pages in order at %s px", (width) => {
+  it.each([390, 1000, 1440])("names the six pages in order at %s px", (width) => {
     renderLibrary("decks", width);
-    expect(names(views())).toEqual(["Overview", "Lessons", "Study guides", "Documents", "Flashcards"]);
+    expect(names(views())).toEqual(["Overview", "Lessons", "Study guides", "Documents", "Notes", "Flashcards"]);
   });
 
   it("lists the subjects beside the page on wide screens and in a sheet on narrower ones", () => {
