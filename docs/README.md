@@ -14,13 +14,14 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Configure provider credentials and task-specific models/reasoning | [AI providers](user-guide/ai-providers.md) |
 | Import source material and generate learning artifacts | [Documents and AI generation](user-guide/documents-and-ai-generation.md) |
 | Write, highlight, draw and type notes on a PDF's pages | [Annotating PDF pages](user-guide/pdf-annotation.md) |
+| Write and draw your own notes on pages of paper, with links to your study materials | [Notes](user-guide/notes.md) |
 | Read, annotate, export, delete, and practice from generated guides | [Study guides](user-guide/study-guides.md) |
 | Use optional source-grounded chat, projects and learner-controlled memory | [Tutor memory and privacy](user-guide/tutor-memory-and-privacy.md) |
 | Adjust themes, fonts, motion, help, and explicitly started tutorials | [Appearance and guidance](user-guide/appearance-and-guidance.md) |
 | Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
 
-Home opens first, with today's review and Start review, lessons to pick up, suggestions, the week at a glance and your subjects. Library holds every material by subject, with tabs for a subject's Overview, Lessons, Study guides, Documents and Flashcards; Flashcards is the Workbench, which lists the subject's decks and tags beside the chosen cards. Tutor and Progress are destinations of their own, and Settings is the fifth. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
+Home opens first, with today's review and Start review, lessons to pick up, suggestions, the week at a glance and your subjects. Library holds every material by subject, with tabs for a subject's Overview, Lessons, Study guides, Documents, Notes and Flashcards; Flashcards is the Workbench, which lists the subject's decks and tags beside the chosen cards. Tutor and Progress are destinations of their own, and Settings is the fifth. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
 ## Install, build, and test locally
 

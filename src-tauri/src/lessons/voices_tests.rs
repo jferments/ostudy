@@ -466,3 +466,42 @@ fn two_voices_come_with_ostudy_and_the_relaxed_man_is_the_default() {
         .unwrap_err();
     assert_eq!(unknown.code, "speech_voice_unknown");
 }
+
+#[test]
+fn a_voice_a_podcast_host_speaks_in_is_kept_when_removed() {
+    let (database, _) = library();
+    let paths = temporary_paths("podcast-host");
+    let host = seed_voice(&database, &paths);
+    keep_voice(&database, &host.id);
+    let spare = seed_voice(&database, &paths);
+    keep_voice(&database, &spare.id);
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "INSERT INTO podcasts(id, subject_id, title, target_minutes, model_id,
+                         first_voice, second_voice, script_json, provenance_json, created_at)
+                     VALUES (?1, ?2, 'Renal', 15, ?3, ?4, 'builtin:relaxed-man', '{}', '{}', 1)",
+                    params!["d".repeat(32), SUBJECT, DRAMA, host.voice],
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+    database
+        .with_connection(|connection| remove(connection, &host.id, NOW))
+        .unwrap();
+    assert_eq!(
+        query::<String>(
+            &database,
+            &format!("SELECT state FROM speech_voices WHERE id = '{}'", host.id)
+        ),
+        "removed"
+    );
+    assert!(speaks_for_test(&database, &host.voice));
+}
+
+fn speaks_for_test(database: &Database, voice: &str) -> bool {
+    database
+        .with_connection(|connection| speaks(connection, voice))
+        .unwrap()
+}

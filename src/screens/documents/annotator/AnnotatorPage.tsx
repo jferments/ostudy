@@ -1,12 +1,18 @@
-import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
-import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import type { AnnotatedPage, FrameShape } from "../../../ipc/documentAnnotations";
+import { managedAssetUrl } from "../../../platform/assets";
+import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Dialog } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import { Textarea } from "../../../ui/primitives/FormControls";
 import {
   arrowHead,
+  dashArray,
+  segmentPath,
+  towardEnd,
+  towardStart,
   describeAnnotation,
   handlesFor,
   isStickyNote,
@@ -32,8 +38,19 @@ export interface PageDraft {
   complete: boolean;
 }
 
+/**
+ * Pages of paper instead of page images, as a notebook's are: the paper is
+ * drawn under the marks, and a text note may be a link.
+ */
+export interface PaperPages {
+  background: (page: AnnotatedPage) => ReactNode;
+  /** Links whose target is gone, shown as removed. */
+  unavailableLinks: ReadonlySet<string>;
+}
+
 interface AnnotatorPageProps {
   page: AnnotatedPage;
+  paperPages?: PaperPages;
   /** CSS pixels per point. */
   scale: number;
   /** Near the screen: show the image and annotations, not just the page's place. */
@@ -101,8 +118,8 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
 });
 
 function PageContent({
-  page, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse, textHeight,
-  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
+  page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,
+  textHeight, onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
   const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
@@ -119,7 +136,7 @@ function PageContent({
     : null;
   return (
     <>
-      {imageUrl ? (
+      {paperPages ? paperPages.background(page) : imageUrl ? (
         <img src={imageUrl} alt="" draggable={false} className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full" />
       ) : (
         <p className="tw:pointer-events-none tw:absolute tw:inset-x-0 tw:top-1/2 tw:m-0 tw:-translate-y-1/2 tw:text-center tw:text-small tw:text-[var(--ostudy-color-neutral-950)]/70">
@@ -161,7 +178,8 @@ function PageContent({
         style={{ width: page.width, height: page.height, transform: `scale(${scale})` }}
       >
         {notes.map((annotation) => (
-          <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText} />
+          <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText}
+            unavailable={paperPages?.unavailableLinks.has(annotation.id) ?? false} />
         ))}
         {stickies.map((annotation) => (
           <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
@@ -212,7 +230,8 @@ function PageContent({
   );
 }
 
-const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { shape: AnnotationShape; complete?: boolean }) {
+/** One mark's graphic in page points; text notes are drawn as HTML instead. */
+export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { shape: AnnotationShape; complete?: boolean }) {
   switch (shape.kind) {
     case "ink":
       return <path d={inkPath(shape, complete)} fill={shape.color} />;
@@ -224,34 +243,59 @@ const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { sh
       );
     case "line":
       return (
-        <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinecap="round" />
+        <path d={segmentPath(shape, { x: shape.x1, y: shape.y1 }, { x: shape.x2, y: shape.y2 })} fill="none"
+          stroke={shape.color} strokeWidth={shape.strokeWidth} strokeLinecap="round"
+          strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
       );
     case "arrow": {
-      const head = arrowHead(shape);
+      const head = arrowHead(towardEnd(shape));
+      const tail = shape.bothEnds ? arrowHead(towardStart(shape)) : null;
+      const headStroke = Math.min(1, shape.strokeWidth);
       return (
         <>
-          <line x1={shape.x1} y1={shape.y1} x2={head.base.x} y2={head.base.y} stroke={shape.color}
-            strokeWidth={shape.strokeWidth} strokeLinecap="round" />
-          <polygon fill={shape.color} stroke={shape.color} strokeWidth={Math.min(1, shape.strokeWidth)} strokeLinejoin="round"
+          <path d={segmentPath(shape, tail?.base ?? { x: shape.x1, y: shape.y1 }, head.base)} fill="none"
+            stroke={shape.color} strokeWidth={shape.strokeWidth} strokeLinecap="round"
+            strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
+          <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
             points={`${shape.x2},${shape.y2} ${head.left.x},${head.left.y} ${head.right.x},${head.right.y}`} />
+          {tail ? (
+            <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
+              points={`${shape.x1},${shape.y1} ${tail.left.x},${tail.left.y} ${tail.right.x},${tail.right.y}`} />
+          ) : null}
         </>
       );
     }
     case "rectangle":
       return (
-        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="none" stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinejoin="round" />
+        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} {...frameLook(shape)} />
       );
     case "ellipse":
       return (
         <ellipse cx={shape.x + shape.width / 2} cy={shape.y + shape.height / 2} rx={shape.width / 2} ry={shape.height / 2}
-          fill="none" stroke={shape.color} strokeWidth={shape.strokeWidth} />
+          {...frameLook(shape)} />
+      );
+    case "image":
+      return (
+        <image href={managedAssetUrl(shape.assetId)} x={shape.x} y={shape.y} width={shape.width} height={shape.height}
+          preserveAspectRatio="none" />
       );
     case "text":
       return null;
   }
 });
+
+/** A box's or ellipse's fill and outline. */
+function frameLook(shape: FrameShape): Pick<SVGProps<SVGRectElement>, "fill" | "stroke" | "strokeWidth" | "strokeLinejoin" | "strokeLinecap" | "strokeDasharray"> {
+  const border = shape.border !== false;
+  return {
+    fill: shape.fill ?? "none",
+    stroke: border ? shape.color : "none",
+    strokeWidth: shape.strokeWidth,
+    strokeLinejoin: "round",
+    strokeLinecap: shape.dash ? "round" : undefined,
+    strokeDasharray: border ? dashArray(shape.dash, shape.strokeWidth) : undefined,
+  };
+}
 
 function textStyle(shape: TextShape): CSSProperties {
   return {
@@ -265,10 +309,12 @@ function textStyle(shape: TextShape): CSSProperties {
   };
 }
 
-const TextNote = memo(function TextNote({ annotation, opacity, onMeasure }: {
+const TextNote = memo(function TextNote({ annotation, opacity, onMeasure, unavailable }: {
   annotation: Annotation;
   opacity: number | undefined;
   onMeasure: (annotation: Annotation, height: number) => void;
+  /** A link whose target is gone. */
+  unavailable: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -276,13 +322,37 @@ const TextNote = memo(function TextNote({ annotation, opacity, onMeasure }: {
     if (height > 0) onMeasure(annotation, height);
   }, [annotation, onMeasure]);
   if (annotation.shape.kind !== "text") return null;
+  const { link } = annotation.shape;
   return (
     <div ref={ref} aria-hidden="true" className="tw:absolute tw:box-border tw:whitespace-pre-wrap tw:wrap-anywhere"
       style={{ ...textStyle(annotation.shape), opacity }}>
-      {annotation.shape.text}
+      {link ? <LinkLabel text={annotation.shape.text} button={link.button === true} unavailable={unavailable} /> : annotation.shape.text}
     </div>
   );
 });
+
+/**
+ * A link on a notebook page: underlined words after a link mark, or a button
+ * in the note's color. A link whose target is gone is struck through.
+ */
+function LinkLabel({ text, button, unavailable }: { text: string; button: boolean; unavailable: boolean }) {
+  return (
+    <span
+      data-note-link={button ? "button" : "link"}
+      data-unavailable={unavailable || undefined}
+      className={cn(
+        "tw:inline-flex tw:max-w-full tw:items-baseline tw:gap-[0.3em] tw:font-medium",
+        button
+          ? "tw:rounded-md tw:bg-[currentColor] tw:px-[0.6em] tw:py-[0.2em] tw:shadow-sm"
+          : "tw:underline tw:decoration-1 tw:underline-offset-2",
+        unavailable && "tw:line-through tw:opacity-60",
+      )}
+    >
+      <Icon name={button ? "practice" : "link"} className={cn("tw:size-[0.9em] tw:shrink-0 tw:self-center", button && "tw:text-[var(--ostudy-color-neutral-0)]")} />
+      <span className={cn(button && "tw:text-[var(--ostudy-color-neutral-0)]")}>{text}</span>
+    </span>
+  );
+}
 
 const STICKY_PADDING = 6;
 
@@ -459,9 +529,20 @@ function SelectionOutline({ page, scale, coarse, annotation, textHeight }: {
         width={bounds.right - bounds.left + 2 * margin} height={bounds.bottom - bounds.top + 2 * margin}
         fill="none" className="tw:stroke-primary" strokeWidth={1.5 / scale} strokeDasharray={`${5 / scale} ${4 / scale}`}
       />
+      {(annotation.shape.kind === "line" || annotation.shape.kind === "arrow") && annotation.shape.curve ? (
+        // A curve's control points hang off its ends on thin lines, as in drawing apps.
+        <path className="tw:stroke-primary" fill="none" strokeWidth={1 / scale}
+          d={`M${annotation.shape.x1} ${annotation.shape.y1}L${annotation.shape.curve[0]} ${annotation.shape.curve[1]}`
+            + `M${annotation.shape.x2} ${annotation.shape.y2}L${annotation.shape.curve[2]} ${annotation.shape.curve[3]}`} />
+      ) : null}
       {handlesFor(annotation.shape, height).map(({ handle, point }) => (
-        <circle key={handle} cx={point.x} cy={point.y} r={radius}
-          className="tw:fill-background tw:stroke-primary" strokeWidth={2 / scale} />
+        handle === "c1" || handle === "c2" ? (
+          <rect key={handle} x={point.x - radius * 0.8} y={point.y - radius * 0.8} width={radius * 1.6} height={radius * 1.6}
+            className="tw:fill-primary tw:stroke-background" strokeWidth={1.5 / scale} />
+        ) : (
+          <circle key={handle} cx={point.x} cy={point.y} r={radius}
+            className="tw:fill-background tw:stroke-primary" strokeWidth={2 / scale} />
+        )
       ))}
     </svg>
   );

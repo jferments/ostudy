@@ -33,6 +33,15 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
+            <!-- The OpenRouter sign-in page links here to bring oStudy back
+                 from the browser. It carries no data; the key arrives over
+                 the app's own loopback listener. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${applicationId}" android:host="openrouter-signed-in" />
+            </intent-filter>
         </activity>
 
         <provider

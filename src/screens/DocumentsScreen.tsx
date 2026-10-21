@@ -29,8 +29,13 @@ import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
+import { DocumentFiguresWorkspace } from "./documents/figures/DocumentFiguresWorkspace";
+import { ImportImagesDialog } from "./documents/figures/ImportImagesDialog";
+import type { ImportDocumentOptions } from "../ipc/documents";
+import type { StagedExternalFile } from "../ipc/externalFiles";
 import { ReadingRangeDialog, rangeLabel } from "./documents/ReadingRangeDialog";
 import { SubjectStudyActions } from "./documents/SubjectStudyActions";
+import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
 import { useDocumentFiling } from "./documents/useDocumentFiling";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { subjectColorIndexes, subjectInitials } from "./home/homeModel";
@@ -46,6 +51,8 @@ interface DocumentsScreenProps {
   /** Opens a subject's own Documents page from Everything's groups; `null` is No subject. */
   onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
+  /** Opens AI setup; Make actions use it in place of their work while no model is set. */
+  onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
 }
@@ -87,6 +94,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   // Phones drop the row's Open button, so Open leads the row's menu there.
   const compact = useLayoutMode().layoutMode === "compact";
   const filing = useDocumentFiling();
+  const modelMissing = useGenerationModelMissing();
+  const setUpAi = modelMissing ? props.onSetUpAi : undefined;
   const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
@@ -97,6 +106,20 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   // latest one until the new run has planned its sections, so it is not shown.
   const [remadeGuideJobIds, setRemadeGuideJobIds] = useState<Record<string, string>>({});
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
+  const [viewingFigures, setViewingFigures] = useState<{ id: string; title: string } | null>(null);
+  const closeFigures = useCallback(() => setViewingFigures(null), []);
+  // A chosen PDF waits here while the learner says whether to use its images.
+  const [importing, setImporting] = useState<{
+    fileName: string;
+    resolve: (options: ImportDocumentOptions | null) => void;
+  } | null>(null);
+  const chooseImportOptions = (selected: StagedExternalFile) => selected.detectedKind === "pdf"
+    ? new Promise<ImportDocumentOptions | null>((resolve) => setImporting({ fileName: selected.displayName, resolve }))
+    : Promise.resolve({});
+  const finishImporting = (options: ImportDocumentOptions | null) => {
+    importing?.resolve(options);
+    setImporting(null);
+  };
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
   const [moving, setMoving] = useState<DocumentSummary | null>(null);
@@ -148,8 +171,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
   const upload = () => {
     const target = props.subjectId;
-    if (typeof target !== "string") return void uploadDocument();
-    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target));
+    if (typeof target !== "string") return void uploadDocument(undefined, undefined, chooseImportOptions);
+    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target), chooseImportOptions);
   };
 
   if (subjectGuide) {
@@ -174,6 +197,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+      />
+    );
+  }
+
+  if (viewingFigures) {
+    return (
+      <DocumentFiguresWorkspace
+        documentId={viewingFigures.id}
+        title={viewingFigures.title}
+        onClose={closeFigures}
+        showToast={props.showToast}
       />
     );
   }
@@ -243,6 +277,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       id: "annotate", label: "Annotate", disabled: deleting,
       onSelect: () => setAnnotating({ id: document.id, title: document.title }),
     });
+    if (canAnnotateDocument(document)) items.push({
+      id: "figures", label: "Figures", disabled: deleting,
+      onSelect: () => setViewingFigures({ id: document.id, title: document.title }),
+    });
     if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
       id: "range", label: "Reading range…", disabled: filing.busy,
       onSelect: () => setRanging(document),
@@ -257,18 +295,18 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     });
     if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
       id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
-      onSelect: () => setMoreCards({ document, instructions }),
+      onSelect: setUpAi ?? (() => setMoreCards({ document, instructions })),
     });
     if (document.generatedDeckId === null && !processing) items.push({
       id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
-      onSelect: () => void retry(document, instructions),
+      onSelect: setUpAi ?? (() => void retry(document, instructions)),
     });
     if (!guideGenerating && !processing) items.push({
       id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
-      onSelect: () => {
+      onSelect: setUpAi ?? (() => {
         if (guideJob) setRemadeGuideJobIds((ids) => ({ ...ids, [document.id]: guideJob.id }));
         void generateStudyGuide(document);
-      },
+      }),
     });
     if (guideGenerating && !processing) items.push({
       id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
@@ -366,6 +404,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 refreshDecks={props.refreshDecks}
                 onStudy={props.onStudySubject}
                 onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
+                onSetUpAi={setUpAi}
               />
             ) : null}
             <OverflowMenu
@@ -449,6 +488,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           })}
         </div>
       )}
+      {importing ? (
+        <ImportImagesDialog
+          fileName={importing.fileName}
+          onImport={(useImages) => finishImporting({ useImages })}
+          onCancel={() => finishImporting(null)}
+        />
+      ) : null}
       {detailsDocument ? (
         <DocumentDetails
           document={detailsDocument}

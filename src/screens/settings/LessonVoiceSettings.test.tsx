@@ -28,6 +28,7 @@ vi.mock("../../ipc/speech", () => ({
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(async (assetId: string) => `blob:${assetId}`),
   revokeManagedMediaObjectUrl: vi.fn(),
+  playbackErrorMessage: (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
 }));
 
 const router = "a".repeat(32);

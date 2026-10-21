@@ -17,6 +17,33 @@ include!("asset_lifecycle/reconcile_b1.rs");
 include!("asset_lifecycle/reconcile_b2.rs");
 include!("asset_lifecycle/reconcile_b3.rs");
 
+/// Stages a small PNG into a new draft of `purpose`, as an editor's image
+/// import does, for owners' tests. Returns the draft and the staged asset.
+#[cfg(test)]
+pub(crate) fn stage_test_image(
+    connection: &mut Connection,
+    paths: &AppPaths,
+    purpose: &str,
+) -> Result<(AssetDraftDto, AssetDto), CommandError> {
+    let draft = begin_draft_in_connection(connection, purpose, None)?;
+    let source = paths
+        .app_data_dir()
+        .join(format!("test-source-{}.png", generate_id(connection)?));
+    fs::write(
+        &source,
+        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0],
+    )
+    .map_err(CommandError::io)?;
+    let asset = stage_source_in_connection(
+        connection,
+        paths,
+        &source,
+        &draft.id,
+        IngestFaults::default(),
+    )?;
+    Ok((draft, asset))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
