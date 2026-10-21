@@ -31,6 +31,7 @@ import {
   splitOverviewConcept,
 } from "./guideModel";
 import { type CheckProgressMap, GuideMinuteBox, GuideTermList, StudyGuideStructuredContent } from "./StudyGuideContent";
+import { type GuidePageStyle, useDesignedSectionPage } from "./useDesignedSectionPage";
 
 /** A neighbor page for the previous and next links. */
 export interface GuidePageLink {
@@ -157,7 +158,7 @@ export function GuideOverviewPage({
 }
 
 export function GuideSectionPage({
-  guide, entry, sectionCount, layoutMode, projection, previous, next, checkProgress, onCheckProgressChange,
+  guide, entry, sectionCount, layoutMode, pageStyle, projection, previous, next, checkProgress, onCheckProgressChange,
   actionsDisabled, onNavigate, read, onSetRead, onPractice, onEditNote, onRemoveNote, onEditSection, onResetSection, onDiscardConflict,
   ...sourceProps
 }: GuideSourceProps & {
@@ -165,6 +166,8 @@ export function GuideSectionPage({
   entry: GuideSectionEntry;
   sectionCount: number;
   layoutMode: LayoutMode;
+  /** Sections read as a designed page in this theme, or as plain text. */
+  pageStyle: GuidePageStyle;
   projection: TopicCardProjection | undefined;
   previous: GuidePageLink | null;
   next: GuidePageLink | null;
@@ -188,6 +191,9 @@ export function GuideSectionPage({
   const note = findEditingOverlay(guide.overlays, topicId, "note", guide.id);
   const override = findEditingOverlay(guide.overlays, topicId, "override", guide.id);
   const conflict = findConflictedOverride(guide.overlays, topicId);
+  // A section the learner rewrote reads as their text, never as a page of the generated one.
+  const designedPage = useDesignedSectionPage(sourceProps.documentId, topicId,
+    override || pageStyle === "plain" ? null : pageStyle, `${guide.id}:${section.contentHash}`);
   const minutes = readingMinutes(sectionReadingText(section, override));
   const range = formatLocatorRange(section.sourceLocator);
   const headingId = `${guidePageId(topicId)}-title`;
@@ -248,7 +254,7 @@ export function GuideSectionPage({
       ) : (
         <StudyGuideStructuredContent content={section.content} headingLevel={2} idPrefix={guideBlockPrefix(topicId)}
           sectionNumber={number} showTerms={false} figureSource={{ documentId: sourceProps.documentId, locator: section.sourceLocator }}
-          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} />
+          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} designedPage={designedPage} />
       )}
       <div ref={endRef} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-7 tw:compact:gap-6">
         {cardCount === null ? null : cardCount > 0 ? (

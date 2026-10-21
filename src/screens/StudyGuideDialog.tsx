@@ -31,6 +31,9 @@ import {
   plainTextRichDocument, sectionBlocks,
 } from "./study-guides/guideModel";
 import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
+import {
+  GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
+} from "./study-guides/useDesignedSectionPage";
 
 interface StudyGuideDialogProps {
   documentId: string; documentTitle: string;
@@ -57,6 +60,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
+  const [pageStyle, setPageStyle] = useState<GuidePageStyle>(readGuidePageStyle);
   const [contentsOpen, setContentsOpen] = useState(false);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
   const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
@@ -260,7 +264,17 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     setEditing({ topicId: section.topicId, mode: "override", initialValue: overlay?.plainText ?? section.contentText });
   }
 
+  function choosePageStyle(style: GuidePageStyle): void {
+    setPageStyle(style);
+    saveGuidePageStyle(style);
+  }
+  const pageStyleItems: OverflowMenuItem[] = GUIDE_PAGE_STYLES.map((style) => ({
+    id: `style-${style.value}`, label: style.name, checked: style.value === pageStyle, onSelect: () => choosePageStyle(style.value),
+  }));
+  const pageStyleName = GUIDE_PAGE_STYLES.find((style) => style.value === pageStyle)?.name ?? "Navy";
   const guideMenuItems: OverflowMenuItem[] = guide ? [
+    // A phone's bar has no room for the page menu, so its styles join this one.
+    ...(layoutMode === "compact" ? pageStyleItems.map((item) => ({ ...item, label: `${item.label} pages` })) : []),
     { id: "guide-note", label: guideNote ? "Edit guide note" : "Add guide note", disabled: actionsDisabled, onSelect: beginGuideNote },
     ...(guideNote ? [{ id: "remove-guide-note", label: "Remove guide note", destructive: true, disabled: actionsDisabled,
       onSelect: () => void discardOverlay(guideNote, "Guide note removed.") }] : []),
@@ -287,6 +301,9 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
       className={layoutMode === "compact" ? "tw:size-11" : undefined} disabled={isGenerating || busy || editing !== null}
       target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
         focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} />
+    {layoutMode !== "compact" ? (
+      <OverflowMenu label={`Page: ${pageStyleName}`} triggerPresentation="text" items={pageStyleItems} />
+    ) : null}
     {layoutMode === "compact" ? (
       <IconButton icon="export" label="Export PDF" tooltip={false} className="tw:size-11"
         disabled={isExporting || isGenerating || isSaving} onClick={() => void exportPdf()} />
@@ -338,6 +355,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ) : null}
           {currentEntry ? (
             <GuideSectionPage key={currentEntry.section.topicId} guide={guide} entry={currentEntry} sectionCount={order.entries.length} layoutMode={layoutMode}
+              pageStyle={pageStyle}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               projection={topicCards[currentEntry.section.topicId]}
               previous={neighbor(order.entries, currentEntry, -1)} next={neighbor(order.entries, currentEntry, 1)}
