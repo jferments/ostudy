@@ -1,6 +1,6 @@
-//! Additive release-v18 admission for document figures.
+//! Additive release-v19 admission for document figures.
 //!
-//! Migration 18 adds, for each PDF document, whether the learner chose to use
+//! Migration 19 adds, for each PDF document, whether the learner chose to use
 //! its images and the figures found in it with the passages that explain them
 //! and what the learner's AI model read in each.
 //! Figures are found after import; an upgrade writes none, so the tables start
@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 18;
+const VERSION: i64 = 19;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();

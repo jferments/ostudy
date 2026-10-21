@@ -417,7 +417,8 @@ pub(crate) fn sanitize_snapshot(
     // go with them, and links from cards to the marks they were made from go
     // with the marks.
     // How far a learner has read each guide stays on the device too, and so do
-    // the figures found in a document and the learner's choice to use them.
+    // notebooks for now, the figures found in a document and the learner's
+    // choice to use them.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -456,6 +457,9 @@ pub(crate) fn sanitize_snapshot(
              DROP TABLE sync_narration_assets;
              DELETE FROM document_study_guide_section_reads;
              DELETE FROM document_study_guide_positions;
+             DELETE FROM notebook_items;
+             DELETE FROM notebook_pages;
+             DELETE FROM notebooks;
              DELETE FROM document_figure_readings;
              DELETE FROM document_figure_passages;
              DELETE FROM document_figures;
@@ -765,6 +769,38 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, 0);
         assert!(!selection.includes_table("document_annotations"));
+    }
+
+    #[test]
+    fn notebooks_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: (i64, i64, i64) = database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO notebooks(id, subject_id, title, paper, page_size, revision, created_at, updated_at)
+                         VALUES ('{n}', NULL, 'Cardiac cycle', 'grid', 'letter', 1, 1, 1);
+                         INSERT INTO notebook_pages(id, notebook_id, position, paper, width, height, created_at)
+                         VALUES ('{p}', '{n}', 1, 'grid', 612, 792, 1);
+                         INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
+                         VALUES ('{i}', '{p}', 'line', '{{\"x1\":1,\"y1\":1,\"x2\":9,\"y2\":9,\"color\":\"#111111\",\"strokeWidth\":2}}', 1, 1, 1);",
+                        n = "a".repeat(32),
+                        p = "b".repeat(32),
+                        i = "c".repeat(32),
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                let count = |table: &str| {
+                    connection
+                        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                        .map_err(CommandError::database)
+                };
+                Ok((count("notebooks")?, count("notebook_pages")?, count("notebook_items")?))
+            })
+            .unwrap();
+        assert_eq!(remaining, (0, 0, 0));
+        assert!(!selection.includes_table("notebooks"));
     }
 
     #[test]

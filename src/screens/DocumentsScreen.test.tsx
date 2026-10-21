@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as aiProfilesIpc from "../ipc/aiProfiles";
 import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as annotationIpc from "../ipc/documentAnnotations";
 import * as figureIpc from "../ipc/documentFigures";
@@ -14,6 +15,10 @@ import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../ipc/aiProfiles", () => ({
+  getAiTaskDefaults: vi.fn(),
+  listAiProviderProfiles: vi.fn(),
+}));
 vi.mock("../ipc/subjects", () => ({
   getSubjectLibrary: vi.fn(),
   moveDocumentToSubject: vi.fn(),
@@ -154,7 +159,7 @@ function makeProgress(phase: string): documentIpc.DocumentGenerationProgress {
 function renderDocuments(
   showToast = vi.fn(),
   refreshDecks = vi.fn().mockResolvedValue([]),
-  props: { subjectId?: string | null; onOpenSubject?: (subjectId: string | null) => void } = {},
+  props: { subjectId?: string | null; onOpenSubject?: (subjectId: string | null) => void; onSetUpAi?: () => void } = {},
 ) {
   render(
     <OverlayProvider>
@@ -216,6 +221,10 @@ describe("DocumentsScreen", () => {
     } as studyGuideIpc.DocumentStudyGuide);
     vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue(null);
     vi.mocked(studyGuideIpc.getDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
+    vi.mocked(aiProfilesIpc.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: "openrouter" });
+    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([
+      { id: "openrouter" } as aiProfilesIpc.AiProviderProfileSummary,
+    ]);
   });
 
   it("shows a simple upload-first empty state without archive controls", async () => {
@@ -667,6 +676,34 @@ describe("DocumentsScreen", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
+  it("opens AI setup from a document's Make actions while no model is set", async () => {
+    vi.mocked(aiProfilesIpc.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null });
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    const onSetUpAi = vi.fn();
+    renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { onSetUpAi });
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+    await chooseDocumentAction("Make a study guide");
+    expect(onSetUpAi).toHaveBeenCalledTimes(1);
+    await chooseDocumentAction("Make more cards…");
+    expect(onSetUpAi).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog", { name: "Make more cards" })).toBeNull();
+    expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
+  });
+
+  it("makes the study guide itself once a model is set", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    const onSetUpAi = vi.fn();
+    renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { onSetUpAi });
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+    await chooseDocumentAction("Make a study guide");
+    await waitFor(() => expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId));
+    expect(onSetUpAi).not.toHaveBeenCalled();
+  });
+
   it("opens a PDF's pages for annotation and returns to the list", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages: [], annotations: [] });
@@ -871,6 +908,19 @@ describe("DocumentsScreen", () => {
       expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expect.arrayContaining([
         "Reading range…", "Move to another subject…", "Remove from subject",
       ]));
+    });
+
+    it("opens AI setup from Make study materials while the chosen service is gone", async () => {
+      vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([]);
+      const onSetUpAi = vi.fn();
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id, onSetUpAi });
+
+      const make = await screen.findByRole("button", { name: /Make study materials/u });
+      await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+      await act(async () => undefined);
+      fireEvent.click(make);
+      expect(onSetUpAi).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("dialog", { name: "Make study materials" })).toBeNull();
     });
 
     it("files a loose document in a subject from Add to…", async () => {

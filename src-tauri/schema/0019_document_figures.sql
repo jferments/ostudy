@@ -1,4 +1,4 @@
--- Release migration 18: the figures found in a learner's PDF documents.
+-- Release migration 19: the figures found in a learner's PDF documents.
 --
 -- document_figure_scans keeps, for each document, whether the learner chose to
 -- use its images when they imported it and how the last search for figures

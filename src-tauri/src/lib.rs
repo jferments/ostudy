@@ -90,6 +90,7 @@ mod logging;
 mod media;
 mod media_assets;
 pub mod migration_contract;
+mod notebooks;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;
@@ -411,6 +412,16 @@ pub fn run() {
             document_figures::set_document_figure_hidden,
             library_session::commands::leased_find_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
+            notebooks::list_notebooks,
+            notebooks::create_notebook,
+            notebooks::get_notebook,
+            notebooks::rename_notebook,
+            notebooks::move_notebook_to_subject,
+            notebooks::delete_notebook,
+            notebooks::add_notebook_page,
+            notebooks::delete_notebook_page,
+            notebooks::move_notebook_page,
+            notebooks::apply_notebook_item_changes,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
