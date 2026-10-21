@@ -16,6 +16,20 @@ export interface FigurePassage {
   excerpt: string | null;
 }
 
+/** What the learner's AI model read in a figure, seen on its page. */
+export interface FigureReading {
+  title: string;
+  shows: string;
+  useInText: string | null;
+  concepts: string[];
+  /** Pages whose text explains the figure. */
+  explainedOn: number[];
+  /** 1 (incidental) to 5 (the text cannot be followed without it). */
+  importance: number;
+  worthStudying: boolean;
+  model: string;
+}
+
 export interface DocumentFigure {
   figureId: string;
   pageNumber: number;
@@ -29,9 +43,13 @@ export interface DocumentFigure {
   caption: string | null;
   hidden: boolean;
   passages: FigurePassage[];
+  reading: FigureReading | null;
 }
 
 export type DocumentFiguresState = "none" | "pending" | "found" | "unsupported" | "failed";
+
+/** `partial` when some pages could not be read; `unavailable` when the model cannot see images. */
+export type DocumentFiguresReading = "none" | "read" | "partial" | "unavailable" | "failed";
 
 export interface DocumentFigures {
   documentId: string;
@@ -39,6 +57,8 @@ export interface DocumentFigures {
   useImages: boolean;
   state: DocumentFiguresState;
   scannedAt: number | null;
+  reading: DocumentFiguresReading;
+  readAt: number | null;
   figures: DocumentFigure[];
 }
 
@@ -49,6 +69,11 @@ export async function getDocumentFigures(documentId: string): Promise<DocumentFi
 /** Searches the PDF for figures now, turning its images on. */
 export async function findDocumentFigures(documentId: string): Promise<DocumentFigures> {
   return invoke<DocumentFigures>("find_document_figures", { input: { documentId } });
+}
+
+/** Reads each visible figure on its page with the learner's AI model. */
+export async function readDocumentFigures(documentId: string): Promise<DocumentFigures> {
+  return invoke<DocumentFigures>("read_document_figures", { input: { documentId } });
 }
 
 /** Turning images off forgets the figures found, hidden ones included. */

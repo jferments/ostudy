@@ -34,6 +34,7 @@ describe("native-owned IPC wire fixtures", () => {
       theme: "dark",
       motionPreference: "system",
       materialPreference: "automatic",
+      guidePdfTheme: "sage",
     };
     expect(asFrontendSettings(nativeSettings)).toMatchObject({ theme: "dark" });
     expect(asFrontendError(fixtures.commandError)).toEqual({

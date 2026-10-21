@@ -3,10 +3,12 @@ use std::{io, path::Path, time::Duration};
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+#[cfg(desktop)]
+use crate::application_profile;
 use crate::{
-    ai::AiRuntimeState, application_profile, asset_lifecycle, database, deletion, deletion_purge,
-    device_sync, document_artifacts, document_delete_reconciliation, document_operations,
-    documents, editor_drafts, external_file_recovery, external_files, library_backup, logging,
+    ai::AiRuntimeState, asset_lifecycle, database, deletion, deletion_purge, device_sync,
+    document_artifacts, document_delete_reconciliation, document_operations, documents,
+    editor_drafts, external_file_recovery, external_files, library_backup, logging,
     paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 

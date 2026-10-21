@@ -36,6 +36,8 @@ export interface NativeAppSettings {
   dailyNewLimit: number;
   dailyReviewLimit: number;
   newDayStartHour: number;
+  guidePdfTheme: "navy" | "sage" | "slate" | "plum";
+  guidePdfIncludeNotes: boolean;
 }
 
 export interface NativeCompletedLibraryRestore {

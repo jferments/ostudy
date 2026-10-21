@@ -300,13 +300,17 @@ fn multimodal_user_parts(
     for image in images {
         let media_type = document_image_media_type(&image.bytes).ok_or_else(||
             CommandError::new("ai_document_image_invalid", "An admitted source image is not a supported image format. The request was not sent."))?;
-        parts.push(json!({
-            "type": "text",
-            "text": format!(
+        let caption = match &image.crop_of {
+            Some(figure) => format!(
+                "A close crop of figure {figure} on source unit {} follows, so its small labels can be read.",
+                image.page_number
+            ),
+            None => format!(
                 "Rendered source unit {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content.",
                 image.page_number
-            )
-        }));
+            ),
+        };
+        parts.push(json!({"type": "text", "text": caption}));
         parts.push(json!({
             "type": "image_url",
             "image_url": {
@@ -433,6 +437,7 @@ mod tests {
         let images = [SourcePageImage {
             page_number: 1,
             bytes: b"not an image".to_vec(),
+            crop_of: None,
         }];
         assert!(multimodal_user_parts("source", &images).is_err());
     }

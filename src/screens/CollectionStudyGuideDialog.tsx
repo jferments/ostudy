@@ -4,6 +4,7 @@ import { StudyMarkdown } from "../components/StudyMarkdown";
 import type { ShowToast } from "../components/Toast";
 import { getErrorMessage } from "../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
+import { getSettings } from "../ipc/settings";
 import { openDocumentSource } from "../ipc/documents";
 import {
   discardCollectionStudyGuideOverlay,
@@ -14,7 +15,6 @@ import {
   type CollectionStudyGuide,
   type CollectionStudyGuideOverlay,
 } from "../ipc/studyMaterials";
-import type { StudyGuidePdfTheme } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { useOptionalTutor } from "./tutor/TutorContext";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
@@ -25,7 +25,7 @@ import { Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
-import { GuideExportDialog } from "./study-guides/GuideDialogs";
+import { guidePdfPreferences } from "./study-guides/guidePdfPreferences";
 import { StudyGuideStructuredContent } from "./study-guides/StudyGuideContent";
 
 type CollectionEditingMode = "note" | "override";
@@ -49,7 +49,6 @@ export function CollectionStudyGuideDialog({
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<CollectionEditingState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const refresh = useCallback(async () => {
@@ -132,13 +131,14 @@ export function CollectionStudyGuideDialog({
     }
   }
 
-  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
+  async function exportPdf(): Promise<void> {
     if (!guide || isExporting) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
-    let failed = false;
     try {
-      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations, theme);
+      // The look and the notes are Settings choices, read fresh for each export.
+      const { theme, includeNotes } = guidePdfPreferences(await getSettings());
+      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeNotes, theme);
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
@@ -154,12 +154,10 @@ export function CollectionStudyGuideDialog({
         showToast("success", `Exported the subject study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
       }
     } catch (error: unknown) {
-      failed = true;
       showToast("error", getErrorMessage(error));
     } finally {
       if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
-      if (!failed) setExportOpen(false);
     }
   }
 
@@ -193,8 +191,8 @@ export function CollectionStudyGuideDialog({
         </div>
         <div className={styles.headerActions}>
           {guide ? (
-            <Button variant="secondary" disabled={isExporting} onClick={() => setExportOpen(true)}>
-              Export PDF…
+            <Button variant="secondary" loading={isExporting} onClick={() => void exportPdf()}>
+              Export PDF
             </Button>
           ) : null}
           {guide ? (
@@ -316,10 +314,6 @@ export function CollectionStudyGuideDialog({
         <Button variant="secondary" disabled={isSaving} onClick={() => setEditing(null)}>Cancel</Button>
       </div>
     </div> : null}
-    {exportOpen ? (
-      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)}
-        onClose={() => setExportOpen(false)} />
-    ) : null}
     </InlineWorkspace>
   );
 }

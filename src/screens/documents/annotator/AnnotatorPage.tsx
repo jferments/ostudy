@@ -27,7 +27,10 @@ import {
   type AnnotationShape,
   type TextShape,
 } from "./annotationModel";
+import { NoteBody } from "./NoteBody";
+import { continueList, toggleCheck } from "./noteText";
 import { usePageImage, type PageImageCache } from "./pageImages";
+import { openNoteField } from "./textFormat";
 import { tileDensity, tilesFor, usePageTiles, type PageRegion, type PageTile, type ShownTile } from "./pageTiles";
 import { highlightPath, inkPath, textHighlightPath } from "./strokeOutline";
 import type { TextEditing } from "./useDocumentAnnotator";
@@ -84,6 +87,8 @@ interface AnnotatorPageProps {
   onFinishText: () => void;
   onFocusAnnotation: (annotation: Annotation) => void;
   onOpenAnnotation: (annotation: Annotation) => void;
+  /** Ticks or clears a text note's checkbox; checkboxes can be pressed only with the Select tool. */
+  onChangeText?: (annotation: Annotation, text: string) => void;
 }
 
 /** One page: its render, highlights under it all, strokes and shapes, then text notes and the selection. */
@@ -119,7 +124,7 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
 
 function PageContent({
   page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,
-  textHeight, onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
+  textHeight, onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, onChangeText, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
   const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
@@ -179,7 +184,8 @@ function PageContent({
       >
         {notes.map((annotation) => (
           <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText}
-            unavailable={paperPages?.unavailableLinks.has(annotation.id) ?? false} />
+            unavailable={paperPages?.unavailableLinks.has(annotation.id) ?? false}
+            onChange={selectable ? onChangeText : undefined} />
         ))}
         {stickies.map((annotation) => (
           <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
@@ -309,24 +315,35 @@ function textStyle(shape: TextShape): CSSProperties {
   };
 }
 
-const TextNote = memo(function TextNote({ annotation, opacity, onMeasure, unavailable }: {
+const TextNote = memo(function TextNote({ annotation, opacity, onMeasure, unavailable, onChange }: {
   annotation: Annotation;
   opacity: number | undefined;
   onMeasure: (annotation: Annotation, height: number) => void;
   /** A link whose target is gone. */
   unavailable: boolean;
+  onChange?: (annotation: Annotation, text: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const height = ref.current?.offsetHeight ?? 0;
-    if (height > 0) onMeasure(annotation, height);
+    const element = ref.current;
+    if (!element) return undefined;
+    const measure = () => {
+      if (element.offsetHeight > 0) onMeasure(annotation, element.offsetHeight);
+    };
+    measure();
+    // A formula is drawn after the note, and can change its height.
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [annotation, onMeasure]);
   if (annotation.shape.kind !== "text") return null;
-  const { link } = annotation.shape;
+  const { link, text } = annotation.shape;
   return (
     <div ref={ref} aria-hidden="true" className="tw:absolute tw:box-border tw:whitespace-pre-wrap tw:wrap-anywhere"
       style={{ ...textStyle(annotation.shape), opacity }}>
-      {link ? <LinkLabel text={annotation.shape.text} button={link.button === true} unavailable={unavailable} /> : annotation.shape.text}
+      {link ? <LinkLabel text={text} button={link.button === true} unavailable={unavailable} />
+        : <NoteBody text={text} onToggle={onChange ? (line) => onChange(annotation, toggleCheck(text, line)) : undefined} />}
     </div>
   );
 });
@@ -469,7 +486,16 @@ function TextNoteEditor({ editing, onType, onFinish }: {
   onFinish: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const caret = useRef<number | null>(null);
   const shape = editing.annotation.shape;
+  useLayoutEffect(() => {
+    const field = ref.current;
+    if (!field) return undefined;
+    openNoteField.current = field;
+    return () => {
+      if (openNoteField.current === field) openNoteField.current = null;
+    };
+  }, []);
   useLayoutEffect(() => {
     const field = ref.current;
     if (!field) return;
@@ -484,6 +510,10 @@ function TextNoteEditor({ editing, onType, onFinish }: {
     if (!field) return;
     field.style.height = "auto";
     field.style.height = `${field.scrollHeight}px`;
+    if (caret.current !== null) {
+      field.setSelectionRange(caret.current, caret.current);
+      caret.current = null;
+    }
   }, [editing.text, shape.width, shape.fontSize]);
   return (
     <Textarea
@@ -496,9 +526,22 @@ function TextNoteEditor({ editing, onType, onFinish }: {
       className="tw:pointer-events-auto tw:absolute tw:m-0 tw:box-border tw:min-h-0 tw:resize-none tw:overflow-hidden tw:rounded-sm tw:border-0 tw:bg-[var(--ostudy-color-neutral-0)]/85 tw:shadow-none tw:outline-2 tw:outline-primary tw:outline-dashed"
       style={textStyle(shape)}
       onChange={(event) => onType(event.target.value)}
-      onBlur={onFinish}
+      // The formula editor takes the focus without closing the note.
+      onBlur={() => { if (!openNoteField.held) onFinish(); }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
+        const field = event.currentTarget;
+        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
+          && field.selectionStart === field.selectionEnd) {
+          // Enter on a list item starts the next one, or ends the list on an empty item.
+          const next = continueList(field.value, field.selectionStart);
+          if (next) {
+            event.preventDefault();
+            caret.current = next.caret;
+            onType(next.text);
+            return;
+          }
+        }
         if (event.key === "Escape" || (event.key === "Enter" && (event.ctrlKey || event.metaKey))) {
           // Escape keeps the note and stays in the annotator.
           event.preventDefault();
