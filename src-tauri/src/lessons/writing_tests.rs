@@ -931,4 +931,11 @@ fn a_rewritten_course_revises_lessons_by_part_adds_new_parts_and_keeps_the_rest(
             .revision_number
     };
     assert_eq!((revision(0), revision(1), revision(2)), (1, 2, 1));
+    // The kept lesson is marked as no longer in the study plan.
+    let in_plan = rewritten
+        .lessons
+        .iter()
+        .map(|lesson| lesson.written.as_ref().unwrap().in_study_plan)
+        .collect::<Vec<_>>();
+    assert_eq!(in_plan, [true, true, false]);
 }

@@ -24,6 +24,7 @@ function lesson(
       checkCount: 2,
       estimatedMinutes: 8,
       sources,
+      inStudyPlan: id !== "five",
       createdAt: 1,
     },
     progress: null,
@@ -39,6 +40,7 @@ function course(overrides: Partial<SubjectCourse> = {}): SubjectCourse {
         lesson("two", "Ejection", "changed"),
         lesson("three", "Valves", "changed", "authored"),
         lesson("four", "Pressure", "unavailable"),
+        lesson("five", "Old topic", "changed"),
       ],
     },
     loading: false,
@@ -68,6 +70,9 @@ describe("LessonsSection", () => {
     expect(within(rows[1]!).getByText("Source changed · 8 min")).toBeTruthy();
     expect(within(rows[2]!).queryByRole("button", { name: /Update/ })).toBeNull();
     expect(within(rows[3]!).getByText("Source removed · 8 min")).toBeTruthy();
+    // A lesson whose part left the study plan cannot be updated from it.
+    expect(within(rows[4]!).getByText("No longer in the study plan")).toBeTruthy();
+    expect(within(rows[4]!).queryByRole("button", { name: /Update/ })).toBeNull();
 
     fireEvent.click(within(rows[1]!).getByRole("button", { name: "Update Ejection from its sources" }));
     expect(value.update).toHaveBeenCalledWith("two");

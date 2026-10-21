@@ -99,6 +99,10 @@ pub struct WrittenLessonDto {
     pub check_count: usize,
     pub estimated_minutes: u32,
     pub sources: SourceStatus,
+    /// False for a lesson written with AI whose part of the subject is no
+    /// longer in its document's study plan, which a rewritten course keeps
+    /// after the lessons it wrote.
+    pub in_study_plan: bool,
     pub created_at: i64,
 }
 
@@ -384,18 +388,27 @@ fn summary(connection: &Connection, lesson_id: &str) -> Result<LessonSummaryDto,
         .optional()
         .map_err(CommandError::database)?
         .ok_or_else(lesson_missing)?;
-    let latest: Option<(i64, String, String, i64)> = connection
+    let latest: Option<(i64, String, String, i64, Option<String>)> = connection
         .query_row(
-            "SELECT revision_number, origin, content_json, created_at FROM lesson_revisions
+            "SELECT revision_number, origin, content_json, created_at, provenance_json
+             FROM lesson_revisions
              WHERE lesson_id = ?1 ORDER BY revision_number DESC LIMIT 1",
             [lesson_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
     let written = match latest {
         None => None,
-        Some((revision_number, origin, json, created_at)) => {
+        Some((revision_number, origin, json, created_at, provenance)) => {
             let validated = ValidatedLesson::parse(&json)?;
             Some(WrittenLessonDto {
                 revision_number,
@@ -409,6 +422,7 @@ fn summary(connection: &Connection, lesson_id: &str) -> Result<LessonSummaryDto,
                     .count(),
                 estimated_minutes: validated.estimated_minutes(),
                 sources: source_status(connection, lesson_id, revision_number)?,
+                in_study_plan: in_study_plan(connection, provenance.as_deref())?,
                 created_at,
             })
         }
@@ -525,6 +539,32 @@ fn require_subject(connection: &Connection, subject_id: &str) -> Result<(), Comm
             "That subject is no longer in the library.",
         ))
     }
+}
+
+/// Whether the part a lesson written with AI teaches is still a topic of its
+/// document's active study plan. A hand-written lesson has no such part.
+fn in_study_plan(connection: &Connection, provenance: Option<&str>) -> Result<bool, CommandError> {
+    let Some(provenance) = provenance else {
+        return Ok(true);
+    };
+    let Some((document_id, topic_id)) = serde_json::from_str(provenance)
+        .ok()
+        .and_then(|provenance| authoring::taught_part(&provenance))
+    else {
+        return Ok(true);
+    };
+    connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM document_learning_plan_topics topic
+                 JOIN document_learning_plans plan ON plan.id = topic.plan_id
+                 WHERE plan.document_id = ?1 AND plan.state = 'active'
+                   AND topic.topic_id = ?2
+             )",
+            params![document_id, topic_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
 }
 
 fn require_lesson(connection: &Connection, lesson_id: &str) -> Result<(), CommandError> {

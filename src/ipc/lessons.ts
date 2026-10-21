@@ -52,6 +52,11 @@ export interface WrittenLesson {
   checkCount: number;
   estimatedMinutes: number;
   sources: LessonSourceStatus;
+  /**
+   * False when a lesson written with AI teaches a part no longer in its
+   * document's study plan; a rewritten course keeps it after the others.
+   */
+  inStudyPlan: boolean;
   createdAt: number;
 }
 

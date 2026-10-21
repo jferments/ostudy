@@ -205,12 +205,13 @@ function minutes(lesson: LessonSummary): string {
 
 /** A lesson written with AI whose sources changed or went since it was written. */
 function outdated(lesson: LessonSummary): boolean {
-  return lesson.written?.origin === "generated" && lesson.written.sources !== "current";
+  return lesson.written?.origin === "generated" && lesson.written.inStudyPlan && lesson.written.sources !== "current";
 }
 
 function lessonState(lesson: LessonSummary): string {
   if (lesson.progress?.finishedAt) return "Done";
   if (lesson.progress && lesson.progress.revisionNumber === lesson.written?.revisionNumber) return "In progress";
+  if (lesson.written && !lesson.written.inStudyPlan) return "No longer in the study plan";
   if (lesson.written?.sources === "changed") return `Source changed · ${minutes(lesson)}`;
   if (lesson.written?.sources === "unavailable") return `Source removed · ${minutes(lesson)}`;
   return minutes(lesson);
