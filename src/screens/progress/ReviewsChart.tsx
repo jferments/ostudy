@@ -84,7 +84,6 @@ export function ReviewsChart({ overview, loading }: { overview: ProgressOverview
       headingLevel={2}
       headingId="progress-heading"
       title="Reviews and recall"
-      description={measure === "reviews" ? `Each bar is one ${unit}: remembered below, forgotten on top.` : `Each bar is one ${unit}.`}
       aria-labelledby="progress-heading"
       aria-busy={loading || undefined}
       actions={<Button variant="text" aria-expanded={showTable} disabled={!overview} onClick={() => setShowTable((value) => !value)}>
