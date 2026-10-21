@@ -31,6 +31,7 @@ import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
 import { ReadingRangeDialog, rangeLabel } from "./documents/ReadingRangeDialog";
 import { SubjectStudyActions } from "./documents/SubjectStudyActions";
+import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
 import { useDocumentFiling } from "./documents/useDocumentFiling";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { subjectColorIndexes, subjectInitials } from "./home/homeModel";
@@ -46,6 +47,8 @@ interface DocumentsScreenProps {
   /** Opens a subject's own Documents page from Everything's groups; `null` is No subject. */
   onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
+  /** Opens AI setup; Make actions use it in place of their work while no model is set. */
+  onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
 }
@@ -87,6 +90,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   // Phones drop the row's Open button, so Open leads the row's menu there.
   const compact = useLayoutMode().layoutMode === "compact";
   const filing = useDocumentFiling();
+  const modelMissing = useGenerationModelMissing();
+  const setUpAi = modelMissing ? props.onSetUpAi : undefined;
   const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
@@ -245,15 +250,15 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     });
     if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
       id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
-      onSelect: () => setMoreCards({ document, instructions }),
+      onSelect: setUpAi ?? (() => setMoreCards({ document, instructions })),
     });
     if (document.generatedDeckId === null && !processing) items.push({
       id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
-      onSelect: () => void retry(document, instructions),
+      onSelect: setUpAi ?? (() => void retry(document, instructions)),
     });
     if (!guideGenerating && !processing) items.push({
       id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
-      onSelect: () => void generateStudyGuide(document),
+      onSelect: setUpAi ?? (() => void generateStudyGuide(document)),
     });
     if (guideGenerating && !processing) items.push({
       id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
@@ -351,6 +356,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 refreshDecks={props.refreshDecks}
                 onStudy={props.onStudySubject}
                 onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
+                onSetUpAi={setUpAi}
               />
             ) : null}
             <OverflowMenu
