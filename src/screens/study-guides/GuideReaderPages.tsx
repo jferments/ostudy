@@ -32,6 +32,8 @@ import {
 } from "./guideModel";
 import { type CheckProgressMap, GuideMinuteBox, GuideTermList, StudyGuideStructuredContent } from "./StudyGuideContent";
 import { type GuidePageStyle, useDesignedSectionPage } from "./useDesignedSectionPage";
+import type { InkMark } from "../../ipc/materialInk";
+import { InkOverlay } from "../ink/InkOverlay";
 
 /** A neighbor page for the previous and next links. */
 export interface GuidePageLink {
@@ -158,7 +160,7 @@ export function GuideOverviewPage({
 }
 
 export function GuideSectionPage({
-  guide, entry, sectionCount, layoutMode, pageStyle, projection, previous, next, checkProgress, onCheckProgressChange,
+  guide, entry, sectionCount, layoutMode, pageStyle, marks, onWriteOnPage, projection, previous, next, checkProgress, onCheckProgressChange,
   actionsDisabled, onNavigate, read, onSetRead, onPractice, onEditNote, onRemoveNote, onEditSection, onResetSection, onDiscardConflict,
   ...sourceProps
 }: GuideSourceProps & {
@@ -168,6 +170,10 @@ export function GuideSectionPage({
   layoutMode: LayoutMode;
   /** Sections read as a designed page in this theme, or as plain text. */
   pageStyle: GuidePageStyle;
+  /** The learner's marks on this section's designed page. */
+  marks: readonly InkMark[];
+  /** Opens the designed page to write on. */
+  onWriteOnPage: () => void;
   projection: TopicCardProjection | undefined;
   previous: GuidePageLink | null;
   next: GuidePageLink | null;
@@ -204,6 +210,8 @@ export function GuideSectionPage({
     ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
       onSelect: () => tutor.openContext(tutorTarget) }] : []),
     { id: "read", label: read ? "Mark as unread" : "Mark as read", onSelect: () => onSetRead(!read) },
+    ...(designedPage !== null && designedPage !== "loading"
+      ? [{ id: "write", label: "Write on this page", disabled: actionsDisabled, onSelect: onWriteOnPage }] : []),
     { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
     { id: "edit", label: "Edit or rewrite this section", disabled: actionsDisabled, onSelect: onEditSection },
     ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled, onSelect: () => onRemoveNote(note) }] : []),
@@ -254,7 +262,10 @@ export function GuideSectionPage({
       ) : (
         <StudyGuideStructuredContent content={section.content} headingLevel={2} idPrefix={guideBlockPrefix(topicId)}
           sectionNumber={number} showTerms={false} figureSource={{ documentId: sourceProps.documentId, locator: section.sourceLocator }}
-          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} designedPage={designedPage} />
+          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} designedPage={designedPage}
+          designedOverlay={designedPage !== null && designedPage !== "loading" ? (
+            <InkOverlay marks={marks} width={designedPage.width} height={designedPage.height} />
+          ) : null} />
       )}
       <div ref={endRef} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-7 tw:compact:gap-6">
         {cardCount === null ? null : cardCount > 0 ? (

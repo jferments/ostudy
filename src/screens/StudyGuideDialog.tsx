@@ -3,11 +3,12 @@ import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
+import { getSettings } from "../ipc/settings";
 import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuidePdfTheme, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import { getStudyGuideReading, openStudyGuideSection, setStudyGuideSectionRead, type StudyGuideReading } from "../ipc/studyGuideReading";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
@@ -21,7 +22,8 @@ import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Button } from "../ui/primitives/Button";
 import { Progress } from "../ui/primitives/Progress";
-import { GuideExportDialog, GuideTextDialog } from "./study-guides/GuideDialogs";
+import { GuideTextDialog } from "./study-guides/GuideDialogs";
+import { guidePdfPreferences } from "./study-guides/guidePdfPreferences";
 import { type GuideDestination, GuideOutline, guidePageId } from "./study-guides/GuideOutline";
 import { GuideOverviewPage, type GuidePageLink, GuideSectionPage } from "./study-guides/GuideReaderPages";
 import {
@@ -29,6 +31,8 @@ import {
   plainTextRichDocument, sectionBlocks,
 } from "./study-guides/guideModel";
 import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
+import { GuidePageInk } from "./study-guides/GuidePageInk";
+import { useMaterialInk } from "./ink/useMaterialInk";
 import {
   GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
 } from "./study-guides/useDesignedSectionPage";
@@ -58,8 +62,11 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const [isExporting, setIsExporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
   const [pageStyle, setPageStyle] = useState<GuidePageStyle>(readGuidePageStyle);
+  /** The section whose designed page is open for writing on. */
+  const [inkTopicId, setInkTopicId] = useState<string | null>(null);
+  const inkMaterial = useMemo(() => pageStyle === "plain" ? null : { kind: "studyGuide" as const, documentId }, [documentId, pageStyle]);
+  const ink = useMaterialInk(inkMaterial);
   const [contentsOpen, setContentsOpen] = useState(false);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
   const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
@@ -183,13 +190,14 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     try { await cancelDocumentStudyGuideGeneration(documentId); showToast("info", "Stopping study-guide generation…"); }
     catch (error: unknown) { setIsCanceling(false); showToast("error", getErrorMessage(error)); }
   }
-  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
+  async function exportPdf(): Promise<void> {
     if (!guide || isExporting || isGenerating || isSaving) return;
     setIsExporting(true);
     let preparedExportId: string | null = null;
-    let failed = false;
     try {
-      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations, theme);
+      // The look and the notes are Settings choices, read fresh for each export.
+      const { theme, includeNotes } = guidePdfPreferences(await getSettings());
+      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeNotes, theme);
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
@@ -202,11 +210,10 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";
         showToast("success", `Exported study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${annotationSummary}.`);
       }
-    } catch (error: unknown) { failed = true; showToast("error", getErrorMessage(error)); }
+    } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
     finally {
       if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
-      if (!failed) setExportOpen(false);
     }
   }
   async function openSource(): Promise<void> {
@@ -274,7 +281,6 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const guideMenuItems: OverflowMenuItem[] = guide ? [
     // A phone's bar has no room for the page menu, so its styles join this one.
     ...(layoutMode === "compact" ? pageStyleItems.map((item) => ({ ...item, label: `${item.label} pages` })) : []),
-    { id: "export", label: "Export as PDF…", disabled: isExporting || isGenerating || isSaving, onSelect: () => setExportOpen(true) },
     { id: "guide-note", label: guideNote ? "Edit guide note" : "Add guide note", disabled: actionsDisabled, onSelect: beginGuideNote },
     ...(guideNote ? [{ id: "remove-guide-note", label: "Remove guide note", destructive: true, disabled: actionsDisabled,
       onSelect: () => void discardOverlay(guideNote, "Guide note removed.") }] : []),
@@ -304,8 +310,28 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     {layoutMode !== "compact" ? (
       <OverflowMenu label={`Page: ${pageStyleName}`} triggerPresentation="text" items={pageStyleItems} />
     ) : null}
+    {layoutMode === "compact" ? (
+      <IconButton icon="export" label="Export PDF" tooltip={false} className="tw:size-11"
+        disabled={isExporting || isGenerating || isSaving} onClick={() => void exportPdf()} />
+    ) : (
+      <Button variant="secondary" loading={isExporting} disabled={isGenerating || isSaving} onClick={() => void exportPdf()}>
+        <Icon name="export" size={18} />Export PDF
+      </Button>
+    )}
     <OverflowMenu label="Study guide actions" items={guideMenuItems} className="tw:compact:size-11" />
   </> : null;
+
+  const inkEntry = inkTopicId === null ? null : order?.entries.find((entry) => entry.section.topicId === inkTopicId) ?? null;
+  if (guide && inkEntry && pageStyle !== "plain") {
+    return (
+      <GuidePageInk documentId={documentId} topicId={inkEntry.section.topicId} theme={pageStyle}
+        contentKey={`${guide.id}:${inkEntry.section.contentHash}`} title={inkEntry.title} showToast={showToast}
+        onClose={() => {
+          setInkTopicId(null);
+          ink.reload();
+        }} />
+    );
+  }
 
   return <>
     <InlineWorkspace presentation="page" title={guideTitle} description="Study guide"
@@ -347,7 +373,8 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ) : null}
           {currentEntry ? (
             <GuideSectionPage key={currentEntry.section.topicId} guide={guide} entry={currentEntry} sectionCount={order.entries.length} layoutMode={layoutMode}
-              pageStyle={pageStyle}
+              pageStyle={pageStyle} marks={ink.marks.get(currentEntry.section.topicId) ?? []}
+              onWriteOnPage={() => setInkTopicId(currentEntry.section.topicId)}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               projection={topicCards[currentEntry.section.topicId]}
               previous={neighbor(order.entries, currentEntry, -1)} next={neighbor(order.entries, currentEntry, 1)}
@@ -381,9 +408,6 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         width={editing.mode === "override" ? "large" : "medium"}
         {...editingCopy(editing, guide, order?.entries ?? [])}
         onSave={(value) => void saveEditing(value)} onClose={() => setEditing(null)} />
-    ) : null}
-    {exportOpen && guide ? (
-      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)} onClose={() => setExportOpen(false)} />
     ) : null}
   </>;
 }

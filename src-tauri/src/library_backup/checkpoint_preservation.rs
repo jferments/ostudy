@@ -307,6 +307,16 @@ const CONTRACTS: &[Contract] = &[
             description: "notebook pictures",
         }],
     },
+    // Ink on slides and guide pages is drawn in the app; the upgrade only
+    // creates its table.
+    Contract {
+        version: 21,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "material_ink",
+            description: "slide and guide page marks",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

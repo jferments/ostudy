@@ -33,8 +33,23 @@ export function saveGuidePageStyle(style: GuidePageStyle): void {
   }
 }
 
-/** The designed page's image, `"loading"` while it is laid out, or null for the plain page. */
-export type DesignedSectionPage = string | "loading" | null;
+/** A section laid out as a designed page: its picture and its size in points. */
+export interface SectionPagePicture {
+  url: string;
+  width: number;
+  height: number;
+}
+
+/** The designed page, `"loading"` while it is laid out, or null for the plain page. */
+export type DesignedSectionPage = SectionPagePicture | "loading" | null;
+
+/** The page size an SVG's view box gives, in points. */
+function svgSize(svg: string): { width: number; height: number } | null {
+  const match = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+  const width = Number(match?.[1]);
+  const height = Number(match?.[2]);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
 
 /**
  * One section laid out natively as a designed page in `theme`, as an image URL. A newer
@@ -49,7 +64,7 @@ export function useDesignedSectionPage(
   contentKey: string,
 ): DesignedSectionPage {
   const lane = useRequestLane();
-  const [page, setPage] = useState<{ request: string; url: string | null } | null>(null);
+  const [page, setPage] = useState<{ request: string; picture: SectionPagePicture | null } | null>(null);
   const request = theme === null ? null : `${documentId}:${topicId}:${theme}:${contentKey}`;
 
   useEffect(() => {
@@ -59,11 +74,16 @@ export function useDesignedSectionPage(
     void latestResult(lane, () => getDocumentStudyGuideSectionPage(documentId, topicId, theme)).then(
       (value) => {
         if (value === undefined || !live) return;
+        const size = svgSize(value.svg);
+        if (size === null) {
+          setPage({ request, picture: null });
+          return;
+        }
         made = URL.createObjectURL(new Blob([value.svg], { type: "image/svg+xml" }));
-        setPage({ request, url: made });
+        setPage({ request, picture: { url: made, ...size } });
       },
       () => {
-        if (live) setPage({ request, url: null });
+        if (live) setPage({ request, picture: null });
       },
     );
     return () => {
@@ -74,5 +94,5 @@ export function useDesignedSectionPage(
 
   if (request === null) return null;
   if (page?.request !== request) return "loading";
-  return page.url;
+  return page.picture;
 }
