@@ -130,6 +130,7 @@ export interface NativeCommandGatewayMap {
   "get_document_page_text": readonly [typeof GatewayModule12.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule36.getDocumentStudyGuide];
   "get_document_study_guide_reading": readonly [typeof GatewayModule35.getStudyGuideReading];
+  "get_document_study_guide_section_page": readonly [typeof GatewayModule36.getDocumentStudyGuideSectionPage];
   "get_document_topic_card_ids": readonly [typeof GatewayModule36.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule36.getDocumentTopicCardProjection];
   "get_embedding_options": readonly [typeof GatewayModule16.getEmbeddingOptions];

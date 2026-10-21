@@ -399,6 +399,26 @@ export async function getDocumentTopicCardIds(
   });
 }
 
+/** One section of a document's study guide set as a designed page in a PDF theme. */
+export interface StudyGuideSectionPage {
+  documentId: string;
+  topicId: string;
+  guideRevision: number;
+  theme: StudyGuidePdfTheme;
+  /** The page as a standalone SVG image. */
+  svg: string;
+}
+
+export async function getDocumentStudyGuideSectionPage(
+  documentId: string,
+  topicId: string,
+  theme: StudyGuidePdfTheme,
+): Promise<StudyGuideSectionPage> {
+  return invoke<StudyGuideSectionPage>("get_document_study_guide_section_page", {
+    input: { documentId, topicId, theme },
+  });
+}
+
 export async function prepareDocumentStudyGuidePdf(
   documentId: string,
   includeAnnotations: boolean,

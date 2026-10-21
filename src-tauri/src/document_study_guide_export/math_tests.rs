@@ -80,6 +80,7 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
     assert!(!math_source::requires_source_fallback(&export));
     export.guide_notes.clear();
     export.sections.push(EffectiveExportSection {
+        key: "topic-math".into(),
         title: "Topic".into(),
         source_locator: Some(
             SourceLocator::new(
