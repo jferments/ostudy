@@ -444,6 +444,71 @@ ostudy-unified
 
 Do not add the historical `ostudy`, `android`, or `kvm` custom labels.
 
+## 12a. Second lane for draft checks (`ostudy-ci-fast`)
+
+Draft pull requests run only the fast gate, but on one runner they queued in front of full gates and merge trains (2026-10-20: a train waited 13 minutes behind a draft's fast gate). `Check` sends draft pull requests to a second runner, `ostudy-ci-fast` with label `ostudy-fast`, registered in the same VM under the same `ostudy-runner` user. Full, Android, release and maintenance workflows stay on `ostudy-ci-unified`, the only lane that uses KVM and the emulator. The lanes build in separate Cargo targets (`~/.cache/ostudy/cargo-target` and `~/.cache/ostudy/fast/cargo-target`, each bounded by `bound-cargo-target.sh`) and share check stamps (`~/.cache/ostudy/check-state/ci`), so a full gate reuses a draft's fast pass on the same tree. The fast lane's systemd unit gets a lower CPU and I/O weight (ci-infrastructure `ostudy_runner_boundary.py`), so under contention a full gate keeps most of the 44 vCPUs.
+
+Register the second lane before merging the workflow change that routes drafts to it: until `ostudy-ci-fast` is online, draft checks would wait for it.
+
+### Grow the disk first
+
+A second Cargo target needs about 35 GiB more. With GitHub showing the runner idle, on ML-tower:
+
+```bash
+virsh --connect qemu:///system domblklist ostudy-ci-unified
+```
+
+```bash
+virsh --connect qemu:///system shutdown ostudy-ci-unified
+virsh --connect qemu:///system domstate ostudy-ci-unified
+# Continue only after the state is "shut off".
+```
+
+Using the `vda` path that `domblklist` printed:
+
+```bash
+sudo qemu-img resize <vda path> +100G
+virsh --connect qemu:///system start ostudy-ci-unified
+```
+
+Inside the guest, Ubuntu's cloud-init grows the root partition at boot. Check, and grow it by hand only if `df` still shows the old size:
+
+```bash
+lsblk
+df -h /
+# only if / did not grow (partition 1 of vda holds / on the cloud image):
+sudo growpart /dev/vda 1 && sudo resize2fs /dev/vda1
+```
+
+### Register `ostudy-ci-fast`
+
+Inside the runner shell (`sudo -u ostudy-runner -H bash -l`), in a separate directory, with GitHub's current download and extraction commands and a new one-time token:
+
+```bash
+mkdir -p ~/actions-runner-fast
+cd ~/actions-runner-fast
+set -a
+source /etc/ostudy-runner.env
+set +a
+./config.sh \
+  --url https://github.com/jferments/ostudy \
+  --token <ONE-TIME-TOKEN-FROM-GITHUB> \
+  --name ostudy-ci-fast \
+  --labels ostudy-fast \
+  --work _work \
+  --unattended
+```
+
+Install and start its service exactly as in section 12, from `/home/ostudy-runner/actions-runner-fast`, then harden it while it is idle:
+
+```bash
+ssh -t -i ~/.ssh/ostudy-ci-unified \
+  ostudy-admin@"$GUEST_IP" \
+  'sudo env OSTUDY_EXPECT_RUNNER_NAME=ostudy-ci-fast bash /tmp/install-service-hardening.sh'
+```
+
+Then apply the control boundary to both units with ci-infrastructure's `ostudy_runner_boundary.py install` (its document has the steps). GitHub should show both runners Online/Idle.
+
 ## 13. Shadow and production qualification
 
 The infrastructure PR first uses `.github/workflows/unified-runner-qualification.yml` to prove:

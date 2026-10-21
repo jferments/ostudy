@@ -51,7 +51,7 @@ if command -v systemctl >/dev/null 2>&1; then
   mapfile -t runner_units < <(
     systemctl list-unit-files --type=service --no-legend 'actions.runner.*.service' 2>/dev/null |
       awk '{print $1}' |
-      grep -F '.ostudy-ci-unified.service' || true
+      grep -F ".${EXPECTED_NAME}.service" || true
   )
   if (( ${#runner_units[@]} == 1 )); then
     restart_policy="$(systemctl show --property=Restart --value "${runner_units[0]}" 2>/dev/null || true)"
@@ -61,7 +61,7 @@ if command -v systemctl >/dev/null 2>&1; then
       warn "runner service restart policy is '${restart_policy:-unknown}'; apply scripts/runner/install-service-hardening.sh while the runner is idle"
     fi
   else
-    warn "could not identify exactly one ostudy-ci-unified systemd service"
+    warn "could not identify exactly one ${EXPECTED_NAME} systemd service"
   fi
 fi
 
