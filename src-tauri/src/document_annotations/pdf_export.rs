@@ -387,7 +387,8 @@ impl Canvas<'_> {
     fn line(&mut self, segment: &Segment, arrow: bool) -> Result<(), ExportError> {
         let color = parse_color(&segment.color);
         let end_head = arrow.then(|| arrow_head(segment));
-        let start_head = (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&reversed(segment)));
+        let start_head =
+            (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&reversed(segment)));
         let (start_x, start_y) = start_head.map_or((segment.x1, segment.y1), |head| head.base);
         let (end_x, end_y) = end_head.map_or((segment.x2, segment.y2), |head| head.base);
         let (x1, y1, x2, y2) = (start_x, self.y(start_y), end_x, self.y(end_y));

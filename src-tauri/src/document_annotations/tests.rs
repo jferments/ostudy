@@ -849,10 +849,16 @@ fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() 
         dash: Some(LineDash::Dotted),
         both_ends,
     };
-    AnnotationShape::Arrow(segment(Some(true))).validate().unwrap();
+    AnnotationShape::Arrow(segment(Some(true)))
+        .validate()
+        .unwrap();
     AnnotationShape::Line(segment(None)).validate().unwrap();
-    assert!(AnnotationShape::Line(segment(Some(true))).validate().is_err());
-    assert!(AnnotationShape::Arrow(segment(Some(false))).validate().is_err());
+    assert!(AnnotationShape::Line(segment(Some(true)))
+        .validate()
+        .is_err());
+    assert!(AnnotationShape::Arrow(segment(Some(false)))
+        .validate()
+        .is_err());
     let wire = serde_json::to_value(AnnotationShape::Arrow(segment(Some(true)))).unwrap();
     assert_eq!(wire["dash"], "dotted");
     assert_eq!(wire["bothEnds"], true);
@@ -875,9 +881,11 @@ fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() 
     assert!(frame(None, Some(false)).validate().is_err());
     assert!(frame(Some("#fef3c7"), Some(true)).validate().is_err());
     assert!(frame(Some("yellow"), None).validate().is_err());
-    assert!(serde_json::from_value::<AnnotationShape>(serde_json::json!({
-        "kind": "line", "x1": 0, "y1": 0, "x2": 4, "y2": 0, "color": "#111111",
-        "strokeWidth": 1, "dash": "wavy"
-    }))
-    .is_err());
+    assert!(
+        serde_json::from_value::<AnnotationShape>(serde_json::json!({
+            "kind": "line", "x1": 0, "y1": 0, "x2": 4, "y2": 0, "color": "#111111",
+            "strokeWidth": 1, "dash": "wavy"
+        }))
+        .is_err()
+    );
 }

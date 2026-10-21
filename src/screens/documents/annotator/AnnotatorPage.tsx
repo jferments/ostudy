@@ -275,7 +275,7 @@ export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true 
 });
 
 /** A box's or ellipse's fill and outline. */
-function frameLook(shape: FrameShape): SVGProps<SVGElement> {
+function frameLook(shape: FrameShape): Pick<SVGProps<SVGRectElement>, "fill" | "stroke" | "strokeWidth" | "strokeLinejoin" | "strokeLinecap" | "strokeDasharray"> {
   const border = shape.border !== false;
   return {
     fill: shape.fill ?? "none",

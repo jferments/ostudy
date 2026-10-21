@@ -396,9 +396,21 @@ fn fills_dashes_and_second_arrow_heads_are_drawn() {
     let shown = render(&export(&source, &styled).unwrap(), "styled");
     assert!(shown.get_pixel(60, 40).0[0] < 50, "the box is filled");
     let along: Vec<u8> = (20..180).map(|x| shown.get_pixel(x, 150).0[0]).collect();
-    assert!(along.iter().any(|&level| level < 50), "the dashes are drawn");
-    assert!(along.iter().any(|&level| level > 110), "the dashes have gaps");
+    assert!(
+        along.iter().any(|&level| level < 50),
+        "the dashes are drawn"
+    );
+    assert!(
+        along.iter().any(|&level| level > 110),
+        "the dashes have gaps"
+    );
     // Each head is wider than the 3-point line: 10 points from a tip it reaches 4 points off the line.
-    assert!(shown.get_pixel(29, 186).0[0] < 50, "the first end has a head");
-    assert!(shown.get_pixel(170, 186).0[0] < 50, "the second end has a head");
+    assert!(
+        shown.get_pixel(29, 186).0[0] < 50,
+        "the first end has a head"
+    );
+    assert!(
+        shown.get_pixel(170, 186).0[0] < 50,
+        "the second end has a head"
+    );
 }
