@@ -22,6 +22,7 @@ import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Icon } from "../../ui/icons/Icon";
+import { cn } from "../../ui/internal/cn";
 import {
   createAnnotationId,
   isCollapsedSticky,
@@ -506,12 +507,6 @@ function ReadyNotebook({
           <Icon name="image" />
           Add picture
         </Button>
-        {onOpenBeside ? (
-          <Button size="small" variant="secondary" onClick={onOpenBeside}>
-            <Icon name="document" />
-            {besideOpen ? "Change document" : "Document beside"}
-          </Button>
-        ) : null}
         {selected && selectedLink ? (
           <>
             <Button size="small" variant="secondary" onClick={() => onFollow(selected)}>
@@ -524,7 +519,14 @@ function ReadyNotebook({
             </Button>
           </>
         ) : null}
-        <span className="tw:ms-auto tw:text-label tw:whitespace-nowrap tw:text-muted-foreground" role="status">
+        {onOpenBeside ? (
+          // Viewing sits with the pages, apart from what is added to them.
+          <Button size="small" variant="ghost" className="tw:ms-auto" onClick={onOpenBeside}>
+            <Icon name="document" />
+            {besideOpen ? "Change document" : "Document beside"}
+          </Button>
+        ) : null}
+        <span className={cn("tw:text-label tw:whitespace-nowrap tw:text-muted-foreground", !onOpenBeside && "tw:ms-auto")} role="status">
           {`Page ${current} of ${pageCount}`}
         </span>
         <Button size="small" variant="secondary" aria-label="Add page" disabled={busy} onClick={addPage}>
