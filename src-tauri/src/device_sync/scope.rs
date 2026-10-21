@@ -412,10 +412,13 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
-    // Teacher's lecture scripts, lesson narration, its audio, the voice each
-    // lesson is spoken in, the saved voices and the speech setting go with them, and links from cards to the marks they were made
-    // from go with the marks.
-    // How far a learner has read each guide stays on the device too.
+    // Teacher's lecture scripts, podcasts, lesson narration, its audio, the
+    // voice each lesson is spoken in, the saved voices and the speech setting
+    // go with them, and links from cards to the marks they were made from go
+    // with the marks.
+    // How far a learner has read each guide stays on the device too, and so do
+    // notebooks for now, the figures found in a document and the learner's
+    // choice to use them.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -438,6 +441,7 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM document_annotations;
              DELETE FROM lesson_progress;
              DELETE FROM lecture_scripts;
+             DELETE FROM podcasts;
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
@@ -452,7 +456,21 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
              DROP TABLE sync_narration_assets;
              DELETE FROM document_study_guide_section_reads;
-             DELETE FROM document_study_guide_positions;",
+             DELETE FROM document_study_guide_positions;
+             CREATE TEMP TABLE sync_notebook_assets AS SELECT asset_id FROM notebook_item_assets;
+             DELETE FROM notebook_item_assets;
+             DELETE FROM notebook_items;
+             DELETE FROM notebook_pages;
+             DELETE FROM notebooks;
+             DELETE FROM document_figure_readings;
+             DELETE FROM document_figure_passages;
+             DELETE FROM document_figures;
+             DELETE FROM document_figure_scans;
+             DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_notebook_assets)
+                 AND id NOT IN (SELECT asset_id FROM note_assets)
+                 AND id NOT IN (SELECT asset_id FROM card_template_assets)
+                 AND id NOT IN (SELECT asset_id FROM question_attempt_assets);
+             DROP TABLE sync_notebook_assets;",
         )
         .map_err(CommandError::database)?;
 
@@ -761,6 +779,91 @@ mod tests {
     }
 
     #[test]
+    fn notebooks_stay_on_the_device_that_made_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: (i64, i64, i64) = database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO notebooks(id, subject_id, title, paper, page_size, revision, created_at, updated_at)
+                         VALUES ('{n}', NULL, 'Cardiac cycle', 'grid', 'letter', 1, 1, 1);
+                         INSERT INTO notebook_pages(id, notebook_id, position, paper, width, height, created_at)
+                         VALUES ('{p}', '{n}', 1, 'grid', 612, 792, 1);
+                         INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
+                         VALUES ('{i}', '{p}', 'line', '{{\"x1\":1,\"y1\":1,\"x2\":9,\"y2\":9,\"color\":\"#111111\",\"strokeWidth\":2}}', 1, 1, 1);",
+                        n = "a".repeat(32),
+                        p = "b".repeat(32),
+                        i = "c".repeat(32),
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                let count = |table: &str| {
+                    connection
+                        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                        .map_err(CommandError::database)
+                };
+                Ok((count("notebooks")?, count("notebook_pages")?, count("notebook_items")?))
+            })
+            .unwrap();
+        assert_eq!(remaining, (0, 0, 0));
+        assert!(!selection.includes_table("notebooks"));
+    }
+
+    #[test]
+    fn document_figures_stay_on_the_device_that_found_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let document = "d".repeat(32);
+                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO document_figure_scans(document_id, use_images, state,
+                             detector, scanned_at, updated_at)
+                         VALUES ('{document}', 1, 'found', 'test', 1, 1);
+                         INSERT INTO document_figures(document_id, figure_id, ordinal,
+                             page_number, page_width, page_height, kind, box_left, box_top,
+                             box_width, box_height, label, caption, hidden, created_at,
+                             updated_at)
+                         VALUES ('{document}', 'p00001-01', 0, 1, 612, 792, 'image',
+                             72, 72, 200, 150, 'Figure 1', 'Figure 1. The heart.', 0, 1, 1);
+                         INSERT INTO document_figure_passages(document_id, figure_id, ordinal,
+                             page_number, kind, excerpt)
+                         VALUES ('{document}', 'p00001-01', 0, 1, 'mention', 'See Figure 1.');
+                         INSERT INTO document_figure_readings(document_id, figure_id, title,
+                             shows, concepts_json, explained_json, importance,
+                             worth_studying, provider, model, read_at)
+                         VALUES ('{document}', 'p00001-01', 'The heart', 'Four chambers.',
+                             '[]', '[1]', 4, 1, 'openrouter', 'test', 1);"
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row(
+                        "SELECT (SELECT COUNT(*) FROM document_figure_scans)
+                              + (SELECT COUNT(*) FROM document_figures)
+                              + (SELECT COUNT(*) FROM document_figure_passages)
+                              + (SELECT COUNT(*) FROM document_figure_readings)",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        for table in [
+            "document_figure_scans",
+            "document_figures",
+            "document_figure_passages",
+            "document_figure_readings",
+        ] {
+            assert!(!selection.includes_table(table));
+        }
+    }
+
+    #[test]
     fn card_mark_links_stay_on_the_device_that_made_them() {
         let database = crate::database::Database::open_in_memory().unwrap();
         let selection = SyncSelection::default();
@@ -824,7 +927,12 @@ mod tests {
                              provenance_json, created_at)
                          VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);
                          INSERT INTO lesson_voices(lesson_id, model_id, voice, created_at)
-                         VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);",
+                         VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);
+                         INSERT INTO podcasts(id, subject_id, title, target_minutes, model_id,
+                             first_voice, second_voice, script_json, provenance_json,
+                             created_at)
+                         VALUES ('{lesson}', '{subject}', 'Renal', 15, 'hexgrad/kokoro-82m',
+                             'af_heart', 'am_michael', '{{}}', '{{}}', 1);",
                         hash = "b".repeat(64),
                         unit = "c".repeat(32),
                     ))
@@ -837,7 +945,8 @@ mod tests {
                               + (SELECT COUNT(*) FROM lesson_revision_units)
                               + (SELECT COUNT(*) FROM lesson_progress)
                               + (SELECT COUNT(*) FROM lecture_scripts)
-                              + (SELECT COUNT(*) FROM lesson_voices)",
+                              + (SELECT COUNT(*) FROM lesson_voices)
+                              + (SELECT COUNT(*) FROM podcasts)",
                         [],
                         |row| row.get(0),
                     )
@@ -851,6 +960,7 @@ mod tests {
             "lesson_revision_units",
             "lesson_progress",
             "lecture_scripts",
+            "podcasts",
         ] {
             assert!(!selection.includes_table(table));
         }

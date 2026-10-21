@@ -338,6 +338,24 @@ pub(crate) async fn leased_render_document_page_tile(
     .await
 }
 
+#[tauri::command(rename = "find_document_figures")]
+pub(crate) async fn leased_find_document_figures(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<crate::document_figures::DocumentFiguresDto, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input: crate::document_figures::DocumentFiguresInput =
+        serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::document_figures::find_document_figures(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
+        app.state::<crate::pdf_render_backend::PdfRenderRuntime>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "prepare_annotated_pdf")]
 pub(crate) async fn leased_prepare_annotated_pdf(
     app: AppHandle,
@@ -664,6 +682,39 @@ pub(crate) async fn leased_narrate_lecture_part(
     let _lease = super::enter(library_generation)?;
     let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
     crate::lessons::teaching::narrate_lecture_part(
+        &app.state::<crate::database::Database>(),
+        &app.state::<crate::paths::AppPaths>(),
+        &app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
+#[tauri::command(rename = "write_podcast")]
+pub(crate) async fn leased_write_podcast(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::lessons::podcasts::write(
+        &app.state::<crate::database::Database>(),
+        &app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
+#[tauri::command(rename = "narrate_podcast_turn")]
+pub(crate) async fn leased_narrate_podcast_turn(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::lessons::podcasts::narrate_turn(
         &app.state::<crate::database::Database>(),
         &app.state::<crate::paths::AppPaths>(),
         &app.state::<crate::ai::AiRuntimeState>(),

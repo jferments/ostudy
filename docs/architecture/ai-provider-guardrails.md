@@ -114,8 +114,11 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
   with PKCE and a loopback callback on `localhost`. The verifier, the code and
   the exchanged key stay native; the frontend sees only an attempt identifier
   and the authorization page's URL, and the key is saved through the ordinary
-  credential path. It is offered only where the platform reports
-  `browserSignIn`; elsewhere the learner pastes a key.
+  credential path. On Android the browser is another app: the callback page
+  links to the app's own identifier as a scheme (a manifest intent filter that
+  carries no data) to bring oStudy back. It is offered only where the platform
+  reports `browserSignIn` (desktop and Android); elsewhere the learner pastes
+  a key.
 - Credential inputs clear immediately after submission and remain out of global
   React/application state.
 - Capability and probe timestamps are historical evidence labeled “Last
