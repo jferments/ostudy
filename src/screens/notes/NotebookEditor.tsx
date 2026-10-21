@@ -507,6 +507,12 @@ function ReadyNotebook({
           <Icon name="image" />
           Add picture
         </Button>
+        {onOpenBeside ? (
+          <Button size="small" variant="secondary" onClick={onOpenBeside}>
+            <Icon name="document" />
+            {besideOpen ? "Change document" : "Document beside"}
+          </Button>
+        ) : null}
         {selected && selectedLink ? (
           <>
             <Button size="small" variant="secondary" onClick={() => onFollow(selected)}>

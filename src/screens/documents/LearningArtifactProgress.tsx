@@ -46,9 +46,12 @@ export function guideProgress(job: DocumentArtifactJob | null, starting: boolean
   if (!isActiveArtifactJob(job)) {
     return { value, status: job.state === "canceled" ? "Stopped" : "Needs attention", complete: false, failed: true };
   }
+  // Counts finished sections. Once all are written, the chapters and the
+  // introduction are still to come before the guide is saved.
   const status = job.state === "committing" ? "Saving guide"
-    : job.state === "generating" ? `${job.completedUnits} / ${job.totalUnits} sections`
-      : "Preparing";
+    : job.state !== "generating" ? "Preparing"
+      : job.completedUnits >= job.totalUnits ? "Organizing the guide"
+        : `${job.completedUnits} / ${job.totalUnits} sections completed`;
   return { value, status, complete: false, failed: false };
 }
 

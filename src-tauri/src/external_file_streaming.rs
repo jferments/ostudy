@@ -413,17 +413,31 @@ fn export_request(suggested_filename: &str) -> ExternalFileRequest {
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_string();
+    let (title, kind) = export_kind(&extension);
     ExternalFileRequest {
-        title: "Publish ostudy export".to_string(),
+        title: title.to_string(),
         suggested_filename: Some(suggested_filename.to_string()),
         filters: vec![FileFilter {
-            name: "ostudy export".to_string(),
+            name: kind,
             extensions: if extension.is_empty() {
                 Vec::new()
             } else {
                 vec![extension]
             },
         }],
+    }
+}
+
+/// The save dialog's title and the name of its one file type, so a learner
+/// sees "PDF document" rather than a generic export label.
+fn export_kind(extension: &str) -> (&'static str, String) {
+    match extension.to_ascii_lowercase().as_str() {
+        "pdf" => ("Save as PDF", "PDF document".to_string()),
+        "pptx" => ("Save as PowerPoint", "PowerPoint presentation".to_string()),
+        "studydeck" => ("Save deck", "oStudy deck".to_string()),
+        "ostudybackup" => ("Save library backup", "oStudy library backup".to_string()),
+        "" => ("Save as", "File".to_string()),
+        other => ("Save as", format!("{} file", other.to_ascii_uppercase())),
     }
 }
 
@@ -871,6 +885,21 @@ fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_save_dialog_names_the_file_type() {
+        let pdf = export_request("Heart failure-study-guide.pdf");
+        assert_eq!(pdf.title, "Save as PDF");
+        assert_eq!(pdf.filters[0].name, "PDF document");
+        assert_eq!(pdf.filters[0].extensions, vec!["pdf".to_string()]);
+        assert_eq!(
+            export_request("Lesson.pptx").filters[0].name,
+            "PowerPoint presentation"
+        );
+        assert_eq!(export_request("notes.csv").filters[0].name, "CSV file");
+        assert!(export_request("unnamed").filters[0].extensions.is_empty());
+    }
+
     use std::{
         collections::HashSet,
         fs,

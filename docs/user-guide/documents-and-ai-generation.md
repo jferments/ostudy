@@ -82,6 +82,8 @@ For a PDF imported with its images on, oStudy looks for its figures once the pag
 
 **Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
 
+When your AI model can see images, oStudy also reads each figure on its page, beside card and guide writing: a short title, what the figure shows, how the text uses it, and how much it matters (**Essential**, **Key figure**, **Helpful** or **Minor**). It also marks a figure that is not worth studying, such as a decorative photo. **Read figures with AI** in the page's **…** menu reads them for a document imported earlier, and **Read figures again** reads them anew. A model that cannot see images leaves figures with their captions and passages, and the page says so. Searching again keeps what was read of a figure found in the same place.
+
 A document imported before figures existed, or with its images off, shows **Find figures** or **Use images** there. **Stop using images** in the page's **…** menu forgets the figures found, hidden ones included, and **Find figures again** searches the PDF again.
 
 Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. Figures are not yet used by flashcards, study guides or lessons; that comes next.
@@ -130,7 +132,7 @@ On desktop, closing while documents are processing warns that the work will be i
 
 **Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 
-Remake a guide from the document's menu. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
+Remake a guide from the document's menu. Its row shows a new Study Guide bar straight away: **Preparing** while oStudy plans the sections, then how many sections are completed ("3 / 14 sections completed"), **Organizing the guide** while it adds chapters and the introduction, and **Saving guide**. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
 
 ## Analysis details
 
