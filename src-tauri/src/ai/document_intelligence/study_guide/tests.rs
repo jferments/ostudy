@@ -108,9 +108,9 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
 }
 
 #[test]
-fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() {
+fn collection_prompt_asks_for_condensed_key_ideas_without_internal_diagnostics() {
     let prompt = collection_study_guide_system_prompt();
-    assert!(prompt.contains("readable teaching outline"));
+    assert!(prompt.contains("condensed summary of the collection's key ideas"));
     assert!(prompt.contains("Never reduce a section to 'Review <topic>'"));
     assert!(prompt.contains("Never") || prompt.contains("never"));
     let user = collection_study_guide_user_prompt(
@@ -146,18 +146,19 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
 }
 
 #[test]
-fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
+fn prompt_asks_for_a_condensed_summary_of_key_ideas_with_lists_in_tables() {
     let prompt = study_guide_system_prompt();
     assert!(!prompt.contains("PDF"));
     assert!(prompt.contains("canonical"));
     assert!(prompt.to_ascii_lowercase().contains("study-guide author"));
-    assert!(prompt.contains("coherent teaching prose"));
-    assert!(prompt.contains("keyPoints are optional"));
+    assert!(prompt.contains("condensed summary of the key ideas, not a rewrite"));
+    assert!(prompt.contains("keyPoints: the key ideas"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
-    assert!(prompt.contains("Each fact appears once in the section"));
-    assert!(prompt.contains("overview: orients the learner in 2 to 4 sentences"));
+    assert!(prompt.contains("Each idea appears once in the section"));
+    assert!(prompt.contains("overview: the big idea in 2 or 3 sentences"));
+    assert!(prompt.contains("put them in one table"));
     assert!(prompt.contains(&format!(
         "Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}"
     )));
