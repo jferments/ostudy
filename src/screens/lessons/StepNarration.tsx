@@ -2,11 +2,13 @@ import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { useNarrationPlayer } from "./useNarrationPlayer";
+import { useVoiceAvailable } from "./useVoiceAvailable";
 
 /**
  * Speaks one step's narration. The first listen asks the lesson voice and
  * keeps its audio; later listens play what was kept. Remount it for another
- * step, so moving on stops the voice.
+ * step, so moving on stops the voice. Nothing shows until a lesson voice is
+ * set up.
  */
 export function StepNarration({
   lessonId,
@@ -18,6 +20,8 @@ export function StepNarration({
   stepKey: string;
 }) {
   const { audioRef, listening, error, play, stop } = useNarrationPlayer(lessonId, revisionNumber);
+  const voiceAvailable = useVoiceAvailable();
+  if (!voiceAvailable) return null;
 
   return (
     <div className="tw:flex tw:flex-col tw:items-start tw:gap-2">

@@ -95,6 +95,7 @@ fn kept(connection: &Connection) -> Kept {
         "lecture_scripts",
         "speech_voices",
         "lesson_voices",
+        "podcasts",
         "notebooks",
         "notebook_pages",
         "notebook_items",

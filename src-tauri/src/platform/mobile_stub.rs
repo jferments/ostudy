@@ -68,6 +68,7 @@ impl CapabilityProvider for MobileCapabilityProvider {
                 system_share: unavailable(),
                 local_network: unavailable(),
                 background_execution: unavailable(),
+                browser_sign_in: unavailable(),
             },
         }
     }

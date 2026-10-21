@@ -54,7 +54,7 @@ requireText("legacy public lineage", database, 'const LEGACY_PUBLIC_SCHEMA_LINEA
 requireText("legacy schema 30", database, "pub(crate) const LEGACY_PUBLIC_SCHEMA_VERSION: i64 = 30;");
 requireText("release lineage", release, 'pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";');
 requireText("release baseline schema 1", release, "pub(crate) const BASELINE_VERSION: i64 = 1;");
-requireText("release current schema 17", release, "pub(crate) const SCHEMA_VERSION: i64 = 17;");
+requireText("release current schema 18", release, "pub(crate) const SCHEMA_VERSION: i64 = 18;");
 requireText("release baseline checksum", release, '"64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8"');
 requireText("selection-deck release migration", release, 'name: "selection_deck_operations"');
 requireText("selection-deck migration checksum", release, '"c854f5d50338beec395399d723038fdfb6d4436af3305718d5a1c6a70ca65238"');
@@ -86,8 +86,10 @@ requireText("lecture scripts release migration", release, 'name: "lecture_script
 requireText("release migration 15 checksum", release, '"61892d73c101e80515f4df96b1f53ba2bbbce3d2e9c8a530c7d0655bbd362e1f"');
 requireText("speech voices release migration", release, 'name: "speech_voices"');
 requireText("release migration 16 checksum", release, '"2ff607022faa39f8db7876ba62233cd92cd2d138e953c1e1a189c0dff7c5070e"');
+requireText("podcasts release migration", release, 'name: "podcasts"');
+requireText("release migration 17 checksum", release, '"23abf0c9879caf011c3bb542c8f43274beae8d320fc3d6d914b87a907379e4cd"');
 requireText("notebooks release migration", release, 'name: "notebooks"');
-requireText("release migration 17 checksum", release, '"6f2c4daaaf75ebd1520f63ef1f4ecc3fc313da245aa3d5b8d0aecc5fe8a99795"');
+requireText("release migration 18 checksum", release, '"cd1eb1fc6917b5a599c5625f04e2034a8c725ca51984ceb5269a116f1f4a3032"');
 requireText("disk-backed legacy converter", release, "convert_legacy_current_with(connection, staging::Candidate::copy_from)");
 requireText("bounded disk staging backup", releaseStaging, "Backup::new(source, staged)");
 requireText("file-backed SQLite temp storage", releaseStaging, "PRAGMA temp_store = FILE");
@@ -156,7 +158,7 @@ requireText("canonical document schema v1", canonicalDocument, 'pub(crate) const
 for (const needle of [
   "ostudy-release-v1",
   "**baseline is schema 1**",
-  "**schema 17**",
+  "**schema 18**",
   "Legacy `ostudy-public-v1` schemas **10–30**",
   "repair versions **1–3**",
   "writer v3",

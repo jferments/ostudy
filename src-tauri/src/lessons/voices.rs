@@ -69,7 +69,7 @@ pub(crate) fn default_voice() -> String {
     built_in_key(BUILT_IN_VOICES[0].id)
 }
 
-fn built_in_key(id: &str) -> String {
+pub(super) fn built_in_key(id: &str) -> String {
     format!("{BUILT_IN}{id}")
 }
 
@@ -212,7 +212,7 @@ fn sample(connection: &Connection, voice: &str) -> Result<Option<(String, String
 
 /// Whether a request can speak in `voice`: a preset, a voice that comes with
 /// ostudy, or a saved voice whose sample is still there.
-fn speaks(connection: &Connection, voice: &str) -> Result<bool, CommandError> {
+pub(super) fn speaks(connection: &Connection, voice: &str) -> Result<bool, CommandError> {
     Ok(built_in(voice).is_some()
         || saved_id(voice).is_none() && !voice.starts_with(BUILT_IN)
         || sample(connection, voice)?.is_some())
@@ -561,7 +561,8 @@ pub(crate) fn rename(
     Ok(saved)
 }
 
-/// Removes a voice from the learner's voices. Lessons spoken in it keep it.
+/// Removes a voice from the learner's voices. Lessons and podcasts spoken in
+/// it keep it.
 pub(crate) fn remove(
     connection: &mut Connection,
     id: &str,
@@ -580,7 +581,8 @@ pub(crate) fn remove(
     }
     let spoken: bool = transaction
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM lesson_voices WHERE voice = ?1)",
+            "SELECT EXISTS(SELECT 1 FROM lesson_voices WHERE voice = ?1)
+                 OR EXISTS(SELECT 1 FROM podcasts WHERE first_voice = ?1 OR second_voice = ?1)",
             [&key],
             |row| row.get(0),
         )
