@@ -14,10 +14,11 @@ import { makeDeck, makeHomeSubjectSummary, makeHomeSummary, makeSubject, makeSub
 import { LibraryOverview } from "./LibraryOverview";
 
 vi.mock("../../ipc/common", () => ({
+  createOperationId: () => "o".repeat(32),
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
 }));
 vi.mock("../../ipc/home", () => ({ getHomeSummary: vi.fn() }));
-vi.mock("../../ipc/subjects", () => ({ getSubjectLibrary: vi.fn() }));
+vi.mock("../../ipc/subjects", () => ({ getSubjectLibrary: vi.fn(), moveDeckToSubject: vi.fn(), moveDocumentToSubject: vi.fn() }));
 vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
 vi.mock("../../ipc/studyGuides", () => ({ listStudyGuidePage: vi.fn() }));
 vi.mock("../../ipc/progress", () => ({
@@ -25,7 +26,13 @@ vi.mock("../../ipc/progress", () => ({
   getProgressForecast: vi.fn(),
   getProgressSubjects: vi.fn(),
 }));
-const jobs = vi.hoisted(() => ({ current: { documents: [] as Partial<import("../../ipc/documents").DocumentSummary>[] } }));
+const jobs = vi.hoisted(() => ({
+  current: { documents: [] as Partial<import("../../ipc/documents").DocumentSummary>[], isUploading: false, uploadDocument: vi.fn() } as {
+    documents: Partial<import("../../ipc/documents").DocumentSummary>[];
+    isUploading?: boolean;
+    uploadDocument?: (instructions?: string, onImported?: (documentId: string) => Promise<unknown>) => Promise<void>;
+  },
+}));
 vi.mock("../../controllers/DocumentJobsProvider", () => ({ useDocumentJobs: () => jobs.current }));
 
 const physiology = makeSubject({ id: "p".repeat(32), name: "Physiology", sortOrder: 0 });
@@ -76,6 +83,8 @@ function renderOverview(subject: LibrarySubjectScope = { kind: "subject", subjec
     onOpenGuide: vi.fn(),
     onOpenSubject: vi.fn(),
     onOpenProgress: vi.fn(),
+    refreshDecks: vi.fn().mockResolvedValue([]),
+    showToast: vi.fn(),
   };
   render(
     <HomeSummaryProvider section="overview" activeWorkflow={null} decks={[cardiac, renal, loose]}>
@@ -118,6 +127,29 @@ describe("LibraryOverview", () => {
     jobs.current = {
       documents: [{ id: lectureId, title: "Renal lecture 4", lifecycleState: "ready", generatedCardCount: 0, generatedDeckId: null, createdAt: 1 }],
     };
+  });
+
+  it("offers an empty subject's three ways to start and files an upload in it", async () => {
+    const anatomy = makeSubject({ id: "a".repeat(32), name: "Anatomy", sortOrder: 1 });
+    const library = makeSubjectLibrary({ subjects: [physiology, anatomy], decks: [{ deckId: cardiac.id, subjectId: physiology.id, sortOrder: 0 }] });
+    vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(library);
+    vi.mocked(subjectsIpc.moveDocumentToSubject).mockResolvedValue(library);
+    const uploadDocument = vi.fn(async (_instructions?: string, onImported?: (documentId: string) => Promise<unknown>) => { await onImported?.(lectureId); });
+    jobs.current = { documents: [], isUploading: false, uploadDocument };
+    const props = renderOverview({ kind: "subject", subjectId: anatomy.id });
+
+    expect(await screen.findByText("Nothing in Anatomy yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New deck" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Import deck" }));
+    const dialog = await screen.findByRole("dialog", { name: "Import deck" });
+    expect((within(dialog).getByRole("combobox", { name: "Into subject" }) as HTMLSelectElement).value).toBe(anatomy.id);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Upload a document" }));
+    await waitFor(() => expect(subjectsIpc.moveDocumentToSubject).toHaveBeenCalledWith({
+      documentId: lectureId, subjectId: anatomy.id, expectedDocumentFilingRevision: library.documentFilingRevision,
+    }));
+    expect(props.onSelectView).toHaveBeenCalledWith("documents");
   });
 
   it("shows a subject's facts, what to do next and how each deck is going", async () => {
