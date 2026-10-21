@@ -26,6 +26,10 @@ export interface AppSettings {
    * Reviews before it count toward the previous day.
    */
   newDayStartHour: number;
+  /** How an exported study guide PDF looks; Sage until the learner picks another. */
+  guidePdfTheme?: "navy" | "sage" | "slate" | "plum";
+  /** Whether an exported study guide PDF carries the learner's notes. */
+  guidePdfIncludeNotes?: boolean;
 }
 
 export interface AppInfo {

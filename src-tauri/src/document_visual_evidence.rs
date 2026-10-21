@@ -49,6 +49,7 @@ pub(crate) fn load_locator_images(
         images.push(SourcePageImage {
             page_number: asset.source_unit_number.unwrap_or_else(|| locator.first()),
             bytes,
+            crop_of: None,
         });
     }
     Ok(images)

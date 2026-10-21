@@ -7,6 +7,7 @@ import type { ShowToast } from "../components/Toast";
 import { openDocumentSource } from "../ipc/documents";
 import { getMaterialInk } from "../ipc/materialInk";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
+import { getSettings, type AppSettings } from "../ipc/settings";
 import {
   cancelDocumentStudyGuideGeneration,
   discardDocumentStudyGuideOverlay,
@@ -78,6 +79,8 @@ vi.mock("../ipc/externalFiles", async () => {
     releasePreparedExport: vi.fn(),
   };
 });
+
+vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
 
 vi.mock("../ipc/documents", async () => {
   const actual = await vi.importActual<typeof import("../ipc/documents")>(
@@ -385,6 +388,7 @@ beforeEach(() => {
   // Sections read as plain pages unless a test lays one out.
   vi.mocked(getDocumentStudyGuideSectionPage).mockRejectedValue(new Error("no layout in tests"));
   vi.mocked(getMaterialInk).mockResolvedValue([]);
+  vi.mocked(getSettings).mockResolvedValue({} as AppSettings);
   onPracticeCards.mockClear();
   mockedCancel.mockResolvedValue(undefined);
   mockedProjection.mockImplementation(async (_documentId, topic) => ({
@@ -713,14 +717,14 @@ describe("StudyGuideDialog", () => {
     expect(within(note).getByRole("button", { name: "Remove note" })).toBeTruthy();
   });
 
-  it("keeps section actions in one menu and guide actions in the top bar menu", async () => {
+  it("keeps section actions in one menu and guide actions in the top bar", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    const guideMenu = await openMenu(await screen.findByRole("button", { name: "Study guide actions" }));
-    expect(within(guideMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Export as PDF…", "Add guide note"]);
-    fireEvent.keyDown(guideMenu, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Study guide actions" })).toBeNull());
+    // Export and a guide's only other action sit in the bar itself, not behind a menu.
+    expect(await screen.findByRole("button", { name: "Export PDF" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add guide note" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Study guide actions" })).toBeNull();
 
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
@@ -999,20 +1003,13 @@ describe("StudyGuideDialog", () => {
       completedAt: 123,
     });
     const showToast = vi.fn();
+    vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "plum", guidePdfIncludeNotes: includeNotes } as AppSettings);
     renderGuide({ showToast });
 
-    await chooseGuideAction("Export as PDF…");
-    const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-    const include = within(dialog).getByRole("checkbox", { name: "Include my notes" });
-    expect(include.getAttribute("aria-checked")).toBe("true");
-    if (!includeNotes) {
-      fireEvent.click(include);
-      await waitFor(() => expect(include.getAttribute("aria-checked")).toBe("false"));
-    }
-    fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
 
     await waitFor(() => {
-      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "navy");
+      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "plum");
       expect(mockedPublish).toHaveBeenCalledWith("8".repeat(32));
       expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32));
     });
@@ -1020,21 +1017,29 @@ describe("StudyGuideDialog", () => {
       "success",
       "Exported study guide with 1 section.",
     );
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull();
   });
 
-  it("keeps the export dialog open when preparing the PDF fails", async () => {
+  it("exports in Sage with notes when Settings has no PDF choices yet", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+    mockedPreparePdf.mockResolvedValue(preparedPdf());
+    mockedPublish.mockResolvedValue(null);
+    renderGuide();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+
+    await waitFor(() => expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, true, "sage"));
+  });
+
+  it("reports a PDF that could not be prepared and publishes nothing", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     mockedPreparePdf.mockRejectedValue(new Error("The PDF could not be prepared."));
     const showToast = vi.fn();
     renderGuide({ showToast });
 
-    await chooseGuideAction("Export as PDF…");
-    const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("error", "The PDF could not be prepared."));
-    expect(screen.getByRole("dialog", { name: "Export as PDF" })).toBeTruthy();
     expect(mockedPublish).not.toHaveBeenCalled();
   });
 
@@ -1046,8 +1051,7 @@ describe("StudyGuideDialog", () => {
     mockedPublish.mockResolvedValue({ preparedExportId: "8".repeat(32), displayName: "math.pdf", destinationKind: "file", completedAt: 123 });
     const showToast = vi.fn();
     renderGuide({ showToast });
-    await chooseGuideAction("Export as PDF…");
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Export as PDF" })).getByRole("button", { name: "Export PDF" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
     const confirmation = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(within(confirmation).getByText(/outside the native PDF math subset.*readable LaTeX source/iu)).toBeTruthy();

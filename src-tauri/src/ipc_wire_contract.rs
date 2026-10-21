@@ -180,6 +180,14 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
         name: "newDayStartHour",
         ty: TypeScriptType::Number,
     },
+    FieldContract {
+        name: "guidePdfTheme",
+        ty: TypeScriptType::Named("\"navy\" | \"sage\" | \"slate\" | \"plum\""),
+    },
+    FieldContract {
+        name: "guidePdfIncludeNotes",
+        ty: TypeScriptType::Boolean,
+    },
 ];
 
 const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
@@ -486,6 +494,8 @@ pub fn representative_fixtures() -> Value {
             daily_new_limit: 20,
             daily_review_limit: 200,
             new_day_start_hour: 4,
+            guide_pdf_theme: "sage".to_string(),
+            guide_pdf_include_notes: true,
         },
         "completedRestore": restore.clone(),
         "librarySession": SessionStatus {

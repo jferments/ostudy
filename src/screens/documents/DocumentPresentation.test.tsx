@@ -217,7 +217,7 @@ describe("Document job presentation", () => {
     const row = await screen.findByTestId("document-row-progress");
     expect(within(row).getByText("Making a study guide")).toBeTruthy();
     expect(within(row).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("40");
-    expect(screen.queryByText("4 / 10 sections")).toBeNull();
+    expect(screen.queryByText("4 / 10 sections completed")).toBeNull();
     expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
 

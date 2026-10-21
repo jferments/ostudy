@@ -255,6 +255,7 @@ export interface NativeCommandGatewayMap {
   "preview_question_draft": readonly [typeof GatewayModule35.previewQuestionDraft];
   "preview_semantic_preparation": readonly [typeof GatewayModule23.previewSemanticPreparation];
   "preview_template_cards": readonly [typeof GatewayModule43.previewTemplateCards];
+  "read_document_figures": readonly [typeof GatewayModule14.readDocumentFigures];
   "read_document_source_asset": readonly [typeof GatewayModule40.readDocumentSourceAsset];
   "read_media_asset": readonly [typeof GatewayModule4.readMediaAsset];
   "read_practice_occlusion_image": readonly [typeof GatewayModule33.readPracticeOcclusionImage];

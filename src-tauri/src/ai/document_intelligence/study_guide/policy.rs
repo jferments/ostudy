@@ -61,14 +61,17 @@ impl WritingBudget {
     }
 
     pub(super) fn from_signals(unit_count: usize, source_chars: usize) -> Self {
-        let target_chars = 2_000usize
-            .saturating_add(unit_count.min(64).saturating_mul(120))
-            .saturating_add(source_chars.min(64_000) / 8)
-            .clamp(2_000, 12_000);
+        // A guide condenses its source to the key ideas, about a tenth of its
+        // length; the source and the flashcards keep the details. The floor
+        // leaves room for a big idea, key points and checks on a short topic.
+        let target_chars = 200usize
+            .saturating_add(unit_count.min(64).saturating_mul(4))
+            .saturating_add(source_chars.min(64_000) / 20)
+            .clamp(600, 3_000);
         Self {
             target_chars,
-            // The overview orients in a few sentences; explanations teach.
-            overview_chars: (target_chars / 8).clamp(400, 900),
+            // The overview states the big idea in two or three sentences.
+            overview_chars: (target_chars / 5).clamp(250, 500),
         }
     }
 
@@ -88,19 +91,23 @@ impl WritingBudget {
             || super::content::generated_section_char_count(section) > self.target_chars
     }
 
-    /// A section of several catalog units written at a fifth of its target
-    /// usually came back as an introduction alone (a dense table topic once
-    /// answered in 83 tokens). Such a section is worth one fresh request.
+    /// A section of several catalog units that came back as its overview
+    /// alone, with no key points, explanations or table, states none of its
+    /// key ideas (a dense table topic once answered in 83 tokens). Such a
+    /// section is worth one fresh request.
     pub(super) fn thin(self, unit_count: usize, section: &StudyGuideSectionContent) -> bool {
         unit_count >= MIN_UNITS_FOR_THIN_SECTION
-            && super::content::generated_section_char_count(section).saturating_mul(5)
-                < self.target_chars
+            && section.key_points.is_empty()
+            && section.explanations.is_empty()
+            && section.tables.is_empty()
     }
 
     pub(super) fn instructions(self) -> String {
         format!(
-            "Source-aware writing target: at most roughly {} human-readable characters across all categories. The overview orients in roughly {} characters or fewer; the explanations carry the teaching. These are flexible editorial targets, not validity limits. Give more space to mechanisms, qualifications, contrasts and necessary definitions when the evidence needs it. A section that says each fact once is usually shorter than the target; do not pad a simple topic or cut a condition to meet one. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance; never claim exhaustive coverage from a length target.",
-            self.target_chars, self.overview_chars
+            "Length guide: roughly {} words ({} characters) across all fields together, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. Models tend to write about twice what they are asked for, so stop once the key ideas are stated: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
+            self.target_chars / 6,
+            self.target_chars,
+            self.overview_chars
         )
     }
 }
@@ -111,27 +118,34 @@ mod tests {
 
     #[test]
     fn an_introduction_alone_is_thin_for_a_catalog_of_several_units() {
-        let section = |chars: usize| StudyGuideSectionContent {
-            overview: "x".repeat(chars),
+        let overview_only = StudyGuideSectionContent {
+            overview: "x".repeat(300),
             ..Default::default()
         };
+        let with_key_points = StudyGuideSectionContent {
+            key_points: vec!["A key idea stated plainly.".to_string()],
+            ..overview_only.clone()
+        };
         let budget = WritingBudget::from_signals(8, 2_400);
-        assert!(budget.thin(8, &section(300)));
-        assert!(!budget.thin(8, &section(budget.target_chars / 2)));
-        assert!(!budget.thin(3, &section(300)));
+        assert!(budget.thin(8, &overview_only));
+        assert!(!budget.thin(8, &with_key_points));
+        assert!(!budget.thin(3, &overview_only));
     }
 
     #[test]
     fn targets_follow_topic_evidence_not_document_page_count() {
         let small = WritingBudget::from_signals(1, 200);
-        let dense = WritingBudget::from_signals(13, 18_000);
+        let dense = WritingBudget::from_signals(40, 40_000);
         assert!(dense.target_chars > small.target_chars);
         assert!(dense.overview_chars > small.overview_chars);
         assert!(dense.target_chars < MAX_GENERATED_SECTION_CHARS);
         assert_eq!(
             WritingBudget::from_signals(usize::MAX, usize::MAX).target_chars,
-            12_000
+            3_000
         );
+        // About a tenth of a topic's source, not a restatement of it.
+        let typical = WritingBudget::from_signals(40, 13_000);
+        assert!(typical.target_chars * 7 < 13_000);
     }
 
     #[test]
