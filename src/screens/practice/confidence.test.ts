@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { RecentReview } from "../../ipc/analytics";
 import {
   formatConfidence,
+  formatNextInterval,
   outcomeForScore,
   summarizeRecentDecks,
 } from "./confidence";
@@ -38,6 +39,17 @@ function review(
 }
 
 describe("practice confidence helpers", () => {
+  it("formats the next interval in its short form", () => {
+    expect(formatNextInterval(20_000)).toBe("1 min");
+    expect(formatNextInterval(6 * 60_000)).toBe("6 min");
+    expect(formatNextInterval(3 * 3_600_000)).toBe("3 h");
+    expect(formatNextInterval(86_400_000)).toBe("1 day");
+    expect(formatNextInterval(4 * 86_400_000)).toBe("4 days");
+    expect(formatNextInterval(62 * 86_400_000)).toBe("2 mo");
+    expect(formatNextInterval(365 * 86_400_000)).toBe("1 yr");
+    expect(formatNextInterval(548 * 86_400_000)).toBe("1.5 yr");
+  });
+
   it("maps the visible 0-3 scale to durable review outcomes", () => {
     expect([0, 1, 2, 3].map((score) => outcomeForScore(score as 0 | 1 | 2 | 3))).toEqual(
       ["wrong", "not_confident", "somewhat_confident", "very_confident"],

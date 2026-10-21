@@ -22,7 +22,8 @@ expectContains(themeBridge, "--color-destructive-foreground: var(--ostudy-color-
 expectContains(primitive, "tw:text-primary-foreground", "Button primitive semantic accent foreground");
 expectContains(sharedControls, "tw:text-primary-foreground", "shared control semantic accent foreground");
 expectContains(practice, "tw:text-(--ostudy-color-confidence-on)", "practice confidence semantic foreground");
-expectContains(activePractice, 'variant="danger" data-practice-action="end"', "practice destructive-action semantic intent");
+// Ending a practice session keeps every rating already given, so End session is a plain action.
+expectContains(activePractice, '<Button data-practice-action="end"', "practice End session plain-action intent");
 
 for (const theme of ["light", "dark", "console", "synthwave"]) {
   const source = await read(`src/ui/tokens/generated/theme-${theme}.css`);

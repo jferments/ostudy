@@ -21,6 +21,7 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Icon } from "../../ui/icons/Icon";
 import {
   createAnnotationId,
+  isCollapsedSticky,
   isShapeTool,
   isStickyNote,
   type Annotation,
@@ -440,7 +441,15 @@ function ReadyNotebook({
         onTool={chooseTool}
         style={controller.activeStyle}
         onStyle={controller.chooseStyle}
-        selection={selected ? { isText: selected.shape.kind === "text", isSticky: isStickyNote(selected.shape) } : null}
+        selection={selected ? {
+          isText: selected.shape.kind === "text",
+          isSticky: isStickyNote(selected.shape),
+          isCollapsed: isCollapsedSticky(selected.shape),
+        } : null}
+        onToggleCollapsed={() => {
+          const page = selected ? pages[selected.pageNumber - 1] : undefined;
+          if (page) controller.toggleStickyCollapsed(page);
+        }}
         onDeleteSelection={controller.deleteSelected}
         onEditSelection={() => {
           if (!selected) return;

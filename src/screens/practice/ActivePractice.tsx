@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { TutorEntryButton } from "../tutor/TutorEntryButton";
 import {
   isInteractivePracticePresentation,
@@ -27,7 +27,7 @@ import { cn } from "../../ui/internal/cn";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { practiceStyles as view, scoreTones } from "./presentation";
 import styles from "./PracticeCard.module.css";
-import type { ConfidenceScore } from "./confidence";
+import { formatNextInterval, outcomeForScore, type ConfidenceScore } from "./confidence";
 import { InteractiveQuestionActivity } from "./InteractiveQuestionActivity";
 import { RecallCardSurface } from "./RecallCardSurface";
 
@@ -209,7 +209,7 @@ export function ActivePractice({
             <OverflowMenu label="Schedule" triggerIcon="timer" disabled={busy} items={scheduleItems} />
             <Button variant="ghost" disabled={busy} onClick={onEdit}><Icon name="edit" size={16} />Edit card</Button>
           </>}
-          <Button variant="danger" data-practice-action="end" className={view.endAction} disabled={busy} onClick={onEnd}>{isEnding ? "Ending…" : "End session"}</Button>
+          <Button data-practice-action="end" className={view.endAction} disabled={busy} onClick={onEnd}>{isEnding ? "Ending…" : "End session"}</Button>
         </div>
       </div>
       <Progress size="small" label="Practice session progress" value={studiedCount} max={cardCount}
@@ -229,20 +229,17 @@ export function ActivePractice({
           {isRevealing ? "Calculating intervals…" : "Show answer"}
         </Button> : <section ref={ratingPanelRef} tabIndex={-1} className={view.ratingGroup}
           aria-labelledby="confidence-rating-heading" data-tour-anchor="practice.confidence">
-          <h2 id="confidence-rating-heading" className={view.ratingHeading}>
+          <h2 id="confidence-rating-heading" className={objectiveCorrect === false ? view.ratingHeading : "tw:sr-only"}>
             {objectiveCorrect === false ? "First answer recorded as wrong" : "How difficult was that answer?"}
           </h2>
-          {objectiveCorrect === false ? <p className={view.ratingNote}>
-            Continue with Wrong. The checked result remains immutable even if you practice the item again.
-          </p> : null}
           {!previewSet ? <Button className={view.ratingRetry} disabled={busy} onClick={onReveal}>
             {isRevealing ? "Calculating intervals…" : "Retry interval preview"}
           </Button> : null}
           <div className={view.ratingButtons}>
-            <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
-            <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
-            <ConfidenceButton score={2} label="Medium" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
-            <ConfidenceButton score={3} label="Easy" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
+            <ConfidenceButton score={0} label="Wrong" interval={intervalFor(previewSet, 0)} disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
+            <ConfidenceButton score={1} label="Hard" interval={intervalFor(previewSet, 1)} disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
+            <ConfidenceButton score={2} label="Medium" interval={intervalFor(previewSet, 2)} disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(2)} />
+            <ConfidenceButton score={3} label="Easy" interval={intervalFor(previewSet, 3)} disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(3)} />
           </div>
         </section>}
       </div>
@@ -252,17 +249,28 @@ export function ActivePractice({
 
 /** Each rating is tinted with its confidence color; the solid key carries the color and the
  * number that is its keyboard shortcut. */
-function ConfidenceButton({ score, label, disabled, onClick }: {
+function ConfidenceButton({ score, label, interval, disabled, onClick }: {
   score: ConfidenceScore;
   label: string;
+  interval: string | null;
   disabled: boolean;
   onClick: () => void;
 }) {
+  const intervalId = useId();
   return <Button className={cn(view.ratingButton, scoreTones[score])} disabled={disabled}
-    aria-label={`${score} ${label}`} aria-keyshortcuts={String(score)} onClick={onClick}>
-    <span className={view.ratingKey} aria-hidden="true">{score}</span>
-    <span className={view.ratingName}>{label}</span>
+    aria-label={`${score} ${label}`} aria-describedby={interval ? intervalId : undefined}
+    aria-keyshortcuts={String(score)} onClick={onClick}>
+    <span className={view.ratingLine}>
+      <span className={view.ratingKey} aria-hidden="true">{score}</span>
+      <span className={view.ratingName}>{label}</span>
+    </span>
+    {interval ? <span id={intervalId} className={view.ratingInterval} data-rating-interval="">{interval}</span> : null}
   </Button>;
+}
+
+function intervalFor(previewSet: ReviewPreviewSet | null, score: ConfidenceScore): string | null {
+  const preview = previewSet?.previews.find((candidate) => candidate.outcome === outcomeForScore(score));
+  return preview ? formatNextInterval(preview.intervalMs) : null;
 }
 
 function unavailableSave(_input: SavePracticeAnswerInput): Promise<QuestionAttemptView> {

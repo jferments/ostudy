@@ -116,7 +116,8 @@ pub struct Frame {
 /// Typed text whose lines wrap at `width`; its height follows the text. A
 /// sticky note (`sticky: true`) is drawn as a small note of `width` showing
 /// the start of its text, opens to all of it, and may hold longer text;
-/// `color` is then the note's paper.
+/// `color` is then the note's paper. A sticky note may be `collapsed: true`,
+/// shown as a small icon that keeps all of its text.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextNote {
@@ -128,6 +129,8 @@ pub struct TextNote {
     pub font_size: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sticky: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collapsed: Option<bool>,
     /// Only on a notebook page: the note is a link, and `text` is its label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<NoteLink>,
@@ -246,6 +249,14 @@ impl AnnotationShape {
                         ))
                     }
                 };
+                match (note.collapsed, note.sticky) {
+                    (None, _) | (Some(true), Some(true)) => {}
+                    _ => {
+                        return Err(invalid(
+                            "Only a sticky note can be collapsed, and only marked when it is.",
+                        ))
+                    }
+                }
                 if note.text.chars().count() > limit {
                     return Err(invalid(format!(
                         "A text note can hold up to {limit} characters."

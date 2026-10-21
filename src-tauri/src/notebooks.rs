@@ -1,7 +1,7 @@
 //! Notebooks: a learner's own pages of paper, drawn and typed on with the
 //! annotator's tools.
 //!
-//! A notebook (release schema 15) is filed in a subject like a deck or a
+//! A notebook (release schema 16) is filed in a subject like a deck or a
 //! document, or in No subject. Its pages are ordered by `position` and each has
 //! its own paper and size in points. Every mark on a page is one
 //! `notebook_items` row, validated by the same rules as a document annotation

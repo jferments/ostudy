@@ -16,6 +16,7 @@ pub(crate) enum Kind {
     GuideEditorial,
     CurationSelection,
     Lesson,
+    LectureScript,
 }
 
 impl Kind {
@@ -26,6 +27,7 @@ impl Kind {
             Self::GuideEditorial => "guide_editorial",
             Self::CurationSelection => "flashcard_curation",
             Self::Lesson => "lesson_authoring",
+            Self::LectureScript => "lecture_authoring",
         }
     }
 
@@ -36,6 +38,7 @@ impl Kind {
             Self::GuideEditorial => "guide_editorials",
             Self::CurationSelection => "curation_selections",
             Self::Lesson => "lessons",
+            Self::LectureScript => "lecture_scripts",
         }
     }
 }

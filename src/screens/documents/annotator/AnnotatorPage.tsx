@@ -15,6 +15,7 @@ import {
   MAX_TEXT_CHARS,
   shapeBounds,
   STICKY_HEIGHT,
+  STICKY_ICON_SIZE,
   TEXT_LINE_HEIGHT,
   TEXT_PADDING,
   type Annotation,
@@ -328,7 +329,7 @@ const STICKY_PADDING = 6;
 /**
  * A sticky note on the page: a small square of paper in the note's color, with
  * a folded corner and the first lines of its text. The whole text opens in a
- * dialog.
+ * dialog. A collapsed note is only a small icon of paper, to fit in a margin.
  */
 const StickyNote = memo(function StickyNote({ annotation, opacity, open = false }: {
   annotation: Annotation;
@@ -337,6 +338,25 @@ const StickyNote = memo(function StickyNote({ annotation, opacity, open = false 
 }) {
   if (!isStickyNote(annotation.shape)) return null;
   const { x, y, width, color, fontSize, text } = annotation.shape;
+  if (annotation.shape.collapsed) {
+    return (
+      <div
+        aria-hidden="true"
+        data-sticky-note=""
+        data-collapsed=""
+        className={cn(
+          "tw:absolute tw:box-border tw:flex tw:flex-col tw:justify-center tw:gap-[2px] tw:rounded-[2px] tw:px-[4px] tw:shadow-sm",
+          open && "tw:outline-2 tw:outline-primary tw:outline-dashed",
+        )}
+        style={{ left: x, top: y, width: STICKY_ICON_SIZE, height: STICKY_ICON_SIZE, opacity, backgroundColor: color }}
+      >
+        {/* Lines of writing, so the icon reads as a note. */}
+        {[1, 0.75, 1].map((share, index) => (
+          <span key={index} className="tw:block tw:h-[1.5px] tw:bg-[var(--ostudy-color-neutral-950)]/50" style={{ width: `${share * 100}%` }} />
+        ))}
+      </div>
+    );
+  }
   const lineHeight = fontSize * TEXT_LINE_HEIGHT;
   const lines = Math.max(1, Math.floor((STICKY_HEIGHT - STICKY_PADDING * 2) / lineHeight));
   return (

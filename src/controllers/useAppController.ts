@@ -988,7 +988,7 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     tutorialsEnabled: settings.tutorialsEnabled ?? false,
     confirmDeletions: settings.confirmDeletions,
     practiceShuffle: settings.practiceShuffle,
-    displayQuestionOnAnswer: settings.displayQuestionOnAnswer ?? false,
+    displayQuestionOnAnswer: settings.displayQuestionOnAnswer ?? true,
     desiredRetention: settings.desiredRetention,
     dailyNewLimit: settings.dailyNewLimit,
     dailyReviewLimit: settings.dailyReviewLimit,

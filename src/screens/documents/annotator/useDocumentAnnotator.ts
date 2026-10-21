@@ -35,6 +35,7 @@ import {
   styleFamilyForTool,
   STICKY_HEIGHT,
   STICKY_WIDTH,
+  stickyHeight,
   TEXT_LINE_HEIGHT,
   type Annotation,
   type AnnotatorTool,
@@ -85,7 +86,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
   const [history, setHistoryState] = useState<AnnotationHistory>(EMPTY_HISTORY);
   const historyRef = useRef(history);
   const [selection, setSelection] = useState<{ id: string; pageNumber: number } | null>(null);
-  /** What the lasso took: one page's annotations. Selecting one annotation drops it. */
+  /** What the lasso or a Select rectangle took: one page's annotations. Selecting one annotation drops it. */
   const [lassoed, setLassoed] = useState<{ ids: readonly string[]; pageNumber: number } | null>(null);
   const [tool, setToolState] = useState<AnnotatorTool>("pen");
   const [styles, setStyles] = useState<ToolStyles>(DEFAULT_STYLES);
@@ -185,7 +186,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
 
   const textHeight = useCallback((annotation: Annotation): number => {
     if (annotation.shape.kind !== "text") return 0;
-    if (isStickyNote(annotation.shape)) return STICKY_HEIGHT;
+    if (isStickyNote(annotation.shape)) return stickyHeight(annotation.shape);
     const measured = textHeights.current.get(annotation.id);
     return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
   }, []);
@@ -290,7 +291,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
   const setTool = useCallback((next: AnnotatorTool) => {
     finishEditing();
     if (next !== "select") setSelection(null);
-    if (next !== "lasso") setLassoed(null);
+    if (next !== "lasso" && next !== "select") setLassoed(null);
     setToolState(next);
   }, [finishEditing]);
 
@@ -317,6 +318,23 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     if (!selected) return;
     commit([{ id: selected.id, before: selected, after: null }]);
     setSelection(null);
+  }, [commit, selected]);
+
+  /**
+   * Folds the selected sticky note down to its icon, or opens it back out,
+   * kept on the page, as one step to undo.
+   */
+  const toggleStickyCollapsed = useCallback((page: { width: number; height: number }) => {
+    if (!selected || !isStickyNote(selected.shape)) return;
+    const { collapsed, ...open } = selected.shape;
+    const shape: TextShape = collapsed
+      ? {
+        ...open,
+        x: Math.round(Math.max(0, Math.min(open.x, page.width - open.width)) * 100) / 100,
+        y: Math.round(Math.max(0, Math.min(open.y, page.height - STICKY_HEIGHT)) * 100) / 100,
+      }
+      : { ...open, collapsed: true };
+    commit([{ id: selected.id, before: selected, after: { ...selected, shape } }]);
   }, [commit, selected]);
 
   const deleteGroup = useCallback(() => {
@@ -409,6 +427,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     group,
     selectGroup,
     deleteGroup,
+    toggleStickyCollapsed,
     moveGroup,
     nudgeGroup,
     tool,

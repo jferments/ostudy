@@ -184,6 +184,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             color: "#111111".into(),
             font_size: 12.0,
             sticky: None,
+            collapsed: None,
             link: None,
         }),
         AnnotationShape::Text(TextNote {
@@ -194,6 +195,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             color: "#fde047".into(),
             font_size: 10.0,
             sticky: Some(true),
+            collapsed: None,
             link: None,
         }),
     ]
@@ -284,6 +286,7 @@ fn shapes_outside_their_limits_are_refused() {
             color: "#000000".into(),
             font_size,
             sticky: None,
+            collapsed: None,
             link: None,
         })
     };
@@ -757,6 +760,7 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
             color: "#fde047".into(),
             font_size: 10.0,
             sticky,
+            collapsed: None,
             link: None,
         })
     };
@@ -770,4 +774,31 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
     // A plain note stores no marker, so builds before sticky notes still read it.
     let plain = note("Plain".into(), None).payload_json().unwrap();
     assert!(!plain.contains("sticky"), "{plain}");
+    assert!(!plain.contains("collapsed"), "{plain}");
+}
+
+#[test]
+fn only_a_sticky_note_can_be_collapsed() {
+    let note = |sticky: Option<bool>, collapsed: Option<bool>| {
+        AnnotationShape::Text(TextNote {
+            x: 1.0,
+            y: 1.0,
+            width: 120.0,
+            text: "Folded".into(),
+            color: "#fde047".into(),
+            font_size: 10.0,
+            sticky,
+            collapsed,
+            link: None,
+        })
+    };
+    let folded = note(Some(true), Some(true));
+    folded.validate().unwrap();
+    assert!(folded
+        .payload_json()
+        .unwrap()
+        .contains("\"collapsed\":true"));
+    note(Some(true), None).validate().unwrap();
+    assert!(note(None, Some(true)).validate().is_err());
+    assert!(note(Some(true), Some(false)).validate().is_err());
 }
