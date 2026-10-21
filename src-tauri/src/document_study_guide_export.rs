@@ -33,7 +33,9 @@ mod guide_typst;
 mod math_layout;
 mod math_source;
 
-pub(crate) use guide_typst::{plain_sans_font, StudyGuidePdfTheme};
+pub(crate) use guide_typst::{
+    compile_template_svgs, plain_sans_font, runs as rich_runs, StudyGuidePdfTheme,
+};
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const MAX_EXPORT_SECTIONS: usize = 512;
@@ -59,6 +61,26 @@ pub(crate) struct PrepareCollectionStudyGuidePdfInput {
     pub include_annotations: bool,
     #[serde(default)]
     pub theme: StudyGuidePdfTheme,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GetStudyGuideSectionPageInput {
+    pub document_id: String,
+    pub topic_id: String,
+    #[serde(default)]
+    pub theme: StudyGuidePdfTheme,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StudyGuideSectionPageDto {
+    pub document_id: String,
+    pub topic_id: String,
+    pub guide_revision: i64,
+    pub theme: StudyGuidePdfTheme,
+    /// The section's designed page as a standalone SVG.
+    pub svg: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -104,6 +126,8 @@ struct EffectiveExportChapter {
 
 #[derive(Clone, Debug)]
 struct EffectiveExportSection {
+    /// The document guide's topic id or the collection guide's block key.
+    key: String,
     title: String,
     source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
@@ -317,6 +341,71 @@ pub(crate) fn prepare_collection_study_guide_pdf(
     })
 }
 
+/// One section of a document's study guide as the reader's designed page, set
+/// in the PDF export's theme. Read-only: nothing is stored, and the reader
+/// falls back to its plain page when this fails.
+#[tauri::command]
+pub(crate) async fn get_document_study_guide_section_page(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: GetStudyGuideSectionPageInput,
+) -> Result<StudyGuideSectionPageDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || read_section_page(&database, &paths, input))
+        .await
+        .map_err(|error| {
+            CommandError::new(
+                "study_guide_page_layout_failed",
+                format!("Could not lay out the designed study-guide page: {error}"),
+            )
+        })?
+}
+
+fn read_section_page(
+    database: &Database,
+    paths: &AppPaths,
+    input: GetStudyGuideSectionPageInput,
+) -> Result<StudyGuideSectionPageDto, CommandError> {
+    let effective = load_effective_export(database, paths, &input.document_id, false)?;
+    let (section, number) = reading_order(&effective)
+        .into_iter()
+        .enumerate()
+        .find_map(|(position, index)| {
+            let section = &effective.sections[index];
+            (section.key == input.topic_id).then(|| (section, (position + 1).to_string()))
+        })
+        .ok_or_else(|| {
+            CommandError::new(
+                "document_study_guide_section_not_found",
+                "That section is no longer in the study guide.",
+            )
+        })?;
+    let svg = guide_typst::section_page_svg(section, &number, input.theme)?;
+    Ok(StudyGuideSectionPageDto {
+        document_id: input.document_id,
+        topic_id: input.topic_id,
+        guide_revision: effective.guide_revision,
+        theme: input.theme,
+        svg,
+    })
+}
+
+/// Section indices in the order the reader numbers them: by chapter when the
+/// guide has an editorial organization, otherwise as generated.
+fn reading_order(export: &EffectiveGuideExport) -> Vec<usize> {
+    if export.chapters.is_empty() {
+        (0..export.sections.len()).collect()
+    } else {
+        export
+            .chapters
+            .iter()
+            .flat_map(|chapter| chapter.section_indices.iter().copied())
+            .collect()
+    }
+}
+
 // Old prepared exports did not record math presentation. Warn conservatively
 // on replay rather than claiming they contain typeset equations.
 fn legacy_math_fallback() -> bool {
@@ -435,6 +524,7 @@ fn compose_effective_export(
             Vec::new()
         };
         sections.push(EffectiveExportSection {
+            key: section.topic_id.clone(),
             title,
             source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
@@ -584,6 +674,7 @@ fn compose_effective_collection_export(
             Vec::new()
         };
         sections.push(EffectiveExportSection {
+            key: section.block_key.clone(),
             title,
             source_locator: section.source_locator.clone(),
             body_lines: body_override.map_or_else(
@@ -844,6 +935,7 @@ mod tests {
             guide_notes: vec!["Review this before lab.".to_string()],
             chapters: Vec::new(),
             sections: vec![EffectiveExportSection {
+                key: "topic-preload".to_string(),
                 title: "Preload".to_string(),
                 source_locator: Some(
                     SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
@@ -873,6 +965,7 @@ mod tests {
 
     fn rich_section(title: &str) -> EffectiveExportSection {
         EffectiveExportSection {
+            key: format!("topic-{title}"),
             title: title.to_string(),
             source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
             body_lines: vec![
@@ -1000,6 +1093,48 @@ mod tests {
     }
 
     #[test]
+    fn live_section_pages_set_the_body_in_every_theme_without_terms_or_checks() {
+        let mut section = rich_section("Afterload");
+        section
+            .body_lines
+            .insert(4, ExportBlock::Heading("Important terms".into()));
+        for theme in [
+            StudyGuidePdfTheme::Navy,
+            StudyGuidePdfTheme::Sage,
+            StudyGuidePdfTheme::Slate,
+            StudyGuidePdfTheme::Plum,
+        ] {
+            let svg = guide_typst::section_page_svg(&section, "3", theme).unwrap();
+            assert!(svg.starts_with("<svg"), "{theme:?}");
+            assert!(svg.contains("viewBox=\"0 0 538"), "{theme:?}");
+        }
+        let blocks = guide_typst::live_blocks(&section.body_lines);
+        assert!(blocks.iter().all(|block| !matches!(
+            block,
+            ExportBlock::Terms(_) | ExportBlock::RetrievalCheck { .. }
+        )));
+        assert!(!blocks
+            .iter()
+            .any(|block| matches!(block, ExportBlock::Heading(text) if text == "Important terms")));
+        assert!(blocks
+            .iter()
+            .any(|block| matches!(block, ExportBlock::Heading(text) if text == "Key points")));
+    }
+
+    #[test]
+    fn reading_order_numbers_sections_by_chapter() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        assert_eq!(reading_order(&export), vec![0, 1]);
+        export.chapters = vec![EffectiveExportChapter {
+            title: "Loads".into(),
+            introduction: String::new(),
+            section_indices: vec![1, 0],
+        }];
+        assert_eq!(reading_order(&export), vec![1, 0]);
+    }
+
+    #[test]
     fn source_labels_use_natural_unit_names() {
         let page = SourceLocator::new(SourceUnitKind::Page, vec![3], None).unwrap();
         let slides = SourceLocator::new(SourceUnitKind::Slide, vec![4, 5], None).unwrap();
@@ -1085,6 +1220,7 @@ mod tests {
         let mut export = test_export();
         export.document_title = "Cardiovascular drugs".to_string();
         export.sections.push(EffectiveExportSection {
+            key: "topic-raas".to_string(),
             title: "Renin–angiotensin system".to_string(),
             source_locator: Some(
                 SourceLocator::new(SourceUnitKind::Page, vec![18, 19], None).unwrap(),
