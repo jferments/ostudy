@@ -12,6 +12,7 @@ vi.mock("../../ipc/podcasts", () => ({ getPodcast: vi.fn(), narratePodcastTurn: 
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(),
   revokeManagedMediaObjectUrl: vi.fn(),
+  playbackErrorMessage: (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
 }));
 
 const podcast: Podcast = {

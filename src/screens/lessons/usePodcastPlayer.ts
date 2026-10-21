@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getErrorMessage } from "../../ipc/common";
 import { narratePodcastTurn, type Podcast, type PodcastTurn } from "../../ipc/podcasts";
-import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
+import {
+  createManagedMediaObjectUrl,
+  playbackErrorMessage,
+  revokeManagedMediaObjectUrl,
+} from "../../media/managedPlayback";
 
 export type PodcastPlayback = "idle" | "preparing" | "playing" | "paused";
 
@@ -73,7 +76,7 @@ export function usePodcastPlayer(podcast: Podcast | null) {
 
   const fail = (id: number, failure: unknown) => {
     if (id !== run.current) return;
-    setError(getErrorMessage(failure));
+    setError(playbackErrorMessage(failure));
     setPlayback("idle");
   };
 

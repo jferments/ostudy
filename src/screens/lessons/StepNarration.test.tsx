@@ -12,6 +12,7 @@ vi.mock("../../ipc/lessons", () => ({ narrateLessonStep: vi.fn() }));
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(),
   revokeManagedMediaObjectUrl: vi.fn(),
+  playbackErrorMessage: (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
 }));
 
 const first = "1".repeat(32);
