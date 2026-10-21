@@ -56,6 +56,7 @@ vi.mock("../../ipc/externalFiles", () => ({
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(),
   revokeManagedMediaObjectUrl: vi.fn(),
+  playbackErrorMessage: (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
 }));
 
 const lecture: Lecture = {
