@@ -11,6 +11,8 @@ export interface InkShape {
   strokeWidth: number;
   /** Set when the input reported no pressure: the stroke is drawn from its speed instead. */
   simulatePressure: boolean;
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
 }
 
 export interface HighlightShape {
@@ -23,6 +25,8 @@ export interface HighlightShape {
   rects?: number[];
   /** The words a text highlight covers. */
   text?: string;
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
 }
 
 /** How a line or outline is broken up; a solid line leaves `dash` out. */
@@ -40,6 +44,10 @@ export interface SegmentShape {
   dash?: LineDash;
   /** Only on an arrow. */
   bothEnds?: true;
+  /** A curve: the control points `[x1, y1, x2, y2]` of a cubic Bézier from the first end to the second. */
+  curve?: [number, number, number, number];
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
 }
 
 /** The outline of a rectangle, or of the ellipse inside it, filled with `fill` if it has one. */
@@ -55,6 +63,8 @@ export interface FrameShape {
   fill?: string;
   /** `false` drops the outline of a filled shape. */
   border?: false;
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
 }
 
 /** Typed text that wraps at `width`; its height follows the text. */
@@ -72,6 +82,8 @@ export interface TextShape {
   collapsed?: true;
   /** Only on a notebook page: the note is a link, and `text` is its label. */
   link?: NoteLink;
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
 }
 
 /** What a link on a notebook page opens. Targets are looked up when the notebook opens. */

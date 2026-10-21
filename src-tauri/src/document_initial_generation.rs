@@ -577,7 +577,6 @@ pub(crate) async fn ensure_document_derivatives(
         let database_owned = database.clone();
         let paths_owned = paths.clone();
         let source_owned = source_path.clone();
-        let figure_runtime = render_runtime.clone();
         let id_owned = document_id.to_string();
         let (progress_sender, mut progress_receiver) =
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
@@ -630,21 +629,6 @@ pub(crate) async fn ensure_document_derivatives(
             )
         })??;
         document_ingestion::persist_ingested_document(database, document_id, &processed)?;
-        if format == DocumentFormat::Pdf {
-            // Figures are found beside generation, which does not wait for them.
-            let database = database.clone();
-            let document_id = document_id.to_string();
-            let source_path = source_path.clone();
-            tauri::async_runtime::spawn(async move {
-                crate::document_figures::find_after_ingestion(
-                    &database,
-                    figure_runtime,
-                    &document_id,
-                    source_path,
-                )
-                .await;
-            });
-        }
         stored = load_context(database, document_id)?;
     }
     Ok(stored)

@@ -14,9 +14,7 @@ import {
   startDocumentFlashcardGeneration,
   type DocumentGenerationProgress,
   type DocumentSummary,
-  type ImportDocumentOptions,
 } from "../ipc/documents";
-import type { StagedExternalFile } from "../ipc/externalFiles";
 import {
   cancelDocumentStudyGuideGeneration,
   generateDocumentStudyGuide,
@@ -321,8 +319,6 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     generationInstructions?: string,
     /** Runs once the document is saved, before its processing starts, such as to file it in a subject. */
     onImported?: (documentId: string) => Promise<unknown>,
-    /** Asks how to import the chosen file; `null` leaves it unimported. */
-    chooseOptions?: (selected: StagedExternalFile) => Promise<ImportDocumentOptions | null>,
   ): Promise<void> {
     if (selectingFile.current) return;
     selectingFile.current = true;
@@ -343,12 +339,10 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       if (alive.current) setIsUploading(false);
     }
     if (!selected) return;
-    const options = chooseOptions ? await chooseOptions(selected) : {};
-    if (!options) return;
 
     let documentId: string | null = null;
     try {
-      const imported = await importDocument(selected.id, options);
+      const imported = await importDocument(selected.id);
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
       await onImported?.(documentId);

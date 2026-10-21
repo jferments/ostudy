@@ -195,6 +195,19 @@ export function ShapeLookChoices({ style, onStyle, layout }: {
           </ToolbarAction>
         </Toolbar>
       )) : null}
+      {shape === "curve" ? section("Arrowheads", (
+        <Toolbar label="Arrowheads" className="tw:flex-nowrap tw:gap-1">
+          <ToolbarAction label="No arrowheads" pressed={(style.style.heads ?? "none") === "none"} onClick={() => onStyle({ heads: "none" })}>
+            <LineSample />
+          </ToolbarAction>
+          <ToolbarAction label="Head at one end" pressed={style.style.heads === "end"} onClick={() => onStyle({ heads: "end" })}>
+            <LineSample oneEnd />
+          </ToolbarAction>
+          <ToolbarAction label="Heads at both ends" pressed={style.style.heads === "both"} onClick={() => onStyle({ heads: "both" })}>
+            <LineSample bothEnds />
+          </ToolbarAction>
+        </Toolbar>
+      )) : null}
       {frame ? section("Fill", (
         <div className="tw:flex tw:flex-nowrap tw:items-center tw:gap-2">
           <Toolbar label="Fill" className="tw:flex-nowrap tw:gap-1">

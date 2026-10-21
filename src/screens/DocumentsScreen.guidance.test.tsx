@@ -96,7 +96,7 @@ describe("Documents guidance through the application controller", () => {
     await waitFor(() => expect(documentIpc.startDocumentFlashcardGeneration)
       .toHaveBeenCalledWith(documentId, undefined));
     expect(documentIpc.importDocument).toHaveBeenCalledTimes(1);
-    expect(documentIpc.importDocument).toHaveBeenCalledWith(stagedId, {});
+    expect(documentIpc.importDocument).toHaveBeenCalledWith(stagedId);
     expect(platformFiles.selectExternalImport).toHaveBeenCalledTimes(1);
     expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();

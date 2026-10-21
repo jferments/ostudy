@@ -149,7 +149,7 @@ Synchronization never inherits every SQLite table automatically. The sender crea
 
 Subjects (`document_collections` and the document filing revision) travel with Flashcards or Documents, so decks and documents keep their `subject_id` with either category alone; only a package with neither removes them. The **Check these** list (`subject_filing_reviews`) is device-local and never travels.
 
-Some learner state stays on the device that made it whatever the selection: PDF page annotations (`document_annotations`) until sync defines how two devices' marks combine, the figures found in a PDF and the learner's choice to use its images (`document_figure_scans`, `document_figures`, `document_figure_passages`, `document_figure_readings`), which each desktop finds again from the same PDF, a subject's lessons and lesson progress because the package does not carry the knowledge units they are written from, Tutor and shared-knowledge state, editor drafts, and the rebuildable per-deck review rollups (`review_day_rollups`). A whole-library backup is a snapshot of the library and keeps them.
+Some learner state stays on the device that made it whatever the selection: PDF page annotations (`document_annotations`) until sync defines how two devices' marks combine, a subject's lessons and lesson progress because the package does not carry the knowledge units they are written from, Tutor and shared-knowledge state, editor drafts, and the rebuildable per-deck review rollups (`review_day_rollups`). A whole-library backup is a snapshot of the library and keeps them.
 
 Flashcards, Documents, and Study Guides default on. API provider settings and Saved API keys default off. Native validation rejects empty selections and invalid dependency combinations.
 

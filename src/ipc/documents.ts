@@ -176,17 +176,9 @@ export async function getNoteSourceCitation(noteId: string): Promise<SourceCitat
   return invoke<SourceCitation | null>("get_note_source_citation", { noteId });
 }
 
-export interface ImportDocumentOptions {
-  /** Find and use a PDF's figures; a PDF imported without a choice uses them. */
-  useImages?: boolean;
-}
-
-export async function importDocument(
-  stagedFileId: string,
-  options: ImportDocumentOptions = {},
-): Promise<ImportedDocument> {
+export async function importDocument(stagedFileId: string): Promise<ImportedDocument> {
   return invoke<ImportedDocument>("import_document", {
-    input: options.useImages === undefined ? { stagedFileId } : { stagedFileId, useImages: options.useImages },
+    input: { stagedFileId },
   });
 }
 
