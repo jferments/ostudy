@@ -1,7 +1,7 @@
 //! Ink on study materials: what a learner writes and draws on a lesson's
 //! lecture slides and on a document study guide's designed section pages.
 //!
-//! Every mark is one `material_ink` row (release schema 19) on one page of one
+//! Every mark is one `material_ink` row (release schema 21) on one page of one
 //! material, validated by the same rules as a document annotation
 //! (`AnnotationShape`). A lesson's pages are its slide keys and a guide's are
 //! its sections' topic ids; the designed pages are laid out natively, so marks
