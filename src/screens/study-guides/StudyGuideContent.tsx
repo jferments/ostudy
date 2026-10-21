@@ -43,6 +43,8 @@ export interface StudyGuideStructuredContentProps {
    * blocks stay for screen readers and the check questions stay interactive below it.
    */
   designedPage?: DesignedSectionPage;
+  /** Drawn over the designed page, at its size: the learner's marks. */
+  designedOverlay?: ReactNode;
 }
 
 type Level = 2 | 3 | 4 | 5;
@@ -78,6 +80,7 @@ export function StudyGuideStructuredContent({
   checkProgress,
   onCheckProgressChange,
   designedPage = null,
+  designedOverlay = null,
 }: StudyGuideStructuredContentProps) {
   const generatedId = `guide-block-${useId().replaceAll(":", "")}`;
   const prefix = idPrefix ?? generatedId;
@@ -95,7 +98,10 @@ export function StudyGuideStructuredContent({
       {designedPage === "loading" ? (
         <div aria-hidden="true" className="tw:aspect-[3/4] tw:w-full tw:rounded-md tw:bg-card tw:ring-1 tw:ring-border" />
       ) : designedPage !== null ? (
-        <img src={designedPage} alt="" className="tw:block tw:h-auto tw:w-full tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border" />
+        <div className="tw:relative tw:overflow-hidden tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border">
+          <img src={designedPage.url} alt="" className="tw:block tw:h-auto tw:w-full" />
+          {designedOverlay}
+        </div>
       ) : null}
       {/* The designed page is a picture of these blocks, which stay for screen readers. */}
       <div className={designedPage === null ? "tw:contents" : "tw:sr-only"}>

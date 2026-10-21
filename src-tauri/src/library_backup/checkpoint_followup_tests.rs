@@ -104,6 +104,7 @@ fn kept(connection: &Connection) -> Kept {
         "document_figure_passages",
         "document_figure_readings",
         "notebook_item_assets",
+        "material_ink",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");

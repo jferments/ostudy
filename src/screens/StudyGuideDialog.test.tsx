@@ -5,6 +5,7 @@ import { requiredTestValue as required } from "../test/factories";
 import { layoutWidths, matchesLayoutQuery, type ViewportLayout } from "../test/viewport";
 import type { ShowToast } from "../components/Toast";
 import { openDocumentSource } from "../ipc/documents";
+import { getMaterialInk } from "../ipc/materialInk";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import {
@@ -14,6 +15,7 @@ import {
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
+  getDocumentStudyGuideSectionPage,
   prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
@@ -45,10 +47,21 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentStudyGuide: vi.fn(),
     getDocumentTopicCardIds: vi.fn(),
     getDocumentTopicCardProjection: vi.fn(),
+    getDocumentStudyGuideSectionPage: vi.fn(),
     prepareDocumentStudyGuidePdf: vi.fn(),
     saveDocumentStudyGuideOverlay: vi.fn(),
   };
 });
+
+vi.mock("../ipc/materialInk", () => ({ getMaterialInk: vi.fn() }));
+vi.mock("./ink/InkEditor", () => ({
+  InkEditor: ({ title, pages, onClose }: { title: string; pages: { key: string; width: number; height: number }[]; onClose: () => void }) => (
+    <div>
+      <p>Writing on {title}, {pages.map((page) => `${page.width} by ${page.height}`).join()}</p>
+      <button type="button" onClick={onClose}>Back to the guide</button>
+    </div>
+  ),
+}));
 
 vi.mock("../ipc/studyGuideReading", () => ({
   getStudyGuideReading: vi.fn(),
@@ -372,6 +385,9 @@ function readingStore(initial: Partial<StudyGuideReading> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Sections read as plain pages unless a test lays one out.
+  vi.mocked(getDocumentStudyGuideSectionPage).mockRejectedValue(new Error("no layout in tests"));
+  vi.mocked(getMaterialInk).mockResolvedValue([]);
   vi.mocked(getSettings).mockResolvedValue({} as AppSettings);
   onPracticeCards.mockClear();
   mockedCancel.mockResolvedValue(undefined);
@@ -713,6 +729,28 @@ describe("StudyGuideDialog", () => {
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
     expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Add note", "Edit or rewrite this section"]);
+  });
+
+  it("writes on a section's designed page and draws the marks over it", async () => {
+    vi.mocked(getDocumentStudyGuideSectionPage).mockResolvedValue({
+      documentId, topicId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 700" xmlns="http://www.w3.org/2000/svg"/>',
+    });
+    vi.mocked(getMaterialInk).mockResolvedValue([{
+      id: "m".repeat(32), pageKey: topicId, revision: 1, createdAt: 1, updatedAt: 1,
+      shape: { kind: "line", x1: 10, y1: 10, x2: 200, y2: 90, color: "#d64545", strokeWidth: 3 },
+    }]);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+
+    await openSection("Preload");
+    await waitFor(() => expect(document.querySelector("[data-ink-overlay]")).toBeTruthy());
+    expect(getMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId });
+    await chooseFromMenu(screen.getByRole("button", { name: "Section actions for Preload" }), "Write on this page");
+    expect(await screen.findByText("Writing on Preload, 538.58 by 700")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the guide" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Preload" })).toBeTruthy();
   });
 
   it("reopens on the section last opened and records each section opened", async () => {
