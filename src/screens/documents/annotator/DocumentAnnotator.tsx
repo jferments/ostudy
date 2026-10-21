@@ -20,6 +20,7 @@ import { AnnotatorToolbar } from "./AnnotatorToolbar";
 import { MarkCardEditor, type CardMark } from "./MarkCardEditor";
 import { useAnnotatedPdfExport } from "./useAnnotatedPdfExport";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "./useAnnotatorViewport";
+import { useTextFormat } from "./textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "./useDocumentAnnotator";
 
 interface DocumentAnnotatorProps {
@@ -217,6 +218,7 @@ function ReadyAnnotator({
   const focusMark = cited !== null && focusAnnotationId
     ? controller.annotations.get(cited)?.find((annotation) => annotation.id === focusAnnotationId) ?? null
     : null;
+  const textFormat = useTextFormat(controller);
   const { select, setTool, textHeight } = controller;
   // Once the pages have their size, the view goes to the card's mark and selects
   // it, or, without one, to the cited page, which is outlined for a moment.
@@ -338,6 +340,7 @@ function ReadyAnnotator({
           onTool={chooseTool}
           style={controller.activeStyle}
           onStyle={controller.chooseStyle}
+          textFormat={textFormat.format}
           selection={selected ? {
             isText: selected.shape.kind === "text",
             isSticky: isStickyNote(selected.shape),
@@ -379,6 +382,7 @@ function ReadyAnnotator({
           coarse={inputMode === "coarse"}
           markedPage={outlined}
         />
+        {textFormat.dialog}
         {cited !== null ? (
           <p role="status" className="tw:sr-only">
             {openedAtMark ? `Opened at the card's mark on page ${cited}` : `Opened at page ${cited}`}
