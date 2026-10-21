@@ -63,6 +63,7 @@ export interface NativeCommandGatewayMap {
   "cancel_document_flashcard_generation": readonly [typeof GatewayModule14.cancelDocumentFlashcardGeneration];
   "cancel_document_study_guide_generation": readonly [typeof GatewayModule37.cancelDocumentStudyGuideGeneration];
   "cancel_learning_task": readonly [typeof GatewayModule22.cancelLearningTask];
+  "cancel_openrouter_sign_in": readonly [typeof GatewayModule0.cancelOpenRouterSignIn];
   "cancel_study_target_bundle": readonly [typeof GatewayModule38.cancelStudyTargetBundle];
   "cancel_subject_course_writing": readonly [typeof GatewayModule23.cancelSubjectCourseWriting];
   "change_tutor_memory": readonly [typeof GatewayModule42.changeTutorMemory];
@@ -265,6 +266,7 @@ export interface NativeCommandGatewayMap {
   "save_editor_draft": readonly [typeof GatewayModule15.saveEditorDraft];
   "save_embedding_options": readonly [typeof GatewayModule16.saveEmbeddingOptions];
   "save_lesson_progress": readonly [typeof GatewayModule23.saveLessonProgress];
+  "save_openrouter_sign_in": readonly [typeof GatewayModule0.saveOpenRouterSignIn];
   "save_practice_question_answer": readonly [typeof GatewayModule30.savePracticeQuestionAnswer];
   "save_question_generation_policy": readonly [typeof GatewayModule31.saveQuestionGenerationPolicy];
   "save_question_note": readonly [typeof GatewayModule32.saveQuestionNote];
@@ -294,6 +296,7 @@ export interface NativeCommandGatewayMap {
   "start_card_practice": readonly [typeof GatewayModule28.startCardPractice];
   "start_device_pairing": readonly [typeof GatewayModule10.startDevicePairing];
   "start_document_flashcard_generation": readonly [typeof GatewayModule14.startDocumentFlashcardGeneration];
+  "start_openrouter_sign_in": readonly [typeof GatewayModule0.startOpenRouterSignIn];
   "start_selected_practice": readonly [typeof GatewayModule28.startSelectedPractice];
   "stream_publish_prepared_export": readonly [typeof GatewayModule17.publishPreparedExport];
   "stream_select_and_stage_external_import": readonly [typeof GatewayModule17.selectAndStageExternalImport];
@@ -313,6 +316,7 @@ export interface NativeCommandGatewayMap {
   "update_device_sync_name": readonly [typeof GatewayModule10.updateDeviceSyncName];
   "update_document_collection": readonly [typeof GatewayModule7.updateDocumentCollection];
   "update_tutor_project": readonly [typeof GatewayModule41.updateTutorProject];
+  "wait_for_openrouter_sign_in": readonly [typeof GatewayModule0.waitForOpenRouterSignIn];
   "write_lesson_lecture_script": readonly [typeof GatewayModule23.writeLessonLectureScript];
   "write_podcast": readonly [typeof GatewayModule27.writePodcast];
   "write_subject_course": readonly [typeof GatewayModule23.writeSubjectCourse];
