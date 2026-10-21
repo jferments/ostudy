@@ -13,14 +13,14 @@ use crate::{
         StudyGuideSectionContent,
     },
     error::CommandError,
-    lessons::{content::LessonContent, teaching::LectureScript},
+    lessons::{content::LessonContent, podcasts::PodcastScript, teaching::LectureScript},
     task_cancellation::CancellationSignal,
 };
 
 use super::{
-    flashcards, lecture_script, lesson, study_guide, AiRuntimeState, AuthoringEvidence,
-    CollectionStudyGuideAuthoring, DocumentOutline, DocumentTaskContext, FlashcardGenerationLimits,
-    LectureScriptAuthoring, LessonAuthoring,
+    flashcards, lecture_script, lesson, podcast_script, study_guide, AiRuntimeState,
+    AuthoringEvidence, CollectionStudyGuideAuthoring, DocumentOutline, DocumentTaskContext,
+    FlashcardGenerationLimits, LectureScriptAuthoring, LessonAuthoring, PodcastScriptAuthoring,
 };
 
 pub(crate) fn generate_window_flashcards<'a>(
@@ -147,6 +147,21 @@ pub(crate) fn generate_lecture_script<'a>(
         task.diagnostic_window_key.as_deref(),
         Kind::LectureScript,
         lecture_script::generate_lecture_script(runtime, task, authoring, cancellation),
+        |_| 1,
+    )
+}
+
+pub(crate) fn generate_podcast_script<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    authoring: PodcastScriptAuthoring<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl Future<Output = Result<PodcastScript, CommandError>> + 'a {
+    observe(
+        task.diagnostics.as_ref(),
+        task.diagnostic_window_key.as_deref(),
+        Kind::PodcastScript,
+        podcast_script::generate_podcast_script(runtime, task, authoring, cancellation),
         |_| 1,
     )
 }

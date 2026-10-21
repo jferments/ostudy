@@ -43,6 +43,7 @@ mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
+mod document_figures;
 mod document_generation;
 mod document_import;
 mod document_ingestion;
@@ -89,6 +90,7 @@ mod logging;
 mod media;
 mod media_assets;
 pub mod migration_contract;
+mod notebooks;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;
@@ -405,7 +407,21 @@ pub fn run() {
             library_session::commands::leased_draft_mark_question,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
+            document_figures::get_document_figures,
+            document_figures::set_document_figures_use_images,
+            document_figures::set_document_figure_hidden,
+            library_session::commands::leased_find_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
+            notebooks::list_notebooks,
+            notebooks::create_notebook,
+            notebooks::get_notebook,
+            notebooks::rename_notebook,
+            notebooks::move_notebook_to_subject,
+            notebooks::delete_notebook,
+            notebooks::add_notebook_page,
+            notebooks::delete_notebook_page,
+            notebooks::move_notebook_page,
+            notebooks::apply_notebook_item_changes,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
@@ -426,6 +442,11 @@ pub fn run() {
             lessons::teaching::answer_lecture_question,
             library_session::commands::leased_write_lesson_lecture_script,
             library_session::commands::leased_narrate_lecture_part,
+            lessons::podcasts::list_subject_podcasts,
+            lessons::podcasts::get_podcast,
+            lessons::podcasts::delete_podcast,
+            library_session::commands::leased_write_podcast,
+            library_session::commands::leased_narrate_podcast_turn,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,

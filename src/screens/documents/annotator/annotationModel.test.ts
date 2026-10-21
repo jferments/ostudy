@@ -11,7 +11,13 @@ import {
   cleanNoteText,
   insideLoop,
   moveGroupWithinPage,
+  clampSize,
   cutStroke,
+  withTheirGroups,
+  sharedGroup,
+  withGroup,
+  segmentPoints,
+  dashArray,
   isCuttable,
   describeAnnotation,
   distanceToShape,
@@ -286,5 +292,90 @@ describe("picking up and folding marks", () => {
     expect(isStorable(folded)).toBe(true);
     const { sticky: _sticky, ...plain } = folded;
     expect(isStorable(plain)).toBe(false);
+  });
+});
+
+describe("shape looks", () => {
+  const box: FrameShape = { kind: "rectangle", x: 10, y: 10, width: 40, height: 20, color: red, strokeWidth: 2 };
+
+  it("adds and drops a fill, and keeps the border of an unfilled shape", () => {
+    const filled = restyle(box, { fill: "#fef3c7", border: false });
+    expect(filled).toEqual({ ...box, fill: "#fef3c7", border: false });
+    expect(isStorable(filled)).toBe(true);
+    expect(restyle(filled, { fill: null })).toEqual(box);
+    expect(restyle(box, { border: false })).toEqual(box);
+    expect(isStorable({ ...box, border: false })).toBe(false);
+  });
+
+  it("dashes any shape but puts a second head only on an arrow", () => {
+    const line = { kind: "line" as const, x1: 0, y1: 0, x2: 40, y2: 0, color: red, strokeWidth: 2 };
+    expect(restyle(line, { line: "dotted", bothEnds: true })).toEqual({ ...line, dash: "dotted" });
+    const arrow = restyle({ ...line, kind: "arrow" }, { line: "dashed", bothEnds: true });
+    expect(arrow).toMatchObject({ dash: "dashed", bothEnds: true });
+    expect(restyle(arrow, { line: "solid", bothEnds: false })).toEqual({ ...line, kind: "arrow" });
+    expect(isStorable({ ...line, bothEnds: true })).toBe(false);
+    expect(shapeFromDrag("ellipse", { x: 10, y: 10 }, { x: 60, y: 40 }, false,
+      { color: red, size: 2, line: "dashed", bothEnds: true, fill: "#ffffff", border: true }, page))
+      .toEqual({ kind: "ellipse", x: 10, y: 10, width: 50, height: 30, color: red, strokeWidth: 2, dash: "dashed", fill: "#ffffff" });
+  });
+
+  it("matches the PDF export's dash spacing and keeps typed sizes in range", () => {
+    expect(dashArray(undefined, 3)).toBeUndefined();
+    expect(dashArray("dashed", 3)).toBe("9 9");
+    expect(dashArray("dotted", 0.5)).toBe("0 2");
+    expect(clampSize("pen", 4.6)).toBe(4.5);
+    expect(clampSize("pen", 500)).toBe(64);
+    expect(clampSize("text", 2)).toBe(6);
+  });
+
+  it("picks up a filled shape anywhere inside it", () => {
+    expect(distanceToShape(box, { x: 30, y: 20 }, 0)).toBeGreaterThan(0);
+    expect(distanceToShape({ ...box, fill: "#ffffff" }, { x: 30, y: 20 }, 0)).toBe(0);
+  });
+});
+
+describe("curves and groups", () => {
+  const curve = { kind: "line" as const, x1: 0, y1: 100, x2: 100, y2: 100, curve: [0, 0, 100, 0] as [number, number, number, number], color: red, strokeWidth: 2 };
+
+  it("measures a curve along its bend", () => {
+    const points = segmentPoints(curve);
+    expect(points.slice(0, 2)).toEqual([0, 100]);
+    expect(points.slice(-2)).toEqual([100, 100]);
+    expect(shapeBounds(curve, 0).top).toBeCloseTo(24, 0);
+    expect(distanceToShape(curve, { x: 50, y: 25 }, 0)).toBe(0);
+    expect(distanceToShape(curve, { x: 50, y: 100 }, 0)).toBeGreaterThan(40);
+  });
+
+  it("moves its control points with it and keeps the bend when an end moves", () => {
+    expect(moveWithinPage(curve, 10, 5, page, 0)).toMatchObject({ x1: 10, y1: 105, curve: [10, 5, 110, 5] });
+    expect(resizeShape(curve, "end", { x: 120, y: 110 }, false, page)).toMatchObject({ x2: 120, y2: 110, curve: [0, 0, 120, 10] });
+    expect(resizeShape(curve, "c1", { x: 30, y: 40 }, false, page)).toMatchObject({ curve: [30, 40, 100, 0] });
+    expect(handlesFor(curve, 0).map((handle) => handle.handle)).toEqual(["start", "end", "c1", "c2"]);
+    expect(isStorable({ ...curve, curve: [1, 2, 3] as unknown as [number, number, number, number] })).toBe(false);
+  });
+
+  it("takes whole groups and names one shared group", () => {
+    const g = "f".repeat(32);
+    const marks: Annotation[] = [
+      { id: "a", pageNumber: 1, createdAt: 1, shape: { ...curve, group: g } },
+      { id: "b", pageNumber: 1, createdAt: 2, shape: { ...curve, group: g } },
+      { id: "c", pageNumber: 1, createdAt: 3, shape: curve },
+    ];
+    expect(withTheirGroups(marks, [marks[1]!]).map((mark) => mark.id)).toEqual(["a", "b"]);
+    expect(sharedGroup(marks.slice(0, 2))).toBe(g);
+    expect(sharedGroup(marks)).toBeNull();
+    expect(withGroup(marks[0]!.shape, null)).toEqual(curve);
+    expect(isStorable({ ...curve, group: "nope" })).toBe(false);
+  });
+
+  it("resizes a picture keeping its shape unless Shift is held, and stores only a named image", () => {
+    const picture = { kind: "image" as const, x: 100, y: 100, width: 200, height: 100, assetId: "e".repeat(32) };
+    expect(resizeShape(picture, "se", { x: 500, y: 150 }, false, page)).toMatchObject({ x: 100, y: 100, width: 400, height: 200 });
+    expect(resizeShape(picture, "nw", { x: 200, y: 160 }, false, page)).toMatchObject({ x: 200, y: 150, width: 100, height: 50 });
+    expect(resizeShape(picture, "se", { x: 500, y: 150 }, true, page)).toMatchObject({ width: 400, height: 50 });
+    expect(shapeBounds(picture, 0)).toMatchObject({ left: 100, top: 100, bottom: 200 });
+    expect(isStorable(picture)).toBe(true);
+    expect(isStorable({ ...picture, assetId: "not an id" })).toBe(false);
+    expect(isStorable({ ...picture, width: 0 })).toBe(false);
   });
 });

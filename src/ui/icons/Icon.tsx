@@ -37,6 +37,7 @@ export const ICON_NAMES = [
   "formula",
   "full-screen",
   "help",
+  "headphones",
   "highlighter",
   "home",
   "image",
@@ -57,12 +58,15 @@ export const ICON_NAMES = [
   "move",
   "overflow",
   "pan",
+  "pause",
   "pen",
+  "play",
   "plus",
   "pointer",
   "practice",
   "redo",
   "restore",
+  "rewind",
   "save",
   "scan",
   "scissors",
@@ -70,9 +74,11 @@ export const ICON_NAMES = [
   "search",
   "settings",
   "shape-arrow",
+  "shape-curve",
   "shape-ellipse",
   "shape-line",
   "shape-rectangle",
+  "skip-ahead",
   "smartphone",
   "sort",
   "sparkles",
@@ -485,6 +491,31 @@ function iconPath(name: IconName): ReactNode {
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
         </>
       );
+    case "headphones": // Lucide: headphones
+      return <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />;
+    case "pause": // Lucide: pause
+      return (
+        <>
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+        </>
+      );
+    case "play": // Lucide: play
+      return <polygon points="6 3 20 12 6 21 6 3" />;
+    case "rewind": // Lucide: rotate-ccw
+      return (
+        <>
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+        </>
+      );
+    case "skip-ahead": // Lucide: rotate-cw
+      return (
+        <>
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+        </>
+      );
     case "listen": // Lucide: volume-2
       return (
         <>
@@ -621,6 +652,14 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M13 5H19V11" />
           <path d="M19 5L5 19" />
+        </>
+      );
+    case "shape-curve": // Lucide: spline
+      return (
+        <>
+          <circle cx="19" cy="5" r="2" />
+          <circle cx="5" cy="19" r="2" />
+          <path d="M5 17A12 12 0 0 1 17 5" />
         </>
       );
     case "shape-ellipse": // Lucide: circle

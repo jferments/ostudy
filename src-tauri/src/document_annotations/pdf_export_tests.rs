@@ -380,3 +380,57 @@ fn text_wraps_like_the_annotator() {
     assert_eq!(wrap("abcdefghij", 22.0, 10.0), vec!["abcd", "efgh", "ij"]);
     assert_eq!(latin("café π"), "café ?");
 }
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[test]
+fn fills_dashes_and_second_arrow_heads_are_drawn() {
+    let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
+    let styled = shapes(
+        r##"[
+          {"kind":"rectangle","x":40,"y":30,"width":40,"height":20,"color":"#ffffff","strokeWidth":1,
+           "fill":"#000000","border":false},
+          {"kind":"line","x1":10,"y1":150,"x2":190,"y2":150,"color":"#000000","strokeWidth":4,"dash":"dashed"},
+          {"kind":"arrow","x1":20,"y1":190,"x2":180,"y2":190,"color":"#000000","strokeWidth":3,"bothEnds":true}
+        ]"##,
+    );
+    let shown = render(&export(&source, &styled).unwrap(), "styled");
+    assert!(shown.get_pixel(60, 40).0[0] < 50, "the box is filled");
+    let along: Vec<u8> = (20..180).map(|x| shown.get_pixel(x, 150).0[0]).collect();
+    assert!(
+        along.iter().any(|&level| level < 50),
+        "the dashes are drawn"
+    );
+    assert!(
+        along.iter().any(|&level| level > 110),
+        "the dashes have gaps"
+    );
+    // Each head is wider than the 3-point line: 10 points from a tip it reaches 4 points off the line.
+    assert!(
+        shown.get_pixel(29, 186).0[0] < 50,
+        "the first end has a head"
+    );
+    assert!(
+        shown.get_pixel(170, 186).0[0] < 50,
+        "the second end has a head"
+    );
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[test]
+fn a_curve_bends_toward_its_control_points() {
+    let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
+    let curved = shapes(
+        r##"[{"kind":"line","x1":20,"y1":150,"x2":180,"y2":150,"color":"#000000","strokeWidth":4,
+              "curve":[60,30,140,30]}]"##,
+    );
+    let shown = render(&export(&source, &curved).unwrap(), "curve");
+    // The middle of the curve is three quarters of the way to its control points' height.
+    assert!(
+        shown.get_pixel(100, 60).0[0] < 50,
+        "the curve passes over the middle"
+    );
+    assert!(
+        shown.get_pixel(100, 150).0[0] > 110,
+        "the curve is not a straight line"
+    );
+}
