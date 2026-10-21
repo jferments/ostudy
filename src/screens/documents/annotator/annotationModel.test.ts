@@ -11,7 +11,9 @@ import {
   cleanNoteText,
   insideLoop,
   moveGroupWithinPage,
+  clampSize,
   cutStroke,
+  dashArray,
   isCuttable,
   describeAnnotation,
   distanceToShape,
@@ -286,5 +288,44 @@ describe("picking up and folding marks", () => {
     expect(isStorable(folded)).toBe(true);
     const { sticky: _sticky, ...plain } = folded;
     expect(isStorable(plain)).toBe(false);
+  });
+});
+
+describe("shape looks", () => {
+  const box: FrameShape = { kind: "rectangle", x: 10, y: 10, width: 40, height: 20, color: red, strokeWidth: 2 };
+
+  it("adds and drops a fill, and keeps the border of an unfilled shape", () => {
+    const filled = restyle(box, { fill: "#fef3c7", border: false });
+    expect(filled).toEqual({ ...box, fill: "#fef3c7", border: false });
+    expect(isStorable(filled)).toBe(true);
+    expect(restyle(filled, { fill: null })).toEqual(box);
+    expect(restyle(box, { border: false })).toEqual(box);
+    expect(isStorable({ ...box, border: false })).toBe(false);
+  });
+
+  it("dashes any shape but puts a second head only on an arrow", () => {
+    const line = { kind: "line" as const, x1: 0, y1: 0, x2: 40, y2: 0, color: red, strokeWidth: 2 };
+    expect(restyle(line, { line: "dotted", bothEnds: true })).toEqual({ ...line, dash: "dotted" });
+    const arrow = restyle({ ...line, kind: "arrow" }, { line: "dashed", bothEnds: true });
+    expect(arrow).toMatchObject({ dash: "dashed", bothEnds: true });
+    expect(restyle(arrow, { line: "solid", bothEnds: false })).toEqual({ ...line, kind: "arrow" });
+    expect(isStorable({ ...line, bothEnds: true })).toBe(false);
+    expect(shapeFromDrag("ellipse", { x: 10, y: 10 }, { x: 60, y: 40 }, false,
+      { color: red, size: 2, line: "dashed", bothEnds: true, fill: "#ffffff", border: true }, page))
+      .toEqual({ kind: "ellipse", x: 10, y: 10, width: 50, height: 30, color: red, strokeWidth: 2, dash: "dashed", fill: "#ffffff" });
+  });
+
+  it("matches the PDF export's dash spacing and keeps typed sizes in range", () => {
+    expect(dashArray(undefined, 3)).toBeUndefined();
+    expect(dashArray("dashed", 3)).toBe("9 9");
+    expect(dashArray("dotted", 0.5)).toBe("0 2");
+    expect(clampSize("pen", 4.6)).toBe(4.5);
+    expect(clampSize("pen", 500)).toBe(64);
+    expect(clampSize("text", 2)).toBe(6);
+  });
+
+  it("picks up a filled shape anywhere inside it", () => {
+    expect(distanceToShape(box, { x: 30, y: 20 }, 0)).toBeGreaterThan(0);
+    expect(distanceToShape({ ...box, fill: "#ffffff" }, { x: 30, y: 20 }, 0)).toBe(0);
   });
 });

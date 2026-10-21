@@ -3,6 +3,7 @@ import type {
   FrameShape,
   HighlightShape,
   InkShape,
+  LineDash,
   SegmentShape,
   TextShape,
 } from "../../../ipc/documentAnnotations";
@@ -54,8 +55,15 @@ export const STICKY_ICON_SIZE = 18;
 const MIN_SHAPE_EXTENT = 2;
 
 export type StyleFamily = "pen" | "highlighter" | "shape" | "text" | "sticky";
+export type LineStyle = "solid" | LineDash;
+/**
+ * How a shape is drawn besides its color and width: every shape's line style, an
+ * arrow's heads, and a box's or ellipse's fill and border. A border can only be
+ * dropped from a filled shape.
+ */
+export interface ShapeLook { line: LineStyle; bothEnds: boolean; fill: string | null; border: boolean; }
 /** A tool's look. `size` is the stroke width, or the font size for text, in points. */
-export interface ToolStyle { color: string; size: number; }
+export interface ToolStyle extends Partial<ShapeLook> { color: string; size: number; }
 export type ToolStyles = Readonly<Record<StyleFamily, ToolStyle>>;
 export interface Swatch { color: string; label: string; }
 export interface SizeChoice { size: number; label: string; }
@@ -102,7 +110,7 @@ export const STYLE_CHOICES: Readonly<Record<StyleFamily, { swatches: readonly Sw
 export const DEFAULT_STYLES: ToolStyles = {
   pen: { color: "#1f2328", size: 3 },
   highlighter: { color: "#fde047", size: 16 },
-  shape: { color: "#dc2626", size: 3 },
+  shape: { color: "#dc2626", size: 3, line: "solid", bothEnds: false, fill: null, border: true },
   text: { color: "#1f2328", size: 14 },
   sticky: { color: "#fde047", size: 10 },
 };
@@ -110,6 +118,14 @@ export const DEFAULT_STYLES: ToolStyles = {
 export function styleFamilyForTool(tool: AnnotatorTool): StyleFamily | null {
   if (tool === "pen" || tool === "highlighter" || tool === "text" || tool === "sticky") return tool;
   return isShapeTool(tool) ? "shape" : null;
+}
+
+/** The style the toolbar shows and changes, and which shape tool's choices apply to it. */
+export interface ActiveStyle { family: StyleFamily; style: ToolStyle; shape: ShapeTool | null; }
+
+/** The shape tool that draws a shape, or null for a stroke or note. */
+export function shapeToolFor(shape: AnnotationShape): ShapeTool | null {
+  return isShapeTool(shape.kind as AnnotatorTool) ? shape.kind as ShapeTool : null;
 }
 
 export function styleFamilyForShape(shape: AnnotationShape): StyleFamily {
@@ -139,15 +155,77 @@ export function stickyHeight(shape: TextShape): number {
   return shape.collapsed ? STICKY_ICON_SIZE : STICKY_HEIGHT;
 }
 
-export function shapeStyle(shape: AnnotationShape): ToolStyle {
-  return { color: shape.color, size: shape.kind === "text" ? shape.fontSize : shape.strokeWidth };
+/** The range a tool's size can be set to: a stroke's width, or a font size. */
+export function sizeRange(family: StyleFamily): readonly [number, number] {
+  return family === "text" || family === "sticky" ? FONT_SIZE_RANGE : STROKE_WIDTH_RANGE;
 }
 
-/** The shape with a new color or size; geometry is unchanged. */
+/** A size typed or dragged in, kept inside the family's range at a quarter point. */
+export function clampSize(family: StyleFamily, size: number): number {
+  const [low, high] = sizeRange(family);
+  return clamp(Math.round(size * 4) / 4, low, high);
+}
+
+export function shapeStyle(shape: AnnotationShape): ToolStyle {
+  if (shape.kind === "text") return { color: shape.color, size: shape.fontSize };
+  const style: ToolStyle = { color: shape.color, size: shape.strokeWidth };
+  if (shape.kind === "line" || shape.kind === "arrow") {
+    return { ...style, line: shape.dash ?? "solid", bothEnds: shape.bothEnds === true };
+  }
+  if (shape.kind === "rectangle" || shape.kind === "ellipse") {
+    return { ...style, line: shape.dash ?? "solid", fill: shape.fill ?? null, border: shape.border !== false };
+  }
+  return style;
+}
+
+/** A segment or frame carrying a look; fields that mean nothing for the shape are left out. */
+function withLook<T extends SegmentShape | FrameShape>(shape: T, look: Partial<ShapeLook>): T {
+  const next = { ...shape };
+  if (look.line !== undefined) {
+    if (look.line === "solid") delete next.dash;
+    else next.dash = look.line;
+  }
+  if (next.kind === "line" || next.kind === "arrow") {
+    const segment = next as SegmentShape;
+    if (look.bothEnds !== undefined) {
+      if (look.bothEnds && segment.kind === "arrow") segment.bothEnds = true;
+      else delete segment.bothEnds;
+    }
+    return next;
+  }
+  const frame = next as FrameShape;
+  if (look.fill !== undefined) {
+    if (look.fill === null) delete frame.fill;
+    else frame.fill = look.fill;
+  }
+  if (look.border !== undefined) {
+    if (look.border) delete frame.border;
+    else frame.border = false;
+  }
+  // An unfilled shape always keeps its outline.
+  if (frame.fill === undefined) delete frame.border;
+  return next;
+}
+
+/** The shape with a new color, size or look; geometry is unchanged. */
 export function restyle(shape: AnnotationShape, style: Partial<ToolStyle>): AnnotationShape {
   const color = style.color ?? shape.color;
   if (shape.kind === "text") return { ...shape, color, fontSize: style.size ?? shape.fontSize };
-  return { ...shape, color, strokeWidth: style.size ?? shape.strokeWidth };
+  const restyled = { ...shape, color, strokeWidth: style.size ?? shape.strokeWidth };
+  if (restyled.kind === "ink" || restyled.kind === "highlight") return restyled;
+  return withLook(restyled, style);
+}
+
+/**
+ * The SVG dash array for a line style, matching the annotated PDF export
+ * (`dash_pattern` in pdf_export.rs): dashes and dots spaced by the line's width,
+ * drawn with round caps.
+ */
+export function dashArray(dash: LineDash | undefined, width: number): string | undefined {
+  const unit = Math.max(width, 1);
+  if (dash === "dashed") return `${unit * 3} ${unit * 3}`;
+  if (dash === "dotted") return `0 ${unit * 2}`;
+  return undefined;
 }
 
 /** Coordinates are stored to a hundredth of a point. */
@@ -306,6 +384,7 @@ export function distanceToShape(shape: AnnotationShape, point: Point, textHeight
     case "rectangle": {
       const box = shapeExtent(shape, 0);
       const inside = point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
+      if (inside && shape.fill) return 0;
       const edge = inside
         ? Math.min(point.x - box.left, box.right - point.x, point.y - box.top, box.bottom - point.y)
         : distanceToBox(point, box);
@@ -315,6 +394,7 @@ export function distanceToShape(shape: AnnotationShape, point: Point, textHeight
       const rx = shape.width / 2;
       const ry = shape.height / 2;
       const radius = Math.hypot((point.x - shape.x - rx) / Math.max(rx, 0.01), (point.y - shape.y - ry) / Math.max(ry, 0.01));
+      if (radius <= 1 && shape.fill) return 0;
       return Math.max(0, Math.abs(radius - 1) * Math.min(rx, ry) - shape.strokeWidth / 2);
     }
     case "text":
@@ -618,9 +698,15 @@ export function shapeFromDrag(
 ): SegmentShape | FrameShape {
   if (tool === "line" || tool === "arrow") {
     const tip = clampToPage(constrain ? snapAngle(start, end) : end, page);
-    return { kind: tool, x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, color: style.color, strokeWidth: style.size };
+    return withLook<SegmentShape>(
+      { kind: tool, x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, color: style.color, strokeWidth: style.size },
+      style,
+    );
   }
-  return clampFrame({ kind: tool, ...frameBetween(start, end, constrain), color: style.color, strokeWidth: style.size }, page);
+  return withLook<FrameShape>(
+    clampFrame({ kind: tool, ...frameBetween(start, end, constrain), color: style.color, strokeWidth: style.size }, page),
+    style,
+  );
 }
 
 /** Whether a dragged shape is big enough to keep. A box needs some size both ways. */
@@ -748,6 +834,10 @@ function rectsAllowed(rects: readonly number[] | undefined): boolean {
   return true;
 }
 
+function dashAllowed(dash: string | undefined): boolean {
+  return dash === undefined || dash === "dashed" || dash === "dotted";
+}
+
 function quotedTextAllowed(text: string | undefined): boolean {
   return text !== undefined && text.trim().length > 0 && [...text].length <= MAX_TEXT_CHARS && !/\p{Cc}/u.test(text);
 }
@@ -768,13 +858,18 @@ export function isStorable(shape: AnnotationShape): boolean {
     case "arrow":
       return [shape.x1, shape.y1, shape.x2, shape.y2].every(coordinate)
         && (shape.x1 !== shape.x2 || shape.y1 !== shape.y2)
-        && strokeWidthAllowed(shape.strokeWidth);
+        && strokeWidthAllowed(shape.strokeWidth)
+        && dashAllowed(shape.dash)
+        && (shape.bothEnds === undefined || (shape.bothEnds === true && shape.kind === "arrow"));
     case "rectangle":
     case "ellipse":
       return coordinate(shape.x) && coordinate(shape.y)
         && shape.width > 0 && shape.height > 0
         && shape.x + shape.width <= MAX_COORDINATE && shape.y + shape.height <= MAX_COORDINATE
-        && strokeWidthAllowed(shape.strokeWidth);
+        && strokeWidthAllowed(shape.strokeWidth)
+        && dashAllowed(shape.dash)
+        && (shape.fill === undefined || COLOR.test(shape.fill))
+        && (shape.border === undefined || (shape.border === false && shape.fill !== undefined));
     case "text":
       return coordinate(shape.x) && coordinate(shape.y)
         && shape.width > 0 && shape.x + shape.width <= MAX_COORDINATE

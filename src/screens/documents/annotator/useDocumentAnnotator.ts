@@ -26,17 +26,21 @@ import {
   DEFAULT_STYLES,
   DEFAULT_TEXT_WIDTH,
   estimateTextHeight,
+  isShapeTool,
   isStickyNote,
   isStorable,
   moveGroupWithinPage,
   moveWithinPage,
   restyle,
+  shapeStyle,
+  shapeToolFor,
   styleFamilyForShape,
   styleFamilyForTool,
   STICKY_HEIGHT,
   STICKY_WIDTH,
   stickyHeight,
   TEXT_LINE_HEIGHT,
+  type ActiveStyle,
   type Annotation,
   type AnnotatorTool,
   type EraseMode,
@@ -307,11 +311,11 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setStyles((current) => ({ ...current, [family]: { ...current[family], ...patch } }));
   }, [commit, selected, tool]);
 
-  const activeStyle = selected
-    ? { family: styleFamilyForShape(selected.shape), style: { color: selected.shape.color, size: selected.shape.kind === "text" ? selected.shape.fontSize : selected.shape.strokeWidth } }
+  const activeStyle: ActiveStyle | null = selected
+    ? { family: styleFamilyForShape(selected.shape), style: shapeStyle(selected.shape), shape: shapeToolFor(selected.shape) }
     : (() => {
       const family = styleFamilyForTool(tool);
-      return family ? { family, style: styles[family] } : null;
+      return family ? { family, style: styles[family], shape: isShapeTool(tool) ? tool : null } : null;
     })();
 
   const deleteSelected = useCallback(() => {

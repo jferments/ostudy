@@ -167,7 +167,7 @@ describe("document annotator", () => {
     act(() => item.focus());
     expect(item.getAttribute("aria-pressed")).toBe("true");
     const selection = screen.getByRole("toolbar", { name: "Selected annotation" });
-    fireEvent.click(within(selection).getByRole("button", { name: "Large" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Style of the selected annotation" })).getByRole("button", { name: "Large" }));
     await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { fontSize: 20 } }));
 
     fireEvent.click(within(selection).getByRole("button", { name: "Delete" }));
@@ -263,6 +263,48 @@ describe("document annotator", () => {
     drag(canvas, [[300, 340], [160, 500]]);
     await waitFor(() => expect(savedChanges(1)).toHaveLength(2));
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
+  });
+
+  it("draws with any color and width, dashed and double-headed arrows, and filled boxes", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.click(screen.getByRole("button", { name: "Arrow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dashed line" }));
+    fireEvent.click(screen.getByRole("button", { name: "Heads at both ends" }));
+    const any = screen.getByLabelText("Any color") as HTMLInputElement;
+    fireEvent.input(any, { target: { value: "#0d9488" } });
+    fireEvent.change(any, { target: { value: "#0d9488" } });
+    any.dispatchEvent(new Event("change"));
+    const width = screen.getByLabelText("Line width in points");
+    fireEvent.change(width, { target: { value: "4.6" } });
+    fireEvent.keyDown(width, { key: "Enter" });
+    drag(canvas, [[100, 100], [200, 150]]);
+
+    fireEvent.keyDown(canvas, { key: "r" });
+    expect(screen.queryByRole("button", { name: "Heads at both ends" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filled" }));
+    fireEvent.click(screen.getByRole("switch"));
+    drag(canvas, [[300, 300], [400, 380]]);
+
+    await waitFor(() => expect(savedChanges()).toHaveLength(2));
+    expect(savedChanges().map((change) => change.op === "put" ? change.shape : null)).toEqual([
+      { kind: "arrow", x1: 100, y1: 100, x2: 200, y2: 150, color: "#0d9488", strokeWidth: 4.5, dash: "dashed", bothEnds: true },
+      { kind: "rectangle", x: 300, y: 300, width: 100, height: 80, color: "#0d9488", strokeWidth: 4.5, dash: "dashed",
+        fill: "#cfeae7", border: false },
+    ]);
+    // The picked color is offered again beside the swatches.
+    expect(screen.getByRole("button", { name: "Recent color #0d9488" })).toBeTruthy();
+
+    // A filled box is picked up anywhere inside, and losing its fill brings its border back.
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.pointerDown(canvas, onPage(350, 340, 1, "mouse"));
+    fireEvent.pointerUp(canvas, onPage(350, 340, 1, "mouse"));
+    fireEvent.click(within(screen.getByRole("group", { name: "Style of the selected annotation" }))
+      .getByRole("button", { name: "No fill" }));
+    await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { kind: "rectangle" } }));
+    const unfilled = savedChanges(1)[0];
+    expect(unfilled?.op === "put" ? unfilled.shape : null).toEqual(
+      { kind: "rectangle", x: 300, y: 300, width: 100, height: 80, color: "#0d9488", strokeWidth: 4.5, dash: "dashed" },
+    );
   });
 
   it("selects marks together with the lasso, then moves and deletes them as one", async () => {
