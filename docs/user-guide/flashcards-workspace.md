@@ -2,7 +2,7 @@
 
 Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: the chosen subject's decks and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
-Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page. The Workbench shows the subject you chose in Library's subject list; there is no second list of subjects inside it.
+Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose in Library's subject list; there is no second list of subjects inside it.
 
 ## The tree
 
@@ -119,6 +119,6 @@ The Settings template tab is a full normal workspace. Once opened it can retain 
 
 ## Importing content
 
-**Import deck** beside Library's tabs (or in an empty library) accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
+**Import deck** beside Library's tabs (beside **New deck** on a phone, or in an empty library or subject) accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
 
 Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. The Workbench opens the new deck, which starts under No subject until you file it. Subject membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckSummary } from "../../ipc/decks";
+import * as subjectsIpc from "../../ipc/subjects";
 import { DeckTransferDialog, type DeckTransferDialogRequest } from "./DeckTransferDialog";
 
 const calls = vi.hoisted(() => ({
@@ -13,6 +14,8 @@ vi.mock("../../controllers/deckTransferController", () => ({
     shareDeck = calls.shareDeck; invalidate = calls.invalidate;
   },
 }));
+vi.mock("../../ipc/subjects", () => ({ getSubjectLibrary: vi.fn(), moveDeckToSubject: vi.fn() }));
+const subjects = { getSubjectLibrary: vi.mocked(subjectsIpc.getSubjectLibrary), moveDeckToSubject: vi.mocked(subjectsIpc.moveDeckToSubject) };
 vi.mock("../../platform/PlatformProvider", () => ({ usePlatformCapabilities: () => ({ native: null }) }));
 vi.mock("../../ui/overlays/Dialog", () => ({
   Dialog: ({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) =>
@@ -33,17 +36,39 @@ function mount(request: DeckTransferDialogRequest = { kind: "import" }) {
 beforeEach(() => { vi.resetAllMocks(); calls.importFromFile.mockResolvedValue(outcome); });
 
 describe("active deck transfer presentation", () => {
-  it("uses the shared responsive action owner and one explicit import action", () => {
+  it("offers one Choose a file action with the formats on one line and no help paragraph", () => {
     mount();
+    const choose = screen.getByRole("button", { name: /Choose a file/ });
+    expect(choose.textContent).toContain(".studydeck · Anki .apkg · .ostudy.json");
     const actions = screen.getByTestId("dialog-actions");
-    expect(within(actions).getByRole("button", { name: "Import deck" })).toBeTruthy();
-    expect(within(actions).queryByRole("button", { name: /Choose file/ })).toBeNull();
-    expect(screen.queryByTestId("folder-import-decoration")).toBeNull();
+    expect(within(actions).queryByRole("button", { name: /Import deck|Choose a file/ })).toBeNull();
+    expect(screen.queryByText(/Support older Anki versions/)).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Into subject" })).toBeNull();
+  });
+  it("files the imported deck in the chosen subject, and keeps the import when filing is refused", async () => {
+    subjects.getSubjectLibrary.mockResolvedValue({ libraryRevision: 7 } as subjectsIpc.SubjectLibrary);
+    subjects.moveDeckToSubject.mockResolvedValueOnce({ libraryRevision: 8 } as subjectsIpc.SubjectLibrary);
+    const request: DeckTransferDialogRequest = { kind: "import", subjects: [{ id: "s".repeat(32), name: "Physiology" }], subjectId: null };
+    const { open, toast } = mount(request);
+    fireEvent.change(screen.getByRole("combobox", { name: "Into subject" }), { target: { value: "s".repeat(32) } });
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
+    expect(subjects.moveDeckToSubject).toHaveBeenCalledWith({ deckId: deck.id, subjectId: "s".repeat(32), expectedLibraryRevision: 7 });
+    expect(toast).toHaveBeenCalledWith("success", outcome.message);
+  });
+  it("reports a refused filing without failing the committed import", async () => {
+    subjects.getSubjectLibrary.mockResolvedValue({ libraryRevision: 7 } as subjectsIpc.SubjectLibrary);
+    subjects.moveDeckToSubject.mockRejectedValueOnce(new Error("subject changed"));
+    const { open, toast } = mount({ kind: "import", subjects: [{ id: "s".repeat(32), name: "Physiology" }], subjectId: "s".repeat(32) });
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
+    expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("It stays under No subject: subject changed"));
+    expect(calls.importFromFile).toHaveBeenCalledOnce();
   });
   it("leaves the library unchanged when the native file chooser is canceled", async () => {
     calls.importFromFile.mockResolvedValue(null);
     const { close, open, refresh, toast } = mount();
-    const choose = screen.getByRole("button", { name: /Import deck/ });
+    const choose = screen.getByRole("button", { name: /Choose a file/ });
     fireEvent.click(choose);
     await waitFor(() => expect(choose.hasAttribute("disabled")).toBe(false));
     expect(calls.importFromFile).toHaveBeenCalledOnce();
@@ -53,16 +78,16 @@ describe("active deck transfer presentation", () => {
   it("shows a failed import in the same dialog and allows a deliberate retry", async () => {
     calls.importFromFile.mockRejectedValueOnce(new Error("Unsupported external file."));
     const { close, open } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
     expect((await screen.findByRole("alert")).textContent).toContain("Unsupported external file");
     expect(close).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
     expect(calls.importFromFile).toHaveBeenCalledTimes(2);
   });
   it("reports the authoritative import/duplicate outcome and opens its committed identity", async () => {
     const { toast, open, refresh } = mount();
-    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
     expect(toast).toHaveBeenCalledWith("success", outcome.message);
     expect(refresh).toHaveBeenCalledOnce();
@@ -72,7 +97,7 @@ describe("active deck transfer presentation", () => {
     const { toast, refresh, open } = mount();
     refresh.mockRejectedValueOnce(new Error("refresh failed"));
     open.mockRejectedValueOnce(new Error("route failed"));
-    fireEvent.click(screen.getByRole("button", { name: /Import deck/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Choose a file/ }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("route failed")));
     expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("refresh failed"));
     expect(toast.mock.calls.some(([kind]) => kind === "error")).toBe(false);
