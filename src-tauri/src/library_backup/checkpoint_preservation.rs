@@ -255,6 +255,25 @@ const CONTRACTS: &[Contract] = &[
             description: "podcast",
         }],
     },
+    // Notebooks are made in the app; the upgrade only creates their tables.
+    Contract {
+        version: 18,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "notebooks",
+                description: "notebooks",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_pages",
+                description: "notebook pages",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_items",
+                description: "notebook marks",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
