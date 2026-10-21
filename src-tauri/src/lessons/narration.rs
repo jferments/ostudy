@@ -5,13 +5,14 @@
 //! from the page, so nothing half-written reaches a speech engine. Each step's
 //! narration is cut into sentence groups. A group's audio is keyed by its
 //! exact text, engine, model, voice and format, so listening again costs
-//! nothing, changing the voice makes only what that voice is missing, and a
-//! rewritten step re-voices only the sentences that changed.
+//! nothing and a rewritten step re-voices only the sentences that changed.
+//! A lesson keeps the voice it was first spoken in (see `voices`).
 
 use std::{
     collections::HashSet,
     fs::{self, OpenOptions},
     io::Write,
+    path::PathBuf,
     sync::{LazyLock, Mutex},
 };
 
@@ -20,17 +21,20 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-use super::{require_lesson, revision_content};
+use super::{
+    require_lesson, revision_content,
+    voices::{self, SpeechVoiceDto},
+};
 use crate::{
     ai::{
         generation,
         profiles::{load_profile_request, ProfileRequestSnapshot},
-        speech::{self, SpeechModel, SPEECH_FORMAT, SPEECH_MODELS},
+        speech::{self, SpeechModel, VoiceReference, SPEECH_FORMAT, SPEECH_MODELS},
         AiRuntimeState,
     },
     database::Database,
     error::CommandError,
-    media::{inspect_media_bytes, MediaKind},
+    media::{inspect_media_bytes, MediaInspection, MediaKind},
     paths::AppPaths,
     task_cancellation::CancellationSignal,
     util::{generate_id, unix_time_millis, validate_entity_id},
@@ -49,6 +53,9 @@ pub struct SpeechSettingsDto {
     pub revision: i64,
     pub models: Vec<SpeechModelDto>,
     pub connections: Vec<SpeechConnectionDto>,
+    /// Voices the learner saved, oldest first, then the voice they are trying,
+    /// if any.
+    pub voices: Vec<SpeechVoiceDto>,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +65,8 @@ pub struct SpeechModelDto {
     pub label: String,
     pub voices: Vec<String>,
     pub default_voice: String,
+    /// Whether the learner's own saved voices can speak with this model.
+    pub clones_voices: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -118,6 +127,7 @@ pub fn save_speech_settings(
 
 pub(crate) fn speech_settings(connection: &Connection) -> Result<SpeechSettingsDto, CommandError> {
     let current = resolved(connection)?;
+    let voices = voices::listed(connection)?;
     Ok(SpeechSettingsDto {
         profile_id: current.profile_id,
         model_id: current.model.id.to_string(),
@@ -130,9 +140,11 @@ pub(crate) fn speech_settings(connection: &Connection) -> Result<SpeechSettingsD
                 label: model.label.to_string(),
                 voices: model.voices.iter().map(|voice| voice.to_string()).collect(),
                 default_voice: model.default_voice.to_string(),
+                clones_voices: model.clones_voices,
             })
             .collect(),
         connections: connections(connection)?,
+        voices,
     })
 }
 
@@ -147,17 +159,21 @@ pub(crate) fn save_settings(
             "That voice model is not one ostudy can use.",
         )
     })?;
-    if !(model.voices.is_empty() && input.voice.is_empty()
-        || model.voices.contains(&input.voice.as_str()))
-    {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(CommandError::database)?;
+    let offered = if model.voices.is_empty() {
+        input.voice.is_empty()
+            || model.clones_voices && voices::is_own_voice(&transaction, model, &input.voice)?
+    } else {
+        model.voices.contains(&input.voice.as_str())
+    };
+    if !offered {
         return Err(CommandError::new(
             "speech_voice_unknown",
             "That voice is not offered by this voice model.",
         ));
     }
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(CommandError::database)?;
     if let Some(profile_id) = &input.profile_id {
         validate_entity_id(profile_id, "AI provider profile")?;
         if !connections(&transaction)?
@@ -170,20 +186,45 @@ pub(crate) fn save_settings(
             ));
         }
     }
-    let stored: i64 = transaction
-        .query_row(
-            "SELECT COALESCE((SELECT revision FROM speech_settings WHERE id = 1), 0)",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
+    let stored = stored_revision(&transaction)?;
     if stored != input.expected_revision {
         return Err(CommandError::new(
             "speech_settings_changed",
             "The voice setting changed elsewhere. Review it and save again.",
         ));
     }
-    transaction
+    write_settings(
+        &transaction,
+        input.profile_id.as_deref(),
+        model,
+        &input.voice,
+        now,
+    )?;
+    let saved = speech_settings(&transaction)?;
+    transaction.commit().map_err(CommandError::database)?;
+    Ok(saved)
+}
+
+fn stored_revision(connection: &Connection) -> Result<i64, CommandError> {
+    connection
+        .query_row(
+            "SELECT COALESCE((SELECT revision FROM speech_settings WHERE id = 1), 0)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
+}
+
+/// Writes the setting as the next revision. The caller validated every value.
+pub(super) fn write_settings(
+    connection: &Connection,
+    profile_id: Option<&str>,
+    model: &SpeechModel,
+    voice: &str,
+    now: i64,
+) -> Result<(), CommandError> {
+    let next = stored_revision(connection)? + 1;
+    connection
         .execute(
             "INSERT INTO speech_settings(id, profile_id, model_id, voice, revision, updated_at)
              VALUES (1, ?1, ?2, ?3, ?4, ?5)
@@ -193,26 +234,24 @@ pub(crate) fn save_settings(
                  voice = excluded.voice,
                  revision = excluded.revision,
                  updated_at = excluded.updated_at",
-            params![input.profile_id, model.id, input.voice, stored + 1, now],
+            params![profile_id, model.id, voice, next, now],
         )
         .map_err(CommandError::database)?;
-    let saved = speech_settings(&transaction)?;
-    transaction.commit().map_err(CommandError::database)?;
-    Ok(saved)
+    Ok(())
 }
 
-struct Resolved {
-    profile_id: Option<String>,
-    model: &'static SpeechModel,
-    voice: String,
-    revision: i64,
+pub(super) struct Resolved {
+    pub profile_id: Option<String>,
+    pub model: &'static SpeechModel,
+    pub voice: String,
+    pub revision: i64,
 }
 
 /// The saved setting, or until one is saved: Drama 3 (Joshi's pick) through
 /// the connection that writes documents if it is OpenRouter's, else the most
 /// recently changed OpenRouter connection. A saved model this build no longer
 /// knows falls back the same way but keeps its revision, so it can be saved over.
-fn resolved(connection: &Connection) -> Result<Resolved, CommandError> {
+pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError> {
     let saved: Option<(Option<String>, String, String, i64)> = connection
         .query_row(
             "SELECT profile_id, model_id, voice, revision FROM speech_settings WHERE id = 1",
@@ -230,7 +269,7 @@ fn resolved(connection: &Connection) -> Result<Resolved, CommandError> {
             return Ok(Resolved {
                 profile_id,
                 model,
-                voice,
+                voice: chosen_voice(model, voice),
                 revision,
             });
         }
@@ -243,9 +282,18 @@ fn resolved(connection: &Connection) -> Result<Resolved, CommandError> {
     Ok(Resolved {
         profile_id,
         model,
-        voice: model.default_voice.to_string(),
+        voice: chosen_voice(model, model.default_voice.to_string()),
         revision: stored_revision,
     })
+}
+
+/// A model that copies voices with none chosen speaks the default voice.
+fn chosen_voice(model: &SpeechModel, voice: String) -> String {
+    if model.clones_voices && voice.is_empty() {
+        voices::default_voice()
+    } else {
+        voice
+    }
 }
 
 /// Enabled OpenRouter connections, most recently changed first.
@@ -259,10 +307,10 @@ fn connections(connection: &Connection) -> Result<Vec<SpeechConnectionDto>, Comm
 /// Steps being narrated now, so a second Listen never pays twice.
 static NARRATING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
-struct Narrating(String);
+pub(super) struct Narrating(String);
 
 impl Narrating {
-    fn begin(key: String) -> Result<Self, CommandError> {
+    pub(super) fn begin(key: String) -> Result<Self, CommandError> {
         let mut active = NARRATING.lock().map_err(|_| busy())?;
         if !active.insert(key.clone()) {
             return Err(busy());
@@ -313,6 +361,7 @@ pub(crate) async fn narrate_lesson_step(
         database,
         paths,
         runtime,
+        &input.lesson_id,
         &narration,
         format!(
             "{}:{}:{}",
@@ -322,32 +371,43 @@ pub(crate) async fn narrate_lesson_step(
     .await
 }
 
-/// Speaks text the library already saved with the lesson voice, making only
-/// the pieces that are not kept yet. `key` names what is being spoken, so the
-/// same text is never made twice at once.
-pub(crate) async fn speak_saved(
+/// The connection that pays for speech, as the setting names it.
+pub(super) fn speaking_request(
     database: &Database,
-    paths: &AppPaths,
-    runtime: &AiRuntimeState,
-    text: &str,
-    key: String,
-) -> Result<LessonStepNarrationDto, CommandError> {
-    let settings = database.with_connection(|connection| resolved(connection))?;
-    let pieces = segments(text, settings.model.max_characters);
-    if pieces.is_empty() {
-        return Err(CommandError::new(
-            "lesson_step_unnarrated",
-            "There is nothing here to listen to.",
-        ));
-    }
-    let profile_id = settings.profile_id.clone().ok_or_else(|| {
+    settings: &Resolved,
+) -> Result<ProfileRequestSnapshot, CommandError> {
+    let profile_id = settings.profile_id.as_deref().ok_or_else(|| {
         CommandError::new(
             "speech_not_configured",
             "Spoken narration needs an OpenRouter connection.",
         )
     })?;
-    let request = load_profile_request(database, &profile_id)?;
+    load_profile_request(database, profile_id)
+}
+
+/// Speaks text the library already saved for a lesson in the lesson's voice,
+/// making only the pieces that are not kept yet. `key` names what is being
+/// spoken, so the same text is never made twice at once.
+pub(crate) async fn speak_saved(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    lesson_id: &str,
+    text: &str,
+    key: String,
+) -> Result<LessonStepNarrationDto, CommandError> {
+    let settings = database.with_connection(|connection| resolved(connection))?;
+    if segments(text, settings.model.max_characters).is_empty() {
+        return Err(CommandError::new(
+            "lesson_step_unnarrated",
+            "There is nothing here to listen to.",
+        ));
+    }
+    let request = speaking_request(database, &settings)?;
     let engine = speech::engine(request.profile.provider_kind)?;
+    let _narrating = Narrating::begin(key)?;
+    let (model, voice) = voices::lesson_voice(database, &settings, lesson_id)?;
+    let pieces = segments(text, model.max_characters);
     let narrator = Narrator {
         database,
         paths,
@@ -355,12 +415,12 @@ pub(crate) async fn speak_saved(
         request: &request,
         voice: Voice {
             engine,
-            model: settings.model,
-            voice: &settings.voice,
+            model,
+            reference: voices::reference(database, paths, &voice)?,
+            voice,
         },
     };
 
-    let _narrating = Narrating::begin(key)?;
     let mut found = database.with_connection(|connection| {
         pieces
             .iter()
@@ -382,10 +442,13 @@ pub(crate) async fn speak_saved(
     })
 }
 
-struct Voice<'a> {
+/// What kept audio is keyed by, and what a request needs to speak it.
+struct Voice {
     engine: &'static str,
     model: &'static SpeechModel,
-    voice: &'a str,
+    /// A preset voice, a saved voice's key, or empty for the model's choice.
+    voice: String,
+    reference: Option<VoiceReference>,
 }
 
 struct Narrator<'a> {
@@ -393,7 +456,7 @@ struct Narrator<'a> {
     paths: &'a AppPaths,
     runtime: &'a AiRuntimeState,
     request: &'a ProfileRequestSnapshot,
-    voice: Voice<'a>,
+    voice: Voice,
 }
 
 impl Narrator<'_> {
@@ -413,8 +476,11 @@ impl Narrator<'_> {
             let audio = speech::speak(
                 self.runtime,
                 self.request,
-                self.voice.model,
-                self.voice.voice,
+                &speech::Speaker {
+                    model: self.voice.model,
+                    voice: &self.voice.voice,
+                    reference: self.voice.reference.as_ref(),
+                },
                 piece,
                 &accounting,
                 &cancellation,
@@ -439,7 +505,7 @@ fn text_key(text: &str) -> String {
 /// Kept audio for this piece and voice, if its asset is still readable.
 fn kept_segment(
     connection: &Connection,
-    voice: &Voice<'_>,
+    voice: &Voice,
     piece: &str,
 ) -> Result<Option<NarrationSegmentDto>, CommandError> {
     connection
@@ -472,22 +538,12 @@ fn kept_segment(
 fn keep_segment(
     database: &Database,
     paths: &AppPaths,
-    voice: &Voice<'_>,
+    voice: &Voice,
     piece: &str,
     bytes: &[u8],
 ) -> Result<NarrationSegmentDto, CommandError> {
-    let not_audio = || {
-        CommandError::new(
-            "speech_audio_invalid",
-            "The voice returned something other than audio.",
-        )
-    };
-    let inspection = inspect_media_bytes(bytes).map_err(|_| not_audio())?;
-    if !matches!(inspection.kind, MediaKind::Audio) {
-        return Err(not_audio());
-    }
+    let inspection = checked_audio(bytes)?;
     let characters = i64::try_from(piece.chars().count()).unwrap_or(i64::MAX);
-    let byte_size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
     database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -495,15 +551,17 @@ fn keep_segment(
         if let Some(kept) = kept_segment(&transaction, voice, piece)? {
             return Ok(kept);
         }
-        let asset_id = generate_id(&transaction)?;
         let segment_id = generate_id(&transaction)?;
-        let relative_path = AppPaths::image_relative_path(&asset_id, inspection.extension);
-        let path = paths.resolve_relative(&relative_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(CommandError::io)?;
-        }
-        write_new_file(&path, bytes)?;
         let now = unix_time_millis()?;
+        let (asset_id, path) = write_audio_asset(
+            &transaction,
+            paths,
+            &inspection,
+            bytes,
+            "narration",
+            "lesson narration kept",
+            now,
+        )?;
         let stored = (|| {
             transaction
                 .execute(
@@ -517,31 +575,6 @@ fn keep_segment(
                         voice.voice,
                         SPEECH_FORMAT
                     ],
-                )
-                .map_err(CommandError::database)?;
-            transaction
-                .execute(
-                    "INSERT INTO assets (
-                         id, original_filename, mime_type, byte_size, relative_path,
-                         created_at, lifecycle_state, ready_at, verified_at, updated_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'ready', ?6, ?6, ?6)",
-                    params![
-                        asset_id,
-                        format!("narration.{}", inspection.extension),
-                        inspection.mime_type,
-                        byte_size,
-                        relative_path,
-                        now
-                    ],
-                )
-                .map_err(CommandError::database)?;
-            transaction
-                .execute(
-                    "INSERT INTO asset_reconciliation_events (
-                         id, asset_id, action, from_path, to_path, detail, occurred_at
-                     ) VALUES (lower(hex(randomblob(16))), ?1, 'verified', NULL, ?2,
-                               'lesson narration kept', ?3)",
-                    params![asset_id, relative_path, now],
                 )
                 .map_err(CommandError::database)?;
             transaction
@@ -574,6 +607,70 @@ fn keep_segment(
             characters,
         })
     })
+}
+
+/// Audio a voice returned, refused when it is anything else.
+pub(super) fn checked_audio(bytes: &[u8]) -> Result<MediaInspection, CommandError> {
+    let not_audio = || {
+        CommandError::new(
+            "speech_audio_invalid",
+            "The voice returned something other than audio.",
+        )
+    };
+    let inspection = inspect_media_bytes(bytes).map_err(|_| not_audio())?;
+    if !matches!(inspection.kind, MediaKind::Audio) {
+        return Err(not_audio());
+    }
+    Ok(inspection)
+}
+
+/// Writes checked audio to a new managed file and records it as a ready asset
+/// inside `transaction`. The caller records what keeps the asset referenced
+/// and commits; if that fails, it removes the returned file.
+pub(super) fn write_audio_asset(
+    transaction: &Connection,
+    paths: &AppPaths,
+    inspection: &MediaInspection,
+    bytes: &[u8],
+    name: &str,
+    detail: &str,
+    now: i64,
+) -> Result<(String, PathBuf), CommandError> {
+    let asset_id = generate_id(transaction)?;
+    let relative_path = AppPaths::image_relative_path(&asset_id, inspection.extension);
+    let path = paths.resolve_relative(&relative_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(CommandError::io)?;
+    }
+    write_new_file(&path, bytes)?;
+    let byte_size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
+    let recorded = (|| {
+        transaction.execute(
+            "INSERT INTO assets (
+                 id, original_filename, mime_type, byte_size, relative_path,
+                 created_at, lifecycle_state, ready_at, verified_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'ready', ?6, ?6, ?6)",
+            params![
+                asset_id,
+                format!("{name}.{}", inspection.extension),
+                inspection.mime_type,
+                byte_size,
+                relative_path,
+                now
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO asset_reconciliation_events (
+                 id, asset_id, action, from_path, to_path, detail, occurred_at
+             ) VALUES (lower(hex(randomblob(16))), ?1, 'verified', NULL, ?2, ?3, ?4)",
+            params![asset_id, relative_path, detail, now],
+        )
+    })();
+    if let Err(error) = recorded {
+        let _ = fs::remove_file(&path);
+        return Err(CommandError::database(error));
+    }
+    Ok((asset_id, path))
 }
 
 fn write_new_file(path: &std::path::Path, bytes: &[u8]) -> Result<(), CommandError> {

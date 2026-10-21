@@ -28,6 +28,8 @@ const TAG_PREVIEW = 8;
 export interface WorkbenchTreeActions {
   onSelectScope: (scope: WorkbenchScope) => void;
   onNewDeck: (subjectId: string | null) => void;
+  /** A phone's Import deck, beside New deck; wider screens show it with Library's tabs. */
+  onImportDeck?: () => void;
   deckMenu: (deck: DeckSummary) => OverflowMenuItem[];
   onCheckThese: () => void;
 }
@@ -133,15 +135,22 @@ export function WorkbenchTree({ library, tags, scope, checkTheseCount, compact, 
             <OverflowMenu label={`${deck.name} actions`} items={actions.deckMenu(deck)} className="tw:shrink-0" />
           </div>
         ))}
-        <Button
-          variant="text"
-          size="small"
-          data-testid="workbench-new-deck"
-          className="tw:justify-start tw:px-2"
-          onClick={() => actions.onNewDeck(subjectId ?? null)}
-        >
-          <Icon name="plus" size={16} /> New deck
-        </Button>
+        <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2">
+          <Button
+            variant="text"
+            size="small"
+            data-testid="workbench-new-deck"
+            className="tw:justify-start tw:px-2"
+            onClick={() => actions.onNewDeck(subjectId ?? null)}
+          >
+            <Icon name="plus" size={16} /> New deck
+          </Button>
+          {actions.onImportDeck ? (
+            <Button variant="text" size="small" className="tw:justify-start tw:px-2" onClick={actions.onImportDeck}>
+              <Icon name="import" size={16} /> Import deck
+            </Button>
+          ) : null}
+        </div>
         {archived.length > 0 ? (
           <div className="tw:grid tw:min-w-0">
             <Button variant="ghost" size="small" aria-expanded={showArchived} className="tw:justify-start tw:text-muted-foreground" onClick={() => setShowArchived((value) => !value)}>
