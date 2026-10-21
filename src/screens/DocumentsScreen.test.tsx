@@ -193,6 +193,11 @@ async function chooseDocumentAction(name: string, title = "Cardiac physiology"):
   fireEvent.click(within(menu).getByRole("menuitem", { name }));
 }
 
+async function openGenerationDetails(title = "Cardiac physiology"): Promise<HTMLElement> {
+  await chooseDocumentAction("Generation details", title);
+  return screen.findByRole("dialog", { name: "Generation details" });
+}
+
 describe("DocumentsScreen", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -485,8 +490,11 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Extracting document content").length).toBeGreaterThan(0);
+    const row = await screen.findByTestId("document-row-progress");
+    expect(within(row).getByText("Extracting document content")).toBeTruthy();
+    // The bar replaces the row's status badge and its Open button.
+    expect(screen.queryByText("Processing")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
   it("shows coarse local Xberg stages without inventing page progress", async () => {
@@ -509,8 +517,10 @@ describe("DocumentsScreen", () => {
     );
     renderDocuments();
 
-    expect((await screen.findAllByText("Mapping document structure")).length).toBeGreaterThan(0);
-    expect(screen.getByText("Converting extracted headings and content into oStudy source blocks.")).toBeTruthy();
+    await waitFor(() => expect(within(screen.getByTestId("document-row-progress")).getByText("Mapping document structure")).toBeTruthy());
+    expect(screen.queryByText("Converting extracted headings and content into oStudy source blocks.")).toBeNull();
+    const details = await openGenerationDetails();
+    expect(within(details).getByText("Converting extracted headings and content into oStudy source blocks.")).toBeTruthy();
     expect(screen.queryByText(/Rendering pages/u)).toBeNull();
   });
 
@@ -544,7 +554,7 @@ describe("DocumentsScreen", () => {
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
 
-    await chooseDocumentAction("Stop processing");
+    await chooseDocumentAction("Stop");
 
     await waitFor(() => {
       expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
