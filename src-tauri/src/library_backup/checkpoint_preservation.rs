@@ -233,9 +233,23 @@ const CONTRACTS: &[Contract] = &[
             description: "lecture script",
         }],
     },
-    // Notebooks are made in the app; the upgrade only creates their tables.
     Contract {
         version: 16,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "speech_voices",
+                description: "saved voice",
+            },
+            Rule::AddedEmpty {
+                table: "lesson_voices",
+                description: "lesson voice",
+            },
+        ],
+    },
+    // Notebooks are made in the app; the upgrade only creates their tables.
+    Contract {
+        version: 17,
         setup: "",
         rules: &[
             Rule::AddedEmpty {

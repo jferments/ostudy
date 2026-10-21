@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../test/factories";
@@ -221,7 +221,12 @@ it("keeps section note actions inside the overflow menu", async () => {
   );
   expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Add note" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /Section actions for Preload/u }));
+  const trigger = screen.getByRole("button", { name: /Section actions for Preload/u });
+  // Base UI wires a menu trigger in a passive effect, so an early click can be dropped;
+  // clicking until it reports open never toggles it shut.
+  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
+    await act(async () => { fireEvent.click(trigger); });
+  }
   expect(await screen.findByRole("menuitem", { name: "Add note" })).toBeTruthy();
   expect(screen.getByRole("menuitem", { name: "Edit section" })).toBeTruthy();
 });

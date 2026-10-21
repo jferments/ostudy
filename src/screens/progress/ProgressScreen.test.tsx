@@ -9,7 +9,6 @@ import * as subjectsIpc from "../../ipc/subjects";
 import type { SubjectLibrary } from "../../ipc/subjects";
 import { deferred, makeDeck } from "../../test/factories";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
-import { coachSentence, streakSentence } from "./CoachBanner";
 import { ProgressScreen } from "./ProgressScreen";
 
 vi.mock("../../ipc/progress", () => ({
@@ -137,22 +136,21 @@ describe("ProgressScreen", () => {
     mockAll();
   });
 
-  it("leads with a plain summary and practices the slipping topic within the scope", async () => {
+  it("puts the scheduled review in the header, over the decks with cards due, with no summary paragraph", async () => {
     const { onPracticeScope } = renderScreen();
-    const banner = await screen.findByRole("region", { name: "Summary" });
-    await within(banner).findByText(/You studied 24 of the last 30 days and remembered 89% of what you reviewed, 3 points better than the month before\./u);
-    expect(within(banner).getByText(/Muscarinic antagonists is the one slipping, at 61% remembered\./u)).toBeTruthy();
-    expect(within(banner).getByText("12-day streak. Today's 20 cards keep it going.")).toBeTruthy();
-
-    fireEvent.click(within(banner).getByRole("button", { name: /Practice those 14 cards/u }));
-    expect(onPracticeScope).toHaveBeenCalledWith([], [TAG]);
+    await screen.findByRole("region", { name: "Learning summary" });
+    expect(screen.queryByRole("region", { name: "Summary" })).toBeNull();
+    const [review] = await screen.findAllByRole("button", { name: /Review 20 due/u });
+    fireEvent.click(review!);
+    expect(onPracticeScope).toHaveBeenCalledWith(["d".repeat(32)], []);
   });
 
-  it("starts a scheduled review over the decks with cards due", async () => {
-    vi.mocked(progressIpc.getProgressTopics).mockResolvedValue([]);
+  it("shows only a title and Start review before anything was studied", async () => {
+    vi.mocked(progressIpc.getProgressActivity).mockResolvedValue(activity({ currentStreak: null, longestStreak: null, days: [] }));
     const { onPracticeScope } = renderScreen();
-    const banner = await screen.findByRole("region", { name: "Summary" });
-    fireEvent.click(await within(banner).findByRole("button", { name: /Review 20 due cards/u }));
+    expect(await screen.findByText("No reviews yet")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Learning summary" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start review" }));
     expect(onPracticeScope).toHaveBeenCalledWith(["d".repeat(32)], []);
   });
 
@@ -162,9 +160,12 @@ describe("ProgressScreen", () => {
     await within(tiles).findByText("89%");
     expect(within(tiles).getByText("3 pts")).toBeTruthy();
     expect(within(tiles).getByText("1 hr")).toBeTruthy();
-    expect(within(tiles).getByText("12-day streak · your longest is 19")).toBeTruthy();
+    expect(within(tiles).getByText("12-day streak")).toBeTruthy();
+    expect(within(tiles).getByText("this month")).toBeTruthy();
     expect(await within(tiles).findByText("512")).toBeTruthy();
-    expect(await screen.findByText("Wednesday has 96 due")).toBeTruthy();
+    expect(within(tiles).getByRole("button", { name: "What solid means" })).toBeTruthy();
+    expect(screen.queryByText(/Each bar is one/u)).toBeNull();
+    expect(screen.queryByText("Cards due each day, next two weeks")).toBeNull();
     expect(await screen.findByText("93%")).toBeTruthy();
     expect(await screen.findByText("12 days, since September 23")).toBeTruthy();
     expect(screen.getByText("19 days, July 2 to July 20")).toBeTruthy();
@@ -173,7 +174,8 @@ describe("ProgressScreen", () => {
 
   it("reloads the scoped sections, not the library-wide calendar, when the range changes", async () => {
     renderScreen();
-    await screen.findByText("Wednesday has 96 due");
+    await screen.findByText("89%");
+    await waitFor(() => expect(progressIpc.getProgressForecast).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getAllByRole("radio", { name: "90 days" })[0]!);
     await waitFor(() => expect(progressIpc.getProgressOverview).toHaveBeenLastCalledWith({ range: "90d", subjectIds: [], deckIds: [], tagIds: [] }));
     expect(progressIpc.getProgressForecast).toHaveBeenCalledTimes(2);
@@ -237,27 +239,5 @@ describe("ProgressScreen", () => {
     const sheet = await screen.findByRole("dialog", { name: "Decks, tags and dates" });
     fireEvent.click(await within(sheet).findByRole("checkbox", { name: "Muscarinic antagonists" }));
     await waitFor(() => expect(progressIpc.getProgressTopics).toHaveBeenLastCalledWith({ range: "30d", subjectIds: [], deckIds: [], tagIds: [TAG] }));
-  });
-});
-
-describe("Progress coach sentences", () => {
-  it("reads a quiet range and all time without inventing a comparison", () => {
-    expect(coachSentence(overview({ summary: summary({ reviewCount: 0, rememberedCount: 0, correctRate: null }) }), undefined))
-      .toBe("No reviews in this range. Review a few cards and your progress shows up here.");
-    const allTime = overview({ previousSummary: null, studyDayCount: 1 });
-    allTime.scope = { ...allTime.scope, range: "all", startLocalDate: null };
-    expect(coachSentence(allTime, undefined)).toBe("You've studied on 1 day and remembered 89% of what you reviewed.");
-  });
-
-  it("says a lower rate plainly", () => {
-    expect(coachSentence(overview({ previousSummary: summary({ correctRate: 0.9 }) }), undefined))
-      .toBe("You studied 24 of the last 30 days and remembered 89% of what you reviewed, 1 point lower than the month before.");
-  });
-
-  it("knows whether today already counts toward the streak", () => {
-    expect(streakSentence(activity({ currentStreak: { length: 3, startLocalDate: "2026-10-03", endLocalDate: TODAY } }), 0))
-      .toBe("3-day streak. You're done for today.");
-    expect(streakSentence(activity({ currentStreak: null }), 4)).toBe("4 cards due today.");
-    expect(streakSentence(activity({ currentStreak: null }), 0)).toBeNull();
   });
 });

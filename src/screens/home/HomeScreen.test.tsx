@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
@@ -160,9 +160,18 @@ function renderHome({
 const DECKS = [makeDeck()];
 
 /** Chooses an order from the Your subjects menu. */
+/** Base UI wires a menu trigger in a passive effect, so an early click can be dropped; click until it opens. */
+async function openSortMenu(): Promise<HTMLElement> {
+  const trigger = screen.getByRole("button", { name: "Sort subjects" });
+  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
+    await act(async () => { fireEvent.click(trigger); });
+  }
+  return screen.findByRole("menu", { name: "Sort subjects" });
+}
+
 async function sortBy(label: string): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: "Sort subjects" }));
-  fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: label }));
+  const menu = await openSortMenu();
+  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: label }));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 }
 
@@ -234,8 +243,7 @@ describe("HomeScreen", () => {
     first.unmount();
     renderHome();
     await screen.findByTestId("home-today");
-    fireEvent.click(screen.getByRole("button", { name: "Sort subjects" }));
-    const menu = await screen.findByRole("menu", { name: "Sort subjects" });
+    const menu = await openSortMenu();
     expect(within(menu).getByRole("menuitemcheckbox", { name: "Name" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Most due first" }));
   });
