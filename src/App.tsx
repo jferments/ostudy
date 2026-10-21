@@ -317,6 +317,7 @@ function App() {
                                     }
                                     subjectId={subjectFilter}
                                     showToast={controller.showToast}
+                                    onSetUpAi={() => void controller.openAiSetup()}
                                   />
                                 </PerformanceProfiler>
                               </LibraryFrame>
