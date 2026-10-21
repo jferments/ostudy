@@ -53,6 +53,8 @@ mod annotated_pdf_exports;
 mod lecture_exports;
 #[path = "release/lecture_scripts.rs"]
 mod lecture_scripts;
+#[path = "release/speech_voices.rs"]
+mod speech_voices;
 #[path = "release/study_guide_reading.rs"]
 mod study_guide_reading;
 
@@ -65,7 +67,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 16;
+pub(crate) const SCHEMA_VERSION: i64 = 17;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -166,9 +168,15 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     },
     ReleaseMigration {
         version: 16,
+        name: "speech_voices",
+        checksum: "2ff607022faa39f8db7876ba62233cd92cd2d138e953c1e1a189c0dff7c5070e",
+        sql: include_str!("../../schema/0016_speech_voices.sql"),
+    },
+    ReleaseMigration {
+        version: 17,
         name: "notebooks",
-        checksum: "eca1c4791c5b05ee1369d4c434d3249579c904f4d21f3d29f04c7ce94511a762",
-        sql: include_str!("../../schema/0016_notebooks.sql"),
+        checksum: "6f2c4daaaf75ebd1520f63ef1f4ecc3fc313da245aa3d5b8d0aecc5fe8a99795",
+        sql: include_str!("../../schema/0017_notebooks.sql"),
     },
 ];
 
@@ -386,6 +394,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     lecture_exports::validate_schema(connection, user_version)?;
     annotated_pdf_exports::validate_schema(connection, user_version)?;
     lecture_scripts::validate_schema(connection, user_version)?;
+    speech_voices::validate_schema(connection, user_version)?;
     notebooks::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)

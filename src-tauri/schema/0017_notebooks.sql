@@ -1,4 +1,4 @@
--- Release migration 16: notebooks.
+-- Release migration 17: notebooks.
 --
 -- A notebook is a learner's own pages of paper, drawn and typed on with the
 -- same tools as a document's annotations, and filed in a subject like a deck

@@ -412,8 +412,8 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
-    // Teacher's lecture scripts, lesson narration, its audio and the speech
-    // setting go with them, and links from cards to the marks they were made
+    // Teacher's lecture scripts, lesson narration, its audio, the voice each
+    // lesson is spoken in, the saved voices and the speech setting go with them, and links from cards to the marks they were made
     // from go with the marks.
     // How far a learner has read each guide stays on the device too, and so
     // do notebooks for now.
@@ -443,8 +443,12 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
              DELETE FROM note_annotation_sources;
-             CREATE TEMP TABLE sync_narration_assets AS SELECT asset_id FROM speech_segments;
+             DELETE FROM lesson_voices;
+             CREATE TEMP TABLE sync_narration_assets AS
+                 SELECT asset_id FROM speech_segments
+                 UNION SELECT asset_id FROM speech_voices;
              DELETE FROM speech_segments;
+             DELETE FROM speech_voices;
              DELETE FROM speech_settings;
              DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
              DROP TABLE sync_narration_assets;
@@ -854,7 +858,9 @@ mod tests {
                          VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);
                          INSERT INTO lecture_scripts(lesson_id, revision_number, script_json,
                              provenance_json, created_at)
-                         VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);",
+                         VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);
+                         INSERT INTO lesson_voices(lesson_id, model_id, voice, created_at)
+                         VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);",
                         hash = "b".repeat(64),
                         unit = "c".repeat(32),
                     ))
@@ -866,7 +872,8 @@ mod tests {
                               + (SELECT COUNT(*) FROM lesson_revisions)
                               + (SELECT COUNT(*) FROM lesson_revision_units)
                               + (SELECT COUNT(*) FROM lesson_progress)
-                              + (SELECT COUNT(*) FROM lecture_scripts)",
+                              + (SELECT COUNT(*) FROM lecture_scripts)
+                              + (SELECT COUNT(*) FROM lesson_voices)",
                         [],
                         |row| row.get(0),
                     )
@@ -904,9 +911,19 @@ mod tests {
                              'af_heart', 'mp3', '{asset}', 12, 1);
                          INSERT INTO speech_settings(id, profile_id, model_id, voice, revision,
                              updated_at)
-                         VALUES (1, NULL, 'hexgrad/kokoro-82m', 'af_heart', 1, 1);",
+                         VALUES (1, NULL, 'hexgrad/kokoro-82m', 'af_heart', 1, 1);
+                         INSERT INTO assets(id, original_filename, mime_type, byte_size,
+                             relative_path, created_at)
+                         VALUES ('{sample}', 'voice.mp3', 'audio/mpeg', 10,
+                             'assets/images/{sample}.mp3', 1);
+                         INSERT INTO speech_voices(id, model_id, name, state, sample_text,
+                             asset_id, created_at, updated_at)
+                         VALUES ('{voice}', 'fish-audio/drama-3', 'Voice 1', 'saved', 'Hello.',
+                             '{sample}', 1, 1);",
                         segment = "e".repeat(32),
                         hash = "b".repeat(64),
+                        sample = "f".repeat(32),
+                        voice = "a".repeat(32),
                     ))
                     .map_err(CommandError::database)?;
                 sanitize_snapshot(connection, selection)?;
@@ -914,6 +931,7 @@ mod tests {
                     .query_row(
                         "SELECT (SELECT COUNT(*) FROM speech_segments)
                               + (SELECT COUNT(*) FROM speech_settings)
+                              + (SELECT COUNT(*) FROM speech_voices)
                               + (SELECT COUNT(*) FROM assets)",
                         [],
                         |row| row.get(0),
@@ -922,7 +940,7 @@ mod tests {
             })
             .unwrap();
         assert_eq!(remaining, 0);
-        for table in ["speech_segments", "speech_settings"] {
+        for table in ["speech_segments", "speech_settings", "speech_voices", "lesson_voices"] {
             assert!(!selection.includes_table(table));
         }
     }
