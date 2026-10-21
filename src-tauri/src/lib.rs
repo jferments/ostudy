@@ -43,6 +43,7 @@ mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
+mod document_figures;
 mod document_generation;
 mod document_import;
 mod document_ingestion;
@@ -406,6 +407,10 @@ pub fn run() {
             library_session::commands::leased_draft_mark_question,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
+            document_figures::get_document_figures,
+            document_figures::set_document_figures_use_images,
+            document_figures::set_document_figure_hidden,
+            library_session::commands::leased_find_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
             notebooks::list_notebooks,
             notebooks::create_notebook,

@@ -12,11 +12,12 @@ The original file is not uploaded to the model. ostudy keeps a local copy, reads
 
 ## Add a document
 
-On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. For a PDF, **Import document** then asks whether to **Use images from this document** (on unless you turn it off): with it on, oStudy finds the document's figures once its pages are read (see [Figures](#figures)); with it off, the document is used as text. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
 
 Each document is one row: its format, length and when it was added, its reading range if it has one, what it has made so far (**Study guide**, its cards, or **Nothing made yet**), its status while it is being read or after a failure, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
 - **Annotate**, for a PDF whose pages have been drawn ([Annotating PDF pages](pdf-annotation.md)).
+- **Figures**, for the same PDFs: the figures oStudy found in it ([Figures](#figures)).
 - **Reading range…**, for a document in a subject (see [Documents in a subject](#documents-in-a-subject)).
 - **Add to a subject…** or **Move to another subject…**, and **Remove from subject**.
 - **Make more cards…**, once the document has a deck.
@@ -74,6 +75,16 @@ Earlier versions called a subject's documents a "collection" and kept its flashc
 ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, ODP and ODS; EPUB; RTF; Excel XLS and XLSX; and CSV. Image sets accept PNG, JPEG and WebP screenshots and photos; they are not stitched into one image.
 
 The format is detected from the file's contents. The older Word, PowerPoint and Excel formats also need their usual file extension, and CSV needs its `.csv` extension because it has no signature of its own. Renaming a file does not make it a supported format. Web pages, audio, and other formats an underlying library might read are not supported.
+
+## Figures
+
+For a PDF imported with its images on, oStudy looks for its figures once the pages are read, beside card and guide writing, without contacting a provider. A figure is a picture or a drawing big enough to study. Logos and other marks that repeat in the same place on several pages, pictures in the header or footer band, ruled tables and boxed paragraphs are left out, and so is a page that is one scanned picture.
+
+**Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
+
+A document imported before figures existed, or with its images off, shows **Find figures** or **Use images** there. **Stop using images** in the page's **…** menu forgets the figures found, hidden ones included, and **Find figures again** searches the PDF again.
+
+Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. Figures are not yet used by flashcards, study guides or lessons; that comes next.
 
 ## How sources are read
 
@@ -137,7 +148,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
 Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 

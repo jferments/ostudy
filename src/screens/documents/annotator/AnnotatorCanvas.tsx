@@ -33,6 +33,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   highlighter: "tw:cursor-crosshair",
   text: "tw:cursor-text",
   sticky: "tw:cursor-copy",
+  curve: "tw:cursor-crosshair",
   line: "tw:cursor-crosshair",
   arrow: "tw:cursor-crosshair",
   rectangle: "tw:cursor-crosshair",

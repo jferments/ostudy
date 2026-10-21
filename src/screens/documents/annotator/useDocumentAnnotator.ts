@@ -26,17 +26,24 @@ import {
   DEFAULT_STYLES,
   DEFAULT_TEXT_WIDTH,
   estimateTextHeight,
+  isShapeTool,
   isStickyNote,
   isStorable,
   moveGroupWithinPage,
   moveWithinPage,
   restyle,
+  sharedGroup,
+  shapeStyle,
+  shapeToolFor,
   styleFamilyForShape,
   styleFamilyForTool,
   STICKY_HEIGHT,
   STICKY_WIDTH,
   stickyHeight,
   TEXT_LINE_HEIGHT,
+  withGroup,
+  withTheirGroups,
+  type ActiveStyle,
   type Annotation,
   type AnnotatorTool,
   type EraseMode,
@@ -201,21 +208,26 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     return lastCreated.current;
   }, []);
 
+  /** Selects one annotation; one in a group selects its whole group instead. */
   const select = useCallback((id: string | null, pageNumber?: number) => {
     if (id === null) {
       setSelection(null);
       return;
     }
-    if (pageNumber !== undefined) {
-      setSelection({ id, pageNumber });
+    const pages = pageNumber !== undefined ? [pageNumber] : [...annotationsRef.current.keys()];
+    for (const page of pages) {
+      const list = annotationsRef.current.get(page) ?? [];
+      const annotation = list.find((candidate) => candidate.id === id);
+      if (!annotation) continue;
+      if (annotation.shape.group) {
+        setSelection(null);
+        setLassoed({ ids: withTheirGroups(list, [annotation]).map((member) => member.id), pageNumber: page });
+      } else {
+        setSelection({ id, pageNumber: page });
+      }
       return;
     }
-    for (const [page, list] of annotationsRef.current) {
-      if (list.some((annotation) => annotation.id === id)) {
-        setSelection({ id, pageNumber: page });
-        return;
-      }
-    }
+    if (pageNumber !== undefined) setSelection({ id, pageNumber });
   }, []);
 
   /** Closes the open text note, keeping what was typed; an emptied note is removed. */
@@ -307,11 +319,11 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setStyles((current) => ({ ...current, [family]: { ...current[family], ...patch } }));
   }, [commit, selected, tool]);
 
-  const activeStyle = selected
-    ? { family: styleFamilyForShape(selected.shape), style: { color: selected.shape.color, size: selected.shape.kind === "text" ? selected.shape.fontSize : selected.shape.strokeWidth } }
+  const activeStyle: ActiveStyle | null = selected
+    ? { family: styleFamilyForShape(selected.shape), style: shapeStyle(selected.shape), shape: shapeToolFor(selected.shape) }
     : (() => {
       const family = styleFamilyForTool(tool);
-      return family ? { family, style: styles[family] } : null;
+      return family ? { family, style: styles[family], shape: isShapeTool(tool) ? tool : null } : null;
     })();
 
   const deleteSelected = useCallback(() => {
@@ -336,6 +348,16 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
       : { ...open, collapsed: true };
     commit([{ id: selected.id, before: selected, after: { ...selected, shape } }]);
   }, [commit, selected]);
+
+  /** Joins the selected annotations into one group, or takes them out of their group, as one step to undo. */
+  const setGrouped = useCallback((grouped: boolean) => {
+    if (group.length === 0) return;
+    const name = grouped ? createAnnotationId() : null;
+    commit(group.flatMap((annotation) => {
+      const shape = withGroup(annotation.shape, name);
+      return shape.group === annotation.shape.group ? [] : [{ id: annotation.id, before: annotation, after: { ...annotation, shape } }];
+    }));
+  }, [commit, group]);
 
   const deleteGroup = useCallback(() => {
     if (group.length === 0) return;
@@ -427,6 +449,9 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     group,
     selectGroup,
     deleteGroup,
+    setGrouped,
+    /** Whether the selected annotations are exactly one saved group. */
+    isOneGroup: sharedGroup(group) !== null,
     toggleStickyCollapsed,
     moveGroup,
     nudgeGroup,

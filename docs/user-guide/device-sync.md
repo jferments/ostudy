@@ -43,6 +43,7 @@ Some data always stays on the device, whatever is selected:
 - Tutor projects, conversations, summaries and their search copies (see [Tutor memory and privacy](tutor-memory-and-privacy.md)).
 - The knowledge ostudy extracted from documents, so a transferred document may be read again before new material is made from it on the receiving device.
 - PDF annotations.
+- The figures found in PDF documents, and your choice to use a document's images.
 - Lessons and lesson progress.
 - How generated questions were made (their generation evidence) and your **Question mix** in **Settings → Card templates**.
 - AI model test results.
