@@ -405,6 +405,7 @@ pub fn run() {
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
+            lessons::slide_design::get_lesson_slide_designs,
             lessons::pptx::prepare_lesson_lecture_pptx,
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,

@@ -139,6 +139,7 @@ export interface NativeCommandGatewayMap {
   "get_lesson": readonly [typeof GatewayModule23.getLesson];
   "get_lesson_lecture": readonly [typeof GatewayModule23.getLessonLecture];
   "get_lesson_lecture_script": readonly [typeof GatewayModule23.getLessonLectureScript];
+  "get_lesson_slide_designs": readonly [typeof GatewayModule23.getLessonSlideDesigns];
   "get_library_session": readonly [typeof GatewayModule24.getLibrarySession];
   "get_note_source_citation": readonly [typeof GatewayModule14.getNoteSourceCitation];
   "get_pending_usb_sync_request": readonly [typeof GatewayModule10.getPendingUsbSyncRequest];

@@ -33,7 +33,9 @@ mod guide_typst;
 mod math_layout;
 mod math_source;
 
-pub(crate) use guide_typst::{plain_sans_font, StudyGuidePdfTheme};
+pub(crate) use guide_typst::{
+    compile_template_svgs, plain_sans_font, runs as rich_runs, StudyGuidePdfTheme,
+};
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const MAX_EXPORT_SECTIONS: usize = 512;

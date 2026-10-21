@@ -1,6 +1,7 @@
 import { createOperationId } from "./common";
 import type { PreparedExport } from "./externalFiles";
 import type { QuestionKind } from "./questions";
+import type { StudyGuidePdfTheme } from "./studyGuides";
 import { invoke } from "./transport";
 
 /** One teaching block of a lesson step; every field is plain text. */
@@ -178,6 +179,32 @@ export async function getLessonLecture(
 ): Promise<Lecture> {
   return invoke<Lecture>("get_lesson_lecture", {
     input: { lessonId, revisionNumber: revisionNumber ?? null },
+  });
+}
+
+/** One lecture slide laid out by the native typesetter. */
+export interface SlideDesign {
+  /** The lecture slide's key. */
+  key: string;
+  /** The slide as a standalone 16:9 SVG document. */
+  svg: string;
+}
+
+export interface LessonSlideDesigns {
+  lessonId: string;
+  revisionNumber: number;
+  theme: StudyGuidePdfTheme;
+  slides: SlideDesign[];
+}
+
+/** The lecture's slides as designed pages in one of the study guide themes. */
+export async function getLessonSlideDesigns(
+  lessonId: string,
+  revisionNumber: number,
+  theme: StudyGuidePdfTheme,
+): Promise<LessonSlideDesigns> {
+  return invoke<LessonSlideDesigns>("get_lesson_slide_designs", {
+    input: { lessonId, revisionNumber, theme },
   });
 }
 

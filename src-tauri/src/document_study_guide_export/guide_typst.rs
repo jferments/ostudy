@@ -54,7 +54,7 @@ pub(crate) enum StudyGuidePdfTheme {
 }
 
 impl StudyGuidePdfTheme {
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::Navy => "navy",
             Self::Sage => "sage",
@@ -110,14 +110,39 @@ fn compile(
         file_id("/data.json"),
         Bytes::new(serde_json::to_vec(&data).map_err(|error| export_error(error.to_string()))?),
     );
+    compile_world(TEMPLATE, files).map_err(export_error)
+}
+
+fn compile_world(template: &str, files: HashMap<FileId, Bytes>) -> Result<PagedDocument, String> {
     let world = GuideWorld {
-        main: Source::new(file_id("/guide.typ"), TEMPLATE.to_string()),
+        main: Source::new(file_id("/main.typ"), template.to_string()),
         themes: Source::new(file_id("/themes.typ"), THEMES.to_string()),
         files,
     };
     typst::compile::<PagedDocument>(&world)
         .output
-        .map_err(|diagnostics| export_error(describe(&diagnostics)))
+        .map_err(|diagnostics| describe(&diagnostics))
+}
+
+/// Lays out another compiled-in template that imports the guide themes, with
+/// `data` as its /data.json, and returns each page as a standalone SVG. The
+/// world is the guide's: bundled fonts and nothing from disk or the network.
+pub(crate) fn compile_template_svgs(template: &str, data: &Value) -> Result<Vec<String>, String> {
+    let mut files = HashMap::new();
+    files.insert(
+        file_id("/data.json"),
+        Bytes::new(serde_json::to_vec(data).map_err(|error| error.to_string())?),
+    );
+    let pages = compile_world(template, files).map(|document| {
+        let options = typst_svg::SvgOptions::default();
+        document
+            .pages()
+            .iter()
+            .map(|page| typst_svg::svg(page, &options))
+            .collect()
+    });
+    typst::comemo::evict(0);
+    pages
 }
 
 /// The laid-out text of each page, including running headers and repeated
@@ -258,7 +283,7 @@ const SYSTEM_FALLBACK_FONTS: &[&str] = &[
 
 /// Splits text into template runs: plain text, translated math, or LaTeX kept
 /// as visible source when it is outside the bounded subset.
-fn runs(text: &str) -> Value {
+pub(crate) fn runs(text: &str) -> Value {
     let mut result = Vec::new();
     for segment in math_source::segments(text) {
         match segment {
