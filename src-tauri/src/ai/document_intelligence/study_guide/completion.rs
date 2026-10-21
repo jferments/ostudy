@@ -50,14 +50,14 @@ impl StudyGuideCompletionPlan {
 
     pub(super) fn instructions(self) -> String {
         format!(
-            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional richness. keyPoints are optional; unused arrays must be []. Teach supported mechanisms, relationships and necessary exceptions without repeating facts across categories. Use the accompanying source-aware writing target as guidance, never a reason to remove a condition. Never cut a qualification, numerical sign, unit or exception to meet an editorial target.",
+            "Initial output plan: the visible completion allowance is {} tokens. Complete the required JSON object before adding optional study aids; unused arrays must be []. State the key ideas without repeating them across categories. Use the accompanying length guide as guidance, never a reason to remove a condition. Never cut a qualification, numerical sign, unit or exception to meet an editorial target.",
             self.initial_visible_tokens
         )
     }
 
     pub(super) fn recovery_instructions(self) -> String {
         format!(
-            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Preserve the supported core concepts and their complete qualifications in coherent prose. Use only study aids that carry distinct necessary meaning, including supplied visual evidence when needed; do not fill every optional category. Select only supplied knowledge aliases actually explained. Do not add commentary about this retry or invent support.",
+            "The prior attempt reached its completion limit. Recovery has {} visible output tokens, not the original ceiling. Return one complete JSON object using the compact recovery schema. Preserve the key ideas and their complete qualifications. Use only study aids that carry distinct necessary meaning, including supplied visual evidence when needed; do not fill every optional category. Select only supplied knowledge aliases actually explained. Do not add commentary about this retry or invent support.",
             self.repair_visible_tokens
         )
     }
@@ -151,7 +151,7 @@ mod tests {
         let small =
             StudyGuideCompletionPlan::for_writing_budget(WritingBudget::from_signals(1, 120));
         let dense =
-            StudyGuideCompletionPlan::for_writing_budget(WritingBudget::from_signals(13, 24_000));
+            StudyGuideCompletionPlan::for_writing_budget(WritingBudget::from_signals(64, 64_000));
         assert!(dense.initial_visible_tokens > small.initial_visible_tokens);
         for plan in [small, dense, DOCUMENT_GUIDE_COMPLETION_PLAN] {
             assert!(plan.repair_visible_tokens > plan.initial_visible_tokens);

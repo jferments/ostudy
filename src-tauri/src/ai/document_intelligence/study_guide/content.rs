@@ -2,6 +2,9 @@
 //! guidance is request-local and may never reject or truncate valid content.
 use super::*;
 
+/// Most knowledge units one section's support metadata keeps.
+const MAX_SUPPORT_UNITS: usize = 64;
+
 pub(super) fn parse_section_with_images(
     value: Value,
     knowledge: &KnowledgeCatalog,
@@ -78,7 +81,22 @@ fn parse_grounded_section_with_images(
                 crate::ai::structured_output::shape_detail(&value, &schema)
             ))
         })?;
-    let ids = protocol::resolve(&ids, knowledge)?;
+    let mut ids = protocol::resolve(&ids, knowledge)?;
+    // Support metadata keeps at most 64 units. A model that names more has
+    // selected most of the catalog; failing the section for it cost whole
+    // topics of an otherwise valid guide.
+    if ids.is_empty() {
+        // The section was written from this catalog; an empty selection
+        // records it as the section's support instead of losing the topic.
+        ids = knowledge.units.iter().map(|unit| unit.id.clone()).collect();
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_empty_support_filled",
+            "Recorded the topic's catalog as support for a section that selected no units.",
+            json!({"units": knowledge.units.len()}),
+        );
+    }
+    ids.truncate(MAX_SUPPORT_UNITS);
     let content = parse_study_guide_section_mode(content.clone(), require_writing_style)?;
     let budget = WritingBudget::for_knowledge(knowledge);
     if budget.exceeded_by(&content) {
@@ -93,7 +111,7 @@ fn parse_grounded_section_with_images(
     }
     Ok(GroundedStudyGuideSection {
         content,
-        knowledge_support: knowledge.select(&ids, 64)?,
+        knowledge_support: knowledge.select(&ids, MAX_SUPPORT_UNITS)?,
         catalog_fingerprint: knowledge.fingerprint()?,
     })
 }
