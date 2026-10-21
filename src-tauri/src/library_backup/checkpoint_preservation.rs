@@ -247,9 +247,17 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
-    // Figures are found after import; the upgrade only creates their tables.
     Contract {
         version: 17,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "podcasts",
+            description: "podcast",
+        }],
+    },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 18,
         setup: "",
         rules: &[
             Rule::AddedEmpty {

@@ -1,4 +1,5 @@
 import { readMediaAsset } from "../ipc/assets";
+import { getErrorMessage } from "../ipc/common";
 
 const ASSET_ID_PATTERN = /^[0-9a-f]{32}$/u;
 
@@ -23,6 +24,26 @@ export async function createManagedMediaObjectUrl(
   // blob media with MEDIA_ERR_SRC_NOT_SUPPORTED.
   const mimeType = playbackMimeType(bytes, kind);
   return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
+
+/** Said when the WebView has no MP3 decoder, which speech audio needs. */
+export const MP3_DECODER_MISSING =
+  "This computer's media player can't play MP3 audio. Install GStreamer's MP3 support (the gstreamer1.0-plugins-good package) and restart oStudy.";
+
+/**
+ * Why audio did not play. On Linux the WebView plays audio through GStreamer,
+ * which decodes MP3 only with gstreamer1.0-plugins-good installed; without it
+ * play() fails with a bare NotSupportedError, so that case names the fix.
+ */
+export function playbackErrorMessage(failure: unknown): string {
+  if (failure instanceof DOMException && failure.name === "NotSupportedError" && !canPlayMp3()) {
+    return MP3_DECODER_MISSING;
+  }
+  return getErrorMessage(failure);
+}
+
+function canPlayMp3(): boolean {
+  return document.createElement("audio").canPlayType("audio/mpeg") !== "";
 }
 
 export function revokeManagedMediaObjectUrl(url: string | null): void {

@@ -53,6 +53,8 @@ mod annotated_pdf_exports;
 mod lecture_exports;
 #[path = "release/lecture_scripts.rs"]
 mod lecture_scripts;
+#[path = "release/podcasts.rs"]
+mod podcasts;
 #[path = "release/speech_voices.rs"]
 mod speech_voices;
 #[path = "release/study_guide_reading.rs"]
@@ -67,7 +69,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 17;
+pub(crate) const SCHEMA_VERSION: i64 = 18;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -174,9 +176,15 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     },
     ReleaseMigration {
         version: 17,
+        name: "podcasts",
+        checksum: "23abf0c9879caf011c3bb542c8f43274beae8d320fc3d6d914b87a907379e4cd",
+        sql: include_str!("../../schema/0017_podcasts.sql"),
+    },
+    ReleaseMigration {
+        version: 18,
         name: "document_figures",
-        checksum: "d2cf15d7ec672d50de98cb73ef50e85743dbb0d8e53d7af20344acf071600169",
-        sql: include_str!("../../schema/0017_document_figures.sql"),
+        checksum: "e019b8b44289a046ba5b1cd17034541a5b3ad434063316b09d902107495d1786",
+        sql: include_str!("../../schema/0018_document_figures.sql"),
     },
 ];
 
@@ -395,6 +403,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     annotated_pdf_exports::validate_schema(connection, user_version)?;
     lecture_scripts::validate_schema(connection, user_version)?;
     speech_voices::validate_schema(connection, user_version)?;
+    podcasts::validate_schema(connection, user_version)?;
     document_figures::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
