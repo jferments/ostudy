@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
@@ -31,6 +32,9 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
+import { InkEditor } from "../ink/InkEditor";
+import { InkOverlay } from "../ink/InkOverlay";
+import { useMaterialInk } from "../ink/useMaterialInk";
 import { readSlideTheme, saveSlideTheme, useSlideDesigns } from "./useSlideDesigns";
 import { useVoiceAvailable } from "./useVoiceAvailable";
 
@@ -52,7 +56,12 @@ interface LectureViewProps {
   answered: Record<string, AnsweredCheck>;
   onAnswered: (result: LessonCheckResult) => void;
   onClose: () => void;
+  showToast: ShowToast;
 }
+
+/** A slide's designed picture is laid out at 720 by 405 points. */
+const SLIDE_WIDTH = 720;
+const SLIDE_HEIGHT = 405;
 
 /** A question the teacher is asking; `resumeAt` is the slide the lecture goes on to. */
 interface Asking {
@@ -78,6 +87,7 @@ export function LectureView({
   answered: answeredChecks,
   onAnswered,
   onClose,
+  showToast,
 }: LectureViewProps) {
   const lane = useRequestLane();
   const scriptLane = useRequestLane();
@@ -98,6 +108,9 @@ export function LectureView({
   const voiceAvailable = useVoiceAvailable();
   const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
   const designs = useSlideDesigns(lessonId, revisionNumber, theme);
+  const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
+  const ink = useMaterialInk(inkMaterial);
+  const [inking, setInking] = useState(false);
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
 
@@ -255,6 +268,21 @@ export function LectureView({
     headingRef.current?.focus();
   };
 
+  if (inking) {
+    const pages = slides.flatMap((item) => {
+      const picture = designs.images.get(item.key);
+      return picture ? [{ key: item.key, width: SLIDE_WIDTH, height: SLIDE_HEIGHT, image: picture }] : [];
+    });
+    return (
+      <InkEditor material={inkMaterial} pages={pages} pageKey={slide.key} title={lecture.title}
+        description="Lecture slides" closeLabel="Back to the lecture" showToast={showToast}
+        onClose={() => {
+          setInking(false);
+          ink.reload();
+        }} />
+    );
+  }
+
   return (
     <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
       <header className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
@@ -281,6 +309,11 @@ export function LectureView({
           {script === null ? (
             <Button className="tw:rounded-full" disabled={writing || lecturing} onClick={writeScript}>
               <Icon name="sparkles" size={16} /> {writing ? "Writing the lecture…" : "Write the teacher's lecture"}
+            </Button>
+          ) : null}
+          {designs.images.size === slides.length ? (
+            <Button className="tw:rounded-full" disabled={lecturing} onClick={() => setInking(true)}>
+              <Icon name="pen" size={16} /> Write on slides
             </Button>
           ) : null}
           <Button className="tw:rounded-full" disabled={saving} onClick={() => void saveDeck()}>
@@ -325,11 +358,14 @@ export function LectureView({
                 >
                   <span className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-1">
                     {designs.images.has(item.key) ? (
-                      <img
-                        src={designs.images.get(item.key)}
-                        alt=""
-                        className="tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border"
-                      />
+                      <span className="tw:relative tw:block">
+                        <img
+                          src={designs.images.get(item.key)}
+                          alt=""
+                          className="tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border"
+                        />
+                        <InkOverlay marks={ink.marks.get(item.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} />
+                      </span>
                     ) : null}
                     <span className="tw:flex tw:gap-2">
                       <span aria-hidden="true" className="tw:w-4 tw:shrink-0 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
@@ -354,6 +390,7 @@ export function LectureView({
             )}
           >
             {image ? <img src={image} alt="" className="tw:block tw:size-full" /> : null}
+            {image ? <InkOverlay marks={ink.marks.get(slide.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} /> : null}
             {/* The designed slide is a picture of this text, which stays for screen readers. */}
             <div className={image ? "tw:sr-only" : "tw:contents"}>
             <h2

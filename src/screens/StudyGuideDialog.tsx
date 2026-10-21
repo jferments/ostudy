@@ -31,6 +31,8 @@ import {
   plainTextRichDocument, sectionBlocks,
 } from "./study-guides/guideModel";
 import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
+import { GuidePageInk } from "./study-guides/GuidePageInk";
+import { useMaterialInk } from "./ink/useMaterialInk";
 import {
   GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
 } from "./study-guides/useDesignedSectionPage";
@@ -61,6 +63,10 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [pageStyle, setPageStyle] = useState<GuidePageStyle>(readGuidePageStyle);
+  /** The section whose designed page is open for writing on. */
+  const [inkTopicId, setInkTopicId] = useState<string | null>(null);
+  const inkMaterial = useMemo(() => pageStyle === "plain" ? null : { kind: "studyGuide" as const, documentId }, [documentId, pageStyle]);
+  const ink = useMaterialInk(inkMaterial);
   const [contentsOpen, setContentsOpen] = useState(false);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
   const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
@@ -315,6 +321,18 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     <OverflowMenu label="Study guide actions" items={guideMenuItems} className="tw:compact:size-11" />
   </> : null;
 
+  const inkEntry = inkTopicId === null ? null : order?.entries.find((entry) => entry.section.topicId === inkTopicId) ?? null;
+  if (guide && inkEntry && pageStyle !== "plain") {
+    return (
+      <GuidePageInk documentId={documentId} topicId={inkEntry.section.topicId} theme={pageStyle}
+        contentKey={`${guide.id}:${inkEntry.section.contentHash}`} title={inkEntry.title} showToast={showToast}
+        onClose={() => {
+          setInkTopicId(null);
+          ink.reload();
+        }} />
+    );
+  }
+
   return <>
     <InlineWorkspace presentation="page" title={guideTitle} description="Study guide"
       onClose={onClose} closeLabel="Back to Study Guides" actions={topBarActions}
@@ -355,7 +373,8 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ) : null}
           {currentEntry ? (
             <GuideSectionPage key={currentEntry.section.topicId} guide={guide} entry={currentEntry} sectionCount={order.entries.length} layoutMode={layoutMode}
-              pageStyle={pageStyle}
+              pageStyle={pageStyle} marks={ink.marks.get(currentEntry.section.topicId) ?? []}
+              onWriteOnPage={() => setInkTopicId(currentEntry.section.topicId)}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               projection={topicCards[currentEntry.section.topicId]}
               previous={neighbor(order.entries, currentEntry, -1)} next={neighbor(order.entries, currentEntry, 1)}

@@ -418,7 +418,7 @@ pub(crate) fn sanitize_snapshot(
     // with the marks.
     // How far a learner has read each guide stays on the device too, and so do
     // notebooks for now, the figures found in a document and the learner's
-    // choice to use them.
+    // choice to use them, and the marks drawn on slides and guide pages.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -470,7 +470,8 @@ pub(crate) fn sanitize_snapshot(
                  AND id NOT IN (SELECT asset_id FROM note_assets)
                  AND id NOT IN (SELECT asset_id FROM card_template_assets)
                  AND id NOT IN (SELECT asset_id FROM question_attempt_assets);
-             DROP TABLE sync_notebook_assets;",
+             DROP TABLE sync_notebook_assets;
+             DELETE FROM material_ink;",
         )
         .map_err(CommandError::database)?;
 

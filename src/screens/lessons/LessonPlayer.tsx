@@ -107,6 +107,7 @@ export function LessonPlayer({
         answered={progress?.checks ?? {}}
         onAnswered={(result) => record(result.progress)}
         onClose={() => setLecture(false)}
+        showToast={showToast}
       />
     );
   }
