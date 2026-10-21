@@ -9,6 +9,9 @@
 mod ai;
 mod analytics;
 mod annotation_cards;
+/// The desktop build's release/development identity; Android takes its
+/// identity from the Gradle build type instead.
+#[cfg(desktop)]
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
