@@ -165,6 +165,23 @@ fn write(
     subject_id: &str,
     operation_id: &str,
 ) -> Result<SubjectLessonsDto, CommandError> {
+    run_course(database, subject_id, operation_id, false)
+}
+
+fn rewrite(
+    database: &Database,
+    subject_id: &str,
+    operation_id: &str,
+) -> Result<SubjectLessonsDto, CommandError> {
+    run_course(database, subject_id, operation_id, true)
+}
+
+fn run_course(
+    database: &Database,
+    subject_id: &str,
+    operation_id: &str,
+    rewrite: bool,
+) -> Result<SubjectLessonsDto, CommandError> {
     let _turn = WRITING
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -174,6 +191,7 @@ fn write(
         WriteSubjectCourseInput {
             subject_id: subject_id.to_string(),
             operation_id: operation_id.to_string(),
+            rewrite,
         },
     ))
 }
@@ -872,4 +890,45 @@ fn list_lessons_now(database: &Database, subject: &str) -> SubjectLessonsDto {
     database
         .with_connection(|connection| list_lessons(connection, subject))
         .unwrap()
+}
+
+#[test]
+fn a_rewritten_course_revises_lessons_by_part_adds_new_parts_and_keeps_the_rest() {
+    let (database, subject, first, second, _) = fixture().unwrap();
+    let (base_url, served, _) = spawn_provider(lesson_answer());
+    use_profile(&database, &base_url, 'e');
+    plan(&database, &[&first, &second]);
+    let course = write(&database, &subject, &operation('e')).unwrap();
+    let (old_first, kept) = (course.lessons[0].id.clone(), course.lessons[1].id.clone());
+    // The first lesson's part is no longer in the plan.
+    execute(
+        &database,
+        "UPDATE lesson_revisions
+         SET provenance_json = json_set(provenance_json, '$.topicIds[0]', 'gone')
+         WHERE lesson_id = ?1",
+        &old_first,
+    );
+    let before = served.load(Ordering::SeqCst);
+
+    let rewritten = rewrite(&database, &subject, &operation('f')).unwrap();
+
+    assert_eq!(served.load(Ordering::SeqCst), before + 2);
+    let ids = rewritten
+        .lessons
+        .iter()
+        .map(|lesson| lesson.id.clone())
+        .collect::<Vec<_>>();
+    // A new lesson for the first part, the second lesson's next revision,
+    // then the lesson whose part went, unchanged.
+    assert_eq!(ids.len(), 3);
+    assert!(ids[0] != old_first && ids[0] != kept);
+    assert_eq!(ids[1..], [kept.clone(), old_first.clone()]);
+    let revision = |index: usize| {
+        rewritten.lessons[index]
+            .written
+            .as_ref()
+            .unwrap()
+            .revision_number
+    };
+    assert_eq!((revision(0), revision(1), revision(2)), (1, 2, 1));
 }

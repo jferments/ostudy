@@ -79,6 +79,16 @@ describe("useSubjectCourse", () => {
     expect(result.current.course).toEqual(WRITTEN);
   });
 
+  it("rewrites an existing course as a run of its own", async () => {
+    vi.mocked(lessonsIpc.writeSubjectCourse).mockResolvedValue(WRITTEN);
+    const { result } = renderHook(() => useSubjectCourse("cardiac"));
+    await waitFor(() => expect(result.current.course).toEqual(EMPTY));
+    act(() => result.current.rewrite());
+    expect(result.current.writing).toBe(true);
+    expect(lessonsIpc.writeSubjectCourse).toHaveBeenCalledWith("cardiac", "operation-1", true);
+    await waitFor(() => expect(result.current.course).toEqual(WRITTEN));
+  });
+
   it("treats a canceled run as stopped, not failed", async () => {
     const run = deferred<lessonsIpc.SubjectLessons>();
     vi.mocked(lessonsIpc.writeSubjectCourse).mockReturnValue(run.promise);

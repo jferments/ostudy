@@ -249,16 +249,19 @@ export async function updateLessonFromSources(
 /**
  * Writes the subject's course with the default document model: one lesson for
  * each top-level topic of its documents' learning plans, saved together when
- * every one is written. A subject that already has lessons, or a document
- * still being processed, is refused. Keep the operation id to stop the run
- * with `cancelSubjectCourseWriting`.
+ * every one is written. A subject that already has lessons is refused unless
+ * `rewrite`: then each lesson becomes the next revision of the lesson teaching
+ * the same part, or a new lesson. A document still being processed is
+ * refused. Keep the operation id to stop the run with
+ * `cancelSubjectCourseWriting`.
  */
 export async function writeSubjectCourse(
   subjectId: string,
   operationId: string = createOperationId(),
+  rewrite = false,
 ): Promise<SubjectLessons> {
   return invoke<SubjectLessons>("write_subject_course", {
-    input: { subjectId, operationId },
+    input: { subjectId, operationId, rewrite },
   });
 }
 

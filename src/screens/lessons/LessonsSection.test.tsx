@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { LessonSummary } from "../../ipc/lessons";
+import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { LessonsSection } from "./LessonsSection";
 import type { SubjectCourse } from "./useSubjectCourse";
 
@@ -51,6 +52,7 @@ function course(overrides: Partial<SubjectCourse> = {}): SubjectCourse {
     refresh: vi.fn(),
     update: vi.fn(),
     write: vi.fn(),
+    rewrite: vi.fn(),
     stop: vi.fn(),
     dismissWriteError: vi.fn(),
     ...overrides,
@@ -85,5 +87,19 @@ describe("LessonsSection", () => {
     for (const button of screen.getAllByRole("button", { name: /from its sources/ })) {
       expect((button as HTMLButtonElement).disabled).toBe(true);
     }
+  });
+
+  it("rewrites the course once the learner confirms the cost", async () => {
+    const value = course();
+    render(
+      <OverlayProvider>
+        <LessonsSection headingId="h" course={value} hasSources onOpenLesson={vi.fn()} />
+      </OverlayProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Rewrite course" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/costs about as much as writing the course did/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rewrite course" }));
+    await waitFor(() => expect(value.rewrite).toHaveBeenCalled());
   });
 });

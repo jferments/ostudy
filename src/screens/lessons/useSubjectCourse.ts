@@ -42,12 +42,12 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function startRun(subjectId: string) {
+function startRun(subjectId: string, rewrite: boolean) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
   publish(subjectId, { operationId, stopping: false, progress: null, outcome: null });
   watchProgress(subjectId, operationId);
-  void writeSubjectCourse(subjectId, operationId).then(
+  void writeSubjectCourse(subjectId, operationId, rewrite).then(
     (lessons) => settle(subjectId, operationId, { lessons }),
     (error: unknown) =>
       settle(
@@ -122,6 +122,8 @@ export interface SubjectCourse {
   refresh: () => void;
   update: (lessonId: string) => void;
   write: () => void;
+  /** Writes the whole course again; each lesson keeps its place. */
+  rewrite: () => void;
   stop: () => void;
   dismissWriteError: () => void;
 }
@@ -200,7 +202,11 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
     },
     write: () => {
       setWriteError(null);
-      startRun(subjectId);
+      startRun(subjectId, false);
+    },
+    rewrite: () => {
+      setWriteError(null);
+      startRun(subjectId, true);
     },
     stop: () => void stopRun(subjectId),
     dismissWriteError: () => setWriteError(null),

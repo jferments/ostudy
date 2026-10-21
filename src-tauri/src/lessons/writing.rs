@@ -8,7 +8,9 @@
 //! do not repeat each other. Lessons are written in parallel within the
 //! provider's limits and saved together once every one of them is valid, so
 //! a failed or stopped run leaves the course as it was. A subject that
-//! already has lessons is refused; rewriting a course is a separate decision.
+//! already has lessons is refused unless the course is being rewritten: then
+//! each lesson becomes the next revision of the lesson teaching the same
+//! part, or a new lesson.
 //!
 //! One lesson whose sources changed is written again, from the same part of
 //! the subject's current study plan, as its next revision.
@@ -30,7 +32,7 @@ use tauri::State;
 use super::{
     authoring::{
         add_generated_revision, create_generated_course, ensure_course_empty,
-        MAX_LESSONS_PER_SUBJECT,
+        rewrite_generated_course, taught_part, MAX_LESSONS_PER_SUBJECT,
     },
     content::{LessonContent, LESSON_CONTENT_VERSION},
     list_lessons, require_lesson, require_subject, SubjectLessonsDto,
@@ -68,6 +70,9 @@ const OUTLINE_CONTEXT_CHARS: usize = 200;
 pub struct WriteSubjectCourseInput {
     pub subject_id: String,
     pub operation_id: String,
+    /// Writes a subject's existing course again instead of refusing it.
+    #[serde(default)]
+    pub rewrite: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,16 +213,11 @@ fn lesson_source(connection: &Connection, lesson_id: &str) -> Result<LessonSourc
     };
     let provenance: Value = serde_json::from_str(&provenance.ok_or_else(not_generated)?)
         .map_err(|_| not_generated())?;
-    let document_id = provenance["documentId"]
-        .as_str()
-        .ok_or_else(not_generated)?;
-    let topic_id = provenance["topicIds"][0]
-        .as_str()
-        .ok_or_else(not_generated)?;
+    let (document_id, topic_id) = taught_part(&provenance).ok_or_else(not_generated)?;
     Ok(LessonSource {
         subject_id,
-        document_id: document_id.to_string(),
-        topic_id: topic_id.to_string(),
+        document_id,
+        topic_id,
     })
 }
 
@@ -309,7 +309,11 @@ pub(crate) async fn write_course(
     validate_entity_id(&input.operation_id, "course writing operation")?;
     database.with_connection(|connection| {
         require_subject(connection, &input.subject_id)?;
-        ensure_course_empty(connection, &input.subject_id)
+        if input.rewrite {
+            Ok(())
+        } else {
+            ensure_course_empty(connection, &input.subject_id)
+        }
     })?;
     let guard = Guard::begin(&input.subject_id, &input.operation_id)?;
     let signal = guard.signal();
@@ -438,7 +442,11 @@ async fn write_lessons(
         if subject_plans(connection, subject_id)? != plans {
             return Err(source_changed());
         }
-        create_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        if input.rewrite {
+            rewrite_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        } else {
+            create_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        }
     })
 }
 

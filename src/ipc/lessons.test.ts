@@ -101,7 +101,11 @@ describe("lesson IPC", () => {
     const operationId = "c".repeat(32);
     await writeSubjectCourse(subjectId, operationId);
     expect(invoke).toHaveBeenLastCalledWith("write_subject_course", {
-      input: { subjectId, operationId },
+      input: { subjectId, operationId, rewrite: false },
+    });
+    await writeSubjectCourse(subjectId, operationId, true);
+    expect(invoke).toHaveBeenLastCalledWith("write_subject_course", {
+      input: { subjectId, operationId, rewrite: true },
     });
     await cancelSubjectCourseWriting(operationId);
     expect(invoke).toHaveBeenLastCalledWith("cancel_subject_course_writing", {

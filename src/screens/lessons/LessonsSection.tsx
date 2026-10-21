@@ -6,6 +6,7 @@ import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
 import { Card } from "../../ui/primitives/Card";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { useConfirm } from "../../ui/overlays/overlayContext";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { Progress } from "../../ui/primitives/Progress";
 import type { SubjectCourse } from "./useSubjectCourse";
@@ -26,6 +27,16 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
   );
   const next = lessons.find((lesson) => !lesson.progress?.finishedAt) ?? null;
   const done = lessons.filter((lesson) => lesson.progress?.finishedAt).length;
+  const confirm = useConfirm();
+  const rewrite = async () => {
+    const approved = await confirm({
+      title: "Rewrite this course?",
+      description:
+        "Every lesson is written again from the subject's documents as they are now, with your AI model, which costs about as much as writing the course did. Each lesson keeps its place; what you did in a lesson stays with its earlier version.",
+      confirmLabel: "Rewrite course",
+    });
+    if (approved) course.rewrite();
+  };
 
   if (!hasSources && lessons.length === 0) return null;
   return (
@@ -35,8 +46,18 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
           Lessons
         </h2>
         {lessons.length > 0 ? (
-          <span className="tw:text-small tw:text-muted-foreground">
+          <span className="tw:flex tw:items-baseline tw:gap-3 tw:text-small tw:text-muted-foreground">
             {done} of {lessons.length} done
+            {hasSources ? (
+              <Button
+                size="small"
+                variant="text"
+                disabled={course.writing || course.updating !== null}
+                onClick={() => void rewrite()}
+              >
+                Rewrite course
+              </Button>
+            ) : null}
           </span>
         ) : null}
       </div>
