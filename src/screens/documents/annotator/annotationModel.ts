@@ -22,11 +22,11 @@ export interface Size { width: number; height: number; }
 export interface Bounds { left: number; top: number; right: number; bottom: number; }
 
 export type AnnotatorTool =
-  | "select" | "lasso" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "rectangle" | "ellipse" | "eraser";
-export type ShapeTool = "line" | "arrow" | "rectangle" | "ellipse";
+  | "select" | "lasso" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "curve" | "rectangle" | "ellipse" | "eraser";
+export type ShapeTool = "line" | "arrow" | "curve" | "rectangle" | "ellipse";
 /** What the eraser takes: whole annotations, or only the parts of pen and highlighter strokes it passes over. */
 export type EraseMode = "whole" | "part";
-export const SHAPE_TOOLS: readonly ShapeTool[] = ["line", "arrow", "rectangle", "ellipse"];
+export const SHAPE_TOOLS: readonly ShapeTool[] = ["line", "arrow", "curve", "rectangle", "ellipse"];
 
 export function isShapeTool(tool: AnnotatorTool): tool is ShapeTool {
   return (SHAPE_TOOLS as readonly string[]).includes(tool);
@@ -61,7 +61,15 @@ export type LineStyle = "solid" | LineDash;
  * arrow's heads, and a box's or ellipse's fill and border. A border can only be
  * dropped from a filled shape.
  */
-export interface ShapeLook { line: LineStyle; bothEnds: boolean; fill: string | null; border: boolean; }
+export interface ShapeLook {
+  line: LineStyle;
+  bothEnds: boolean;
+  fill: string | null;
+  border: boolean;
+  /** A curve's arrowheads: none (a curved line), at its end, or at both ends. */
+  heads: CurveHeads;
+}
+export type CurveHeads = "none" | "end" | "both";
 /** A tool's look. `size` is the stroke width, or the font size for text, in points. */
 export interface ToolStyle extends Partial<ShapeLook> { color: string; size: number; }
 export type ToolStyles = Readonly<Record<StyleFamily, ToolStyle>>;
@@ -110,7 +118,7 @@ export const STYLE_CHOICES: Readonly<Record<StyleFamily, { swatches: readonly Sw
 export const DEFAULT_STYLES: ToolStyles = {
   pen: { color: "#1f2328", size: 3 },
   highlighter: { color: "#fde047", size: 16 },
-  shape: { color: "#dc2626", size: 3, line: "solid", bothEnds: false, fill: null, border: true },
+  shape: { color: "#dc2626", size: 3, line: "solid", bothEnds: false, fill: null, border: true, heads: "none" },
   text: { color: "#1f2328", size: 14 },
   sticky: { color: "#fde047", size: 10 },
 };
@@ -125,7 +133,14 @@ export interface ActiveStyle { family: StyleFamily; style: ToolStyle; shape: Sha
 
 /** The shape tool that draws a shape, or null for a stroke or note. */
 export function shapeToolFor(shape: AnnotationShape): ShapeTool | null {
+  if ((shape.kind === "line" || shape.kind === "arrow") && shape.curve) return "curve";
   return isShapeTool(shape.kind as AnnotatorTool) ? shape.kind as ShapeTool : null;
+}
+
+/** A curve's arrowheads, from its kind and ends. */
+export function curveHeads(shape: SegmentShape): CurveHeads {
+  if (shape.kind === "line") return "none";
+  return shape.bothEnds ? "both" : "end";
 }
 
 export function styleFamilyForShape(shape: AnnotationShape): StyleFamily {
@@ -170,7 +185,7 @@ export function shapeStyle(shape: AnnotationShape): ToolStyle {
   if (shape.kind === "text") return { color: shape.color, size: shape.fontSize };
   const style: ToolStyle = { color: shape.color, size: shape.strokeWidth };
   if (shape.kind === "line" || shape.kind === "arrow") {
-    return { ...style, line: shape.dash ?? "solid", bothEnds: shape.bothEnds === true };
+    return { ...style, line: shape.dash ?? "solid", bothEnds: shape.bothEnds === true, heads: curveHeads(shape) };
   }
   if (shape.kind === "rectangle" || shape.kind === "ellipse") {
     return { ...style, line: shape.dash ?? "solid", fill: shape.fill ?? null, border: shape.border !== false };
@@ -187,6 +202,13 @@ function withLook<T extends SegmentShape | FrameShape>(shape: T, look: Partial<S
   }
   if (next.kind === "line" || next.kind === "arrow") {
     const segment = next as SegmentShape;
+    // A curve's heads choose whether it is a curved line or a curved arrow.
+    if (segment.curve && look.heads !== undefined) {
+      segment.kind = look.heads === "none" ? "line" : "arrow";
+      if (look.heads === "both") segment.bothEnds = true;
+      else delete segment.bothEnds;
+      return next;
+    }
     if (look.bothEnds !== undefined) {
       if (look.bothEnds && segment.kind === "arrow") segment.bothEnds = true;
       else delete segment.bothEnds;
@@ -304,6 +326,54 @@ function pad(bounds: Bounds, amount: number): Bounds {
   };
 }
 
+/** How many straight pieces a curve is measured in for hit tests, bounds and the eraser. */
+const CURVE_PIECES = 24;
+
+/** The point a fraction `t` along a segment, straight or curved. */
+export function pointOnSegment(shape: SegmentShape, t: number): Point {
+  if (!shape.curve) return { x: shape.x1 + (shape.x2 - shape.x1) * t, y: shape.y1 + (shape.y2 - shape.y1) * t };
+  const [c1x, c1y, c2x, c2y] = shape.curve;
+  const u = 1 - t;
+  return {
+    x: u * u * u * shape.x1 + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * shape.x2,
+    y: u * u * u * shape.y1 + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * shape.y2,
+  };
+}
+
+/** A segment as `x, y` pairs: its two ends, or points along its curve. */
+export function segmentPoints(shape: SegmentShape): number[] {
+  if (!shape.curve) return [shape.x1, shape.y1, shape.x2, shape.y2];
+  const points: number[] = [];
+  for (let index = 0; index <= CURVE_PIECES; index += 1) {
+    const point = pointOnSegment(shape, index / CURVE_PIECES);
+    points.push(point.x, point.y);
+  }
+  return points;
+}
+
+/** The SVG path of a segment from `start` to `end` (its ends, or where its heads begin). */
+export function segmentPath(shape: SegmentShape, start: Point, end: Point): string {
+  if (!shape.curve) return `M${start.x} ${start.y}L${end.x} ${end.y}`;
+  const [c1x, c1y, c2x, c2y] = shape.curve;
+  return `M${start.x} ${start.y}C${c1x} ${c1y} ${c2x} ${c2y} ${end.x} ${end.y}`;
+}
+
+/** The segment an arrow's second head is aimed along: from the curve's last control point, or the first end. */
+export function towardEnd(shape: SegmentShape): SegmentShape {
+  const control = shape.curve && (shape.curve[2] !== shape.x2 || shape.curve[3] !== shape.y2)
+    ? { x: shape.curve[2], y: shape.curve[3] }
+    : { x: shape.x1, y: shape.y1 };
+  return { ...shape, x1: control.x, y1: control.y };
+}
+
+/** The segment an arrow's first head is aimed along, back toward its first end. */
+export function towardStart(shape: SegmentShape): SegmentShape {
+  const control = shape.curve && (shape.curve[0] !== shape.x1 || shape.curve[1] !== shape.y1)
+    ? { x: shape.curve[0], y: shape.curve[1] }
+    : { x: shape.x2, y: shape.y2 };
+  return { ...shape, x1: control.x, y1: control.y, x2: shape.x1, y2: shape.y1 };
+}
+
 /** Where the shape's own geometry lies, without its stroke. */
 export function shapeExtent(shape: AnnotationShape, textHeight: number): Bounds {
   switch (shape.kind) {
@@ -311,12 +381,7 @@ export function shapeExtent(shape: AnnotationShape, textHeight: number): Bounds 
     case "highlight": return shape.rects ? rectBounds(shape.rects) : pointBounds(shape.points, 2);
     case "line":
     case "arrow":
-      return {
-        left: Math.min(shape.x1, shape.x2),
-        top: Math.min(shape.y1, shape.y2),
-        right: Math.max(shape.x1, shape.x2),
-        bottom: Math.max(shape.y1, shape.y2),
-      };
+      return pointBounds(segmentPoints(shape), 2);
     case "rectangle":
     case "ellipse":
       return { left: shape.x, top: shape.y, right: shape.x + shape.width, bottom: shape.y + shape.height };
@@ -380,7 +445,7 @@ export function distanceToShape(shape: AnnotationShape, point: Point, textHeight
     }
     case "line":
     case "arrow":
-      return Math.max(0, distanceToSegment(point, shape.x1, shape.y1, shape.x2, shape.y2) - shape.strokeWidth / 2);
+      return Math.max(0, distanceToPolyline(point, segmentPoints(shape), 2) - shape.strokeWidth / 2);
     case "rectangle": {
       const box = shapeExtent(shape, 0);
       const inside = point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
@@ -524,10 +589,21 @@ export function moveWithinPage(
         : { ...shape, points: mapPoints(shape.points, 2, x, y) };
     case "line":
     case "arrow":
-      return { ...shape, x1: round(shape.x1 + x), y1: round(shape.y1 + y), x2: round(shape.x2 + x), y2: round(shape.y2 + y) };
+      return {
+        ...shape,
+        x1: round(shape.x1 + x), y1: round(shape.y1 + y), x2: round(shape.x2 + x), y2: round(shape.y2 + y),
+        ...(shape.curve ? { curve: movedCurve(shape.curve, x, y, page) } : {}),
+      };
     default:
       return { ...shape, x: round(shape.x + x), y: round(shape.y + y) };
   }
+}
+
+/** Control points moved with their curve; one that would leave the page stops at its edge. */
+function movedCurve(curve: readonly [number, number, number, number], dx: number, dy: number, page: Size): [number, number, number, number] {
+  const first = clampToPage({ x: curve[0] + dx, y: curve[1] + dy }, page);
+  const second = clampToPage({ x: curve[2] + dx, y: curve[3] + dy }, page);
+  return [first.x, first.y, second.x, second.y];
 }
 
 /** Whether a point lies inside a closed loop of `x, y` pairs. */
@@ -544,17 +620,37 @@ export function insideLoop(point: Point, loop: readonly number[]): boolean {
   return inside;
 }
 
-/** The annotations a lasso loop takes: those whose middle it surrounds. */
+/** The annotations a lasso loop takes: those whose middle it surrounds, with the rest of any group they belong to. */
 export function annotationsInLoop(
   annotations: readonly Annotation[],
   loop: readonly number[],
   textHeight: (annotation: Annotation) => number,
 ): Annotation[] {
   if (loop.length < 6) return [];
-  return annotations.filter((annotation) => {
+  return withTheirGroups(annotations, annotations.filter((annotation) => {
     const bounds = shapeExtent(annotation.shape, textHeight(annotation));
     return insideLoop({ x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 }, loop);
-  });
+  }));
+}
+
+/** The chosen annotations and every other annotation of the page in a group with one of them, in drawing order. */
+export function withTheirGroups(page: readonly Annotation[], chosen: readonly Annotation[]): Annotation[] {
+  const groups = new Set(chosen.flatMap((annotation) => annotation.shape.group ? [annotation.shape.group] : []));
+  const ids = new Set(chosen.map((annotation) => annotation.id));
+  return page.filter((annotation) => ids.has(annotation.id) || (annotation.shape.group !== undefined && groups.has(annotation.shape.group)));
+}
+
+/** The group every one of these annotations shares, or null when they are not exactly one group. */
+export function sharedGroup(annotations: readonly Annotation[]): string | null {
+  const group = annotations[0]?.shape.group;
+  return group && annotations.every((annotation) => annotation.shape.group === group) ? group : null;
+}
+
+/** The shape joined to a group, or taken out of its group with null. */
+export function withGroup(shape: AnnotationShape, group: string | null): AnnotationShape {
+  if (group !== null) return { ...shape, group };
+  const { group: _left, ...rest } = shape;
+  return rest as AnnotationShape;
 }
 
 /** A dragged selection rectangle from one corner to the other, as a loop. */
@@ -626,14 +722,21 @@ export function moveGroupWithinPage(
   }));
 }
 
-export type Handle = "start" | "end" | "nw" | "ne" | "sw" | "se" | "width";
+export type Handle = "start" | "end" | "c1" | "c2" | "nw" | "ne" | "sw" | "se" | "width";
 
 /** The points a selected shape can be reshaped from. Strokes only move. */
 export function handlesFor(shape: AnnotationShape, textHeight: number): Array<{ handle: Handle; point: Point }> {
   switch (shape.kind) {
     case "line":
     case "arrow":
-      return [{ handle: "start", point: { x: shape.x1, y: shape.y1 } }, { handle: "end", point: { x: shape.x2, y: shape.y2 } }];
+      return [
+        { handle: "start", point: { x: shape.x1, y: shape.y1 } },
+        { handle: "end", point: { x: shape.x2, y: shape.y2 } },
+        ...(shape.curve ? [
+          { handle: "c1" as const, point: { x: shape.curve[0], y: shape.curve[1] } },
+          { handle: "c2" as const, point: { x: shape.curve[2], y: shape.curve[3] } },
+        ] : []),
+      ];
     case "rectangle":
     case "ellipse":
       return [
@@ -696,6 +799,14 @@ export function shapeFromDrag(
   style: ToolStyle,
   page: Size,
 ): SegmentShape | FrameShape {
+  if (tool === "curve") {
+    const tip = clampToPage(constrain ? snapAngle(start, end) : end, page);
+    const heads = style.heads ?? "none";
+    return withLook<SegmentShape>({
+      kind: heads === "none" ? "line" : "arrow", x1: start.x, y1: start.y, x2: tip.x, y2: tip.y,
+      curve: defaultCurve(start, tip, page), color: style.color, strokeWidth: style.size,
+    }, { ...style, bothEnds: undefined, heads });
+  }
   if (tool === "line" || tool === "arrow") {
     const tip = clampToPage(constrain ? snapAngle(start, end) : end, page);
     return withLook<SegmentShape>(
@@ -707,6 +818,20 @@ export function shapeFromDrag(
     clampFrame({ kind: tool, ...frameBetween(start, end, constrain), color: style.color, strokeWidth: style.size }, page),
     style,
   );
+}
+
+/**
+ * A new curve's control points: a third and two thirds of the way along, lifted
+ * to one side by a quarter of its length, so it starts as a gentle arc whose
+ * handles then bend it.
+ */
+function defaultCurve(start: Point, end: Point, page: Size): [number, number, number, number] {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lift = { x: dy * 0.25, y: -dx * 0.25 };
+  const c1 = clampToPage({ x: start.x + dx / 3 + lift.x, y: start.y + dy / 3 + lift.y }, page);
+  const c2 = clampToPage({ x: start.x + (dx * 2) / 3 + lift.x, y: start.y + (dy * 2) / 3 + lift.y }, page);
+  return [round(c1.x), round(c1.y), round(c2.x), round(c2.y)];
 }
 
 /** Whether a dragged shape is big enough to keep. A box needs some size both ways. */
@@ -726,11 +851,27 @@ export function resizeShape(
   switch (shape.kind) {
     case "line":
     case "arrow": {
+      if (shape.curve && (handle === "c1" || handle === "c2")) {
+        const control = clampToPage(point, page);
+        const curve: [number, number, number, number] = [...shape.curve];
+        curve.splice(handle === "c1" ? 0 : 2, 2, round(control.x), round(control.y));
+        return { ...shape, curve };
+      }
       if (handle !== "start" && handle !== "end") return shape;
       const fixed = handle === "start" ? { x: shape.x2, y: shape.y2 } : { x: shape.x1, y: shape.y1 };
       const moved = clampToPage(constrain ? snapAngle(fixed, point) : point, page);
       if (moved.x === fixed.x && moved.y === fixed.y) return shape;
-      return handle === "start" ? { ...shape, x1: moved.x, y1: moved.y } : { ...shape, x2: moved.x, y2: moved.y };
+      const reshaped = handle === "start" ? { ...shape, x1: moved.x, y1: moved.y } : { ...shape, x2: moved.x, y2: moved.y };
+      if (!shape.curve) return reshaped;
+      // The control point beside a moved end goes with it, so the bend keeps its shape.
+      const [c1x, c1y, c2x, c2y] = shape.curve;
+      const dx = handle === "start" ? moved.x - shape.x1 : moved.x - shape.x2;
+      const dy = handle === "start" ? moved.y - shape.y1 : moved.y - shape.y2;
+      const near = clampToPage(handle === "start" ? { x: c1x + dx, y: c1y + dy } : { x: c2x + dx, y: c2y + dy }, page);
+      const curve: [number, number, number, number] = handle === "start"
+        ? [round(near.x), round(near.y), c2x, c2y]
+        : [c1x, c1y, round(near.x), round(near.y)];
+      return { ...reshaped, curve };
     }
     case "rectangle":
     case "ellipse": {
@@ -845,6 +986,7 @@ function quotedTextAllowed(text: string | undefined): boolean {
 /** Whether the native owner will accept the shape, so a save never fails on it. */
 export function isStorable(shape: AnnotationShape): boolean {
   if (!COLOR.test(shape.color)) return false;
+  if (shape.group !== undefined && !/^[0-9a-f]{32}$/.test(shape.group)) return false;
   switch (shape.kind) {
     case "ink":
       return pointsAllowed(shape.points, 3) && strokeWidthAllowed(shape.strokeWidth);
@@ -860,7 +1002,8 @@ export function isStorable(shape: AnnotationShape): boolean {
         && (shape.x1 !== shape.x2 || shape.y1 !== shape.y2)
         && strokeWidthAllowed(shape.strokeWidth)
         && dashAllowed(shape.dash)
-        && (shape.bothEnds === undefined || (shape.bothEnds === true && shape.kind === "arrow"));
+        && (shape.bothEnds === undefined || (shape.bothEnds === true && shape.kind === "arrow"))
+        && (shape.curve === undefined || (shape.curve.length === 4 && shape.curve.every(coordinate)));
     case "rectangle":
     case "ellipse":
       return coordinate(shape.x) && coordinate(shape.y)

@@ -414,3 +414,23 @@ fn fills_dashes_and_second_arrow_heads_are_drawn() {
         "the second end has a head"
     );
 }
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[test]
+fn a_curve_bends_toward_its_control_points() {
+    let source = fixture(&[([0.0, 0.0, 200.0, 220.0], None, 0)]);
+    let curved = shapes(
+        r##"[{"kind":"line","x1":20,"y1":150,"x2":180,"y2":150,"color":"#000000","strokeWidth":4,
+              "curve":[60,30,140,30]}]"##,
+    );
+    let shown = render(&export(&source, &curved).unwrap(), "curve");
+    // The middle of the curve is three quarters of the way to its control points' height.
+    assert!(
+        shown.get_pixel(100, 60).0[0] < 50,
+        "the curve passes over the middle"
+    );
+    assert!(
+        shown.get_pixel(100, 150).0[0] > 110,
+        "the curve is not a straight line"
+    );
+}

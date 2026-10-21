@@ -386,12 +386,16 @@ impl Canvas<'_> {
 
     fn line(&mut self, segment: &Segment, arrow: bool) -> Result<(), ExportError> {
         let color = parse_color(&segment.color);
-        let end_head = arrow.then(|| arrow_head(segment));
+        let end_head = arrow.then(|| arrow_head(&toward_end(segment)));
         let start_head =
-            (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&reversed(segment)));
+            (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&toward_start(segment)));
         let (start_x, start_y) = start_head.map_or((segment.x1, segment.y1), |head| head.base);
         let (end_x, end_y) = end_head.map_or((segment.x2, segment.y2), |head| head.base);
         let (x1, y1, x2, y2) = (start_x, self.y(start_y), end_x, self.y(end_y));
+        let controls = match segment.curve.as_deref() {
+            Some(&[c1x, c1y, c2x, c2y]) => Some((c1x, self.y(c1y), c2x, self.y(c2y))),
+            _ => None,
+        };
         let corners = |tip: (f64, f64), head: ArrowHead| {
             [
                 (tip.0, self.y(tip.1)),
@@ -416,7 +420,16 @@ impl Canvas<'_> {
         if let Some(pattern) = dash_pattern(segment.dash, segment.stroke_width) {
             graphics.set_line_dash_pattern(pattern);
         }
-        graphics.move_to(x1, y1).line_to(x2, y2).stroke();
+        graphics.move_to(x1, y1);
+        match controls {
+            Some((c1x, c1y, c2x, c2y)) => {
+                graphics.curve_to(c1x, c1y, c2x, c2y, x2, y2);
+            }
+            _ => {
+                graphics.line_to(x2, y2);
+            }
+        }
+        graphics.stroke();
         if !heads.is_empty() {
             graphics
                 .set_line_dash_pattern(LineDashPattern::solid())
@@ -661,11 +674,29 @@ fn dash_pattern(dash: Option<LineDash>, width: f64) -> Option<LineDashPattern> {
     }
 }
 
-/// The segment drawn from its end back to its start, for an arrow's first head.
-fn reversed(segment: &Segment) -> Segment {
+/// The direction an arrow's second head points: from the curve's second
+/// control point (or the first end, for a straight arrow) to the second end.
+fn toward_end(segment: &Segment) -> Segment {
+    let (x1, y1) = match segment.curve.as_deref() {
+        Some(&[_, _, x, y]) if (x, y) != (segment.x2, segment.y2) => (x, y),
+        _ => (segment.x1, segment.y1),
+    };
     Segment {
-        x1: segment.x2,
-        y1: segment.y2,
+        x1,
+        y1,
+        ..segment.clone()
+    }
+}
+
+/// The direction an arrow's first head points, back toward the first end.
+fn toward_start(segment: &Segment) -> Segment {
+    let (x1, y1) = match segment.curve.as_deref() {
+        Some(&[x, y, _, _]) if (x, y) != (segment.x1, segment.y1) => (x, y),
+        _ => (segment.x2, segment.y2),
+    };
+    Segment {
+        x1,
+        y1,
         x2: segment.x1,
         y2: segment.y1,
         ..segment.clone()

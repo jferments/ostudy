@@ -37,7 +37,7 @@ interface DocumentAnnotatorProps {
 const CITED_PAGE_MARK_MS = 2500;
 
 export const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", c: "curve", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -281,6 +281,7 @@ function ReadyAnnotator({
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const command = key === "z" ? (event.shiftKey ? controller.redo : controller.undo)
         : key === "y" ? controller.redo
+          : key === "g" && controller.group.length > 0 ? () => controller.setGrouped(!event.shiftKey)
           : key === "=" || key === "+" ? viewport.zoomIn
             : key === "-" ? viewport.zoomOut
               : key === "0" ? viewport.fitToWidth
@@ -355,6 +356,8 @@ function ReadyAnnotator({
           onTogglePenOnly={controller.togglePenOnly}
           groupSize={controller.group.length}
           onDeleteGroup={controller.deleteGroup}
+          isOneGroup={controller.isOneGroup}
+          onGroup={controller.setGrouped}
           eraseMode={controller.eraseMode}
           onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
