@@ -13,7 +13,7 @@ import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { cn } from "../../../ui/internal/cn";
 import { Icon } from "../../../ui/icons/Icon";
 import { useLibraryFullPage } from "../../library/LibraryFrame";
-import { isShapeTool, isStickyNote, shapeBounds, type AnnotatorTool, type ShapeTool } from "./annotationModel";
+import { isCollapsedSticky, isShapeTool, isStickyNote, shapeBounds, type AnnotatorTool, type ShapeTool } from "./annotationModel";
 import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
@@ -321,6 +321,10 @@ function ReadyAnnotator({
   }
 
   const selected = controller.selected;
+  const toggleCollapsed = () => {
+    const page = selected ? pages.find((candidate) => candidate.pageNumber === selected.pageNumber) : undefined;
+    if (page) controller.toggleStickyCollapsed(page);
+  };
   return (
     <div className="tw:flex tw:min-w-0">
       <div className={cn("tw:flex tw:min-w-0 tw:flex-1 tw:flex-col", compact && cardMark && "tw:hidden")} onKeyDown={keyDown}>
@@ -333,7 +337,12 @@ function ReadyAnnotator({
           onTool={chooseTool}
           style={controller.activeStyle}
           onStyle={controller.chooseStyle}
-          selection={selected ? { isText: selected.shape.kind === "text", isSticky: isStickyNote(selected.shape) } : null}
+          selection={selected ? {
+            isText: selected.shape.kind === "text",
+            isSticky: isStickyNote(selected.shape),
+            isCollapsed: isCollapsedSticky(selected.shape),
+          } : null}
+          onToggleCollapsed={toggleCollapsed}
           onDeleteSelection={controller.deleteSelected}
           onEditSelection={() => { if (selected) controller.editText(selected); }}
           onMakeCard={cardMark || openingCard ? undefined : () => void makeCard()}
