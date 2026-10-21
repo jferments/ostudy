@@ -713,6 +713,7 @@ pub(crate) fn stage(file: &str) -> &'static str {
         "lesson.rs" => "lesson_authoring",
         "mark_question.rs" => "mark_question",
         "lecture_script.rs" => "lecture_authoring",
+        "figure_reading.rs" => "figure_reading",
         "podcast_script.rs" => "podcast_authoring",
         _ => "unclassified",
     }
