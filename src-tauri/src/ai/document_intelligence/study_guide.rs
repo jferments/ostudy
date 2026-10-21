@@ -442,7 +442,7 @@ Choose what matters: the overarching ideas, mechanisms, relationships and distin
 
 Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
 - overview: the big idea in 2 or 3 sentences: what this topic is about and why it matters.
-- keyPoints: the key ideas, usually three to six, each one or two plain sentences that a learner could repeat from memory. They are the heart of the section.
+- keyPoints: the key ideas, usually three to five, each one or two plain sentences that a learner could repeat from memory. They are the heart of the section.
 - explanations: only for the one to three key ideas that need a short explanation of how or why (a mechanism, a cause, a consequence). Each has a short heading naming the idea and one short paragraph. Many topics need one or none.
 - tables: for three or more parallel items compared on two or more attributes, with only the rows and columns a learner needs. At most one or two. Copy names, numbers and units exactly. Do not repeat a table's cells in prose.
 - processSteps: only when an ordered sequence is itself a key idea, in short steps.
@@ -451,7 +451,7 @@ Each idea appears once in the section. Most sections need only overview, keyPoin
 - callouts: usually none, at most one, earning its place: key_idea for the single insight that ties the topic together, warning for a caution or a frequent error, tip for a way to remember something, note otherwise. Do not restate a key point.
 - commonMisconceptions: usually []; at most one real, likely error, with its correction.
 - workedExamples: only when the topic is a calculation or reasoning method the evidence supports; never invent a scenario.
-- retrievalChecks: two or three short questions on the key ideas, each with a one-sentence answer.
+- retrievalChecks: two short questions on the key ideas, each with a one-sentence answer.
 - visualExplanations: only for attached images that carry a key idea the text lacks. Do not describe a diagram that is only mentioned in text.
 
 Teach only what the evidence supports. Background needed to connect two supported ideas may appear as one short clause; never add causes, conditions, numbers or examples the evidence does not give. Preserve qualifications, numerical signs, units, exceptions, contradictions and uncertainty. When page images are attached, read table and figure structure (which value belongs to which row and column) from the image and exact wording and numbers from the text. Do not reproduce source paragraphs, citations, page numbers, source IDs, topic IDs, flashcards or mastery claims. Outside retrievalChecks, do not turn the guide into a quiz.

@@ -64,10 +64,10 @@ impl WritingBudget {
         // A guide condenses its source to the key ideas, about a tenth of its
         // length; the source and the flashcards keep the details. The floor
         // leaves room for a big idea, key points and checks on a short topic.
-        let target_chars = 300usize
-            .saturating_add(unit_count.min(64).saturating_mul(8))
-            .saturating_add(source_chars.min(64_000) / 12)
-            .clamp(800, 4_000);
+        let target_chars = 200usize
+            .saturating_add(unit_count.min(64).saturating_mul(4))
+            .saturating_add(source_chars.min(64_000) / 20)
+            .clamp(600, 3_000);
         Self {
             target_chars,
             // The overview states the big idea in two or three sentences.
@@ -104,7 +104,7 @@ impl WritingBudget {
 
     pub(super) fn instructions(self) -> String {
         format!(
-            "Length guide: roughly {} words ({} characters) across all fields together, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. This is guidance, not a validity limit: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
+            "Length guide: roughly {} words ({} characters) across all fields together, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. Models tend to write about twice what they are asked for, so stop once the key ideas are stated: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
             self.target_chars / 6,
             self.target_chars,
             self.overview_chars
@@ -135,13 +135,13 @@ mod tests {
     #[test]
     fn targets_follow_topic_evidence_not_document_page_count() {
         let small = WritingBudget::from_signals(1, 200);
-        let dense = WritingBudget::from_signals(13, 18_000);
+        let dense = WritingBudget::from_signals(40, 40_000);
         assert!(dense.target_chars > small.target_chars);
         assert!(dense.overview_chars > small.overview_chars);
         assert!(dense.target_chars < MAX_GENERATED_SECTION_CHARS);
         assert_eq!(
             WritingBudget::from_signals(usize::MAX, usize::MAX).target_chars,
-            4_000
+            3_000
         );
         // About a tenth of a topic's source, not a restatement of it.
         let typical = WritingBudget::from_signals(40, 13_000);
