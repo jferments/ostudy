@@ -37,6 +37,13 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
+const PICK_TOOLS: readonly AnnotatorTool[] = ["select", "lasso"];
+const DRAW_TOOLS: readonly AnnotatorTool[] = ["pen", "highlighter"];
+
+/** A thin rule between groups of controls, so each group reads as one. */
+function Divider() {
+  return <span aria-hidden="true" className="tw:mx-0.5 tw:h-5 tw:w-px tw:shrink-0 tw:bg-border" />;
+}
 const NOTE_TOOLS: readonly AnnotatorTool[] = ["text", "sticky"];
 
 interface AnnotatorToolbarProps {
@@ -121,8 +128,21 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-page tw:py-1.5 tw:compact:px-1">
       <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:overflow-x-auto tw:compact:gap-1">
-        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-nowrap tw:gap-3 tw:compact:gap-1">
-          <ToolbarGroup label="Tools" className="tw:flex-nowrap">
+        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:compact:flex-nowrap tw:compact:gap-1">
+          {compact ? null : (
+            <ToolbarGroup label="Tools" className="tw:flex-nowrap tw:items-center">
+              {PICK_TOOLS.map(toolButton)}
+              <Divider />
+              {DRAW_TOOLS.map(toolButton)}
+              <Divider />
+              {NOTE_TOOLS.map(toolButton)}
+              <Divider />
+              {SHAPE_TOOLS.map(toolButton)}
+              <Divider />
+              {toolButton("eraser")}
+            </ToolbarGroup>
+          )}
+          {compact ? <ToolbarGroup label="Tools" className="tw:flex-nowrap">
             {MAIN_TOOLS.map(toolButton)}
             {compact ? (
               <OverflowMenu
@@ -147,7 +167,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               />
             ) : SHAPE_TOOLS.map(toolButton)}
             {toolButton("eraser")}
-          </ToolbarGroup>
+          </ToolbarGroup> : null}
           {compact ? null : (
             <>
               <ToolbarGroup label="History" className="tw:flex-nowrap">{history}</ToolbarGroup>
@@ -311,22 +331,32 @@ function StyleRow(props: AnnotatorToolbarProps) {
     );
   }
   return (
-    <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-3 tw:overflow-x-auto tw:coarse:min-h-touch">
+    // A narrow pane, as beside a document, wraps the groups onto a second line.
+    <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:coarse:min-h-touch">
       {style && choices ? (
-        <fieldset disabled={disabled} className="tw:m-0 tw:flex tw:min-w-0 tw:flex-nowrap tw:items-center tw:gap-3 tw:border-0 tw:p-0">
+        <fieldset disabled={disabled} className="tw:m-0 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:border-0 tw:p-0">
           <legend className="tw:sr-only">{selection ? "Style of the selected annotation" : label}</legend>
-          <div className="tw:flex tw:flex-nowrap tw:items-center"><ColorChoices style={style} onStyle={onStyle} /></div>
+          <div className="tw:flex tw:shrink-0 tw:flex-nowrap tw:items-center"><ColorChoices style={style} onStyle={onStyle} /></div>
+          <Divider />
           <div className="tw:flex tw:flex-nowrap tw:items-center tw:gap-1">
             <Toolbar label={sizeGroupLabel(style)} className="tw:flex-nowrap tw:gap-1">{sizeActions(style, choices, onStyle)}</Toolbar>
             <SizeField style={style} onStyle={onStyle} />
           </div>
-          <ShapeLookChoices style={style} onStyle={onStyle} layout="row" />
+          <ShapeLookChoices style={style} onStyle={onStyle} layout="row" divider={<Divider />} />
         </fieldset>
       ) : null}
-      <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-3">
-        {textActions}
-        {selectionActions}
-      </Toolbar>
+      {textActions ? (
+        <>
+          <Divider />
+          <Toolbar label="Text format" disabled={disabled} className="tw:flex-nowrap">{textActions}</Toolbar>
+        </>
+      ) : null}
+      {selectionActions ? (
+        // What can be done with the selection sits apart, at the row's end.
+        <Toolbar label={label} disabled={disabled} className="tw:ms-auto tw:flex-nowrap tw:gap-3">
+          {selectionActions}
+        </Toolbar>
+      ) : null}
     </div>
   );
 }
