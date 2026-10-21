@@ -16,13 +16,13 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::Cursor;
 
-use oxidize_pdf::graphics::{BlendMode, Color, ExtGState, LineCap, LineJoin};
+use oxidize_pdf::graphics::{BlendMode, Color, ExtGState, LineCap, LineDashPattern, LineJoin};
 use oxidize_pdf::parser::objects::{PdfDictionary, PdfObject};
 use oxidize_pdf::parser::{PdfDocument, PdfReader};
 use oxidize_pdf::text::Font;
 use oxidize_pdf::{Document, Page};
 
-use super::{AnnotationShape, Frame, HighlightStroke, InkStroke, Segment, TextNote};
+use super::{AnnotationShape, Frame, HighlightStroke, InkStroke, LineDash, Segment, TextNote};
 
 /// Matches the annotator: line height as a multiple of the font size, padding in points.
 const TEXT_LINE_HEIGHT: f64 = 1.3;
@@ -386,35 +386,50 @@ impl Canvas<'_> {
 
     fn line(&mut self, segment: &Segment, arrow: bool) -> Result<(), ExportError> {
         let color = parse_color(&segment.color);
-        let head = arrow.then(|| arrow_head(segment));
-        let (end_x, end_y) = head.map_or((segment.x2, segment.y2), |head| head.base);
-        let (x1, y1, x2, y2) = (segment.x1, self.y(segment.y1), end_x, self.y(end_y));
-        let head = head.map(|head| {
+        let end_head = arrow.then(|| arrow_head(segment));
+        let start_head =
+            (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&reversed(segment)));
+        let (start_x, start_y) = start_head.map_or((segment.x1, segment.y1), |head| head.base);
+        let (end_x, end_y) = end_head.map_or((segment.x2, segment.y2), |head| head.base);
+        let (x1, y1, x2, y2) = (start_x, self.y(start_y), end_x, self.y(end_y));
+        let corners = |tip: (f64, f64), head: ArrowHead| {
             [
-                (segment.x2, self.y(segment.y2)),
+                (tip.0, self.y(tip.1)),
                 (head.left.0, self.y(head.left.1)),
                 (head.right.0, self.y(head.right.1)),
             ]
-        });
+        };
+        let heads: Vec<_> = [
+            end_head.map(|head| corners((segment.x2, segment.y2), head)),
+            start_head.map(|head| corners((segment.x1, segment.y1), head)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         self.begin_mark(None)?;
         let graphics = self.page.graphics();
         graphics
             .set_stroke_color(color)
             .set_fill_color(color)
             .set_line_width(segment.stroke_width)
-            .set_line_cap(LineCap::Round)
-            .move_to(x1, y1)
-            .line_to(x2, y2)
-            .stroke();
-        if let Some([tip, left, right]) = head {
+            .set_line_cap(LineCap::Round);
+        if let Some(pattern) = dash_pattern(segment.dash, segment.stroke_width) {
+            graphics.set_line_dash_pattern(pattern);
+        }
+        graphics.move_to(x1, y1).line_to(x2, y2).stroke();
+        if !heads.is_empty() {
             graphics
+                .set_line_dash_pattern(LineDashPattern::solid())
                 .set_line_width(segment.stroke_width.min(1.0))
-                .set_line_join(LineJoin::Round)
-                .move_to(tip.0, tip.1)
-                .line_to(left.0, left.1)
-                .line_to(right.0, right.1)
-                .close_path()
-                .fill_stroke();
+                .set_line_join(LineJoin::Round);
+            for [tip, left, right] in heads {
+                graphics
+                    .move_to(tip.0, tip.1)
+                    .line_to(left.0, left.1)
+                    .line_to(right.0, right.1)
+                    .close_path()
+                    .fill_stroke();
+            }
         }
         self.end();
         Ok(())
@@ -422,19 +437,32 @@ impl Canvas<'_> {
 
     fn frame(&mut self, frame: &Frame, ellipse: bool) -> Result<(), ExportError> {
         let color = parse_color(&frame.color);
+        let fill = frame.fill.as_deref().map(parse_color);
+        let border = frame.border != Some(false);
         let bottom = self.y(frame.y + frame.height);
         self.begin_mark(None)?;
         let graphics = self.page.graphics();
         graphics
             .set_stroke_color(color)
             .set_line_width(frame.stroke_width)
+            .set_line_cap(LineCap::Round)
             .set_line_join(LineJoin::Round);
+        if let Some(fill) = fill {
+            graphics.set_fill_color(fill);
+        }
+        if let Some(pattern) = dash_pattern(frame.dash, frame.stroke_width) {
+            graphics.set_line_dash_pattern(pattern);
+        }
         if ellipse {
             ellipse_path(graphics, frame.x, bottom, frame.width, frame.height);
         } else {
             graphics.rect(frame.x, bottom, frame.width, frame.height);
         }
-        graphics.stroke();
+        match (fill.is_some(), border) {
+            (true, true) => graphics.fill_stroke(),
+            (true, false) => graphics.fill(),
+            _ => graphics.stroke(),
+        };
         self.end();
         Ok(())
     }
@@ -621,6 +649,27 @@ fn ellipse_path(
         .curve_to(cx - rx, cy - oy, cx - ox, cy - ry, cx, cy - ry)
         .curve_to(cx + ox, cy - ry, cx + rx, cy - oy, cx + rx, cy)
         .close_path();
+}
+
+/// The annotator's dash pattern (`dashArray` in annotationModel.ts): dashes
+/// and dots spaced by the line's width, drawn with round caps.
+fn dash_pattern(dash: Option<LineDash>, width: f64) -> Option<LineDashPattern> {
+    let unit = width.max(1.0);
+    match dash? {
+        LineDash::Dashed => Some(LineDashPattern::new(vec![unit * 3.0, unit * 3.0], 0.0)),
+        LineDash::Dotted => Some(LineDashPattern::new(vec![0.0, unit * 2.0], 0.0)),
+    }
+}
+
+/// The segment drawn from its end back to its start, for an arrow's first head.
+fn reversed(segment: &Segment) -> Segment {
+    Segment {
+        x1: segment.x2,
+        y1: segment.y2,
+        x2: segment.x1,
+        y2: segment.y1,
+        ..segment.clone()
+    }
 }
 
 #[derive(Clone, Copy)]

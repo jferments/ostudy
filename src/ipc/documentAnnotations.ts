@@ -25,7 +25,10 @@ export interface HighlightShape {
   text?: string;
 }
 
-/** A line, or an arrow whose head is at the second point. */
+/** How a line or outline is broken up; a solid line leaves `dash` out. */
+export type LineDash = "dashed" | "dotted";
+
+/** A line, or an arrow whose head is at the second point (and the first too with `bothEnds`). */
 export interface SegmentShape {
   kind: "line" | "arrow";
   x1: number;
@@ -34,9 +37,12 @@ export interface SegmentShape {
   y2: number;
   color: string;
   strokeWidth: number;
+  dash?: LineDash;
+  /** Only on an arrow. */
+  bothEnds?: true;
 }
 
-/** The outline of a rectangle, or of the ellipse inside it. */
+/** The outline of a rectangle, or of the ellipse inside it, filled with `fill` if it has one. */
 export interface FrameShape {
   kind: "rectangle" | "ellipse";
   x: number;
@@ -45,6 +51,10 @@ export interface FrameShape {
   height: number;
   color: string;
   strokeWidth: number;
+  dash?: LineDash;
+  fill?: string;
+  /** `false` drops the outline of a filled shape. */
+  border?: false;
 }
 
 /** Typed text that wraps at `width`; its height follows the text. */
