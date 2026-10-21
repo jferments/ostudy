@@ -147,6 +147,18 @@ sudo zypper install --allow-unsigned-rpm ./.artifacts/linux-package/ostudy-v0.1.
 
 Every build is currently numbered `0.1.0`, so a newer build looks like the same version to the package manager. `apt install --reinstall` replaces it anyway; on Fedora use `sudo dnf reinstall ./…rpm` once the package is installed.
 
+### Packages for every distribution
+
+Packages built on a new distribution only run on systems at least as new: built on Ubuntu 24.04 they need glibc 2.39 and refuse to start on Debian 12 or Ubuntu 22.04. To build the release set that runs on every maintained major distribution, use Docker or Podman:
+
+```bash
+./scripts/package-linux-portable.sh
+```
+
+It builds the `.deb`, `.rpm`, AppImage and a `.tar.gz` folder build from the committed source inside an Ubuntu 22.04 container (glibc 2.35), runs the same package checks, and writes them with `BUILD-INFO.txt` and `SHA256SUMS.txt` to `.artifacts/linux-portable/`. Toolchains and build output are cached in the `ostudy-linux-portable-cache` container volume, so later runs are faster.
+
+The AppImage carries WebKitGTK and GStreamer but, like every AppImage, expects the desktop's own graphics and font libraries (Mesa's GL, EGL and GLES, fontconfig) plus `libusb` and the system certificate store. The `.tar.gz` runs from any folder (`bin/ostudy`) and lists the system packages it needs in its `README.txt`.
+
 ### Flatpak
 
 `./scripts/build-flatpak.sh` turns the verified `.deb` into a Flatpak on the GNOME runtime and writes a single-file bundle to `.artifacts/flatpak/`; `--install` also installs it for your user. It needs `flatpak` and `flatpak-builder` and downloads the runtime from Flathub the first time.
