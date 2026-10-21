@@ -13,6 +13,9 @@ use super::{
         DeleteAiProviderProfileResultDto, SetAiProviderCredentialInput, SetAiTaskDefaultInput,
         UpdateAiProviderProfileInput,
     },
+    openrouter_sign_in::{
+        self, OpenRouterSignInAttemptInput, OpenRouterSignInStartDto, SaveOpenRouterSignInInput,
+    },
     service,
 };
 
@@ -72,6 +75,42 @@ pub fn set_ai_provider_credential(
     input: SetAiProviderCredentialInput,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
     service::set_credential(database.inner(), runtime.inner(), input)
+}
+
+/// Starts one-click OpenRouter sign-in; the page it returns is opened in the browser.
+#[tauri::command]
+pub fn start_openrouter_sign_in(
+    runtime: State<'_, AiRuntimeState>,
+) -> Result<OpenRouterSignInStartDto, CommandError> {
+    openrouter_sign_in::start(runtime.inner())
+}
+
+/// Waits for the browser to return and exchanges its code for a key. It
+/// touches no library data, so it holds no library lease while the learner
+/// is in the browser.
+#[tauri::command]
+pub async fn wait_for_openrouter_sign_in(
+    runtime: State<'_, AiRuntimeState>,
+    input: OpenRouterSignInAttemptInput,
+) -> Result<(), CommandError> {
+    openrouter_sign_in::wait(runtime.inner(), input).await
+}
+
+#[tauri::command]
+pub fn save_openrouter_sign_in(
+    database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
+    input: SaveOpenRouterSignInInput,
+) -> Result<AiProviderProfileDetailDto, CommandError> {
+    openrouter_sign_in::save(database.inner(), runtime.inner(), input)
+}
+
+#[tauri::command]
+pub fn cancel_openrouter_sign_in(
+    runtime: State<'_, AiRuntimeState>,
+    input: OpenRouterSignInAttemptInput,
+) {
+    openrouter_sign_in::cancel(runtime.inner(), input)
 }
 
 #[tauri::command]

@@ -9,7 +9,11 @@ import {
   type SpeechSettings,
   type SpeechVoice,
 } from "../../ipc/speech";
-import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
+import {
+  createManagedMediaObjectUrl,
+  playbackErrorMessage,
+  revokeManagedMediaObjectUrl,
+} from "../../media/managedPlayback";
 import { Icon } from "../../ui/icons/Icon";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
@@ -77,7 +81,7 @@ export function SpeechVoicesDialog({
         audio.onended = stop;
         audio.play().catch((failure: unknown) => {
           stop();
-          setError(getErrorMessage(failure));
+          setError(playbackErrorMessage(failure));
         });
       },
       (failure: unknown) => {

@@ -19,8 +19,29 @@ struct TaskAssignment {
     reasoning_effort: String,
 }
 
-pub(super) const OPENROUTER_DEFAULT_GENERATION_MODEL: &str = "deepseek/deepseek-v4.1-flash";
-pub(super) const OPENROUTER_DEFAULT_EMBEDDING_MODEL: &str = "qwen/qwen3-embedding-4b";
+pub(super) const OPENROUTER_DEFAULT_GENERATION_MODEL: &str = "deepseek/deepseek-v4.1-flash-1017";
+pub(super) const OPENROUTER_DEFAULT_EMBEDDING_MODEL: &str = "qwen/qwen3-embedding-8b";
+pub(super) const CLAUDE_DEFAULT_GENERATION_MODEL: &str = "claude-sonnet-5-5";
+pub(super) const DEEPSEEK_DEFAULT_GENERATION_MODEL: &str = "deepseek-v4-flash";
+
+/// The models a first key for each service starts with: one for writing and
+/// the Tutor, and one for search where the service has embeddings. Other
+/// services are not seeded.
+fn first_key_models(kind: ProviderKind) -> Option<(&'static str, Option<&'static str>)> {
+    match kind {
+        ProviderKind::Openrouter => Some((
+            OPENROUTER_DEFAULT_GENERATION_MODEL,
+            Some(OPENROUTER_DEFAULT_EMBEDDING_MODEL),
+        )),
+        ProviderKind::Claude => Some((CLAUDE_DEFAULT_GENERATION_MODEL, None)),
+        ProviderKind::Deepseek => Some((DEEPSEEK_DEFAULT_GENERATION_MODEL, None)),
+        _ => None,
+    }
+}
+
+pub(super) fn seeds_first_key_defaults(kind: ProviderKind) -> bool {
+    first_key_models(kind).is_some()
+}
 
 pub(super) fn default_reasoning_effort(task: AiTaskKind) -> &'static str {
     match task {
@@ -29,25 +50,30 @@ pub(super) fn default_reasoning_effort(task: AiTaskKind) -> &'static str {
     }
 }
 
-/// Seed only the first credentialed OpenRouter connection, and only into tasks
-/// the learner has not already assigned. This runs in the same SQLite
+/// Seed only the first credentialed connection of a service that has
+/// starting models, and only into tasks the learner has not already assigned.
+/// A text-only service leaves search unassigned. This runs in the same SQLite
 /// transaction as the credential epoch so replay cannot observe a half-seeded
-/// default set. It does not probe or claim support for either model.
-pub(super) fn seed_first_openrouter_defaults(
+/// default set. It does not probe or claim support for any model.
+pub(super) fn seed_first_key_defaults(
     transaction: &Transaction<'_>,
     profile_id: &str,
+    kind: ProviderKind,
     now: i64,
 ) -> Result<(), CommandError> {
+    let Some((generation, embeddings)) = first_key_models(kind) else {
+        return Ok(());
+    };
     let another_credentialed: i64 = transaction
         .query_row(
             "SELECT EXISTS(
                  SELECT 1 FROM ai_provider_profiles
                  WHERE id <> ?1
-                   AND provider_kind = 'openrouter'
+                   AND provider_kind = ?2
                    AND deleted_at IS NULL
                    AND credential_storage <> 'none'
              )",
-            [profile_id],
+            params![profile_id, kind.as_str()],
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
@@ -55,23 +81,13 @@ pub(super) fn seed_first_openrouter_defaults(
         return Ok(());
     }
 
-    for (task, model, reasoning) in [
-        (
-            AiTaskKind::FlashcardGeneration,
-            OPENROUTER_DEFAULT_GENERATION_MODEL,
-            default_reasoning_effort(AiTaskKind::FlashcardGeneration),
-        ),
-        (
-            AiTaskKind::Tutor,
-            OPENROUTER_DEFAULT_GENERATION_MODEL,
-            default_reasoning_effort(AiTaskKind::Tutor),
-        ),
-        (
-            AiTaskKind::Embeddings,
-            OPENROUTER_DEFAULT_EMBEDDING_MODEL,
-            default_reasoning_effort(AiTaskKind::Embeddings),
-        ),
-    ] {
+    let tasks = [
+        (AiTaskKind::FlashcardGeneration, Some(generation)),
+        (AiTaskKind::Tutor, Some(generation)),
+        (AiTaskKind::Embeddings, embeddings),
+    ];
+    for (task, model) in tasks {
+        let Some(model) = model else { continue };
         transaction
             .execute(
                 "INSERT INTO ai_task_defaults (
@@ -84,7 +100,13 @@ pub(super) fn seed_first_openrouter_defaults(
                      updated_at = excluded.updated_at
                  WHERE ai_task_defaults.profile_id IS NULL
                    AND length(trim(ai_task_defaults.model_id)) = 0",
-                params![task.as_str(), profile_id, model, reasoning, now],
+                params![
+                    task.as_str(),
+                    profile_id,
+                    model,
+                    default_reasoning_effort(task),
+                    now
+                ],
             )
             .map_err(CommandError::database)?;
     }

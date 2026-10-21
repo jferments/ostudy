@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-import { getErrorMessage } from "../../ipc/common";
 import { narrateLessonStep, type LessonStepNarration } from "../../ipc/lessons";
-import { createManagedMediaObjectUrl, revokeManagedMediaObjectUrl } from "../../media/managedPlayback";
+import {
+  createManagedMediaObjectUrl,
+  playbackErrorMessage,
+  revokeManagedMediaObjectUrl,
+} from "../../media/managedPlayback";
 
 export type Listening = "idle" | "preparing" | "playing";
 
@@ -37,7 +40,7 @@ export function useNarrationPlayer(lessonId: string, revisionNumber: number) {
   const fail = (id: number, failure: unknown) => {
     if (id !== run.current) return;
     release();
-    setError(getErrorMessage(failure));
+    setError(playbackErrorMessage(failure));
     setListening("idle");
   };
 

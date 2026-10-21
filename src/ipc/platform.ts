@@ -40,6 +40,7 @@ export interface NativeServiceCapabilities {
   systemShare: ServiceCapability;
   localNetwork: ServiceCapability;
   backgroundExecution: ServiceCapability;
+  browserSignIn: ServiceCapability;
 }
 
 export interface NativePlatformSnapshot {
