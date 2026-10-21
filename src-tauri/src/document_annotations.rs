@@ -248,6 +248,17 @@ impl AnnotationShape {
         }
     }
 
+    /// The group the mark belongs to, if any.
+    pub(crate) fn group(&self) -> Option<&str> {
+        match self {
+            Self::Ink(stroke) => stroke.group.as_deref(),
+            Self::Highlight(stroke) => stroke.group.as_deref(),
+            Self::Line(segment) | Self::Arrow(segment) => segment.group.as_deref(),
+            Self::Rectangle(frame) | Self::Ellipse(frame) => frame.group.as_deref(),
+            Self::Text(note) => note.group.as_deref(),
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
         if let Some(group) = self.group() {
             if !is_identifier(group) {
@@ -1085,7 +1096,9 @@ fn other_document() -> CommandError {
 
 #[path = "document_annotations/page_tiles.rs"]
 mod page_tiles;
-pub(crate) use page_tiles::{render_document_page_tile, RenderDocumentPageTileInput};
+pub(crate) use page_tiles::{
+    pdf_source_path, render_document_page_tile, RenderDocumentPageTileInput,
+};
 
 #[path = "document_annotations/page_text.rs"]
 mod page_text;
