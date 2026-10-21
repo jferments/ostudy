@@ -207,6 +207,15 @@ describe("LibraryWorkbench", () => {
     expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
   });
 
+  it("keeps a phone's tab row to the tabs and offers Import deck beside New deck", async () => {
+    renderWorkbench(390);
+    const tabs = await screen.findByRole("navigation", { name: "Library pages" });
+    expect(within(tabs.parentElement!).queryByRole("button", { name: "Import deck" })).toBeNull();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(within(tree).getByRole("button", { name: "Import deck" }));
+    expect(await screen.findByRole("dialog", { name: "Import deck" })).toBeTruthy();
+  });
+
   it("lists only Library's chosen subject's decks and tags, and keeps a tag to that subject", async () => {
     const props = renderWorkbench(1400, { requestId: 1, scope: { kind: "subject", subjectId: cardiac.id } }, {
       kind: "subject",

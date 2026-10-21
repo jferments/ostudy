@@ -6,16 +6,20 @@ import { getSpeechSettings, saveSpeechSettings, type SpeechSettings } from "../.
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
+import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TASK_GRID } from "./DefaultAiModelSettings";
+import { SpeechVoicesDialog } from "./SpeechVoicesDialog";
 
 const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground";
 
 /**
- * The Voice row of "Default for each task": the connection, model and, for
- * models with preset voices, the voice that reads lessons aloud. It reloads
- * when the AI connections change, since only an OpenRouter connection can
- * speak.
+ * The Voice row of "Default for each task": the connection, model and voice
+ * that read lessons aloud. A model with preset voices offers its list; a model
+ * that copies voices offers the voices that come with ostudy and the learner's
+ * saved ones, managed in the Lesson
+ * voices dialog. It reloads when the AI connections change, since only an
+ * OpenRouter connection can speak.
  */
 export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknown }) {
   const wide = useLayoutMode().layoutMode === "wide";
@@ -23,6 +27,7 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
   const [settings, setSettings] = useState<SpeechSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [voices, setVoices] = useState<"closed" | "open" | "try">("closed");
 
   useEffect(() => {
     void latestResult(lane, getSpeechSettings).then(
@@ -80,7 +85,10 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       disabled={saving}
       onChange={(event) => {
         const next = settings.models.find((candidate) => candidate.id === event.currentTarget.value);
-        if (next) save(settings.profileId, next.id, next.defaultVoice);
+        if (!next) return;
+        // A model that copies voices starts with its first voice, the default.
+        const own = settings.voices.find((voice) => voice.state !== "tried" && voice.modelId === next.id);
+        save(settings.profileId, next.id, next.clonesVoices ? (own?.voice ?? "") : next.defaultVoice);
       }}
     >
       {settings.models.map((candidate) => (
@@ -90,26 +98,57 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       ))}
     </NativeSelect>
   );
-  const voiceSelect =
-    model && model.voices.length > 0 ? (
+  const saved = settings.voices.filter((voice) => voice.state !== "tried" && voice.modelId === settings.modelId);
+  const clones = model?.clonesVoices === true;
+  const voiceSelect = clones ? (
+    saved.length > 0 ? (
       <NativeSelect
         aria-label="Lesson voice"
         value={settings.voice}
         disabled={saving}
         onChange={(event) => save(settings.profileId, settings.modelId, event.currentTarget.value)}
       >
-        {model.voices.map((voice) => (
-          <option key={voice} value={voice}>
-            {voiceLabel(voice)}
+        {saved.some((voice) => voice.voice === settings.voice) ? null : <option value="">Choose a voice</option>}
+        {saved.map((voice) => (
+          <option key={voice.id} value={voice.voice}>
+            {voice.name}
           </option>
         ))}
       </NativeSelect>
-    ) : null;
+    ) : (
+      <Button disabled={saving || !settings.profileId} onClick={() => setVoices("try")}>
+        Try a voice
+      </Button>
+    )
+  ) : model && model.voices.length > 0 ? (
+    <NativeSelect
+      aria-label="Lesson voice"
+      value={settings.voice}
+      disabled={saving}
+      onChange={(event) => save(settings.profileId, settings.modelId, event.currentTarget.value)}
+    >
+      {model.voices.map((voice) => (
+        <option key={voice} value={voice}>
+          {voiceLabel(voice)}
+        </option>
+      ))}
+    </NativeSelect>
+  ) : null;
   const menu = (
     <OverflowMenu
       label="More for Voice"
       disabled={saving}
       items={[
+        ...(clones
+          ? [
+              {
+                id: "voices",
+                label: "Lesson voices…",
+                disabled: !settings.profileId,
+                onSelect: () => setVoices("open"),
+              },
+            ]
+          : []),
         {
           id: "clear",
           label: "Clear",
@@ -119,7 +158,19 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
       ]}
     />
   );
-  const feedback = error ? <InlineNotice kind="error">The lesson voice was not saved: {error}</InlineNotice> : null;
+  const feedback = (
+    <>
+      {error ? <InlineNotice kind="error">The lesson voice was not saved: {error}</InlineNotice> : null}
+      {voices !== "closed" ? (
+        <SpeechVoicesDialog
+          settings={settings}
+          tryFirst={voices === "try"}
+          onChanged={setSettings}
+          onClose={() => setVoices("closed")}
+        />
+      ) : null}
+    </>
+  );
 
   return wide ? (
     <div role="listitem" data-task="voice" className={rowClass}>
@@ -146,7 +197,12 @@ export function LessonVoiceSettings({ connectionsKey }: { connectionsKey: unknow
         <span>Model</span>
         {modelSelect}
       </label>
-      {voiceSelect ? (
+      {clones && saved.length === 0 ? (
+        <div className={fieldClass}>
+          <span>Voice</span>
+          {voiceSelect}
+        </div>
+      ) : voiceSelect ? (
         <label className={fieldClass}>
           <span>Voice</span>
           {voiceSelect}
