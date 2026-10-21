@@ -14,6 +14,8 @@ The pages scroll in one column, and the toolbar, keys and zoom work as they do o
 
 The bar above the toolbar shows which page is in view. **Add page** adds a page after it, with the notebook's paper and size. Its **…** menu moves the page earlier or later, or deletes it; a page with marks on it asks first, and a notebook keeps at least one page. Adding, moving or deleting a page saves your marks first and starts undo afresh.
 
+Text notes can hold bulleted and numbered lists, checklists and formulas, as described in [Text notes](pdf-annotation.md#text-notes). A formula on its own in a note is a movable formula: drag the note to place it.
+
 ## Pictures
 
 **Add picture** asks for an image file (PNG, JPEG, GIF or WebP, up to 25 MB) and puts it near the top of the page in view, selected, at its own size or smaller so it fits within the page's margins. Drag it to move it; drag a corner to resize it, keeping its shape, or hold **Shift** to stretch it. Pictures group, undo and delete like any other mark. The image is kept in your library for as long as a picture uses it, and library backups include it. Pictures go on notebook pages only, not on PDF pages.

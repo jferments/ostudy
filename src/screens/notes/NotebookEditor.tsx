@@ -38,6 +38,7 @@ import { AnnotatorToolbar } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "../documents/annotator/useAnnotatorViewport";
+import { useTextFormat } from "../documents/annotator/textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "../documents/annotator/useDocumentAnnotator";
 import { useLibraryFullPage } from "../library/LibraryFrame";
 import { LinkDialog, type LinkChoice } from "./LinkDialog";
@@ -222,6 +223,7 @@ function ReadyNotebook({
   const [linkDialog, setLinkDialog] = useState<{ editing: Annotation | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [addingPicture, setAddingPicture] = useState(false);
+  const textFormat = useTextFormat(controller);
   const [current, setCurrent] = useState(1);
 
   const paperPages = useMemo<PaperPages>(() => ({
@@ -501,6 +503,7 @@ function ReadyNotebook({
         onTool={chooseTool}
         style={controller.activeStyle}
         onStyle={controller.chooseStyle}
+        textFormat={textFormat.format}
         selection={selected ? {
           isText: selected.shape.kind === "text",
           isSticky: isStickyNote(selected.shape),
@@ -548,6 +551,7 @@ function ReadyNotebook({
         coarse={inputMode === "coarse"}
         paperPages={paperPages}
       />
+      {textFormat.dialog}
       {linkDialog ? (
         <LinkDialog
           notebookId={notebookId}
