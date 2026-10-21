@@ -3,7 +3,8 @@ set -Eeuo pipefail
 
 # Turn the verified production .deb into a plain .tar.gz that runs from any
 # folder: bin/ostudy finds PDFium in ../lib/ostudy the same way the installed
-# package does. The system still supplies WebKitGTK 4.1, GTK 3 and libusb.
+# package does. The system still supplies WebKitGTK 4.1, GTK 3, libusb and
+# GStreamer's good plugins (MP3 playback for lessons).
 
 DEB="${1:-}"
 BUILT_GUI="${2:-}"
@@ -39,10 +40,10 @@ place the .deb and .rpm packages use, so deleting this folder never deletes it.
 
 oStudy needs these system libraries, which most desktops already have:
 
-  Debian/Ubuntu:  sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libusb-1.0-0 ca-certificates
-  Fedora:         sudo dnf install webkit2gtk4.1 gtk3 libusb1 ca-certificates
-  openSUSE:       sudo zypper install libwebkit2gtk-4_1-0 gtk3 libusb-1_0-0 ca-certificates
-  Arch:           sudo pacman -S webkit2gtk-4.1 gtk3 libusb ca-certificates
+  Debian/Ubuntu:  sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libusb-1.0-0 ca-certificates gstreamer1.0-plugins-good
+  Fedora:         sudo dnf install webkit2gtk4.1 gtk3 libusb1 ca-certificates gstreamer1-plugins-good
+  openSUSE:       sudo zypper install libwebkit2gtk-4_1-0 gtk3 libusb-1_0-0 ca-certificates gstreamer-plugins-good
+  Arch:           sudo pacman -S webkit2gtk-4.1 gtk3 libusb ca-certificates gst-plugins-good
 
 To sync with an Android phone over USB, copy udev/70-ostudy-android-usb.rules
 to /etc/udev/rules.d/ once (sudo), then reconnect the phone.

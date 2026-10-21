@@ -68,7 +68,9 @@ printf '==> Building portable Linux packages for %s in %s (%s)\n' "$(git rev-par
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     # Ubuntu 22.04 ships Python 3.10; the package verifiers need tomllib (3.11).
-    apt-get install -y -qq sudo git ca-certificates curl python3.11 >/dev/null
+    # The AppImage bundler copies xdg-open and the GStreamer plugins from here.
+    apt-get install -y -qq sudo git ca-certificates curl python3.11 xdg-utils file \
+      gstreamer1.0-plugins-base gstreamer1.0-plugins-good >/dev/null
     ln -sf /usr/bin/python3.11 /usr/local/bin/python3
     mkdir -p "$HOME"
     git config --global --add safe.directory "*"
