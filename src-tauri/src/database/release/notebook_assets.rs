@@ -1,6 +1,6 @@
-//! Additive release-v18 admission for notebook images.
+//! Additive release-v19 admission for notebook images.
 //!
-//! Migration 18 adds the table recording which managed asset each image on a
+//! Migration 19 adds the table recording which managed asset each image on a
 //! notebook page uses, so the asset store keeps the picture while it is on a
 //! page. An upgrade writes no rows: no build before it placed pictures.
 
@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 18;
+const VERSION: i64 = 19;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -26,15 +26,15 @@ mod tests {
         validate_supported_input,
     };
 
-    fn schema_seventeen() -> Connection {
-        let connection = release_library(17);
-        assert_eq!(validate_supported_input(&connection).unwrap(), 17);
+    fn schema_eighteen() -> Connection {
+        let connection = release_library(18);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 18);
         connection
     }
 
     #[test]
-    fn schema_seventeen_upgrades_additively_with_no_notebook_images() {
-        let mut connection = schema_seventeen();
+    fn schema_eighteen_upgrades_additively_with_no_notebook_images() {
+        let mut connection = schema_eighteen();
         let before = preservation_receipt(&connection).unwrap();
         assert!(apply_migrations_through(&mut connection, VERSION).unwrap());
         assert_eq!(validate_supported_input(&connection).unwrap(), VERSION);
@@ -55,21 +55,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_eighteenth_migration_rolls_back_to_schema_seventeen_and_retries() {
-        let mut connection = schema_seventeen();
+    fn interrupted_nineteenth_migration_rolls_back_to_schema_eighteen_and_retries() {
+        let mut connection = schema_eighteen();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_notebook_assets_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=18
+                 WHEN NEW.version=19
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 17);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 18);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 17).unwrap();
+        validate_schema(&connection, 18).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_notebook_assets_migration;")
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_notebook_image_schemas_fail_read_only() {
-        let mut connection = schema_seventeen();
+        let mut connection = schema_eighteen();
         let transaction = connection.transaction().unwrap();
         transaction.execute_batch(migration_sql(VERSION)).unwrap();
         let changes = transaction.total_changes();

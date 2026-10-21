@@ -40,6 +40,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   curl \
   file \
   git \
+  gstreamer1.0-plugins-good \
   jq \
   libayatana-appindicator3-dev \
   librsvg2-dev \
