@@ -710,9 +710,11 @@ pub(crate) struct PageGraphic {
 
 /// How far, in points, a drawing may bleed past the page edge before its
 /// bounds are treated as clipped and ignored.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAX_GRAPHIC_OVERHANG: f64 = 36.0;
 
 /// A path with more segments than this is not counted as boxy.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAX_BOXY_SEGMENTS: usize = 24;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -722,8 +724,10 @@ pub(crate) struct PageTextRun {
 }
 
 /// The most graphics objects one page reports; a page past it reports the first ones.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const MAX_LAYOUT_GRAPHICS: usize = 20_000;
 /// The most text runs one page reports.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const MAX_LAYOUT_TEXT_RUNS: usize = 10_000;
 
 /// Whether [`page_layouts`] can read page objects here. Mobile PDFium
@@ -1248,6 +1252,7 @@ fn is_boxy_path(path: &pdfium_render::prelude::PdfPagePathObject<'_>) -> bool {
     true
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn layout_of_page(
     document: &pdfium_render::prelude::PdfDocument<'_>,
     index: usize,
