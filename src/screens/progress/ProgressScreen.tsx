@@ -9,13 +9,13 @@ import { Icon } from "../../ui/icons/Icon";
 import { Sheet } from "../../ui/overlays/Dialog";
 import { FilterSummary, PageHeader, PageScaffold, type ActiveFilter } from "../../ui/patterns/WorkspacePatterns";
 import { Button } from "../../ui/primitives/Button";
+import { EmptyState } from "../../ui/primitives/EmptyState";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { SegmentedControl, type SegmentedOptions } from "../../ui/primitives/SegmentedControl";
 import { TextField } from "../../ui/primitives/TextField";
 import { ActivityPanel } from "./ActivityPanel";
-import { CoachBanner, slippingTopic } from "./CoachBanner";
 import { AnswersPanel, QuestionTypesPanel, SessionsPanel } from "./DetailPanels";
 import { ForecastPanel } from "./ForecastPanel";
 import { ReviewsChart } from "./ReviewsChart";
@@ -96,8 +96,6 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
   const overview = data.overview.data;
   const today = overview?.scope.todayLocalDate ?? data.activity.data?.todayLocalDate ?? deviceToday();
   const goal = overview?.desiredRetention ?? null;
-  const topic = slippingTopic(data.topics.data);
-  const dueToday = data.forecast.data?.days[0]?.dueCount ?? 0;
   const deckNames = new Map((data.options.data?.decks ?? decks).map((deck) => [deck.id, deck.name]));
   const tagNames = new Map((data.options.data?.tags ?? []).map((tag) => [tag.id, tag.name]));
 
@@ -152,6 +150,21 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
   const periodLabel = overview ? (overview.scope.range === "all" ? "All time" : range === "custom" ? span ?? "" : `Last ${RANGE_LABELS[range].toLowerCase()}`) : "This range";
   const filterCount = deckIds.length + tagIds.length + (range === "custom" ? 1 : 0);
   const showSubjects = !subjectId && (data.subjects.data?.length ?? 0) > 0 && subjects.length > 0;
+  const dueCount = data.forecast.data?.days[0]?.dueCount
+    ?? decks.filter((deck) => dueDeckIds.includes(deck.id)).reduce((sum, deck) => sum + deck.studyableDueCount, 0);
+  const reviewLabel = startingReview ? "Starting…" : `Review ${dueCount.toLocaleString()} due`;
+  // Nothing has ever been studied (the streaks cover all history): the page has no numbers to show yet.
+  const neverStudied = data.activity.data !== null && data.activity.data.longestStreak === null;
+
+  if (neverStudied) {
+    return (
+      <PageScaffold width="wide">
+        <PageHeader title="Progress" />
+        <EmptyState large icon={<Icon name="analytics" size={28} />} title="No reviews yet"
+          actions={dueDeckIds.length > 0 ? <Button variant="primary" disabled={busy} onClick={startReview}><Icon name="practice" size={16} />Start review</Button> : undefined} />
+      </PageScaffold>
+    );
+  }
 
   return (
     <PageScaffold width="wide">
@@ -183,14 +196,17 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
             <span className="tw:hidden tw:compact:inline-flex">
               <IconButton icon="filter" label={filterCount > 0 ? `Decks, tags and dates (${filterCount} chosen)` : "Decks, tags and dates"} aria-haspopup="dialog" onClick={() => setFiltersOpen(true)} />
             </span>
+            {dueDeckIds.length > 0 ? (
+              <span className="tw:compact:hidden">
+                <Button variant="primary" disabled={busy} onClick={startReview}><Icon name="practice" size={16} />{reviewLabel}</Button>
+              </span>
+            ) : null}
           </div>
         }
       />
       {activeFilters.length > 0 ? <div className="tw:mb-4"><FilterSummary filters={activeFilters} onRemove={removeFilter} onClear={clearFilters} /></div> : null}
       {errors.length > 0 ? <div className="tw:mb-4"><InlineNotice kind="error">{errors.join(" ")}</InlineNotice></div> : null}
 
-      <CoachBanner overview={overview} topic={topic} activity={data.activity.data} dueToday={dueToday} busy={busy}
-        onPracticeTopic={practiceTopic} onStartReview={dueDeckIds.length > 0 ? startReview : null} />
       <SummaryTiles overview={overview} strength={data.strength.data} activity={data.activity.data} loading={data.overview.loading} />
 
       <div className="tw:grid tw:min-w-0 tw:gap-4">
@@ -198,6 +214,11 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
           <ReviewsChart overview={overview} loading={data.overview.loading} />
           <ForecastPanel forecast={data.forecast.data} loading={data.forecast.loading} />
         </div>
+        {dueDeckIds.length > 0 ? (
+          <Button variant="primary" size="large" className="tw:hidden tw:compact:flex tw:w-full" disabled={busy} onClick={startReview}>
+            <Icon name="practice" size={16} />{reviewLabel}
+          </Button>
+        ) : null}
         <div className="tw:grid tw:min-w-0 tw:gap-4 tw:wide:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <TopicsPanel topics={data.topics.data} goal={goal} loading={data.topics.loading} practicingTagId={practicingTagId} onPractice={practiceTopic} />
           <StrengthPanel strength={data.strength.data} goal={goal} loading={data.strength.loading} />
