@@ -13,6 +13,10 @@ import {
   moveGroupWithinPage,
   clampSize,
   cutStroke,
+  withTheirGroups,
+  sharedGroup,
+  withGroup,
+  segmentPoints,
   dashArray,
   isCuttable,
   describeAnnotation,
@@ -327,5 +331,40 @@ describe("shape looks", () => {
   it("picks up a filled shape anywhere inside it", () => {
     expect(distanceToShape(box, { x: 30, y: 20 }, 0)).toBeGreaterThan(0);
     expect(distanceToShape({ ...box, fill: "#ffffff" }, { x: 30, y: 20 }, 0)).toBe(0);
+  });
+});
+
+describe("curves and groups", () => {
+  const curve = { kind: "line" as const, x1: 0, y1: 100, x2: 100, y2: 100, curve: [0, 0, 100, 0] as [number, number, number, number], color: red, strokeWidth: 2 };
+
+  it("measures a curve along its bend", () => {
+    const points = segmentPoints(curve);
+    expect(points.slice(0, 2)).toEqual([0, 100]);
+    expect(points.slice(-2)).toEqual([100, 100]);
+    expect(shapeBounds(curve, 0).top).toBeCloseTo(24, 0);
+    expect(distanceToShape(curve, { x: 50, y: 25 }, 0)).toBe(0);
+    expect(distanceToShape(curve, { x: 50, y: 100 }, 0)).toBeGreaterThan(40);
+  });
+
+  it("moves its control points with it and keeps the bend when an end moves", () => {
+    expect(moveWithinPage(curve, 10, 5, page, 0)).toMatchObject({ x1: 10, y1: 105, curve: [10, 5, 110, 5] });
+    expect(resizeShape(curve, "end", { x: 120, y: 110 }, false, page)).toMatchObject({ x2: 120, y2: 110, curve: [0, 0, 120, 10] });
+    expect(resizeShape(curve, "c1", { x: 30, y: 40 }, false, page)).toMatchObject({ curve: [30, 40, 100, 0] });
+    expect(handlesFor(curve, 0).map((handle) => handle.handle)).toEqual(["start", "end", "c1", "c2"]);
+    expect(isStorable({ ...curve, curve: [1, 2, 3] as unknown as [number, number, number, number] })).toBe(false);
+  });
+
+  it("takes whole groups and names one shared group", () => {
+    const g = "f".repeat(32);
+    const marks: Annotation[] = [
+      { id: "a", pageNumber: 1, createdAt: 1, shape: { ...curve, group: g } },
+      { id: "b", pageNumber: 1, createdAt: 2, shape: { ...curve, group: g } },
+      { id: "c", pageNumber: 1, createdAt: 3, shape: curve },
+    ];
+    expect(withTheirGroups(marks, [marks[1]!]).map((mark) => mark.id)).toEqual(["a", "b"]);
+    expect(sharedGroup(marks.slice(0, 2))).toBe(g);
+    expect(sharedGroup(marks)).toBeNull();
+    expect(withGroup(marks[0]!.shape, null)).toEqual(curve);
+    expect(isStorable({ ...curve, group: "nope" })).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 # Notes
 
-A notebook is pages of paper you write and draw on with the same tools as [Annotating PDF pages](pdf-annotation.md): pen, highlighter, text, sticky notes, lines, arrows, boxes, ellipses, the eraser, Select and Lasso, with the same keys, colors and sizes. A note can also be a link to a page of a document, a study guide, a deck or another page of notes. Notebooks are saved in your library as you write.
+A notebook is pages of paper you write and draw on with the same tools as [Annotating PDF pages](pdf-annotation.md): pen, highlighter, text, sticky notes, lines, arrows, curves, boxes, ellipses, the eraser, Select and Lasso (with groups), with the same keys, colors and sizes. A note can also be a link to a page of a document, a study guide, a deck or another page of notes. Notebooks are saved in your library as you write.
 
 ## Find and make notebooks
 

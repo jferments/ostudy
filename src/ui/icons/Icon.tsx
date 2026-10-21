@@ -70,6 +70,7 @@ export const ICON_NAMES = [
   "search",
   "settings",
   "shape-arrow",
+  "shape-curve",
   "shape-ellipse",
   "shape-line",
   "shape-rectangle",
@@ -621,6 +622,14 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M13 5H19V11" />
           <path d="M19 5L5 19" />
+        </>
+      );
+    case "shape-curve": // Lucide: spline
+      return (
+        <>
+          <circle cx="19" cy="5" r="2" />
+          <circle cx="5" cy="19" r="2" />
+          <path d="M5 17A12 12 0 0 1 17 5" />
         </>
       );
     case "shape-ellipse": // Lucide: circle
