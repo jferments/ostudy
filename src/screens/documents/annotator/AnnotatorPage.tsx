@@ -1,6 +1,7 @@
-import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
-import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import type { AnnotatedPage, FrameShape } from "../../../ipc/documentAnnotations";
+import { managedAssetUrl } from "../../../platform/assets";
 import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Dialog } from "../../../ui/overlays/Dialog";
@@ -8,6 +9,10 @@ import { Button } from "../../../ui/primitives/Button";
 import { Textarea } from "../../../ui/primitives/FormControls";
 import {
   arrowHead,
+  dashArray,
+  segmentPath,
+  towardEnd,
+  towardStart,
   describeAnnotation,
   handlesFor,
   isStickyNote,
@@ -238,34 +243,59 @@ export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true 
       );
     case "line":
       return (
-        <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinecap="round" />
+        <path d={segmentPath(shape, { x: shape.x1, y: shape.y1 }, { x: shape.x2, y: shape.y2 })} fill="none"
+          stroke={shape.color} strokeWidth={shape.strokeWidth} strokeLinecap="round"
+          strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
       );
     case "arrow": {
-      const head = arrowHead(shape);
+      const head = arrowHead(towardEnd(shape));
+      const tail = shape.bothEnds ? arrowHead(towardStart(shape)) : null;
+      const headStroke = Math.min(1, shape.strokeWidth);
       return (
         <>
-          <line x1={shape.x1} y1={shape.y1} x2={head.base.x} y2={head.base.y} stroke={shape.color}
-            strokeWidth={shape.strokeWidth} strokeLinecap="round" />
-          <polygon fill={shape.color} stroke={shape.color} strokeWidth={Math.min(1, shape.strokeWidth)} strokeLinejoin="round"
+          <path d={segmentPath(shape, tail?.base ?? { x: shape.x1, y: shape.y1 }, head.base)} fill="none"
+            stroke={shape.color} strokeWidth={shape.strokeWidth} strokeLinecap="round"
+            strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
+          <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
             points={`${shape.x2},${shape.y2} ${head.left.x},${head.left.y} ${head.right.x},${head.right.y}`} />
+          {tail ? (
+            <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
+              points={`${shape.x1},${shape.y1} ${tail.left.x},${tail.left.y} ${tail.right.x},${tail.right.y}`} />
+          ) : null}
         </>
       );
     }
     case "rectangle":
       return (
-        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="none" stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinejoin="round" />
+        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} {...frameLook(shape)} />
       );
     case "ellipse":
       return (
         <ellipse cx={shape.x + shape.width / 2} cy={shape.y + shape.height / 2} rx={shape.width / 2} ry={shape.height / 2}
-          fill="none" stroke={shape.color} strokeWidth={shape.strokeWidth} />
+          {...frameLook(shape)} />
+      );
+    case "image":
+      return (
+        <image href={managedAssetUrl(shape.assetId)} x={shape.x} y={shape.y} width={shape.width} height={shape.height}
+          preserveAspectRatio="none" />
       );
     case "text":
       return null;
   }
 });
+
+/** A box's or ellipse's fill and outline. */
+function frameLook(shape: FrameShape): Pick<SVGProps<SVGRectElement>, "fill" | "stroke" | "strokeWidth" | "strokeLinejoin" | "strokeLinecap" | "strokeDasharray"> {
+  const border = shape.border !== false;
+  return {
+    fill: shape.fill ?? "none",
+    stroke: border ? shape.color : "none",
+    strokeWidth: shape.strokeWidth,
+    strokeLinejoin: "round",
+    strokeLinecap: shape.dash ? "round" : undefined,
+    strokeDasharray: border ? dashArray(shape.dash, shape.strokeWidth) : undefined,
+  };
+}
 
 function textStyle(shape: TextShape): CSSProperties {
   return {
@@ -499,9 +529,20 @@ function SelectionOutline({ page, scale, coarse, annotation, textHeight }: {
         width={bounds.right - bounds.left + 2 * margin} height={bounds.bottom - bounds.top + 2 * margin}
         fill="none" className="tw:stroke-primary" strokeWidth={1.5 / scale} strokeDasharray={`${5 / scale} ${4 / scale}`}
       />
+      {(annotation.shape.kind === "line" || annotation.shape.kind === "arrow") && annotation.shape.curve ? (
+        // A curve's control points hang off its ends on thin lines, as in drawing apps.
+        <path className="tw:stroke-primary" fill="none" strokeWidth={1 / scale}
+          d={`M${annotation.shape.x1} ${annotation.shape.y1}L${annotation.shape.curve[0]} ${annotation.shape.curve[1]}`
+            + `M${annotation.shape.x2} ${annotation.shape.y2}L${annotation.shape.curve[2]} ${annotation.shape.curve[3]}`} />
+      ) : null}
       {handlesFor(annotation.shape, height).map(({ handle, point }) => (
-        <circle key={handle} cx={point.x} cy={point.y} r={radius}
-          className="tw:fill-background tw:stroke-primary" strokeWidth={2 / scale} />
+        handle === "c1" || handle === "c2" ? (
+          <rect key={handle} x={point.x - radius * 0.8} y={point.y - radius * 0.8} width={radius * 1.6} height={radius * 1.6}
+            className="tw:fill-primary tw:stroke-background" strokeWidth={1.5 / scale} />
+        ) : (
+          <circle key={handle} cx={point.x} cy={point.y} r={radius}
+            className="tw:fill-background tw:stroke-primary" strokeWidth={2 / scale} />
+        )
       ))}
     </svg>
   );

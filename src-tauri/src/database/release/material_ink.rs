@@ -1,6 +1,6 @@
-//! Additive release-v19 admission for ink on study materials.
+//! Additive release-v21 admission for ink on study materials.
 //!
-//! Migration 19 adds the marks a learner writes on a lesson's lecture slides
+//! Migration 21 adds the marks a learner writes on a lesson's lecture slides
 //! and on a document study guide's designed pages, with their indexes. An
 //! upgrade writes none, so the table starts empty.
 
@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use super::object_delta::{self, Delta};
 
-const VERSION: i64 = 19;
+const VERSION: i64 = 21;
 
 pub(super) fn validate_schema(connection: &Connection, version: i64) -> Result<(), String> {
     static DELTA: OnceLock<Result<Delta, String>> = OnceLock::new();
@@ -28,11 +28,11 @@ mod tests {
 
     const DOCUMENT: &str = "11111111111111111111111111111111";
 
-    /// A schema-18 library as the previous release left it, with one document.
-    fn schema_eighteen() -> Connection {
-        let connection = release_library(18);
+    /// A schema-20 library as the previous release left it, with one document.
+    fn schema_twenty() -> Connection {
+        let connection = release_library(20);
         crate::collections::test_support::seed_document(&connection, DOCUMENT, 2, 'a').unwrap();
-        assert_eq!(validate_supported_input(&connection).unwrap(), 18);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 20);
         connection
     }
 
@@ -41,8 +41,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_eighteen_upgrades_additively_with_no_ink() {
-        let mut connection = schema_eighteen();
+    fn schema_twenty_upgrades_additively_with_no_ink() {
+        let mut connection = schema_twenty();
         let before = preservation_receipt(&connection).unwrap();
         let changes = connection.total_changes();
         validate_backup_input(&connection).unwrap();
@@ -62,21 +62,21 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_nineteenth_migration_rolls_back_to_schema_eighteen_and_retries() {
-        let mut connection = schema_eighteen();
+    fn interrupted_nineteenth_migration_rolls_back_to_schema_twenty_and_retries() {
+        let mut connection = schema_twenty();
         let before = preservation_receipt(&connection).unwrap();
         connection
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_ink_migration
                  BEFORE INSERT ON schema_migrations
-                 WHEN NEW.version=19
+                 WHEN NEW.version=21
                  BEGIN SELECT RAISE(ABORT,'injected failure'); END;",
             )
             .unwrap();
         assert!(apply_migrations(&mut connection).is_err());
-        assert_eq!(validate_supported_input(&connection).unwrap(), 18);
+        assert_eq!(validate_supported_input(&connection).unwrap(), 20);
         assert_eq!(preservation_receipt(&connection).unwrap(), before);
-        validate_schema(&connection, 18).unwrap();
+        validate_schema(&connection, 20).unwrap();
 
         connection
             .execute_batch("DROP TRIGGER reject_ink_migration;")
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn unregistered_missing_and_substituted_ink_schemas_fail_read_only() {
-        let mut connection = schema_eighteen();
+        let mut connection = schema_twenty();
         for unregistered in [
             migration_sql(VERSION),
             "CREATE INDEX material_ink_by_lesson ON documents(id);",

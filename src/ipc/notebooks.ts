@@ -62,7 +62,8 @@ export interface NotebookContents {
  * gone succeeds, so a request can be repeated.
  */
 export type NotebookItemChange =
-  | { op: "put"; id: string; pageId: string; shape: AnnotationShape }
+  /** A new picture names the image draft its asset was added to, until a save keeps it. */
+  | { op: "put"; id: string; pageId: string; shape: AnnotationShape; assetDraftId?: string }
   | { op: "delete"; id: string };
 
 export interface AppliedNotebookItemChanges {

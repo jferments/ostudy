@@ -416,8 +416,9 @@ pub(crate) fn sanitize_snapshot(
     // voice each lesson is spoken in, the saved voices and the speech setting
     // go with them, and links from cards to the marks they were made from go
     // with the marks.
-    // How far a learner has read each guide stays on the device too, and so
-    // do notebooks and the marks drawn on slides and guide pages for now.
+    // How far a learner has read each guide stays on the device too, and so do
+    // notebooks for now, the figures found in a document and the learner's
+    // choice to use them, and the marks drawn on slides and guide pages.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -456,9 +457,20 @@ pub(crate) fn sanitize_snapshot(
              DROP TABLE sync_narration_assets;
              DELETE FROM document_study_guide_section_reads;
              DELETE FROM document_study_guide_positions;
+             CREATE TEMP TABLE sync_notebook_assets AS SELECT asset_id FROM notebook_item_assets;
+             DELETE FROM notebook_item_assets;
              DELETE FROM notebook_items;
              DELETE FROM notebook_pages;
              DELETE FROM notebooks;
+             DELETE FROM document_figure_readings;
+             DELETE FROM document_figure_passages;
+             DELETE FROM document_figures;
+             DELETE FROM document_figure_scans;
+             DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_notebook_assets)
+                 AND id NOT IN (SELECT asset_id FROM note_assets)
+                 AND id NOT IN (SELECT asset_id FROM card_template_assets)
+                 AND id NOT IN (SELECT asset_id FROM question_attempt_assets);
+             DROP TABLE sync_notebook_assets;
              DELETE FROM material_ink;",
         )
         .map_err(CommandError::database)?;
@@ -797,6 +809,59 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, (0, 0, 0));
         assert!(!selection.includes_table("notebooks"));
+    }
+
+    #[test]
+    fn document_figures_stay_on_the_device_that_found_them() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let selection = SyncSelection::default();
+        let remaining: i64 = database
+            .with_connection(|connection| {
+                let document = "d".repeat(32);
+                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+                connection
+                    .execute_batch(&format!(
+                        "INSERT INTO document_figure_scans(document_id, use_images, state,
+                             detector, scanned_at, updated_at)
+                         VALUES ('{document}', 1, 'found', 'test', 1, 1);
+                         INSERT INTO document_figures(document_id, figure_id, ordinal,
+                             page_number, page_width, page_height, kind, box_left, box_top,
+                             box_width, box_height, label, caption, hidden, created_at,
+                             updated_at)
+                         VALUES ('{document}', 'p00001-01', 0, 1, 612, 792, 'image',
+                             72, 72, 200, 150, 'Figure 1', 'Figure 1. The heart.', 0, 1, 1);
+                         INSERT INTO document_figure_passages(document_id, figure_id, ordinal,
+                             page_number, kind, excerpt)
+                         VALUES ('{document}', 'p00001-01', 0, 1, 'mention', 'See Figure 1.');
+                         INSERT INTO document_figure_readings(document_id, figure_id, title,
+                             shows, concepts_json, explained_json, importance,
+                             worth_studying, provider, model, read_at)
+                         VALUES ('{document}', 'p00001-01', 'The heart', 'Four chambers.',
+                             '[]', '[1]', 4, 1, 'openrouter', 'test', 1);"
+                    ))
+                    .map_err(CommandError::database)?;
+                sanitize_snapshot(connection, selection)?;
+                connection
+                    .query_row(
+                        "SELECT (SELECT COUNT(*) FROM document_figure_scans)
+                              + (SELECT COUNT(*) FROM document_figures)
+                              + (SELECT COUNT(*) FROM document_figure_passages)
+                              + (SELECT COUNT(*) FROM document_figure_readings)",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+        for table in [
+            "document_figure_scans",
+            "document_figures",
+            "document_figure_passages",
+            "document_figure_readings",
+        ] {
+            assert!(!selection.includes_table(table));
+        }
     }
 
     #[test]

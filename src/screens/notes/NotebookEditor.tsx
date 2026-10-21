@@ -2,15 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 
 import type { ShowToast } from "../../components/Toast";
 import type { SourcePassage } from "../../components/sourcePassage";
+import { beginAssetDraft, cancelAssetDraft, importImage } from "../../ipc/assets";
 import { getErrorMessage } from "../../ipc/common";
-import type { AnnotatedPage, NoteLink } from "../../ipc/documentAnnotations";
+import type { AnnotatedPage, ImageShape, NoteLink } from "../../ipc/documentAnnotations";
 import {
   addNotebookPage,
   deleteNotebookPage,
   moveNotebookPage,
   type NotebookContents,
 } from "../../ipc/notebooks";
+import { managedAssetUrl } from "../../platform/assets";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
+import { selectExternalImport } from "../../platform/files";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
@@ -38,8 +41,9 @@ import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from ".
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "../documents/annotator/useDocumentAnnotator";
 import { useLibraryFullPage } from "../library/LibraryFrame";
 import { LinkDialog, type LinkChoice } from "./LinkDialog";
-import { notebookSource } from "./notebookSource";
+import { notebookSource, rememberPictureDraft } from "./notebookSource";
 import { PaperBackground } from "./paper";
+import { fitPicture, naturalSize } from "./pictures";
 
 /** Where the notebook's links lead outside it. */
 export interface NotebookLinkActions {
@@ -217,6 +221,7 @@ function ReadyNotebook({
   const [lastNote, setLastNote] = useState<"text" | "sticky">("text");
   const [linkDialog, setLinkDialog] = useState<{ editing: Annotation | null } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [addingPicture, setAddingPicture] = useState(false);
   const [current, setCurrent] = useState(1);
 
   const paperPages = useMemo<PaperPages>(() => ({
@@ -312,10 +317,8 @@ function ReadyNotebook({
     }
     const pageNumber = pageInView();
     const page = pages[pageNumber - 1];
-    const element = viewportRef.current;
-    const pageElement = contentRef.current?.querySelector<HTMLElement>(`[data-annotator-page="${pageNumber}"]`);
-    if (!page || !element || !pageElement) return;
-    const visibleTop = (element.getBoundingClientRect().top - pageElement.getBoundingClientRect().top) / viewport.scale;
+    if (!page) return;
+    const visibleTop = visibleTopOf(pageNumber);
     const fontSize = controller.styles.text.size;
     // About as wide as the label, so the selection hugs it.
     const width = Math.round(Math.min(MAX_LINK_WIDTH, page.width - 96, label.length * fontSize * 0.6 + fontSize * 3));
@@ -335,6 +338,58 @@ function ReadyNotebook({
     controller.select(annotation.id, pageNumber);
   }
 
+  /** The top of what is in view on a page, in points. */
+  function visibleTopOf(pageNumber: number): number {
+    const element = viewportRef.current;
+    const pageElement = contentRef.current?.querySelector<HTMLElement>(`[data-annotator-page="${pageNumber}"]`);
+    if (!element || !pageElement) return 0;
+    return (element.getBoundingClientRect().top - pageElement.getBoundingClientRect().top) / viewport.scale;
+  }
+
+  /**
+   * Asks for an image and puts it near the top of what is in view on the
+   * current page, selected. Each picture stages its image in a draft of its
+   * own, which the save that stores the picture keeps.
+   */
+  async function addPicture() {
+    if (addingPicture) return;
+    setAddingPicture(true);
+    let draftId: string | null = null;
+    try {
+      draftId = (await beginAssetDraft("import", notebookId)).id;
+      const selectedFile = await selectExternalImport("image");
+      if (!selectedFile) {
+        void cancelAssetDraft(draftId).catch(() => undefined);
+        return;
+      }
+      const asset = await importImage(selectedFile.id, draftId);
+      rememberPictureDraft(asset.id, draftId);
+      draftId = null;
+      const pageNumber = pageInView();
+      const page = pages[pageNumber - 1];
+      if (!page) return;
+      const { width, height } = fitPicture(await naturalSize(managedAssetUrl(asset.id)), page);
+      const top = Math.min(Math.max(48, visibleTopOf(pageNumber) + 48), page.height - height);
+      const shape: ImageShape = {
+        kind: "image",
+        x: Math.round((page.width - width) / 2),
+        y: Math.round(Math.max(0, top)),
+        width,
+        height,
+        assetId: asset.id,
+      };
+      const annotation: Annotation = { id: createAnnotationId(), pageNumber, shape, createdAt: controller.now() };
+      controller.setTool("select");
+      controller.commit([{ id: annotation.id, before: null, after: annotation }]);
+      controller.select(annotation.id, pageNumber);
+    } catch (error) {
+      if (draftId) void cancelAssetDraft(draftId).catch(() => undefined);
+      showToast("error", `The picture could not be added: ${getErrorMessage(error)}`);
+    } finally {
+      setAddingPicture(false);
+    }
+  }
+
   function chooseTool(tool: AnnotatorTool) {
     if (isShapeTool(tool)) setLastShape(tool);
     if (tool === "text" || tool === "sticky") setLastNote(tool);
@@ -350,6 +405,7 @@ function ReadyNotebook({
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const command = key === "z" ? (event.shiftKey ? controller.redo : controller.undo)
         : key === "y" ? controller.redo
+          : key === "g" && controller.group.length > 0 ? () => controller.setGrouped(!event.shiftKey)
           : key === "=" || key === "+" ? viewport.zoomIn
             : key === "-" ? viewport.zoomOut
               : key === "0" ? viewport.fitToWidth
@@ -401,6 +457,10 @@ function ReadyNotebook({
         <Button size="small" variant="secondary" aria-keyshortcuts="K" onClick={() => setLinkDialog({ editing: null })}>
           <Icon name="link" />
           Add link
+        </Button>
+        <Button size="small" variant="secondary" loading={addingPicture} onClick={() => void addPicture()}>
+          <Icon name="image" />
+          Add picture
         </Button>
         {selected && selectedLink ? (
           <>
@@ -465,6 +525,8 @@ function ReadyNotebook({
         onTogglePenOnly={controller.togglePenOnly}
         groupSize={controller.group.length}
         onDeleteGroup={controller.deleteGroup}
+        isOneGroup={controller.isOneGroup}
+        onGroup={controller.setGrouped}
         eraseMode={controller.eraseMode}
         onEraseMode={controller.setEraseMode}
         zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}

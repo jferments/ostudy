@@ -1,4 +1,4 @@
--- Release migration 19: ink on lecture slides and study guide pages.
+-- Release migration 21: ink on lecture slides and study guide pages.
 --
 -- A learner writes and draws on a lesson's designed lecture slides and on a
 -- document study guide's designed section pages with the annotator's tools.

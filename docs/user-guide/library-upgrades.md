@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 19: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, schema 14 lets a PDF be saved with your annotations drawn in, schema 15 keeps a lesson's teacher's lecture, schema 16 keeps your saved voices and the voice each lesson is read in, schema 17 keeps your podcasts, schema 18 stores your notebooks, and schema 19 stores what you write on lecture slides and study guide pages, the last fourteen described below. Libraries at schemas 1–18 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 21: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, schema 14 lets a PDF be saved with your annotations drawn in, schema 15 keeps a lesson's teacher's lecture, schema 16 keeps your saved voices and the voice each lesson is read in, schema 17 keeps your podcasts, schema 18 stores your notebooks, schema 19 keeps the figures found in your PDF documents, schema 20 keeps the pictures placed on notebook pages, and schema 21 stores what you write on lecture slides and study guide pages, the last sixteen described below. Libraries at schemas 1–20 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -110,11 +110,23 @@ Schema 18 stores your notebooks: their pages, and what you draw, type and link o
 
 Older builds cannot open a schema-18 library. Restoring the pre-upgrade checkpoint returns the schema-17 library as it was, without any notebooks made since.
 
-## The slide and page ink update (schema 19)
+## The document figures update (schema 19)
 
-Schema 19 stores what you write and draw on a lesson's lecture slides and on a study guide's designed pages. It adds one empty table and changes no existing rows. Your marks go when their lesson or document does. Whole-library backups keep them; device sync leaves them on the device that made them.
+Schema 19 keeps the figures oStudy finds in your PDF documents: the page each is on, where it sits on the page, its caption, the passages elsewhere in the document that refer to it, and any you chose to hide. It has room for what your AI model reads in each figure (a title, what it shows, how the text uses it and how important it is), which a later version fills in. It also remembers whether you chose to use a document's images when you imported it. Figures are drawn again from the document when they are shown, so no extra copies of its pictures are stored. Deleting the document clears its figures. The update itself writes nothing: the tables start empty, and documents imported before it can be searched for figures from their Figures page.
 
-Older builds cannot open a schema-19 library. Restoring the pre-upgrade checkpoint returns the schema-18 library as it was, without any marks made since.
+Older builds cannot open a schema-19 library. Restoring the pre-upgrade checkpoint returns the schema-18 library as it was. Figures are part of whole-library backups but stay on the device that found them: device sync does not carry them.
+
+## The notebook images update (schema 20)
+
+Schema 20 records which pictures are placed on notebook pages, so the library keeps each picture while it is on a page and lets it go once it is not. It adds one empty table and changes no existing rows. Whole-library backups keep notebook pictures with their notebooks; device sync leaves both on the device that made them.
+
+Older builds cannot open a schema-20 library. Restoring the pre-upgrade checkpoint returns the schema-19 library as it was, without any pictures placed since.
+
+## The slide and page ink update (schema 21)
+
+Schema 21 stores what you write and draw on a lesson's lecture slides and on a study guide's designed pages. It adds one empty table and changes no existing rows. Your marks go when their lesson or document does. Whole-library backups keep them; device sync leaves them on the device that made them.
+
+Older builds cannot open a schema-21 library. Restoring the pre-upgrade checkpoint returns the schema-20 library as it was, without any marks made since.
 
 ## What happens when migration is required
 

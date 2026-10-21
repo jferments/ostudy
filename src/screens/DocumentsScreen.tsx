@@ -29,6 +29,10 @@ import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
+import { DocumentFiguresWorkspace } from "./documents/figures/DocumentFiguresWorkspace";
+import { ImportImagesDialog } from "./documents/figures/ImportImagesDialog";
+import type { ImportDocumentOptions } from "../ipc/documents";
+import type { StagedExternalFile } from "../ipc/externalFiles";
 import { ReadingRangeDialog, rangeLabel } from "./documents/ReadingRangeDialog";
 import { SubjectStudyActions } from "./documents/SubjectStudyActions";
 import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
@@ -99,6 +103,20 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
+  const [viewingFigures, setViewingFigures] = useState<{ id: string; title: string } | null>(null);
+  const closeFigures = useCallback(() => setViewingFigures(null), []);
+  // A chosen PDF waits here while the learner says whether to use its images.
+  const [importing, setImporting] = useState<{
+    fileName: string;
+    resolve: (options: ImportDocumentOptions | null) => void;
+  } | null>(null);
+  const chooseImportOptions = (selected: StagedExternalFile) => selected.detectedKind === "pdf"
+    ? new Promise<ImportDocumentOptions | null>((resolve) => setImporting({ fileName: selected.displayName, resolve }))
+    : Promise.resolve({});
+  const finishImporting = (options: ImportDocumentOptions | null) => {
+    importing?.resolve(options);
+    setImporting(null);
+  };
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
   const [moving, setMoving] = useState<DocumentSummary | null>(null);
@@ -150,8 +168,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
   const upload = () => {
     const target = props.subjectId;
-    if (typeof target !== "string") return void uploadDocument();
-    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target));
+    if (typeof target !== "string") return void uploadDocument(undefined, undefined, chooseImportOptions);
+    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target), chooseImportOptions);
   };
 
   if (subjectGuide) {
@@ -176,6 +194,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+      />
+    );
+  }
+
+  if (viewingFigures) {
+    return (
+      <DocumentFiguresWorkspace
+        documentId={viewingFigures.id}
+        title={viewingFigures.title}
+        onClose={closeFigures}
+        showToast={props.showToast}
       />
     );
   }
@@ -235,6 +264,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
       onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+    });
+    if (canAnnotateDocument(document)) items.push({
+      id: "figures", label: "Figures", disabled: deleting,
+      onSelect: () => setViewingFigures({ id: document.id, title: document.title }),
     });
     if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
       id: "range", label: "Reading range…", disabled: filing.busy,
@@ -440,6 +473,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           })}
         </div>
       )}
+      {importing ? (
+        <ImportImagesDialog
+          fileName={importing.fileName}
+          onImport={(useImages) => finishImporting({ useImages })}
+          onCancel={() => finishImporting(null)}
+        />
+      ) : null}
       {detailsDocument ? (
         <DocumentDetails
           document={detailsDocument}
