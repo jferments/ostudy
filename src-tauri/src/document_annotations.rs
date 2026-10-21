@@ -49,6 +49,8 @@ const FALLBACK_PAGE_SIZE: (f64, f64) = (612.0, 792.0);
 /// One annotation's geometry and look. Colors are `#rrggbb`; lengths are PDF
 /// points.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Every kind may carry `group`: marks on one page sharing a group are
+/// selected and moved together.
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AnnotationShape {
     Ink(InkStroke),
@@ -71,6 +73,8 @@ pub struct InkStroke {
     pub color: String,
     pub stroke_width: f64,
     pub simulate_pressure: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// A translucent marker. A free stroke has `x, y` pairs in `points`; a
@@ -86,6 +90,8 @@ pub struct HighlightStroke {
     pub rects: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// A straight line or an arrow from (x1, y1) to (x2, y2); an arrow's head is at
@@ -103,6 +109,12 @@ pub struct Segment {
     pub dash: Option<LineDash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub both_ends: Option<bool>,
+    /// A curve: the two control points `[x1, y1, x2, y2]` of a cubic Bézier
+    /// from the first end to the second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curve: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// The outline of a rectangle or of the ellipse inside it, optionally filled
@@ -122,6 +134,8 @@ pub struct Frame {
     pub fill: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub border: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// How a line or outline is broken up; a solid line has none. Dashes and dots
@@ -154,6 +168,8 @@ pub struct TextNote {
     /// Only on a notebook page: the note is a link, and `text` is its label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<NoteLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// Where a link on a notebook page goes. `button` shows it as a button that
@@ -203,7 +219,27 @@ impl AnnotationShape {
         }
     }
 
+    /// The group the mark belongs to, if any.
+    pub(crate) fn group(&self) -> Option<&str> {
+        match self {
+            Self::Ink(stroke) => stroke.group.as_deref(),
+            Self::Highlight(stroke) => stroke.group.as_deref(),
+            Self::Line(segment) | Self::Arrow(segment) => segment.group.as_deref(),
+            Self::Rectangle(frame) | Self::Ellipse(frame) => frame.group.as_deref(),
+            Self::Text(note) => note.group.as_deref(),
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
+        if let Some(group) = self.group() {
+            if !is_identifier(group) {
+                return Err(invalid("A group is named by a 32-character identifier."));
+            }
+        }
+        self.validate_shape()
+    }
+
+    fn validate_shape(&self) -> Result<(), CommandError> {
         match self {
             Self::Ink(stroke) => {
                 validate_points(&stroke.points, 3)?;
@@ -240,6 +276,14 @@ impl AnnotationShape {
                 }
                 validate_color(&segment.color)?;
                 validate_stroke_width(segment.stroke_width)?;
+                if let Some(curve) = &segment.curve {
+                    if curve.len() != 4 {
+                        return Err(invalid("A curve has two control points."));
+                    }
+                    for value in curve {
+                        validate_coordinate(*value)?;
+                    }
+                }
                 match segment.both_ends {
                     None => Ok(()),
                     Some(true) if matches!(self, Self::Arrow(_)) => Ok(()),
@@ -866,12 +910,15 @@ fn measure_pages(paths: &AppPaths, renders: Vec<PageRender>) -> Vec<AnnotatedPag
         .collect()
 }
 
-fn validate_annotation_id(id: &str) -> Result<(), CommandError> {
-    if id.len() == 32
+fn is_identifier(id: &str) -> bool {
+    id.len() == 32
         && id
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-    {
+}
+
+fn validate_annotation_id(id: &str) -> Result<(), CommandError> {
+    if is_identifier(id) {
         Ok(())
     } else {
         Err(CommandError::new(

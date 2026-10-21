@@ -307,6 +307,64 @@ describe("document annotator", () => {
     );
   });
 
+  it("draws a curve that starts as an arc and bends by its control points", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "c" });
+    expect(pressed("Curve")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Head at one end" }));
+    drag(canvas, [[100, 300], [300, 300]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    const drawn = savedChanges()[0];
+    expect(drawn?.op === "put" ? drawn.shape : null).toEqual({
+      kind: "arrow", x1: 100, y1: 300, x2: 300, y2: 300, curve: [166.67, 250, 233.33, 250], color: "#dc2626", strokeWidth: 3,
+    });
+
+    // Picked up on the arc, not on the straight line between its ends.
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.pointerDown(canvas, onPage(200, 262, 1, "mouse"));
+    fireEvent.pointerUp(canvas, onPage(200, 262, 1, "mouse"));
+    expect(screen.getByRole("button", { name: "No arrowheads" })).toBeTruthy();
+    drag(canvas, [[166.67, 250], [150, 200]]);
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(1));
+    expect(savedChanges(1)[0]).toMatchObject({ shape: { curve: [150, 200, 233.33, 250] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "No arrowheads" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(1));
+    expect(savedChanges(2)[0]).toMatchObject({ shape: { kind: "line", curve: [150, 200, 233.33, 250] } });
+  });
+
+  it("groups marks so they select and move together, and ungroups them", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [160, 140]]);
+    drag(canvas, [[200, 100], [260, 140]]);
+    await waitFor(() => expect(savedChanges().length + savedChanges(1).length).toBe(2));
+    const saves = () => vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mock.calls.length;
+    const latest = () => savedChanges(saves() - 1);
+    const before = saves();
+
+    fireEvent.keyDown(canvas, { key: "q" });
+    drag(canvas, [[80, 80], [300, 80], [300, 170], [80, 170], [80, 80]]);
+    fireEvent.click(await screen.findByRole("button", { name: "Group" }));
+    await waitFor(() => expect(saves()).toBe(before + 1));
+    const [first, second] = latest();
+    const group = first?.op === "put" ? first.shape.group : undefined;
+    expect(group).toMatch(/^[0-9a-f]{32}$/u);
+    expect(second?.op === "put" ? second.shape.group : null).toBe(group);
+
+    // Pressing one box with Select drags both.
+    fireEvent.keyDown(canvas, { key: "v" });
+    drag(canvas, [[100, 120], [110, 130], [120, 140]]);
+    await waitFor(() => expect(saves()).toBe(before + 2));
+    expect(latest().map((change) => change.op === "put" ? [change.shape.kind === "rectangle" && change.shape.x, change.shape.group] : null))
+      .toEqual([[120, group], [220, group]]);
+    expect(screen.getByText(/Group of 2/u)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ungroup" }));
+    await waitFor(() => expect(saves()).toBe(before + 3));
+    expect(latest().every((change) => change.op === "put" && change.shape.group === undefined)).toBe(true);
+  });
+
   it("selects marks together with the lasso, then moves and deletes them as one", async () => {
     const { canvas } = await openAnnotator();
     fireEvent.keyDown(canvas, { key: "r" });

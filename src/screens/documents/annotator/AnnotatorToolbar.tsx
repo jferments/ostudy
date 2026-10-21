@@ -29,6 +29,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   sticky: { label: "Sticky note", icon: "sticky-note", shortcut: "S" },
   line: { label: "Line", icon: "shape-line", shortcut: "L" },
   arrow: { label: "Arrow", icon: "shape-arrow", shortcut: "A" },
+  curve: { label: "Curve", icon: "shape-curve", shortcut: "C" },
   rectangle: { label: "Box", icon: "shape-rectangle", shortcut: "R" },
   ellipse: { label: "Ellipse", icon: "shape-ellipse", shortcut: "O" },
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
@@ -57,6 +58,10 @@ interface AnnotatorToolbarProps {
   /** How many annotations the lasso took. */
   groupSize: number;
   onDeleteGroup: () => void;
+  /** Whether the selected annotations are one saved group, which moves and selects together. */
+  isOneGroup: boolean;
+  /** Joins the selected annotations into a group, or ungroups them. */
+  onGroup: (grouped: boolean) => void;
   /** Opens a new card made from the selected annotation. */
   onMakeCard?: () => void;
   canUndo: boolean;
@@ -224,13 +229,23 @@ function StyleRow(props: AnnotatorToolbarProps) {
     return (
       <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
         <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
+          {props.isOneGroup ? (
+            <ToolbarAction label="Ungroup" aria-keyshortcuts="Control+Shift+G Meta+Shift+G" onClick={() => props.onGroup(false)}>
+              Ungroup
+            </ToolbarAction>
+          ) : props.groupSize > 1 ? (
+            <ToolbarAction label="Group" aria-keyshortcuts="Control+G Meta+G" onClick={() => props.onGroup(true)}>
+              Group
+            </ToolbarAction>
+          ) : null}
           <ToolbarAction label={`Delete ${props.groupSize} selected`} aria-keyshortcuts="Delete Backspace"
             onClick={props.onDeleteGroup} className="tw:text-destructive">
             <Icon name="delete" />
           </ToolbarAction>
         </Toolbar>
         <span className="tw:truncate tw:text-label tw:text-muted-foreground">
-          {props.groupSize} selected{compact ? "" : ". Drag them to move them together."}
+          {props.isOneGroup ? "Group of " : ""}{props.groupSize}{props.isOneGroup ? "" : " selected"}
+          {compact ? "" : ". Drag them to move them together."}
         </span>
       </div>
     );
