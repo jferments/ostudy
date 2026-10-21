@@ -1028,6 +1028,7 @@ export function isStorable(shape: AnnotationShape): boolean {
       && IDENTIFIER.test(shape.assetId);
   }
   if (!COLOR.test(shape.color)) return false;
+  if (shape.group !== undefined && !/^[0-9a-f]{32}$/.test(shape.group)) return false;
   switch (shape.kind) {
     case "ink":
       return pointsAllowed(shape.points, 3) && strokeWidthAllowed(shape.strokeWidth);

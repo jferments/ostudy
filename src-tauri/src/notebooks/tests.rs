@@ -583,12 +583,10 @@ fn a_picture_keeps_its_image_until_the_picture_is_deleted() {
 
             // Moving it later needs no draft, and keeps one record of its image.
             let mut moved = picture(&item, &page, &asset.id, None);
-            if let NotebookItemChange::Put {
-                shape: AnnotationShape::Image(image),
-                ..
-            } = &mut moved
-            {
-                image.x = 60.0;
+            if let NotebookItemChange::Put { shape, .. } = &mut moved {
+                if let AnnotationShape::Image(image) = &mut **shape {
+                    image.x = 60.0;
+                }
             }
             apply_changes(
                 connection,

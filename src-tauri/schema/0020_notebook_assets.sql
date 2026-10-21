@@ -1,4 +1,4 @@
--- Release migration 19: notebook images.
+-- Release migration 20: notebook images.
 --
 -- A picture placed on a notebook page is an 'image' notebook_items row whose
 -- payload names a managed asset. This table records that use, one row per
