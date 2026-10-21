@@ -131,10 +131,47 @@ pub struct TextNote {
     pub sticky: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collapsed: Option<bool>,
+    /// Only on a notebook page: the note is a link, and `text` is its label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<NoteLink>,
 }
 
+/// Where a link on a notebook page goes. `button` shows it as a button that
+/// does the thing (a deck's Study starts Practice) rather than a small link.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NoteLink {
+    pub target: LinkTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub button: Option<bool>,
+}
+
+/// What a link names. Targets are looked up when a notebook opens, so a link
+/// whose target was deleted stays on the page and opens nothing.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum LinkTarget {
+    #[serde(rename_all = "camelCase")]
+    DocumentPage {
+        document_id: String,
+        page_number: i64,
+    },
+    #[serde(rename_all = "camelCase")]
+    StudyGuide { document_id: String },
+    #[serde(rename_all = "camelCase")]
+    Deck { deck_id: String },
+    #[serde(rename_all = "camelCase")]
+    NotebookPage {
+        notebook_id: String,
+        page_id: String,
+    },
+}
+
+/// A link's label is one short line.
+pub(crate) const MAX_LINK_LABEL_CHARS: usize = 200;
+
 impl AnnotationShape {
-    fn kind(&self) -> &'static str {
+    pub(crate) fn kind(&self) -> &'static str {
         match self {
             Self::Ink(_) => "ink",
             Self::Highlight(_) => "highlight",
@@ -146,7 +183,7 @@ impl AnnotationShape {
         }
     }
 
-    fn validate(&self) -> Result<(), CommandError> {
+    pub(crate) fn validate(&self) -> Result<(), CommandError> {
         match self {
             Self::Ink(stroke) => {
                 validate_points(&stroke.points, 3)?;
@@ -200,7 +237,11 @@ impl AnnotationShape {
                     return Err(invalid("A text note needs some text."));
                 }
                 let limit = match note.sticky {
+                    None if note.link.is_some() => MAX_LINK_LABEL_CHARS,
                     None => MAX_TEXT_CHARS,
+                    Some(true) if note.link.is_some() => {
+                        return Err(invalid("A sticky note cannot also be a link."))
+                    }
                     Some(true) => MAX_STICKY_CHARS,
                     Some(false) => {
                         return Err(invalid(
@@ -228,6 +269,9 @@ impl AnnotationShape {
                 {
                     return Err(invalid("A text note cannot contain control characters."));
                 }
+                if let Some(link) = &note.link {
+                    link.validate()?;
+                }
                 validate_color(&note.color)?;
                 if !note.font_size.is_finite()
                     || !(MIN_FONT_SIZE..=MAX_FONT_SIZE).contains(&note.font_size)
@@ -242,7 +286,7 @@ impl AnnotationShape {
     }
 
     /// The stored payload: the shape's own fields, without its kind.
-    fn payload_json(&self) -> Result<String, CommandError> {
+    pub(crate) fn payload_json(&self) -> Result<String, CommandError> {
         let json = match self {
             Self::Ink(stroke) => serde_json::to_string(stroke),
             Self::Highlight(stroke) => serde_json::to_string(stroke),
@@ -259,7 +303,7 @@ impl AnnotationShape {
         Ok(json)
     }
 
-    fn from_stored(kind: &str, payload: &str) -> Result<Self, serde_json::Error> {
+    pub(crate) fn from_stored(kind: &str, payload: &str) -> Result<Self, serde_json::Error> {
         Ok(match kind {
             "ink" => Self::Ink(serde_json::from_str(payload)?),
             "highlight" => Self::Highlight(serde_json::from_str(payload)?),
@@ -274,6 +318,42 @@ impl AnnotationShape {
                 )))
             }
         })
+    }
+}
+
+impl AnnotationShape {
+    /// Whether this is a link, which only a notebook page holds.
+    pub(crate) fn is_link(&self) -> bool {
+        matches!(self, Self::Text(TextNote { link: Some(_), .. }))
+    }
+}
+
+impl NoteLink {
+    fn validate(&self) -> Result<(), CommandError> {
+        if self.button == Some(false) {
+            return Err(invalid("A link is either a button or not marked at all."));
+        }
+        let ids: Vec<&str> = match &self.target {
+            LinkTarget::DocumentPage {
+                document_id,
+                page_number,
+            } => {
+                if *page_number < 1 {
+                    return Err(invalid("A link to a page needs its page number."));
+                }
+                vec![document_id]
+            }
+            LinkTarget::StudyGuide { document_id } => vec![document_id],
+            LinkTarget::Deck { deck_id } => vec![deck_id],
+            LinkTarget::NotebookPage {
+                notebook_id,
+                page_id,
+            } => vec![notebook_id, page_id],
+        };
+        for id in ids {
+            validate_entity_id(id, "link target")?;
+        }
+        Ok(())
     }
 }
 
@@ -430,6 +510,9 @@ pub(crate) fn apply_changes(
                 return Err(page_missing());
             }
             shape.validate()?;
+            if shape.is_link() {
+                return Err(invalid("Links go on notebook pages, not on a document."));
+            }
         }
     }
 

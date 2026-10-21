@@ -1,8 +1,10 @@
 //! One-click OpenRouter sign-in: OAuth with PKCE and a loopback callback.
 //!
 //! The learner approves oStudy in their browser; OpenRouter redirects to a
-//! listener on this computer with a one-time code, and the code (with the
-//! verifier only this process knows) is exchanged for an API key. The key
+//! listener on this device with a one-time code, and the code (with the
+//! verifier only this process knows) is exchanged for an API key. On Android
+//! the browser is a separate app, so the page it lands on offers a link that
+//! brings oStudy back to the front; the code has already arrived by then. The key
 //! stays native: it is held here until it is saved as an OpenRouter
 //! service's credential, and React only ever sees an attempt identifier.
 //!
@@ -28,7 +30,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::{database::Database, error::CommandError, util::validate_entity_id};
+use crate::{
+    database::Database, error::CommandError, platform::BROWSER_RETURN_URL, util::validate_entity_id,
+};
 
 use super::{
     super::{catalog::ProviderKind, AiRuntimeState},
@@ -96,7 +100,7 @@ impl SignInSlot {
 }
 
 pub(super) fn start(runtime: &AiRuntimeState) -> Result<OpenRouterSignInStartDto, CommandError> {
-    if cfg!(mobile) {
+    if cfg!(mobile) && BROWSER_RETURN_URL.is_none() {
         return Err(CommandError::new(
             "openrouter_sign_in_unavailable",
             "One-click sign-in is not available on this device. Paste an OpenRouter key instead.",
@@ -315,21 +319,7 @@ fn answer(mut stream: TcpStream) -> Option<Result<String, CommandError>> {
     let _ = stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT));
     let request = read_request_head(&mut stream)?;
     let outcome = callback_outcome(&request);
-    let (status, page) = match &outcome {
-        None => ("404 Not Found", "Not found."),
-        Some(Ok(_)) => (
-            "200 OK",
-            "oStudy is connecting to OpenRouter. You can close this tab and go back to oStudy.",
-        ),
-        Some(Err(_)) => (
-            "200 OK",
-            "OpenRouter did not connect oStudy. Go back to oStudy to try again or paste a key.",
-        ),
-    };
-    let body = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>oStudy</title>\
-         <body style=\"font:16px system-ui,sans-serif;margin:3rem\"><p>{page}</p></body>"
-    );
+    let (status, body) = callback_page(outcome.as_ref(), BROWSER_RETURN_URL);
     let _ = write!(
         stream,
         "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\n\
@@ -338,6 +328,41 @@ fn answer(mut stream: TcpStream) -> Option<Result<String, CommandError>> {
     );
     let _ = stream.flush();
     outcome
+}
+
+/// The page the browser shows after OpenRouter sends it back. With a return
+/// link (Android), the learner taps it to get back to oStudy.
+fn callback_page(
+    outcome: Option<&Result<String, CommandError>>,
+    return_url: Option<&str>,
+) -> (&'static str, String) {
+    let (status, message) = match (outcome, return_url) {
+        (None, _) => ("404 Not Found", "Not found."),
+        (Some(Ok(_)), None) => (
+            "200 OK",
+            "oStudy is connecting to OpenRouter. You can close this tab and go back to oStudy.",
+        ),
+        (Some(Ok(_)), Some(_)) => ("200 OK", "oStudy is connecting to OpenRouter."),
+        (Some(Err(_)), _) => (
+            "200 OK",
+            "OpenRouter did not connect oStudy. Go back to oStudy to try again or paste a key.",
+        ),
+    };
+    let link = match (outcome, return_url) {
+        (Some(_), Some(url)) => format!(
+            "<p><a href=\"{url}\" style=\"display:inline-block;padding:.75rem 1.25rem;\
+             border-radius:.5rem;background:#1f6feb;color:#fff;text-decoration:none\">\
+             Back to oStudy</a></p>"
+        ),
+        _ => String::new(),
+    };
+    let body = format!(
+        "<!doctype html><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>oStudy</title>\
+         <body style=\"font:16px system-ui,sans-serif;margin:3rem 1.5rem\"><p>{message}</p>{link}</body>"
+    );
+    (status, body)
 }
 
 fn read_request_head(stream: &mut TcpStream) -> Option<String> {
@@ -456,6 +481,26 @@ mod tests {
                 .unwrap()
                 .unwrap_err();
         assert_eq!(refused.code, "openrouter_sign_in_denied");
+    }
+
+    #[test]
+    fn the_callback_page_offers_a_way_back_only_where_one_exists() {
+        let received: Result<String, CommandError> = Ok("code".into());
+        let (status, desktop) = callback_page(Some(&received), None);
+        assert_eq!(status, "200 OK");
+        assert!(desktop.contains("close this tab"));
+        assert!(!desktop.contains("<a "));
+
+        let back = "io.github.jferments.ostudy.dev://openrouter-signed-in";
+        let (_, android) = callback_page(Some(&received), Some(back));
+        assert!(android.contains(&format!("href=\"{back}\"")));
+        assert!(android.contains("Back to oStudy"));
+        let refused = Err(canceled_error());
+        assert!(callback_page(Some(&refused), Some(back)).1.contains(back));
+
+        let (missing, page) = callback_page(None, Some(back));
+        assert_eq!(missing, "404 Not Found");
+        assert!(!page.contains(back));
     }
 
     #[test]

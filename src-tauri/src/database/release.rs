@@ -32,6 +32,9 @@ mod lesson_narration;
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
 
+#[path = "release/notebooks.rs"]
+mod notebooks;
+
 #[path = "release/object_delta.rs"]
 mod object_delta;
 
@@ -66,7 +69,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 17;
+pub(crate) const SCHEMA_VERSION: i64 = 18;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -176,6 +179,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "podcasts",
         checksum: "23abf0c9879caf011c3bb542c8f43274beae8d320fc3d6d914b87a907379e4cd",
         sql: include_str!("../../schema/0017_podcasts.sql"),
+    },
+    ReleaseMigration {
+        version: 18,
+        name: "notebooks",
+        checksum: "cd1eb1fc6917b5a599c5625f04e2034a8c725ca51984ceb5269a116f1f4a3032",
+        sql: include_str!("../../schema/0018_notebooks.sql"),
     },
 ];
 
@@ -395,6 +404,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     lecture_scripts::validate_schema(connection, user_version)?;
     speech_voices::validate_schema(connection, user_version)?;
     podcasts::validate_schema(connection, user_version)?;
+    notebooks::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
