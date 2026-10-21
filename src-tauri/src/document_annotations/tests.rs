@@ -93,6 +93,8 @@ fn arrow(x2: f64) -> AnnotationShape {
         y2: 40.0,
         color: "#d92d20".into(),
         stroke_width: 2.0,
+        dash: None,
+        both_ends: None,
     })
 }
 
@@ -158,6 +160,8 @@ fn every_kind() -> Vec<AnnotationShape> {
             y2: 0.0,
             color: "#111111".into(),
             stroke_width: 1.0,
+            dash: None,
+            both_ends: None,
         }),
         arrow(30.0),
         AnnotationShape::Rectangle(Frame {
@@ -167,6 +171,9 @@ fn every_kind() -> Vec<AnnotationShape> {
             height: 20.0,
             color: "#16a34a".into(),
             stroke_width: 2.0,
+            dash: None,
+            fill: None,
+            border: None,
         }),
         AnnotationShape::Ellipse(Frame {
             x: 5.0,
@@ -175,6 +182,30 @@ fn every_kind() -> Vec<AnnotationShape> {
             height: 20.0,
             color: "#16a34a".into(),
             stroke_width: 2.0,
+            dash: None,
+            fill: None,
+            border: None,
+        }),
+        AnnotationShape::Arrow(Segment {
+            x1: 20.0,
+            y1: 50.0,
+            x2: 120.0,
+            y2: 60.0,
+            color: "#7c3aed".into(),
+            stroke_width: 2.5,
+            dash: Some(LineDash::Dashed),
+            both_ends: Some(true),
+        }),
+        AnnotationShape::Ellipse(Frame {
+            x: 50.0,
+            y: 60.0,
+            width: 30.0,
+            height: 30.0,
+            color: "#0f766e".into(),
+            stroke_width: 1.0,
+            dash: Some(LineDash::Dotted),
+            fill: Some("#ccfbf1".into()),
+            border: Some(false),
         }),
         AnnotationShape::Text(TextNote {
             x: 12.0,
@@ -298,6 +329,9 @@ fn shapes_outside_their_limits_are_refused() {
             height,
             color: "#000000".into(),
             stroke_width: 1.0,
+            dash: None,
+            fill: None,
+            border: None,
         })
     };
     let mut line = arrow(30.0);
@@ -801,4 +835,49 @@ fn only_a_sticky_note_can_be_collapsed() {
     note(Some(true), None).validate().unwrap();
     assert!(note(None, Some(true)).validate().is_err());
     assert!(note(Some(true), Some(false)).validate().is_err());
+}
+
+#[test]
+fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() {
+    let segment = |both_ends: Option<bool>| Segment {
+        x1: 0.0,
+        y1: 0.0,
+        x2: 40.0,
+        y2: 0.0,
+        color: "#111111".into(),
+        stroke_width: 2.0,
+        dash: Some(LineDash::Dotted),
+        both_ends,
+    };
+    AnnotationShape::Arrow(segment(Some(true))).validate().unwrap();
+    AnnotationShape::Line(segment(None)).validate().unwrap();
+    assert!(AnnotationShape::Line(segment(Some(true))).validate().is_err());
+    assert!(AnnotationShape::Arrow(segment(Some(false))).validate().is_err());
+    let wire = serde_json::to_value(AnnotationShape::Arrow(segment(Some(true)))).unwrap();
+    assert_eq!(wire["dash"], "dotted");
+    assert_eq!(wire["bothEnds"], true);
+
+    let frame = |fill: Option<&str>, border: Option<bool>| {
+        AnnotationShape::Rectangle(Frame {
+            x: 1.0,
+            y: 1.0,
+            width: 20.0,
+            height: 20.0,
+            color: "#111111".into(),
+            stroke_width: 1.0,
+            dash: None,
+            fill: fill.map(Into::into),
+            border,
+        })
+    };
+    frame(Some("#fef3c7"), None).validate().unwrap();
+    frame(Some("#fef3c7"), Some(false)).validate().unwrap();
+    assert!(frame(None, Some(false)).validate().is_err());
+    assert!(frame(Some("#fef3c7"), Some(true)).validate().is_err());
+    assert!(frame(Some("yellow"), None).validate().is_err());
+    assert!(serde_json::from_value::<AnnotationShape>(serde_json::json!({
+        "kind": "line", "x1": 0, "y1": 0, "x2": 4, "y2": 0, "color": "#111111",
+        "strokeWidth": 1, "dash": "wavy"
+    }))
+    .is_err());
 }

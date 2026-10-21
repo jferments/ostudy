@@ -1,6 +1,6 @@
-import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
-import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import type { AnnotatedPage, FrameShape, SegmentShape } from "../../../ipc/documentAnnotations";
 import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Dialog } from "../../../ui/overlays/Dialog";
@@ -8,6 +8,7 @@ import { Button } from "../../../ui/primitives/Button";
 import { Textarea } from "../../../ui/primitives/FormControls";
 import {
   arrowHead,
+  dashArray,
   describeAnnotation,
   handlesFor,
   isStickyNote,
@@ -239,33 +240,56 @@ export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true 
     case "line":
       return (
         <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinecap="round" />
+          strokeWidth={shape.strokeWidth} strokeLinecap="round" strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
       );
     case "arrow": {
       const head = arrowHead(shape);
+      const tail = shape.bothEnds ? arrowHead(reversedSegment(shape)) : null;
+      const start = tail?.base ?? { x: shape.x1, y: shape.y1 };
+      const headStroke = Math.min(1, shape.strokeWidth);
       return (
         <>
-          <line x1={shape.x1} y1={shape.y1} x2={head.base.x} y2={head.base.y} stroke={shape.color}
-            strokeWidth={shape.strokeWidth} strokeLinecap="round" />
-          <polygon fill={shape.color} stroke={shape.color} strokeWidth={Math.min(1, shape.strokeWidth)} strokeLinejoin="round"
+          <line x1={start.x} y1={start.y} x2={head.base.x} y2={head.base.y} stroke={shape.color}
+            strokeWidth={shape.strokeWidth} strokeLinecap="round" strokeDasharray={dashArray(shape.dash, shape.strokeWidth)} />
+          <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
             points={`${shape.x2},${shape.y2} ${head.left.x},${head.left.y} ${head.right.x},${head.right.y}`} />
+          {tail ? (
+            <polygon fill={shape.color} stroke={shape.color} strokeWidth={headStroke} strokeLinejoin="round"
+              points={`${shape.x1},${shape.y1} ${tail.left.x},${tail.left.y} ${tail.right.x},${tail.right.y}`} />
+          ) : null}
         </>
       );
     }
     case "rectangle":
       return (
-        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill="none" stroke={shape.color}
-          strokeWidth={shape.strokeWidth} strokeLinejoin="round" />
+        <rect x={shape.x} y={shape.y} width={shape.width} height={shape.height} {...frameLook(shape)} />
       );
     case "ellipse":
       return (
         <ellipse cx={shape.x + shape.width / 2} cy={shape.y + shape.height / 2} rx={shape.width / 2} ry={shape.height / 2}
-          fill="none" stroke={shape.color} strokeWidth={shape.strokeWidth} />
+          {...frameLook(shape)} />
       );
     case "text":
       return null;
   }
 });
+
+/** A box's or ellipse's fill and outline. */
+function frameLook(shape: FrameShape): SVGProps<SVGElement> {
+  const border = shape.border !== false;
+  return {
+    fill: shape.fill ?? "none",
+    stroke: border ? shape.color : "none",
+    strokeWidth: shape.strokeWidth,
+    strokeLinejoin: "round",
+    strokeLinecap: shape.dash ? "round" : undefined,
+    strokeDasharray: border ? dashArray(shape.dash, shape.strokeWidth) : undefined,
+  };
+}
+
+function reversedSegment(shape: SegmentShape): SegmentShape {
+  return { ...shape, x1: shape.x2, y1: shape.y2, x2: shape.x1, y2: shape.y1 };
+}
 
 function textStyle(shape: TextShape): CSSProperties {
   return {

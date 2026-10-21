@@ -89,7 +89,7 @@ pub struct HighlightStroke {
 }
 
 /// A straight line or an arrow from (x1, y1) to (x2, y2); an arrow's head is at
-/// the second point.
+/// the second point, and at the first too when `both_ends` is set.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Segment {
@@ -99,9 +99,14 @@ pub struct Segment {
     pub y2: f64,
     pub color: String,
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash: Option<LineDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub both_ends: Option<bool>,
 }
 
-/// The outline of a rectangle or of the ellipse inside it.
+/// The outline of a rectangle or of the ellipse inside it, optionally filled
+/// with `fill`. A filled frame may drop its outline with `border: false`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Frame {
@@ -111,6 +116,21 @@ pub struct Frame {
     pub height: f64,
     pub color: String,
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash: Option<LineDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<bool>,
+}
+
+/// How a line or outline is broken up; a solid line has none. Dashes and dots
+/// are spaced by the line's width.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineDash {
+    Dashed,
+    Dotted,
 }
 
 /// Typed text whose lines wrap at `width`; its height follows the text. A
@@ -219,7 +239,13 @@ impl AnnotationShape {
                     return Err(invalid("A line needs two different end points."));
                 }
                 validate_color(&segment.color)?;
-                validate_stroke_width(segment.stroke_width)
+                validate_stroke_width(segment.stroke_width)?;
+                match segment.both_ends {
+                    None => Ok(()),
+                    Some(true) if matches!(self, Self::Arrow(_)) => Ok(()),
+                    Some(true) => Err(invalid("Only an arrow can have a head at both ends.")),
+                    Some(false) => Err(invalid("A one-headed arrow leaves bothEnds out.")),
+                }
             }
             Self::Rectangle(frame) | Self::Ellipse(frame) => {
                 validate_coordinate(frame.x)?;
@@ -227,7 +253,16 @@ impl AnnotationShape {
                 validate_extent(frame.x, frame.width)?;
                 validate_extent(frame.y, frame.height)?;
                 validate_color(&frame.color)?;
-                validate_stroke_width(frame.stroke_width)
+                validate_stroke_width(frame.stroke_width)?;
+                if let Some(fill) = &frame.fill {
+                    validate_color(fill)?;
+                }
+                match frame.border {
+                    None => Ok(()),
+                    Some(false) if frame.fill.is_some() => Ok(()),
+                    Some(false) => Err(invalid("A shape without a border needs a fill.")),
+                    Some(true) => Err(invalid("A shape with a border leaves border out.")),
+                }
             }
             Self::Text(note) => {
                 validate_coordinate(note.x)?;
