@@ -9,6 +9,9 @@
 mod ai;
 mod analytics;
 mod annotation_cards;
+/// The desktop build's release/development identity; Android takes its
+/// identity from the Gradle build type instead.
+#[cfg(desktop)]
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
@@ -412,6 +415,7 @@ pub fn run() {
             document_figures::set_document_figures_use_images,
             document_figures::set_document_figure_hidden,
             library_session::commands::leased_find_document_figures,
+            library_session::commands::leased_read_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
             notebooks::list_notebooks,
             notebooks::create_notebook,

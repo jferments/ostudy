@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as annotationIpc from "../../../ipc/documentAnnotations";
@@ -11,6 +11,7 @@ vi.mock("../../../ipc/documentAnnotations", () => ({ renderDocumentPageTile: vi.
 vi.mock("../../../ipc/documentFigures", () => ({
   getDocumentFigures: vi.fn(),
   findDocumentFigures: vi.fn(),
+  readDocumentFigures: vi.fn(),
   setDocumentFiguresUseImages: vi.fn(),
   setDocumentFigureHidden: vi.fn(),
 }));
@@ -35,12 +36,16 @@ function figure(overrides: Partial<DocumentFigure> = {}): DocumentFigure {
       { pageNumber: 1, kind: "neighbour", excerpt: null },
       { pageNumber: 3, kind: "neighbour", excerpt: null },
     ],
+    reading: null,
     ...overrides,
   };
 }
 
 function figures(overrides: Partial<DocumentFigures> = {}): DocumentFigures {
-  return { documentId, useImages: true, state: "found", scannedAt: 1, figures: [figure()], ...overrides };
+  return {
+    documentId, useImages: true, state: "found", scannedAt: 1, reading: "none", readAt: null, figures: [figure()],
+    ...overrides,
+  };
 }
 
 function renderWorkspace() {
@@ -112,6 +117,51 @@ describe("DocumentFiguresWorkspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Use images" }));
     expect(await screen.findByRole("listitem", { name: /Figure 3\.2/u })).toBeTruthy();
     expect(figureIpc.setDocumentFiguresUseImages).toHaveBeenCalledWith(documentId, true);
+  });
+
+  it("reads the figures with the learner's model and shows what it read", async () => {
+    vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue(figures());
+    vi.mocked(figureIpc.readDocumentFigures).mockResolvedValue(figures({
+      reading: "read",
+      readAt: 2,
+      figures: [figure({
+        reading: {
+          title: "The four chambers of the heart",
+          shows: "Both atria above both ventricles, with the valves between them.",
+          useInText: "Page 5 follows one heartbeat through the chambers.",
+          concepts: ["Cardiac cycle"],
+          explainedOn: [5],
+          importance: 4,
+          worthStudying: true,
+          model: "vision-model",
+        },
+      })],
+    }));
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Figure actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Read figures with AI" }));
+    await waitFor(() => expect(figureIpc.readDocumentFigures).toHaveBeenCalledWith(documentId));
+    const card = await screen.findByRole("listitem", { name: /Figure 3\.2/u });
+    expect(await within(card).findByText("The four chambers of the heart")).toBeTruthy();
+    expect(within(card).getByText("Both atria above both ventricles, with the valves between them.")).toBeTruthy();
+    expect(within(card).getByText("Key figure")).toBeTruthy();
+    expect(within(card).getByText("How the text uses it")).toBeTruthy();
+  });
+
+  it("says when the model cannot see images or some pages could not be read", async () => {
+    vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue(figures({ reading: "unavailable" }));
+    renderWorkspace();
+    expect(await screen.findByText("Your AI model cannot see images")).toBeTruthy();
+    cleanup();
+
+    vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue(figures({ reading: "partial" }));
+    vi.mocked(figureIpc.readDocumentFigures).mockResolvedValue(figures({ reading: "read" }));
+    renderWorkspace();
+    expect(await screen.findByText("Some figures could not be read")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(figureIpc.readDocumentFigures).toHaveBeenCalledWith(documentId));
+    await waitFor(() => expect(screen.queryByText("Some figures could not be read")).toBeNull());
   });
 
   it("says when this device cannot search for figures", async () => {

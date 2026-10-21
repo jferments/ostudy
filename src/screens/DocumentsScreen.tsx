@@ -102,6 +102,9 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   >(undefined);
   const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
   const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
+  // The guide a Remake replaces, by document. Its finished record stays the
+  // latest one until the new run has planned its sections, so it is not shown.
+  const [remadeGuideJobIds, setRemadeGuideJobIds] = useState<Record<string, string>>({});
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
   const [viewingFigures, setViewingFigures] = useState<{ id: string; title: string } | null>(null);
   const closeFigures = useCallback(() => setViewingFigures(null), []);
@@ -220,9 +223,17 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
 
   const detailsDocument = detailsDocumentId ? documents.find((document) => document.id === detailsDocumentId) : undefined;
 
+  /** The guide job to show progress for. A remake hides the finished job it replaces until the new one appears. */
+  function shownGuideJob(document: DocumentSummary) {
+    const latest = artifactProgress.jobs[document.id] ?? null;
+    const remaking = guideGeneratingDocumentIds.has(document.id)
+      && latest !== null && remadeGuideJobIds[document.id] === latest.id;
+    return remaking ? null : latest;
+  }
+
   /** What a document is making and how far it has got, for Generation details. */
   function progressPanel(document: DocumentSummary) {
-    const guideJob = artifactProgress.jobs[document.id] ?? null;
+    const guideJob = shownGuideJob(document);
     const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
     const live = generationProgress[document.id] ?? null;
     const processing = document.lifecycleState === "processing";
@@ -236,7 +247,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   }
 
   function renderRow(document: DocumentSummary) {
-    const guideJob = artifactProgress.jobs[document.id] ?? null;
+    const latestGuideJob = artifactProgress.jobs[document.id] ?? null;
+    const guideJob = shownGuideJob(document);
     const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
     const cardBusy = busyDocumentIds.has(document.id);
     const deleting = deletingDocumentIds.has(document.id);
@@ -291,7 +303,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     });
     if (!guideGenerating && !processing) items.push({
       id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
-      onSelect: setUpAi ?? (() => void generateStudyGuide(document)),
+      onSelect: setUpAi ?? (() => {
+        if (guideJob) setRemadeGuideJobIds((ids) => ({ ...ids, [document.id]: guideJob.id }));
+        void generateStudyGuide(document);
+      }),
     });
     if (guideGenerating && !processing) items.push({
       id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
@@ -323,13 +338,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             {rowProgress ? <DocumentRowProgress label={rowProgress.label} value={rowProgress.value} /> : (
               <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
                 {[documentMeta(document), range].filter(Boolean).join(" · ")}
-                <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
+                <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, latestGuideJob)}</span>
               </span>
             )}
           </div>
           {rowProgress ? null : <>
             <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
-              {materialSummary(document, guideJob)}
+              {materialSummary(document, latestGuideJob)}
             </span>
             {document.lifecycleState === "ready" ? null : (
               <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>

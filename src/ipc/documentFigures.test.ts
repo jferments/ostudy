@@ -2,7 +2,7 @@ import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  findDocumentFigures, getDocumentFigures, setDocumentFigureHidden, setDocumentFiguresUseImages,
+  findDocumentFigures, getDocumentFigures, readDocumentFigures, setDocumentFigureHidden, setDocumentFiguresUseImages,
 } from "./documentFigures";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
@@ -20,6 +20,8 @@ describe("document figure IPC", () => {
     expect(invoke).toHaveBeenCalledWith("get_document_figures", { input: { documentId } });
     await findDocumentFigures(documentId);
     expect(invoke).toHaveBeenCalledWith("find_document_figures", { input: { documentId } });
+    await readDocumentFigures(documentId);
+    expect(invoke).toHaveBeenCalledWith("read_document_figures", { input: { documentId } });
   });
 
   it("saves the learner's choices as whole states, so a repeated request is safe", async () => {

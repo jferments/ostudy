@@ -4,7 +4,7 @@ import type { ShowToast } from "../../../components/Toast";
 import { getErrorMessage } from "../../../ipc/common";
 import { renderDocumentPageTile } from "../../../ipc/documentAnnotations";
 import {
-  findDocumentFigures, getDocumentFigures, setDocumentFigureHidden, setDocumentFiguresUseImages,
+  findDocumentFigures, getDocumentFigures, readDocumentFigures, setDocumentFigureHidden, setDocumentFiguresUseImages,
   type DocumentFigure, type DocumentFigures, type FigureBox,
 } from "../../../ipc/documentFigures";
 import { registerPlatformBackHandler } from "../../../platform/backNavigation";
@@ -27,9 +27,9 @@ interface DocumentFiguresWorkspaceProps {
 
 /**
  * The figures oStudy found in one PDF: each drawn from the PDF with its
- * caption, the pages that explain it, and a way to hide one that is not worth
- * studying. A document imported before figures existed, or with its images
- * off, can be searched from here.
+ * caption, the pages that explain it, what the learner's AI model read in it,
+ * and a way to hide one that is not worth studying. A document imported before
+ * figures existed, or with its images off, can be searched from here.
  */
 export function DocumentFiguresWorkspace({ documentId, title, onClose, showToast }: DocumentFiguresWorkspaceProps) {
   useLibraryFullPage(true);
@@ -42,7 +42,14 @@ export function DocumentFiguresWorkspace({ documentId, title, onClose, showToast
   }), [onClose]);
 
   const value = figures.value;
+  const canRead = Boolean(value?.useImages && value.state === "found" && value.figures.some((figure) => !figure.hidden));
   const menu = value && value.useImages ? [
+    ...(canRead ? [{
+      id: "read",
+      label: value.reading === "none" ? "Read figures with AI" : "Read figures again",
+      disabled: figures.busy,
+      onSelect: () => void figures.read(),
+    }] : []),
     { id: "find", label: "Find figures again", disabled: figures.busy, onSelect: () => void figures.find() },
     { id: "off", label: "Stop using images", disabled: figures.busy, onSelect: () => void figures.setUseImages(false) },
   ] : [];
@@ -65,9 +72,11 @@ export function DocumentFiguresWorkspace({ documentId, title, onClose, showToast
           documentId={documentId}
           value={value}
           busy={figures.busy}
+          activity={figures.activity}
           withCaptions={withCaptions}
           onWithCaptionsChange={setWithCaptions}
           onFind={() => void figures.find()}
+          onRead={() => void figures.read()}
           onUseImages={() => void figures.setUseImages(true)}
           onHidden={(figureId, hidden) => void figures.setHidden(figureId, hidden)}
         />
@@ -79,7 +88,7 @@ export function DocumentFiguresWorkspace({ documentId, title, onClose, showToast
 function useDocumentFigures(documentId: string, showToast: ShowToast) {
   const [value, setValue] = useState<DocumentFigures | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [activity, setActivity] = useState<"finding" | "reading" | "saving" | null>(null);
   // A newer read or save replaces an older one's result.
   const latest = useRef(0);
   const apply = useCallback(async (work: () => Promise<DocumentFigures>) => {
@@ -99,35 +108,39 @@ function useDocumentFigures(documentId: string, showToast: ShowToast) {
 
   useEffect(() => { void apply(() => getDocumentFigures(documentId)); }, [apply, documentId]);
 
-  const run = useCallback(async (work: () => Promise<DocumentFigures>) => {
-    setBusy(true);
+  const run = useCallback(async (kind: "finding" | "reading" | "saving", work: () => Promise<DocumentFigures>) => {
+    setActivity(kind);
     try {
       await apply(work);
     } finally {
-      setBusy(false);
+      setActivity(null);
     }
   }, [apply]);
 
   return {
     value,
     error,
-    busy,
-    find: () => run(() => findDocumentFigures(documentId)),
-    setUseImages: (useImages: boolean) => run(async () => {
+    busy: activity !== null,
+    activity,
+    find: () => run("finding", () => findDocumentFigures(documentId)),
+    read: () => run("reading", () => readDocumentFigures(documentId)),
+    setUseImages: (useImages: boolean) => run(useImages ? "finding" : "saving", async () => {
       const saved = await setDocumentFiguresUseImages(documentId, useImages);
       return useImages ? findDocumentFigures(documentId) : saved;
     }),
-    setHidden: (figureId: string, hidden: boolean) => run(() => setDocumentFigureHidden(documentId, figureId, hidden)),
+    setHidden: (figureId: string, hidden: boolean) => run("saving", () => setDocumentFigureHidden(documentId, figureId, hidden)),
   };
 }
 
-function FiguresBody({ documentId, value, busy, withCaptions, onWithCaptionsChange, onFind, onUseImages, onHidden }: {
+function FiguresBody({ documentId, value, busy, activity, withCaptions, onWithCaptionsChange, onFind, onRead, onUseImages, onHidden }: {
   documentId: string;
   value: DocumentFigures;
   busy: boolean;
+  activity: "finding" | "reading" | "saving" | null;
   withCaptions: boolean;
   onWithCaptionsChange: (withCaptions: boolean) => void;
   onFind: () => void;
+  onRead: () => void;
   onUseImages: () => void;
   onHidden: (figureId: string, hidden: boolean) => void;
 }) {
@@ -173,13 +186,16 @@ function FiguresBody({ documentId, value, busy, withCaptions, onWithCaptionsChan
     <div className="tw:grid tw:min-w-0 tw:gap-4">
       <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
         <p className="tw:m-0 tw:text-small tw:text-muted-foreground" aria-live="polite">
-          {busy ? "Finding figures…" : figureCount(shown.length, hidden.length)}
+          {activity === "finding" ? "Finding figures…"
+            : activity === "reading" ? "Reading figures…"
+              : figureCount(shown.length, hidden.length)}
         </p>
         <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-3">
           <Checkbox checked={withCaptions} onCheckedChange={onWithCaptionsChange} />
           <span className="tw:text-small tw:font-medium tw:text-foreground">Show captions in the picture</span>
         </label>
       </div>
+      <ReadingNotice reading={value.reading} busy={busy} onRead={onRead} />
       <FigureGrid documentId={documentId} figures={shown} withCaptions={withCaptions} disabled={busy} onHidden={onHidden} />
       {hidden.length ? (
         <Disclosure title={`Hidden (${hidden.length})`}>
@@ -190,6 +206,32 @@ function FiguresBody({ documentId, value, busy, withCaptions, onWithCaptionsChan
       ) : null}
     </div>
   );
+}
+
+/** Why some or all figures have no reading, when that needs saying. */
+function ReadingNotice({ reading, busy, onRead }: {
+  reading: DocumentFigures["reading"];
+  busy: boolean;
+  onRead: () => void;
+}) {
+  if (reading === "unavailable") {
+    return (
+      <InlineNotice title="Your AI model cannot see images">
+        Figures keep their captions and passages. Choose a model that reads images in Settings, then read them again.
+      </InlineNotice>
+    );
+  }
+  if (reading === "partial" || reading === "failed") {
+    return (
+      <InlineNotice kind="warning" title={reading === "partial" ? "Some figures could not be read" : "Figures could not be read"}>
+        <span className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+          They keep their captions and passages.
+          <Button size="small" disabled={busy} onClick={onRead}>Try again</Button>
+        </span>
+      </InlineNotice>
+    );
+  }
+  return null;
 }
 
 function figureCount(shown: number, hidden: number): string {
@@ -221,6 +263,7 @@ function FigureGrid({ documentId, figures, withCaptions, disabled, onHidden }: {
               {figure.hidden ? "Show" : "Hide"}
             </Button>
           </div>
+          {figure.reading ? <FigureReadingSummary reading={figure.reading} /> : null}
           {figure.caption && !withCaptions ? (
             <p className="tw:m-0 tw:text-small tw:text-muted-foreground">{figure.caption}</p>
           ) : null}
@@ -229,6 +272,31 @@ function FigureGrid({ documentId, figures, withCaptions, disabled, onHidden }: {
       ))}
     </ul>
   );
+}
+
+function FigureReadingSummary({ reading }: { reading: NonNullable<DocumentFigure["reading"]> }) {
+  return (
+    <div className="tw:grid tw:gap-1 tw:text-small">
+      <p className="tw:m-0 tw:font-medium tw:text-foreground">{reading.title}</p>
+      <p className="tw:m-0 tw:text-muted-foreground">{reading.shows}</p>
+      <p className="tw:m-0 tw:text-muted-foreground">
+        {importanceLabel(reading.importance)}
+        {reading.worthStudying ? null : " · Not worth studying"}
+      </p>
+      {reading.useInText ? (
+        <Disclosure title="How the text uses it">
+          <p className="tw:m-0 tw:p-3 tw:text-muted-foreground">{reading.useInText}</p>
+        </Disclosure>
+      ) : null}
+    </div>
+  );
+}
+
+function importanceLabel(importance: number): string {
+  if (importance >= 5) return "Essential";
+  if (importance === 4) return "Key figure";
+  if (importance === 3) return "Helpful";
+  return "Minor";
 }
 
 function FigurePassages({ figure }: { figure: DocumentFigure }) {

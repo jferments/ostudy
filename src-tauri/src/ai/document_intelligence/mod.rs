@@ -9,6 +9,7 @@ mod context;
 mod contracts;
 mod curation;
 mod evidence;
+mod figure_reading;
 mod flashcards;
 mod lecture_script;
 mod lesson;
@@ -33,6 +34,9 @@ pub(crate) use context::{
 pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
+pub(crate) use figure_reading::{
+    request_figure_readings, FigurePage, FigureReading, FigureToRead, NearbyText,
+};
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, preflight_window_flashcards, FlashcardGenerationLimits,
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
@@ -50,8 +54,8 @@ pub(crate) use podcast_script::{
     PodcastLesson, PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
 };
 pub(crate) use study_guide::{
-    complete_study_guide_section_coverage, preflight_collection_study_guide_section,
-    preflight_document_study_guide_section, CollectionStudyGuideAuthoring,
+    preflight_collection_study_guide_section, preflight_document_study_guide_section,
+    CollectionStudyGuideAuthoring,
 };
 pub(crate) use transport::{
     request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,
