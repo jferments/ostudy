@@ -19,7 +19,6 @@ import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { cn } from "../../../ui/internal/cn";
 import { ResizablePanes } from "../../../ui/patterns/ResizablePanes";
 import type { ResponsiveAction } from "../../../ui/patterns/ResponsiveActionGroup";
-import { IconButton } from "../../../ui/icons/IconButton";
 import { Button } from "../../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "../../CardEditorScreen";
@@ -353,6 +352,20 @@ export function LibraryWorkbench({
     if (fresh && fresh !== editor.row) setEditor({ ...editor, row: fresh });
   }, [cards.rows, editor]);
 
+  // Import deck offers Into subject, starting on the chosen subject.
+  function beginImport(): void {
+    setSheet({
+      kind: "transfer",
+      request: {
+        kind: "import",
+        subjects: library.subjects.map((entry) => ({ id: entry.id, name: entry.name })),
+        subjectId: librarySubject.kind === "subject" ? librarySubject.subjectId : null,
+      },
+    });
+  }
+  const beginImportRef = useRef(beginImport);
+  beginImportRef.current = beginImport;
+
   async function createDeckIn(subjectId: string | null, name: string): Promise<boolean> {
     try {
       const deck = await decksController.create({ name });
@@ -588,6 +601,7 @@ export function LibraryWorkbench({
         subject={librarySubject}
         onSelectScope={(next) => void chooseScope(next)}
         onNewDeck={(subjectId) => setSheet({ kind: "new-deck", subjectId })}
+        onImportDeck={compact ? beginImport : undefined}
         deckMenu={deckMenu}
         onCheckThese={() => setSheet({ kind: "check-these" })}
       />
@@ -622,7 +636,7 @@ export function LibraryWorkbench({
         ) : scope.kind === "view" && scope.view === "all" && activeDecks.length === 0 && !compact ? (
           <>
             <Button variant="primary" onClick={() => setSheet({ kind: "new-deck", subjectId: null })}>New deck</Button>
-            <Button variant="secondary" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>Import deck</Button>
+            <Button variant="secondary" onClick={() => beginImport()}>Import deck</Button>
           </>
         ) : undefined}
       compact={compact}
@@ -657,12 +671,11 @@ export function LibraryWorkbench({
     />
   ) : null;
 
-  // Import deck sits at the end of Library's tabs while the Workbench is open.
+  // Import deck sits at the end of Library's tabs while the Workbench is open on a wider screen;
+  // a phone's tabs need the row, so its tree offers Import deck beside New deck.
   const importAction = useMemo(
-    () => compact ? (
-      <IconButton icon="import" label="Import deck" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })} />
-    ) : (
-      <Button variant="secondary" size="small" onClick={() => setSheet({ kind: "transfer", request: { kind: "import" } })}>
+    () => compact ? null : (
+      <Button variant="secondary" size="small" onClick={() => beginImportRef.current()}>
         Import deck
       </Button>
     ),
