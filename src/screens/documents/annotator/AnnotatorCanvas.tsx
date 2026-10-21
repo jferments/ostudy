@@ -364,6 +364,10 @@ export function AnnotatorCanvas({
     if (annotation.shape.kind === "text") current.editText(annotation);
     else current.select(annotation.id, annotation.pageNumber);
   }, []);
+  const changeText = useCallback((annotation: Annotation, text: string) => {
+    if (annotation.shape.kind !== "text" || annotation.shape.text === text) return;
+    latest.current.controller.commit([{ id: annotation.id, before: annotation, after: { ...annotation, shape: { ...annotation.shape, text } } }]);
+  }, []);
 
   // A keyboard opening on a phone shrinks the view; keep the note being typed in sight.
   const typing = useRef(false);
@@ -434,6 +438,7 @@ export function AnnotatorCanvas({
                 onFinishText={controller.finishEditing}
                 onFocusAnnotation={focusAnnotation}
                 onOpenAnnotation={openAnnotation}
+                onChangeText={changeText}
               />
             );
           })}

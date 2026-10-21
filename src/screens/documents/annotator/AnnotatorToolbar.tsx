@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { Icon, type IconName } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
@@ -17,6 +17,7 @@ import {
   type ToolStyle,
 } from "./annotationModel";
 import { ColorChoices, ShapeLookChoices, SizeField } from "./StyleChoices";
+import type { TextFormat } from "./textFormat";
 
 interface ToolDescription { label: string; icon: IconName; shortcut: string; }
 
@@ -50,6 +51,8 @@ interface AnnotatorToolbarProps {
   /** The style the color and size choices change: the selection's, or the tool's. */
   style: ActiveStyle | null;
   onStyle: (patch: Partial<ToolStyle>) => void;
+  /** Lists and formulas, while a text note is typed or selected. */
+  textFormat?: TextFormat | null;
   selection: { isText: boolean; isSticky: boolean; isCollapsed: boolean } | null;
   /** Folds the selected sticky note to its icon, or opens it back out. */
   onToggleCollapsed: () => void;
@@ -297,10 +300,12 @@ function StyleRow(props: AnnotatorToolbarProps) {
     </ToolbarGroup>
   ) : null;
   const label = selection ? "Selected annotation" : "Color and size";
+  const textActions = props.textFormat ? <TextFormatActions format={props.textFormat} /> : null;
   if (compact) {
     return (
       <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-1">
         {style && choices ? <StyleSheetButton style={style} choices={choices} onStyle={onStyle} /> : null}
+        {textActions}
         {selectionActions}
       </Toolbar>
     );
@@ -319,9 +324,34 @@ function StyleRow(props: AnnotatorToolbarProps) {
         </fieldset>
       ) : null}
       <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-3">
+        {textActions}
         {selectionActions}
       </Toolbar>
     </div>
+  );
+}
+
+/**
+ * Bullets, numbers, checkboxes and formulas for a text note. Pressing one
+ * keeps the note being typed open, so it acts on the lines being typed.
+ */
+function TextFormatActions({ format }: { format: TextFormat }) {
+  const keepTyping = (event: MouseEvent) => event.preventDefault();
+  return (
+    <ToolbarGroup label="Text" className="tw:flex-nowrap">
+      <ToolbarAction label="Bulleted list" onMouseDown={keepTyping} onClick={() => format.onList("bullet")}>
+        <Icon name="list" />
+      </ToolbarAction>
+      <ToolbarAction label="Numbered list" onMouseDown={keepTyping} onClick={() => format.onList("number")}>
+        <Icon name="list-ordered" />
+      </ToolbarAction>
+      <ToolbarAction label="Checklist" onMouseDown={keepTyping} onClick={() => format.onList("check")}>
+        <Icon name="list-checks" />
+      </ToolbarAction>
+      <ToolbarAction label="Insert formula" onMouseDown={keepTyping} onClick={format.onFormula}>
+        <Icon name="formula" />
+      </ToolbarAction>
+    </ToolbarGroup>
   );
 }
 

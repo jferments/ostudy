@@ -28,6 +28,12 @@ vi.mock("./pictures", async (importOriginal) => ({
   ...await importOriginal<typeof import("./pictures")>(),
   naturalSize: vi.fn(),
 }));
+vi.mock("../../editor/FormulaDialog", () => ({
+  // The formula editor itself is MathLive's; here it saves one formula.
+  FormulaDialog: ({ session, onClose }: { session: import("../../editor/formula").FormulaEditSession; onClose: () => void }) => (
+    <button type="button" onClick={() => { session.save({ latex: "x^2", placement: "inline" }); onClose(); }}>Save formula</button>
+  ),
+}));
 vi.mock("../../ipc/decks", () => ({ listDecks: vi.fn() }));
 vi.mock("../../ipc/documents", () => ({ listDocuments: vi.fn() }));
 vi.mock("../../ipc/studyGuides", () => ({ listStudyGuidePage: vi.fn(), readDocumentSourceAsset: vi.fn() }));
@@ -188,6 +194,41 @@ describe("notebook editor", () => {
     await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
     expect(assetsIpc.importImage).not.toHaveBeenCalled();
     expect(notebooksIpc.applyNotebookItemChanges).not.toHaveBeenCalled();
+  });
+
+  it("types a checklist with the toolbar and Enter, adds a formula, and ticks a box with Select", async () => {
+    const { canvas } = await openNotebook();
+    fireEvent.click(screen.getByRole("button", { name: "Text" }));
+    fireEvent.pointerDown(canvas, onPage(100, 100));
+    fireEvent.pointerUp(canvas, onPage(100, 100));
+    const field = await screen.findByRole("textbox", { name: "New text note" }) as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "Valves" } });
+    fireEvent.click(screen.getByRole("button", { name: "Checklist" }));
+    expect(field.value).toBe("[ ] Valves");
+    field.setSelectionRange(field.value.length, field.value.length);
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(field.value).toBe("[ ] Valves\n[ ] ");
+    fireEvent.change(field, { target: { value: "[ ] Valves\n[ ] Area " } });
+    field.setSelectionRange(field.value.length, field.value.length);
+
+    fireEvent.click(screen.getByRole("button", { name: "Insert formula" }));
+    // The note stays open while the formula editor has the focus.
+    fireEvent.blur(field);
+    expect(screen.getByRole("textbox", { name: "New text note" })).toBe(field);
+    fireEvent.click(screen.getByRole("button", { name: "Save formula" }));
+    expect(field.value).toBe("[ ] Valves\n[ ] Area $x^2$");
+    fireEvent.keyDown(field, { key: "Escape" });
+
+    expect(document.querySelectorAll("[data-note-checkbox='unchecked']")).toHaveLength(2);
+    expect(document.querySelector("[data-study-math='inline']")).not.toBeNull();
+    await waitFor(() => expect(notebooksIpc.applyNotebookItemChanges).toHaveBeenCalledTimes(1));
+    expect(savedChanges()[0]).toMatchObject({ shape: { kind: "text", text: "[ ] Valves\n[ ] Area $x^2$" } });
+
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.pointerDown(document.querySelector("[data-note-checkbox]")!);
+    expect(document.querySelectorAll("[data-note-checkbox='checked']")).toHaveLength(1);
+    await waitFor(() => expect(notebooksIpc.applyNotebookItemChanges).toHaveBeenCalledTimes(2));
+    expect(savedChanges(1)[0]).toMatchObject({ shape: { text: "[x] Valves\n[ ] Area $x^2$" } });
   });
 
   it("keeps a link whose target is gone, struck through, and opens nothing", async () => {
