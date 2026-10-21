@@ -36,6 +36,18 @@ export function notebookAnnotations(contents: NotebookContents): { pages: Annota
   };
 }
 
+/**
+ * Pictures added since their notebook last saved, by asset, with the draft that
+ * staged each one. The save that first stores a picture keeps its image; until
+ * then the image is only staged and goes if the picture is never saved.
+ */
+const pictureDrafts = new Map<string, string>();
+
+/** Notes that `assetId` was staged by `draftId` for a picture not saved yet. */
+export function rememberPictureDraft(assetId: string, draftId: string): void {
+  pictureDrafts.set(assetId, draftId);
+}
+
 /** Reads and saves a notebook for the annotator, reporting what each read found. */
 export function notebookSource(onLoaded: (contents: NotebookContents) => void): AnnotatorSource {
   let pageIds: readonly string[] = [];
@@ -51,9 +63,14 @@ export function notebookSource(onLoaded: (contents: NotebookContents) => void): 
         if (change.op === "delete") return change;
         const pageId = pageIds[change.pageNumber - 1];
         if (!pageId) throw new Error("That page is no longer in this notebook.");
-        return { op: "put", id: change.id, pageId, shape: change.shape };
+        const assetDraftId = change.shape.kind === "image" ? pictureDrafts.get(change.shape.assetId) : undefined;
+        return { op: "put", id: change.id, pageId, shape: change.shape, ...(assetDraftId ? { assetDraftId } : {}) };
       });
-      return applyNotebookItemChanges(notebookId, sent);
+      const result = await applyNotebookItemChanges(notebookId, sent);
+      for (const change of sent) {
+        if (change.op === "put" && change.assetDraftId && change.shape.kind === "image") pictureDrafts.delete(change.shape.assetId);
+      }
+      return result;
     },
   };
 }

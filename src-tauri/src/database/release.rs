@@ -35,6 +35,9 @@ mod lesson_narration;
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
 
+#[path = "release/notebook_assets.rs"]
+mod notebook_assets;
+
 #[path = "release/notebooks.rs"]
 mod notebooks;
 
@@ -72,7 +75,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 19;
+pub(crate) const SCHEMA_VERSION: i64 = 20;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -194,6 +197,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "document_figures",
         checksum: "fa59b76d33f446d932b0a68d72b2f3a53feab456ff0e318c385e0c99b7a9bf75",
         sql: include_str!("../../schema/0019_document_figures.sql"),
+    },
+    ReleaseMigration {
+        version: 20,
+        name: "notebook_assets",
+        checksum: "b79396a63983ef4d33da7d02202ce2616e52d76cc0613037bee83c0ea2755b02",
+        sql: include_str!("../../schema/0020_notebook_assets.sql"),
     },
 ];
 
@@ -415,6 +424,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     podcasts::validate_schema(connection, user_version)?;
     notebooks::validate_schema(connection, user_version)?;
     document_figures::validate_schema(connection, user_version)?;
+    notebook_assets::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

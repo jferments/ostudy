@@ -273,6 +273,8 @@ impl Canvas<'_> {
             AnnotationShape::Arrow(segment) => self.line(segment, true),
             AnnotationShape::Rectangle(frame) => self.frame(frame, false),
             AnnotationShape::Ellipse(frame) => self.frame(frame, true),
+            // Documents never hold pictures; only notebook pages do.
+            AnnotationShape::Image(_) => Ok(()),
             AnnotationShape::Text(note) if note.sticky == Some(true) => self.sticky(note),
             AnnotationShape::Text(note) => self.text(note),
         }

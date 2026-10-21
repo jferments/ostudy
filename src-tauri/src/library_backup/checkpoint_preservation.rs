@@ -297,6 +297,16 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Pictures on notebook pages are placed in the app; the upgrade only
+    // creates the table that keeps them.
+    Contract {
+        version: 20,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "notebook_item_assets",
+            description: "notebook pictures",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

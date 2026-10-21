@@ -60,6 +60,7 @@ pub enum AnnotationShape {
     Rectangle(Frame),
     Ellipse(Frame),
     Text(TextNote),
+    Image(ImageMark),
 }
 
 /// A pen stroke. `points` holds `x, y, pressure` triples, pressure from 0 to 1.
@@ -147,6 +148,21 @@ pub enum LineDash {
     Dotted,
 }
 
+/// A picture placed on a notebook page: a managed image asset drawn into the
+/// box at (x, y) of `width` by `height`. Only notebook pages hold images; the
+/// notebook records which asset each one uses so the asset store keeps it.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageMark {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub asset_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
 /// Typed text whose lines wrap at `width`; its height follows the text. A
 /// sticky note (`sticky: true`) is drawn as a small note of `width` showing
 /// the start of its text, opens to all of it, and may hold longer text;
@@ -216,6 +232,7 @@ impl AnnotationShape {
             Self::Rectangle(_) => "rectangle",
             Self::Ellipse(_) => "ellipse",
             Self::Text(_) => "text",
+            Self::Image(_) => "image",
         }
     }
 
@@ -227,6 +244,7 @@ impl AnnotationShape {
             Self::Line(segment) | Self::Arrow(segment) => segment.group.as_deref(),
             Self::Rectangle(frame) | Self::Ellipse(frame) => frame.group.as_deref(),
             Self::Text(note) => note.group.as_deref(),
+            Self::Image(image) => image.group.as_deref(),
         }
     }
 
@@ -308,6 +326,17 @@ impl AnnotationShape {
                     Some(true) => Err(invalid("A shape with a border leaves border out.")),
                 }
             }
+            Self::Image(image) => {
+                validate_coordinate(image.x)?;
+                validate_coordinate(image.y)?;
+                validate_extent(image.x, image.width)?;
+                validate_extent(image.y, image.height)?;
+                if is_identifier(&image.asset_id) {
+                    Ok(())
+                } else {
+                    Err(invalid("A picture names its image by its identifier."))
+                }
+            }
             Self::Text(note) => {
                 validate_coordinate(note.x)?;
                 validate_coordinate(note.y)?;
@@ -372,6 +401,7 @@ impl AnnotationShape {
             Self::Line(segment) | Self::Arrow(segment) => serde_json::to_string(segment),
             Self::Rectangle(frame) | Self::Ellipse(frame) => serde_json::to_string(frame),
             Self::Text(note) => serde_json::to_string(note),
+            Self::Image(image) => serde_json::to_string(image),
         }
         .map_err(CommandError::serialization)?;
         if json.len() > MAX_PAYLOAD_BYTES {
@@ -391,6 +421,7 @@ impl AnnotationShape {
             "rectangle" => Self::Rectangle(serde_json::from_str(payload)?),
             "ellipse" => Self::Ellipse(serde_json::from_str(payload)?),
             "text" => Self::Text(serde_json::from_str(payload)?),
+            "image" => Self::Image(serde_json::from_str(payload)?),
             other => {
                 return Err(serde::de::Error::custom(format!(
                     "unknown annotation kind {other}"
@@ -404,6 +435,14 @@ impl AnnotationShape {
     /// Whether this is a link, which only a notebook page holds.
     pub(crate) fn is_link(&self) -> bool {
         matches!(self, Self::Text(TextNote { link: Some(_), .. }))
+    }
+
+    /// The managed asset a picture shows; only notebook pages hold pictures.
+    pub(crate) fn image_asset(&self) -> Option<&str> {
+        match self {
+            Self::Image(image) => Some(&image.asset_id),
+            _ => None,
+        }
     }
 }
 
@@ -591,6 +630,9 @@ pub(crate) fn apply_changes(
             shape.validate()?;
             if shape.is_link() {
                 return Err(invalid("Links go on notebook pages, not on a document."));
+            }
+            if shape.image_asset().is_some() {
+                return Err(invalid("Pictures go on notebook pages, not on a document."));
             }
         }
     }

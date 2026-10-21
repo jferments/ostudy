@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
 import type { AnnotatedPage, FrameShape } from "../../../ipc/documentAnnotations";
+import { managedAssetUrl } from "../../../platform/assets";
 import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Dialog } from "../../../ui/overlays/Dialog";
@@ -272,6 +273,11 @@ export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true 
       return (
         <ellipse cx={shape.x + shape.width / 2} cy={shape.y + shape.height / 2} rx={shape.width / 2} ry={shape.height / 2}
           {...frameLook(shape)} />
+      );
+    case "image":
+      return (
+        <image href={managedAssetUrl(shape.assetId)} x={shape.x} y={shape.y} width={shape.width} height={shape.height}
+          preserveAspectRatio="none" />
       );
     case "text":
       return null;
