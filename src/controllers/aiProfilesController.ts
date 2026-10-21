@@ -9,11 +9,15 @@ import {
   getAiProviderProbeResult,
   getAiProviderProfile,
   getAiTaskDefaults,
+  cancelOpenRouterSignIn,
   listAiProviderModels,
   listAiProviderProfiles,
+  saveOpenRouterSignIn,
   setAiProviderCredential,
+  startOpenRouterSignIn,
   testAiProviderProfile,
   updateAiProviderProfile,
+  waitForOpenRouterSignIn,
   type AiCredentialPersistence,
   type AiProfileDraft,
   type AiProviderCatalogEntry,
@@ -25,7 +29,7 @@ import {
   type AiReasoningEffort,
   type AiTaskDefaults,
 } from "../ipc/aiProfiles";
-import { createOperationId, getErrorMessage } from "../ipc/common";
+import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
 import { setAiTaskDefault, type AiTaskDefaultInput, type AiTaskKind } from "../ipc/aiTaskDefaults";
 import { useRequestLane } from "./requestLane";
 
@@ -66,6 +70,15 @@ export interface AiProfilesController {
   setCredentialPersistence: (value: AiCredentialPersistence) => void;
   /** Resolves true when the connection, and any new key, were saved. */
   connectSetup: () => Promise<boolean>;
+  /**
+   * One-click OpenRouter sign-in for a new OpenRouter draft: opens the
+   * browser page with `openPage`, waits for approval, then saves the service
+   * with the key OpenRouter made. Resolves true when it was saved.
+   */
+  signInWithOpenRouter: (openPage: (url: string) => Promise<void>) => Promise<boolean>;
+  /** True while a sign-in waits on the browser. */
+  signingIn: boolean;
+  cancelSignIn: () => void;
   /** Resolves true when the profile was saved. */
   saveProfile: () => Promise<boolean>;
   /** Deletes the selected profile, or the given one from the list. */
@@ -110,6 +123,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   const [testing, setTesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingTaskDefault, setPendingTaskDefault] = useState<AiTaskDefaultInput | null>(null);
+  const [signingIn, setSigningIn] = useState(false);
+  const signInAttempt = useRef<string | null>(null);
   const taskWrite = useRef<AiTaskDefaultInput | null>(null);
   const taskWriting = useRef(false);
   const listLane = useRequestLane();
@@ -306,6 +321,68 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     } finally {
       setMutating(false);
     }
+  }
+
+  async function signInWithOpenRouter(openPage: (url: string) => Promise<void>): Promise<boolean> {
+    if (!draft || draft.providerKind !== "openrouter" || selectedProfile || mutating || signingIn) return false;
+    setErrorMessage(null);
+    setSigningIn(true);
+    let attemptId: string | null = null;
+    try {
+      const started = await startOpenRouterSignIn();
+      attemptId = started.attemptId;
+      signInAttempt.current = attemptId;
+      await openPage(started.authorizationUrl);
+      await waitForOpenRouterSignIn(attemptId);
+    } catch (error: unknown) {
+      if (attemptId && signInAttempt.current === attemptId) void cancelOpenRouterSignIn(attemptId).catch(() => undefined);
+      if (getErrorCode(error) !== "openrouter_sign_in_canceled") setErrorMessage(getErrorMessage(error));
+      signInAttempt.current = null;
+      setSigningIn(false);
+      return false;
+    }
+    setSigningIn(false);
+    // The key now waits natively; the service is created only once it exists,
+    // so a learner who never approves is left with nothing half made.
+    setMutating(true);
+    let committedProfile: AiProviderProfileDetail | null = null;
+    try {
+      const created = await createAiProviderProfile(draft);
+      committedProfile = created;
+      const saved = await saveOpenRouterSignIn(attemptId, created.id, created.revision, credentialPersistence);
+      committedProfile = saved;
+      setSelectedProfile(saved);
+      setSelectedProfileId(saved.id);
+      setDraft(draftFromProfile(saved));
+      setCredentialDraft("");
+      setProbeResult(null);
+      setModels([]);
+      setModelsLoaded(false);
+      const [, savedDefaults] = await Promise.all([loadProfiles(), getAiTaskDefaults()]);
+      setDefaults(savedDefaults);
+      showToast("success", "Connected to OpenRouter.");
+      if (canDiscoverModels(saved)) await discoverModelsForProfile(saved, false);
+      return true;
+    } catch (error: unknown) {
+      if (committedProfile) {
+        setSelectedProfile(committedProfile);
+        setSelectedProfileId(committedProfile.id);
+        setDraft(draftFromProfile(committedProfile));
+        void loadProfiles().catch(() => undefined);
+      }
+      setErrorMessage(getErrorMessage(error));
+      return false;
+    } finally {
+      signInAttempt.current = null;
+      setMutating(false);
+    }
+  }
+
+  function cancelSignIn(): void {
+    const attemptId = signInAttempt.current;
+    if (!attemptId) return;
+    signInAttempt.current = null;
+    void cancelOpenRouterSignIn(attemptId).catch(() => undefined);
   }
 
   async function saveProfile(): Promise<boolean> {
@@ -505,7 +582,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     credentialDraft, credentialPersistence, models, modelsLoaded, probeResult,
     dirty, loading, mutating, refreshingModels, testing, errorMessage,
     selectProfile, beginCreate, updateDraft, setCredentialDraft, setCredentialPersistence,
-    connectSetup, saveProfile, deleteProfile, saveCredential, clearCredential, refreshModels,
+    connectSetup, signInWithOpenRouter, signingIn, cancelSignIn, saveProfile, deleteProfile, saveCredential, clearCredential, refreshModels,
     testProfile, setFlashcardDefault, setTaskDefault, pendingTaskDefault, retryTaskDefault,
     discardDraft, reload,
   };

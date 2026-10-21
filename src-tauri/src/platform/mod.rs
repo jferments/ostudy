@@ -79,6 +79,8 @@ pub struct NativeServiceCapabilities {
     pub system_share: ServiceCapability,
     pub local_network: ServiceCapability,
     pub background_execution: ServiceCapability,
+    /// Signing in to a service in the browser and returning to the app.
+    pub browser_sign_in: ServiceCapability,
 }
 
 #[derive(Clone, Debug, Serialize)]
