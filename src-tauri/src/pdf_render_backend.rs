@@ -677,6 +677,110 @@ pub(crate) fn page_characters(
     }
 }
 
+/// What one page draws, for finding its figures: its image, vector-path,
+/// shading and form objects and its runs of text, each boxed
+/// `[x, y, width, height]` in points from the top-left corner of the page as
+/// displayed (after any page rotation), and the page's text in reading order.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageLayout {
+    pub page_number: usize,
+    pub width: f64,
+    pub height: f64,
+    pub graphics: Vec<PageGraphic>,
+    pub text_runs: Vec<PageTextRun>,
+    pub text: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PageGraphicKind {
+    Image,
+    Path,
+    Shading,
+    Form,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageGraphic {
+    pub kind: PageGraphicKind,
+    pub bounds: [f64; 4],
+    /// A path drawn only with level and upright straight lines, such as a
+    /// table rule, cell or shaded box, rather than a curve or a slant.
+    pub boxy: bool,
+}
+
+/// How far, in points, a drawing may bleed past the page edge before its
+/// bounds are treated as clipped and ignored.
+const MAX_GRAPHIC_OVERHANG: f64 = 36.0;
+
+/// A path with more segments than this is not counted as boxy.
+const MAX_BOXY_SEGMENTS: usize = 24;
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PageTextRun {
+    pub text: String,
+    pub bounds: [f64; 4],
+}
+
+/// The most graphics objects one page reports; a page past it reports the first ones.
+pub(crate) const MAX_LAYOUT_GRAPHICS: usize = 20_000;
+/// The most text runs one page reports.
+pub(crate) const MAX_LAYOUT_TEXT_RUNS: usize = 10_000;
+
+/// Whether [`page_layouts`] can read page objects here. Mobile PDFium
+/// builds bind no page-object API.
+pub(crate) const PAGE_LAYOUTS_SUPPORTED: bool =
+    cfg!(not(any(target_os = "android", target_os = "ios")));
+
+/// Reads every page's layout in order, handing each to `visitor` with the
+/// PDFium lock released, so the annotator can draw tiles meanwhile.
+pub(crate) fn page_layouts<F>(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    mut visitor: F,
+) -> Result<usize, PdfRenderError>
+where
+    F: FnMut(PageLayout) -> Result<(), PdfRenderError>,
+{
+    if runtime.backend_id != active_backend_id() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        ));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        // Declared before the document so the document closes under the lock.
+        let mut pdfium = runtime.exclusive();
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(source_path, None)
+            .map_err(|error| {
+                PdfRenderError::new(PdfRenderErrorKind::Open, None, error.to_string())
+            })?;
+        let total_pages = page_count(&document)?;
+        for index in 0..total_pages {
+            let layout = layout_of_page(&document, index)?;
+            drop(pdfium);
+            let visited = visitor(layout);
+            pdfium = runtime.exclusive();
+            visited?;
+        }
+        Ok(total_pages)
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (source_path, &mut visitor);
+        Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "This platform's PDF renderer does not expose page objects yet.",
+        ))
+    }
+}
+
 fn validated_page_numbers(
     page_numbers: &[usize],
     page_count: usize,
@@ -1108,6 +1212,154 @@ fn characters_of_page(
         width: f64::from(width),
         height: f64::from(height),
         characters,
+    })
+}
+
+/// One page's graphics and text runs through the same page-to-device mapping
+/// as [`characters_of_page`].
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+/// Whether every segment of `path` is a level or upright straight line.
+fn is_boxy_path(path: &pdfium_render::prelude::PdfPagePathObject<'_>) -> bool {
+    use pdfium_render::prelude::{PdfPathSegmentType, PdfPathSegments};
+
+    let segments = path.segments();
+    let count = usize::try_from(segments.len()).unwrap_or(usize::MAX);
+    if count == 0 || count > MAX_BOXY_SEGMENTS {
+        return false;
+    }
+    let mut previous: Option<(f32, f32)> = None;
+    for segment in segments.iter() {
+        let point = (segment.x().value, segment.y().value);
+        match segment.segment_type() {
+            PdfPathSegmentType::MoveTo => {}
+            PdfPathSegmentType::LineTo => {
+                let Some((x, y)) = previous else {
+                    return false;
+                };
+                let tolerance = 0.5;
+                if (point.0 - x).abs() > tolerance && (point.1 - y).abs() > tolerance {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+        previous = Some(point);
+    }
+    true
+}
+
+fn layout_of_page(
+    document: &pdfium_render::prelude::PdfDocument<'_>,
+    index: usize,
+) -> Result<PageLayout, PdfRenderError> {
+    use pdfium_render::prelude::{
+        PdfPageObjectCommon, PdfPageObjectType, PdfPageObjectsCommon, PdfPoints, PdfRect,
+    };
+
+    const PRECISION: f32 = 16.0;
+    let page_number = index + 1;
+    let render_error = |error: pdfium_render::prelude::PdfiumError| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            error.to_string(),
+        )
+    };
+    let page_index = PdfPageIndex::try_from(index).map_err(|_| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            "The PDF page index exceeded the renderer's supported range.",
+        )
+    })?;
+    let page = document.pages().get(page_index).map_err(render_error)?;
+    let (width, height) = (page.width().value, page.height().value);
+    let device = PdfRenderConfig::new().set_fixed_size(
+        (width * PRECISION).round().max(1.0) as i32,
+        (height * PRECISION).round().max(1.0) as i32,
+    );
+    let to_page = |x: PdfPoints, y: PdfPoints| {
+        page.points_to_pixels(x, y, &device).map(|(px, py)| {
+            (
+                f64::from(px) / f64::from(PRECISION),
+                f64::from(py) / f64::from(PRECISION),
+            )
+        })
+    };
+    let boxed = |rect: PdfRect| -> Option<[f64; 4]> {
+        let (x1, y1) = to_page(rect.left(), rect.top()).ok()?;
+        let (x2, y2) = to_page(rect.right(), rect.bottom()).ok()?;
+        let (left, right) = (x1.min(x2), x1.max(x2));
+        let (top, bottom) = (y1.min(y2), y1.max(y2));
+        (right > left && bottom > top).then_some([left, top, right - left, bottom - top])
+    };
+
+    let mut graphics = Vec::new();
+    for object in page.objects().iter() {
+        if graphics.len() == MAX_LAYOUT_GRAPHICS {
+            break;
+        }
+        let kind = match object.object_type() {
+            PdfPageObjectType::Image => PageGraphicKind::Image,
+            PdfPageObjectType::Path => PageGraphicKind::Path,
+            PdfPageObjectType::Shading => PageGraphicKind::Shading,
+            PdfPageObjectType::XObjectForm => PageGraphicKind::Form,
+            _ => continue,
+        };
+        let Some([left, top, object_width, object_height]) =
+            object.bounds().ok().and_then(|quad| boxed(quad.to_rect()))
+        else {
+            continue;
+        };
+        let (page_width, page_height) = (f64::from(width), f64::from(height));
+        let overhang = (-left)
+            .max(-top)
+            .max(left + object_width - page_width)
+            .max(top + object_height - page_height);
+        // A drawing that runs far off the page is clipped to an unknown
+        // visible part, so its box says nothing about where it shows.
+        if overhang > MAX_GRAPHIC_OVERHANG && kind != PageGraphicKind::Image {
+            continue;
+        }
+        let (right, bottom) = (
+            (left + object_width).min(page_width),
+            (top + object_height).min(page_height),
+        );
+        let (left, top) = (left.max(0.0), top.max(0.0));
+        if right > left && bottom > top {
+            let boxy = object.as_path_object().is_some_and(is_boxy_path);
+            graphics.push(PageGraphic {
+                kind,
+                bounds: [left, top, right - left, bottom - top],
+                boxy,
+            });
+        }
+    }
+
+    let text = page.text().map_err(render_error)?;
+    let text_runs = text
+        .segments()
+        .iter()
+        .filter_map(|segment| {
+            let value = segment.text();
+            let value = value.trim();
+            if value.is_empty() {
+                return None;
+            }
+            boxed(segment.bounds()).map(|bounds| PageTextRun {
+                text: value.to_string(),
+                bounds,
+            })
+        })
+        .take(MAX_LAYOUT_TEXT_RUNS)
+        .collect();
+    Ok(PageLayout {
+        page_number,
+        width: f64::from(width),
+        height: f64::from(height),
+        graphics,
+        text_runs,
+        text: text.all(),
     })
 }
 
