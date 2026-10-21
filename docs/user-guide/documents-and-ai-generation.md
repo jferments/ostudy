@@ -4,7 +4,7 @@ Library's **Documents** page keeps a local copy of each source you add and turns
 
 ## Before you begin
 
-Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a provider is set up, Documents shows a warning saying so.
+Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a model is chosen for that task, **Make study materials**, **Make a study guide**, **Make more cards…** and **Retry** open the AI setup guide in **Settings → AI** instead.
 
 For a scanned PDF on desktop, install the OCR runtime and trained data described in your platform's installation guide. Android packages an English Tesseract model with the application and needs no separate OCR installation or download. A missing platform capability can make the Documents page unavailable rather than sending the original file elsewhere.
 

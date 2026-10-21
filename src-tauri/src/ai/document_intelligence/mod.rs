@@ -16,6 +16,7 @@ mod lesson;
 mod mark_question;
 mod observed;
 mod outline;
+mod podcast_script;
 mod schemas;
 mod study_guide;
 mod support;
@@ -45,10 +46,13 @@ pub(crate) use lesson::{LessonAuthoring, LESSON_PROMPT_VERSION};
 pub(crate) use mark_question::{request_mark_question, MarkQuestionSource};
 pub(crate) use observed::{
     generate_collection_study_guide_topic_section, generate_document_study_guide_editorial,
-    generate_lecture_script, generate_lesson, generate_study_guide_topic_section,
-    generate_window_flashcards,
+    generate_lecture_script, generate_lesson, generate_podcast_script,
+    generate_study_guide_topic_section, generate_window_flashcards,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
+pub(crate) use podcast_script::{
+    PodcastLesson, PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
+};
 pub(crate) use study_guide::{
     complete_study_guide_section_coverage, preflight_collection_study_guide_section,
     preflight_document_study_guide_section, CollectionStudyGuideAuthoring,

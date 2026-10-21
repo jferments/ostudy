@@ -247,9 +247,36 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
-    // Figures are found after import; the upgrade only creates their tables.
     Contract {
         version: 17,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "podcasts",
+            description: "podcast",
+        }],
+    },
+    // Notebooks are made in the app; the upgrade only creates their tables.
+    Contract {
+        version: 18,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "notebooks",
+                description: "notebooks",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_pages",
+                description: "notebook pages",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_items",
+                description: "notebook marks",
+            },
+        ],
+    },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 19,
         setup: "",
         rules: &[
             Rule::AddedEmpty {
