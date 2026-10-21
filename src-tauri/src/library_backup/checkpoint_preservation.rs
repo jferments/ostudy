@@ -274,10 +274,33 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 19,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "document_figure_scans",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figures",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figure_passages",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figure_readings",
+                description: "document figures",
+            },
+        ],
+    },
     // Pictures on notebook pages are placed in the app; the upgrade only
     // creates the table that keeps them.
     Contract {
-        version: 19,
+        version: 20,
         setup: "",
         rules: &[Rule::AddedEmpty {
             table: "notebook_item_assets",
