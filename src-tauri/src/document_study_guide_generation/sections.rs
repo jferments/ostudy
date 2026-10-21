@@ -51,16 +51,28 @@ pub(super) fn is_identity(plan: &DocumentLearningPlan, sections: &[PlannedGuideS
 
 /// What the planner sees of each topic: its own words, plus the document's
 /// core knowledge statements first, then the rest in catalog order.
+///
+/// A child topic shares source with its parent, so a topic counts only the
+/// share of its words drawn from chunks no earlier topic used; summed, they
+/// estimate the source's length instead of counting shared pages twice.
 pub(super) fn briefs<'a>(
     plan: &'a DocumentLearningPlan,
     evidence: &'a [StudyGuideTopicEvidence],
     catalogs: &'a [KnowledgeCatalog],
 ) -> Vec<GuideTopicBrief<'a>> {
+    let mut seen = BTreeSet::new();
     plan.topics
         .iter()
         .zip(evidence)
         .zip(catalogs)
         .map(|((topic, evidence), catalog)| {
+            let chunks = topic.evidence_chunk_indices.len().max(1);
+            let own = topic
+                .evidence_chunk_indices
+                .iter()
+                .filter(|index| seen.insert(**index))
+                .count();
+            let words = evidence.source_text.split_whitespace().count();
             let heading = topic
                 .parent_topic_id
                 .as_deref()
@@ -78,7 +90,7 @@ pub(super) fn briefs<'a>(
                 key_concepts: &topic.key_concepts,
                 first_unit: topic.source_locator.first(),
                 last_unit: topic.source_locator.last(),
-                source_words: evidence.source_text.split_whitespace().count(),
+                source_words: words * own / chunks,
                 core_statements: core
                     .into_iter()
                     .chain(other)
@@ -477,6 +489,28 @@ mod tests {
         assert_eq!(guide.topics.len(), 3);
         assert_ne!(guide.topics[0].evidence_hash, plan.topics[0].evidence_hash);
         assert_ne!(guide.plan_fingerprint, plan.plan_fingerprint);
+    }
+
+    #[test]
+    fn shared_source_is_counted_once() {
+        let mut plan = plan(2);
+        plan.topics[1].evidence_chunk_indices = vec![0, 1, 2, 3];
+        let evidence = vec![
+            StudyGuideTopicEvidence {
+                topic_id: plan.topics[0].id.clone(),
+                source_text: "one two".to_string(),
+                images: Vec::new(),
+            },
+            StudyGuideTopicEvidence {
+                topic_id: plan.topics[1].id.clone(),
+                source_text: "one two three four".to_string(),
+                images: Vec::new(),
+            },
+        ];
+        let catalogs = vec![KnowledgeCatalog::default(), KnowledgeCatalog::default()];
+        let briefs = briefs(&plan, &evidence, &catalogs);
+        assert_eq!(briefs[0].source_words, 2);
+        assert_eq!(briefs[1].source_words, 2);
     }
 
     #[test]
