@@ -412,9 +412,10 @@ pub(crate) fn sanitize_snapshot(
     // projections which can otherwise carry unselected material as plain text.
     // Document annotations stay on the device that made them for now. So do
     // lessons: the knowledge units they are written from are removed below.
-    // Teacher's lecture scripts, lesson narration, its audio, the voice each
-    // lesson is spoken in, the saved voices and the speech setting go with them, and links from cards to the marks they were made
-    // from go with the marks.
+    // Teacher's lecture scripts, podcasts, lesson narration, its audio, the
+    // voice each lesson is spoken in, the saved voices and the speech setting
+    // go with them, and links from cards to the marks they were made from go
+    // with the marks.
     // How far a learner has read each guide stays on the device too, and so
     // do notebooks for now.
     connection
@@ -439,6 +440,7 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM document_annotations;
              DELETE FROM lesson_progress;
              DELETE FROM lecture_scripts;
+             DELETE FROM podcasts;
              DELETE FROM lesson_revision_units;
              DELETE FROM lesson_revisions;
              DELETE FROM lessons;
@@ -860,7 +862,12 @@ mod tests {
                              provenance_json, created_at)
                          VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);
                          INSERT INTO lesson_voices(lesson_id, model_id, voice, created_at)
-                         VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);",
+                         VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);
+                         INSERT INTO podcasts(id, subject_id, title, target_minutes, model_id,
+                             first_voice, second_voice, script_json, provenance_json,
+                             created_at)
+                         VALUES ('{lesson}', '{subject}', 'Renal', 15, 'hexgrad/kokoro-82m',
+                             'af_heart', 'am_michael', '{{}}', '{{}}', 1);",
                         hash = "b".repeat(64),
                         unit = "c".repeat(32),
                     ))
@@ -873,7 +880,8 @@ mod tests {
                               + (SELECT COUNT(*) FROM lesson_revision_units)
                               + (SELECT COUNT(*) FROM lesson_progress)
                               + (SELECT COUNT(*) FROM lecture_scripts)
-                              + (SELECT COUNT(*) FROM lesson_voices)",
+                              + (SELECT COUNT(*) FROM lesson_voices)
+                              + (SELECT COUNT(*) FROM podcasts)",
                         [],
                         |row| row.get(0),
                     )
@@ -887,6 +895,7 @@ mod tests {
             "lesson_revision_units",
             "lesson_progress",
             "lecture_scripts",
+            "podcasts",
         ] {
             assert!(!selection.includes_table(table));
         }

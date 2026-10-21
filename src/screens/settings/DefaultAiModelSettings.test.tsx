@@ -84,6 +84,9 @@ function controller(): AiProfilesController {
     setCredentialPersistence: vi.fn(),
     saveProfile: vi.fn(),
     connectSetup: vi.fn(),
+    signInWithOpenRouter: vi.fn(),
+    signingIn: false,
+    cancelSignIn: vi.fn(),
     deleteProfile: vi.fn(),
     saveCredential: vi.fn(),
     clearCredential: vi.fn(),
@@ -329,6 +332,24 @@ describe("DefaultAiModelSettings", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("document-generation structured-output contract");
     expect(alert.textContent).toContain("Document generation schema");
+  });
+
+  it("shows Search as off with Add OpenRouter when only a text service is connected", () => {
+    const value = controller();
+    const [first] = value.profiles;
+    value.profiles = [{ ...first!, displayName: "Claude", providerKind: "claude", providerLabel: "Claude" }];
+    value.defaults = { ...value.defaults, embeddingsProfileId: null, embeddingsModelId: null, embeddingsReasoningEffort: null };
+    const onAddOpenRouter = vi.fn();
+    render(
+      <OverlayProvider>
+        <DefaultAiModelSettings controller={value} onAddOpenRouter={onAddOpenRouter} />
+      </OverlayProvider>,
+    );
+    expect(screen.queryByRole("combobox", { name: "Search service" })).toBeNull();
+    expect(screen.getByText("Off · needs OpenRouter")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add OpenRouter" }));
+    expect(onAddOpenRouter).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "Tutor service" })).toBeTruthy();
   });
 
   it("contains no obsolete provider/profile implementation guidance", () => {

@@ -305,7 +305,9 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("combobox", { name: "Cards and guides service" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Cards and guides model" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Tutor service" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Search service" })).toBeTruthy();
+    // No service can search yet, so Search stays off and offers OpenRouter.
+    expect(screen.queryByRole("combobox", { name: "Search service" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Add OpenRouter" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { name: "Question generation" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Add a service" }));

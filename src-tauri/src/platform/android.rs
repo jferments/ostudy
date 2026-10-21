@@ -114,6 +114,9 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 system_share: ServiceCapability::available(),
                 local_network: environment_capability(),
                 background_execution: ServiceCapability::available(),
+                browser_sign_in: ServiceCapability::unavailable(
+                    "android_browser_return_not_implemented",
+                ),
             },
         }
     }

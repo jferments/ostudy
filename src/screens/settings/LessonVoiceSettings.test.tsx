@@ -28,6 +28,7 @@ vi.mock("../../ipc/speech", () => ({
 vi.mock("../../media/managedPlayback", () => ({
   createManagedMediaObjectUrl: vi.fn(async (assetId: string) => `blob:${assetId}`),
   revokeManagedMediaObjectUrl: vi.fn(),
+  playbackErrorMessage: (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
 }));
 
 const router = "a".repeat(32);
@@ -273,6 +274,16 @@ describe("LessonVoiceSettings", () => {
     });
     expect((connection as HTMLSelectElement).options[0]?.text).toBe("No OpenRouter service");
     expect(screen.getByRole("listitem").textContent).toContain("Voice");
+  });
+
+  it("shows Voice as off with Add OpenRouter when no connection can speak", async () => {
+    vi.mocked(getSpeechSettings).mockResolvedValue(settings({ profileId: null, connections: [] }));
+    const onAddOpenRouter = vi.fn();
+    render(<LessonVoiceSettings connectionsKey={1} onAddOpenRouter={onAddOpenRouter} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add OpenRouter" }));
+    expect(onAddOpenRouter).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("listitem").textContent).toContain("Off · needs OpenRouter");
+    expect(screen.queryByRole("combobox", { name: "Lesson voice connection" })).toBeNull();
   });
 
   it("offers the voices that come with oStudy, played from the app's own files", async () => {

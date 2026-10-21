@@ -17,6 +17,7 @@ import { ListRow, ListRowMedia, ListRows } from "../ui/primitives/ListRow";
 import { PaneTabs } from "../ui/primitives/Tabs";
 import { TemplatesScreen } from "./TemplatesScreen";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
+import type { AiSetupStart } from "./settings/AiSetupWizard";
 import { BuiltInTemplates } from "./settings/BuiltInTemplates";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
@@ -37,6 +38,9 @@ type SettingsTab =
 interface SettingsScreenProps {
   settings: AppSettings;
   initialSection?: SettingsTab;
+  /** Opens Settings → AI with the setup wizard; consumed once shown. */
+  aiSetupRequest?: { requestId: number; service: "openrouter" | null } | null;
+  onAiSetupConsumed?: () => void;
   onPreviewSettings: (settings: AppSettings) => void;
   onSavedSettings: (settings: AppSettings) => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -77,6 +81,8 @@ const sectionLabel = (value: SettingsTab) => SECTIONS.find((section) => section.
 export function SettingsScreen({
   settings,
   initialSection = "appearance",
+  aiSetupRequest = null,
+  onAiSetupConsumed,
   onPreviewSettings,
   onSavedSettings,
   onDirtyChange,
@@ -96,6 +102,7 @@ export function SettingsScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const savingRef = useRef(false);
   const aiController = useAiProfilesController(showToast);
+  const [aiSetup, setAiSetup] = useState<AiSetupStart | null>(null);
   const preferencesDirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
   const dirty = preferencesDirty || aiController.dirty || templateDirty;
   const showingSection = !compact || compactOpen;
@@ -104,6 +111,14 @@ export function SettingsScreen({
     setActiveTab(initialSection);
     setCompactOpen(initialSection !== "appearance");
   }, [initialSection]);
+
+  useEffect(() => {
+    if (!aiSetupRequest) return;
+    setActiveTab("ai");
+    setCompactOpen(true);
+    setAiSetup(aiSetupRequest.service ? { service: aiSetupRequest.service } : {});
+    onAiSetupConsumed?.();
+  }, [aiSetupRequest, onAiSetupConsumed]);
 
   useEffect(() => {
     if (!visited.has(activeTab)) setVisited((previous) => new Set(previous).add(activeTab));
@@ -190,6 +205,9 @@ export function SettingsScreen({
     }
   }
 
+  // A new object each time, so the wizard opens again after it was closed.
+  const addOpenRouter = () => setAiSetup({ service: "openrouter" });
+
   function panel(value: SettingsTab): ReactNode {
     switch (value) {
       case "appearance":
@@ -202,10 +220,12 @@ export function SettingsScreen({
         return (
           <AiLlmSettings
             controller={aiController}
+            setupRequest={aiSetup}
             defaultBlock={
               <DefaultAiModelSettings
                 controller={aiController}
-                extraRows={<LessonVoiceSettings connectionsKey={aiController.profiles} />}
+                onAddOpenRouter={addOpenRouter}
+                extraRows={<LessonVoiceSettings connectionsKey={aiController.profiles} onAddOpenRouter={addOpenRouter} />}
               />
             }
           />
