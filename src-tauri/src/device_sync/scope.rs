@@ -457,13 +457,20 @@ pub(crate) fn sanitize_snapshot(
              DROP TABLE sync_narration_assets;
              DELETE FROM document_study_guide_section_reads;
              DELETE FROM document_study_guide_positions;
+             CREATE TEMP TABLE sync_notebook_assets AS SELECT asset_id FROM notebook_item_assets;
+             DELETE FROM notebook_item_assets;
              DELETE FROM notebook_items;
              DELETE FROM notebook_pages;
              DELETE FROM notebooks;
              DELETE FROM document_figure_readings;
              DELETE FROM document_figure_passages;
              DELETE FROM document_figures;
-             DELETE FROM document_figure_scans;",
+             DELETE FROM document_figure_scans;
+             DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_notebook_assets)
+                 AND id NOT IN (SELECT asset_id FROM note_assets)
+                 AND id NOT IN (SELECT asset_id FROM card_template_assets)
+                 AND id NOT IN (SELECT asset_id FROM question_attempt_assets);
+             DROP TABLE sync_notebook_assets;",
         )
         .map_err(CommandError::database)?;
 
