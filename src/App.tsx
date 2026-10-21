@@ -259,6 +259,8 @@ function App() {
                                   }}
                                   onOpenSubject={(subjectId) => controller.chooseLibrarySubject({ kind: "subject", subjectId })}
                                   onOpenProgress={() => selectDestination("progress")}
+                                  refreshDecks={controller.refreshDecks}
+                                  showToast={controller.showToast}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "lessons" ? (
