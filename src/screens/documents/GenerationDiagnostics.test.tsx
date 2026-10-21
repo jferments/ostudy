@@ -27,7 +27,7 @@ function stat(label: string) { return screen.getByText(label).nextElementSibling
 describe("generation cost summary and optional retry details", () => {
   it("keeps time, requests, retry total and tokens outside the collapsed disclosure", () => {
     render(<GenerationDiagnostics progress={progress()} now={91000} />);
-    const trigger = screen.getByRole("button", { name: "Generation details" });
+    const trigger = screen.getByRole("button", { name: "Provider and request" });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(stat("Elapsed")).toBe("1m 30s");
     expect(stat("Stage elapsed")).toBe("30 sec");
@@ -94,7 +94,7 @@ describe("generation cost summary and optional retry details", () => {
       currentRequestEvidenceBytes: null,
       currentRequestMaxOutputTokens: null,
     })} now={91000} />);
-    fireEvent.click(screen.getByRole("button", { name: "Generation details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Provider and request" }));
     expect(screen.queryByText("Current provider request")).toBeNull();
     expect(stat("Provider")).toBe("openrouter");
     expect(stat("Requested reasoning")).toBe("automatic");
@@ -106,6 +106,6 @@ describe("generation cost summary and optional retry details", () => {
     expect(stat("Elapsed")).toBe("Starting…");
     expect(stat("Retries")).toBe("—");
     expect(stat("Prompt / output")).toBe("Awaiting usage");
-    expect(screen.queryByRole("button", { name: "Generation details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Provider and request" })).toBeNull();
   });
 });
