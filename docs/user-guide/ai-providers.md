@@ -18,11 +18,13 @@ A model available through OpenRouter is not a dedicated adapter for its original
 
 ## Add a provider
 
+With no service yet, **Services** offers **Set up AI**. It walks through choosing a service (OpenRouter is recommended: one key covers text, voice, images and search), what AI use typically costs, creating the account, and creating and pasting an API key, then shows the models chosen for each task. On a computer, **Connect with OpenRouter** opens OpenRouter in your browser; approve oStudy there and the key is made and saved for you, with **Paste a key instead** beside it. On a phone you paste a key. Claude and DeepSeek handle text only, so after them **Search** and **Voice** stay **Off** with **Add OpenRouter**. **Choose a service for each task instead** lists which services can do each task. A llama.cpp server goes straight to **Add a service**.
+
 Open **Settings → AI** and choose **Add a service** in **Services**. Pick the **Service**. For llama.cpp enter its **Server address**; for a cloud service enter the **API key**, and leave **Keep the key on this device** on to save it in the system's secure storage, or turn it off to keep it for this session only. Choose **Connect**. Saved services are listed with **Ready**, **Needs a key** or **Off**; select one to change it, or use its menu to **Edit** or **Remove** it. **Refresh models** reloads the service's model list.
 
 **More options** in a service hold **Use this service**, **Give up after** (the inactivity timeout) and **Remove API key**. A llama.cpp service also offers **Server needs a key** and, for a private-network address over plain HTTP, **Allow an unencrypted network connection**. An OpenRouter service offers **Only zero-data-retention routes**.
 
-The first OpenRouter service you save with a key also fills any task that has no model yet with suggested OpenRouter models. That does not test them; change or test them like any other choice.
+The first OpenRouter, Claude or DeepSeek service you save with a key also fills any task that has no model yet with a suggested model: DeepSeek V4.1 Flash and Qwen3 Embedding 8B on OpenRouter, Claude Sonnet 5.5 on Claude and DeepSeek V4 Flash on DeepSeek. Claude and DeepSeek leave **Search** unassigned. That does not test them; change or test them like any other choice. Without a voice service, lessons show no **Listen** or **Play lecture**.
 
 ## Choose a model for each task
 
@@ -33,11 +35,13 @@ The first OpenRouter service you save with a key also fills any task that has no
 | **Cards and guides** | Reading documents and image sets, making cards, study guides and a subject's study materials | Always off |
 | **Tutor** | Tutor chat, including **Ask Tutor** from a study guide | Your choice; starts at Low |
 | **Search** | Searching saved knowledge and conversations in Tutor | Not used; llama.cpp and OpenRouter only |
-| **Voice** | Reading lessons and lectures aloud | Not used; OpenRouter only. The model is **Drama 3** (the default), which reads in one of your saved voices, or **Kokoro**, which offers its own list of voices. The voice choice is in the Reasoning column |
+| **Voice** | Reading lessons, lectures and podcasts aloud | Not used; OpenRouter only. The model is **Drama 3** (the default), which reads in one of your saved voices, or **Kokoro**, which offers its own list of voices. The voice choice is in the Reasoning column |
 
 In each row choose the **Service** and then the **Model**. The choice is saved as soon as you make it. The row's menu has **Test model**, which checks that the selected model can do that task (a check mark and a message show the result, and a failure names the step that failed), and **Clear**, which leaves the task without a model. The **Search** row's menu also has **Embedding options** for dimensions and input policy. The **Voice** row's menu has **Lesson voices…** (with Drama 3) and **Clear**: a voice is checked by listening to a lesson step, and each step it reads costs about a cent or less the first time, after which its audio is kept.
 
 Drama 3 has no fixed voices: on its own it picks a new speaker for every request. oStudy keeps it to one voice by saving a short sample of a voice and sending it with every request, so Drama 3 copies it. Two voices come with oStudy: **Relaxed man**, the default, and **Calm older woman**. **Lesson voices…** lists them with your saved voices: listen to each and choose one with **Use**; your own voices can also be renamed or removed. **Try another voice** asks Drama 3 for a new sample (well under a cent); describe the voice first, such as "a calm older woman with a British accent", to steer it. **Keep this voice** saves the sample and chooses it. A lesson keeps the voice it was first read in, even after you choose another, so all of its parts sound alike and audio already made is never made again. Removing a voice hides it from the list; lessons read in it keep it.
+
+A podcast has two hosts, Ada and Ben, and **Make a podcast** on a subject's Lessons page sets each host's voice from the same list (with Kokoro, from its own voices). Ada speaks in **Calm older woman** and Ben in **Relaxed man** unless you pick others. Each host keeps that voice for the whole podcast. The conversation is written by the model chosen for documents in one request; the voice reads each part the first time it plays, about a cent or less a part, and keeps it.
 
 ## Reasoning
 
