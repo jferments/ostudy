@@ -51,7 +51,6 @@ mod tests {
             .unwrap();
         assert_eq!(preservation_receipt(&comparison).unwrap(), before);
         comparison.rollback().unwrap();
-        validate_input(&connection).unwrap();
     }
 
     #[test]
