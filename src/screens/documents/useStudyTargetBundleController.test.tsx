@@ -175,6 +175,27 @@ describe("study target bundle controller", () => {
     });
   });
 
+  it("makes only the chosen output and recreates only a chosen suppressed one", async () => {
+    vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValue({
+      ...complete,
+      flashcards: { ...complete.flashcards, state: "suppressed" },
+      studyGuide: { ...complete.studyGuide, state: "suppressed" },
+    });
+    const { result } = renderHook(() => useStudyTargetBundleController({ target }));
+    await waitFor(() => expect(result.current.status).not.toBeNull());
+
+    await act(async () => {
+      expect(await result.current.run({ flashcards: false, studyGuide: true })).toBe(true);
+    });
+
+    expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
+      operationId: "o".repeat(32),
+      target,
+      outputPolicy: { flashcards: false, studyGuide: true },
+      recreateArtifacts: ["study_guide"],
+    });
+  });
+
   it("accepts a terminal durable receipt after a lost response without repeating the write", async () => {
     const changed = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useStudyTargetBundleController({ target, changed }));

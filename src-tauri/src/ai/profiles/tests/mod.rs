@@ -17,7 +17,7 @@ use super::{
     repository as profile_repository,
 };
 
-fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
+pub(super) fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
     CreateAiProviderProfileInput {
         operation_id: String::new(),
         display_name: provider_kind.display_name().to_string(),
@@ -115,7 +115,7 @@ fn credential_epoch_operations_are_idempotent_and_redacted() {
                 "44444444444444444444444444444444",
                 "set_credential",
                 CredentialStorage::Session,
-                false,
+                None,
             )
         })
         .expect("credential epoch should commit");

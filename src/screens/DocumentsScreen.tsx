@@ -19,11 +19,11 @@ import { Textarea } from "../ui/primitives/FormControls";
 import { TextField } from "../ui/primitives/TextField";
 import { FormField } from "../ui/primitives/FormField";
 import {
-  GenerationDiagnostics, GenerationProgressPanel, statusLabel, processingPhaseLabel, formatDocumentType,
+  DocumentRowProgress, GenerationDiagnostics, GenerationProgressPanel, generationPercent, statusLabel, processingPhaseLabel, formatDocumentType,
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
-import { LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
+import { combinedArtifactProgress, LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
@@ -50,7 +50,6 @@ interface DocumentsScreenProps {
   /** Opens a subject's own Documents page from Everything's groups; `null` is No subject. */
   onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
-  headerSupplement?: ReactNode;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
 }
@@ -216,6 +215,21 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
 
   const detailsDocument = detailsDocumentId ? documents.find((document) => document.id === detailsDocumentId) : undefined;
 
+  /** What a document is making and how far it has got, for Generation details. */
+  function progressPanel(document: DocumentSummary) {
+    const guideJob = artifactProgress.jobs[document.id] ?? null;
+    const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
+    const live = generationProgress[document.id] ?? null;
+    const processing = document.lifecycleState === "processing";
+    const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
+    const guideUnsettled = guideJob !== null && guideJob.state !== "succeeded" && guideJob.state !== "canceled";
+    if (authoring || guideGenerating || (!processing && guideUnsettled)) {
+      return <LearningArtifactProgressPanel document={document} progress={live} guideJob={guideJob}
+        guideStarting={guideGenerating} readFailed={artifactProgress.readFailed} />;
+    }
+    return processing ? <GenerationProgressPanel document={document} progress={live} /> : null;
+  }
+
   function renderRow(document: DocumentSummary) {
     const guideJob = artifactProgress.jobs[document.id] ?? null;
     const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
@@ -237,6 +251,10 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const range = filedIn !== null ? rangeLabel(document, ranges) : null;
     // A loose document's one filing action sits on the row; elsewhere it is in the menu.
     const addTo = filedIn === null && subjects.length > 0 && !processing;
+    // Work under way shows as one bar in the row; a failed guide or card run keeps its panel below.
+    const artifactBar = showArtifacts ? combinedArtifactProgress(document, live, guideJob, guideGenerating) : null;
+    const rowProgress = artifactBar
+      ?? (processing && !showArtifacts ? { label: processingPhaseLabel(document, canceling, live), value: generationPercent(document, live) } : null);
     const items: OverflowMenuItem[] = [];
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
@@ -275,11 +293,12 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       onSelect: () => void stopStudyGuide(document),
     });
     if (processing) items.push({
-      id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
+      id: "stop-generation", label: canceling ? "Stopping…" : "Stop", destructive: true, disabled: canceling,
       onSelect: () => void stopGeneration(document),
     });
-    items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
-    items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
+    if (!processing) items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
+    if (rowProgress) items.unshift({ id: "details", label: "Generation details", onSelect: () => setDetailsDocumentId(document.id) });
+    else items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
     if (!processing) items.push({
       id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
       onSelect: () => void deleteDocument(document),
@@ -294,20 +313,24 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       >
         <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-4 tw:compact:gap-3">
           <DocumentThumb image={document.sourceFormat === "image_bundle"} />
-          <div className="tw:grid tw:min-w-0 tw:flex-1">
+          <div className={rowProgress ? "tw:grid tw:min-w-0 tw:flex-1 tw:gap-1.5" : "tw:grid tw:min-w-0 tw:flex-1"}>
             <h3 id={`document-${document.id}`} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{document.title}</h3>
-            <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
-              {[documentMeta(document), range].filter(Boolean).join(" · ")}
-              <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
-            </span>
+            {rowProgress ? <DocumentRowProgress label={rowProgress.label} value={rowProgress.value} /> : (
+              <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
+                {[documentMeta(document), range].filter(Boolean).join(" · ")}
+                <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
+              </span>
+            )}
           </div>
-          <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
-            {materialSummary(document, guideJob)}
-          </span>
-          {document.lifecycleState === "ready" ? null : (
-            <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
-          )}
-          {addTo ? (
+          {rowProgress ? null : <>
+            <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
+              {materialSummary(document, guideJob)}
+            </span>
+            {document.lifecycleState === "ready" ? null : (
+              <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
+            )}
+          </>}
+          {rowProgress ? null : addTo ? (
             <Button size="small" className="tw:shrink-0 tw:compact:hidden" disabled={filing.busy} onClick={() => setMoving(document)}>
               Add to…
             </Button>
@@ -318,7 +341,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           )}
           <OverflowMenu
             label={`More actions for ${document.title}`}
-            items={compact || addTo ? [{ id: "open", label: "Open", onSelect: () => openDocument(document), disabled: openDisabled }, ...items] : items}
+            items={compact || addTo || rowProgress ? [{ id: "open", label: "Open", onSelect: () => openDocument(document), disabled: openDisabled }, ...items] : items}
           />
         </div>
         {processing || guideGenerating ? (
@@ -326,7 +349,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
           </span>
         ) : null}
-        {showArtifacts ? (
+        {showArtifacts && !artifactBar ? (
           <LearningArtifactProgressPanel
             document={document}
             progress={live}
@@ -334,8 +357,6 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             guideStarting={guideGenerating}
             readFailed={artifactProgress.readFailed}
           />
-        ) : processing ? (
-          <GenerationProgressPanel document={document} progress={live} />
         ) : null}
         {processing && learningPlan ? (
           <CheckedLearningPlanPanel document={document} plan={learningPlan} />
@@ -378,7 +399,6 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           </div>
         }
       />
-      {props.headerSupplement}
       {filedCount > 0 ? (
         <div role="search" className="tw:mb-4 tw:flex tw:min-w-0">
           <label className="tw:relative tw:flex tw:w-full tw:max-w-80 tw:items-center tw:compact:max-w-none">
@@ -458,6 +478,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         <DocumentDetails
           document={detailsDocument}
           progress={generationProgress[detailsDocument.id] ?? null}
+          progressPanel={progressPanel(detailsDocument)}
           now={clockNow}
           onClose={() => setDetailsDocumentId(null)}
         />
@@ -544,14 +565,17 @@ function statusTone(document: DocumentSummary): BadgeTone {
   return "warning";
 }
 
-function DocumentDetails({ document, progress, now, onClose }: {
+function DocumentDetails({ document, progress, progressPanel, now, onClose }: {
   document: DocumentSummary;
   progress: DocumentGenerationProgress | null;
+  /** While the document is being processed or made into study material; the dialog is then Generation details. */
+  progressPanel: ReactNode;
   now: number;
   onClose: () => void;
 }) {
   return (
-    <MetadataDialog open title="Details" description={document.title} onClose={onClose}>
+    <MetadataDialog open title={progressPanel ? "Generation details" : "Details"} description={document.title} onClose={onClose}>
+      {progressPanel}
       <MetadataList>
         <MetadataItem label="File" value={document.originalFilename} />
         <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type { AiProviderKind } from "../../ipc/aiProfiles";
@@ -14,11 +14,14 @@ import { ListRow, ListRowMedia, ListRows } from "../../ui/primitives/ListRow";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Panel } from "../../ui/primitives/Panel";
 import { TextField } from "../../ui/primitives/TextField";
+import { AiSetupWizard, type AiSetupService, type AiSetupStart } from "./AiSetupWizard";
 import { SwitchRow } from "./SettingsControls";
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
   defaultBlock?: ReactNode;
+  /** Opens the setup wizard; each new request object opens it again. */
+  setupRequest?: AiSetupStart | null;
 }
 
 type Profile = AiProfilesController["profiles"][number];
@@ -35,12 +38,17 @@ const PROVIDER_BLURBS: Partial<Record<AiProviderKind, string>> = {
 };
 
 /** The AI section: the learner's services, then which service and model each task uses. */
-export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) {
+export function AiLlmSettings({ controller, defaultBlock, setupRequest = null }: AiLlmSettingsProps) {
   const confirm = useConfirm();
   const [sheet, setSheet] = useState<"add" | "edit" | null>(null);
+  const [setup, setSetup] = useState<AiSetupStart | null>(setupRequest);
   const availableProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "available",
   );
+
+  useEffect(() => {
+    if (setupRequest) setSetup(setupRequest);
+  }, [setupRequest]);
 
   function openProfile(profileId: string): void {
     controller.discardDraft();
@@ -48,13 +56,21 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
     setSheet("edit");
   }
 
-  function openAdd(): void {
+  function openAdd(kind?: AiSetupService): void {
     controller.discardDraft();
-    const preferred = availableProviders.find((provider) => provider.providerKind === "llama_cpp") ?? availableProviders[0];
+    const preferred =
+      availableProviders.find((provider) => provider.providerKind === (kind ?? "llama_cpp")) ?? availableProviders[0];
     if (!preferred) return;
     controller.beginCreate(preferred.providerKind);
     setSheet("add");
   }
+
+  function closeSetup(): void {
+    controller.discardDraft();
+    setSetup(null);
+  }
+
+  const empty = !controller.loading && controller.profiles.length === 0;
 
   async function closeSheet(): Promise<void> {
     if (controller.dirty) {
@@ -92,11 +108,32 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
       <Panel className="tw:min-w-0" title="Services" aria-busy={controller.loading}
         actions={<>
           <HelpTrigger topicId="settings.aiServices" label="Help with AI services" />
-          <Button variant="secondary" disabled={controller.mutating || availableProviders.length === 0} onClick={openAdd}>
-            <Icon name="plus" size={16} />Add a service
-          </Button>
+          {empty ? null : (
+            <Button variant="secondary" disabled={controller.mutating || availableProviders.length === 0} onClick={() => openAdd()}>
+              <Icon name="plus" size={16} />Add a service
+            </Button>
+          )}
         </>}>
         {controller.loading ? <InlineProgress>Loading services…</InlineProgress> : null}
+        {empty ? (
+          <div className="tw:grid tw:justify-items-center tw:gap-4 tw:px-(--card-gutter) tw:py-8 tw:text-center">
+            <Icon name="sparkles" size={28} className="tw:text-primary" />
+            <span className="tw:grid tw:gap-1">
+              <strong className="tw:text-section tw:font-semibold">No AI service yet</strong>
+              <span className="tw:text-label tw:text-muted-foreground">
+                AI makes cards, study guides and lessons, and answers questions as your Tutor.
+              </span>
+            </span>
+            <span className="tw:flex tw:flex-wrap tw:justify-center tw:gap-3">
+              <Button variant="primary" disabled={controller.mutating} onClick={() => setSetup({})}>
+                <Icon name="sparkles" size={16} />Set up AI
+              </Button>
+              <Button variant="secondary" disabled={controller.mutating || availableProviders.length === 0} onClick={() => openAdd()}>
+                <Icon name="plus" size={16} />Add a service
+              </Button>
+            </span>
+          </div>
+        ) : null}
         {controller.profiles.length > 0 ? (
           <ListRows aria-label="Services">
             {controller.profiles.map((profile) => (
@@ -119,6 +156,18 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
       </Panel>
 
       {defaultBlock}
+
+      {setup && !sheet ? (
+        <AiSetupWizard
+          controller={controller}
+          start={setup}
+          onClose={closeSetup}
+          onAddService={(kind) => {
+            setSetup(null);
+            openAdd(kind);
+          }}
+        />
+      ) : null}
 
       {sheet && controller.draft ? (
         <ServiceSheet
