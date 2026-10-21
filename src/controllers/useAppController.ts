@@ -121,6 +121,13 @@ export interface AnalyticsLaunchRequest {
   highlightedSessionId?: string;
 }
 
+/** Opens Settings → AI on the setup wizard, from anywhere AI is needed but not set up. */
+export interface AiSetupRequest {
+  requestId: number;
+  /** Starts at this service's account step instead of the choice of service. */
+  service: "openrouter" | null;
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   uiFont: DEFAULT_FONT_PRESET,
@@ -160,6 +167,8 @@ export function useAppController() {
   const [finishedPracticeSessions, setFinishedPracticeSessions] = useState(0);
   const practiceRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
+  const [aiSetupRequest, setAiSetupRequest] = useState<AiSetupRequest | null>(null);
+  const aiSetupSequence = useRef(1);
   const analyticsCheckpointRef = useRef<AnalyticsCheckpoint | null>(null);
   const analyticsRequestSequence = useRef(1);
   const navigateRef = useRef<(next: AppSection) => Promise<void>>(async () => undefined);
@@ -214,6 +223,7 @@ export function useAppController() {
     );
   }, []);
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
+  const consumeAiSetup = useCallback(() => setAiSetupRequest(null), []);
   const reportPracticeCheckpoint = useCallback(
     (checkpoint: PracticeCursorCheckpoint | null) => {
       // A session that had a cursor and reports none has finished: its summary shows.
@@ -585,6 +595,20 @@ export function useAppController() {
   }
 
   /** Search opens Flashcards Search/Filter inside Library from anywhere. */
+  async function openAiSetup(service: AiSetupRequest["service"] = null): Promise<void> {
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    if (leavingPracticeWorkflow) {
+      practiceCursorRef.current = null;
+      setPracticeWorkflow(null);
+    }
+    const requestId = aiSetupSequence.current;
+    aiSetupSequence.current += 1;
+    setAiSetupRequest({ requestId, service });
+    setSection("settings");
+  }
+
   async function openSearch(): Promise<void> {
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
@@ -860,6 +884,7 @@ export function useAppController() {
     setToast,
     deckOpenRequest,
     analyticsLaunch,
+    aiSetupRequest,
     showToast,
     refreshDecks,
     consumePracticeLaunch,
@@ -868,6 +893,9 @@ export function useAppController() {
     /** Counts the practice sessions that reached their summary in this run. */
     finishedPracticeSessions,
     consumeAnalyticsLaunch,
+    consumeAiSetup,
+    /** Opens Settings → AI on the setup wizard. */
+    openAiSetup,
     navigate,
     /** The Library view the Library destination opens: the last one used. */
     librarySection: lastLibrarySectionRef.current,

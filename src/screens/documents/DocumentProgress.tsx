@@ -3,6 +3,14 @@ import { progressStyles } from "./presentation";
 import { Progress } from "../../ui/primitives/Progress";
 import { Disclosure } from "../../ui/primitives/FormControls";
 
+/** A document's processing as one bar in its row, with the current stage beside it. */
+export function DocumentRowProgress({ label, value }: { label: string; value: number | null }) {
+  return <span className="tw:flex tw:min-w-0 tw:items-center tw:gap-3" data-testid="document-row-progress">
+    <Progress value={value} max={100} label="Document progress" valueText={label} className="tw:max-w-75 tw:flex-1" />
+    <span className="tw:min-w-0 tw:truncate tw:text-small tw:text-muted-foreground tw:tabular-nums">{label}</span>
+  </span>;
+}
+
 export function GenerationProgressPanel({ document, progress }: {
   document: DocumentSummary; progress: DocumentGenerationProgress | null;
 }) {
@@ -42,7 +50,7 @@ export function GenerationDiagnostics({ progress, now }: {
     {progress && progress.usageUnreportedRequests > 0 ? <p className={progressStyles.detail}>
       Usage incomplete: {progress.usageUnreportedRequests.toLocaleString()} requests did not report token counts. Totals and cache ratios describe reported usage only.
     </p> : null}
-    {progress ? <Disclosure title="Generation details" className="tw:border-0">
+    {progress ? <Disclosure title="Provider and request" className="tw:border-0">
       <div className="tw:grid tw:gap-3 tw:p-3">
         <dl className={progressStyles.stats}>
           <div><dt>Provider</dt><dd>{progress.providerKind ?? "Not selected yet"}</dd></div>
@@ -166,7 +174,7 @@ export function activeWindowDetail(progress: DocumentGenerationProgress | null, 
   if (end > start) return `Active windows ${start}–${end} of ${totalWindows}${sourceUnits}.`;
   return `Window ${start} of ${totalWindows}${sourceUnits}.`;
 }
-function generationPercent(document: DocumentSummary, progress: DocumentGenerationProgress | null): number | null {
+export function generationPercent(document: DocumentSummary, progress: DocumentGenerationProgress | null): number | null {
   if (isPdf(document) && document.sourceUnitCount > 0 && document.renderedPageCount < document.sourceUnitCount) {
     return Math.round((document.renderedPageCount / document.sourceUnitCount) * 20);
   }

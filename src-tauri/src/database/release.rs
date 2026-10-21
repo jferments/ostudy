@@ -56,6 +56,8 @@ mod annotated_pdf_exports;
 mod lecture_exports;
 #[path = "release/lecture_scripts.rs"]
 mod lecture_scripts;
+#[path = "release/podcasts.rs"]
+mod podcasts;
 #[path = "release/speech_voices.rs"]
 mod speech_voices;
 #[path = "release/study_guide_reading.rs"]
@@ -70,7 +72,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 18;
+pub(crate) const SCHEMA_VERSION: i64 = 19;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -177,15 +179,21 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
     },
     ReleaseMigration {
         version: 17,
-        name: "notebooks",
-        checksum: "6f2c4daaaf75ebd1520f63ef1f4ecc3fc313da245aa3d5b8d0aecc5fe8a99795",
-        sql: include_str!("../../schema/0017_notebooks.sql"),
+        name: "podcasts",
+        checksum: "23abf0c9879caf011c3bb542c8f43274beae8d320fc3d6d914b87a907379e4cd",
+        sql: include_str!("../../schema/0017_podcasts.sql"),
     },
     ReleaseMigration {
         version: 18,
+        name: "notebooks",
+        checksum: "cd1eb1fc6917b5a599c5625f04e2034a8c725ca51984ceb5269a116f1f4a3032",
+        sql: include_str!("../../schema/0018_notebooks.sql"),
+    },
+    ReleaseMigration {
+        version: 19,
         name: "notebook_assets",
-        checksum: "6d746b7c1df7f54ffda85f41fd46ffa4cc260cd43699b65f9e924bb1448fb423",
-        sql: include_str!("../../schema/0018_notebook_assets.sql"),
+        checksum: "20e109ef0aa5c9631f5831687b2b04511baf7da3db42fdb4a7d62ed4ea01e11a",
+        sql: include_str!("../../schema/0019_notebook_assets.sql"),
     },
 ];
 
@@ -404,6 +412,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     annotated_pdf_exports::validate_schema(connection, user_version)?;
     lecture_scripts::validate_schema(connection, user_version)?;
     speech_voices::validate_schema(connection, user_version)?;
+    podcasts::validate_schema(connection, user_version)?;
     notebooks::validate_schema(connection, user_version)?;
     notebook_assets::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;

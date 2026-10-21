@@ -224,6 +224,36 @@ export async function setAiProviderCredential(
   });
 }
 
+export interface OpenRouterSignInStart {
+  attemptId: string;
+  /** The OpenRouter page to open in the browser; it carries no secret. */
+  authorizationUrl: string;
+}
+
+/** Starts one-click OpenRouter sign-in. The key it yields never reaches the frontend. */
+export async function startOpenRouterSignIn(): Promise<OpenRouterSignInStart> {
+  return invoke<OpenRouterSignInStart>("start_openrouter_sign_in");
+}
+
+/** Resolves once the browser returned and the native side holds the key. */
+export async function waitForOpenRouterSignIn(attemptId: string): Promise<void> {
+  return invoke<void>("wait_for_openrouter_sign_in", { input: { attemptId } });
+}
+
+/** Saves the signed-in key as the given OpenRouter service's credential. */
+export async function saveOpenRouterSignIn(
+  attemptId: string, profileId: string, revision: number,
+  persistence: AiCredentialPersistence, operationId = createOperationId(),
+): Promise<AiProviderProfileDetail> {
+  return invoke<AiProviderProfileDetail>("save_openrouter_sign_in", {
+    input: { attemptId, profileId, revision, persistence, operationId },
+  });
+}
+
+export async function cancelOpenRouterSignIn(attemptId: string): Promise<void> {
+  return invoke<void>("cancel_openrouter_sign_in", { input: { attemptId } });
+}
+
 export async function clearAiProviderCredential(
   profileId: string, revision: number, operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {

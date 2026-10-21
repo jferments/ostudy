@@ -1,7 +1,7 @@
 use crate::{database::Database, error::CommandError, util::validate_entity_id};
 
 use super::{
-    super::{catalog::ProviderKind, secrets::CredentialStorage, AiRuntimeState},
+    super::{secrets::CredentialStorage, AiRuntimeState},
     contracts::{
         AiProviderProfileDetailDto, AiProviderProfileSummaryDto, AiTaskDefaultsDto,
         ClearAiProviderCredentialInput, CreateAiProviderProfileInput, DeleteAiProviderProfileInput,
@@ -155,8 +155,9 @@ pub(crate) fn set_credential(
     }
 
     let storage = CredentialStorage::from(input.persistence);
-    let seed_openrouter_defaults = current.provider_kind == ProviderKind::Openrouter
-        && current.credential_storage == CredentialStorage::None;
+    let seed_defaults_for = (current.credential_storage == CredentialStorage::None
+        && super::defaults::seeds_first_key_defaults(current.provider_kind))
+    .then_some(current.provider_kind);
     runtime.secrets.set(
         &input.profile_id,
         input.credential,
@@ -171,7 +172,7 @@ pub(crate) fn set_credential(
             &input.operation_id,
             "set_credential",
             storage,
-            seed_openrouter_defaults,
+            seed_defaults_for,
         )
     })?;
     load_detail(database, runtime, &input.profile_id)
@@ -210,7 +211,7 @@ pub(super) fn clear_credential(
             &input.operation_id,
             "clear_credential",
             CredentialStorage::None,
-            false,
+            None,
         )
     })?;
     load_detail(database, runtime, &input.profile_id)

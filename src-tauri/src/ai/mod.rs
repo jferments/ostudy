@@ -38,6 +38,7 @@ pub struct AiRuntimeState {
     pub(crate) secrets: SecretManager,
     pub(crate) gateway: AiGateway,
     pub(crate) profile_mutations: Mutex<()>,
+    pub(crate) sign_in: profiles::openrouter_sign_in::SignInSlot,
 }
 
 impl AiRuntimeState {
@@ -51,6 +52,7 @@ impl AiRuntimeState {
             secrets: SecretManager::new(secret_store),
             gateway: AiGateway::new()?,
             profile_mutations: Mutex::new(()),
+            sign_in: Default::default(),
         })
     }
 }
