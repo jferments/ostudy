@@ -119,7 +119,7 @@ On desktop, closing while documents are processing warns that the work will be i
 
 **Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 
-Remake a guide from the document's menu. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
+Remake a guide from the document's menu. Its row shows a new Study Guide bar straight away: **Preparing** while oStudy plans the sections, then how many sections are completed ("3 / 14 sections completed"), **Organizing the guide** while it adds chapters and the introduction, and **Saving guide**. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
 
 ## Analysis details
 

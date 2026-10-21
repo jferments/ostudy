@@ -4,11 +4,13 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { requiredTestValue as required } from "../test/factories";
 import * as documents from "../ipc/documents";
 import * as externalFiles from "../ipc/externalFiles";
+import { getSettings, type AppSettings } from "../ipc/settings";
 import * as studyMaterials from "../ipc/studyMaterials";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 
 vi.mock("../ipc/documents", () => ({ openDocumentSource: vi.fn() }));
+vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("../ipc/externalFiles", () => ({
   publishPreparedExport: vi.fn(),
   releasePreparedExport: vi.fn(),
@@ -155,7 +157,8 @@ it("renders collection sections through the shared semantic reader with one over
   await waitFor(() => expect(documents.openDocumentSource).toHaveBeenCalledWith(documentId));
 });
 
-it("exports the same collection guide snapshot through the native PDF boundary", async () => {
+it("exports the same collection guide snapshot in the Settings theme through the native PDF boundary", async () => {
+  vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "slate", guidePdfIncludeNotes: false } as AppSettings);
   const showToast = vi.fn();
   render(
     <OverlayProvider>
@@ -168,12 +171,9 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     </OverlayProvider>,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: "Export PDF…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-  fireEvent.click(within(dialog).getByRole("radio", { name: /^Sage/u }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
   await waitFor(() => {
-    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, true, "sage");
+    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, false, "slate");
     expect(externalFiles.publishPreparedExport).toHaveBeenCalledWith("3".repeat(32));
     expect(showToast).toHaveBeenCalledWith(
       "success",
@@ -181,7 +181,6 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     );
   });
   expect(externalFiles.releasePreparedExport).toHaveBeenCalledWith("3".repeat(32));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull());
 });
 
 

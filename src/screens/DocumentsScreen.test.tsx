@@ -618,6 +618,30 @@ describe("DocumentsScreen", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
+  it("shows a fresh guide bar as soon as a finished guide is remade", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([{
+      id: "c".repeat(32), documentId, planId: "d".repeat(32), artifactKind: "study_guide",
+      state: "succeeded", totalUnits: 14, completedUnits: 14, safeErrorCode: "", safeErrorMessage: "",
+      apiTokenCount: 1_000, apiTokenUsageComplete: true,
+      createdAt: 1, startedAt: 2, updatedAt: 3, completedAt: 4,
+    }]);
+    // The new run is still rebuilding the outline: it has no record of its own yet.
+    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockReturnValue(new Promise(() => undefined));
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Remake the study guide");
+
+    // The finished guide's full bar does not linger; the row shows the new run starting.
+    const row = await screen.findByTestId("document-row-progress");
+    expect(within(row).getByText("Making a study guide")).toBeTruthy();
+    expect(within(row).getByRole("progressbar").getAttribute("aria-valuenow")).toBeNull();
+    const details = await openGenerationDetails();
+    expect(within(details).getByText("Preparing")).toBeTruthy();
+    expect(within(details).queryByText(/Study Guide usage/u)).toBeNull();
+  });
+
   it("opens a PDF's pages for annotation and returns to the list", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages: [], annotations: [] });
