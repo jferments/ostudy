@@ -85,19 +85,19 @@ Changing the hour re-groups all of your existing history by the new boundary; no
 
 ## Read Progress
 
-**Progress** shows what you have studied and how well it is sticking. Choose a **Subject** (or **All subjects**), a time range (**7 days**, **30 days**, **90 days**, **Year**, **All time**, or **Custom dates**), and, under **Decks, tags and dates**, particular decks and tags. Chosen filters appear as removable chips with **Clear all**. Dates are study days, which start at the **New day starts at** hour. An empty view means no reviews match, not necessarily that the library is empty.
+**Progress** shows what you have studied and how well it is sticking. Choose a **Subject** (or **All subjects**), a time range (**7 days**, **30 days**, **90 days**, **Year**, **All time**, or **Custom dates**), and, under **Decks, tags and dates**, particular decks and tags. Chosen filters appear as removable chips with **Clear all**. Dates are study days, which start at the **New day starts at** hour. An empty view means no reviews match, not necessarily that the library is empty. Before anything has been studied, Progress shows only **No reviews yet** and **Start review**.
 
 From top to bottom:
 
-- A short **summary** of how often you studied and how much you remembered, with **Start review** when cards are due.
-- Four tiles: **Remembered**, **Study time**, **Days studied** with your streak, and **Solid cards**.
+- **Review N due** beside the filters when cards are due (below the charts on a phone).
+- Four tiles: **Remembered**, **Study time**, **Days studied** with your streak, and **Solid cards**, whose (i) says what solid means.
 - **Reviews and recall**, a chart of reviews per day, week, or month (remembered and forgotten), which can switch to **Minutes** or **New cards** and to a table; and **Coming up**, the cards due each day for the next two weeks.
 - **Needs attention**, your tags ordered with the weakest first, each with **Practice N** for its due cards; and **Card strength**, which sorts cards into **Solid**, **Getting there**, **Learning**, and **New**.
 - **By subject**, a table of each subject's card strength, recall, and cards due today, when you are looking at all subjects.
 - **Activity** for the last six months, with your current and longest streak and busiest day of the week.
 - **Question types**, **Recent sessions**, and **Every answer**, whose **Open review log** lists each answer with its rating, time taken, and date.
 
-**Remembered** counts every review you got right: a checked question's verdict, or any rating above Wrong. Its tile also shows your recall on **due reviews**, leaving out new cards, learning steps, and early extra study, beside your desired retention goal; that is the number to compare with the goal. A card is **Solid** when it is expected to stay remembered for about three weeks or more. A tag needs attention when its due reviews fall at least 10 points below your desired retention, once it has at least 10 due reviews in the chosen range; a subject shows **Building data** until it has due reviews to measure.
+**Remembered** counts every review you got right: a checked question's verdict, or any rating above Wrong. A card is **Solid** when it is expected to stay remembered for about three weeks or more. A tag needs attention when its due reviews fall at least 10 points below your desired retention, once it has at least 10 due reviews in the chosen range; a subject shows **Building data** until it has due reviews to measure.
 
 Basic and Fill in the blank ratings are **self-ratings**. Interactive questions also have a **first-check accuracy** (correct, incorrect, or incomplete), and **Question types** keeps the two apart rather than blending them into one accuracy figure. It also counts **Recorded hints**, **Overrides**, and **Retries** separately: a correct answer after a hint, a changed rating, and a retry after feedback are different evidence. Image occlusion is self-rated and is never counted as objectively correct.
 

@@ -1,7 +1,8 @@
 import type { CardStrength, ProgressActivity, ProgressBucket, ProgressOverview } from "../../ipc/progress";
 import { cn } from "../../ui/internal/cn";
+import { HelpTrigger } from "../../ui/help/HelpProvider";
 import { StatGrid, StatTile } from "../../ui/primitives/StatTile";
-import { stabilityText, strengthTotal } from "./StrengthPanel";
+import { strengthTotal } from "./StrengthPanel";
 import { daysBetween, formatPercent, formatStudyTime, plural, pointsDelta } from "./progressFormat";
 
 /** A line through each period's remembered rate; periods without reviews leave a gap. */
@@ -47,6 +48,18 @@ function DayDots({ studied }: { studied: boolean[] }) {
   );
 }
 
+/** The range as the Study time tile names it: "this month", "all time". */
+function rangeWords(overview: ProgressOverview): string {
+  switch (overview.scope.range) {
+    case "7d": return "this week";
+    case "30d": return "this month";
+    case "90d": return "last 90 days";
+    case "1y": return "this year";
+    case "all": return "all time";
+    default: return "these dates";
+  }
+}
+
 interface SummaryTilesProps {
   overview: ProgressOverview | null;
   strength: CardStrength | null;
@@ -60,9 +73,7 @@ export function SummaryTiles({ overview, strength, activity, loading }: SummaryT
   const timeline = overview?.timeline ?? [];
   const daily = timeline.length > 0 && timeline.every((bucket) => bucket.startLocalDate === bucket.endLocalDate);
   const rangeDays = overview?.scope.startLocalDate ? daysBetween(overview.scope.startLocalDate, overview.scope.endLocalDate) + 1 : null;
-  const perDay = summary && overview && overview.studyDayCount > 0 ? summary.studyTimeMs / overview.studyDayCount : 0;
   const streak = activity?.currentStreak?.length ?? 0;
-  const longest = activity?.longestStreak?.length ?? 0;
   const total = strength ? strengthTotal(strength) : 0;
   const pending = "…";
   return (
@@ -72,29 +83,28 @@ export function SummaryTiles({ overview, strength, activity, loading }: SummaryT
         label="Remembered"
         value={summary ? formatPercent(summary.correctRate) : pending}
         delta={summary ? pointsDelta(summary.correctRate, overview?.previousSummary?.reviewCount ? overview.previousSummary.correctRate : null) : undefined}
-        hint={summary ? (summary.reviewCount === 0 ? "No reviews yet"
-          : `${summary.rememberedCount.toLocaleString()} of ${plural(summary.reviewCount, "review")}${summary.trueRetention !== null && overview ? ` · due reviews ${formatPercent(summary.trueRetention)}, goal ${formatPercent(overview.desiredRetention)}` : ""}`) : undefined}
+        hint={summary && summary.reviewCount > 0 ? `${summary.rememberedCount.toLocaleString()} of ${plural(summary.reviewCount, "review")}` : undefined}
       >
         {timeline.length > 1 ? <Sparkline timeline={timeline} /> : null}
       </StatTile>
       <StatTile
         label="Study time"
         value={summary ? formatStudyTime(summary.studyTimeMs) : pending}
-        hint={summary && perDay >= 60_000 ? `About ${formatStudyTime(perDay)} on a study day` : summary && perDay > 0 ? "Under a minute on a study day" : summary ? "Time spent answering" : undefined}
+        hint={overview ? rangeWords(overview) : undefined}
       >
         {timeline.length > 1 ? <MiniBars values={timeline.map((bucket) => bucket.studyTimeMs)} /> : null}
       </StatTile>
       <StatTile
         label="Days studied"
         value={overview ? <>{overview.studyDayCount}{rangeDays !== null ? <span className="tw:text-body tw:font-normal tw:text-muted-foreground"> of {rangeDays}</span> : null}</> : pending}
-        hint={activity ? (streak > 0 ? `${streak}-day streak · your longest is ${longest}` : longest > 0 ? `Your longest streak is ${plural(longest, "day")}` : "Start a streak today") : undefined}
+        hint={streak > 0 ? `${streak}-day streak` : undefined}
       >
         {daily ? <DayDots studied={timeline.slice(-15).map((bucket) => bucket.reviewCount > 0)} /> : null}
       </StatTile>
       <StatTile
         label="Solid cards"
-        value={strength ? strength.solidCount.toLocaleString() : pending}
-        hint={strength ? `Of ${total.toLocaleString()}, likely to stick for ${stabilityText(strength.solidStabilityDays)} or more` : undefined}
+        labelAction={<HelpTrigger topicId="progress.solidCards" label="What solid means" />}
+        value={strength ? <>{strength.solidCount.toLocaleString()}<span className="tw:text-body tw:font-normal tw:text-muted-foreground"> of {total.toLocaleString()}</span></> : pending}
       />
     </StatGrid>
     </section>
