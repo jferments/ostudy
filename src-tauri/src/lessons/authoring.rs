@@ -1,6 +1,7 @@
 //! Writing lessons and their revisions.
 //!
-//! A course written with AI is saved whole by `create_generated_course`. The
+//! A course written with AI is saved whole by `create_generated_course`, and
+//! a lesson written again from its sources is its next revision. The
 //! hand-written writers serve the tests and the fixture lesson until lessons
 //! can be edited in the app.
 
@@ -12,10 +13,8 @@ use sha2::{Digest, Sha256};
 
 use super::{
     content::{canonical_json, LessonContent, ValidatedLesson},
-    require_subject,
+    require_lesson, require_subject, summary, LessonSummaryDto,
 };
-#[cfg(test)]
-use super::{require_lesson, summary, LessonSummaryDto};
 use crate::{error::CommandError, util::generate_id};
 
 /// A course holds at most this many lessons.
@@ -158,12 +157,41 @@ pub(crate) fn add_authored_revision(
     content: LessonContent,
     now: i64,
 ) -> Result<LessonSummaryDto, CommandError> {
+    add_revision(connection, lesson_id, content, Origin::Authored, now)
+}
+
+/// Adds a lesson written again from its sources as its next revision. The
+/// lesson keeps its place in the course; progress made in an earlier
+/// revision stays with that revision.
+pub(crate) fn add_generated_revision(
+    connection: &mut Connection,
+    lesson_id: &str,
+    content: LessonContent,
+    provenance: &Value,
+    now: i64,
+) -> Result<LessonSummaryDto, CommandError> {
+    add_revision(
+        connection,
+        lesson_id,
+        content,
+        Origin::Generated(provenance),
+        now,
+    )
+}
+
+fn add_revision(
+    connection: &mut Connection,
+    lesson_id: &str,
+    content: LessonContent,
+    origin: Origin<'_>,
+    now: i64,
+) -> Result<LessonSummaryDto, CommandError> {
     let validated = ValidatedLesson::validate(content)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     require_lesson(&transaction, lesson_id)?;
-    if write_revision(&transaction, lesson_id, &validated, Origin::Authored, now)? {
+    if write_revision(&transaction, lesson_id, &validated, origin, now)? {
         let created_at: i64 = transaction
             .query_row(
                 "SELECT created_at FROM lessons WHERE id = ?1",

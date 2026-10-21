@@ -315,6 +315,7 @@ export interface NativeCommandGatewayMap {
   "update_deck_folder": readonly [typeof GatewayModule8.updateDeckFolder];
   "update_device_sync_name": readonly [typeof GatewayModule10.updateDeviceSyncName];
   "update_document_collection": readonly [typeof GatewayModule7.updateDocumentCollection];
+  "update_lesson_from_sources": readonly [typeof GatewayModule23.updateLessonFromSources];
   "update_tutor_project": readonly [typeof GatewayModule41.updateTutorProject];
   "wait_for_openrouter_sign_in": readonly [typeof GatewayModule0.waitForOpenRouterSignIn];
   "write_lesson_lecture_script": readonly [typeof GatewayModule23.writeLessonLectureScript];

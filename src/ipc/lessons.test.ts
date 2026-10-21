@@ -15,6 +15,7 @@ import {
   answerLectureQuestion,
   narrateLecturePart,
   saveLessonProgress,
+  updateLessonFromSources,
   writeSubjectCourse,
 } from "./lessons";
 
@@ -85,6 +86,14 @@ describe("lesson IPC", () => {
     await answerLessonCheck(lessonId, 1, "step-2", optionId);
     expect(invoke).toHaveBeenCalledWith("answer_lesson_check", {
       input: { lessonId, revisionNumber: 1, stepKey: "step-2", optionId },
+    });
+  });
+
+  it("writes one lesson again from its sources", async () => {
+    const operationId = "d".repeat(32);
+    await updateLessonFromSources(lessonId, operationId);
+    expect(invoke).toHaveBeenLastCalledWith("update_lesson_from_sources", {
+      input: { lessonId, operationId },
     });
   });
 

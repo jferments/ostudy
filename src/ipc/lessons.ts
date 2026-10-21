@@ -233,6 +233,20 @@ export async function answerLessonCheck(
 }
 
 /**
+ * Writes a lesson written with AI again from the part of the subject it
+ * teaches, as its sources are now, and keeps it as the lesson's next
+ * revision. Returns the subject's lessons.
+ */
+export async function updateLessonFromSources(
+  lessonId: string,
+  operationId: string = createOperationId(),
+): Promise<SubjectLessons> {
+  return invoke<SubjectLessons>("update_lesson_from_sources", {
+    input: { lessonId, operationId },
+  });
+}
+
+/**
  * Writes the subject's course with the default document model: one lesson for
  * each top-level topic of its documents' learning plans, saved together when
  * every one is written. A subject that already has lessons, or a document

@@ -14,6 +14,7 @@ vi.mock("../../ipc/lessons", () => ({
   writeSubjectCourse: vi.fn(),
   cancelSubjectCourseWriting: vi.fn(),
   getSubjectCourseWritingProgress: vi.fn(),
+  updateLessonFromSources: vi.fn(),
 }));
 
 const EMPTY: lessonsIpc.SubjectLessons = { subjectId: "cardiac", lessons: [] };
@@ -57,6 +58,25 @@ describe("useSubjectCourse", () => {
     await act(async () => run.resolve(WRITTEN));
     await waitFor(() => expect(second.result.current.writing).toBe(false));
     expect(second.result.current.course).toEqual(WRITTEN);
+  });
+
+  it("writes one lesson again and shows the course it returns, or why it failed", async () => {
+    const run = deferred<lessonsIpc.SubjectLessons>();
+    vi.mocked(lessonsIpc.updateLessonFromSources).mockReturnValueOnce(run.promise);
+    const { result } = renderHook(() => useSubjectCourse("cardiac"));
+    await waitFor(() => expect(result.current.course).toEqual(EMPTY));
+    act(() => result.current.update("lesson-1"));
+    expect(result.current.updating).toBe("lesson-1");
+    expect(lessonsIpc.updateLessonFromSources).toHaveBeenCalledWith("lesson-1");
+    await act(async () => run.resolve(WRITTEN));
+    await waitFor(() => expect(result.current.updating).toBeNull());
+    expect(result.current.course).toEqual(WRITTEN);
+
+    vi.mocked(lessonsIpc.updateLessonFromSources).mockRejectedValueOnce(new Error("Part gone"));
+    act(() => result.current.update("lesson-1"));
+    await waitFor(() => expect(result.current.updateError).toBe("Part gone"));
+    expect(result.current.updating).toBeNull();
+    expect(result.current.course).toEqual(WRITTEN);
   });
 
   it("treats a canceled run as stopped, not failed", async () => {

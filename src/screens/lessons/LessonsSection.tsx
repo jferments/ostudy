@@ -56,6 +56,9 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
           </Button>
         </InlineNotice>
       ) : null}
+      {course.updateError ? (
+        <InlineNotice kind="error">The lesson was not updated: {course.updateError}</InlineNotice>
+      ) : null}
       {course.writing ? (
         <Card as="div" role="status" className="tw:gap-3 tw:p-5 tw:compact:p-4">
           <div className="tw:flex tw:items-center tw:gap-3">
@@ -81,14 +84,29 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
                   data-testid="subject-lesson"
                   className="tw:border-0 tw:border-b tw:border-solid tw:border-border tw:last:border-b-0"
                 >
-                  <ItemTrigger
-                    onClick={() => onOpenLesson(lesson.id)}
-                    className="tw:w-full tw:items-center tw:gap-3 tw:px-5 tw:py-3 tw:text-start tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:px-4"
-                  >
-                    <LessonNumber index={index} finished={Boolean(lesson.progress?.finishedAt)} />
-                    <span className="tw:min-w-0 tw:flex-1 tw:font-medium tw:text-body tw:break-words">{lesson.title}</span>
-                    <span className="tw:shrink-0 tw:text-label tw:text-muted-foreground">{lessonState(lesson)}</span>
-                  </ItemTrigger>
+                  <div className="tw:flex tw:items-center">
+                    <ItemTrigger
+                      onClick={() => onOpenLesson(lesson.id)}
+                      className="tw:min-w-0 tw:flex-1 tw:items-center tw:gap-3 tw:px-5 tw:py-3 tw:text-start tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:px-4"
+                    >
+                      <LessonNumber index={index} finished={Boolean(lesson.progress?.finishedAt)} />
+                      <span className="tw:min-w-0 tw:flex-1 tw:font-medium tw:text-body tw:break-words">{lesson.title}</span>
+                      <span className="tw:shrink-0 tw:text-label tw:text-muted-foreground">
+                        {course.updating === lesson.id ? "Updating…" : lessonState(lesson)}
+                      </span>
+                    </ItemTrigger>
+                    {outdated(lesson) ? (
+                      <Button
+                        size="small"
+                        className="tw:me-4 tw:shrink-0 tw:rounded-full"
+                        aria-label={`Update ${lesson.title} from its sources`}
+                        disabled={course.updating !== null || course.writing}
+                        onClick={() => course.update(lesson.id)}
+                      >
+                        <Icon name="sparkles" size={14} /> Update
+                      </Button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ol>
@@ -164,10 +182,16 @@ function minutes(lesson: LessonSummary): string {
   return `${Math.max(1, value)} min`;
 }
 
+/** A lesson written with AI whose sources changed or went since it was written. */
+function outdated(lesson: LessonSummary): boolean {
+  return lesson.written?.origin === "generated" && lesson.written.sources !== "current";
+}
+
 function lessonState(lesson: LessonSummary): string {
   if (lesson.progress?.finishedAt) return "Done";
   if (lesson.progress && lesson.progress.revisionNumber === lesson.written?.revisionNumber) return "In progress";
   if (lesson.written?.sources === "changed") return `Source changed · ${minutes(lesson)}`;
+  if (lesson.written?.sources === "unavailable") return `Source removed · ${minutes(lesson)}`;
   return minutes(lesson);
 }
 
