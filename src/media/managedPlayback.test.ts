@@ -10,6 +10,8 @@ vi.mock("../ipc/assets", () => ({
 
 import {
   createManagedMediaObjectUrl,
+  MP3_DECODER_MISSING,
+  playbackErrorMessage,
   playbackMimeType,
   revokeManagedMediaObjectUrl,
 } from "./managedPlayback";
@@ -108,5 +110,27 @@ describe("managed media playback materialization", () => {
     revokeManagedMediaObjectUrl(null);
     expect(revokeObjectUrl).toHaveBeenCalledTimes(1);
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:released");
+  });
+});
+
+describe("audio playback failures", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("names the missing MP3 decoder when the media player cannot play MP3", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("");
+    const failure = new DOMException("The operation is not supported.", "NotSupportedError");
+    expect(playbackErrorMessage(failure)).toBe(MP3_DECODER_MISSING);
+  });
+
+  it("keeps the player's own message when MP3 can play or the failure is another", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "canPlayType").mockReturnValue("maybe");
+    expect(playbackErrorMessage(new DOMException("The operation is not supported.", "NotSupportedError"))).toBe(
+      "The operation is not supported.",
+    );
+    vi.mocked(HTMLMediaElement.prototype.canPlayType).mockReturnValue("");
+    expect(playbackErrorMessage(new DOMException("Playback was blocked.", "NotAllowedError"))).toBe(
+      "Playback was blocked.",
+    );
+    expect(playbackErrorMessage(new Error("No voice is set up."))).toBe("No voice is set up.");
   });
 });

@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
 import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
@@ -11,6 +11,8 @@ import { Panel } from "../../ui/primitives/Panel";
 import { useHomeLessons } from "../home/HomeStudyPanels";
 import { LessonPlayer } from "../lessons/LessonPlayer";
 import { LessonsSection } from "../lessons/LessonsSection";
+import { PodcastPlayer } from "../lessons/PodcastPlayer";
+import { PodcastsSection } from "../lessons/PodcastsSection";
 import { useSubjectCourse } from "../lessons/useSubjectCourse";
 import { useLibraryFullPage } from "./LibraryFrame";
 import { lessonMeta } from "./LibraryOverview";
@@ -66,12 +68,15 @@ function SubjectLessons({
 }) {
   const course = useSubjectCourse(subjectId);
   const headingId = useId();
+  const podcastsHeadingId = useId();
+  const [openPodcastId, setOpenPodcastId] = useState<string | null>(null);
   const tile = subjects.current;
   const written = course.course?.lessons.filter((lesson) => lesson.written !== null) ?? [];
   const openIndex = written.findIndex((lesson) => lesson.id === openLessonId);
   const playing = openLessonId !== null && tile !== null && openIndex >= 0;
-  // A playing lesson is a page of its own; closing it returns to the course.
-  useLibraryFullPage(playing);
+  const listening = openPodcastId !== null && tile !== null && !playing;
+  // A playing lesson or podcast is a page of its own; closing it returns to the course.
+  useLibraryFullPage(playing || listening);
 
   if (playing && tile && openLessonId) {
     return (
@@ -90,12 +95,25 @@ function SubjectLessons({
       </PageScaffold>
     );
   }
+  if (listening && tile && openPodcastId) {
+    return (
+      <PageScaffold width="workspace" aria-label={`${tile.name} podcast`}>
+        <PodcastPlayer podcastId={openPodcastId} subjectName={tile.name} onClose={() => setOpenPodcastId(null)} />
+      </PageScaffold>
+    );
+  }
   if (course.loading && !course.course) return <LoadingState label="Loading lessons…" />;
   const hasSources = (tile?.summary.sourceCount ?? 0) > 0;
   if (!hasSources && written.length === 0) return <EmptyState icon="book" title="No lessons yet" />;
   return (
-    <div data-testid="library-lessons" className="tw:max-w-3xl">
+    <div data-testid="library-lessons" className="tw:flex tw:max-w-3xl tw:flex-col tw:gap-8">
       <LessonsSection headingId={headingId} course={course} hasSources={hasSources} onOpenLesson={onOpenLesson} />
+      <PodcastsSection
+        headingId={podcastsHeadingId}
+        subjectId={subjectId}
+        lessons={written}
+        onOpenPodcast={setOpenPodcastId}
+      />
     </div>
   );
 }
