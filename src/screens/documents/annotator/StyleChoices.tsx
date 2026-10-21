@@ -158,8 +158,10 @@ function LineSample({ dash, bothEnds = false, oneEnd = false }: { dash?: string;
 }
 
 /** A shape's line style; an arrow's heads; a box's or ellipse's fill and border. */
-export function ShapeLookChoices({ style, onStyle, layout }: {
+export function ShapeLookChoices({ style, onStyle, layout, divider = null }: {
   style: ActiveStyle; onStyle: (patch: StylePatch) => void; layout: "row" | "sheet";
+  /** Drawn before each group of choices in a row. */
+  divider?: ReactNode;
 }) {
   const shape = style.shape;
   if (!shape) return null;
@@ -172,7 +174,7 @@ export function ShapeLookChoices({ style, onStyle, layout }: {
       <p className="tw:m-0 tw:text-label tw:font-medium tw:text-muted-foreground">{title}</p>
       {children}
     </div>
-  ) : children;
+  ) : <>{divider}{children}</>;
   return (
     <>
       {section("Line", (
