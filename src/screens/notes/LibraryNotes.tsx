@@ -26,6 +26,7 @@ import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { TextField } from "../../ui/primitives/TextField";
 import { useLibrarySubjects, type LibrarySubjects } from "../library/LibrarySubjects";
+import { LabeledChoice } from "./LabeledChoice";
 import { NotebookEditor, type NotebookLinkActions } from "./NotebookEditor";
 import { NotebookThumbnail, PAPER_LABELS } from "./paper";
 
@@ -320,14 +321,18 @@ function NewNotebookDialog({ subjects, defaultSubjectId, onClose, onCreated }: {
     >
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       <FormField label="Name" required>
-        <TextField value={title} maxLength={MAX_TITLE_CHARS} autoFocus placeholder="Cardiac cycle"
+        <TextField value={title} maxLength={MAX_TITLE_CHARS} autoFocus
           onChange={(event) => setTitle(event.target.value)} />
       </FormField>
       <FormField label="Subject">
         <SubjectSelect subjects={subjects} value={subjectId} onChange={setSubjectId} />
       </FormField>
-      <SegmentedControl label="Paper" value={paper} options={PAPER_OPTIONS} onChange={setPaper} />
-      <SegmentedControl label="Page size" value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={setPageSize} />
+      <LabeledChoice label="Paper">
+        <SegmentedControl label="Paper" value={paper} options={PAPER_OPTIONS} onChange={setPaper} />
+      </LabeledChoice>
+      <LabeledChoice label="Page size">
+        <SegmentedControl label="Page size" value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={setPageSize} />
+      </LabeledChoice>
       <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
         Wide pages lie on their side, with room for mind maps and diagrams.
       </p>

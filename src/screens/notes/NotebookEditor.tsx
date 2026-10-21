@@ -60,7 +60,7 @@ interface NotebookEditorProps extends NotebookLinkActions {
   showToast: ShowToast;
 }
 
-const LINK_WIDTH = 260;
+const MAX_LINK_WIDTH = 320;
 
 /**
  * A notebook open for writing: the PDF annotator's tools on pages of paper,
@@ -315,8 +315,9 @@ function ReadyNotebook({
     const pageElement = contentRef.current?.querySelector<HTMLElement>(`[data-annotator-page="${pageNumber}"]`);
     if (!page || !element || !pageElement) return;
     const visibleTop = (element.getBoundingClientRect().top - pageElement.getBoundingClientRect().top) / viewport.scale;
-    const width = Math.min(LINK_WIDTH, page.width - 48);
     const fontSize = controller.styles.text.size;
+    // About as wide as the label, so the selection hugs it.
+    const width = Math.round(Math.min(MAX_LINK_WIDTH, page.width - 96, label.length * fontSize * 0.6 + fontSize * 3));
     const shape: TextShape = {
       kind: "text",
       x: 48,
@@ -415,7 +416,7 @@ function ReadyNotebook({
         <span className="tw:ms-auto tw:text-label tw:whitespace-nowrap tw:text-muted-foreground" role="status">
           {`Page ${current} of ${pageCount}`}
         </span>
-        <Button size="small" variant="secondary" disabled={busy} onClick={addPage}>
+        <Button size="small" variant="secondary" aria-label="Add page" disabled={busy} onClick={addPage}>
           <Icon name="plus" />
           <span className="tw:compact:hidden">Add page</span>
           <span className="tw:hidden tw:compact:inline">Page</span>

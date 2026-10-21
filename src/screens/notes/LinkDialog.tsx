@@ -13,6 +13,7 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { TextField } from "../../ui/primitives/TextField";
+import { LabeledChoice } from "./LabeledChoice";
 
 type LinkKind = LinkTarget["kind"];
 
@@ -154,7 +155,11 @@ export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogP
       </>}
     >
       {loadError ? <InlineNotice kind="error">{loadError}</InlineNotice> : null}
-      <SegmentedControl label="Link to" value={kind} options={KIND_OPTIONS} onChange={setKind} />
+      <FormField label="Link to">
+        <NativeSelect value={kind} onChange={(event) => setKind(event.target.value as LinkKind)}>
+          {KIND_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </NativeSelect>
+      </FormField>
       {kind === "documentPage" || kind === "studyGuide" ? (
         <FormField label={kind === "documentPage" ? "Document" : "Study guide"}>
           <NativeSelect value={documentId} disabled={!choices} onChange={(event) => setDocumentId(event.target.value)}>
@@ -200,15 +205,17 @@ export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogP
             setLabel(event.target.value);
           }} />
       </FormField>
-      <SegmentedControl
-        label="Show as"
-        value={shownButton ? "button" : "link"}
-        options={[{ value: "link", label: "Link" }, { value: "button", label: "Button" }]}
-        onChange={(value) => {
-          setButtonChosen(true);
-          setButton(value === "button");
-        }}
-      />
+      <LabeledChoice label="Show as">
+        <SegmentedControl
+          label="Show as"
+          value={shownButton ? "button" : "link"}
+          options={[{ value: "link", label: "Link" }, { value: "button", label: "Button" }]}
+          onChange={(value) => {
+            setButtonChosen(true);
+            setButton(value === "button");
+          }}
+        />
+      </LabeledChoice>
     </Dialog>
   );
 }
