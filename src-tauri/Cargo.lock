@@ -4057,7 +4057,6 @@ dependencies = [
  "typst-assets",
  "typst-layout",
  "typst-pdf",
- "typst-svg",
  "url",
  "xberg",
  "zip",

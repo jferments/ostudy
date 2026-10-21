@@ -33,6 +33,19 @@ fn library() -> Database {
     database
 }
 
+/// Managed files for tests that place pictures; marks without pictures never touch them.
+fn test_paths() -> AppPaths {
+    let root = std::env::temp_dir().join(format!(
+        "ostudy-notebook-assets-{}-{}",
+        std::process::id(),
+        std::thread::current()
+            .name()
+            .unwrap_or("main")
+            .replace("::", "-")
+    ));
+    AppPaths::new(root).unwrap()
+}
+
 fn id(seed: char) -> String {
     seed.to_string().repeat(32)
 }
@@ -83,6 +96,7 @@ fn apply(
 ) -> Result<AppliedNotebookItemChangesDto, CommandError> {
     apply_changes(
         connection,
+        &test_paths(),
         ApplyNotebookItemChangesInput {
             notebook_id: notebook.into(),
             changes,
@@ -503,6 +517,134 @@ fn deleting_the_subject_files_notebooks_under_no_subject() {
                     .map_err(CommandError::database)?;
                 assert_eq!(rows, 0, "{table}");
             }
+            Ok(())
+        })
+        .unwrap();
+}
+
+fn picture(item: &str, page: &str, asset: &str, draft: Option<&str>) -> NotebookItemChange {
+    let mut value = json!({
+        "op": "put", "id": item, "pageId": page,
+        "shape": { "kind": "image", "x": 40, "y": 40, "width": 120, "height": 80, "assetId": asset }
+    });
+    if let Some(draft) = draft {
+        value["assetDraftId"] = json!(draft);
+    }
+    change(value)
+}
+
+fn asset_state(connection: &Connection, asset: &str) -> (String, i64) {
+    connection
+        .query_row(
+            "SELECT lifecycle_state,
+                    (SELECT COUNT(*) FROM notebook_item_assets WHERE asset_id = ?1)
+             FROM assets WHERE id = ?1",
+            [asset],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+}
+
+#[test]
+fn a_picture_keeps_its_image_until_the_picture_is_deleted() {
+    let database = library();
+    let paths = test_paths();
+    database
+        .with_connection(|connection| {
+            let notebook = new_notebook(connection, "Cells");
+            let page = page_ids(&notebook)[0].clone();
+            let (draft, asset) =
+                crate::asset_lifecycle::stage_test_image(connection, &paths, "import")?;
+            let item = id('1');
+
+            // A new picture must name the draft its image was added to.
+            let refused = apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![picture(&item, &page, &asset.id, None)],
+                },
+                NOW + 10,
+            );
+            assert_eq!(refused.unwrap_err().code, "asset_draft_mismatch");
+            assert_eq!(asset_state(connection, &asset.id), ("staged".into(), 0));
+
+            apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![picture(&item, &page, &asset.id, Some(&draft.id))],
+                },
+                NOW + 10,
+            )?;
+            assert_eq!(asset_state(connection, &asset.id), ("ready".into(), 1));
+
+            // Moving it later needs no draft, and keeps one record of its image.
+            let mut moved = picture(&item, &page, &asset.id, None);
+            if let NotebookItemChange::Put { shape, .. } = &mut moved {
+                if let AnnotationShape::Image(image) = &mut **shape {
+                    image.x = 60.0;
+                }
+            }
+            apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![moved],
+                },
+                NOW + 20,
+            )?;
+            assert_eq!(asset_state(connection, &asset.id), ("ready".into(), 1));
+
+            let reopened = contents(connection, &notebook.notebook.id)?;
+            assert!(matches!(
+                reopened.items[0].shape,
+                AnnotationShape::Image(ref image) if image.asset_id == asset.id && image.x == 60.0
+            ));
+
+            apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![NotebookItemChange::Delete { id: item.clone() }],
+                },
+                NOW + 30,
+            )?;
+            assert_eq!(asset_state(connection, &asset.id).1, 0);
+            Ok(())
+        })
+        .unwrap();
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}
+
+#[test]
+fn pictures_go_only_on_notebook_pages_and_only_pictures_name_a_draft() {
+    let mut text = serde_json::from_value::<AnnotationShape>(json!({
+        "kind": "image", "x": 1, "y": 1, "width": 10, "height": 10, "assetId": "not an id"
+    }))
+    .unwrap();
+    assert!(text.validate().is_err());
+    text = serde_json::from_value(json!({
+        "kind": "image", "x": 1, "y": 1, "width": 10, "height": 10, "assetId": id('a')
+    }))
+    .unwrap();
+    text.validate().unwrap();
+    assert_eq!(text.image_asset(), Some(id('a').as_str()));
+
+    let database = library();
+    database
+        .with_connection(|connection| {
+            let notebook = new_notebook(connection, "Cells");
+            let page = page_ids(&notebook)[0].clone();
+            let mut with_draft = arrow(&id('2'), &page, 90.0);
+            if let NotebookItemChange::Put { asset_draft_id, .. } = &mut with_draft {
+                *asset_draft_id = Some(id('d'));
+            }
+            assert!(apply(connection, &notebook.notebook.id, vec![with_draft]).is_err());
             Ok(())
         })
         .unwrap();

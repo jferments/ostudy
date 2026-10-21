@@ -1,13 +1,16 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as assetsIpc from "../../ipc/assets";
 import * as decksIpc from "../../ipc/decks";
 import * as documentsIpc from "../../ipc/documents";
 import * as notebooksIpc from "../../ipc/notebooks";
 import * as studyGuidesIpc from "../../ipc/studyGuides";
+import * as files from "../../platform/files";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { NotebookEditor } from "./NotebookEditor";
+import * as pictures from "./pictures";
 
 vi.mock("../../ipc/notebooks", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../ipc/notebooks")>(),
@@ -17,6 +20,13 @@ vi.mock("../../ipc/notebooks", async (importOriginal) => ({
   addNotebookPage: vi.fn(),
   deleteNotebookPage: vi.fn(),
   moveNotebookPage: vi.fn(),
+}));
+vi.mock("../../ipc/assets", () => ({ beginAssetDraft: vi.fn(), cancelAssetDraft: vi.fn(), importImage: vi.fn() }));
+vi.mock("../../platform/assets", () => ({ managedAssetUrl: (id: string) => `blob:managed-${id}` }));
+vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("./pictures", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./pictures")>(),
+  naturalSize: vi.fn(),
 }));
 vi.mock("../../ipc/decks", () => ({ listDecks: vi.fn() }));
 vi.mock("../../ipc/documents", () => ({ listDocuments: vi.fn() }));
@@ -135,6 +145,49 @@ describe("notebook editor", () => {
       op: "put", pageId: "1".repeat(32),
       shape: { kind: "text", text: "Study Heart", link: { target: { kind: "deck", deckId }, button: true } },
     });
+  });
+
+  it("adds a picture that fits the page and keeps its image with the first save", async () => {
+    const draftId = "d".repeat(32);
+    const assetId = "e".repeat(32);
+    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({ id: draftId, purpose: "import", expiresAt: 1 });
+    vi.mocked(files.selectExternalImport).mockResolvedValue({ id: "staged-1", fileName: "heart.png" } as never);
+    vi.mocked(assetsIpc.importImage).mockResolvedValue({
+      id: assetId, originalFilename: "heart.png", mimeType: "image/png", byteSize: 10, createdAt: 1,
+    });
+    vi.mocked(pictures.naturalSize).mockResolvedValue({ width: 1032, height: 516 });
+    await openNotebook();
+    fireEvent.click(screen.getByRole("button", { name: "Add picture" }));
+
+    await waitFor(() => expect(notebooksIpc.applyNotebookItemChanges).toHaveBeenCalledTimes(1));
+    expect(assetsIpc.beginAssetDraft).toHaveBeenCalledWith("import", notebookId);
+    expect(files.selectExternalImport).toHaveBeenCalledWith("image");
+    expect(assetsIpc.importImage).toHaveBeenCalledWith("staged-1", draftId);
+    // As wide as the page's margins allow, keeping its shape, and centered.
+    expect(savedChanges()[0]).toMatchObject({
+      op: "put", pageId: "1".repeat(32), assetDraftId: draftId,
+      shape: { kind: "image", x: 48, y: 48, width: 516, height: 258, assetId },
+    });
+    expect(document.querySelector(`image[href*='${assetId}']`)).not.toBeNull();
+
+    // Once saved, the picture no longer names the draft.
+    fireEvent.keyDown(screen.getByRole("group", { name: "Pages of Cardiac cycle" }), { key: "ArrowRight" });
+    await waitFor(() => expect(notebooksIpc.applyNotebookItemChanges).toHaveBeenCalledTimes(2));
+    expect(savedChanges(1)[0]).toMatchObject({ op: "put", shape: { kind: "image", assetId } });
+    expect(savedChanges(1)[0]).not.toHaveProperty("assetDraftId");
+  });
+
+  it("drops the picture's draft when no image is chosen", async () => {
+    const draftId = "d".repeat(32);
+    vi.mocked(assetsIpc.beginAssetDraft).mockResolvedValue({ id: draftId, purpose: "import", expiresAt: 1 });
+    vi.mocked(assetsIpc.cancelAssetDraft).mockResolvedValue(undefined);
+    vi.mocked(files.selectExternalImport).mockResolvedValue(null);
+    await openNotebook();
+    fireEvent.click(screen.getByRole("button", { name: "Add picture" }));
+
+    await waitFor(() => expect(assetsIpc.cancelAssetDraft).toHaveBeenCalledWith(draftId));
+    expect(assetsIpc.importImage).not.toHaveBeenCalled();
+    expect(notebooksIpc.applyNotebookItemChanges).not.toHaveBeenCalled();
   });
 
   it("keeps a link whose target is gone, struck through, and opens nothing", async () => {

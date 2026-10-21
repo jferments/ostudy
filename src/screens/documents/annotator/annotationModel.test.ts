@@ -367,4 +367,15 @@ describe("curves and groups", () => {
     expect(withGroup(marks[0]!.shape, null)).toEqual(curve);
     expect(isStorable({ ...curve, group: "nope" })).toBe(false);
   });
+
+  it("resizes a picture keeping its shape unless Shift is held, and stores only a named image", () => {
+    const picture = { kind: "image" as const, x: 100, y: 100, width: 200, height: 100, assetId: "e".repeat(32) };
+    expect(resizeShape(picture, "se", { x: 500, y: 150 }, false, page)).toMatchObject({ x: 100, y: 100, width: 400, height: 200 });
+    expect(resizeShape(picture, "nw", { x: 200, y: 160 }, false, page)).toMatchObject({ x: 200, y: 150, width: 100, height: 50 });
+    expect(resizeShape(picture, "se", { x: 500, y: 150 }, true, page)).toMatchObject({ width: 400, height: 50 });
+    expect(shapeBounds(picture, 0)).toMatchObject({ left: 100, top: 100, bottom: 200 });
+    expect(isStorable(picture)).toBe(true);
+    expect(isStorable({ ...picture, assetId: "not an id" })).toBe(false);
+    expect(isStorable({ ...picture, width: 0 })).toBe(false);
+  });
 });

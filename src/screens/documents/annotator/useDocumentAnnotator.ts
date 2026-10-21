@@ -319,8 +319,10 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setStyles((current) => ({ ...current, [family]: { ...current[family], ...patch } }));
   }, [commit, selected, tool]);
 
+  const selectedStyle = selected ? shapeStyle(selected.shape) : null;
   const activeStyle: ActiveStyle | null = selected
-    ? { family: styleFamilyForShape(selected.shape), style: shapeStyle(selected.shape), shape: shapeToolFor(selected.shape) }
+    // A picture has no color or size to choose.
+    ? selectedStyle && { family: styleFamilyForShape(selected.shape), style: selectedStyle, shape: shapeToolFor(selected.shape) }
     : (() => {
       const family = styleFamilyForTool(tool);
       return family ? { family, style: styles[family], shape: isShapeTool(tool) ? tool : null } : null;

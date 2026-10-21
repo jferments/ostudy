@@ -141,7 +141,6 @@ export interface NativeCommandGatewayMap {
   "get_document_page_text": readonly [typeof GatewayModule12.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule39.getDocumentStudyGuide];
   "get_document_study_guide_reading": readonly [typeof GatewayModule38.getStudyGuideReading];
-  "get_document_study_guide_section_page": readonly [typeof GatewayModule39.getDocumentStudyGuideSectionPage];
   "get_document_topic_card_ids": readonly [typeof GatewayModule39.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule39.getDocumentTopicCardProjection];
   "get_embedding_options": readonly [typeof GatewayModule17.getEmbeddingOptions];
@@ -152,7 +151,6 @@ export interface NativeCommandGatewayMap {
   "get_lesson": readonly [typeof GatewayModule24.getLesson];
   "get_lesson_lecture": readonly [typeof GatewayModule24.getLessonLecture];
   "get_lesson_lecture_script": readonly [typeof GatewayModule24.getLessonLectureScript];
-  "get_lesson_slide_designs": readonly [typeof GatewayModule24.getLessonSlideDesigns];
   "get_library_session": readonly [typeof GatewayModule25.getLibrarySession];
   "get_note_source_citation": readonly [typeof GatewayModule15.getNoteSourceCitation];
   "get_notebook": readonly [typeof GatewayModule26.getNotebook];
