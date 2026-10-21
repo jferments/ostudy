@@ -243,3 +243,78 @@ fn section_insert_failure_rolls_back_the_editorial_and_prior_active_transition()
         })
         .unwrap();
 }
+
+/// The learning plan with both topics joined under the first, as section
+/// planning builds it.
+fn joined(plan: &DocumentLearningPlan) -> DocumentLearningPlan {
+    let mut first = plan.topics[0].clone();
+    first.title = "Feedback in both systems".into();
+    first.source_locator = SourceLocator::new(SourceUnitKind::Page, vec![1, 2], None).unwrap();
+    DocumentLearningPlan {
+        topics: vec![first],
+        ..plan.clone()
+    }
+}
+
+#[test]
+fn a_section_may_cover_several_topics_under_its_first() {
+    let (database, document_id, plan) = fixture();
+    let guide_plan = joined(&plan);
+    let topics = vec![StudyGuideTopicHeading {
+        topic_id: plan.topics[0].id.clone(),
+        title: "Feedback in both systems".into(),
+    }];
+    let organization = StudyGuideEditorial {
+        title: "Systems".into(),
+        chapters: vec![StudyGuideChapter {
+            id: chapter_id(&topics),
+            title: "Feedback".into(),
+            introduction: "How feedback keeps both systems steady.".into(),
+            topics,
+        }],
+    };
+    let guide = publish_document_study_guide_sections(
+        &database,
+        &document_id,
+        &guide_plan,
+        None,
+        overview(),
+        drafts(&guide_plan),
+        Some(organization),
+    )
+    .unwrap();
+    assert_eq!(guide.sections.len(), 1);
+    let reloaded = load_document_study_guide(&database, &guide.id).unwrap();
+    assert_eq!(reloaded.sections.len(), 1);
+    assert_eq!(reloaded.sections[0].topic_id, plan.topics[0].id);
+    assert_eq!(reloaded.sections[0].title, "Feedback in both systems");
+    assert_eq!(reloaded.sections[0].source_locator.unit_numbers, [1, 2]);
+}
+
+#[test]
+fn sections_must_start_at_the_first_topic_and_keep_plan_order() {
+    let (database, document_id, plan) = fixture();
+    let later_only = DocumentLearningPlan {
+        topics: vec![plan.topics[1].clone()],
+        ..plan.clone()
+    };
+    let reversed = DocumentLearningPlan {
+        topics: plan.topics.iter().rev().cloned().collect(),
+        ..plan.clone()
+    };
+    let mut foreign = plan.clone();
+    foreign.topics[1].id = "9".repeat(32);
+    for guide_plan in [later_only, reversed, foreign] {
+        let error = publish_document_study_guide_sections(
+            &database,
+            &document_id,
+            &guide_plan,
+            None,
+            overview(),
+            drafts(&guide_plan),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "document_study_guide_invalid");
+    }
+}
