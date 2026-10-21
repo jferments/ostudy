@@ -21,9 +21,11 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
+    asset_lifecycle::{finalize_assets_for_owner, DraftFinalization},
     database::Database,
     document_annotations::{AnnotationShape, LinkTarget, TextNote},
     error::CommandError,
+    paths::AppPaths,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -239,11 +241,15 @@ pub struct ApplyNotebookItemChangesInput {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
 pub enum NotebookItemChange {
+    /// A new picture names the image draft its asset was imported into, until
+    /// a save has kept the picture; later puts of it leave the draft out.
     #[serde(rename_all = "camelCase")]
     Put {
         id: String,
         page_id: String,
         shape: AnnotationShape,
+        #[serde(default)]
+        asset_draft_id: Option<String>,
     },
     Delete {
         id: String,
@@ -340,10 +346,11 @@ pub fn move_notebook_page(
 #[tauri::command]
 pub fn apply_notebook_item_changes(
     database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
     input: ApplyNotebookItemChangesInput,
 ) -> Result<AppliedNotebookItemChangesDto, CommandError> {
     let now = unix_time_millis()?;
-    database.with_connection(|connection| apply_changes(connection, input, now))
+    database.with_connection(|connection| apply_changes(connection, paths.inner(), input, now))
 }
 
 pub(crate) fn list(connection: &Connection) -> Result<Vec<NotebookSummaryDto>, CommandError> {
@@ -618,6 +625,7 @@ fn move_page(
 
 pub(crate) fn apply_changes(
     connection: &mut Connection,
+    paths: &AppPaths,
     input: ApplyNotebookItemChangesInput,
     now: i64,
 ) -> Result<AppliedNotebookItemChangesDto, CommandError> {
@@ -633,9 +641,18 @@ pub(crate) fn apply_changes(
         if !ids.insert(change.id()) {
             return Err(invalid("A request changes the same mark twice."));
         }
-        if let NotebookItemChange::Put { page_id, shape, .. } = change {
+        if let NotebookItemChange::Put {
+            page_id,
+            shape,
+            asset_draft_id,
+            ..
+        } = change
+        {
             validate_entity_id(page_id, "page")?;
             shape.validate()?;
+            if asset_draft_id.is_some() && shape.image_asset().is_none() {
+                return Err(invalid("Only a picture names an image draft."));
+            }
             if matches!(shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
                 return Err(invalid("A notebook page has no text to highlight."));
             }
@@ -664,13 +681,29 @@ pub(crate) fn apply_changes(
     let mut next_created_at = latest_created_at.map_or(now, |latest| now.max(latest + 1));
     let mut items = Vec::new();
     let mut deleted_ids = Vec::new();
+    let mut finalizations = Vec::new();
     for change in input.changes {
         match change {
-            NotebookItemChange::Put { id, page_id, shape } => {
+            NotebookItemChange::Put {
+                id,
+                page_id,
+                shape,
+                asset_draft_id,
+            } => {
                 if !pages.contains(&page_id) {
                     return Err(page_missing());
                 }
-                items.push(put_item(
+                if let Some(asset_id) = shape.image_asset() {
+                    finalizations.push(keep_image(
+                        &transaction,
+                        paths,
+                        &input.notebook_id,
+                        asset_id,
+                        asset_draft_id.as_deref(),
+                    )?);
+                }
+                let image_asset = shape.image_asset().map(str::to_string);
+                let item = put_item(
                     &transaction,
                     &input.notebook_id,
                     id,
@@ -678,7 +711,9 @@ pub(crate) fn apply_changes(
                     shape,
                     now,
                     &mut next_created_at,
-                )?);
+                )?;
+                record_image(&transaction, &item.id, image_asset.as_deref())?;
+                items.push(item);
             }
             NotebookItemChange::Delete { id } => {
                 delete_item(&transaction, &input.notebook_id, &id)?;
@@ -705,7 +740,73 @@ pub(crate) fn apply_changes(
     }
     touch(&transaction, &notebook, now)?;
     transaction.commit().map_err(CommandError::database)?;
+    for finalization in finalizations {
+        finalization.cleanup();
+    }
     Ok(AppliedNotebookItemChangesDto { items, deleted_ids })
+}
+
+/// Makes a picture's asset durable for the notebook: a newly imported one is
+/// promoted from its draft; one a save already kept needs nothing more. The
+/// editor opens one "import" draft per picture it adds (the drafts ledger
+/// names only card, template and import drafts), so committing it never
+/// retires another picture still waiting to be saved.
+fn keep_image(
+    transaction: &rusqlite::Transaction<'_>,
+    paths: &AppPaths,
+    notebook_id: &str,
+    asset_id: &str,
+    draft_id: Option<&str>,
+) -> Result<DraftFinalization, CommandError> {
+    let state: Option<String> = transaction
+        .query_row(
+            "SELECT lifecycle_state FROM assets WHERE id = ?1",
+            [asset_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let draft_id = if state.as_deref() == Some("staged") {
+        Some(draft_id.ok_or_else(|| {
+            CommandError::new(
+                "asset_draft_mismatch",
+                "A new picture names the image draft it was added to.",
+            )
+        })?)
+    } else {
+        None
+    };
+    finalize_assets_for_owner(
+        transaction,
+        paths,
+        &[asset_id.to_string()],
+        draft_id,
+        Some(notebook_id),
+    )
+}
+
+/// Records which asset a picture uses, so the asset store keeps it while the
+/// picture is on a page; a mark that is not a picture uses none.
+fn record_image(
+    connection: &Connection,
+    item_id: &str,
+    asset_id: Option<&str>,
+) -> Result<(), CommandError> {
+    connection
+        .execute(
+            "DELETE FROM notebook_item_assets WHERE item_id = ?1",
+            [item_id],
+        )
+        .map_err(CommandError::database)?;
+    if let Some(asset_id) = asset_id {
+        connection
+            .execute(
+                "INSERT INTO notebook_item_assets(item_id, asset_id) VALUES (?1, ?2)",
+                params![item_id, asset_id],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
 }
 
 /// Create the mark, replace it when its content differs, or leave an

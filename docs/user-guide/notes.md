@@ -1,6 +1,6 @@
 # Notes
 
-A notebook is pages of paper you write and draw on with the same tools as [Annotating PDF pages](pdf-annotation.md): pen, highlighter, text, sticky notes, lines, arrows, curves, boxes, ellipses, the eraser, Select and Lasso (with groups), with the same keys, colors and sizes. A note can also be a link to a page of a document, a study guide, a deck or another page of notes. Notebooks are saved in your library as you write.
+A notebook is pages of paper you write and draw on with the same tools as [Annotating PDF pages](pdf-annotation.md): pen, highlighter, text, sticky notes, lines, arrows, curves, boxes, ellipses, the eraser, Select and Lasso (with groups), with the same keys, colors and sizes. A note can also be a link to a page of a document, a study guide, a deck or another page of notes, and a page can hold pictures. Notebooks are saved in your library as you write.
 
 ## Find and make notebooks
 
@@ -13,6 +13,10 @@ Open **Library → Notes**. It shows the chosen subject's notebooks, each as a s
 The pages scroll in one column, and the toolbar, keys and zoom work as they do on a PDF; see [Tools](pdf-annotation.md#tools). The highlighter has no text to snap to on paper, so it always draws a free stroke. **Back to notes** returns to the list, and so does Android Back once nothing is open or selected. The header shows **Saving…** and **Saved**; if a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
 The bar above the toolbar shows which page is in view. **Add page** adds a page after it, with the notebook's paper and size. Its **…** menu moves the page earlier or later, or deletes it; a page with marks on it asks first, and a notebook keeps at least one page. Adding, moving or deleting a page saves your marks first and starts undo afresh.
+
+## Pictures
+
+**Add picture** asks for an image file (PNG, JPEG, GIF or WebP, up to 25 MB) and puts it near the top of the page in view, selected, at its own size or smaller so it fits within the page's margins. Drag it to move it; drag a corner to resize it, keeping its shape, or hold **Shift** to stretch it. Pictures group, undo and delete like any other mark. The image is kept in your library for as long as a picture uses it, and library backups include it. Pictures go on notebook pages only, not on PDF pages.
 
 ## Links
 

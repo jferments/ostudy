@@ -99,7 +99,19 @@ export interface NoteLink {
   button?: true;
 }
 
-export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape;
+/** A picture on a notebook page: a managed image drawn into its box. Documents hold none. */
+export interface ImageShape {
+  kind: "image";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  assetId: string;
+  /** Marks of one page that share a group are selected and moved together. */
+  group?: string;
+}
+
+export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape | ImageShape;
 export type AnnotationKind = AnnotationShape["kind"];
 
 export interface DocumentAnnotation {

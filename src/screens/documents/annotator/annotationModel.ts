@@ -181,7 +181,8 @@ export function clampSize(family: StyleFamily, size: number): number {
   return clamp(Math.round(size * 4) / 4, low, high);
 }
 
-export function shapeStyle(shape: AnnotationShape): ToolStyle {
+export function shapeStyle(shape: AnnotationShape): ToolStyle | null {
+  if (shape.kind === "image") return null;
   if (shape.kind === "text") return { color: shape.color, size: shape.fontSize };
   const style: ToolStyle = { color: shape.color, size: shape.strokeWidth };
   if (shape.kind === "line" || shape.kind === "arrow") {
@@ -231,6 +232,8 @@ function withLook<T extends SegmentShape | FrameShape>(shape: T, look: Partial<S
 
 /** The shape with a new color, size or look; geometry is unchanged. */
 export function restyle(shape: AnnotationShape, style: Partial<ToolStyle>): AnnotationShape {
+  // A picture has no color or line to change.
+  if (shape.kind === "image") return shape;
   const color = style.color ?? shape.color;
   if (shape.kind === "text") return { ...shape, color, fontSize: style.size ?? shape.fontSize };
   const restyled = { ...shape, color, strokeWidth: style.size ?? shape.strokeWidth };
@@ -384,6 +387,7 @@ export function shapeExtent(shape: AnnotationShape, textHeight: number): Bounds 
       return pointBounds(segmentPoints(shape), 2);
     case "rectangle":
     case "ellipse":
+    case "image":
       return { left: shape.x, top: shape.y, right: shape.x + shape.width, bottom: shape.y + shape.height };
     case "text":
       return { left: shape.x, top: shape.y, right: shape.x + noteWidth(shape), bottom: shape.y + textHeight };
@@ -396,7 +400,9 @@ export function shapeBounds(shape: AnnotationShape, textHeight: number): Bounds 
   switch (shape.kind) {
     case "ink": return pad(extent, shape.strokeWidth * 0.75);
     case "arrow": return pad(extent, Math.max(shape.strokeWidth / 2, arrowHeadLength(shape)));
-    case "text": return extent;
+    case "text":
+    case "image":
+      return extent;
     case "highlight": return shape.rects ? extent : pad(extent, shape.strokeWidth / 2);
     default: return pad(extent, shape.strokeWidth / 2);
   }
@@ -463,6 +469,8 @@ export function distanceToShape(shape: AnnotationShape, point: Point, textHeight
       return Math.max(0, Math.abs(radius - 1) * Math.min(rx, ry) - shape.strokeWidth / 2);
     }
     case "text":
+    case "image":
+      // A picture is picked up anywhere on it.
       return distanceToBox(point, shapeExtent(shape, textHeight));
   }
 }
@@ -671,7 +679,7 @@ export function frameAround(
     const annotation = annotations[index];
     if (!annotation || !accept(annotation)) continue;
     const { shape } = annotation;
-    if (shape.kind === "rectangle") {
+    if (shape.kind === "rectangle" || shape.kind === "image") {
       if (point.x >= shape.x && point.x <= shape.x + shape.width && point.y >= shape.y && point.y <= shape.y + shape.height) {
         return annotation;
       }
@@ -739,6 +747,7 @@ export function handlesFor(shape: AnnotationShape, textHeight: number): Array<{ 
       ];
     case "rectangle":
     case "ellipse":
+    case "image":
       return [
         { handle: "nw", point: { x: shape.x, y: shape.y } },
         { handle: "ne", point: { x: shape.x + shape.width, y: shape.y } },
@@ -776,6 +785,17 @@ export function frameBetween(a: Point, b: Point, square: boolean): { x: number; 
     width: round(Math.abs(dx)),
     height: round(Math.abs(dy)),
   };
+}
+
+/** The box from `fixed` toward `point` with the given width-to-height ratio, as large as the drag reaches. */
+function proportionalFrame(fixed: Point, point: Point, ratio: number): { x: number; y: number; width: number; height: number } {
+  const dx = point.x - fixed.x;
+  const dy = point.y - fixed.y;
+  const width = Math.max(Math.abs(dx), Math.abs(dy) * ratio);
+  const height = width / ratio;
+  const x = dx < 0 ? fixed.x - width : fixed.x;
+  const y = dy < 0 ? fixed.y - height : fixed.y;
+  return { x: round(x), y: round(y), width: round(width), height: round(height) };
 }
 
 function clampFrame<T extends { x: number; y: number; width: number; height: number }>(frame: T, page: Size): T {
@@ -886,6 +906,20 @@ export function resizeShape(
       const frame = clampFrame({ ...shape, ...frameBetween(fixed, point, constrain) }, page);
       return frame.width > 0 && frame.height > 0 ? frame : shape;
     }
+    case "image": {
+      const opposite: Partial<Record<Handle, Point>> = {
+        nw: { x: shape.x + shape.width, y: shape.y + shape.height },
+        ne: { x: shape.x, y: shape.y + shape.height },
+        sw: { x: shape.x + shape.width, y: shape.y },
+        se: { x: shape.x, y: shape.y },
+      };
+      const fixed = opposite[handle];
+      if (!fixed) return shape;
+      // A picture keeps its proportions unless Shift is held.
+      const frame = constrain ? frameBetween(fixed, point, false) : proportionalFrame(fixed, point, shape.width / shape.height);
+      const kept = clampFrame({ ...shape, ...frame }, page);
+      return kept.width >= MIN_SHAPE_EXTENT && kept.height >= MIN_SHAPE_EXTENT ? kept : shape;
+    }
     case "text": {
       if (handle !== "width") return shape;
       const width = round(clamp(point.x - shape.x, MIN_TEXT_WIDTH, Math.max(MIN_TEXT_WIDTH, page.width - shape.x)));
@@ -948,6 +982,7 @@ export function simplifyPairs(points: readonly number[], tolerance: number): num
 }
 
 const COLOR = /^#[0-9a-f]{6}$/;
+const IDENTIFIER = /^[0-9a-f]{32}$/;
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
 
 function coordinate(value: number): boolean {
@@ -985,8 +1020,14 @@ function quotedTextAllowed(text: string | undefined): boolean {
 
 /** Whether the native owner will accept the shape, so a save never fails on it. */
 export function isStorable(shape: AnnotationShape): boolean {
+  if (shape.group !== undefined && !IDENTIFIER.test(shape.group)) return false;
+  if (shape.kind === "image") {
+    return coordinate(shape.x) && coordinate(shape.y)
+      && shape.width > 0 && shape.height > 0
+      && shape.x + shape.width <= MAX_COORDINATE && shape.y + shape.height <= MAX_COORDINATE
+      && IDENTIFIER.test(shape.assetId);
+  }
   if (!COLOR.test(shape.color)) return false;
-  if (shape.group !== undefined && !/^[0-9a-f]{32}$/.test(shape.group)) return false;
   switch (shape.kind) {
     case "ink":
       return pointsAllowed(shape.points, 3) && strokeWidthAllowed(shape.strokeWidth);
@@ -1038,6 +1079,7 @@ const KIND_NAMES: Readonly<Record<AnnotationShape["kind"], string>> = {
   arrow: "Arrow",
   rectangle: "Box",
   ellipse: "Ellipse",
+  image: "Picture",
   text: "Text note",
 };
 
