@@ -32,6 +32,7 @@ import { ItemTrigger } from "../../ui/primitives/Item";
 import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
 import { readSlideTheme, saveSlideTheme, useSlideDesigns } from "./useSlideDesigns";
+import { useVoiceAvailable } from "./useVoiceAvailable";
 
 const SLIDE_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string }> = [
   { value: "navy", name: "Navy" },
@@ -94,6 +95,7 @@ export function LectureView({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
+  const voiceAvailable = useVoiceAvailable();
   const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
   const designs = useSlideDesigns(lessonId, revisionNumber, theme);
   // The step only chooses the slide the lecture opens at.
@@ -289,11 +291,11 @@ export function LectureView({
             <Button className="tw:rounded-full" onClick={stopLecture}>
               <Icon name="stop" size={16} /> {voice.listening === "preparing" ? "Preparing…" : "Stop"}
             </Button>
-          ) : (
+          ) : voiceAvailable ? (
             <Button variant="primary" className="tw:rounded-full" disabled={!canLecture} onClick={startLecture}>
               <Icon name="listen" size={16} /> Play lecture
             </Button>
-          )}
+          ) : null}
         </div>
       </header>
       {script === null && !scriptError ? (

@@ -68,7 +68,7 @@ fn session_credential_updates_epoch_without_exposing_value() {
     let defaults = service::get_task_defaults(&database).unwrap();
     assert_eq!(
         defaults.flashcard_generation_model_id.as_deref(),
-        Some("deepseek/deepseek-v4.1-flash")
+        Some("deepseek/deepseek-v4.1-flash-1017")
     );
     assert_eq!(
         defaults.flashcard_generation_reasoning_effort.as_deref(),
@@ -76,12 +76,12 @@ fn session_credential_updates_epoch_without_exposing_value() {
     );
     assert_eq!(
         defaults.tutor_model_id.as_deref(),
-        Some("deepseek/deepseek-v4.1-flash")
+        Some("deepseek/deepseek-v4.1-flash-1017")
     );
     assert_eq!(defaults.tutor_reasoning_effort.as_deref(), Some("low"));
     assert_eq!(
         defaults.embeddings_model_id.as_deref(),
-        Some("qwen/qwen3-embedding-4b")
+        Some("qwen/qwen3-embedding-8b")
     );
     assert_eq!(
         defaults.embeddings_reasoning_effort.as_deref(),
@@ -148,12 +148,12 @@ fn first_openrouter_key_seeds_only_unassigned_defaults_and_later_keys_do_not_rep
     assert_eq!(seeded.tutor_profile_id.as_deref(), Some(first.id.as_str()));
     assert_eq!(
         seeded.tutor_model_id.as_deref(),
-        Some("deepseek/deepseek-v4.1-flash")
+        Some("deepseek/deepseek-v4.1-flash-1017")
     );
     assert_eq!(seeded.tutor_reasoning_effort.as_deref(), Some("low"));
     assert_eq!(
         seeded.embeddings_model_id.as_deref(),
-        Some("qwen/qwen3-embedding-4b")
+        Some("qwen/qwen3-embedding-8b")
     );
 
     let mut second_input = default_input(ProviderKind::Openrouter);
@@ -182,6 +182,63 @@ fn first_openrouter_key_seeds_only_unassigned_defaults_and_later_keys_do_not_rep
         seeded.embeddings_profile_id
     );
     assert_eq!(after_second.embeddings_model_id, seeded.embeddings_model_id);
+}
+
+#[test]
+fn first_text_only_key_seeds_writing_and_tutor_but_leaves_search_unassigned() {
+    let database = Database::open_in_memory().expect("database should open");
+    let runtime = runtime();
+    for (kind, operation, credential_operation, model) in [
+        (
+            ProviderKind::Claude,
+            "21212121212121212121212121212121",
+            "22222222222222222222222222222223",
+            "claude-sonnet-5-5",
+        ),
+        (
+            ProviderKind::Deepseek,
+            "23232323232323232323232323232323",
+            "24242424242424242424242424242424",
+            "deepseek-v4-flash",
+        ),
+    ] {
+        let mut input = default_input(kind);
+        input.operation_id = operation.to_string();
+        let created = service::create_profile(&database, &runtime, input).unwrap();
+        service::set_credential(
+            &database,
+            &runtime,
+            SetAiProviderCredentialInput {
+                operation_id: credential_operation.to_string(),
+                profile_id: created.id.clone(),
+                revision: created.revision,
+                credential: "text-only-key".to_string(),
+                persistence: CredentialPersistence::Session,
+            },
+        )
+        .unwrap();
+        let defaults = service::get_task_defaults(&database).unwrap();
+        if kind == ProviderKind::Claude {
+            assert_eq!(
+                defaults.flashcard_generation_profile_id.as_deref(),
+                Some(created.id.as_str())
+            );
+            assert_eq!(
+                defaults.flashcard_generation_model_id.as_deref(),
+                Some(model)
+            );
+            assert_eq!(defaults.tutor_model_id.as_deref(), Some(model));
+            assert_eq!(defaults.tutor_reasoning_effort.as_deref(), Some("low"));
+        } else {
+            assert_ne!(
+                defaults.tutor_profile_id.as_deref(),
+                Some(created.id.as_str()),
+                "a later service must not replace the first service's assignments"
+            );
+        }
+        assert_eq!(defaults.embeddings_profile_id, None);
+        assert_eq!(defaults.embeddings_model_id, None);
+    }
 }
 
 #[test]
