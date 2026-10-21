@@ -414,6 +414,7 @@ pub fn run() {
             document_figures::set_document_figures_use_images,
             document_figures::set_document_figure_hidden,
             library_session::commands::leased_find_document_figures,
+            library_session::commands::leased_read_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
             notebooks::list_notebooks,
             notebooks::create_notebook,
