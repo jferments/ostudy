@@ -124,9 +124,44 @@ Run:
 The diagnostic output names the missing or mismatched tool instead of allowing a later build step to fail ambiguously.
 
 
+## Install or update the production packages
+
+The production packages use the stable `io.github.jferments.ostudy` identity and its own library, separate from the `.dev` library above. Back up the installed app's library first (Settings → Backup/Sync, saved outside the app folder): a newer build upgrades the library once when it first opens it, and an older build cannot open it afterwards.
+
+Build the Debian and RPM packages from the commit you have checked out:
+
+```bash
+./scripts/ostudy-dev package-deb
+```
+
+The packages, `BUILD-INFO.txt` (with the commit) and checksums land in `.artifacts/linux-package/`. Install or update with your distribution's package manager:
+
+```bash
+# Debian, Ubuntu and derivatives
+sudo apt install --reinstall ./.artifacts/linux-package/ostudy-v0.1.0-linux-x86_64.deb
+# Fedora and RHEL-family
+sudo dnf install ./.artifacts/linux-package/ostudy-v0.1.0-linux-x86_64.rpm
+# openSUSE
+sudo zypper install --allow-unsigned-rpm ./.artifacts/linux-package/ostudy-v0.1.0-linux-x86_64.rpm
+```
+
+Every build is currently numbered `0.1.0`, so a newer build looks like the same version to the package manager. `apt install --reinstall` replaces it anyway; on Fedora use `sudo dnf reinstall ./…rpm` once the package is installed.
+
+### Flatpak
+
+`./scripts/build-flatpak.sh` turns the verified `.deb` into a Flatpak on the GNOME runtime and writes a single-file bundle to `.artifacts/flatpak/`; `--install` also installs it for your user. It needs `flatpak` and `flatpak-builder` and downloads the runtime from Flathub the first time.
+
+```bash
+./scripts/ostudy-dev package-deb
+./scripts/build-flatpak.sh --install
+flatpak run io.github.jferments.ostudy
+```
+
+The Flatpak keeps its library in `~/.var/app/io.github.jferments.ostudy/`, separate from the `.deb` or `.rpm` library; move a library between them with a whole-library backup and restore. Direct USB sync still needs the udev rule from the host (`src-tauri/packaging/linux/70-ostudy-android-usb.rules` in `/etc/udev/rules.d/`), and OCR fallback is not available inside the Flatpak yet.
+
 ## Production package and uninstall safety
 
-The source-checkout workflow above is development-only. The production Debian package is built with the stable `io.github.jferments.ostudy` identity and is intentionally separate from the `io.github.jferments.ostudy.dev` development profile.
+The source-checkout workflow above is development-only. The production Debian and RPM packages are built with the stable `io.github.jferments.ostudy` identity and is intentionally separate from the `io.github.jferments.ostudy.dev` development profile.
 
 The production package owns application binaries, desktop/MIME integration, bundled runtime resources, and the reviewed udev rule. It **does not own the learner library under the user's XDG data directory**. A normal package-manager removal must therefore remove package-owned program/integration files while leaving the user's oStudy library in place.
 
@@ -147,15 +182,9 @@ explicit purge-user-data
 
 The repository does not yet expose a public `--purge-user-data` command. Do not substitute `rm -rf`, package maintainer scripts, or a root-owned home-directory cleanup for that future reviewed boundary.
 
-Release generation statically verifies the package ownership policy and inspects the built `.deb` before publication. Actual install/remove/reinstall preservation remains a separate acceptance test using disposable production data before any real school library is trusted to the installed profile.
+Release generation statically verifies the package ownership policy and inspects the built `.deb` and `.rpm` before publication. Actual install/remove/reinstall preservation remains a separate acceptance test using disposable production data before any real school library is trusted to the installed profile.
 
-For a local exact-source production package candidate:
-
-```bash
-./scripts/ostudy-dev package-deb
-```
-
-The command writes the verified `.deb`, `BUILD-INFO.txt`, and `SHA256SUMS.txt` under `.artifacts/linux-package/`. It does not install or remove anything. Terminal CI runs the same package builder after full Linux qualification and retains that exact-SHA package on the self-hosted runner for bounded acceptance evidence.
+`./scripts/ostudy-dev package-deb` (above) writes the verified `.deb` and `.rpm`, `BUILD-INFO.txt`, and `SHA256SUMS.txt` under `.artifacts/linux-package/`. It does not install or remove anything. Terminal CI runs the same package builder after full Linux qualification and retains that exact-SHA package on the self-hosted runner for bounded acceptance evidence.
 
 ## Other Linux distributions
 

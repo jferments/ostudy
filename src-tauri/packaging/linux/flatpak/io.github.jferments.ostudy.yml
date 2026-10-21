@@ -1,0 +1,63 @@
+# Flatpak build of the production oStudy package.
+#
+# Built by scripts/build-flatpak.sh from the verified production .deb, the way
+# the Tauri Flatpak guide recommends: the GNOME runtime supplies WebKitGTK 4.1,
+# GTK 3 and libsoup, and this manifest only adds libusb and oStudy itself.
+# A Flathub submission later builds from public source instead.
+id: io.github.jferments.ostudy
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: ostudy
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Optional AI providers and device sync on the local network.
+  - --share=network
+  # Lesson and speech playback.
+  - --socket=pulseaudio
+  # File dialogs are GTK dialogs, not portals, so imports, exports and backups
+  # need the home folder. The library itself stays in the app's own data dir.
+  - --filesystem=home
+  # Provider API keys are kept in the desktop Secret Service.
+  - --talk-name=org.freedesktop.secrets
+  # Direct USB sync with an Android phone. The host still needs the udev rule
+  # (70-ostudy-android-usb.rules), which a Flatpak cannot install.
+  - --device=all
+modules:
+  - name: libusb
+    config-opts:
+      - --disable-static
+      - --disable-udev
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - "*.la"
+    sources:
+      - type: archive
+        url: https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2
+        sha256: 5977fc950f8d1395ccea9bd48c06b3f808fd3c2c961b44b0c2e6e29fc3a70a85
+
+  - name: ostudy
+    buildsystem: simple
+    sources:
+      - type: file
+        path: ostudy.deb
+      - type: file
+        path: io.github.jferments.ostudy.metainfo.xml
+    build-commands:
+      - ar -x ostudy.deb
+      - mkdir -p deb && tar -xf data.tar.* -C deb
+      - install -Dm755 deb/usr/bin/ostudy /app/bin/ostudy
+      # Tauri resolves its resources at <exe>/../lib/ostudy.
+      - cp -a deb/usr/lib/ostudy /app/lib/ostudy
+      - install -Dm644 deb/usr/share/applications/ostudy.desktop /app/share/applications/io.github.jferments.ostudy.desktop
+      - desktop-file-edit --set-icon=io.github.jferments.ostudy /app/share/applications/io.github.jferments.ostudy.desktop
+      - |
+        for size_dir in deb/usr/share/icons/hicolor/*; do
+          size="$(basename "$size_dir")"
+          install -Dm644 "$size_dir/apps/ostudy.png" "/app/share/icons/hicolor/$size/apps/io.github.jferments.ostudy.png"
+        done
+      - install -Dm644 io.github.jferments.ostudy.metainfo.xml /app/share/metainfo/io.github.jferments.ostudy.metainfo.xml

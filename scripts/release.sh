@@ -34,8 +34,8 @@ prepare_cargo_target "$ROOT_DIR"
 pnpm install --frozen-lockfile
 "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 
-printf '\n==> Building Linux Debian and AppImage bundles\n'
-pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,appimage --ci -- --locked
+printf '\n==> Building Linux Debian, RPM and AppImage bundles\n'
+pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,rpm,appimage --ci -- --locked
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
@@ -49,13 +49,17 @@ mkdir -p "$OUT_DIR"
 BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
 shopt -s nullglob
 DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
+RPM_FILES=("$BUNDLE_ROOT"/rpm/*.rpm)
 APPIMAGE_FILES=("$BUNDLE_ROOT"/appimage/*.AppImage)
 (( ${#DEB_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one Debian bundle.\n' >&2; exit 1; }
+(( ${#RPM_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one RPM bundle.\n' >&2; exit 1; }
 (( ${#APPIMAGE_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one AppImage bundle.\n' >&2; exit 1; }
 
 "$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
+python3 "$SCRIPT_DIR/verify-rpm-package.py" "${RPM_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
 
 cp "${DEB_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
+cp "${RPM_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.rpm"
 cp "${APPIMAGE_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
 chmod +x "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
@@ -72,7 +76,7 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
 } > "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
-  sha256sum BUILD-INFO.txt *.deb *.AppImage *.tar.gz > SHA256SUMS.txt
+  sha256sum BUILD-INFO.txt *.deb *.rpm *.AppImage *.tar.gz > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

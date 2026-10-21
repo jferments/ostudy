@@ -19,7 +19,7 @@ while (($#)); do
       OUTPUT_DIR="$2"; shift 2 ;;
     -h|--help)
       printf '%s\n' 'Usage: ./scripts/check-linux-package.sh [--output DIRECTORY]'
-      printf '%s\n' 'Build and verify the production Debian package for the exact current source.'
+      printf '%s\n' 'Build and verify the production Debian and RPM packages for the exact current source.'
       exit 0 ;;
     *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -36,9 +36,9 @@ pnpm install --frozen-lockfile
 "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 
 BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
-rm -rf -- "$BUNDLE_ROOT/deb"
-printf '\n==> Building production Debian package\n'
-pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb --ci -- --locked
+rm -rf -- "$BUNDLE_ROOT/deb" "$BUNDLE_ROOT/rpm"
+printf '\n==> Building production Debian and RPM packages\n'
+pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,rpm --ci -- --locked
 
 shopt -s nullglob
 DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
@@ -47,6 +47,12 @@ DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
   exit 1
 }
 "$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
+RPM_FILES=("$BUNDLE_ROOT"/rpm/*.rpm)
+(( ${#RPM_FILES[@]} == 1 )) || {
+  printf 'ERROR: expected exactly one RPM bundle under %s/rpm.\n' "$BUNDLE_ROOT" >&2
+  exit 1
+}
+python3 "$SCRIPT_DIR/verify-rpm-package.py" "${RPM_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
@@ -59,20 +65,24 @@ rm -rf -- "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 DESTINATION="$OUTPUT_DIR/ostudy-v$VERSION-linux-$ARCH.deb"
 cp -- "${DEB_FILES[0]}" "$DESTINATION"
+RPM_DESTINATION="$OUTPUT_DIR/ostudy-v$VERSION-linux-$ARCH.rpm"
+cp -- "${RPM_FILES[0]}" "$RPM_DESTINATION"
 {
   printf 'version=%s\n' "$VERSION"
   printf 'commit=%s\n' "$SOURCE_SHA"
   printf 'architecture=%s\n' "$ARCH"
   printf 'application_identifier=io.github.jferments.ostudy\n'
   printf 'package=%s\n' "$(basename -- "$DESTINATION")"
+  printf 'rpm_package=%s\n' "$(basename -- "$RPM_DESTINATION")"
   printf 'built_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'cargo_target_dir=%s\n' "$CARGO_TARGET_DIR"
   printf 'pdfium_build=%s\n' "$PDFIUM_BUILD"
 } > "$OUTPUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUTPUT_DIR"
-  sha256sum "$(basename -- "$DESTINATION")" BUILD-INFO.txt > SHA256SUMS.txt
+  sha256sum "$(basename -- "$DESTINATION")" "$(basename -- "$RPM_DESTINATION")" BUILD-INFO.txt > SHA256SUMS.txt
 )
-printf '\nProduction Debian package qualified for %s\n' "$SOURCE_SHA"
-printf 'Package: %s\n' "$DESTINATION"
+printf '\nProduction Debian and RPM packages qualified for %s\n' "$SOURCE_SHA"
+printf 'Debian package: %s\n' "$DESTINATION"
+printf 'RPM package: %s\n' "$RPM_DESTINATION"
 printf 'Checksums: %s\n' "$OUTPUT_DIR/SHA256SUMS.txt"
