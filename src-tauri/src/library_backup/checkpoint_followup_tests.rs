@@ -95,6 +95,7 @@ fn kept(connection: &Connection) -> Kept {
         "lecture_scripts",
         "speech_voices",
         "lesson_voices",
+        "podcasts",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");
