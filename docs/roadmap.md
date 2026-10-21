@@ -29,7 +29,7 @@ Historical stage plans under [`history/`](history/) explain how this foundation 
 
 The PR #106 foundation and the H-01–H-10 hardening scopes in the [post-#106 hardening register](development/post-106-hardening.md) are merged; the PR #106 [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover.
 
-Work under way in open pull requests, not on `main`, includes the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. Podcasts and local voices remain planned; the [preserved lesson plan](development/lk-followups/lessons-narration.md) records an earlier design. Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
+Work under way in open pull requests, not on `main`, includes the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. Local voices remain planned; the [preserved lesson plan](development/lk-followups/lessons-narration.md) records an earlier design. Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
 
 ## Current priorities
 
@@ -104,7 +104,7 @@ Generate configurable question sets, including multiple choice/application/scena
 
 ### Lessons
 
-A subject's course can be written, played step by step, listened to, viewed as a lecture, taught as a teacher's lecture with questions for the class, and saved as a PowerPoint deck. Two-host podcasts, local voices (a local Kokoro server and the phone's own speech engine), rewriting an existing course, keeping lessons current when their sources change, and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
+A subject's course can be written, played step by step, listened to, viewed as a lecture, taught as a teacher's lecture with questions for the class, and saved as a PowerPoint deck, and a subject's lessons can be made into a two-host podcast. Local voices (a local Kokoro server and the phone's own speech engine), rewriting an existing course, keeping lessons current when their sources change, and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
 
 ### Tutor refinement and guided study
 

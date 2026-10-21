@@ -247,9 +247,17 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
-    // Notebooks are made in the app; the upgrade only creates their tables.
     Contract {
         version: 17,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "podcasts",
+            description: "podcast",
+        }],
+    },
+    // Notebooks are made in the app; the upgrade only creates their tables.
+    Contract {
+        version: 18,
         setup: "",
         rules: &[
             Rule::AddedEmpty {
@@ -269,7 +277,7 @@ const CONTRACTS: &[Contract] = &[
     // Pictures on notebook pages are placed in the app; the upgrade only
     // creates the table that keeps them.
     Contract {
-        version: 18,
+        version: 19,
         setup: "",
         rules: &[Rule::AddedEmpty {
             table: "notebook_item_assets",

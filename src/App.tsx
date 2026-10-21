@@ -352,6 +352,8 @@ function App() {
                             ) : controller.section === "settings" ? (
                               <SettingsScreen
                                 settings={controller.savedSettings}
+                                aiSetupRequest={controller.aiSetupRequest}
+                                onAiSetupConsumed={controller.consumeAiSetup}
                                 onPreviewSettings={controller.setActiveSettings}
                                 onSavedSettings={controller.saveSettingsLocally}
                                 onDirtyChange={controller.setHasUnsavedSettings}

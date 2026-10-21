@@ -5,6 +5,7 @@ pub(crate) mod commands;
 mod contracts;
 mod defaults;
 pub(crate) mod embedding_options;
+pub(crate) mod openrouter_sign_in;
 pub(crate) mod policy;
 mod projections;
 mod repository;

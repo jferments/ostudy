@@ -359,7 +359,8 @@ fn one_writer_per_subject_and_stopping_an_unknown_run_says_so() {
 #[test]
 fn a_running_course_reports_lessons_planned_and_written() {
     let subject = "e".repeat(32);
-    let operation = "2".repeat(32);
+    // Not operation('2'), which the course-writing tests run beside this one.
+    let operation = "7".repeat(32);
     let progress = |operation: &str| {
         get_subject_course_writing_progress(GetSubjectCourseWritingProgressInput {
             operation_id: operation.to_string(),
@@ -636,4 +637,93 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
         })
         .unwrap();
     assert_eq!(count(&database, "SELECT COUNT(*) FROM lecture_scripts"), 0);
+}
+
+#[test]
+fn a_podcast_is_written_from_the_picked_lessons_and_kept_with_its_hosts_voices() {
+    use crate::ai::document_intelligence::PODCAST_SCRIPT_PROMPT_VERSION;
+    use crate::lessons::podcasts::{self, WritePodcastInput};
+
+    use crate::lessons::{authoring::create_authored_lesson, fixture::loop_of_henle};
+
+    // Authored lessons, so no course writer runs beside the other tests'.
+    let (database, subject, _, _, _) = fixture().unwrap();
+    let mut picked = database
+        .with_connection(|connection| {
+            (0..2)
+                .map(|_| {
+                    Ok(create_authored_lesson(connection, &subject, loop_of_henle(&[]), 1)?.id)
+                })
+                .collect::<Result<Vec<_>, CommandError>>()
+        })
+        .unwrap();
+    picked.reverse();
+
+    let answer = json!({
+        "title": "Why the heart speeds up",
+        "chapters": (1..=picked.len()).map(|index| json!({
+            "lessonKey": format!("lesson-{index}"),
+            "turns": [
+                {"host": "Ada", "text": "Cardiac output depends on heart rate."},
+                {"host": "Ben", "text": "So a faster heart pumps more?"},
+            ],
+        })).collect::<Vec<_>>(),
+    })
+    .to_string();
+    let (podcast_url, served, bodies) = spawn_provider(answer);
+    use_profile(&database, &podcast_url, 'b');
+    let podcast = tauri::async_runtime::block_on(podcasts::write(
+        &database,
+        &runtime(),
+        WritePodcastInput {
+            subject_id: subject.clone(),
+            lesson_ids: picked.clone(),
+            target_minutes: 10,
+            voices: None,
+            operation_id: operation('a'),
+        },
+    ))
+    .unwrap();
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    let sent = &bodies.lock().unwrap()[0];
+    assert!(sent.contains("PODCAST writer"));
+    assert!(sent.contains("about 1500 words"));
+    assert_eq!(podcast.title, "Why the heart speeds up");
+    assert_eq!(podcast.target_minutes, 10);
+    // Chapters follow the learner's order, not the course's.
+    assert_eq!(
+        podcast
+            .chapters
+            .iter()
+            .map(|chapter| chapter.lesson_id.clone())
+            .collect::<Vec<_>>(),
+        picked
+    );
+    assert_eq!(podcast.hosts[0].voice, "builtin:calm-older-woman");
+    assert_eq!(podcast.hosts[1].voice, "builtin:relaxed-man");
+    assert_eq!(
+        count(
+            &database,
+            "SELECT COUNT(*) FROM generation_requests WHERE stage = 'podcast_authoring'"
+        ),
+        1
+    );
+    let provenance: Value = serde_json::from_str(
+        &database
+            .with_connection(|connection| {
+                connection
+                    .query_row("SELECT provenance_json FROM podcasts", [], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(provenance["promptVersion"], PODCAST_SCRIPT_PROMPT_VERSION);
+    let listed = database
+        .with_connection(|connection| podcasts::list(connection, &subject))
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, podcast.id);
 }

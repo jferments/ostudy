@@ -396,6 +396,22 @@ pub(crate) async fn speak_saved(
     text: &str,
     key: String,
 ) -> Result<LessonStepNarrationDto, CommandError> {
+    speak_text(database, paths, runtime, text, key, |settings| {
+        voices::lesson_voice(database, settings, lesson_id)
+    })
+    .await
+}
+
+/// Speaks saved text in the model and voice `choose` picks, given the speech
+/// setting, through the setting's connection. Kept pieces are reused.
+pub(super) async fn speak_text(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    text: &str,
+    key: String,
+    choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
+) -> Result<LessonStepNarrationDto, CommandError> {
     let settings = database.with_connection(|connection| resolved(connection))?;
     if segments(text, settings.model.max_characters).is_empty() {
         return Err(CommandError::new(
@@ -406,7 +422,7 @@ pub(crate) async fn speak_saved(
     let request = speaking_request(database, &settings)?;
     let engine = speech::engine(request.profile.provider_kind)?;
     let _narrating = Narrating::begin(key)?;
-    let (model, voice) = voices::lesson_voice(database, &settings, lesson_id)?;
+    let (model, voice) = choose(&settings)?;
     let pieces = segments(text, model.max_characters);
     let narrator = Narrator {
         database,
