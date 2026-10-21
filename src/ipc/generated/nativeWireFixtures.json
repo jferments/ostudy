@@ -9,6 +9,8 @@
     "decorativeArtwork": true,
     "desiredRetention": 0.9,
     "displayQuestionOnAnswer": false,
+    "guidePdfIncludeNotes": true,
+    "guidePdfTheme": "sage",
     "materialPreference": "automatic",
     "motionPreference": "system",
     "newDayStartHour": 4,

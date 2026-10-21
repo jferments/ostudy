@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as assetsIpc from "../../ipc/assets";
 import * as decksIpc from "../../ipc/decks";
+import * as documentAnnotationsIpc from "../../ipc/documentAnnotations";
 import * as documentsIpc from "../../ipc/documents";
 import * as notebooksIpc from "../../ipc/notebooks";
 import * as studyGuidesIpc from "../../ipc/studyGuides";
@@ -33,6 +34,11 @@ vi.mock("../../editor/FormulaDialog", () => ({
   FormulaDialog: ({ session, onClose }: { session: import("../../editor/formula").FormulaEditSession; onClose: () => void }) => (
     <button type="button" onClick={() => { session.save({ latex: "x^2", placement: "inline" }); onClose(); }}>Save formula</button>
   ),
+}));
+vi.mock("../../ipc/documentAnnotations", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../ipc/documentAnnotations")>(),
+  getDocumentAnnotations: vi.fn(),
+  applyDocumentAnnotationChanges: vi.fn(),
 }));
 vi.mock("../../ipc/decks", () => ({ listDecks: vi.fn() }));
 vi.mock("../../ipc/documents", () => ({ listDocuments: vi.fn() }));
@@ -229,6 +235,37 @@ describe("notebook editor", () => {
     expect(document.querySelectorAll("[data-note-checkbox='checked']")).toHaveLength(1);
     await waitFor(() => expect(notebooksIpc.applyNotebookItemChanges).toHaveBeenCalledTimes(2));
     expect(savedChanges(1)[0]).toMatchObject({ shape: { text: "[x] Valves\n[ ] Area $x^2$" } });
+  });
+
+  it("opens a document beside the notes and saves both before closing", async () => {
+    const documentId = "f".repeat(32);
+    vi.mocked(documentsIpc.listDocuments).mockResolvedValue([
+      { id: documentId, title: "Lecture 7", sourceUnitKind: "page", sourceUnitCount: 12 } as documentsIpc.DocumentSummary,
+    ]);
+    vi.mocked(documentAnnotationsIpc.getDocumentAnnotations).mockResolvedValue({
+      pages: Array.from({ length: 12 }, (_, index) => ({
+        pageNumber: index + 1, assetId: "", width: 612, height: 792, imageAvailable: false,
+      })),
+      annotations: [],
+    } as unknown as documentAnnotationsIpc.DocumentAnnotations);
+    const { onClose } = await openNotebook();
+    fireEvent.click(screen.getByRole("button", { name: "Document beside" }));
+    const dialog = await screen.findByRole("dialog", { name: "Open a document beside your notes" });
+    const select = within(dialog).getByRole("combobox", { name: "Document" });
+    await waitFor(() => expect(within(select).getByRole("option", { name: "Lecture 7" })).toBeTruthy());
+    fireEvent.change(select, { target: { value: documentId } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open" }));
+
+    const beside = await screen.findByRole("region", { name: "Lecture 7, beside your notes" });
+    expect(await within(beside).findByRole("group", { name: "Pages of Lecture 7" })).toBeTruthy();
+    expect(documentAnnotationsIpc.getDocumentAnnotations).toHaveBeenCalledWith(documentId);
+    // The notebook stays open beside it, with its own tools.
+    expect(screen.getByRole("group", { name: "Pages of Cardiac cycle" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change document" })).toBeTruthy();
+
+    fireEvent.click(within(beside).getByRole("button", { name: "Close document" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Lecture 7, beside your notes" })).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("keeps a link whose target is gone, struck through, and opens nothing", async () => {

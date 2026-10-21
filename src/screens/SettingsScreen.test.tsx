@@ -284,6 +284,18 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("switch", { name: /shuffle/iu })).toBeNull();
   });
 
+  it("keeps the study guide PDF look in Appearance, Sage until another is chosen", async () => {
+    renderSettings();
+    const themes = screen.getByRole("radiogroup", { name: "Study guide PDF theme" });
+    expect(within(themes).getByRole("radio", { name: /^Sage/u }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(themes).getByRole("radio", { name: /^Plum/u }));
+    fireEvent.click(screen.getByRole("switch", { name: "Include my guide and section notes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(settingsIpc.saveSettings).toHaveBeenCalledWith(
+      { ...settings, guidePdfTheme: "plum", guidePdfIncludeNotes: false },
+    ));
+  });
+
   it("saves the hour a new study day starts", async () => {
     const { onSavedSettings } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Review" }));

@@ -2,6 +2,7 @@ import { RadioGroup } from "../../ui/primitives/FormControls";
 import { Panel } from "../../ui/primitives/Panel";
 import type { AppSettings, MotionPreference } from "../../ipc/settings";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
+import { GuidePdfThemePicker } from "../study-guides/GuideDialogs";
 import { FontControl, RangeControl, SelectControl, SwitchRow, ThemePreview } from "./SettingsControls";
 
 interface AppearanceSettingsProps {
@@ -50,6 +51,13 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
           <SwitchRow label="Interactive tutorials" checked={draft.tutorialsEnabled ?? false}
             onChange={(tutorialsEnabled) => update({ tutorialsEnabled })} />
         </div>
+      </Panel>
+
+      <Panel className="tw:col-span-full" title="Study guide PDF"
+        description="How a study guide looks when you export it as a PDF.">
+        <GuidePdfThemePicker value={draft.guidePdfTheme ?? "sage"} onChange={(guidePdfTheme) => update({ guidePdfTheme })} />
+        <SwitchRow label="Include my guide and section notes"
+          checked={draft.guidePdfIncludeNotes ?? true} onChange={(guidePdfIncludeNotes) => update({ guidePdfIncludeNotes })} />
       </Panel>
     </div>
   );
