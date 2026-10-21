@@ -53,7 +53,7 @@ describe("StudyGuideStructuredContent", () => {
 
   it("shows a designed page over text kept for screen readers, with the checks still live", () => {
     const { container } = render(<StudyGuideStructuredContent content={content()} headingLevel={2} showTerms={false}
-      designedPage="blob:page" />);
+      designedPage={{ url: "blob:page", width: 538, height: 700 }} />);
 
     expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:page");
     expect(screen.getByRole("heading", { level: 2, name: "Starling forces" }).closest(".tw\\:sr-only")).not.toBeNull();

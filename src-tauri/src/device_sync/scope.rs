@@ -417,7 +417,7 @@ pub(crate) fn sanitize_snapshot(
     // go with them, and links from cards to the marks they were made from go
     // with the marks.
     // How far a learner has read each guide stays on the device too, and so
-    // do notebooks for now.
+    // do notebooks and the marks drawn on slides and guide pages for now.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -458,7 +458,8 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM document_study_guide_positions;
              DELETE FROM notebook_items;
              DELETE FROM notebook_pages;
-             DELETE FROM notebooks;",
+             DELETE FROM notebooks;
+             DELETE FROM material_ink;",
         )
         .map_err(CommandError::database)?;
 

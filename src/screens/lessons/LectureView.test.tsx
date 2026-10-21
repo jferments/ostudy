@@ -26,6 +26,7 @@ import {
   type LectureScript,
   type LessonStep,
 } from "../../ipc/lessons";
+import { getMaterialInk } from "../../ipc/materialInk";
 import { getSpeechSettings } from "../../ipc/speech";
 import {
   createManagedMediaObjectUrl,
@@ -49,6 +50,15 @@ vi.mock("../../ipc/lessons", () => ({
   writeLessonLectureScript: vi.fn(),
 }));
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+vi.mock("../../ipc/materialInk", () => ({ getMaterialInk: vi.fn() }));
+vi.mock("../ink/InkEditor", () => ({
+  InkEditor: ({ pageKey, pages, onClose }: { pageKey?: string; pages: { key: string }[]; onClose: () => void }) => (
+    <div>
+      <p>Writing on {pages.length} slides from {pageKey}</p>
+      <button type="button" onClick={onClose}>Back to the lecture</button>
+    </div>
+  ),
+}));
 vi.mock("../../ipc/externalFiles", () => ({
   publishPreparedExport: vi.fn(),
   releasePreparedExport: vi.fn(),
@@ -136,6 +146,7 @@ function open(stepKey: string | null = null, onAnswered = vi.fn()) {
       answered={{}}
       onAnswered={onAnswered}
       onClose={onClose}
+      showToast={vi.fn()}
     />,
   );
   return onClose;
@@ -170,6 +181,8 @@ describe("LectureView", () => {
     });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
     window.localStorage.clear();
+    vi.mocked(getMaterialInk).mockReset();
+    vi.mocked(getMaterialInk).mockResolvedValue([]);
     vi.mocked(answerLessonCheck).mockReset();
     vi.mocked(getSpeechSettings).mockResolvedValue({
       profileId: "r".repeat(32),
@@ -567,6 +580,26 @@ describe("LectureView", () => {
     await vi.waitFor(() => expect(getLessonSlideDesigns).toHaveBeenLastCalledWith("lesson-1", 2, "plum"));
     expect(await screen.findByRole("button", { name: "Theme: Plum" })).toBeTruthy();
     expect(window.localStorage.getItem("ostudy.lectureSlideTheme")).toBe("plum");
+  });
+
+  it("draws the learner's marks over a slide and opens the slides to write on at the current one", async () => {
+    vi.mocked(getMaterialInk).mockResolvedValue([{
+      id: "m".repeat(32),
+      pageKey: "step:multiplier",
+      shape: { kind: "line", x1: 10, y1: 10, x2: 200, y2: 90, color: "#d64545", strokeWidth: 3 },
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    }]);
+    open("multiplier");
+    await vi.waitFor(() => expect(screen.getByTestId("lecture-slide").querySelector("[data-ink-overlay]")).toBeTruthy());
+    expect(getMaterialInk).toHaveBeenCalledWith({ kind: "lesson", lessonId: "lesson-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write on slides" }));
+    expect(await screen.findByText("Writing on 5 slides from step:multiplier")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the lecture" }));
+    expect(await screen.findByText("Slide 4 of 5")).toBeTruthy();
+    expect(getMaterialInk).toHaveBeenCalledTimes(2);
   });
 
   it("shows the plain slide when the designed slides cannot be laid out", async () => {

@@ -86,6 +86,7 @@ mod library_backup_commands;
 mod library_lock;
 mod library_session;
 mod logging;
+mod material_ink;
 mod media;
 mod media_assets;
 pub mod migration_contract;
@@ -417,6 +418,8 @@ pub fn run() {
             notebooks::delete_notebook_page,
             notebooks::move_notebook_page,
             notebooks::apply_notebook_item_changes,
+            material_ink::get_material_ink,
+            material_ink::apply_material_ink_changes,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
