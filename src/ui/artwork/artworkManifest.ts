@@ -13,7 +13,6 @@ export type ArtworkSlot =
   | "empty.documents"
   | "empty.templates"
   | "practice.complete"
-  | "progress.coach"
   | "tutorial.welcome"
   | "document.processing";
 
@@ -53,11 +52,6 @@ export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> =
     slot: "practice.complete", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "Practice complete", category: "completion",
     // The whole mascot at its desk, the same files as Home's first run.
     image: { src: raccoonLogo160, srcSet: `${raccoonLogo160} 1x, ${raccoonLogo320} 2x` },
-  },
-  "progress.coach": {
-    slot: "progress.coach", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "The ostudy raccoon", category: "status",
-    // The brand mark's raccoon, here as decoration the mascot-art setting can hide.
-    image: { src: raccoonHead64, srcSet: `${raccoonHead64} 1x, ${raccoonHead128} 2x` },
   },
   "tutorial.welcome": { slot: "tutorial.welcome", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Welcome to ostudy", category: "tutorial" },
   "document.processing": { slot: "document.processing", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Processing document", category: "status" },

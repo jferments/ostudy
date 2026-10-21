@@ -51,6 +51,8 @@ export type StatTileTone = "neutral" | "accent" | "success" | "warning" | "dange
 
 export interface StatTileProps extends Omit<HTMLAttributes<HTMLElement>, "children"> {
   label: string;
+  /** A small control beside the label, such as a help button. */
+  labelAction?: ReactNode;
   value: ReactNode;
   /** A change against an earlier period, shown beside the value. */
   delta?: StatDeltaProps;
@@ -73,7 +75,7 @@ const tileTones: Record<StatTileTone, string> = {
  * A labeled number on the card surface, as on the mockups' Progress and Home. Phones get the
  * mockups' smaller tile: tighter padding, the medium radius and a lighter label.
  */
-export function StatTile({ label, value, delta, hint, children, tone = "neutral", className, ...props }: StatTileProps) {
+export function StatTile({ label, labelAction, value, delta, hint, children, tone = "neutral", className, ...props }: StatTileProps) {
   const labelId = useId();
   return (
     <Card
@@ -87,9 +89,18 @@ export function StatTile({ label, value, delta, hint, children, tone = "neutral"
         className,
       )}
     >
-      <p id={labelId} className="tw:m-0 tw:text-small tw:font-medium tw:text-muted-foreground tw:compact:text-label tw:compact:font-normal">
-        {label}
-      </p>
+      {labelAction ? (
+        <div className="tw:-my-1.5 tw:flex tw:min-w-0 tw:items-center tw:gap-1">
+          <p id={labelId} className="tw:m-0 tw:text-small tw:font-medium tw:text-muted-foreground tw:compact:text-label tw:compact:font-normal">
+            {label}
+          </p>
+          {labelAction}
+        </div>
+      ) : (
+        <p id={labelId} className="tw:m-0 tw:text-small tw:font-medium tw:text-muted-foreground tw:compact:text-label tw:compact:font-normal">
+          {label}
+        </p>
+      )}
       <p className="tw:m-0 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2.5 tw:gap-y-1">
         <span data-slot="stat-value" className="tw:min-w-0 tw:break-words tw:font-heading tw:text-title tw:font-semibold tw:tracking-tighter tw:tabular-nums tw:text-foreground">
           {value}
