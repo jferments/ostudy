@@ -248,17 +248,6 @@ impl AnnotationShape {
         }
     }
 
-    /// The group the mark belongs to, if any.
-    pub(crate) fn group(&self) -> Option<&str> {
-        match self {
-            Self::Ink(stroke) => stroke.group.as_deref(),
-            Self::Highlight(stroke) => stroke.group.as_deref(),
-            Self::Line(segment) | Self::Arrow(segment) => segment.group.as_deref(),
-            Self::Rectangle(frame) | Self::Ellipse(frame) => frame.group.as_deref(),
-            Self::Text(note) => note.group.as_deref(),
-        }
-    }
-
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
         if let Some(group) = self.group() {
             if !is_identifier(group) {
