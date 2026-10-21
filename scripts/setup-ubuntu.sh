@@ -48,6 +48,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libwebkit2gtk-4.1-dev \
   libxdo-dev \
   openbox \
+  patchelf \
   pkg-config \
   python3 \
   sqlite3 \
@@ -57,6 +58,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   wget \
   xauth \
   x11-utils \
+  xdg-utils \
   xvfb \
   xz-utils
 
