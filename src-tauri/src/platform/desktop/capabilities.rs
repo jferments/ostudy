@@ -31,6 +31,7 @@ impl CapabilityProvider for DesktopCapabilityProvider {
                 background_execution: ServiceCapability::unavailable(
                     "desktop_background_scheduler_not_configured",
                 ),
+                browser_sign_in: ServiceCapability::available(),
             },
         }
     }

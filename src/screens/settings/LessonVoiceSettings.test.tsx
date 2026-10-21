@@ -275,6 +275,16 @@ describe("LessonVoiceSettings", () => {
     expect(screen.getByRole("listitem").textContent).toContain("Voice");
   });
 
+  it("shows Voice as off with Add OpenRouter when no connection can speak", async () => {
+    vi.mocked(getSpeechSettings).mockResolvedValue(settings({ profileId: null, connections: [] }));
+    const onAddOpenRouter = vi.fn();
+    render(<LessonVoiceSettings connectionsKey={1} onAddOpenRouter={onAddOpenRouter} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add OpenRouter" }));
+    expect(onAddOpenRouter).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("listitem").textContent).toContain("Off · needs OpenRouter");
+    expect(screen.queryByRole("combobox", { name: "Lesson voice connection" })).toBeNull();
+  });
+
   it("offers the voices that come with oStudy, played from the app's own files", async () => {
     const relaxed: SpeechVoice = {
       id: "relaxed-man",
