@@ -144,6 +144,7 @@ pub(crate) fn load_images(
         images.push(SourcePageImage {
             page_number: record.source_unit,
             bytes,
+            crop_of: None,
         });
     }
     Ok(images)

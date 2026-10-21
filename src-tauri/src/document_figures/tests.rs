@@ -605,3 +605,199 @@ fn small_pieces_above_a_caption_are_gathered_into_one_figure() {
     // Without a caption they stay too small to be figures.
     assert!(detect::detect_layouts(&[page(1, graphics, body(400.0))]).is_empty());
 }
+
+fn reading_of(figure_id: &str) -> crate::ai::document_intelligence::FigureReading {
+    crate::ai::document_intelligence::FigureReading {
+        figure_id: figure_id.to_string(),
+        title: "The heart".to_string(),
+        shows: "The four chambers and the valves between them.".to_string(),
+        use_in_text: Some("Page 2 walks through one heartbeat with it.".to_string()),
+        concepts: vec!["Cardiac cycle".to_string(), "Valves".to_string()],
+        explained_on: vec![2],
+        importance: 5,
+        worth_studying: true,
+    }
+}
+
+#[test]
+fn what_the_model_read_is_stored_and_shown_with_its_figure() {
+    let mut connection = library();
+    replace_figures(&mut connection, DOCUMENT, &[found(72.0)], 5).unwrap();
+    assert!(reading::waiting_to_be_read(&connection, DOCUMENT).unwrap());
+    assert_eq!(figures(&connection, DOCUMENT).unwrap().reading, "none");
+
+    reading::store_readings(
+        &mut connection,
+        DOCUMENT,
+        // A figure a newer search no longer has is not stored.
+        &[reading_of("p00001-01"), reading_of("p00009-01")],
+        "openrouter",
+        "vision-model",
+        "read",
+        6,
+    )
+    .unwrap();
+    let stored = figures(&connection, DOCUMENT).unwrap();
+    assert_eq!(stored.reading, "read");
+    assert_eq!(stored.read_at, Some(6));
+    assert_eq!(
+        stored.figures[0].reading,
+        Some(FigureReadingDto {
+            title: "The heart".to_string(),
+            shows: "The four chambers and the valves between them.".to_string(),
+            use_in_text: Some("Page 2 walks through one heartbeat with it.".to_string()),
+            concepts: vec!["Cardiac cycle".to_string(), "Valves".to_string()],
+            explained_on: vec![2],
+            importance: 5,
+            worth_studying: true,
+            model: "vision-model".to_string(),
+        })
+    );
+    assert!(!reading::waiting_to_be_read(&connection, DOCUMENT).unwrap());
+    let readings: i64 = connection
+        .query_row("SELECT COUNT(*) FROM document_figure_readings", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(readings, 1);
+}
+
+#[test]
+fn finding_again_keeps_what_was_read_of_a_figure_in_the_same_place() {
+    let mut connection = library();
+    replace_figures(&mut connection, DOCUMENT, &[found(72.0)], 5).unwrap();
+    reading::store_readings(
+        &mut connection,
+        DOCUMENT,
+        &[reading_of("p00001-01")],
+        "openrouter",
+        "vision-model",
+        "read",
+        6,
+    )
+    .unwrap();
+
+    replace_figures(&mut connection, DOCUMENT, &[found(74.0)], 7).unwrap();
+    let again = figures(&connection, DOCUMENT).unwrap();
+    assert_eq!(again.reading, "read");
+    assert_eq!(
+        again.figures[0].reading.as_ref().unwrap().title,
+        "The heart"
+    );
+
+    replace_figures(&mut connection, DOCUMENT, &[found(250.0)], 8).unwrap();
+    let moved = figures(&connection, DOCUMENT).unwrap();
+    assert!(moved.figures[0].reading.is_none());
+    assert_eq!(moved.reading, "none");
+    assert!(reading::waiting_to_be_read(&connection, DOCUMENT).unwrap());
+}
+
+#[test]
+fn turning_images_off_forgets_what_was_read() {
+    let mut connection = library();
+    replace_figures(&mut connection, DOCUMENT, &[found(72.0)], 5).unwrap();
+    reading::store_readings(
+        &mut connection,
+        DOCUMENT,
+        &[reading_of("p00001-01")],
+        "openrouter",
+        "vision-model",
+        "read",
+        6,
+    )
+    .unwrap();
+    let off = set_use_images(
+        &mut connection,
+        SetDocumentFiguresUseImagesInput {
+            document_id: DOCUMENT.to_string(),
+            use_images: false,
+        },
+        7,
+    )
+    .unwrap();
+    assert_eq!(off.reading, "none");
+    assert_eq!(off.read_at, None);
+    let readings: i64 = connection
+        .query_row("SELECT COUNT(*) FROM document_figure_readings", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(readings, 0);
+}
+
+#[test]
+fn a_page_is_read_four_figures_at_a_time_with_the_page_beside_it() {
+    let mut connection = library();
+    let mut on_page = (0..5)
+        .map(|index| {
+            let mut figure = found(72.0);
+            figure.figure_id = format!("p00002-{:02}", index + 1);
+            figure.page_number = 2;
+            figure.passages.clear();
+            figure
+        })
+        .collect::<Vec<_>>();
+    let mut filling = found(72.0);
+    filling.figure_id = "p00003-01".to_string();
+    filling.page_number = 3;
+    filling.passages[1].page_number = 4;
+    on_page.push(filling);
+    replace_figures(&mut connection, DOCUMENT, &on_page, 5).unwrap();
+    let stored = figures(&connection, DOCUMENT).unwrap().figures;
+    assert_eq!(
+        reading::reading_windows(&stored),
+        vec![
+            reading::ReadingWindow {
+                page_number: 2,
+                figures: vec![0, 1, 2, 3],
+                neighbour: None,
+            },
+            reading::ReadingWindow {
+                page_number: 2,
+                figures: vec![4],
+                neighbour: None,
+            },
+            reading::ReadingWindow {
+                page_number: 3,
+                figures: vec![5],
+                neighbour: Some(4),
+            },
+        ]
+    );
+}
+
+#[test]
+fn crops_and_pages_are_drawn_within_one_tile() {
+    let page = reading::whole_page_tile(612.0, 792.0);
+    assert!(page.is_valid());
+    assert_eq!((page.width, page.height), (791, 1024));
+
+    // A small figure is drawn at about 200 dpi with a margin.
+    let small = reading::crop_tile(
+        612.0,
+        792.0,
+        FigureBoxDto {
+            left: 72.0,
+            top: 100.0,
+            width: 144.0,
+            height: 72.0,
+        },
+    );
+    assert!(small.is_valid());
+    assert_eq!(small.page_width, 1700);
+    assert!((420..=430).contains(&small.width));
+
+    // A figure filling the page is shrunk to fit one tile.
+    let large = reading::crop_tile(
+        612.0,
+        792.0,
+        FigureBoxDto {
+            left: 0.0,
+            top: 0.0,
+            width: 612.0,
+            height: 792.0,
+        },
+    );
+    assert!(large.is_valid());
+    assert!(large.width <= 1024 && large.height <= 1024);
+}

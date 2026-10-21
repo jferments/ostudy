@@ -11,8 +11,14 @@
 //! elsewhere a search records that it is unsupported and finds nothing.
 //! Searching again replaces the figures but keeps a figure the learner hid
 //! hidden while its box is unchanged.
+//!
+//! With a model that reads images, oStudy then reads each figure on its page
+//! (see [`reading`]): a title, what it shows, how the text uses it and how
+//! much it matters. Searching again keeps what was read of a figure found
+//! again in the same place.
 
 pub(crate) mod detect;
+pub(crate) mod reading;
 
 #[cfg(test)]
 mod tests;
@@ -24,10 +30,16 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
+    ai::{
+        document_intelligence::{self, DocumentTaskContext},
+        document_provider::load_document_provider_capabilities,
+        AiRuntimeState,
+    },
     database::Database,
     error::CommandError,
     paths::AppPaths,
     pdf_render_backend::{self, PdfRenderRuntime},
+    task_cancellation::CancellationSignal,
     util::{unix_time_millis, validate_entity_id},
 };
 
@@ -92,6 +104,22 @@ pub(crate) struct DocumentFigureDto {
     pub caption: Option<String>,
     pub hidden: bool,
     pub passages: Vec<FigurePassageDto>,
+    pub reading: Option<FigureReadingDto>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FigureReadingDto {
+    pub title: String,
+    pub shows: String,
+    pub use_in_text: Option<String>,
+    pub concepts: Vec<String>,
+    /// Pages whose text explains the figure, in page order.
+    pub explained_on: Vec<i64>,
+    /// 1 (incidental) to 5 (central to the document).
+    pub importance: i64,
+    pub worth_studying: bool,
+    pub model: String,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -105,6 +133,11 @@ pub(crate) struct DocumentFiguresDto {
     /// has not finished, then `found`, `unsupported` or `failed`.
     pub state: String,
     pub scanned_at: Option<i64>,
+    /// `none` until figures are read, then `read`, `partial` (some pages
+    /// could not be read), `unavailable` (the model cannot see images) or
+    /// `failed`.
+    pub reading: String,
+    pub read_at: Option<i64>,
     pub figures: Vec<DocumentFigureDto>,
 }
 
@@ -177,6 +210,89 @@ pub(crate) async fn find_after_ingestion(
         Ok(true) => search_and_store(database, runtime, document_id, source_path).await,
         Ok(false) => {}
         Err(error) => log_failure(document_id, &error.message),
+    }
+}
+
+/// Reads a document's figures now with the learner's model.
+pub(crate) async fn read_document_figures(
+    database: &Database,
+    paths: &AppPaths,
+    render: &PdfRenderRuntime,
+    runtime: &AiRuntimeState,
+    input: DocumentFiguresInput,
+) -> Result<DocumentFiguresDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    database.with_connection(|connection| require_pdf(connection, &input.document_id))?;
+    let task = figure_task(database)?;
+    reading::read_figures(reading::FigureReadingRun {
+        database,
+        paths,
+        render,
+        runtime,
+        task: &task,
+        document_id: &input.document_id,
+        cancellation: &CancellationSignal::new(),
+    })
+    .await?;
+    database.with_connection(|connection| figures(connection, &input.document_id))
+}
+
+/// Figures are read by the model that writes the document's cards, without
+/// reasoning, like the rest of the document's work.
+fn figure_task(database: &Database) -> Result<DocumentTaskContext, CommandError> {
+    let mut task = document_intelligence::load_document_task_context(database)?;
+    let capabilities = load_document_provider_capabilities(
+        database,
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    task.apply_provider_capabilities(&capabilities);
+    Ok(task)
+}
+
+/// What reading after an import needs.
+pub(crate) struct ReadAfterSearch<'a> {
+    pub database: &'a Database,
+    pub paths: &'a AppPaths,
+    pub render: &'a PdfRenderRuntime,
+    pub runtime: &'a AiRuntimeState,
+    pub task: &'a DocumentTaskContext,
+    pub document_id: &'a str,
+}
+
+/// During generation: once the figure search an import started has finished,
+/// reads the figures it found that are not read yet. A failure is logged and
+/// never fails generation.
+pub(crate) async fn read_after_search(
+    input: ReadAfterSearch<'_>,
+    search: Option<tauri::async_runtime::JoinHandle<()>>,
+) {
+    if let Some(search) = search {
+        let _ = search.await;
+    }
+    let waiting = input
+        .database
+        .with_connection(|connection| reading::waiting_to_be_read(connection, input.document_id));
+    let read = match waiting {
+        Ok(true) => {
+            reading::read_figures(reading::FigureReadingRun {
+                database: input.database,
+                paths: input.paths,
+                render: input.render,
+                runtime: input.runtime,
+                task: input.task,
+                document_id: input.document_id,
+                cancellation: &crate::task_cancellation::current_signal()
+                    .unwrap_or_else(CancellationSignal::new),
+            })
+            .await
+        }
+        Ok(false) => Ok(()),
+        Err(error) => Err(error),
+    };
+    if let Err(error) = read {
+        log_failure(input.document_id, &error.message);
     }
 }
 
@@ -340,7 +456,8 @@ pub(crate) fn set_use_images(
         transaction
             .execute(
                 "UPDATE document_figure_scans
-                 SET state = 'pending', detector = NULL, scanned_at = NULL
+                 SET state = 'pending', detector = NULL, scanned_at = NULL,
+                     reading = NULL, read_at = NULL
                  WHERE document_id = ?1",
                 [&input.document_id],
             )
@@ -412,6 +529,7 @@ pub(crate) fn replace_figures(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
     let hidden_before = hidden_boxes(&transaction, document_id)?;
+    let read_before = read_boxes(&transaction, document_id)?;
     transaction
         .execute(
             "DELETE FROM document_figures WHERE document_id = ?1",
@@ -481,8 +599,123 @@ pub(crate) fn replace_figures(
                 .map_err(CommandError::database)?;
         }
     }
+    // What was read of a figure found again in the same place stays with it.
+    let mut unread = 0_usize;
+    for figure in found {
+        let earlier = read_before.iter().find(|(page, bounds, _)| {
+            *page == figure.page_number as i64
+                && bounds.overlap(&figure.bounds) >= SAME_FIGURE_OVERLAP
+        });
+        match earlier {
+            Some((_, _, reading)) => {
+                insert_reading(&transaction, document_id, &figure.figure_id, reading)?
+            }
+            None => unread += 1,
+        }
+    }
     record_state(&transaction, document_id, "found", now)?;
+    if unread > 0 {
+        transaction
+            .execute(
+                "UPDATE document_figure_scans SET reading = NULL, read_at = NULL
+                 WHERE document_id = ?1",
+                [document_id],
+            )
+            .map_err(CommandError::database)?;
+    }
     transaction.commit().map_err(CommandError::database)?;
+    Ok(())
+}
+
+/// A stored reading as its columns hold it, to carry over to a figure.
+struct StoredReading {
+    columns: (
+        String,
+        String,
+        Option<String>,
+        String,
+        String,
+        i64,
+        i64,
+        String,
+        String,
+        i64,
+    ),
+}
+
+fn read_boxes(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<Vec<(i64, Rect, StoredReading)>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT figure.page_number, figure.box_left, figure.box_top, figure.box_width,
+                    figure.box_height, reading.title, reading.shows, reading.use_in_text,
+                    reading.concepts_json, reading.explained_json, reading.importance,
+                    reading.worth_studying, reading.provider, reading.model, reading.read_at
+             FROM document_figure_readings AS reading
+             JOIN document_figures AS figure
+               ON figure.document_id = reading.document_id
+              AND figure.figure_id = reading.figure_id
+             WHERE reading.document_id = ?1",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([document_id], |row| {
+            Ok((
+                row.get(0)?,
+                Rect::from_bounds([row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?]),
+                StoredReading {
+                    columns: (
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
+                        row.get(11)?,
+                        row.get(12)?,
+                        row.get(13)?,
+                        row.get(14)?,
+                    ),
+                },
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
+}
+
+fn insert_reading(
+    connection: &Connection,
+    document_id: &str,
+    figure_id: &str,
+    reading: &StoredReading,
+) -> Result<(), CommandError> {
+    let (title, shows, use_in_text, concepts, explained, importance, worth, provider, model, at) =
+        &reading.columns;
+    connection
+        .execute(
+            "INSERT INTO document_figure_readings(
+                 document_id, figure_id, title, shows, use_in_text, concepts_json,
+                 explained_json, importance, worth_studying, provider, model, read_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                document_id,
+                figure_id,
+                title,
+                shows,
+                use_in_text,
+                concepts,
+                explained,
+                importance,
+                worth,
+                provider,
+                model,
+                at
+            ],
+        )
+        .map_err(CommandError::database)?;
     Ok(())
 }
 
@@ -512,19 +745,31 @@ pub(crate) fn figures(
     connection: &Connection,
     document_id: &str,
 ) -> Result<DocumentFiguresDto, CommandError> {
-    let scan: Option<(i64, String, Option<i64>)> = connection
+    type Scan = (i64, String, Option<i64>, Option<String>, Option<i64>);
+    let scan: Option<Scan> = connection
         .query_row(
-            "SELECT use_images, state, scanned_at
+            "SELECT use_images, state, scanned_at, reading, read_at
              FROM document_figure_scans WHERE document_id = ?1",
             [document_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(CommandError::database)?;
-    let (use_images, state, scanned_at) = match scan {
-        Some((use_images, state, scanned_at)) => (use_images == 1, state, scanned_at),
-        None => (true, "none".to_string(), None),
+    let (use_images, state, scanned_at, reading, read_at) = match scan {
+        Some((use_images, state, scanned_at, reading, read_at)) => {
+            (use_images == 1, state, scanned_at, reading, read_at)
+        }
+        None => (true, "none".to_string(), None, None, None),
     };
+    let mut readings = figure_readings(connection, document_id)?;
 
     let mut passages_statement = connection
         .prepare(
@@ -587,6 +832,7 @@ pub(crate) fn figures(
                 caption: row.get(14)?,
                 hidden: row.get::<_, i64>(15)? == 1,
                 passages: Vec::new(),
+                reading: None,
             })
         })
         .map_err(CommandError::database)?;
@@ -595,12 +841,62 @@ pub(crate) fn figures(
         .map_err(CommandError::database)?;
     for figure in &mut figures {
         figure.passages = passages.remove(&figure.figure_id).unwrap_or_default();
+        figure.reading = readings.remove(&figure.figure_id);
     }
     Ok(DocumentFiguresDto {
         document_id: document_id.to_string(),
         use_images,
         state,
         scanned_at,
+        reading: reading.unwrap_or_else(|| "none".to_string()),
+        read_at,
         figures,
     })
+}
+
+fn figure_readings(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<std::collections::HashMap<String, FigureReadingDto>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT figure_id, title, shows, use_in_text, concepts_json, explained_json,
+                    importance, worth_studying, model
+             FROM document_figure_readings WHERE document_id = ?1",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([document_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })
+        .map_err(CommandError::database)?;
+    let mut readings = std::collections::HashMap::new();
+    for row in rows {
+        let (figure_id, title, shows, use_in_text, concepts, explained, importance, worth, model) =
+            row.map_err(CommandError::database)?;
+        readings.insert(
+            figure_id,
+            FigureReadingDto {
+                title,
+                shows,
+                use_in_text,
+                concepts: serde_json::from_str(&concepts).unwrap_or_default(),
+                explained_on: serde_json::from_str(&explained).unwrap_or_default(),
+                importance,
+                worth_studying: worth == 1,
+                model,
+            },
+        );
+    }
+    Ok(readings)
 }

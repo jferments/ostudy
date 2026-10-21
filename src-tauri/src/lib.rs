@@ -9,6 +9,9 @@
 mod ai;
 mod analytics;
 mod annotation_cards;
+/// The desktop build's release/development identity; Android takes its
+/// identity from the Gradle build type instead.
+#[cfg(desktop)]
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
@@ -411,6 +414,7 @@ pub fn run() {
             document_figures::set_document_figures_use_images,
             document_figures::set_document_figure_hidden,
             library_session::commands::leased_find_document_figures,
+            library_session::commands::leased_read_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
             notebooks::list_notebooks,
             notebooks::create_notebook,
@@ -425,6 +429,7 @@ pub fn run() {
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
+            lessons::slide_design::get_lesson_slide_designs,
             lessons::pptx::prepare_lesson_lecture_pptx,
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,
@@ -467,6 +472,7 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
+            document_study_guide_export::get_document_study_guide_section_page,
             document_study_guide_export::prepare_collection_study_guide_pdf,
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
