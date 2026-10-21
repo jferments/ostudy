@@ -558,7 +558,12 @@ mod tests {
         changed.topics[2].evidence_hash = "f".repeat(64);
         assert_eq!(load(&database, &plan.document_id, &key, &changed), None);
         assert_eq!(
-            load(&database, &plan.document_id, &contract_key(&"0".repeat(64)), &plan),
+            load(
+                &database,
+                &plan.document_id,
+                &contract_key(&"0".repeat(64)),
+                &plan
+            ),
             None
         );
     }

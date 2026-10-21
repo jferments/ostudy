@@ -26,13 +26,13 @@ use crate::{
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide_sections, DocumentStudyGuide, GroundedStudyGuideSection,
-        StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
-        STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
         editorial::{
             capitalize_heading, chapter_id, StudyGuideChapter, StudyGuideEditorial,
             StudyGuideTopicHeading,
         },
+        publish_document_study_guide_sections, DocumentStudyGuide, GroundedStudyGuideSection,
+        StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
+        STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
     knowledge::{
@@ -432,8 +432,7 @@ async fn resolve_sections(
     if plan.topics.len() < sections::MIN_TOPICS_TO_PLAN {
         return Ok(sections::identity(plan));
     }
-    if let Some(saved) = sections::load(execution.database, execution.document_id, contract, plan)
-    {
+    if let Some(saved) = sections::load(execution.database, execution.document_id, contract, plan) {
         return Ok(saved);
     }
     let briefs = sections::briefs(plan, &execution.evidence, catalogs);
@@ -496,10 +495,7 @@ fn section_headings(
 ) -> Option<StudyGuideEditorial> {
     let introduction = guide.summary.trim();
     let named_by_model = planned.iter().any(|section| !section.key_ideas.is_empty());
-    if !named_by_model
-        || introduction.is_empty()
-        || introduction.chars().count() > 4_000
-    {
+    if !named_by_model || introduction.is_empty() || introduction.chars().count() > 4_000 {
         return None;
     }
     let topics = guide

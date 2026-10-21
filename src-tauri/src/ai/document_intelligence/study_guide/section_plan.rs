@@ -79,9 +79,9 @@ pub(crate) async fn plan_document_study_guide_sections(
     if topics.is_empty() {
         return Err(plan_error("A guide plan needs at least one topic."));
     }
-    let source_words = topics
-        .iter()
-        .fold(0usize, |total, topic| total.saturating_add(topic.source_words));
+    let source_words = topics.iter().fold(0usize, |total, topic| {
+        total.saturating_add(topic.source_words)
+    });
     let (_, most) = section_hint(source_words, topics.len());
     let schema = schema(topics.len(), most);
     let system = system_prompt();
@@ -111,26 +111,46 @@ pub(crate) async fn plan_document_study_guide_sections(
             "The guide's topic list does not fit the selected model context.",
         )
     })?;
-    let value = request_json_cancellable(
-        runtime,
-        task,
-        JsonTaskRequest {
-            system_prompt: &system,
-            user_text: &user,
-            schema: &schema,
-            max_tokens,
-            images: &[],
-        },
-        cancellation,
-    )
-    .await?;
-    let wire: PlanWire = serde_json::from_value(value).map_err(|_| {
-        CommandError::new(
-            "ai_document_output_invalid",
-            "The study-guide section plan did not match its required structured contract.",
-        )
-    })?;
-    let sections = admit(wire, topics.len())?;
+    let request = |user: String| {
+        let (system, schema) = (&system, &schema);
+        async move {
+            let value = request_json_cancellable(
+                runtime,
+                task,
+                JsonTaskRequest {
+                    system_prompt: system,
+                    user_text: &user,
+                    schema,
+                    max_tokens,
+                    images: &[],
+                },
+                cancellation,
+            )
+            .await?;
+            let wire: PlanWire = serde_json::from_value(value).map_err(|_| {
+                CommandError::new(
+                    "ai_document_output_invalid",
+                    "The study-guide section plan did not match its required structured contract.",
+                )
+            })?;
+            admit(wire, topics.len())
+        }
+    };
+    let mut sections = request(user.clone()).await?;
+    // Providers do not all enforce the schema's item limit. One more request
+    // names the limit; past that, the smallest neighbours are joined.
+    if sections.len() > most {
+        let retry = format!(
+            "{user}\n\nAn earlier plan for this source had {} sections. Write at most {most}: join neighbouring sections whose ideas belong together.",
+            sections.len()
+        );
+        if let Ok(second) = request(retry).await {
+            if second.len() < sections.len() {
+                sections = second;
+            }
+        }
+        sections = join_smallest(sections, topics, most);
+    }
     crate::logging::debug_target(
         "ai.document.study_guide",
         "study_guide_sections_planned",
@@ -147,7 +167,9 @@ pub(crate) fn validate_section_plan(
     topic_count: usize,
 ) -> Result<(), CommandError> {
     if sections.first().map(|section| section.first_topic) != Some(0) {
-        return Err(plan_error("The guide plan does not start at the first topic."));
+        return Err(plan_error(
+            "The guide plan does not start at the first topic.",
+        ));
     }
     if sections
         .windows(2)
@@ -163,9 +185,60 @@ pub(crate) fn validate_section_plan(
             || section.title.chars().count() > MAX_SECTION_TITLE_CHARS
             || section.key_ideas.len() > MAX_KEY_IDEAS
     }) {
-        return Err(plan_error("A guide section's title or key ideas are out of bounds."));
+        return Err(plan_error(
+            "A guide section's title or key ideas are out of bounds.",
+        ));
     }
     Ok(())
+}
+
+/// Join neighbouring sections, the pair with the fewest source words first,
+/// until at most `most` remain. The joined section keeps the larger one's
+/// title and alternates their key ideas.
+fn join_smallest(
+    mut sections: Vec<PlannedGuideSection>,
+    topics: &[GuideTopicBrief<'_>],
+    most: usize,
+) -> Vec<PlannedGuideSection> {
+    let words = |sections: &[PlannedGuideSection], index: usize| {
+        let end = sections
+            .get(index + 1)
+            .map_or(topics.len(), |next| next.first_topic);
+        topics[sections[index].first_topic..end]
+            .iter()
+            .map(|topic| topic.source_words)
+            .sum::<usize>()
+    };
+    while sections.len() > most.max(1) {
+        let Some(index) = (0..sections.len() - 1)
+            .min_by_key(|index| words(&sections, *index) + words(&sections, index + 1))
+        else {
+            break;
+        };
+        let (left, right) = (words(&sections, index), words(&sections, index + 1));
+        let second = sections.remove(index + 1);
+        let first = &mut sections[index];
+        if right > left {
+            first.title = second.title;
+        }
+        let ideas = std::mem::take(&mut first.key_ideas);
+        let mut ideas = ideas.into_iter().map(Some).collect::<Vec<_>>();
+        let mut other = second.key_ideas.into_iter().map(Some).collect::<Vec<_>>();
+        let length = ideas.len().max(other.len());
+        ideas.resize(length, None);
+        other.resize(length, None);
+        for idea in ideas
+            .into_iter()
+            .zip(other)
+            .flat_map(|(a, b)| [a, b])
+            .flatten()
+        {
+            if first.key_ideas.len() < MAX_KEY_IDEAS && !first.key_ideas.contains(&idea) {
+                first.key_ideas.push(idea);
+            }
+        }
+    }
+    sections
 }
 
 fn admit(wire: PlanWire, topic_count: usize) -> Result<Vec<PlannedGuideSection>, CommandError> {
@@ -258,9 +331,9 @@ fn user_prompt(
     topics: &[GuideTopicBrief<'_>],
     (statements, text_chars): (usize, usize),
 ) -> Result<String, CommandError> {
-    let source_words = topics
-        .iter()
-        .fold(0usize, |total, topic| total.saturating_add(topic.source_words));
+    let source_words = topics.iter().fold(0usize, |total, topic| {
+        total.saturating_add(topic.source_words)
+    });
     let (fewest, most) = section_hint(source_words, topics.len());
     let entries = topics
         .iter()
@@ -374,6 +447,39 @@ mod tests {
         assert_eq!(sections.len(), 2);
         assert_eq!(sections[0].first_topic, 0);
         assert_eq!(sections[0].title, "A");
+    }
+
+    #[test]
+    fn too_many_sections_join_their_smallest_neighbours() {
+        let concepts = Vec::new();
+        let topics = [100, 900, 50, 60, 800].map(|source_words| GuideTopicBrief {
+            title: "Topic",
+            heading: None,
+            summary: "",
+            key_concepts: &concepts,
+            first_unit: 1,
+            last_unit: 1,
+            source_words,
+            core_statements: Vec::new(),
+        });
+        let sections = (0..5)
+            .map(|first_topic| PlannedGuideSection {
+                first_topic,
+                title: format!("S{first_topic}"),
+                key_ideas: vec![format!("Idea {first_topic}.")],
+            })
+            .collect::<Vec<_>>();
+        let joined = join_smallest(sections, &topics, 3);
+        assert_eq!(
+            joined
+                .iter()
+                .map(|section| section.first_topic)
+                .collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert_eq!(joined[2].title, "S4");
+        assert_eq!(joined[2].key_ideas, ["Idea 2.", "Idea 4.", "Idea 3."]);
+        validate_section_plan(&joined, 5).unwrap();
     }
 
     #[test]
