@@ -27,7 +27,12 @@ describe("durable learning-artifact progress", () => {
     expect(guide.getAttribute("aria-valuenow")).toBe("40");
     expect(cards.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(screen.getAllByText("Complete")).toHaveLength(1);
-    expect(screen.getByText("4 / 10 sections")).toBeTruthy();
+    expect(screen.getByText("4 / 10 sections completed")).toBeTruthy();
+  });
+
+  it("counts finished sections, then says the guide is being organized", () => {
+    expect(guideProgress({ ...job, completedUnits: 9 }, true).status).toBe("9 / 10 sections completed");
+    expect(guideProgress({ ...job, completedUnits: 10 }, true).status).toBe("Organizing the guide");
   });
 
   it("shows provider-reported study-guide token usage while generation is active", () => {
