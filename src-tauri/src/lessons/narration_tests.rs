@@ -171,7 +171,7 @@ fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     let unset = settings(&database);
     assert_eq!(unset.profile_id, None);
     assert_eq!(unset.model_id, DRAMA);
-    assert_eq!(unset.voice, "");
+    assert_eq!(unset.voice, "builtin:relaxed-man");
     assert_eq!(unset.revision, 0);
     assert_eq!(unset.models.len(), 2);
 
@@ -223,7 +223,7 @@ fn saving_the_voice_checks_the_model_voice_connection_and_revision() {
     let saved = save(&database, Some(OPENROUTER), DRAMA, "", 0).unwrap();
     assert_eq!(saved.revision, 1);
     assert_eq!(saved.model_id, DRAMA);
-    assert_eq!(settings(&database).voice, "");
+    assert_eq!(settings(&database).voice, "builtin:relaxed-man");
 
     let stale = save(&database, Some(OPENROUTER), KOKORO, "am_adam", 0).unwrap_err();
     assert_eq!(stale.code, "speech_settings_changed");
@@ -290,7 +290,8 @@ fn kept_audio_is_reused_without_asking_the_voice_again() {
     let voice = Voice {
         engine: "openrouter",
         model,
-        voice: "bm_george",
+        voice: "bm_george".to_string(),
+        reference: None,
     };
     let pieces = segments(&narration, model.max_characters);
     let mut kept = Vec::new();
@@ -341,7 +342,8 @@ fn something_other_than_audio_is_not_kept() {
     let voice = Voice {
         engine: "openrouter",
         model: speech::speech_model(KOKORO).unwrap(),
-        voice: "af_heart",
+        voice: "af_heart".to_string(),
+        reference: None,
     };
     let refused = keep_segment(&database, &paths, &voice, "Hello.", b"{\"error\":1}").unwrap_err();
     assert_eq!(refused.code, "speech_audio_invalid");
