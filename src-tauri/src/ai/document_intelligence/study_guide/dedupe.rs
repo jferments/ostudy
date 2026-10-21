@@ -77,11 +77,6 @@ fn taught(section: &StudyGuideSectionContent) -> Seen {
     seen
 }
 
-/// True when every judgeable sentence of `text` repeats the section's teaching.
-pub(super) fn restates(section: &StudyGuideSectionContent, text: &str) -> bool {
-    taught(section).restates(text)
-}
-
 /// Drop restated study-aid items in reader order and return how many went.
 pub(super) fn drop_restated_items(section: &mut StudyGuideSectionContent) -> usize {
     let mut seen = taught(section);
