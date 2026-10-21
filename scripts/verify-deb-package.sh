@@ -25,6 +25,11 @@ printf '%s\n' "$DEPENDS" | grep -Eq '(^|,)[[:space:]]*libusb-1\.0-0([[:space:]]*
   printf 'ERROR: Debian package is missing required dependency libusb-1.0-0. Depends: %s\n' "$DEPENDS" >&2
   exit 1
 }
+# Startup builds the AI HTTP client, which needs the system certificate store.
+printf '%s\n' "$DEPENDS" | grep -Eq '(^|,)[[:space:]]*ca-certificates([[:space:]]*\([^)]*\))?([[:space:]]*,|$)' || {
+  printf 'ERROR: Debian package is missing required dependency ca-certificates. Depends: %s\n' "$DEPENDS" >&2
+  exit 1
+}
 
 TMP="$(mktemp -d -t ostudy-deb-policy.XXXXXXXX)"
 cleanup() { rm -rf -- "$TMP"; }

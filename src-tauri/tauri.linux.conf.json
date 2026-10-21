@@ -32,7 +32,8 @@
     "linux": {
       "deb": {
         "depends": [
-          "libusb-1.0-0"
+          "libusb-1.0-0",
+          "ca-certificates"
         ],
         "files": {
           "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"
@@ -40,7 +41,8 @@
       },
       "rpm": {
         "depends": [
-          "libusb-1.0.so.0()(64bit)"
+          "libusb-1.0.so.0()(64bit)",
+          "ca-certificates"
         ],
         "files": {
           "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"

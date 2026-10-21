@@ -2,7 +2,7 @@
 """Read-only inspection of the production oStudy .rpm, with the same policy as the .deb.
 
 Reads the RPM headers and cpio payload directly, so the Ubuntu runner needs no
-rpm tooling. Checks the package name, the libusb requirement, the packaged GUI
+rpm tooling. Checks the package name, the libusb and ca-certificates requirements, the packaged GUI
 bytes and desktop entry, the reviewed udev rule, the verified PDFium runtime,
 and that neither files nor scriptlets touch user-owned learner data.
 """
@@ -117,6 +117,9 @@ def verify(rpm: Path, built_gui: Path, cargo_manifest: Path) -> None:
     requires = list(tags.get(TAG_REQUIRENAME, []))
     if not any(LIBUSB_REQUIREMENT.match(name) for name in requires):
         raise ValueError(f"RPM package is missing the libusb requirement. Requires: {requires}")
+    # Startup builds the AI HTTP client, which needs the system certificate store.
+    if "ca-certificates" not in requires:
+        raise ValueError(f"RPM package is missing the ca-certificates requirement. Requires: {requires}")
 
     dirnames = list(tags.get(TAG_DIRNAMES, []))
     files = [dirnames[d] + b for d, b in zip(tags.get(TAG_DIRINDEXES, []), tags.get(TAG_BASENAMES, []))]
