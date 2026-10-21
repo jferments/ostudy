@@ -41,7 +41,6 @@ import { InlineNotice } from "./ui/primitives/InlineNotice";
 const loadLibraryWorkbench = () => import("./screens/library/workbench/LibraryWorkbench");
 const loadDocumentsSection = () => import("./screens/DocumentsSection");
 const loadStudyGuidesRoute = () => import("./screens/StudyGuidesRoute");
-const loadLibraryNotes = () => import("./screens/notes/LibraryNotes");
 const loadPracticeScreen = () => import("./screens/PracticeScreen");
 const loadProgressScreen = () => import("./screens/progress/ProgressScreen");
 const loadTutorScreen = () => import("./screens/tutor/TutorWorkspace");
@@ -55,9 +54,6 @@ const DocumentsSection = lazy(() =>
 );
 const StudyGuidesRoute = lazy(() =>
   loadStudyGuidesRoute().then((module) => ({ default: module.StudyGuidesRoute })),
-);
-const LibraryNotes = lazy(() =>
-  loadLibraryNotes().then((module) => ({ default: module.LibraryNotes })),
 );
 const PracticeScreen = lazy(() =>
   loadPracticeScreen().then((module) => ({ default: module.PracticeScreen })),
@@ -76,7 +72,6 @@ const FEATURE_PRELOADERS = [
   loadLibraryWorkbench,
   loadDocumentsSection,
   loadStudyGuidesRoute,
-  loadLibraryNotes,
   loadPracticeScreen,
   loadProgressScreen,
   loadTutorScreen,
@@ -325,18 +320,6 @@ function App() {
                                     onSetUpAi={() => void controller.openAiSetup()}
                                   />
                                 </PerformanceProfiler>
-                              </LibraryFrame>
-                            ) : controller.section === "notes" ? (
-                              <LibraryFrame view="notes" {...libraryFrame}>
-                                <LibraryNotes
-                                  subject={librarySubject}
-                                  showToast={controller.showToast}
-                                  onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
-                                  onOpenGuide={(documentId, documentTitle) => {
-                                    setGuideOpenRequest({ requestId: Date.now(), documentId, documentTitle });
-                                    navigate("study-guides");
-                                  }}
-                                />
                               </LibraryFrame>
                             ) : controller.section === "review" ? (
                               homeScreen

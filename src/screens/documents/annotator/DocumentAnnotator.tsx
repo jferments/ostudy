@@ -36,7 +36,7 @@ interface DocumentAnnotatorProps {
 /** How long a page opened from a card's source stays outlined. */
 const CITED_PAGE_MARK_MS = 2500;
 
-export const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
+const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
   v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
 };
 

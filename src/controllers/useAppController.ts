@@ -57,7 +57,6 @@ export type AppSection =
   | "decks"
   | "study-guides"
   | "documents"
-  | "notes"
   | "review"
   | "tutor"
   | "analytics"

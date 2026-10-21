@@ -13,7 +13,7 @@ import {
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import { cn } from "../../../ui/internal/cn";
 import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
-import { AnnotatorPage, StickyNoteEditor, type PageDraft, type PaperPages } from "./AnnotatorPage";
+import { AnnotatorPage, StickyNoteEditor, type PageDraft } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
@@ -51,8 +51,6 @@ interface AnnotatorCanvasProps {
   coarse: boolean;
   /** A page to outline, such as the one a card's source opened at. */
   markedPage?: number | null;
-  /** Pages of paper, as a notebook's are, instead of a document's page images. */
-  paperPages?: PaperPages;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -79,7 +77,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  * own page only.
  */
 export function AnnotatorCanvas({
-  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
+  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -123,8 +121,7 @@ export function AnnotatorCanvas({
   latest.current = { controller, scale, viewport };
 
   // The highlighter snaps to text, so it reads the text of the pages near the view.
-  // Paper has no text to read.
-  const highlighting = controller.tool === "highlighter" && !paperPages;
+  const highlighting = controller.tool === "highlighter";
   useEffect(() => {
     if (!highlighting) return;
     for (const pageNumber of near) {
@@ -411,7 +408,6 @@ export function AnnotatorCanvas({
                 scale={scale}
                 near={near.has(pageNumber)}
                 marked={markedPage === pageNumber}
-                paperPages={paperPages}
                 images={images}
                 tiles={tiles}
                 tileScale={settled?.scale ?? 0}

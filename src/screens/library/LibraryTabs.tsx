@@ -4,13 +4,12 @@ import { LIBRARY_SECTIONS, type LibrarySection } from "../../navigation/appDesti
 import { cn } from "../../ui/internal/cn";
 import { ItemTrigger } from "../../ui/primitives/Item";
 
-/** Phones use the short labels so all six tabs fit. */
+/** Phones use the short labels so all five tabs fit. */
 const VIEWS: Readonly<Record<LibrarySection, { label: string; short: string }>> = {
   overview: { label: "Overview", short: "Overview" },
   lessons: { label: "Lessons", short: "Lessons" },
   "study-guides": { label: "Study guides", short: "Guides" },
   documents: { label: "Documents", short: "Docs" },
-  notes: { label: "Notes", short: "Notes" },
   decks: { label: "Flashcards", short: "Cards" },
 };
 
@@ -24,8 +23,8 @@ interface LibraryTabsProps {
 }
 
 /**
- * Library's pages as folder tabs: Overview, Lessons, Study guides, Documents,
- * Notes and Flashcards (the Workbench), each showing the chosen subject. The open
+ * Library's pages as folder tabs: Overview, Lessons, Study guides, Documents
+ * and Flashcards (the Workbench), each showing the chosen subject. The open
  * page's tab is in front, joined to the page below it; the others sit back on
  * a shaded face.
  */

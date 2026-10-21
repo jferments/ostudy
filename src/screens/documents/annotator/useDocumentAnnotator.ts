@@ -6,8 +6,6 @@ import {
   applyDocumentAnnotationChanges,
   getDocumentAnnotations,
   type AnnotatedPage,
-  type DocumentAnnotationChange,
-  type DocumentAnnotations,
 } from "../../../ipc/documentAnnotations";
 import {
   applyEdits,
@@ -60,17 +58,6 @@ export interface TextEditing {
 }
 
 /**
- * Where the annotator's pages and marks come from and go: a document's, by
- * default, or a notebook's. `key` names the document or notebook.
- */
-export interface AnnotatorSource {
-  load: (key: string) => Promise<Pick<DocumentAnnotations, "pages" | "annotations">>;
-  send: (key: string, changes: DocumentAnnotationChange[]) => Promise<unknown>;
-}
-
-const DOCUMENT_SOURCE: AnnotatorSource = { load: getDocumentAnnotations, send: applyDocumentAnnotationChanges };
-
-/**
  * The annotator's document state: pages and annotations, the learner's tool
  * and style choices, undo history, the open text note, and background saving.
  * Every change goes through `commit`, which records one undo step and queues
@@ -78,7 +65,7 @@ const DOCUMENT_SOURCE: AnnotatorSource = { load: getDocumentAnnotations, send: a
  */
 const EMPTY_GROUP: readonly Annotation[] = [];
 
-export function useDocumentAnnotator(documentId: string, showToast: ShowToast, source: AnnotatorSource = DOCUMENT_SOURCE) {
+export function useDocumentAnnotator(documentId: string, showToast: ShowToast) {
   const [load, setLoad] = useState<AnnotatorLoad>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [annotations, setAnnotations] = useState<PageAnnotations>(() => new Map());
@@ -102,14 +89,14 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
   const textHeights = useRef(new Map<string, { shape: TextShape; height: number }>());
 
   const queue = useMemo(
-    () => new AnnotationSaveQueue({ documentId, send: source.send, onState: setSaveState }),
-    [documentId, source],
+    () => new AnnotationSaveQueue({ documentId, send: applyDocumentAnnotationChanges, onState: setSaveState }),
+    [documentId],
   );
 
   useEffect(() => {
     let current = true;
     setLoad({ state: "loading" });
-    source.load(documentId).then((loaded) => {
+    getDocumentAnnotations(documentId).then((loaded) => {
       if (!current) return;
       const grouped = groupByPage(loaded.annotations.map((annotation) => ({
         id: annotation.id,
@@ -125,7 +112,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
       if (current) setLoad({ state: "failed", message: getErrorMessage(error) });
     });
     return () => { current = false; };
-  }, [documentId, attempt, source]);
+  }, [documentId, attempt]);
 
   const setHistory = useCallback((next: AnnotationHistory) => {
     historyRef.current = next;

@@ -13,7 +13,7 @@ export type AppDestination = "home" | "library" | "tutor" | "progress" | "settin
  * Study guides keep their section ids so saved checkpoints and launch
  * requests still name them.
  */
-export const LIBRARY_SECTIONS = ["overview", "lessons", "study-guides", "documents", "notes", "decks"] as const;
+export const LIBRARY_SECTIONS = ["overview", "lessons", "study-guides", "documents", "decks"] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
 

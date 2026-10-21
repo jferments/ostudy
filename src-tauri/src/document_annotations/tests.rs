@@ -185,7 +185,6 @@ fn every_kind() -> Vec<AnnotationShape> {
             font_size: 12.0,
             sticky: None,
             collapsed: None,
-            link: None,
         }),
         AnnotationShape::Text(TextNote {
             x: 300.0,
@@ -196,7 +195,6 @@ fn every_kind() -> Vec<AnnotationShape> {
             font_size: 10.0,
             sticky: Some(true),
             collapsed: None,
-            link: None,
         }),
     ]
 }
@@ -287,7 +285,6 @@ fn shapes_outside_their_limits_are_refused() {
             font_size,
             sticky: None,
             collapsed: None,
-            link: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -761,7 +758,6 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
             font_size: 10.0,
             sticky,
             collapsed: None,
-            link: None,
         })
     };
     let long = "a".repeat(MAX_TEXT_CHARS + 1);
@@ -789,7 +785,6 @@ fn only_a_sticky_note_can_be_collapsed() {
             font_size: 10.0,
             sticky,
             collapsed,
-            link: None,
         })
     };
     let folded = note(Some(true), Some(true));

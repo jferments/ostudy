@@ -1,7 +1,6 @@
-import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
-import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Dialog } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
@@ -33,19 +32,8 @@ export interface PageDraft {
   complete: boolean;
 }
 
-/**
- * Pages of paper instead of page images, as a notebook's are: the paper is
- * drawn under the marks, and a text note may be a link.
- */
-export interface PaperPages {
-  background: (page: AnnotatedPage) => ReactNode;
-  /** Links whose target is gone, shown as removed. */
-  unavailableLinks: ReadonlySet<string>;
-}
-
 interface AnnotatorPageProps {
   page: AnnotatedPage;
-  paperPages?: PaperPages;
   /** CSS pixels per point. */
   scale: number;
   /** Near the screen: show the image and annotations, not just the page's place. */
@@ -113,8 +101,8 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
 });
 
 function PageContent({
-  page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,
-  textHeight, onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
+  page, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse, textHeight,
+  onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
   const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
@@ -131,7 +119,7 @@ function PageContent({
     : null;
   return (
     <>
-      {paperPages ? paperPages.background(page) : imageUrl ? (
+      {imageUrl ? (
         <img src={imageUrl} alt="" draggable={false} className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full" />
       ) : (
         <p className="tw:pointer-events-none tw:absolute tw:inset-x-0 tw:top-1/2 tw:m-0 tw:-translate-y-1/2 tw:text-center tw:text-small tw:text-[var(--ostudy-color-neutral-950)]/70">
@@ -173,8 +161,7 @@ function PageContent({
         style={{ width: page.width, height: page.height, transform: `scale(${scale})` }}
       >
         {notes.map((annotation) => (
-          <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText}
-            unavailable={paperPages?.unavailableLinks.has(annotation.id) ?? false} />
+          <TextNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} onMeasure={onMeasureText} />
         ))}
         {stickies.map((annotation) => (
           <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
@@ -225,8 +212,7 @@ function PageContent({
   );
 }
 
-/** One mark's graphic in page points; text notes are drawn as HTML instead. */
-export const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { shape: AnnotationShape; complete?: boolean }) {
+const ShapeGraphic = memo(function ShapeGraphic({ shape, complete = true }: { shape: AnnotationShape; complete?: boolean }) {
   switch (shape.kind) {
     case "ink":
       return <path d={inkPath(shape, complete)} fill={shape.color} />;
@@ -279,12 +265,10 @@ function textStyle(shape: TextShape): CSSProperties {
   };
 }
 
-const TextNote = memo(function TextNote({ annotation, opacity, onMeasure, unavailable }: {
+const TextNote = memo(function TextNote({ annotation, opacity, onMeasure }: {
   annotation: Annotation;
   opacity: number | undefined;
   onMeasure: (annotation: Annotation, height: number) => void;
-  /** A link whose target is gone. */
-  unavailable: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -292,37 +276,13 @@ const TextNote = memo(function TextNote({ annotation, opacity, onMeasure, unavai
     if (height > 0) onMeasure(annotation, height);
   }, [annotation, onMeasure]);
   if (annotation.shape.kind !== "text") return null;
-  const { link } = annotation.shape;
   return (
     <div ref={ref} aria-hidden="true" className="tw:absolute tw:box-border tw:whitespace-pre-wrap tw:wrap-anywhere"
       style={{ ...textStyle(annotation.shape), opacity }}>
-      {link ? <LinkLabel text={annotation.shape.text} button={link.button === true} unavailable={unavailable} /> : annotation.shape.text}
+      {annotation.shape.text}
     </div>
   );
 });
-
-/**
- * A link on a notebook page: underlined words after a link mark, or a button
- * in the note's color. A link whose target is gone is struck through.
- */
-function LinkLabel({ text, button, unavailable }: { text: string; button: boolean; unavailable: boolean }) {
-  return (
-    <span
-      data-note-link={button ? "button" : "link"}
-      data-unavailable={unavailable || undefined}
-      className={cn(
-        "tw:inline-flex tw:max-w-full tw:items-baseline tw:gap-[0.3em] tw:font-medium",
-        button
-          ? "tw:rounded-md tw:bg-[currentColor] tw:px-[0.6em] tw:py-[0.2em] tw:shadow-sm"
-          : "tw:underline tw:decoration-1 tw:underline-offset-2",
-        unavailable && "tw:line-through tw:opacity-60",
-      )}
-    >
-      <Icon name={button ? "practice" : "link"} className={cn("tw:size-[0.9em] tw:shrink-0 tw:self-center", button && "tw:text-[var(--ostudy-color-neutral-0)]")} />
-      <span className={cn(button && "tw:text-[var(--ostudy-color-neutral-0)]")}>{text}</span>
-    </span>
-  );
-}
 
 const STICKY_PADDING = 6;
 
