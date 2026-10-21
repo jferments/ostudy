@@ -7,6 +7,13 @@ mod desktop;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod mobile_stub;
 
+/// Where a page in the system browser links to bring oStudy back to the
+/// front, on platforms whose browser is a separate app (`None` elsewhere).
+#[cfg(target_os = "android")]
+pub(crate) const BROWSER_RETURN_URL: Option<&str> = Some(android::BROWSER_RETURN_URL);
+#[cfg(not(target_os = "android"))]
+pub(crate) const BROWSER_RETURN_URL: Option<&str> = None;
+
 use std::{
     future::Future,
     path::PathBuf,
