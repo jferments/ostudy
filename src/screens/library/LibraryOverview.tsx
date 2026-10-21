@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
+import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { LessonSummary } from "../../ipc/lessons";
 import {
@@ -24,6 +25,7 @@ import { countLabel } from "../home/homeModel";
 import { useHomeLessons } from "../home/HomeStudyPanels";
 import { formatNarrowWeekday, formatWeekday, plural } from "../progress/progressFormat";
 import { useLibrarySubjects } from "./LibrarySubjects";
+import { SubjectEmptyState } from "./SubjectEmptyState";
 
 /** The most decks "How each deck is going" reads; each is one small query. */
 const STRENGTH_ROWS = 8;
@@ -44,6 +46,8 @@ interface LibraryOverviewProps {
   onOpenGuide: (documentId: string, title: string) => void;
   onOpenSubject: (subjectId: string) => void;
   onOpenProgress: () => void;
+  refreshDecks: () => Promise<DeckSummary[]>;
+  showToast: ShowToast;
 }
 
 interface UpNextItem {
@@ -73,6 +77,8 @@ export function LibraryOverview({
   onOpenGuide,
   onOpenSubject,
   onOpenProgress,
+  refreshDecks,
+  showToast,
 }: LibraryOverviewProps) {
   const { summary, library } = useHomeSummary();
   const jobs = useDocumentJobs();
@@ -227,6 +233,12 @@ export function LibraryOverview({
     subjects.ready && library !== null && guides !== undefined &&
     scopeDecks.length === 0 && scopeDocuments.length === 0 && (guides?.totalCount ?? 0) === 0;
   if (empty) {
+    const entry = subject.kind === "subject" ? library.subjects.find((candidate) => candidate.id === subject.subjectId) : undefined;
+    if (subject.kind === "subject" && entry) {
+      return <SubjectEmptyState subjectId={subject.subjectId} name={entry.name}
+        subjects={library.subjects.map((candidate) => ({ id: candidate.id, name: candidate.name }))}
+        refreshDecks={refreshDecks} showToast={showToast} onOpenDeck={onOpenDeck} onShowDocuments={() => onSelectView("documents")} />;
+    }
     return <EmptyState icon="library" title={subject.kind === "all" ? "Your library is empty" : "Nothing here yet"} />;
   }
 
