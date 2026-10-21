@@ -104,8 +104,10 @@ impl WritingBudget {
 
     pub(super) fn instructions(self) -> String {
         format!(
-            "Length guide: roughly {} human-readable characters across all categories, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. This is guidance, not a validity limit: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
-            self.target_chars, self.overview_chars
+            "Length guide: roughly {} words ({} characters) across all fields together, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. This is guidance, not a validity limit: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
+            self.target_chars / 6,
+            self.target_chars,
+            self.overview_chars
         )
     }
 }

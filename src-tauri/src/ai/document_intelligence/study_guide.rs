@@ -440,16 +440,16 @@ A study guide is a condensed summary of the key ideas, not a rewrite of the sour
 
 Choose what matters: the overarching ideas, mechanisms, relationships and distinctions an expert teacher would make sure a learner keeps. Leave out individual values, product and brand details, exhaustive lists, minor exceptions and side examples unless they are the point of the topic. When the evidence lists many comparable items, keep only the important ones and put them in one table (or a short list in keyPoints) instead of prose; never write paragraph after paragraph that recites fact after fact. Teach the subject, not the document: state the ideas themselves, and never describe the source's tables, slides, layout or labels or what \"the source\" shows.
 
-Each idea appears once in the section. Every field has one job; leave a field [] when it would only restate.
+Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
 - overview: the big idea in 2 or 3 sentences: what this topic is about and why it matters.
 - keyPoints: the key ideas, usually three to six, each one or two plain sentences that a learner could repeat from memory. They are the heart of the section.
 - explanations: only for the one to three key ideas that need a short explanation of how or why (a mechanism, a cause, a consequence). Each has a short heading naming the idea and one short paragraph. Many topics need one or none.
 - tables: for three or more parallel items compared on two or more attributes, with only the rows and columns a learner needs. At most one or two. Copy names, numbers and units exactly. Do not repeat a table's cells in prose.
 - processSteps: only when an ordered sequence is itself a key idea, in short steps.
 - comparisons: only for a central contrast that no table or key point already makes.
-- importantTerms: at most five terms central to the topic that the section uses without defining, one sentence each.
-- callouts: at most two, each earning its place: key_idea for the single insight that ties the topic together, warning for a caution or a frequent error, tip for a way to remember something, note otherwise. Do not restate a key point.
-- commonMisconceptions: at most two real, likely errors, each with its correction.
+- importantTerms: usually []; at most three terms central to the topic that the section uses without defining, one sentence each.
+- callouts: usually none, at most one, earning its place: key_idea for the single insight that ties the topic together, warning for a caution or a frequent error, tip for a way to remember something, note otherwise. Do not restate a key point.
+- commonMisconceptions: usually []; at most one real, likely error, with its correction.
 - workedExamples: only when the topic is a calculation or reasoning method the evidence supports; never invent a scenario.
 - retrievalChecks: two or three short questions on the key ideas, each with a one-sentence answer.
 - visualExplanations: only for attached images that carry a key idea the text lacks. Do not describe a diagram that is only mentioned in text.
