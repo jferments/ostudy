@@ -112,7 +112,7 @@ fn compile(lesson: LessonDto, documents: Vec<String>) -> LectureDto {
 
 /// The titles of the documents the steps' knowledge units come from, in the
 /// order the lesson first uses them. Units no longer extracted are skipped.
-fn source_documents(
+pub(super) fn source_documents(
     connection: &Connection,
     lesson: &LessonDto,
 ) -> Result<Vec<String>, CommandError> {
