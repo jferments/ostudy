@@ -38,6 +38,7 @@ const STAGE: &str = "lesson_authoring";
 /// Room for six full steps; the prompt asks for three to six.
 const LESSON_VISIBLE_TOKENS: usize = 8_000;
 const MAX_WIRE_STEPS: usize = 8;
+const TOO_MANY_STEPS: &str = "A lesson has at most 8 steps.";
 const MAX_WIRE_BLOCKS: usize = 6;
 const MAX_CHECK_OPTIONS: usize = 5;
 /// An invalid answer larger than this is not sent back for repair.
@@ -153,6 +154,10 @@ where
     }
     let instruction = if error.code == "ai_document_output_truncated" {
         "Your previous answer reached the output limit before it was complete. Write the lesson again with at most four steps, at most three blocks per step and shorter narration. Never drop a qualification to save space.".to_string()
+    } else if error.message == TOO_MANY_STEPS {
+        // The steps are fine one by one, so the candidate would only invite
+        // the same answer again.
+        "Your previous answer had more than eight steps. Write the lesson again in at most six steps by merging closely related steps into one. Never drop a qualification to save steps.".to_string()
     } else {
         let candidate = candidate
             .map(|value| value.to_string())
@@ -242,9 +247,7 @@ pub(super) fn decode(
         ))
     })?;
     if wire.steps.len() > MAX_WIRE_STEPS {
-        return Err(output_error(format!(
-            "A lesson has at most {MAX_WIRE_STEPS} steps."
-        )));
+        return Err(output_error(TOO_MANY_STEPS));
     }
     let steps = wire
         .steps

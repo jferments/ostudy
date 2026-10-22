@@ -295,3 +295,29 @@ async fn a_request_that_does_not_fit_is_never_sent() {
     assert_eq!(error.code, "ai_document_context_budget");
     assert_eq!(*calls.borrow(), 0);
 }
+
+#[tokio::test]
+async fn too_many_steps_are_merged_on_repair_without_the_candidate() {
+    let knowledge = catalog_fixture();
+    let sent = RefCell::new(Vec::<LessonRequest>::new());
+    let mut long = wire_lesson();
+    let step = long["steps"][1].clone();
+    long["steps"] = json!(vec![step; 9]);
+    let answers = RefCell::new(vec![Ok(wire_lesson()), Ok(long)]);
+    run(
+        request(),
+        &knowledge,
+        |_| Ok(()),
+        |_| true,
+        |owned| {
+            sent.borrow_mut().push(owned);
+            let answer = answers.borrow_mut().pop().unwrap();
+            async move { answer }
+        },
+    )
+    .await
+    .unwrap();
+    let sent = sent.borrow();
+    assert!(sent[1].user.contains("at most six steps by merging"));
+    assert!(!sent[1].user.contains("<invalid-lesson-candidate>"));
+}
