@@ -411,6 +411,23 @@ pub(crate) async fn leased_prepare_annotated_pdf(
     .await
 }
 
+#[tauri::command(rename = "prepare_notebook_pdf")]
+pub(crate) async fn leased_prepare_notebook_pdf(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<crate::notebooks::PreparedNotebookPdfDto, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input: crate::notebooks::PrepareNotebookPdfInput =
+        serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::notebooks::prepare_notebook_pdf(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "get_document_page_text")]
 pub(crate) async fn leased_get_document_page_text(
     app: AppHandle,

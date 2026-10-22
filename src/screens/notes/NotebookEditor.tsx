@@ -47,6 +47,7 @@ import { LinkDialog, type LinkChoice } from "./LinkDialog";
 import { notebookSource, rememberPictureDraft } from "./notebookSource";
 import { PaperBackground } from "./paper";
 import { fitPicture, naturalSize } from "./pictures";
+import { useNotebookPdfExport } from "./useNotebookPdfExport";
 
 /** Where the notebook's links lead outside it. */
 export interface NotebookLinkActions {
@@ -100,6 +101,7 @@ function NotebookSession({
   const source = useMemo(() => notebookSource(setContents), []);
   const base = useDocumentAnnotator(notebookId, showToast, source);
   const { leave, closing } = useAnnotatorLeave(base);
+  const { exporting, exportPdf } = useNotebookPdfExport(notebookId, base.flush, showToast);
   const close = useCallback(() => leave(async () => {
     // The document beside saves its marks too; its unmount saves anything left.
     await besideFlush.current?.();
@@ -193,7 +195,18 @@ function NotebookSession({
       closeLabel="Back to notes"
       busy={closing}
       onClose={() => void close()}
-      actions={<SaveStatus state={controller.saveState} onRetry={controller.retrySave} />}
+      actions={
+        <div className="tw:flex tw:items-center tw:gap-3">
+          <SaveStatus state={controller.saveState} onRetry={controller.retrySave} />
+          {contents ? (
+            <Button size="small" variant="secondary" disabled={closing || exporting}
+              aria-label="Save notebook as PDF" onClick={() => void exportPdf()}>
+              <Icon name="download" />
+              <span className="tw:compact:hidden">{exporting ? "Saving PDF…" : "Save PDF"}</span>
+            </Button>
+          ) : null}
+        </div>
+      }
     >
       {load.state === "loading" ? (
         <LoadingState label="Opening notebook…" />
