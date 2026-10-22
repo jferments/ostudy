@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import type { DocumentClip } from "../../../ipc/notebooks";
 import { cn } from "../../../ui/internal/cn";
 import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
 import { AnnotatorPage, StickyNoteEditor, type PageDraft, type PaperPages } from "./AnnotatorPage";
@@ -39,6 +40,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   rectangle: "tw:cursor-crosshair",
   ellipse: "tw:cursor-crosshair",
   eraser: "tw:cursor-cell",
+  clip: "tw:cursor-crosshair",
 };
 
 interface AnnotatorCanvasProps {
@@ -54,6 +56,11 @@ interface AnnotatorCanvasProps {
   markedPage?: number | null;
   /** Pages of paper, as a notebook's are, instead of a document's page images. */
   paperPages?: PaperPages;
+  /** A part of a page the Clip tool took, in points on its page. */
+  onClip?: (pageNumber: number, rect: { x: number; y: number; width: number; height: number }) => void;
+  /** The notebooks each page was clipped into, and how to open one. */
+  clipsByPage?: ReadonlyMap<number, readonly DocumentClip[]>;
+  onOpenClip?: (clip: DocumentClip) => void;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -81,6 +88,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  */
 export function AnnotatorCanvas({
   documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
+  onClip, clipsByPage, onOpenClip,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -120,8 +128,8 @@ export function AnnotatorCanvas({
   const rects = useRef<Map<number, DOMRect> | null>(null);
 
   const { scale, near, settled } = viewport;
-  const latest = useRef({ controller, scale, viewport });
-  latest.current = { controller, scale, viewport };
+  const latest = useRef({ controller, scale, viewport, onClip });
+  latest.current = { controller, scale, viewport, onClip };
 
   // The highlighter snaps to text, so it reads the text of the pages near the view.
   // Paper has no text to read.
@@ -258,6 +266,9 @@ export function AnnotatorCanvas({
           break;
         case "lasso":
           setLoop(effect.loop);
+          break;
+        case "clip":
+          latest.current.onClip?.(effect.pageNumber, effect.rect);
           break;
         case "select-group":
           current.selectGroup(effect.pageNumber, effect.ids);
@@ -439,6 +450,8 @@ export function AnnotatorCanvas({
                 onFocusAnnotation={focusAnnotation}
                 onOpenAnnotation={openAnnotation}
                 onChangeText={changeText}
+                clips={clipsByPage?.get(pageNumber)}
+                onOpenClip={onOpenClip}
               />
             );
           })}

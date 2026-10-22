@@ -22,7 +22,9 @@ export interface Size { width: number; height: number; }
 export interface Bounds { left: number; top: number; right: number; bottom: number; }
 
 export type AnnotatorTool =
-  | "select" | "lasso" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "curve" | "rectangle" | "ellipse" | "eraser";
+  | "select" | "lasso" | "pen" | "highlighter" | "text" | "sticky" | "line" | "arrow" | "curve" | "rectangle" | "ellipse" | "eraser"
+  /** Drags out a part of a PDF page to copy into a notebook. */
+  | "clip";
 export type ShapeTool = "line" | "arrow" | "curve" | "rectangle" | "ellipse";
 /** What the eraser takes: whole annotations, or only the parts of pen and highlighter strokes it passes over. */
 export type EraseMode = "whole" | "part";

@@ -8,6 +8,10 @@ pub struct RetryPdfGenerationInput {
     pub document_id: String,
     #[serde(default)]
     pub generation_instructions: GenerationInstructions,
+    /// An existing deck that a document's first cards go into, instead of a
+    /// new deck of its own.
+    #[serde(default)]
+    pub destination_deck_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

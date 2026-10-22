@@ -304,6 +304,7 @@ const SUBJECT_LIBRARY_FIELDS: &[FieldContract] = &[
         "studyRanges",
         TypeScriptType::Named("NativeDocumentStudyRange[]"),
     ),
+    field("leftOutDocumentIds", TypeScriptType::Named("string[]")),
     field("checkTheseCount", TypeScriptType::Number),
 ];
 
@@ -541,6 +542,7 @@ pub fn representative_fixtures() -> Value {
                 source_sha256: "7".repeat(64),
                 created_at: 30,
             }],
+            left_out_document_ids: vec!["55555555555555555555555555555555".to_string()],
             check_these_count: 1,
         },
         "subjectFilingReview": SubjectFilingReviewDto {

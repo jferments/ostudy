@@ -60,19 +60,11 @@ pub(super) fn briefs<'a>(
     evidence: &'a [StudyGuideTopicEvidence],
     catalogs: &'a [KnowledgeCatalog],
 ) -> Vec<GuideTopicBrief<'a>> {
-    let mut seen = BTreeSet::new();
     plan.topics
         .iter()
-        .zip(evidence)
+        .zip(own_words(plan, evidence))
         .zip(catalogs)
-        .map(|((topic, evidence), catalog)| {
-            let chunks = topic.evidence_chunk_indices.len().max(1);
-            let own = topic
-                .evidence_chunk_indices
-                .iter()
-                .filter(|index| seen.insert(**index))
-                .count();
-            let words = evidence.source_text.split_whitespace().count();
+        .map(|((topic, source_words), catalog)| {
             let heading = topic
                 .parent_topic_id
                 .as_deref()
@@ -90,15 +82,43 @@ pub(super) fn briefs<'a>(
                 key_concepts: &topic.key_concepts,
                 first_unit: topic.source_locator.first(),
                 last_unit: topic.source_locator.last(),
-                source_words: words * own / chunks,
-                core_statements: core
+                source_words,
+                // The planner samples these through the topic in source
+                // order, so the core units stand alone when there are any.
+                core_statements: if core.is_empty() { other } else { core }
                     .into_iter()
-                    .chain(other)
                     .map(|unit| unit.content.statement.as_str())
                     .collect(),
             }
         })
         .collect()
+}
+
+/// Each topic's share of the source's words: the part of its evidence drawn
+/// from chunks no earlier topic used.
+fn own_words(plan: &DocumentLearningPlan, evidence: &[StudyGuideTopicEvidence]) -> Vec<usize> {
+    let mut seen = BTreeSet::new();
+    plan.topics
+        .iter()
+        .zip(evidence)
+        .map(|(topic, evidence)| {
+            let chunks = topic.evidence_chunk_indices.len().max(1);
+            let own = topic
+                .evidence_chunk_indices
+                .iter()
+                .filter(|index| seen.insert(**index))
+                .count();
+            evidence.source_text.split_whitespace().count() * own / chunks
+        })
+        .collect()
+}
+
+/// About how many words the source has, counting shared pages once.
+pub(super) fn source_words(
+    plan: &DocumentLearningPlan,
+    evidence: &[StudyGuideTopicEvidence],
+) -> usize {
+    own_words(plan, evidence).into_iter().sum()
 }
 
 /// The member topics of each section, as plan index ranges.
@@ -179,11 +199,16 @@ fn merge_topics(
         .iter()
         .flat_map(|topic| topic.evidence_hashes.iter().cloned())
         .collect::<Vec<_>>();
-    let key_concepts = if section.key_ideas.is_empty() {
-        distinct(members.iter().flat_map(|topic| &topic.key_concepts))
-    } else {
-        section.key_ideas.clone()
-    };
+    // The planner's key ideas lead; the members' own concepts follow so the
+    // author still sees what the later pages teach.
+    let key_concepts = section
+        .key_ideas
+        .iter()
+        .cloned()
+        .chain(distinct(
+            members.iter().flat_map(|topic| &topic.key_concepts),
+        ))
+        .collect();
     let evidence_hash = hash_text(&format!(
         "guide-section-v1|{}|{}|{}",
         members
@@ -470,7 +495,15 @@ mod tests {
         assert_eq!(guide.topics[0].id, plan.topics[0].id);
         assert_eq!(guide.topics[1].id, plan.topics[2].id);
         assert_eq!(guide.topics[1].title, "Gas exchange");
-        assert_eq!(guide.topics[1].key_concepts, ["Gas exchange matters."]);
+        assert_eq!(
+            guide.topics[1].key_concepts,
+            [
+                "Gas exchange matters.",
+                "Concept 2",
+                "Concept 3",
+                "Concept 4"
+            ]
+        );
         assert_eq!(guide.topics[1].evidence_chunk_indices, [4, 5, 6, 7, 8, 9]);
         assert_eq!(guide.topics[1].source_locator.unit_numbers, [3, 4, 5, 6]);
         assert_eq!(guide.topics[0].summary, "Summary 0. Summary 1.");

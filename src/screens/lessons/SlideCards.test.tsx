@@ -21,7 +21,7 @@ function deck(id: string, name: string, archivedAt: number | null = null): DeckS
 function library(placements: SubjectLibrary["decks"]): SubjectLibrary {
   return {
     libraryRevision: 1, documentFilingRevision: 1, subjects: [], decks: placements,
-    documents: [], studyRanges: [], checkTheseCount: 0,
+    documents: [], studyRanges: [], leftOutDocumentIds: [], checkTheseCount: 0,
   };
 }
 

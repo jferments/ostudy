@@ -13,11 +13,13 @@ pub(super) struct GuideRequest {
     pub(super) visible_tokens: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run<F, Fut>(
     initial: GuideRequest,
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
     completion_plan: StudyGuideCompletionPlan,
+    writing: WritingBudget,
     mut preflight: impl FnMut(&GuideRequest) -> Result<(), CommandError>,
     mut reserve: impl FnMut(&CommandError) -> bool,
     mut request: F,
@@ -70,7 +72,7 @@ where
             user: format!(
                 "{}\n\n{}",
                 repair.user,
-                WritingBudget::for_knowledge(knowledge)
+                writing
                     .fit_output(completion_plan.repair_visible_tokens)
                     .instructions()
             ),
@@ -182,6 +184,7 @@ mod tests {
             &catalog_fixture(),
             false,
             DOCUMENT_GUIDE_COMPLETION_PLAN,
+            WritingBudget::for_knowledge(&catalog_fixture()),
             |_| Ok(()),
             |_| panic!("length alone must not spend a recovery credit"),
             |_| {
@@ -208,6 +211,7 @@ mod tests {
             &catalog_fixture(),
             false,
             DOCUMENT_GUIDE_COMPLETION_PLAN,
+            WritingBudget::for_knowledge(&catalog_fixture()),
             |_| Ok(()),
             |_| {
                 credits.set(credits.get() + 1);
@@ -240,6 +244,7 @@ mod tests {
             &catalog_fixture(),
             false,
             DOCUMENT_GUIDE_COMPLETION_PLAN,
+            WritingBudget::for_knowledge(&catalog_fixture()),
             |_| Ok(()),
             |_| false,
             |_| ready(Ok(value.clone())),
@@ -265,6 +270,7 @@ mod tests {
                 &catalog_fixture(),
                 false,
                 DOCUMENT_GUIDE_COMPLETION_PLAN,
+                WritingBudget::for_knowledge(&catalog_fixture()),
                 |_| Ok(()),
                 |_| true,
                 |_| ready(responses.pop_front().unwrap()),
@@ -286,6 +292,7 @@ mod tests {
             &catalog_fixture(),
             false,
             DOCUMENT_GUIDE_COMPLETION_PLAN,
+            WritingBudget::for_knowledge(&catalog_fixture()),
             |_| {
                 checks.set(checks.get() + 1);
                 if checks.get() == 1 {
@@ -316,6 +323,7 @@ mod tests {
             &catalog_fixture(),
             false,
             DOCUMENT_GUIDE_COMPLETION_PLAN,
+            WritingBudget::for_knowledge(&catalog_fixture()),
             |_| Ok(()),
             |_| true,
             |_| {

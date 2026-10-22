@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { listDecks, type DeckSummary } from "../../ipc/decks";
+import type { DocumentSummary } from "../../ipc/documents";
+import { generationInstructionsError } from "../../ipc/generationInstructions";
 import type { CourseWritingProgress } from "../../ipc/lessons";
 import type { StudyTargetBundleStatus, StudyTargetOutputPolicy } from "../../ipc/studyMaterials";
+import type { SubjectLibrary } from "../../ipc/subjects";
 import { Sheet } from "../../ui/overlays/Dialog";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
-import { Checkbox } from "../../ui/primitives/FormControls";
+import { ChipButton } from "../../ui/primitives/Chip";
+import { Checkbox, Textarea } from "../../ui/primitives/FormControls";
+import { FormField } from "../../ui/primitives/FormField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
 import { useSubjectCourse } from "../lessons/useSubjectCourse";
+import { formatDocumentType } from "./DocumentProgress";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
 interface SubjectStudyActionsProps {
@@ -16,6 +24,16 @@ interface SubjectStudyActionsProps {
   /** Changes whenever the subject's documents or reading ranges do, so the status rereads. */
   refreshKey: string | number;
   hasDocuments: boolean;
+  /** The documents filed in the subject, for From. */
+  documents?: readonly DocumentSummary[];
+  /** The subject library: which decks the subject holds and which documents its study set leaves out. */
+  library?: SubjectLibrary | null;
+  /** Leaves exactly these documents out of the subject's study materials. */
+  onSetLeftOut?: (documentIds: string[]) => Promise<boolean>;
+  /** Starts a document's first cards, into a chosen deck or a new one of its own. */
+  onMakeFirstCards?: (document: DocumentSummary, instructions: string, deckId: string | undefined) => Promise<void>;
+  /** True while a document is being processed or making cards. */
+  isDocumentWorking?: (documentId: string) => boolean;
   refreshDecks?: () => Promise<unknown>;
   /** Studies the decks the subject's materials made. */
   onStudy?: (subjectId: string) => void;
@@ -29,18 +47,32 @@ export interface MaterialsChoice extends StudyTargetOutputPolicy {
   lessons: boolean;
 }
 
+/** One Make from the sheet: what to make, from which documents, and how to write new cards. */
+export interface MakeRequest extends MaterialsChoice {
+  documentIds: string[];
+  /** The deck new cards go into; null gives each document a deck of its own. */
+  deckId: string | null;
+  instructions: string;
+}
+
 /**
- * The subject's study materials, made from all of its documents together:
- * Study and Read guide once they exist; otherwise the one action that makes
- * them, and progress with Stop while they are being made. Make study materials
- * opens a sheet that chooses the study guide, the flashcards and the lessons;
- * the guide and flashcards are one native bundle and the lessons the
- * subject's course, written side by side.
+ * The subject's study materials, made from its documents together: Study and
+ * Read guide once they exist; otherwise the one action that makes them, and
+ * progress with Stop while they are being made. Make study materials opens a
+ * sheet that picks the documents, what to make, the deck new cards go into
+ * and instructions for them. Documents without cards get their first cards
+ * first; the guide and the subject's flashcards are then one native bundle,
+ * and the lessons the subject's course, written side by side.
  */
 export function SubjectStudyActions({
   subjectId,
   refreshKey,
   hasDocuments,
+  documents = [],
+  library = null,
+  onSetLeftOut,
+  onMakeFirstCards,
+  isDocumentWorking = (documentId) => documents.some((document) => document.id === documentId && document.lifecycleState === "processing"),
   refreshDecks,
   onStudy,
   onOpenGuide,
@@ -54,31 +86,74 @@ export function SubjectStudyActions({
   const course = useSubjectCourse(subjectId);
   const status = bundle.status;
   const [choosing, setChoosing] = useState(false);
+  // The bundle and lessons wait for the cards a Make started, since both read them.
+  const [waiting, setWaiting] = useState<{ choice: MaterialsChoice; documentIds: string[] } | null>(null);
+  const [makeError, setMakeError] = useState<string | null>(null);
+  const stillWorking = waiting?.documentIds.some(isDocumentWorking) ?? false;
+  useEffect(() => {
+    if (!waiting || stillWorking) return;
+    setWaiting(null);
+    startOutputs(waiting.choice);
+    // startOutputs reads the latest controllers; only the wait ending matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, stillWorking]);
+
   // A course is written once; rewriting one is a separate decision.
   const lessonsMade = (course.course?.lessons.length ?? 0) > 0;
   const lessonsKnown = course.course !== null;
   if (!hasDocuments && !status && !lessonsMade) return null;
-  if (bundle.busy || course.writing) {
+
+  function startOutputs(choice: MaterialsChoice): void {
+    if (choice.flashcards || choice.studyGuide) {
+      void bundle.run({ flashcards: choice.flashcards, studyGuide: choice.studyGuide });
+    }
+    if (choice.lessons) course.write();
+  }
+
+  async function make(request: MakeRequest): Promise<void> {
+    setChoosing(false);
+    setMakeError(null);
+    const chosen = new Set(request.documentIds);
+    const leftOut = documents.filter((document) => !chosen.has(document.id)).map((document) => document.id).sort();
+    const current = documents.filter((document) => library?.leftOutDocumentIds.includes(document.id)).map((document) => document.id).sort();
+    if (onSetLeftOut && leftOut.join() !== current.join() && !await onSetLeftOut(leftOut)) {
+      setMakeError("The documents to use could not be saved, so nothing was made.");
+      return;
+    }
+    const firstCards = request.flashcards
+      ? documents.filter((document) => chosen.has(document.id) && needsFirstCards(document) && !isDocumentWorking(document.id))
+      : [];
+    if (firstCards.length === 0 || !onMakeFirstCards) return startOutputs(request);
+    for (const document of firstCards) {
+      await onMakeFirstCards(document, request.instructions, request.deckId ?? undefined);
+    }
+    setWaiting({ choice: request, documentIds: firstCards.map((document) => document.id) });
+  }
+
+  if (waiting || bundle.busy || course.writing) {
     const stopping = (!bundle.busy || bundle.canceling) && (!course.writing || course.stopping);
     return (
       <div className="tw:flex tw:min-w-60 tw:flex-1 tw:items-center tw:gap-3" data-testid="subject-study-progress">
         <div className="tw:grid tw:min-w-0 tw:flex-1 tw:gap-2">
+          {waiting ? <CardsProgress count={waiting.documentIds.length} /> : null}
           {bundle.busy ? <BundleProgress status={status} /> : null}
           {course.writing ? <LessonsProgress progress={course.progress} /> : null}
         </div>
-        <Button
-          size="small"
-          variant="dangerSecondary"
-          disabled={stopping}
-          aria-label={stopping ? "Stopping study materials" : "Stop making study materials"}
-          onClick={() => {
-            if (bundle.busy) void bundle.stop();
-            if (course.writing) course.stop();
-          }}
-        >
-          <Icon name="stop" size={16} />
-          {stopping ? "Stopping…" : "Stop"}
-        </Button>
+        {bundle.busy || course.writing ? (
+          <Button
+            size="small"
+            variant="dangerSecondary"
+            disabled={stopping}
+            aria-label={stopping ? "Stopping study materials" : "Stop making study materials"}
+            onClick={() => {
+              if (bundle.busy) void bundle.stop();
+              if (course.writing) course.stop();
+            }}
+          >
+            <Icon name="stop" size={16} />
+            {stopping ? "Stopping…" : "Stop"}
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -99,6 +174,7 @@ export function SubjectStudyActions({
       {needsUpdate && update ? (
         <Button disabled={bundle.loading} onClick={onSetUpAi ?? (() => void bundle.run())}>{update}</Button>
       ) : null}
+      {makeError ? <InlineNotice kind="warning" className="tw:basis-full">{makeError}</InlineNotice> : null}
       {bundle.error ? (
         <InlineNotice kind="warning" className="tw:basis-full">{bundle.error}</InlineNotice>
       ) : null}
@@ -107,35 +183,59 @@ export function SubjectStudyActions({
       ) : null}
       {choosing ? (
         <MakeMaterialsSheet
+          subjectId={subjectId}
+          documents={documents}
+          library={library}
           made={{ studyGuide: status !== null, flashcards: status !== null, lessons: lessonsMade }}
           onClose={() => setChoosing(false)}
-          onMake={(choice) => {
-            setChoosing(false);
-            if (choice.flashcards || choice.studyGuide) {
-              void bundle.run({ flashcards: choice.flashcards, studyGuide: choice.studyGuide });
-            }
-            if (choice.lessons) course.write();
-          }}
+          onMake={(request) => void make(request)}
         />
       ) : null}
     </>
   );
 }
 
-/** What to make for the subject: everything not yet made, ticked to start; at least one. */
-function MakeMaterialsSheet({ made, onClose, onMake }: {
+/** A document that has not made cards yet, and can. */
+function needsFirstCards(document: DocumentSummary): boolean {
+  return document.generatedDeckId === null && document.lifecycleState !== "processing";
+}
+
+/**
+ * What to make for the subject, and from what. Everything not yet made is
+ * ticked to start, and so is every document the subject's study set uses.
+ * Flashcards are made when the subject's flashcards are not set up yet or a
+ * chosen document has no cards; the deck and instructions are for those
+ * documents' new cards.
+ */
+function MakeMaterialsSheet({ subjectId, documents, library, made, onClose, onMake }: {
+  subjectId: string;
+  documents: readonly DocumentSummary[];
+  library: SubjectLibrary | null;
   made: MaterialsChoice;
   onClose: () => void;
-  onMake: (choice: MaterialsChoice) => void;
+  onMake: (request: MakeRequest) => void;
 }) {
+  const leftOut = library?.leftOutDocumentIds ?? [];
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(
+    () => new Set(documents.filter((document) => !leftOut.includes(document.id)).map((document) => document.id)),
+  );
+  const chosenDocuments = documents.filter((document) => chosen.has(document.id));
+  const writesCards = chosenDocuments.some(needsFirstCards);
   const [choice, setChoice] = useState<MaterialsChoice>({
-    studyGuide: !made.studyGuide, flashcards: !made.flashcards, lessons: !made.lessons,
+    studyGuide: !made.studyGuide, flashcards: !made.flashcards || writesCards, lessons: !made.lessons,
   });
+  const [deckId, setDeckId] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const decks = useSubjectDecks(subjectId, library);
+  const cardOptions = choice.flashcards && writesCards;
+  const instructionsError = cardOptions ? generationInstructionsError(instructions) : null;
+  const flashcardsMade = made.flashcards && !writesCards;
   const nothing = !choice.flashcards && !choice.studyGuide && !choice.lessons;
-  const options: { key: keyof MaterialsChoice; label: string }[] = [
-    { key: "flashcards", label: "Flashcards" },
-    { key: "studyGuide", label: "Study guide" },
-    { key: "lessons", label: "Lessons" },
+  const blocked = nothing || (documents.length > 0 && chosen.size === 0) || instructionsError !== null;
+  const options: { key: keyof MaterialsChoice; label: string; made: boolean }[] = [
+    { key: "studyGuide", label: "Study guide", made: made.studyGuide },
+    { key: "flashcards", label: "Flashcards", made: flashcardsMade },
+    { key: "lessons", label: "Lessons", made: made.lessons },
   ];
   return (
     <Sheet
@@ -144,31 +244,116 @@ function MakeMaterialsSheet({ made, onClose, onMake }: {
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!nothing) onMake(choice);
+        if (blocked) return;
+        onMake({
+          ...choice,
+          flashcards: choice.flashcards && !flashcardsMade,
+          documentIds: chosenDocuments.map((document) => document.id),
+          deckId: cardOptions && deckId ? deckId : null,
+          instructions: cardOptions ? instructions : "",
+        });
       }}
       actions={<>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button type="submit" disabled={nothing}>Make</Button>
+        <Button type="submit" disabled={blocked}><Icon name="sparkles" size={16} /> Make</Button>
       </>}
     >
-      <fieldset className="tw:m-0 tw:grid tw:gap-2 tw:border-0 tw:p-0">
-        <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Make</legend>
-        {options.map((option) => (
-          <label
-            key={option.key}
-            className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:px-4"
-          >
-            <Checkbox
-              checked={choice[option.key]}
-              disabled={made[option.key]}
-              onCheckedChange={(checked) => setChoice((current) => ({ ...current, [option.key]: checked }))}
-            />
-            <span className="tw:flex-1 tw:text-label tw:font-medium">{option.label}</span>
-            {made[option.key] ? <span className="tw:text-small tw:text-muted-foreground">Made</span> : null}
-          </label>
-        ))}
-      </fieldset>
+      <div className="tw:grid tw:gap-5">
+        {documents.length > 0 ? (
+          <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:border-0 tw:p-0">
+            <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">From</legend>
+            <ul className="tw:m-0 tw:grid tw:list-none tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-0">
+              {documents.map((document) => (
+                <li key={document.id} className="tw:border-0 tw:border-solid tw:border-border tw:not-last:border-b">
+                  <label className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-3 tw:px-4">
+                    <Checkbox
+                      checked={chosen.has(document.id)}
+                      onCheckedChange={(checked) => setChosen((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(document.id); else next.delete(document.id);
+                        return next;
+                      })}
+                    />
+                    <span className="tw:min-w-0 tw:flex-1 tw:truncate tw:text-label tw:font-medium">{document.title}</span>
+                    <span className="tw:shrink-0 tw:text-small tw:text-muted-foreground">{documentLength(document)}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </fieldset>
+        ) : null}
+        <fieldset className="tw:m-0 tw:border-0 tw:p-0">
+          <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Make</legend>
+          <div className="tw:flex tw:flex-wrap tw:gap-2">
+            {options.map((option) => {
+              const on = !option.made && choice[option.key];
+              return (
+                <ChipButton
+                  key={option.key}
+                  selected={on}
+                  disabled={option.made}
+                  aria-label={option.made ? `${option.label}, made` : option.label}
+                  onClick={() => setChoice((current) => ({ ...current, [option.key]: !current[option.key] }))}
+                >
+                  {on || option.made ? <Icon name="check" size={14} /> : null}
+                  {option.label}
+                </ChipButton>
+              );
+            })}
+          </div>
+        </fieldset>
+        {cardOptions ? <>
+          <FormField label="Cards go into">
+            <NativeSelect value={deckId} onChange={(event) => setDeckId(event.currentTarget.value)}>
+              <option value="">A new deck for each document</option>
+              {decks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
+            </NativeSelect>
+          </FormField>
+          <FormField label="Instructions (optional)" error={instructionsError}>
+            <Textarea rows={3} value={instructions} onChange={(event) => setInstructions(event.currentTarget.value)} />
+          </FormField>
+        </> : null}
+      </div>
     </Sheet>
+  );
+}
+
+/** The subject's own decks, in its order, that new cards can go into. */
+function useSubjectDecks(subjectId: string, library: SubjectLibrary | null): DeckSummary[] {
+  const [decks, setDecks] = useState<DeckSummary[]>([]);
+  useEffect(() => {
+    let active = true;
+    void listDecks().then((rows) => { if (active) setDecks(rows); }, () => undefined);
+    return () => { active = false; };
+  }, []);
+  return useMemo(() => {
+    const placements = (library?.decks ?? []).filter((placement) => placement.subjectId === subjectId);
+    const byId = new Map(decks.filter((deck) => deck.archivedAt === null).map((deck) => [deck.id, deck]));
+    return [...placements]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((placement) => byId.get(placement.deckId))
+      .filter((deck): deck is DeckSummary => deck !== undefined);
+  }, [decks, library, subjectId]);
+}
+
+function documentLength(document: DocumentSummary): string {
+  const count = document.sourceUnitCount;
+  if (count > 0 && document.sourceUnitKind) {
+    return `${count.toLocaleString()} ${document.sourceUnitKind.replaceAll("_", " ")}${count === 1 ? "" : "s"}`;
+  }
+  return formatDocumentType(document.sourceFormat);
+}
+
+function CardsProgress({ count }: { count: number }) {
+  const label = `${count} document${count === 1 ? "" : "s"}`;
+  return (
+    <div className="tw:grid tw:min-w-0 tw:gap-1.5" role="status" aria-live="polite">
+      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-small">
+        <span className="tw:truncate">Making flashcards</span>
+        <span className="tw:shrink-0 tw:text-muted-foreground">{label}</span>
+      </div>
+      <Progress value={null} max={100} label="Flashcards progress" valueText={label} />
+    </div>
   );
 }
 

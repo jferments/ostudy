@@ -48,6 +48,10 @@ describe("document IPC", () => {
     expect(invoke).toHaveBeenCalledWith("start_document_flashcard_generation", {
       input: { documentId },
     });
+    await startDocumentFlashcardGeneration(documentId, "Focus on drugs", "d".repeat(32));
+    expect(invoke).toHaveBeenLastCalledWith("start_document_flashcard_generation", {
+      input: { documentId, generationInstructions: "Focus on drugs", destinationDeckId: "d".repeat(32) },
+    });
 
     vi.mocked(invoke).mockClear();
     await retryDocumentFlashcardGeneration(documentId);

@@ -62,7 +62,13 @@ A document's **…** menu files it: **Add to a subject…** or **Move to another
 
 **Reading range…** limits what the subject's study materials use from a long source, such as pages 1–3 and 7. The row shows the range, for example "pages 1–3 studied". **Whole document** clears it. When the file changes, the row says the range needs review.
 
-A subject's own study materials are made from all of its documents together. Nothing is made until you choose **Make study materials** beside **Upload** and, in its sheet, which to make: **Flashcards**, **Study guide** and **Lessons**. Everything not yet made is ticked to start, and **Make** writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab; a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
+A subject's own study materials are made from its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Its sheet asks:
+
+- **From**: which of the subject's documents to use. Every document is ticked unless you left it out before. An unticked document stays in the subject, but the subject's guide, its lessons and a Tutor chat about the subject skip it. Its row says "left out of study materials", and **Use in study materials** in its **…** menu puts it back. **Leave out of study materials** in the same menu leaves a document out without opening the sheet. Moving a document to another subject puts it back in.
+- **Make**: **Study guide**, **Flashcards** and **Lessons**. Everything not yet made is ticked to start.
+- **Cards go into** and **Instructions (optional)**: these appear when **Flashcards** will write cards for a ticked document that has none yet. Its new cards go into the chosen deck of the subject, or into a new deck of its own, and the instructions guide what they cover. A document's later **Make more cards…** adds to the same deck.
+
+**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab; a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
 Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
@@ -150,7 +156,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures travel with **Documents**. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
 Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 

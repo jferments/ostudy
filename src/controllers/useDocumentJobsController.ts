@@ -214,11 +214,11 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   }
 
   async function startBackgroundFlashcardGeneration(
-    documentId: string, generationInstructions?: string,
+    documentId: string, generationInstructions?: string, destinationDeckId?: string,
   ): Promise<void> {
     const captured = captureInstructions(documentId, generationInstructions);
     try {
-      await startDocumentFlashcardGeneration(documentId, captured);
+      await startDocumentFlashcardGeneration(documentId, captured, destinationDeckId);
     } catch (error) {
       throw error;
     }
@@ -364,8 +364,9 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
   }
 
+  /** Makes a document's first cards; `destinationDeckId` puts them in that deck instead of a new one. */
   async function retry(
-    document: DocumentSummary, generationInstructions = generationInstructionsFor(document),
+    document: DocumentSummary, generationInstructions = generationInstructionsFor(document), destinationDeckId?: string,
   ): Promise<void> {
     if (document.lifecycleState === "processing"
       || busyDocumentIds.has(document.id)
@@ -373,7 +374,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     updateIdSet(setBusyDocumentIds, document.id, true);
     setErrorMessage(null);
     try {
-      await startBackgroundFlashcardGeneration(document.id, generationInstructions);
+      await startBackgroundFlashcardGeneration(document.id, generationInstructions, destinationDeckId);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {

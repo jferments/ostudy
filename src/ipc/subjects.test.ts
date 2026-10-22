@@ -12,6 +12,7 @@ import {
   moveSubject,
   renameSubject,
   setDocumentStudyRanges,
+  setSubjectLeftOutDocuments,
 } from "./subjects";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
@@ -76,6 +77,10 @@ describe("subject IPC", () => {
     };
     await setDocumentStudyRanges(ranges);
     expect(invoke).toHaveBeenLastCalledWith("set_document_study_ranges", { input: ranges });
+
+    const leftOut = { subjectId: "a".repeat(32), documentIds: ["c".repeat(32)], expectedDocumentFilingRevision: 3 };
+    await setSubjectLeftOutDocuments(leftOut);
+    expect(invoke).toHaveBeenLastCalledWith("set_subject_left_out_documents", { input: leftOut });
   });
 
   it("reads and dismisses the Check these list", async () => {

@@ -55,6 +55,8 @@ interface DocumentsScreenProps {
   onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
+  /** Opens a notebook at one of its pages, such as one a page was clipped into. */
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
 }
 
 type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
@@ -101,7 +103,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     string | null | undefined
   >(undefined);
   const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
-  const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
+  const [annotating, setAnnotating] = useState<{ id: string; title: string; subjectId: string | null } | null>(null);
   // The guide a Remake replaces, by document. Its finished record stays the
   // latest one until the new run has planned its sections, so it is not shown.
   const [remadeGuideJobIds, setRemadeGuideJobIds] = useState<Record<string, string>>({});
@@ -197,6 +199,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+        subjectId={annotating.subjectId}
+        onOpenNotebook={props.onOpenNotebook}
       />
     );
   }
@@ -265,7 +269,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const showArtifacts = authoring || guideGenerating || (!processing && guideUnsettled);
     const filedIn = subjectOf(document);
     const ranges = filing.rangesOf(document.id);
-    const range = filedIn !== null ? rangeLabel(document, ranges) : null;
+    const leftOut = filedIn !== null && filing.isLeftOut(document.id);
+    const range = filedIn === null ? null : leftOut ? "left out of study materials" : rangeLabel(document, ranges);
     // A loose document's one filing action sits on the row; elsewhere it is in the menu.
     const addTo = filedIn === null && subjects.length > 0 && !processing;
     // Work under way shows as one bar in the row; a failed guide or card run keeps its panel below.
@@ -275,7 +280,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const items: OverflowMenuItem[] = [];
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
-      onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+      onSelect: () => setAnnotating({ id: document.id, title: document.title, subjectId: subjectOf(document) }),
     });
     if (canAnnotateDocument(document)) items.push({
       id: "figures", label: "Figures", disabled: deleting,
@@ -284,6 +289,13 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
       id: "range", label: "Reading range…", disabled: filing.busy,
       onSelect: () => setRanging(document),
+    });
+    if (filedIn !== null && !processing) items.push({
+      id: "left-out", label: leftOut ? "Use in study materials" : "Leave out of study materials", disabled: filing.busy,
+      onSelect: () => {
+        const others = (library?.leftOutDocumentIds ?? []).filter((id) => id !== document.id && (placements.get(id) ?? null) === filedIn);
+        void filing.setLeftOut(filedIn, leftOut ? others : [...others, document.id]);
+      },
     });
     if (subjects.length > 0 && !processing) items.push({
       id: "move", label: filedIn === null ? "Add to a subject…" : "Move to another subject…", disabled: filing.busy,
@@ -401,6 +413,12 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 subjectId={subjectId}
                 refreshKey={materialsKey}
                 hasDocuments={filedCount > 0}
+                documents={filedGroups[0]?.documents ?? []}
+                library={library}
+                onSetLeftOut={(documentIds) => filing.setLeftOut(subjectId, documentIds)}
+                onMakeFirstCards={(document, instructions, deckId) => retry(document, instructions, deckId)}
+                isDocumentWorking={(documentId) => busyDocumentIds.has(documentId)
+                  || documents.some((document) => document.id === documentId && document.lifecycleState === "processing")}
                 refreshDecks={props.refreshDecks}
                 onStudy={props.onStudySubject}
                 onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
