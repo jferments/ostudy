@@ -188,7 +188,7 @@ fn printed_word(word: &[PageGlyph]) -> Option<(String, String)> {
         .iter()
         .map(|metric| metric.font_size)
         .fold(0.0_f64, f64::max);
-    if !(body > 0.0) {
+    if body <= 0.0 || body.is_nan() {
         return None;
     }
     let is_small = |metric: &GlyphMetrics| metric.font_size <= body * SMALL_GLYPH_RATIO;
