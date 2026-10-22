@@ -430,10 +430,10 @@ pub(crate) async fn execute_study_guide_generation(
 /// long source; every section then gets the same share of its budget. A
 /// guide already within that target is left as is.
 fn length_scale(source_words: usize, section_budget_chars: usize) -> f64 {
-    let target_chars =
-        source_words.saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD * GUIDE_PERCENT_OF_SOURCE * 10)
-            / 100
-            / WRITTEN_TENTHS_PER_REQUESTED;
+    let target_chars = source_words
+        .saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD * GUIDE_PERCENT_OF_SOURCE * 10)
+        / 100
+        / WRITTEN_TENTHS_PER_REQUESTED;
     if section_budget_chars == 0 || target_chars == 0 {
         return 1.0;
     }
