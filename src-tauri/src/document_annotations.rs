@@ -161,6 +161,20 @@ pub struct ImageMark {
     pub asset_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// A picture clipped from a document's page names that page, so the
+    /// notebook links back to it and the page lists the notes it is in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ClipSource>,
+}
+
+/// The document page a clipped picture came from. It names the page rather
+/// than copying anything about it, so deleting the document never rewrites a
+/// notebook.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipSource {
+    pub document_id: String,
+    pub page_number: i64,
 }
 
 /// Typed text whose lines wrap at `width`; its height follows the text. A
@@ -331,10 +345,16 @@ impl AnnotationShape {
                 validate_coordinate(image.y)?;
                 validate_extent(image.x, image.width)?;
                 validate_extent(image.y, image.height)?;
-                if is_identifier(&image.asset_id) {
-                    Ok(())
-                } else {
-                    Err(invalid("A picture names its image by its identifier."))
+                if !is_identifier(&image.asset_id) {
+                    return Err(invalid("A picture names its image by its identifier."));
+                }
+                match &image.source {
+                    Some(source)
+                        if !is_identifier(&source.document_id) || source.page_number < 1 =>
+                    {
+                        Err(invalid("A clip names the document page it came from."))
+                    }
+                    _ => Ok(()),
                 }
             }
             Self::Text(note) => {

@@ -155,6 +155,43 @@ pub fn sync_asset_draft(
     Ok(())
 }
 
+/// Stages a PNG oStudy drew itself, such as a region clipped from a PDF
+/// page, into a draft, as `stage_image` stages a file the learner chose. The
+/// bytes pass through a scratch file outside the asset store, which is
+/// removed whether or not staging succeeds.
+pub(crate) fn stage_generated_png(
+    database: &Database,
+    paths: &AppPaths,
+    draft_id: &str,
+    png: &[u8],
+    display_name: &str,
+) -> Result<AssetDto, CommandError> {
+    validate_entity_id(draft_id, "asset draft")?;
+    let scratch = std::env::temp_dir().join(format!(
+        "ostudy-generated-{draft_id}-{}-{}.png",
+        std::process::id(),
+        unix_time_millis()?
+    ));
+    fs::write(&scratch, png).map_err(CommandError::io)?;
+    let staged = database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let asset = stage_source_named_in_connection(
+            &transaction,
+            paths,
+            &scratch,
+            draft_id,
+            Some(display_name),
+            IngestFaults::default(),
+        )?;
+        transaction.commit().map_err(CommandError::database)?;
+        Ok(asset)
+    });
+    let _ = fs::remove_file(&scratch);
+    staged
+}
+
 pub(crate) fn stage_image(
     database: &Database,
     paths: &AppPaths,

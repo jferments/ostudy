@@ -4,7 +4,7 @@ import type { ShowToast } from "../../components/Toast";
 import type { SourcePassage } from "../../components/sourcePassage";
 import { beginAssetDraft, cancelAssetDraft, importImage } from "../../ipc/assets";
 import { getErrorMessage } from "../../ipc/common";
-import type { AnnotatedPage, ImageShape, NoteLink } from "../../ipc/documentAnnotations";
+import type { AnnotatedPage, ClipSource, ImageShape, NoteLink } from "../../ipc/documentAnnotations";
 import {
   addNotebookPage,
   deleteNotebookPage,
@@ -117,6 +117,18 @@ function NotebookSession({
 
   const unavailable = useMemo(() => new Set(contents?.unavailableLinkIds ?? []), [contents]);
   const follow = useCallback((annotation: Annotation) => {
+    const clip = clipOf(annotation);
+    if (clip) {
+      const clipTitle = contents?.clipDocuments[clip.documentId];
+      if (clipTitle === undefined) {
+        showToast("error", "The document this was clipped from is no longer in your library.");
+        return;
+      }
+      const opened = { documentId: clip.documentId, title: clipTitle, pageNumber: clip.pageNumber };
+      if (shownBeside) setBeside(opened);
+      else setPassage(opened);
+      return;
+    }
     const link = linkOf(annotation);
     if (!link) return;
     if (unavailable.has(annotation.id)) {
@@ -235,6 +247,11 @@ function NotebookSession({
 
 function linkOf(annotation: Annotation | null): NoteLink | null {
   return annotation?.shape.kind === "text" ? annotation.shape.link ?? null : null;
+}
+
+/** The document page a clipped picture came from. */
+function clipOf(annotation: Annotation | null): ClipSource | null {
+  return annotation?.shape.kind === "image" ? annotation.shape.source ?? null : null;
 }
 
 function ReadyNotebook({
@@ -496,6 +513,7 @@ function ReadyNotebook({
 
   const selected = controller.selected;
   const selectedLink = linkOf(selected);
+  const selectedClip = clipOf(selected);
   return (
     <div className="tw:flex tw:min-w-0 tw:flex-col" onKeyDown={keyDown}>
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-3 tw:py-1.5">
@@ -518,6 +536,12 @@ function ReadyNotebook({
               Edit link
             </Button>
           </>
+        ) : null}
+        {selected && selectedClip ? (
+          <Button size="small" variant="secondary" onClick={() => onFollow(selected)}>
+            <Icon name="document" />
+            {clipLabel(selectedClip, contents.clipDocuments[selectedClip.documentId])}
+          </Button>
         ) : null}
         {onOpenBeside ? (
           // Viewing sits with the pages, apart from what is added to them.
@@ -614,4 +638,9 @@ function ReadyNotebook({
       ) : null}
     </div>
   );
+}
+
+/** Where a clip came from, as its button names it: "From Lecture 7 · p. 4". */
+export function clipLabel(clip: ClipSource, documentTitle: string | undefined): string {
+  return documentTitle === undefined ? `From p. ${clip.pageNumber} (removed)` : `From ${documentTitle} · p. ${clip.pageNumber}`;
 }
