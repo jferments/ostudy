@@ -24,6 +24,8 @@ On a wide screen, **Document beside** opens a PDF from your library next to the 
 
 **Add picture** asks for an image file (PNG, JPEG, GIF or WebP, up to 25 MB) and puts it near the top of the page in view, selected, at its own size or smaller so it fits within the page's margins. Drag it to move it; drag a corner to resize it, keeping its shape, or hold **Shift** to stretch it. Pictures group, undo and delete like any other mark. The image is kept in your library for as long as a picture uses it, and library backups include it. Pictures go on notebook pages only, not on PDF pages.
 
+A picture can also come from a PDF: **Clip to notes** in the PDF annotator copies part of a page into a notebook, and the clip keeps a way back to its page. Select it to see **From Lecture 7 · p. 4**, which opens that page over the notebook, or beside it when a document is open there. See [Clips](pdf-annotation.md#clips).
+
 ## Links
 
 **Add link** (or **K**) opens **Add a link**. Choose what it opens:
@@ -41,4 +43,4 @@ A link whose target has been deleted (a document, a page, a study guide, a deck 
 
 ## Where notes are kept
 
-Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). Device sync does not send them yet, just as it does not send PDF annotations, and they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**.
+Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). Device sync does not send them yet, just as it does not send PDF annotations, and they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**. A build of oStudy from before clips opens a library that has them, but leaves the clipped pictures out until a newer build opens it again; clips need no library upgrade.

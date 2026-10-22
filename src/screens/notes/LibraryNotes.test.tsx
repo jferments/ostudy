@@ -28,7 +28,7 @@ function summary(seed: string, title: string, subjectId: string | null): noteboo
 }
 
 function contentsOf(item: notebooksIpc.NotebookSummary): notebooksIpc.NotebookContents {
-  return { notebook: item.notebook, pages: item.firstPage ? [item.firstPage] : [], items: [], unavailableLinkIds: [] };
+  return { notebook: item.notebook, pages: item.firstPage ? [item.firstPage] : [], items: [], unavailableLinkIds: [], clipDocuments: {} };
 }
 
 function renderNotes(subject: Parameters<typeof LibraryNotes>[0]["subject"]) {
@@ -78,5 +78,23 @@ describe("Library notes", () => {
       title: "Valves", subjectId: SUBJECT, paper: "grid", pageSize: "wide",
     }));
     expect(await screen.findByRole("toolbar", { name: "Annotation tools" })).toBeTruthy();
+  });
+
+  it("opens the notebook a document page was clipped into, whatever subject is chosen", async () => {
+    const item = summary("a", "Cardiac cycle", SUBJECT);
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contentsOf(item));
+    const onOpenRequestConsumed = vi.fn();
+    render(
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <LibraryNotes subject={{ kind: "none" }} showToast={vi.fn()} onPracticeDeck={vi.fn()} onOpenGuide={vi.fn()}
+            openRequest={{ requestId: 7, notebookId: item.notebook.id, pageId: "1".repeat(32) }}
+            onOpenRequestConsumed={onOpenRequestConsumed} />
+        </OverlayProvider>
+      </LayoutModeProvider>,
+    );
+    expect(await screen.findByRole("toolbar", { name: "Annotation tools" })).toBeTruthy();
+    expect(notebooksIpc.getNotebook).toHaveBeenCalledWith(item.notebook.id);
+    expect(onOpenRequestConsumed).toHaveBeenCalledWith(7);
   });
 });

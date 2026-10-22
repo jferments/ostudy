@@ -25,6 +25,7 @@ export const ICON_NAMES = [
   "close",
   "contents",
   "copy",
+  "crop",
   "delete",
   "document",
   "download",
@@ -273,6 +274,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M8 5h13" />
           <path d="M8 12h13" />
           <path d="M8 19h13" />
+        </>
+      );
+    case "crop": // Lucide: crop
+      return (
+        <>
+          <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+          <path d="M18 22V8a2 2 0 0 0-2-2H2" />
         </>
       );
     case "copy": // Lucide: copy
