@@ -373,6 +373,19 @@ fn catalog_subjects_keep_source_order_and_the_largest_past_the_limit() {
         catalog_subjects(&catalog),
         ["Swallowing (2)", "Gastric emptying (1)", "Defecation (1)"]
     );
+    catalog.units = [
+        "Food intake: leptin",
+        "Food intake",
+        "Food intake: ghrelin",
+        "Motility: slow waves",
+    ]
+    .into_iter()
+    .map(with_topic)
+    .collect();
+    assert_eq!(
+        catalog_subjects(&catalog),
+        ["Food intake (3)", "Motility: slow waves (1)"]
+    );
     catalog.units = (0..MAX_CATALOG_SUBJECTS + 2)
         .map(|index| with_topic(&format!("S{index}")))
         .chain([with_topic("S5"), with_topic("S9")])

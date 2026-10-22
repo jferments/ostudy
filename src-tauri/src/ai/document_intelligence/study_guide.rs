@@ -214,6 +214,29 @@ fn catalog_subjects(knowledge: &KnowledgeCatalog) -> Vec<String> {
             None => subjects.push((topic.to_string(), 1)),
         }
     }
+    // "Regulation of food intake: leptin" counts toward "Regulation of food
+    // intake" when the catalog names that subject too, so one subject split
+    // across narrow labels is not mistaken for several minor ones.
+    let mut index = 0;
+    while index < subjects.len() {
+        let parent = subjects[index]
+            .0
+            .split_once(':')
+            .map(|(parent, _)| parent.trim().to_string())
+            .and_then(|parent| {
+                subjects
+                    .iter()
+                    .position(|(name, _)| name.eq_ignore_ascii_case(&parent))
+            });
+        match parent {
+            Some(parent) if parent != index => {
+                let (_, count) = subjects.remove(index);
+                let parent = if parent > index { parent - 1 } else { parent };
+                subjects[parent].1 += count;
+            }
+            _ => index += 1,
+        }
+    }
     if subjects.len() < 2 {
         return Vec::new();
     }
@@ -272,7 +295,7 @@ fn document_study_guide_prompt(
     let subjects = catalog_subjects(knowledge);
     if !subjects.is_empty() {
         goals.push_str(&format!(
-            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units gets at least a key point, a table row or a sentence; one with only one or two units may be left to the source.\n",
+            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units gets at least a key point, a table row or a sentence, and only the section's big idea gets more than a sentence or two; one with only one or two units may be left to the source.\n",
             subjects.join("; ")
         ));
     }
