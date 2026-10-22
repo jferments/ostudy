@@ -720,6 +720,25 @@ describe("StudyGuideDialog", () => {
     expect(within(note).getByRole("button", { name: "Remove note" })).toBeTruthy();
   });
 
+  it("hides term meanings to test yourself, shows one at a time, and remembers the choice", async () => {
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+    await openSection("Preload");
+
+    const terms = within(screen.getByRole("complementary", { name: "About this section" })).getByRole("region", { name: "Important terms" });
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(within(terms).queryByText("End-diastolic ventricular stretch.")).toBeNull();
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("true");
+    fireEvent.click(within(terms).getByRole("button", { name: "Show what Preload means" }));
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("false");
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+  });
+
   it("keeps section actions in one menu and guide actions in the top bar", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
