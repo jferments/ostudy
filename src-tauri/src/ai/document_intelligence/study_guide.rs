@@ -308,7 +308,7 @@ fn document_study_guide_prompt(
     let subjects = catalog_subjects(knowledge);
     if !subjects.is_empty() {
         goals.push_str(&format!(
-            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units gets at least a key point, a table row or a sentence, and only the section's big idea gets more than a sentence or two; one with only one or two units may be left to the source.\n",
+            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units is at least mentioned, in a key point that may join several related subjects, a table row or a clause; only the section's big idea gets more than a sentence. One with only one or two units may be left to the source.\n",
             subjects.join("; ")
         ));
     }
@@ -555,7 +555,7 @@ Choose what matters: the overarching ideas, mechanisms, relationships and distin
 
 Cover breadth before depth: every main idea of the catalog gets its key point before any one idea gets a table, steps or an explanation, so a section never spends its length on its first idea and drops the later ones. Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
 - overview: the big idea in 2 or 3 sentences: what this topic is about and why it matters.
-- keyPoints: the key ideas, one for each main idea the catalog teaches from its first source unit to its last, each one or two plain sentences that a learner could repeat from memory. A topic on one idea needs three to five; a topic that moves through several ideas needs one for each, up to about eight. They are the heart of the section.
+- keyPoints: the key ideas, covering the main ideas the catalog teaches from its first source unit to its last, each one plain sentence that a learner could repeat from memory. A topic on one idea needs three to five; a topic that moves through several ideas needs up to eight, never more: when it has more subjects than that, one key point joins several related subjects. They are the heart of the section.
 - explanations: only for the one to three key ideas that need a short explanation of how or why (a mechanism, a cause, a consequence). Each has a short heading naming the idea and one short paragraph. Many topics need one or none.
 - tables: for three or more parallel items compared on two or more attributes, with only the rows and columns a learner needs. At most one or two. Copy names, numbers and units exactly. Do not repeat a table's cells in prose.
 - processSteps: only when an ordered sequence is itself a key idea, in a few short steps.
