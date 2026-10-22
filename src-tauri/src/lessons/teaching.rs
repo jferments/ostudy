@@ -17,6 +17,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use super::{
+    content::CheckTiming,
     lecture::{read_lecture, LectureDto, LectureSlideKind},
     narration::{speak_saved, LessonStepNarrationDto},
     require_lesson, revision_content, GetLessonInput,
@@ -62,13 +63,18 @@ pub(crate) struct ScriptSlide {
     pub slide_key: String,
     /// What the teacher says over the slide, in plain spoken sentences.
     pub talk: String,
-    /// Asked after the talk, only on a step slide.
+    /// Asked before or after the talk, only on a step slide.
     pub question: Option<ClassQuestion>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ClassQuestion {
+    /// Scripts written before questions had a timing ask every question
+    /// after the talk, and store no timing for it.
+    #[serde(default, skip_serializing_if = "CheckTiming::is_after")]
+    pub timing: CheckTiming,
+    /// A question asked before the talk is spoken as it is written.
     pub prompt: String,
     pub options: Vec<ClassOption>,
     pub correct_option_id: String,
@@ -213,6 +219,9 @@ pub struct NarrateLecturePartInput {
     pub slide_key: String,
     /// Speak the teacher's reply to this option instead of the slide's talk.
     pub reply_to: Option<String>,
+    /// Speak the slide's question instead of its talk.
+    #[serde(default)]
+    pub ask: bool,
 }
 
 /// The script as a learner sees it: no correct option and no replies.
@@ -234,6 +243,7 @@ pub struct ScriptSlideDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClassQuestionDto {
+    pub timing: CheckTiming,
     pub prompt: String,
     pub options: Vec<ClassOptionDto>,
 }
@@ -265,6 +275,7 @@ impl From<(i64, LectureScript)> for LectureScriptDto {
                     slide_key: slide.slide_key,
                     talk: slide.talk,
                     question: slide.question.map(|question| ClassQuestionDto {
+                        timing: question.timing,
                         prompt: question.prompt,
                         options: question
                             .options
@@ -318,12 +329,7 @@ pub(crate) fn answer(
         .into_iter()
         .find(|slide| slide.slide_key == input.slide_key)
         .and_then(|slide| slide.question)
-        .ok_or_else(|| {
-            CommandError::new(
-                "lecture_question_missing",
-                "That slide does not ask a question.",
-            )
-        })?;
+        .ok_or_else(question_missing)?;
     let option = question
         .options
         .iter()
@@ -341,14 +347,22 @@ pub(crate) fn answer(
     })
 }
 
-/// The text the teacher speaks for one part of the lecture: a slide's talk,
-/// or the reply to one option of its question.
+/// What the teacher says over one slide: its talk, its question, or the reply
+/// to one option of its question.
+#[derive(Clone, Copy)]
+pub(crate) enum SpokenPart<'a> {
+    Talk,
+    Question,
+    Reply(&'a str),
+}
+
+/// The text the teacher speaks for one part of the lecture.
 pub(crate) fn spoken_text(
     connection: &Connection,
     lesson_id: &str,
     revision_number: i64,
     slide_key: &str,
-    reply_to: Option<&str>,
+    part: SpokenPart<'_>,
 ) -> Result<String, CommandError> {
     let slide = kept_script(connection, lesson_id, revision_number)?
         .ok_or_else(script_missing)?
@@ -361,28 +375,35 @@ pub(crate) fn spoken_text(
                 "That slide is not part of this lecture.",
             )
         })?;
-    match reply_to {
-        None => Ok(slide.talk),
-        Some(option_id) => slide
-            .question
-            .and_then(|question| {
-                question
-                    .options
-                    .into_iter()
-                    .find(|option| option.id == option_id)
-            })
-            .map(|option| option.reply)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "lecture_option_missing",
-                    "That answer is not one of the question's options.",
-                )
-            }),
-    }
+    let option_id = match part {
+        SpokenPart::Talk => return Ok(slide.talk),
+        SpokenPart::Question => {
+            return slide
+                .question
+                .map(|question| question.prompt)
+                .ok_or_else(question_missing)
+        }
+        SpokenPart::Reply(option_id) => option_id,
+    };
+    slide
+        .question
+        .and_then(|question| {
+            question
+                .options
+                .into_iter()
+                .find(|option| option.id == option_id)
+        })
+        .map(|option| option.reply)
+        .ok_or_else(|| {
+            CommandError::new(
+                "lecture_option_missing",
+                "That answer is not one of the question's options.",
+            )
+        })
 }
 
 /// Speaks one part of the kept lecture with the lesson voice: a slide's talk,
-/// or the teacher's reply to one answer. Like a step's narration, only the
+/// its question, or the teacher's reply to one answer. Like a step's narration, only the
 /// saved script is ever spoken, and kept audio is reused.
 pub(crate) async fn narrate_lecture_part(
     database: &Database,
@@ -391,6 +412,17 @@ pub(crate) async fn narrate_lecture_part(
     input: NarrateLecturePartInput,
 ) -> Result<LessonStepNarrationDto, CommandError> {
     validate_entity_id(&input.lesson_id, "lesson")?;
+    let part = match (input.reply_to.as_deref(), input.ask) {
+        (Some(option_id), false) => SpokenPart::Reply(option_id),
+        (None, true) => SpokenPart::Question,
+        (None, false) => SpokenPart::Talk,
+        (Some(_), true) => {
+            return Err(CommandError::new(
+                "lecture_part_invalid",
+                "Ask for a question or a reply, not both.",
+            ))
+        }
+    };
     let text = database.with_connection(|connection| {
         require_lesson(connection, &input.lesson_id)?;
         spoken_text(
@@ -398,17 +430,26 @@ pub(crate) async fn narrate_lecture_part(
             &input.lesson_id,
             input.revision_number,
             &input.slide_key,
-            input.reply_to.as_deref(),
+            part,
         )
     })?;
+    let part = match part {
+        SpokenPart::Talk => "talk",
+        SpokenPart::Question => "question",
+        SpokenPart::Reply(option_id) => option_id,
+    };
     let key = format!(
-        "lecture:{}:{}:{}:{}",
-        input.lesson_id,
-        input.revision_number,
-        input.slide_key,
-        input.reply_to.as_deref().unwrap_or("talk")
+        "lecture:{}:{}:{}:{part}",
+        input.lesson_id, input.revision_number, input.slide_key
     );
     speak_saved(database, paths, runtime, &input.lesson_id, &text, key).await
+}
+
+fn question_missing() -> CommandError {
+    CommandError::new(
+        "lecture_question_missing",
+        "That slide does not ask a question.",
+    )
 }
 
 fn script_missing() -> CommandError {

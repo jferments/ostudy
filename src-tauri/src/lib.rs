@@ -156,6 +156,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    platform::prepare_process();
     logging::install_panic_hook();
     let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", library_session::asset_response)

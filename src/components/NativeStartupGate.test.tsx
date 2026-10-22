@@ -77,7 +77,7 @@ describe("NativeStartupGate", () => {
     await act(async () => { finish?.({} as Awaited<ReturnType<typeof getSettings>>); });
     expect(await screen.findByText("Application ready")).toBeTruthy();
     expect(screen.getByText("Library updated; recovery checkpoint retained.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
     expect(screen.queryByText("Library updated; recovery checkpoint retained.")).toBeNull();
     view.unmount();
     expect(unsubscribe).toHaveBeenCalledOnce();

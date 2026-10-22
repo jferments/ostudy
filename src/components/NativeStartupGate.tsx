@@ -2,11 +2,10 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { getSettings } from "../ipc/settings";
 import { observeLibraryUpgrade, type LibraryUpgradeProgress } from "../ipc/libraryUpgrade";
-import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { Button } from "../ui/primitives/Button";
 import { Progress } from "../ui/primitives/Progress";
 import { LibraryRestoreObserver } from "./LibraryRestoreObserver";
 import { BrandMark } from "./Brand";
+import { Toast } from "./Toast";
 
 const STARTUP_POLL_INTERVAL_MS = 40;
 const STARTUP_ATTEMPT_TIMEOUT_MS = 750;
@@ -101,11 +100,13 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // A finished update is reported as a passing toast: a banner above the
+  // app frame would push the frame past the window and hide its foot.
   if (state === "ready") return <>
-    {upgrade?.completed && !dismissed && <InlineNotice kind="info">
-      <span role="status">{upgrade.message}</span>
-      <Button type="button" variant="secondary" onClick={() => setDismissed(true)}>Dismiss</Button>
-    </InlineNotice>}
+    <Toast
+      toast={upgrade?.completed && !dismissed ? { id: upgrade.sequence, kind: "success", text: upgrade.message } : null}
+      onDismiss={() => setDismissed(true)}
+    />
     <LibraryRestoreObserver />
     {children}
   </>;
