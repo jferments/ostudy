@@ -1,6 +1,7 @@
 mod contracts;
 mod errors;
 mod files;
+mod notation;
 mod ocr;
 mod pipeline;
 mod progress;
