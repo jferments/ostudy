@@ -8,7 +8,12 @@
 //! do not repeat each other. Lessons are written in parallel within the
 //! provider's limits and saved together once every one of them is valid, so
 //! a failed or stopped run leaves the course as it was. A subject that
-//! already has lessons is refused; rewriting a course is a separate decision.
+//! already has lessons is refused unless the course is being rewritten: then
+//! each lesson becomes the next revision of the lesson teaching the same
+//! part, or a new lesson.
+//!
+//! One lesson whose sources changed is written again, from the same part of
+//! the subject's current study plan, as its next revision.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -25,9 +30,12 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use super::{
-    authoring::{create_generated_course, ensure_course_empty, MAX_LESSONS_PER_SUBJECT},
+    authoring::{
+        add_generated_revision, create_generated_course, ensure_course_empty,
+        rewrite_generated_course, taught_part, MAX_LESSONS_PER_SUBJECT,
+    },
     content::{LessonContent, LESSON_CONTENT_VERSION},
-    list_lessons, require_subject, SubjectLessonsDto,
+    list_lessons, require_lesson, require_subject, SubjectLessonsDto,
 };
 use crate::{
     ai::{
@@ -62,6 +70,9 @@ const OUTLINE_CONTEXT_CHARS: usize = 200;
 pub struct WriteSubjectCourseInput {
     pub subject_id: String,
     pub operation_id: String,
+    /// Writes a subject's existing course again instead of refusing it.
+    #[serde(default)]
+    pub rewrite: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +132,167 @@ pub fn cancel_subject_course_writing(
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateLessonInput {
+    pub lesson_id: String,
+    pub operation_id: String,
+}
+
+pub(crate) async fn update_lesson_from_sources(
+    database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
+    input: UpdateLessonInput,
+) -> Result<SubjectLessonsDto, CommandError> {
+    update_lesson(database.inner(), runtime.inner(), input).await
+}
+
+/// Writes a lesson written with AI again from the part of the subject it
+/// teaches, as the study plan and knowledge are now, and keeps it as the
+/// lesson's next revision. It shares the subject's one writer with the course.
+pub(crate) async fn update_lesson(
+    database: &Database,
+    runtime: &AiRuntimeState,
+    input: UpdateLessonInput,
+) -> Result<SubjectLessonsDto, CommandError> {
+    validate_entity_id(&input.lesson_id, "lesson")?;
+    validate_entity_id(&input.operation_id, "lesson writing operation")?;
+    let source =
+        database.with_connection(|connection| lesson_source(connection, &input.lesson_id))?;
+    let guard = Guard::begin(&source.subject_id, &input.operation_id)?;
+    let signal = guard.signal();
+    let mut diagnostics = generation::Operation::begin(
+        database,
+        Some(&input.operation_id),
+        None,
+        Some(&source.subject_id),
+        PURPOSE,
+    )?;
+    let result = rewrite_lesson(
+        database,
+        runtime,
+        &input,
+        &source,
+        diagnostics.context(),
+        &signal,
+    )
+    .await;
+    diagnostics.finish_result(&result);
+    drop(guard);
+    result?;
+    database.with_connection(|connection| list_lessons(connection, &source.subject_id))
+}
+
+/// Where a lesson written with AI came from: its subject, and the document
+/// and top-level topic of the study plan its newest revision teaches.
+#[derive(Debug)]
+struct LessonSource {
+    subject_id: String,
+    document_id: String,
+    topic_id: String,
+}
+
+fn lesson_source(connection: &Connection, lesson_id: &str) -> Result<LessonSource, CommandError> {
+    require_lesson(connection, lesson_id)?;
+    let (subject_id, provenance): (String, Option<String>) = connection
+        .query_row(
+            "SELECT lesson.subject_id, revision.provenance_json
+             FROM lessons lesson
+             JOIN lesson_revisions revision ON revision.lesson_id = lesson.id
+             WHERE lesson.id = ?1
+             ORDER BY revision.revision_number DESC LIMIT 1",
+            [lesson_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(CommandError::database)?;
+    let not_generated = || {
+        CommandError::new(
+            "lesson_not_generated",
+            "Only a lesson written with AI can be written again from its sources.",
+        )
+    };
+    let provenance: Value = serde_json::from_str(&provenance.ok_or_else(not_generated)?)
+        .map_err(|_| not_generated())?;
+    let (document_id, topic_id) = taught_part(&provenance).ok_or_else(not_generated)?;
+    Ok(LessonSource {
+        subject_id,
+        document_id,
+        topic_id,
+    })
+}
+
+fn part_gone() -> CommandError {
+    CommandError::new(
+        "lesson_part_gone",
+        "The part of the source this lesson taught is no longer in its study plan.",
+    )
+}
+
+async fn rewrite_lesson(
+    database: &Database,
+    runtime: &AiRuntimeState,
+    input: &UpdateLessonInput,
+    source: &LessonSource,
+    diagnostics: generation::Context,
+    signal: &CancellationSignal,
+) -> Result<(), CommandError> {
+    let subject_id = source.subject_id.as_str();
+    let plans = database.with_connection(|connection| subject_plans(connection, subject_id))?;
+    if !plans
+        .iter()
+        .any(|(document_id, _)| *document_id == source.document_id)
+    {
+        return Err(part_gone());
+    }
+    let mut task = load_document_task_context(database)?;
+    let capabilities = document_provider::load_document_provider_capabilities(
+        database,
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    task.apply_provider_capabilities(&capabilities);
+    task.diagnostics = Some(diagnostics);
+    // The whole course's parts, so the lesson is written knowing what the
+    // others teach, as when the course was written.
+    let mut parts = Vec::new();
+    for (document_id, plan_id) in &plans {
+        let plan = load_active_document_learning_plan(database, document_id)?
+            .filter(|plan| plan.id == *plan_id)
+            .ok_or_else(source_changed)?;
+        parts.extend(document_parts(database, &task, &plan)?);
+    }
+    ensure_running(signal)?;
+    // Topic identities outlive plan revisions, so the lesson finds its part
+    // in a newer plan of the same document.
+    let index = parts
+        .iter()
+        .position(|part| {
+            part.document_id == source.document_id && part.topic_ids[0] == source.topic_id
+        })
+        .ok_or_else(part_gone)?;
+    let subject_title = collection_title(database, subject_id)?;
+    let course = CourseRequest {
+        database,
+        runtime,
+        task: &task,
+        subject_title: &subject_title,
+        operation_id: &input.operation_id,
+        parts: &parts,
+        signal,
+    };
+    let (lesson, provenance) = course.write(index).await?;
+    ensure_running(signal)?;
+    task.ensure_current(database)?;
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        if subject_plans(connection, subject_id)? != plans {
+            return Err(source_changed());
+        }
+        add_generated_revision(connection, &input.lesson_id, lesson, &provenance, now).map(|_| ())
+    })
+}
+
 fn not_running() -> CommandError {
     CommandError::new(
         "lesson_writing_not_running",
@@ -137,7 +309,11 @@ pub(crate) async fn write_course(
     validate_entity_id(&input.operation_id, "course writing operation")?;
     database.with_connection(|connection| {
         require_subject(connection, &input.subject_id)?;
-        ensure_course_empty(connection, &input.subject_id)
+        if input.rewrite {
+            Ok(())
+        } else {
+            ensure_course_empty(connection, &input.subject_id)
+        }
     })?;
     let guard = Guard::begin(&input.subject_id, &input.operation_id)?;
     let signal = guard.signal();
@@ -266,7 +442,11 @@ async fn write_lessons(
         if subject_plans(connection, subject_id)? != plans {
             return Err(source_changed());
         }
-        create_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        if input.rewrite {
+            rewrite_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        } else {
+            create_generated_course(connection, subject_id, &lessons, now).map(|_| ())
+        }
     })
 }
 

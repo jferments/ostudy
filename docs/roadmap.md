@@ -104,7 +104,7 @@ Generate configurable question sets, including multiple choice/application/scena
 
 ### Lessons
 
-A subject's course can be written, played step by step, listened to, viewed as a lecture, taught as a teacher's lecture with questions for the class, and saved as a PowerPoint deck, and a subject's lessons can be made into a two-host podcast. Local voices (a local Kokoro server and the phone's own speech engine), rewriting an existing course, keeping lessons current when their sources change, and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
+A subject's course can be written, played step by step, listened to, viewed as a lecture, taught as a teacher's lecture with questions for the class, and saved as a PowerPoint deck, and a subject's lessons can be made into a two-host podcast. A lesson whose source changed can be written again on its own, and a whole course can be rewritten, each lesson as a new version in its place. Local voices (a local Kokoro server and the phone's own speech engine) and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
 
 ### Tutor refinement and guided study
 

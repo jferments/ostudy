@@ -439,6 +439,7 @@ pub fn run() {
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,
+            library_session::commands::leased_update_lesson_from_sources,
             lessons::writing::cancel_subject_course_writing,
             lessons::writing::get_subject_course_writing_progress,
             lessons::narration::get_speech_settings,
