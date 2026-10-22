@@ -21,9 +21,9 @@ use crate::{
     task_cancellation::{current_signal, CancellationSignal},
 };
 
-pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 4;
-pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 6;
-const CLOUD_INITIAL_PROVIDER_PARALLELISM: usize = 4;
+pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 8;
+pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 8;
+const CLOUD_INITIAL_PROVIDER_PARALLELISM: usize = 6;
 const CLOUD_MIN_PROVIDER_PARALLELISM: usize = 2;
 const CLOUD_SUCCESS_RAMP_REQUESTS: usize = 8;
 const USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM: usize = 1;
@@ -282,7 +282,7 @@ where
     let (sender, mut receiver) =
         tokio::sync::mpsc::unbounded_channel::<(Item, tokio::sync::oneshot::Sender<bool>)>();
     let run = &run;
-    let (worker0, worker1, worker2, worker3) = {
+    let (worker0, worker1, worker2, worker3, worker4, worker5, worker6, worker7) = {
         let worker = |slot: usize| {
             let sender = sender.clone();
             let next = &next;
@@ -306,7 +306,16 @@ where
                 }
             }
         };
-        (worker(0), worker(1), worker(2), worker(3))
+        (
+            worker(0),
+            worker(1),
+            worker(2),
+            worker(3),
+            worker(4),
+            worker(5),
+            worker(6),
+            worker(7),
+        )
     };
     drop(sender);
 
@@ -333,7 +342,9 @@ where
         first_consumer_error.map_or(Ok(()), Err)
     };
 
-    let (_, _, _, _, result) = tokio::join!(worker0, worker1, worker2, worker3, collector);
+    let (_, _, _, _, _, _, _, _, result) = tokio::join!(
+        worker0, worker1, worker2, worker3, worker4, worker5, worker6, worker7, collector
+    );
     result
 }
 
@@ -345,7 +356,7 @@ mod tests {
 
     #[test]
     fn cloud_windows_overlap_while_user_managed_servers_stay_serial() {
-        assert_eq!(document_request_parallelism("cloud"), 4);
+        assert_eq!(document_request_parallelism("cloud"), 8);
         assert_eq!(document_request_parallelism("local"), 1);
         assert_eq!(document_request_parallelism("lan"), 1);
     }
@@ -387,7 +398,9 @@ mod tests {
     #[test]
     fn cloud_lane_backs_off_on_retryable_failures_and_ramps_after_successes() {
         let lanes = ProviderLanes::new(6);
-        assert_eq!(lanes.cloud_state.limit(), 4);
+        assert_eq!(lanes.cloud_state.limit(), 6);
+        assert_eq!(lanes.record_outcome("cloud", false, true), Some((6, 5)));
+        assert_eq!(lanes.record_outcome("cloud", false, true), Some((5, 4)));
         assert_eq!(lanes.record_outcome("cloud", false, true), Some((4, 3)));
         assert_eq!(lanes.record_outcome("cloud", false, true), Some((3, 2)));
         assert_eq!(lanes.record_outcome("cloud", false, true), None);

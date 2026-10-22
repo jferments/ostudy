@@ -162,7 +162,7 @@ describe("DocumentsScreen live generation progress", () => {
     expect(await screen.findByText("Making flashcards")).toBeTruthy();
     const details = await openDetails();
     expect(await within(details).findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
-    expect(screen.queryByText("Generating cards 1/9")).toBeNull();
+    expect(screen.queryByText("Writing flashcards 1/9")).toBeNull();
     expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
   });
 
@@ -224,7 +224,7 @@ describe("DocumentsScreen live generation progress", () => {
     );
 
     const row = await screen.findByTestId("document-row-progress");
-    expect(within(row).getByText("Building outline")).toBeTruthy();
+    expect(within(row).getByText("Planning the study material")).toBeTruthy();
     // The row carries the stage only; the window, statistics and model wait in Generation details.
     expect(screen.queryByText("Window 4 of 10 · pages 13–18.")).toBeNull();
     expect(screen.queryByText("low · 2.0k")).toBeNull();

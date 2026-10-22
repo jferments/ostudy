@@ -22,6 +22,7 @@ import {
   narrateLessonStep,
   prepareLessonLecturePptx,
   writeLessonLectureScript,
+  type AnsweredCheck,
   type Lecture,
   type LectureScript,
   type LessonStep,
@@ -32,6 +33,8 @@ import {
   createManagedMediaObjectUrl,
   revokeManagedMediaObjectUrl,
 } from "../../media/managedPlayback";
+import { layoutWidths, matchesLayoutQuery } from "../../test/viewport";
+import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { LectureView } from "./LectureView";
 
 vi.mock("../../ipc/common", () => ({
@@ -139,23 +142,42 @@ const multiplier: LessonStep = {
   knowledgeUnitIds: [],
 };
 
-function open(stepKey: string | null = null, onAnswered = vi.fn()) {
+function open(
+  stepKey: string | null = null,
+  onAnswered = vi.fn(),
+  answered: Record<string, AnsweredCheck> = {},
+) {
   const onClose = vi.fn();
   render(
-    <LectureView
-      lessonId="lesson-1"
-      revisionNumber={2}
-      lessonTitle="Loop of Henle"
-      subjectId="subject-1"
-      stepKey={stepKey}
-      steps={[multiplier]}
-      answered={{}}
-      onAnswered={onAnswered}
-      onClose={onClose}
-      showToast={vi.fn()}
-    />,
+    <LayoutModeProvider>
+      <LectureView
+        lessonId="lesson-1"
+        revisionNumber={2}
+        lessonTitle="Loop of Henle"
+        subjectId="subject-1"
+        stepKey={stepKey}
+        steps={[multiplier]}
+        answered={answered}
+        onAnswered={onAnswered}
+        onClose={onClose}
+        showToast={vi.fn()}
+      />
+    </LayoutModeProvider>,
   );
   return onClose;
+}
+
+function setViewport(width: number): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matchesLayoutQuery(query, width),
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
 }
 
 function slide() {
@@ -236,7 +258,11 @@ describe("LectureView", () => {
     );
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  const originalMatchMedia = window.matchMedia;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.matchMedia = originalMatchMedia;
+  });
 
   it("opens at the lesson's step with its narration as the notes, and moves between slides", async () => {
     open("multiplier");
@@ -643,5 +669,29 @@ describe("LectureView", () => {
     expect(await screen.findByText("Cards for multiplier in subject-1")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.queryByText(/Cards for/)).toBeNull();
+  });
+
+  it("on a phone, opens a step's check in a sheet and goes on to the next slide from it", async () => {
+    setViewport(layoutWidths.compact);
+    const result = {
+      correct: true,
+      correctOptionId: "a",
+      explanation: "Each pass adds a little.",
+      progress: { revisionNumber: 2, currentStep: 1, furthestStep: 1, finishedAt: null, checks: {} },
+    };
+    vi.mocked(answerLessonCheck).mockResolvedValue(result as never);
+    open("multiplier", vi.fn(), { multiplier: { optionId: "b", correct: false } });
+    expect(await screen.findByText("Answered, not quite")).toBeTruthy();
+    expect(screen.queryByTestId("lesson-check")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Check yourself" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "Check yourself" }));
+    fireEvent.click(sheet.getByRole("radio", { name: "Small steps stacking" }));
+    fireEvent.click(sheet.getByRole("button", { name: "Check answer" }));
+    expect(await sheet.findByText("Each pass adds a little.")).toBeTruthy();
+
+    fireEvent.click(sheet.getByRole("button", { name: /Next slide/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Check yourself" })).toBeNull());
+    expect(screen.getByText("Slide 5 of 5")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Check yourself" })).toBeNull();
   });
 });
