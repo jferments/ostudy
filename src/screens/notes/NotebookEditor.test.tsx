@@ -65,6 +65,7 @@ function contents(overrides: Partial<notebooksIpc.NotebookContents> = {}): noteb
     pages: [page("1", 1), page("2", 2)],
     items: [],
     unavailableLinkIds: [],
+    clipDocuments: {},
     ...overrides,
   };
 }
@@ -317,6 +318,40 @@ describe("notebook editor", () => {
     expect(notebooksIpc.prepareNotebookPdf).toHaveBeenCalledWith(notebookId);
     expect(externalFilesIpc.publishPreparedExport).toHaveBeenCalledWith(exportId);
     expect(showToast).toHaveBeenCalledWith("success", "Saved 2 pages as a PDF. 1 picture could not be read and was left out.");
+  });
+
+  it("opens the document page a clip came from, and says when that document is gone", async () => {
+    const documentId = "e".repeat(32);
+    const goneId = "9".repeat(32);
+    const clip = (id: string, y: number, source: string) => ({
+      id, pageId: "1".repeat(32), revision: 1, createdAt: 1, updatedAt: 1,
+      shape: { kind: "image" as const, x: 100, y, width: 200, height: 100, assetId: "a".repeat(32), source: { documentId: source, pageNumber: 4 } },
+    });
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contents({
+      items: [clip("7".repeat(32), 100, documentId), clip("8".repeat(32), 400, goneId)],
+      clipDocuments: { [documentId]: "Lecture 7" },
+    }));
+    vi.mocked(documentAnnotationsIpc.getDocumentAnnotations).mockResolvedValue({
+      pages: Array.from({ length: 6 }, (_, index) => ({
+        pageNumber: index + 1, assetId: "", width: 612, height: 792, imageAvailable: false,
+      })),
+      annotations: [],
+    } as unknown as documentAnnotationsIpc.DocumentAnnotations);
+    const { canvas, showToast } = await openNotebook();
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+
+    fireEvent.pointerDown(canvas, onPage(200, 150));
+    fireEvent.pointerUp(canvas, onPage(200, 150));
+    fireEvent.click(await screen.findByRole("button", { name: "From Lecture 7 · p. 4" }));
+    expect(await screen.findByRole("dialog", { name: "Lecture 7" })).toBeTruthy();
+    expect(documentAnnotationsIpc.getDocumentAnnotations).toHaveBeenCalledWith(documentId);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Lecture 7" })).toBeNull());
+
+    fireEvent.pointerDown(canvas, onPage(200, 450));
+    fireEvent.pointerUp(canvas, onPage(200, 450));
+    fireEvent.click(await screen.findByRole("button", { name: "From p. 4 (removed)" }));
+    expect(showToast).toHaveBeenCalledWith("error", "The document this was clipped from is no longer in your library.");
   });
 
   it("adds a page after the one in view and opens the notebook again", async () => {

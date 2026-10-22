@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as annotationCardsIpc from "../../../ipc/annotationCards";
 import * as annotationIpc from "../../../ipc/documentAnnotations";
 import * as externalFilesIpc from "../../../ipc/externalFiles";
+import * as notebooksIpc from "../../../ipc/notebooks";
 import * as studyGuideIpc from "../../../ipc/studyGuides";
 import { layoutWidths, matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../../ui/overlays/OverlayProvider";
+import * as clipping from "../../notes/clipToNotebook";
 import { DocumentAnnotator } from "./DocumentAnnotator";
 
 vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
@@ -19,6 +21,8 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   getDocumentPageText: vi.fn(),
   prepareAnnotatedPdf: vi.fn(),
 }));
+vi.mock("../../../ipc/notebooks", () => ({ listDocumentClips: vi.fn(), listNotebooks: vi.fn(), createNotebook: vi.fn() }));
+vi.mock("../../notes/clipToNotebook", () => ({ clipToNotebook: vi.fn() }));
 vi.mock("../../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 vi.mock("../../../ipc/annotationCards", () => ({ getDocumentMarkedCards: vi.fn(), linkCardNoteToAnnotation: vi.fn() }));
@@ -642,5 +646,63 @@ describe("document annotator", () => {
     expect(screen.getByRole("button", { name: "Color and size: Blue, Medium" })).toBeTruthy();
     drag(canvas, [[300, 300], [360, 340]], "touch");
     await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { kind: "rectangle", color: "#2563eb" } }));
+  });
+
+  it("clips part of a page into a notebook, and the page then says which notebook it is in", async () => {
+    const notebookId = "b".repeat(32);
+    const notebookPageId = "c".repeat(32);
+    const subjectId = "e".repeat(32);
+    const summary = (id: string, name: string, subject: string | null, updatedAt: number): notebooksIpc.NotebookSummary => ({
+      notebook: { id, subjectId: subject, title: name, paper: "blank", pageSize: "letter", revision: 1, createdAt: 1, updatedAt },
+      pageCount: 1, linkCount: 0, firstPage: null, preview: [],
+    });
+    vi.mocked(notebooksIpc.listDocumentClips).mockResolvedValue([]);
+    vi.mocked(notebooksIpc.listNotebooks).mockResolvedValue([
+      summary("f".repeat(32), "Elsewhere", null, 9),
+      summary(notebookId, "Cardiac cycle map", subjectId, 2),
+    ]);
+    vi.mocked(clipping.clipToNotebook).mockResolvedValue({ notebookId, pageId: notebookPageId, itemId: "d".repeat(32) });
+    const onOpenNotebook = vi.fn();
+    const showToast = vi.fn();
+    render(
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <DocumentAnnotator documentId={documentId} title={title} onClose={vi.fn()} showToast={showToast}
+            subjectId={subjectId} onOpenNotebook={onOpenNotebook} />
+        </OverlayProvider>
+      </LayoutModeProvider>,
+    );
+    const canvas = await screen.findByRole("group", { name: `Pages of ${title}` });
+    await waitFor(() => expect(notebooksIpc.listDocumentClips).toHaveBeenCalledWith(documentId));
+
+    fireEvent.keyDown(canvas, { key: "x" });
+    expect(pressed("Clip to notes")).toBe("true");
+    drag(canvas, [[100, 200], [250, 260], [400, 350]]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Clip to notes" });
+    // The document's subject's notebook comes first and is chosen.
+    const notebook = await within(dialog).findByRole("combobox", { name: "Notebook" });
+    await waitFor(() => expect((notebook as HTMLSelectElement).value).toBe(notebookId));
+    vi.mocked(notebooksIpc.listDocumentClips).mockResolvedValue([
+      { pageNumber: 1, notebookId, notebookTitle: "Cardiac cycle map", notebookPageId },
+    ]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Clip" }));
+
+    await waitFor(() => expect(clipping.clipToNotebook).toHaveBeenCalledWith(notebookId, {
+      documentId, pageNumber: 1, pageWidth: 612, pageHeight: 792, x: 100, y: 200, width: 300, height: 150,
+    }));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith("success", "Clipped to Cardiac cycle map", expect.objectContaining({ label: "Open notebook" })));
+    expect(screen.queryByRole("dialog", { name: "Clip to notes" })).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "In your notes: Cardiac cycle map" }));
+    await waitFor(() => expect(onOpenNotebook).toHaveBeenCalledWith(notebookId, notebookPageId));
+  });
+
+  it("offers no Clip tool where there is nowhere to clip to", async () => {
+    const { canvas } = await openAnnotator();
+    expect(screen.queryByRole("button", { name: "Clip to notes" })).toBeNull();
+    fireEvent.keyDown(canvas, { key: "x" });
+    expect(pressed("Pen")).toBe("true");
+    expect(notebooksIpc.listDocumentClips).not.toHaveBeenCalled();
   });
 });

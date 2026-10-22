@@ -1,4 +1,5 @@
 import { createOperationId } from "./common";
+import type { Asset } from "./assets";
 import type { AnnotationShape } from "./documentAnnotations";
 import type { PreparedExport } from "./externalFiles";
 import { invoke } from "./transport";
@@ -56,6 +57,8 @@ export interface NotebookContents {
   items: NotebookItem[];
   /** Links whose document, page, guide, deck or notebook page is gone. */
   unavailableLinkIds: string[];
+  /** The titles of the documents the notebook's clips came from, by document; one that is gone is left out. */
+  clipDocuments: Record<string, string>;
 }
 
 /**
@@ -151,4 +154,41 @@ export async function prepareNotebookPdf(
   operationId = createOperationId(),
 ): Promise<PreparedNotebookPdf> {
   return invoke<PreparedNotebookPdf>("prepare_notebook_pdf", { input: { notebookId, operationId } });
+}
+
+/** A region of a PDF page, in points from its top-left corner, and the page's size. */
+export interface DocumentClipRegion {
+  documentId: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A clip drawn from its page and staged as a picture, and its size in points. */
+export interface StagedDocumentClip {
+  asset: Asset;
+  width: number;
+  height: number;
+}
+
+/** Draws a region of a PDF page as a picture, staged in a notebook's image draft. */
+export async function stageDocumentClip(draftId: string, region: DocumentClipRegion): Promise<StagedDocumentClip> {
+  return invoke<StagedDocumentClip>("stage_document_clip", { input: { draftId, ...region } });
+}
+
+/** A notebook holding a clip of a page of a document, and the notebook page it is on. */
+export interface DocumentClip {
+  pageNumber: number;
+  notebookId: string;
+  notebookTitle: string;
+  notebookPageId: string;
+}
+
+/** The notebooks a document's pages were clipped into, page by page. */
+export async function listDocumentClips(documentId: string): Promise<DocumentClip[]> {
+  return invoke<DocumentClip[]>("list_document_clips", { documentId });
 }

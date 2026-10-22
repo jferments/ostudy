@@ -338,6 +338,24 @@ pub(crate) async fn leased_render_document_page_tile(
     .await
 }
 
+#[tauri::command(rename = "stage_document_clip")]
+pub(crate) async fn leased_stage_document_clip(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<crate::notebooks::StagedDocumentClipDto, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input: crate::notebooks::StageDocumentClipInput =
+        serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::notebooks::stage_document_clip(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
+        app.state::<crate::pdf_render_backend::PdfRenderRuntime>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "find_document_figures")]
 pub(crate) async fn leased_find_document_figures(
     app: AppHandle,

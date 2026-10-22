@@ -109,6 +109,14 @@ export interface ImageShape {
   assetId: string;
   /** Marks of one page that share a group are selected and moved together. */
   group?: string;
+  /** The document page a clipped picture came from. */
+  source?: ClipSource;
+}
+
+/** A page of a document, named by a picture clipped from it. */
+export interface ClipSource {
+  documentId: string;
+  pageNumber: number;
 }
 
 export type AnnotationShape = InkShape | HighlightShape | SegmentShape | FrameShape | TextShape | ImageShape;

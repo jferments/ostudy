@@ -102,6 +102,8 @@ export type GestureEffect =
   | { kind: "select"; id: string | null }
   /** The lasso loop being drawn, in points on its page. */
   | { kind: "lasso"; loop: { pageNumber: number; points: readonly number[] } | null }
+  /** A part of a page the Clip tool took, in points on its page. */
+  | { kind: "clip"; pageNumber: number; rect: { x: number; y: number; width: number; height: number } }
   /** The annotations a finished lasso took; none clears the group. */
   | { kind: "select-group"; pageNumber: number; ids: readonly string[] }
   /** The lassoed group as it is being moved. */
@@ -134,8 +136,11 @@ type Gesture =
   | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "lasso"; pointerId: number; pageNumber: number; points: number[] }
-  /** A selection rectangle dragged with the Select tool, from corner to corner in points. */
-  | { kind: "marquee"; pointerId: number; pageNumber: number; from: Point; to: Point }
+  /**
+   * A rectangle dragged from corner to corner in points: with the Select tool
+   * it selects what it takes, and with the Clip tool it is the part to clip.
+   */
+  | { kind: "marquee"; pointerId: number; pageNumber: number; from: Point; to: Point; clip?: true }
   | {
     kind: "group-move"; pointerId: number; pageNumber: number; originals: readonly Annotation[]; start: Point; current: readonly Annotation[];
     /**
@@ -157,6 +162,8 @@ const HIT_SLOP = { mouse: 6, pen: 6, touch: 14 } as const;
 const ERASER_RADIUS = { mouse: 8, pen: 8, touch: 14 } as const;
 /** Pen points closer than this many CSS pixels to the last one add nothing visible. */
 const MIN_POINT_STEP = 0.75;
+/** A clip narrower or shorter than this many CSS pixels is a slip of the pointer. */
+const MIN_CLIP_PIXELS = 8;
 const FLING_WINDOW_MS = 80;
 const MIN_FLING_SPEED = 0.25;
 
@@ -410,6 +417,17 @@ export class AnnotatorGestures {
           },
         ];
       case "marquee":
+        if (active.clip) {
+          const rect = {
+            x: Math.min(active.from.x, active.to.x),
+            y: Math.min(active.from.y, active.to.y),
+            width: Math.abs(active.to.x - active.from.x),
+            height: Math.abs(active.to.y - active.from.y),
+          };
+          // A tap or a slip of the pointer clips nothing.
+          const big = Math.min(rect.width, rect.height) * context.scale >= MIN_CLIP_PIXELS;
+          return [{ kind: "lasso", loop: null }, ...(big ? [{ kind: "clip", pageNumber: active.pageNumber, rect } as const] : [])];
+        }
         return [
           { kind: "lasso", loop: null },
           {
@@ -544,6 +562,10 @@ export class AnnotatorGestures {
       }
       this.active = { kind: "lasso", ...base, pageNumber, points: [start.x, start.y] };
       return [{ kind: "lasso", loop: { pageNumber, points: [start.x, start.y] } }];
+    }
+    if (tool === "clip") {
+      this.active = { kind: "marquee", ...base, pageNumber, from: start, to: start, clip: true };
+      return [{ kind: "lasso", loop: { pageNumber, points: rectangleLoop(start, start) } }];
     }
     if (tool === "eraser") {
       const gesture: Gesture = { kind: "erase", ...base, last: client, erased: new Map(), cuts: new Map() };

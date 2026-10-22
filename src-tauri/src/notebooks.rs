@@ -14,7 +14,7 @@
 //! after a lost response changes nothing further. Whole-library backups keep
 //! notebooks; device sync packages leave them out.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -162,6 +162,9 @@ pub struct NotebookContentsDto {
     pub items: Vec<NotebookItemDto>,
     /// Links whose document, page, guide, deck or notebook page is gone.
     pub unavailable_link_ids: Vec<String>,
+    /// The titles of the documents the notebook's clips came from, by
+    /// document; a document that is gone is left out.
+    pub clip_documents: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -443,11 +446,13 @@ pub(crate) fn contents(
         items.extend(page_items(connection, &page.id, i64::MAX)?);
     }
     let unavailable_link_ids = unavailable_links(connection, &items)?;
+    let clip_documents = clips::clip_document_titles(connection, &items)?;
     Ok(NotebookContentsDto {
         notebook,
         pages,
         items,
         unavailable_link_ids,
+        clip_documents,
     })
 }
 
@@ -1293,6 +1298,9 @@ fn other_notebook() -> CommandError {
 #[path = "notebooks/save_pdf.rs"]
 mod save_pdf;
 pub(crate) use save_pdf::{prepare_notebook_pdf, PrepareNotebookPdfInput, PreparedNotebookPdfDto};
+#[path = "notebooks/clips.rs"]
+pub mod clips;
+pub(crate) use clips::{stage_document_clip, StageDocumentClipInput, StagedDocumentClipDto};
 
 #[cfg(test)]
 #[path = "notebooks/tests.rs"]

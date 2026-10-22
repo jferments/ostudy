@@ -428,6 +428,8 @@ pub fn run() {
             notebooks::move_notebook_page,
             notebooks::apply_notebook_item_changes,
             library_session::commands::leased_prepare_notebook_pdf,
+            notebooks::clips::list_document_clips,
+            library_session::commands::leased_stage_document_clip,
             material_ink::get_material_ink,
             material_ink::apply_material_ink_changes,
             lessons::list_subject_lessons,
