@@ -2,6 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as aiProfiles from "../ipc/aiProfiles";
+import { listLatestDocumentStudyGuideJobs } from "../ipc/documentArtifactProgress";
+import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
+import { getSettings, type AppSettings } from "../ipc/settings";
 import * as studyGuides from "../ipc/studyGuides";
 import { listContinueReading } from "../ipc/studyGuideReading";
 import { requiredTestValue as required } from "../test/factories";
@@ -9,6 +13,8 @@ import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { LibraryFrame } from "./library/LibraryFrame";
 import { StudyGuidesScreen } from "./StudyGuidesScreen";
+import { TutorContext } from "./tutor/TutorContext";
+import type { TutorController } from "./tutor/useTutorController";
 import { matchesLayoutQuery, layoutWidths } from "../test/viewport";
 
 vi.mock("../ipc/studyGuides", async () => {
@@ -19,7 +25,18 @@ vi.mock("../ipc/studyGuides", async () => {
     ...actual,
     listStudyGuidePage: vi.fn(),
     deleteDocumentStudyGuide: vi.fn(),
+    generateDocumentStudyGuide: vi.fn(),
+    cancelDocumentStudyGuideGeneration: vi.fn(),
+    prepareDocumentStudyGuidePdf: vi.fn(),
   };
+});
+
+vi.mock("../ipc/aiProfiles", () => ({ getAiTaskDefaults: vi.fn(), listAiProviderProfiles: vi.fn() }));
+vi.mock("../ipc/documentArtifactProgress", () => ({ listLatestDocumentStudyGuideJobs: vi.fn() }));
+vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
+vi.mock("../ipc/externalFiles", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/externalFiles")>("../ipc/externalFiles");
+  return { ...actual, publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() };
 });
 
 vi.mock("../ipc/studyGuideReading", () => ({ listContinueReading: vi.fn() }));
@@ -91,15 +108,18 @@ function page(
 
 function renderScreen(
   overrides: Partial<ComponentProps<typeof StudyGuidesScreen>> = {},
+  tutor: TutorController | null = null,
 ) {
   return render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <StudyGuidesScreen
-          showToast={vi.fn()}
-          onPracticeCards={vi.fn()}
-          {...overrides}
-        />
+        <TutorContext.Provider value={tutor}>
+          <StudyGuidesScreen
+            showToast={vi.fn()}
+            onPracticeCards={vi.fn()}
+            {...overrides}
+          />
+        </TutorContext.Provider>
       </OverlayProvider>
     </LayoutModeProvider>,
   );
@@ -111,6 +131,11 @@ describe("StudyGuidesScreen", () => {
     setLayoutMode("wide");
     vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(page());
     vi.mocked(listContinueReading).mockResolvedValue([]);
+    vi.mocked(listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
+    vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: "openrouter" });
+    vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([
+      { id: "openrouter" } as aiProfiles.AiProviderProfileSummary,
+    ]);
     vi.mocked(studyGuides.deleteDocumentStudyGuide).mockResolvedValue({
       documentId: "a".repeat(32),
       guideId: "b".repeat(32),
@@ -298,6 +323,83 @@ describe("StudyGuidesScreen", () => {
       expect.stringContaining("stable notes were preserved"),
     );
     expect(vi.mocked(studyGuides.listStudyGuidePage).mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("asks Tutor about a guide from its card", async () => {
+    const openContext = vi.fn();
+    renderScreen({}, { busy: false, pending: null, openContext } as unknown as TutorController);
+    await screen.findByText("Distributive shock");
+
+    const menu = await openGuideActions("Distributive shock");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Ask Tutor", "Export PDF", "Remake the study guide", "Open the source", "Delete study guide",
+    ]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Ask Tutor" }));
+    expect(openContext).toHaveBeenCalledWith({
+      title: "Distributive shock",
+      scope: { kind: "guide", id: "a".repeat(32) },
+      focus: { kind: "guide", documentId: "a".repeat(32), guideId: "b".repeat(32), topicId: null, contentHash: null },
+      mode: "explain",
+    });
+  });
+
+  it("exports a guide's PDF from its card with the Settings choices", async () => {
+    const showToast = vi.fn();
+    vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "plum", guidePdfIncludeNotes: true } as AppSettings);
+    vi.mocked(studyGuides.prepareDocumentStudyGuidePdf).mockResolvedValue({
+      preparedExport: { id: "e".repeat(32) },
+      guideRevision: 3, sectionCount: 6, annotationCount: 2, mathSourceFallback: false,
+    } as studyGuides.PreparedStudyGuidePdf);
+    vi.mocked(publishPreparedExport).mockResolvedValue({} as Awaited<ReturnType<typeof publishPreparedExport>>);
+    vi.mocked(releasePreparedExport).mockResolvedValue(undefined);
+    renderScreen({ showToast });
+    await screen.findByText("Distributive shock");
+
+    const menu = await openGuideActions("Distributive shock");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Export PDF" }));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith("success", "Exported study guide with 6 sections and 2 notes."));
+    expect(studyGuides.prepareDocumentStudyGuidePdf).toHaveBeenCalledWith("a".repeat(32), true, "plum");
+    expect(releasePreparedExport).toHaveBeenCalledWith("e".repeat(32));
+  });
+
+  it("remakes a guide from its card, shows its bar, and refreshes once it is saved", async () => {
+    const showToast = vi.fn();
+    let finish: (guide: studyGuides.DocumentStudyGuide) => void = () => undefined;
+    vi.mocked(studyGuides.generateDocumentStudyGuide).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderScreen({ showToast });
+    await screen.findByText("Distributive shock");
+
+    let menu = await openGuideActions("Distributive shock");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remake the study guide" }));
+
+    expect(studyGuides.generateDocumentStudyGuide).toHaveBeenCalledWith("a".repeat(32));
+    expect(await screen.findByText("Remaking · Preparing")).toBeTruthy();
+    menu = await openGuideActions("Distributive shock");
+    expect(within(menu).getByRole("menuitem", { name: "Stop remaking" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Delete study guide" }).getAttribute("aria-disabled")).toBe("true");
+    const listsBefore = vi.mocked(studyGuides.listStudyGuidePage).mock.calls.length;
+
+    await act(async () => { finish({ revision: 4 } as studyGuides.DocumentStudyGuide); });
+
+    expect(showToast).toHaveBeenCalledWith("success", "Study guide revision 4 made.");
+    await waitFor(() => expect(vi.mocked(studyGuides.listStudyGuidePage).mock.calls.length).toBeGreaterThan(listsBefore));
+    expect(screen.queryByText("Remaking · Preparing")).toBeNull();
+  });
+
+  it("opens AI setup from Remake while no model is chosen for guides", async () => {
+    const onSetUpAi = vi.fn();
+    vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null });
+    renderScreen({ onSetUpAi });
+    await screen.findByText("Distributive shock");
+    await waitFor(() => expect(aiProfiles.listAiProviderProfiles).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    const menu = await openGuideActions("Distributive shock");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remake the study guide" }));
+
+    await waitFor(() => expect(onSetUpAi).toHaveBeenCalledTimes(1));
+    expect(studyGuides.generateDocumentStudyGuide).not.toHaveBeenCalled();
   });
 
   it("opens a newly generated guide request without hydrating every list row first", async () => {

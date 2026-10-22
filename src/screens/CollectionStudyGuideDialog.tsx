@@ -3,13 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { StudyMarkdown } from "../components/StudyMarkdown";
 import type { ShowToast } from "../components/Toast";
 import { getErrorMessage } from "../ipc/common";
-import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
-import { getSettings } from "../ipc/settings";
 import { openDocumentSource } from "../ipc/documents";
 import {
   discardCollectionStudyGuideOverlay,
   getCollectionStudyGuide,
-  prepareCollectionStudyGuidePdf,
   saveCollectionStudyGuideOverlay,
   type CollectionGuideSection,
   type CollectionStudyGuide,
@@ -25,7 +22,7 @@ import { Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
-import { guidePdfPreferences } from "./study-guides/guidePdfPreferences";
+import { exportGuidePdf } from "./study-guides/exportGuidePdf";
 import { StudyGuideStructuredContent } from "./study-guides/StudyGuideContent";
 
 type CollectionEditingMode = "note" | "override";
@@ -134,29 +131,9 @@ export function CollectionStudyGuideDialog({
   async function exportPdf(): Promise<void> {
     if (!guide || isExporting) return;
     setIsExporting(true);
-    let preparedExportId: string | null = null;
     try {
-      // The look and the notes are Settings choices, read fresh for each export.
-      const { theme, includeNotes } = guidePdfPreferences(await getSettings());
-      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeNotes, theme);
-      preparedExportId = prepared.preparedExport.id;
-      if (prepared.mathSourceFallback && !await confirm({
-        title: "Export math as source notation?",
-        description: "Some equations use notation outside the native PDF math subset and will remain readable LaTeX source. The study guide in oStudy keeps its full typeset math.",
-        confirmLabel: "Export PDF",
-        cancelLabel: "Cancel",
-      })) return;
-      const receipt = await publishPreparedExport(prepared.preparedExport.id);
-      if (receipt) {
-        const notes = prepared.annotationCount > 0
-          ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}`
-          : "";
-        showToast("success", `Exported the subject study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
-      }
-    } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
+      await exportGuidePdf({ kind: "collection", id: collectionId }, confirm, showToast);
     } finally {
-      if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
       setIsExporting(false);
     }
   }
