@@ -51,14 +51,18 @@ describe("StudyGuideStructuredContent", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Check yourself" })).toBeTruthy();
   });
 
-  it("shows a designed page over text kept for screen readers, with the checks still live", () => {
-    const { container } = render(<StudyGuideStructuredContent content={content()} headingLevel={2} showTerms={false}
-      designedPage={{ url: "blob:page", width: 538, height: 700 }} />);
+  it("sets a page's blocks on guide paper, key points as numbered tiles, with the checks after the paper", () => {
+    const { container } = render(<StudyGuideStructuredContent content={content({ keyPoints: ["Pressure drives it.", "Arterioles tune it."] })}
+      headingLevel={2} showTerms={false} paper="plum" />);
 
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:page");
-    expect(screen.getByRole("heading", { level: 2, name: "Starling forces" }).closest(".tw\\:sr-only")).not.toBeNull();
+    const sheet = container.querySelector("[data-guide-paper='plum']");
+    expect(sheet).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    const ideas = screen.getByRole("region", { name: "Key ideas" });
+    expect(within(ideas).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["1Pressure drives it.", "2Arterioles tune it."]);
+    expect(sheet?.contains(screen.getByRole("heading", { level: 2, name: "Starling forces" }))).toBe(true);
     const check = screen.getByRole("region", { name: "Check yourself" });
-    expect(check.closest(".tw\\:sr-only")).toBeNull();
+    expect(sheet?.contains(check)).toBe(false);
     fireEvent.click(within(check).getByRole("button", { name: "Show answer" }));
     expect(within(check).getByText("The net filtration pressure.")).toBeTruthy();
   });

@@ -621,7 +621,8 @@ describe("StudyGuideDialog", () => {
     const page = screen.getByRole("article", { name: "Preload" });
     const minute = within(page).getByRole("region", { name: "In one minute" });
     expect(within(minute).getByText("Preload reflects ventricular filling and stretch before systole.")).toBeTruthy();
-    expect(within(minute).getByText("More filling can increase stroke volume.")).toBeTruthy();
+    const ideas = within(page).getByRole("region", { name: "Key ideas" });
+    expect(within(ideas).getByText("More filling can increase stroke volume.")).toBeTruthy();
     expect(within(page).getByRole("table", { name: "Hemodynamic comparison" })).toBeTruthy();
     expect(within(page).getByRole("columnheader", { name: "Measure" })).toBeTruthy();
     const warning = within(page).getByRole("note", { name: "Warning" });
@@ -750,10 +751,10 @@ describe("StudyGuideDialog", () => {
 
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
-    expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Add note", "Edit or rewrite this section"]);
+    expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Write on this page", "Add note", "Edit or rewrite this section"]);
   });
 
-  it("writes on a section's designed page and draws the marks over it", async () => {
+  it("reads a section as text on guide paper and opens its designed page to write on", async () => {
     vi.mocked(getDocumentStudyGuideSectionPage).mockResolvedValue({
       documentId, topicId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 700" xmlns="http://www.w3.org/2000/svg"/>',
     });
@@ -767,31 +768,33 @@ describe("StudyGuideDialog", () => {
     renderGuide();
 
     await openSection("Preload");
-    await waitFor(() => expect(document.querySelector("[data-ink-overlay]")).toBeTruthy());
-    expect(getMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId });
-    await chooseFromMenu(screen.getByRole("button", { name: "Section actions for Preload" }), "Write on this page");
+    // The section is text on paper, never a picture of a page.
+    const heading = screen.getByRole("heading", { level: 1, name: "Preload" });
+    expect(heading.closest("article")?.querySelector("[data-guide-paper='navy']")).toBeTruthy();
+    expect(heading.closest("article")?.querySelector("img[src='blob:page']")).toBeNull();
+    expect(getDocumentStudyGuideSectionPage).not.toHaveBeenCalled();
+    await waitFor(() => expect(getMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId }));
+    await chooseFromMenu(screen.getByRole("button", { name: "Section actions for Preload" }), "Open your writing on this page");
     expect(await screen.findByText("Writing on Preload, 538.58 by 700")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Back to the guide" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Preload" })).toBeTruthy();
   });
 
-  it("shows the overview as a designed At a glance page, and as text in the plain style", async () => {
-    vi.mocked(getDocumentStudyGuideGlancePage).mockResolvedValue({
-      documentId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 400" xmlns="http://www.w3.org/2000/svg"/>',
-    });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:glance") });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+  it("sets the overview on guide paper in the chosen style, and as text in the plain style", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    expect((await screen.findByTestId("guide-glance-page")).getAttribute("src")).toBe("blob:glance");
-    expect(getDocumentStudyGuideGlancePage).toHaveBeenCalledWith(documentId, "navy");
+    await screen.findByRole("button", { name: "Page: Navy" });
+    expect(document.querySelector("[data-guide-paper='navy']")).toBeTruthy();
+    expect(getDocumentStudyGuideGlancePage).not.toHaveBeenCalled();
     const trigger = screen.getByRole("button", { name: "Page: Navy" });
     await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
     fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitemcheckbox", { name: "Sage" }));
+    await waitFor(() => expect(document.querySelector("[data-guide-paper='sage']")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Page: Sage" }));
     fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitemcheckbox", { name: "Plain" }));
-    await waitFor(() => expect(screen.queryByTestId("guide-glance-page")).toBeNull());
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:glance");
+    await waitFor(() => expect(document.querySelector("[data-guide-paper]")).toBeNull());
   });
 
   it("reopens on the section last opened and records each section opened", async () => {
