@@ -294,19 +294,19 @@ impl EvidenceCatalog {
         &self,
         aliases: &[String],
     ) -> Result<Vec<EvidenceReference>, CommandError> {
-        if aliases.is_empty() || aliases.len() > MAX_EVIDENCE_PER_UNIT {
-            return Err(invalid(
-                "Select between one and eight supplied evidence IDs.",
-            ));
-        }
+        // A repeated ID or stray spacing says nothing new about the evidence,
+        // so it is tidied here rather than costing another provider request.
         let mut positions = BTreeSet::new();
         for alias in aliases {
             let index = self
-                .index_for_alias(alias)
+                .index_for_alias(alias.trim())
                 .ok_or_else(|| invalid("A knowledge unit selected an unknown evidence ID."))?;
-            if !positions.insert(index) {
-                return Err(invalid("A knowledge unit repeated an evidence ID."));
-            }
+            positions.insert(index);
+        }
+        if positions.is_empty() || positions.len() > MAX_EVIDENCE_PER_UNIT {
+            return Err(invalid(
+                "Select between one and eight supplied evidence IDs.",
+            ));
         }
         // Native source order, not model order, determines the primary source.
         Ok(positions

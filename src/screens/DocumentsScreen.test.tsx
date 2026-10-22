@@ -384,7 +384,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect((await screen.findAllByText("Recovering OCR 5/12")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Reading scanned pages · 5 of 12")).length).toBeGreaterThan(0);
   });
 
   it("keeps upload controls available while another document is processing", async () => {
@@ -500,7 +500,7 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     const row = await screen.findByTestId("document-row-progress");
-    expect(within(row).getByText("Extracting document content")).toBeTruthy();
+    expect(within(row).getByText("Opening your document")).toBeTruthy();
     // The bar replaces the row's status badge and its Open button.
     expect(screen.queryByText("Processing")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
@@ -526,11 +526,11 @@ describe("DocumentsScreen", () => {
     );
     renderDocuments();
 
-    await waitFor(() => expect(within(screen.getByTestId("document-row-progress")).getByText("Mapping document structure")).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByTestId("document-row-progress")).getByText("Finding headings and sections")).toBeTruthy());
     expect(screen.queryByText("Converting extracted headings and content into oStudy source blocks.")).toBeNull();
     const details = await openGenerationDetails();
     expect(within(details).getByText("Converting extracted headings and content into oStudy source blocks.")).toBeTruthy();
-    expect(screen.queryByText(/Rendering pages/u)).toBeNull();
+    expect(screen.queryByText(/Preparing pages/u)).toBeNull();
   });
 
   it("shows live rendered-page progress for PDFs once the total page count is known", async () => {
@@ -548,7 +548,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect((await screen.findAllByText("Rendering pages 4/11")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Preparing pages · 4 of 11")).length).toBeGreaterThan(0);
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {

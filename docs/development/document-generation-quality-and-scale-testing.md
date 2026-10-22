@@ -112,10 +112,11 @@ Retest the same large PDF that previously reached local processing but failed du
 
 During local processing verify the Documents row transitions through truthful state:
 
-- initially **Extracting text** while total page count is not yet known;
-- once structured extraction determines the count, the metric changes to `0/<total> rendered` and phase becomes **Rendering pages**;
+- initially **Opening your document** while total page count is not yet known;
+- once structured extraction determines the count, the metric changes to `0/<total> rendered` and phase becomes **Preparing pages · 0 of <total>**;
 - while rasterization continues, the metric advances through `x/<total> rendered` instead of remaining `0/—` until completion;
-- after rendering, generation/outline phases take over.
+- after rendering, **Reading your document** fills the bar from 20% to 95% with the share read and, after the first half minute, a rough time left; the technical passage count stays in Generation details;
+- after reading, generation/outline phases take over.
 
 Confirm:
 
