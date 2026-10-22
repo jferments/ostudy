@@ -13,7 +13,7 @@ vi.mock("../../ipc/deviceSync", () => ({
 const localId = "1".repeat(32);
 const peerId = "2".repeat(32);
 const defaultSelection: syncIpc.DeviceSyncSelection = {
-  flashcards: true, documents: true, studyGuides: true, apiSettings: false, apiCredentials: false,
+  flashcards: true, documents: true, studyGuides: true, notes: true, lessons: true, apiSettings: false, apiCredentials: false,
 };
 function state(): syncIpc.DeviceSyncState {
   return {
@@ -147,6 +147,19 @@ describe("DeviceSyncSettings", () => {
     expect(toggle(sheet, "Documents").getAttribute("aria-checked")).toBe("true");
   });
 
+  it("sends notes and lessons on their own", async () => {
+    renderSync();
+    const sheet = await openSheet("Send to a device");
+    fireEvent.click(toggle(sheet, "Flashcards"));
+    fireEvent.click(toggle(sheet, "Documents"));
+    fireEvent.click(toggle(sheet, "Lessons"));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Show a code" }));
+    await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+      transport: "local-network", hostOverride: null,
+      selection: { ...defaultSelection, flashcards: false, documents: false, studyGuides: false, lessons: false },
+    }));
+  });
+
   it("keeps saved API keys dependent on AI services", async () => {
     renderSync();
     const sheet = await openSheet("Send to a device");
@@ -163,6 +176,8 @@ describe("DeviceSyncSettings", () => {
     const sheet = await openSheet("Send to a device");
     fireEvent.click(toggle(sheet, "Flashcards"));
     fireEvent.click(toggle(sheet, "Documents"));
+    fireEvent.click(toggle(sheet, "Notes"));
+    fireEvent.click(toggle(sheet, "Lessons"));
     expect((within(sheet).getByRole("button", { name: "Show a code" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(within(sheet).getByRole("radio", { name: "USB cable" }));
     expect((within(sheet).getByRole("button", { name: "Send over USB" }) as HTMLButtonElement).disabled).toBe(true);

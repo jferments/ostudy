@@ -90,7 +90,7 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 ## Where annotations are kept
 
-Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes, and for a collapsed sticky note, from before notes could collapse) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
+Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync sends them with **Documents**. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes, and for a collapsed sticky note, from before notes could collapse) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from travels with device sync when both **Documents** and **Flashcards** are sent; shared decks do not carry it.
 
 Storing annotations needs library schema 8, cards from marks need schema 10, and saving an annotated copy needs schema 14. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 

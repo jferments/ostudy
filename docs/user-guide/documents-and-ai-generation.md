@@ -150,7 +150,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures travel with **Documents**. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
 Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 

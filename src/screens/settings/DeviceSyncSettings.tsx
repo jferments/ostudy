@@ -30,7 +30,7 @@ type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" 
 type SyncSelectionKey = keyof DeviceSyncSelection;
 const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
 const DEFAULT_SELECTION: DeviceSyncSelection = {
-  flashcards: true, documents: true, studyGuides: true, apiSettings: false, apiCredentials: false,
+  flashcards: true, documents: true, studyGuides: true, notes: true, lessons: true, apiSettings: false, apiCredentials: false,
 };
 
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
@@ -69,7 +69,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     () => state?.sessions.filter((session) => ACTIVE_SESSION_STATES.has(session.state)) ?? [], [state],
   );
   const hasUnclaimedSendingOffer = activeSessions.some((session) => session.direction === "host" && session.peerId === null);
-  const hasSelectedCategory = selection.flashcards || selection.documents || selection.apiSettings;
+  const hasSelectedCategory = selection.flashcards || selection.documents || selection.notes || selection.lessons || selection.apiSettings;
   useEffect(() => {
     if (!state || credentialsAvailable) return;
     setSelection((current) => current.apiCredentials ? { ...current, apiCredentials: false } : current);
@@ -350,6 +350,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
               <SwitchRow label="Flashcards" checked={selection.flashcards} disabled={busy} onChange={(checked) => changeSelection("flashcards", checked)} />
               <SwitchRow label="Documents" checked={selection.documents} disabled={busy} onChange={(checked) => changeSelection("documents", checked)} />
               <SwitchRow label="Study guides" checked={selection.studyGuides} disabled={busy} onChange={(checked) => changeSelection("studyGuides", checked)} />
+              <SwitchRow label="Notes" checked={selection.notes} disabled={busy} onChange={(checked) => changeSelection("notes", checked)} />
+              <SwitchRow label="Lessons" checked={selection.lessons} disabled={busy} onChange={(checked) => changeSelection("lessons", checked)} />
               <SwitchRow label="AI services" checked={selection.apiSettings} disabled={busy} onChange={(checked) => changeSelection("apiSettings", checked)} />
               <SwitchRow label="Saved API keys" checked={selection.apiCredentials} disabled={busy || !credentialsAvailable} onChange={(checked) => changeSelection("apiCredentials", checked)} />
             </div>

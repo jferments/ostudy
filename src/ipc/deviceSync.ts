@@ -61,6 +61,10 @@ export interface DeviceSyncSelection {
   flashcards: boolean;
   documents: boolean;
   studyGuides: boolean;
+  /** Notebooks, with their pages, marks and pictures. */
+  notes: boolean;
+  /** Lessons, their progress, lecture scripts, podcasts, voices and narration audio. */
+  lessons: boolean;
   apiSettings: boolean;
   apiCredentials: boolean;
 }
