@@ -1,4 +1,4 @@
-import { useId, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import type { ShowToast } from "../components/Toast";
 import type { StudyGuidePageItem, StudyGuideLibrarySort, StudyGuideSubjectFilter } from "../ipc/studyGuides";
 import { getErrorMessage } from "../ipc/common";
@@ -21,6 +21,10 @@ import { StudyGuideDialog } from "./StudyGuideDialog";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { guideLibraryStyles as styles } from "./documents/presentation";
 import { useLibraryFullPage } from "./library/LibraryFrame";
+import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
+import { exportGuidePdf } from "./study-guides/exportGuidePdf";
+import { useGuideRemake } from "./study-guides/useGuideRemake";
+import { useOptionalTutor } from "./tutor/TutorContext";
 
 interface StudyGuidesScreenProps {
   /** Lists one subject's guides; every guide when left out. */
@@ -29,11 +33,17 @@ interface StudyGuidesScreenProps {
   onPracticeCards: (cardIds: string[]) => Promise<void>;
   openRequest?: StudyGuideOpenRequest | null;
   onOpenRequestConsumed?: (requestId: number) => void;
+  /** Opens AI setup; Remake goes there while no model is chosen for guides. */
+  onSetUpAi?: () => void;
 }
 
-export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed }: StudyGuidesScreenProps) {
+export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed, onSetUpAi }: StudyGuidesScreenProps) {
   const confirm = useConfirm();
   const controller = useStudyGuidesController({ subject, showToast, openRequest, onOpenRequestConsumed });
+  const tutor = useOptionalTutor();
+  const remaking = useGuideRemake({ showToast, onRemade: controller.refresh });
+  const modelMissing = useGenerationModelMissing();
+  const [exportingGuideId, setExportingGuideId] = useState<string | null>(null);
   // An open guide is a page of its own in Library, without the view switcher.
   useLibraryFullPage(controller.selected !== null);
   async function confirmDelete(target: StudyGuideDeleteTarget): Promise<boolean> {
@@ -46,6 +56,40 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
   }
   async function openSource(documentId: string): Promise<void> {
     try { await openDocumentSource(documentId); } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
+  }
+  async function exportPdf(item: StudyGuidePageItem): Promise<void> {
+    if (exportingGuideId !== null) return;
+    setExportingGuideId(item.guideId);
+    try { await exportGuidePdf({ kind: item.targetKind, id: item.targetId }, confirm, showToast); }
+    finally { setExportingGuideId(null); }
+  }
+  /** What the card's menu offers beyond Open: the reader's own actions, then the source and Delete. */
+  function cardMenu(item: StudyGuidePageItem): OverflowMenuItem[] {
+    const document = item.targetKind === "document";
+    const remakeRunning = document && remaking.running(item.targetId);
+    const deleteTarget = deleteTargetFromItem(item);
+    const deleting = controller.deletingGuideId === item.guideId;
+    return [
+      ...(tutor ? [{
+        id: "tutor", label: "Ask Tutor", disabled: tutor.busy || tutor.pending !== null,
+        onSelect: () => tutor.openContext(document
+          ? { title: item.title, scope: { kind: "guide", id: item.targetId },
+            focus: { kind: "guide", documentId: item.targetId, guideId: item.guideId, topicId: null, contentHash: null }, mode: "explain" }
+          : { title: item.title, scope: { kind: "collection", id: item.targetId }, focus: null, mode: "explain" }),
+      } satisfies OverflowMenuItem] : []),
+      { id: "export", label: exportingGuideId === item.guideId ? "Exporting PDF…" : "Export PDF", disabled: exportingGuideId !== null || deleting,
+        onSelect: () => void exportPdf(item) },
+      ...(!document ? [] : remakeRunning ? [{
+        id: "stop-remake", label: remaking.stopping(item.targetId) ? "Stopping…" : "Stop remaking",
+        disabled: remaking.stopping(item.targetId), onSelect: () => void remaking.stop(item.targetId),
+      }] : [{
+        id: "remake", label: "Remake the study guide", disabled: deleting,
+        onSelect: modelMissing && onSetUpAi ? onSetUpAi : () => void remaking.remake(item.targetId),
+      }]),
+      ...(document ? [{ id: "source", label: "Open the source", onSelect: () => void openSource(item.targetId) }] : []),
+      ...(deleteTarget ? [{ id: "delete", label: "Delete study guide", destructive: true, disabled: deleting || remakeRunning,
+        onSelect: () => void confirmDelete(deleteTarget) }] : []),
+    ];
   }
   function submitSearch(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -115,22 +159,21 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
               description={controller.query ? undefined : "Make guides from Documents."} />
           ) : (
             <ul aria-label="Study guides" className={styles.grid}>
-              {controller.page.items.map((item) => {
-                const deleteTarget = deleteTargetFromItem(item);
-                return <GuideCard
+              {controller.page.items.map((item) => (
+                <GuideCard
                   key={item.guideId}
                   item={item}
                   deleting={controller.deletingGuideId === item.guideId}
+                  remakeProgress={item.targetKind === "document" ? remaking.progressOf(item.targetId) : null}
+                  menu={cardMenu(item)}
                   onOpen={() => controller.openGuide({
                     targetKind: item.targetKind,
                     targetId: item.targetId,
                     title: item.title,
                     source: guideSourceFromItem(item),
                   })}
-                  onOpenSource={item.targetKind === "document" ? () => void openSource(item.targetId) : null}
-                  onDelete={deleteTarget ? () => void confirmDelete(deleteTarget) : null}
-                />;
-              })}
+                />
+              ))}
             </ul>
           )}
           {controller.page.totalCount > controller.page.limit ? (
@@ -149,22 +192,19 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
 function GuideCard({
   item,
   deleting,
+  remakeProgress,
+  menu,
   onOpen,
-  onOpenSource,
-  onDelete,
 }: {
   item: StudyGuidePageItem;
   deleting: boolean;
+  /** Set while the guide is being remade; the old guide stays open to read. */
+  remakeProgress: { label: string; value: number | null } | null;
+  menu: OverflowMenuItem[];
   onOpen: () => void;
-  onOpenSource: (() => void) | null;
-  onDelete: (() => void) | null;
 }) {
   const headingId = `guide-${useId().replaceAll(":", "")}`;
   const collection = item.targetKind === "collection";
-  const menu: OverflowMenuItem[] = [
-    ...(onOpenSource ? [{ id: "source", label: "Open the source", onSelect: onOpenSource }] : []),
-    ...(onDelete ? [{ id: "delete", label: "Delete study guide", destructive: true, disabled: deleting, onSelect: onDelete }] : []),
-  ];
   return (
     <li data-testid="guide-card" className={styles.card}>
       <article aria-labelledby={headingId} className="tw:relative tw:h-full tw:min-w-0">
@@ -179,7 +219,10 @@ function GuideCard({
             </div>
             {menu.length ? <OverflowMenu label={`More actions for ${item.title}`} items={menu} /> : null}
           </div>
-          {collection ? null : <ReadingProgress item={item} />}
+          {remakeProgress ? (
+            <Progress value={remakeProgress.value} max={100} size="small" label={`${item.title} remake progress`}
+              valueText={remakeProgress.label} text={<span className="tw:tabular-nums">{remakeProgress.label}</span>} />
+          ) : collection ? null : <ReadingProgress item={item} />}
           <div className="tw:mt-auto tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-x-3 tw:gap-y-2">
             <span className={styles.metrics}>
               <span>{item.sectionCount} section{item.sectionCount === 1 ? "" : "s"}</span>
