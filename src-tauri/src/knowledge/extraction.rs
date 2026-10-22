@@ -220,27 +220,18 @@ async fn analyze(
         }
     }
     task.ensure_current(database)?;
-    let images = if task.include_page_images {
-        load_window_images(database, paths, &pending)?
-    } else {
-        vec![]
-    };
-    if images.is_empty() {
+    // Page images are read and re-encoded only when a request is sent: a
+    // window whose saved receipt is reused needs none of them.
+    let with_images =
+        task.include_page_images && pending.iter().any(|source| !source.images.is_empty());
+    if !with_images {
         pending = defer_picture_only_sources(pending)?;
     }
-    let catalog = EvidenceCatalog::build(&pending, !images.is_empty())?;
+    let catalog = EvidenceCatalog::build(&pending, with_images)?;
     let authorization = hash(
         &serde_json::to_string(&(
             authorization,
-            images
-                .iter()
-                .map(|image| {
-                    (
-                        image.page_number,
-                        crate::document_canonical::sha256_hex(&image.bytes),
-                    )
-                })
-                .collect::<Vec<_>>(),
+            with_images.then(|| window_page_images(&pending)),
         ))
         .map_err(CommandError::serialization)?,
     );
@@ -263,11 +254,16 @@ async fn analyze(
         },
         cancellation,
         |call| {
-            let images = &images;
+            let pending = &pending;
             async move {
                 let cancellation = &call.cancellation;
                 task.ensure_current(database)?;
                 check_canceled(cancellation)?;
+                let images = if with_images {
+                    load_window_images(database, paths, pending)?
+                } else {
+                    vec![]
+                };
                 // The shared transport now budgets the actual schema-bearing prompt
                 // for knowledge, guide and every other document task consistently.
                 let value = request_json_cancellable(
@@ -278,7 +274,7 @@ async fn analyze(
                         user_text: &call.user,
                         schema: &call.schema,
                         max_tokens: task.completion_token_ceiling(call.visible_completion_tokens),
-                        images,
+                        images: &images,
                     },
                     cancellation,
                 )

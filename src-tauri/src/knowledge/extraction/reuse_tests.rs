@@ -114,3 +114,66 @@ async fn partial_read_does_not_retry_and_explicit_repair_retains_accepted_identi
         .unwrap()
         .is_complete());
 }
+
+#[tokio::test]
+async fn reused_window_never_loads_its_page_images() {
+    let (db, mut source, _, _) = fixture();
+    db.with_connection(|c| {
+        c.execute(
+            "INSERT INTO ai_provider_profiles (
+                 id,display_name,normalized_name,provider_kind,base_url,model_id,
+                 auth_mode,enabled,allow_insecure_http,request_timeout_ms,
+                 credential_storage,credential_epoch,revision,created_at,updated_at,
+                 reasoning_effort
+             ) VALUES (?1,'Reuse fixture','reuse fixture','llama_cpp',
+                       'http://127.0.0.1:9/','fixture','none',1,0,1000,
+                       'none',0,1,1,1,'none')",
+            ["a".repeat(32)],
+        )
+        .map_err(CommandError::database)?;
+        Ok(())
+    })
+    .unwrap();
+    let mut task = DocumentTaskContext::for_tutor_profile(&db, &"a".repeat(32)).unwrap();
+    task.include_page_images = true;
+    // A page with nothing to learn whose render is deliberately missing: the
+    // saved receipt answers it, so the render is never read or re-encoded.
+    source.segment_key = "0:1:0".to_string();
+    source.text = "Chapter opener with a photograph of the gut.".to_string();
+    source.images = vec![EvidenceImage::DocumentAsset {
+        document_id: "1".repeat(32),
+        asset_id: "missing-page-render".to_string(),
+    }];
+    source.refresh_identity().unwrap();
+    db.with_connection(|c| repository::publish_source(c, &source, "1", 1))
+        .unwrap();
+    let sources = [source];
+    let contract = extraction_contract(&task).unwrap();
+    let signal = CancellationSignal::new();
+    let first = run_window(
+        &db,
+        &sources,
+        &contract,
+        &EvidenceCatalog::build(&sources, true).unwrap(),
+        &signal,
+        false,
+        |_| {
+            std::future::ready(Ok(
+                json!({"units":[],"noLearningSourceIds":[sources[0].id]}),
+            ))
+        },
+    )
+    .await
+    .unwrap();
+    assert!(first.values().all(Vec::is_empty));
+    let directory = std::env::temp_dir().join(format!(
+        "ostudy-reuse-images-{}-{}",
+        std::process::id(),
+        sources[0].id
+    ));
+    let paths = AppPaths::new(directory.join("library")).unwrap();
+    let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+    let reused = ensure_units_batch(&db, &paths, &runtime, &task, &sources, &signal).await;
+    let _ = std::fs::remove_dir_all(&directory);
+    assert!(reused.unwrap()[&sources[0].id].is_empty());
+}
