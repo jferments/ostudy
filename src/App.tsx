@@ -21,6 +21,7 @@ import {
 import { isLibrarySection, type AppDestination } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import type { StudyGuideOpenRequest } from "./controllers/useStudyGuidesController";
+import type { NotebookOpenRequest } from "./screens/notes/LibraryNotes";
 import { HomeScreen } from "./screens/home/HomeScreen";
 import { LibraryLessons } from "./screens/library/LibraryLessons";
 import { LibraryOverview } from "./screens/library/LibraryOverview";
@@ -99,6 +100,7 @@ function App() {
   // The lesson Library's Lessons page is playing.
   const [openLessonState, setOpenLesson] = useState<{ subjectId: string; lessonId: string } | null>(null);
   const [guideOpenRequest, setGuideOpenRequest] = useState<StudyGuideOpenRequest | null>(null);
+  const [notebookOpenRequest, setNotebookOpenRequest] = useState<NotebookOpenRequest | null>(null);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   useEffect(() => {
@@ -324,6 +326,10 @@ function App() {
                                     subjectId={subjectFilter}
                                     showToast={controller.showToast}
                                     onSetUpAi={() => void controller.openAiSetup()}
+                                    onOpenNotebook={(notebookId, pageId) => {
+                                      setNotebookOpenRequest({ requestId: Date.now(), notebookId, pageId });
+                                      navigate("notes");
+                                    }}
                                   />
                                 </PerformanceProfiler>
                               </LibraryFrame>
@@ -331,6 +337,10 @@ function App() {
                               <LibraryFrame view="notes" {...libraryFrame}>
                                 <LibraryNotes
                                   subject={librarySubject}
+                                  openRequest={notebookOpenRequest}
+                                  onOpenRequestConsumed={(requestId) =>
+                                    setNotebookOpenRequest((current) => (current?.requestId === requestId ? null : current))
+                                  }
                                   showToast={controller.showToast}
                                   onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
                                   onOpenGuide={(documentId, documentTitle) => {

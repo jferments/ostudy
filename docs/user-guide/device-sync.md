@@ -18,14 +18,16 @@ The transport changes only how the two native processes exchange bytes. Device i
 Every outgoing transfer has a **What to send** section. The sender chooses the categories included in that transfer:
 
 - **Flashcards** — decks, Basic/Fill in the blank and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, source-citation snapshots, and managed card/question images.
-- **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
-- **Study guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
+- **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device, with your PDF annotations and the figures found in your PDFs.
+- **Study guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state, how far you have read each guide, and what you drew on guide pages.
+- **Notes** — your notebooks with their pages, everything drawn or written on them, and their pictures.
+- **Lessons** — your lessons and how far you are through each, teacher's lectures, podcasts, the voice each lesson is read in, your saved voices, narration audio, and what you drew on slides.
 - **AI services** — AI service profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from AI services.
 
-Subjects, which hold decks and documents, travel with either **Flashcards** or **Documents**, so a deck or document keeps its subject on the other device. If one device deletes a subject while the other files a deck or document in it, the deck or document ends up in No subject, the way deleting a subject leaves the decks and documents it held.
+Subjects, which hold decks, documents, notebooks and lessons, travel with any of **Flashcards**, **Documents**, **Notes** or **Lessons**, so each keeps its subject on the other device. If one device deletes a subject while the other files a deck, document or notebook in it, that item ends up in No subject, the way deleting a subject leaves the decks and documents it held. A lesson or podcast in a deleted subject is deleted with it, as deleting the subject on this device would. In the same way, marks added on one device to a document, notebook or lesson that the other device deleted go with it.
 
-Flashcards, Documents, and Study guides are selected by default. **AI services** and **Saved API keys** are off by default. **Saved API keys** is unavailable when this device has no secure key storage.
+Flashcards, Documents, Study guides, Notes and Lessons are selected by default. **AI services** and **Saved API keys** are off by default. **Saved API keys** is unavailable when this device has no secure key storage.
 
 Selecting **Study guides** also selects **Documents**. Selecting **Saved API keys** also selects **AI services**. Turning a required parent category off turns its dependent category off too. Native validation repeats these rules; they do not rely only on switch state.
 
@@ -41,10 +43,8 @@ Some data always stays on the device, whatever is selected:
 
 - General application and appearance settings: theme, font, UI scale, motion, layout and similar preferences.
 - Tutor projects, conversations, summaries and their search copies (see [Tutor memory and privacy](tutor-memory-and-privacy.md)).
-- The knowledge ostudy extracted from documents, so a transferred document may be read again before new material is made from it on the receiving device.
-- PDF annotations.
-- The figures found in PDF documents, and your choice to use a document's images.
-- Lessons and lesson progress.
+- The knowledge ostudy extracted from documents, so a transferred document may be read again before new material is made from it on the receiving device. A transferred lesson can be studied straight away, but on the receiving device it cannot check whether its documents changed since it was written.
+- Your choice of speech model and voice in Settings.
 - How generated questions were made (their generation evidence) and your **Question mix** in **Settings → Card templates**.
 - AI model test results.
 

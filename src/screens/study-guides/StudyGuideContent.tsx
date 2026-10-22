@@ -222,13 +222,36 @@ export function GuideMinuteBox({ id, page, level = 2, children }: { id: string; 
 }
 
 /** A compact definition list of terms, for the rail beside a section or below it. */
-export function GuideTermList({ terms, className }: { terms: StudyGuideSectionContent["importantTerms"]; className?: string }) {
+/**
+ * A section's terms and what each means. With `hideMeanings` each meaning waits behind a
+ * Show button, so the learner can say it first; turning it off shows them all again.
+ */
+export function GuideTermList({ terms, className, hideMeanings = false }: {
+  terms: StudyGuideSectionContent["importantTerms"];
+  className?: string;
+  hideMeanings?: boolean;
+}) {
+  const [shown, setShown] = useState<ReadonlySet<number>>(new Set());
+  // Hiding again, or another section's terms, starts every meaning hidden.
+  const [hiddenFor, setHiddenFor] = useState({ terms, hideMeanings });
+  if (hiddenFor.terms !== terms || hiddenFor.hideMeanings !== hideMeanings) {
+    setHiddenFor({ terms, hideMeanings });
+    setShown(new Set());
+  }
   return (
     <dl className={cn("tw:m-0 tw:grid tw:gap-3 tw:font-sans", className)}>
       {terms.map((term, index) => (
         <div key={`${index}-${term.term}`} className="tw:grid tw:min-w-0 tw:gap-0.5">
           <dt className="tw:font-semibold tw:text-foreground"><StudyMarkdown text={term.term} inline /></dt>
-          <dd className="tw:m-0 tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={term.explanation} /></dd>
+          <dd className="tw:m-0 tw:text-(--ostudy-color-text-secondary)">
+            {hideMeanings && !shown.has(index) ? (
+              <Button size="small" variant="text" className="tw:-ms-2"
+                aria-label={`Show what ${term.term} means`}
+                onClick={() => setShown((current) => new Set(current).add(index))}>
+                Show
+              </Button>
+            ) : <StudyMarkdown text={term.explanation} />}
+          </dd>
         </div>
       ))}
     </dl>

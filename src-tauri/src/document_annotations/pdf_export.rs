@@ -16,13 +16,17 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::Cursor;
 
-use oxidize_pdf::graphics::{BlendMode, Color, ExtGState, LineCap, LineDashPattern, LineJoin};
+use oxidize_pdf::graphics::{
+    BlendMode, Color, ExtGState, Image, LineCap, LineDashPattern, LineJoin,
+};
 use oxidize_pdf::parser::objects::{PdfDictionary, PdfObject};
 use oxidize_pdf::parser::{PdfDocument, PdfReader};
 use oxidize_pdf::text::Font;
 use oxidize_pdf::{Document, Page};
 
-use super::{AnnotationShape, Frame, HighlightStroke, InkStroke, LineDash, Segment, TextNote};
+use super::{
+    AnnotationShape, Frame, HighlightStroke, ImageMark, InkStroke, LineDash, Segment, TextNote,
+};
 
 /// Matches the annotator: line height as a multiple of the font size, padding in points.
 const TEXT_LINE_HEIGHT: f64 = 1.3;
@@ -244,6 +248,7 @@ fn draw_overlay(
             page: Page::new(frame.width, frame.height),
             height: frame.height,
             font: &text_font,
+            pictures: None,
         };
         for shape in &page.shapes {
             canvas.draw(shape)?;
@@ -258,6 +263,8 @@ struct Canvas<'a> {
     /// The page's height, to turn the annotator's y-down points upward.
     height: f64,
     font: &'a Font,
+    /// Pictures' images by asset id; only notebook pages have pictures.
+    pictures: Option<&'a HashMap<String, Image>>,
 }
 
 impl Canvas<'_> {
@@ -273,9 +280,9 @@ impl Canvas<'_> {
             AnnotationShape::Arrow(segment) => self.line(segment, true),
             AnnotationShape::Rectangle(frame) => self.frame(frame, false),
             AnnotationShape::Ellipse(frame) => self.frame(frame, true),
-            // Documents never hold pictures; only notebook pages do.
-            AnnotationShape::Image(_) => Ok(()),
+            AnnotationShape::Image(picture) => self.picture(picture),
             AnnotationShape::Text(note) if note.sticky == Some(true) => self.sticky(note),
+            AnnotationShape::Text(note) if note.link.is_some() => self.link(note),
             AnnotationShape::Text(note) => self.text(note),
         }
     }
@@ -491,6 +498,77 @@ impl Canvas<'_> {
             note.font_size,
             parse_color(&note.color),
         )
+    }
+
+    /// A picture at its place and size; one whose image is missing is left out.
+    fn picture(&mut self, picture: &ImageMark) -> Result<(), ExportError> {
+        let Some(image) = self
+            .pictures
+            .and_then(|pictures| pictures.get(&picture.asset_id))
+        else {
+            return Ok(());
+        };
+        // The same picture twice on a page names the same image.
+        let name = format!("OstudyPicture{}", picture.asset_id);
+        self.page.add_image(name.clone(), image.clone());
+        let bottom = self.y(picture.y + picture.height);
+        self.page
+            .draw_image(&name, picture.x, bottom, picture.width, picture.height)
+            .map_err(write_failed)
+    }
+
+    /// A link's label, as the notebook shows it: underlined words in the
+    /// link's color, or white words on a button of that color.
+    fn link(&mut self, note: &TextNote) -> Result<(), ExportError> {
+        let color = parse_color(&note.color);
+        let size = note.font_size;
+        let line_height = size * TEXT_LINE_HEIGHT;
+        let lines = wrap(&note.text, note.width - 2.0 * TEXT_PADDING, size);
+        let (x, top) = (note.x + TEXT_PADDING, note.y + TEXT_PADDING);
+        let widest = lines
+            .iter()
+            .map(|line| line.chars().count() as f64 * size * CHARACTER_WIDTH)
+            .fold(0.0, f64::max);
+        let button = note
+            .link
+            .as_ref()
+            .is_some_and(|link| link.button == Some(true));
+        if button {
+            let width = (widest + 1.2 * size).min(note.width);
+            let height = lines.len().max(1) as f64 * line_height + 2.0 * TEXT_PADDING;
+            let bottom = self.y(note.y + height);
+            let graphics = self.page.graphics();
+            graphics
+                .save_state()
+                .set_fill_color(color)
+                .rect(note.x, bottom, width, height)
+                .fill()
+                .restore_state();
+            return self.write_lines(
+                &lines,
+                x + 0.6 * size - TEXT_PADDING,
+                top,
+                size,
+                notebook_pdf::paper_white(),
+            );
+        }
+        self.write_lines(&lines, x, top, size, color)?;
+        let graphics = self.page.graphics();
+        graphics
+            .save_state()
+            .set_stroke_color(color)
+            .set_line_width((size / 14.0).max(0.5));
+        for (index, line) in lines.iter().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+            let width = line.chars().count() as f64 * size * CHARACTER_WIDTH;
+            let under = top + index as f64 * line_height + (line_height - size) / 2.0 + size * 0.95;
+            let y = self.height - under;
+            graphics.move_to(x, y).line_to(x + width, y);
+        }
+        graphics.stroke().restore_state();
+        Ok(())
     }
 
     fn sticky(&mut self, note: &TextNote) -> Result<(), ExportError> {
@@ -802,6 +880,13 @@ struct StickyNote {
     color: [f64; 3],
 }
 
+/// A link on a page to another page of the same file: where it is, in the
+/// page's own coordinates, and the page object it opens.
+struct PageLink {
+    rect: [f64; 4],
+    target: (u32, u16),
+}
+
 fn sticky_notes(page: &PageAnnotations<'_>, frame: &PageFrame) -> Vec<StickyNote> {
     page.shapes
         .iter()
@@ -1014,61 +1099,98 @@ impl<'a> Update<'a> {
         dict.insert("Contents".into(), array);
 
         // Sticky notes join the page's annotations.
-        if !notes.is_empty() {
-            let mut annots: Vec<Vec<u8>> = match page.dict.get("Annots") {
-                Some(existing) => match document.resolve(existing).map_err(unreadable)? {
-                    PdfObject::Array(array) => array.0.iter().map(object_bytes).collect(),
-                    _ => Vec::new(),
-                },
-                None => Vec::new(),
-            };
-            let page_ref = format!("{} {} R", page.obj_ref.0, page.obj_ref.1);
-            for note in notes {
-                // An empty appearance: the page already shows the note.
-                let appearance = self.allocate();
-                let (width, height) = (note.rect[2] - note.rect[0], note.rect[3] - note.rect[1]);
-                self.write_stream(
-                    appearance,
-                    vec![
-                        ("Type".into(), b"/XObject".to_vec()),
-                        ("Subtype".into(), b"/Form".to_vec()),
-                        (
-                            "BBox".into(),
-                            format!("[0 0 {} {}]", number(width), number(height)).into_bytes(),
-                        ),
-                    ],
-                    b"",
-                );
-                let id = self.allocate();
-                let body = dictionary_bytes(&[
-                    ("Type".into(), b"/Annot".to_vec()),
-                    ("Subtype".into(), b"/Text".to_vec()),
-                    (
-                        "Rect".into(),
-                        format!("[{}]", note.rect.map(number).join(" ")).into_bytes(),
-                    ),
-                    ("Contents".into(), text_string(&note.text)),
-                    (
-                        "C".into(),
-                        format!("[{}]", note.color.map(number).join(" ")).into_bytes(),
-                    ),
-                    ("Name".into(), b"/Note".to_vec()),
-                    ("F".into(), b"4".to_vec()),
-                    ("P".into(), page_ref.clone().into_bytes()),
-                    ("AP".into(), format!("<</N {appearance} 0 R>>").into_bytes()),
-                ]);
-                self.write_object(id, 0, &body);
-                annots.push(format!("{id} 0 R").into_bytes());
-            }
-            let mut array = b"[".to_vec();
-            array.extend_from_slice(&annots.join(&b' '));
-            array.push(b']');
-            dict.insert("Annots".into(), array);
+        if let Some(annots) = self.add_annotations(document, page, notes, &[])? {
+            dict.insert("Annots".into(), annots);
         }
 
         let entries: Vec<(String, Vec<u8>)> = dict.into_iter().collect();
         self.write_object(page.obj_ref.0, page.obj_ref.1, &dictionary_bytes(&entries));
         Ok(())
+    }
+
+    /// Writes sticky notes and links as annotations of `page`, and returns the
+    /// page's new `/Annots` array with its existing ones first; None when
+    /// there is nothing to add.
+    fn add_annotations<R: std::io::Read + std::io::Seek>(
+        &mut self,
+        document: &PdfDocument<R>,
+        page: &oxidize_pdf::parser::page_tree::ParsedPage,
+        notes: Vec<StickyNote>,
+        links: &[PageLink],
+    ) -> Result<Option<Vec<u8>>, ExportError> {
+        if notes.is_empty() && links.is_empty() {
+            return Ok(None);
+        }
+        let mut annots: Vec<Vec<u8>> = match page.dict.get("Annots") {
+            Some(existing) => match document.resolve(existing).map_err(unreadable)? {
+                PdfObject::Array(array) => array.0.iter().map(object_bytes).collect(),
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+        let page_ref = format!("{} {} R", page.obj_ref.0, page.obj_ref.1);
+        for note in notes {
+            // An empty appearance: the page already shows the note.
+            let appearance = self.allocate();
+            let (width, height) = (note.rect[2] - note.rect[0], note.rect[3] - note.rect[1]);
+            self.write_stream(
+                appearance,
+                vec![
+                    ("Type".into(), b"/XObject".to_vec()),
+                    ("Subtype".into(), b"/Form".to_vec()),
+                    (
+                        "BBox".into(),
+                        format!("[0 0 {} {}]", number(width), number(height)).into_bytes(),
+                    ),
+                ],
+                b"",
+            );
+            let id = self.allocate();
+            let body = dictionary_bytes(&[
+                ("Type".into(), b"/Annot".to_vec()),
+                ("Subtype".into(), b"/Text".to_vec()),
+                (
+                    "Rect".into(),
+                    format!("[{}]", note.rect.map(number).join(" ")).into_bytes(),
+                ),
+                ("Contents".into(), text_string(&note.text)),
+                (
+                    "C".into(),
+                    format!("[{}]", note.color.map(number).join(" ")).into_bytes(),
+                ),
+                ("Name".into(), b"/Note".to_vec()),
+                ("F".into(), b"4".to_vec()),
+                ("P".into(), page_ref.clone().into_bytes()),
+                ("AP".into(), format!("<</N {appearance} 0 R>>").into_bytes()),
+            ]);
+            self.write_object(id, 0, &body);
+            annots.push(format!("{id} 0 R").into_bytes());
+        }
+        for link in links {
+            let id = self.allocate();
+            let (object, generation) = link.target;
+            let body = dictionary_bytes(&[
+                ("Type".into(), b"/Annot".to_vec()),
+                ("Subtype".into(), b"/Link".to_vec()),
+                (
+                    "Rect".into(),
+                    format!("[{}]", link.rect.map(number).join(" ")).into_bytes(),
+                ),
+                ("Border".into(), b"[0 0 0]".to_vec()),
+                ("F".into(), b"4".to_vec()),
+                ("P".into(), page_ref.clone().into_bytes()),
+                (
+                    "Dest".into(),
+                    format!("[{object} {generation} R /Fit]").into_bytes(),
+                ),
+            ]);
+            self.write_object(id, 0, &body);
+            annots.push(format!("{id} 0 R").into_bytes());
+        }
+        let mut array = b"[".to_vec();
+        array.extend_from_slice(&annots.join(&b' '));
+        array.push(b']');
+        Ok(Some(array))
     }
 
     /// Writes the cross-reference section and trailer, in the same form as the
@@ -1298,6 +1420,10 @@ fn number(value: f64) -> String {
     let text = format!("{value:.4}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
+
+#[path = "notebook_pdf.rs"]
+mod notebook_pdf;
+pub use notebook_pdf::{notebook_pdf, NotebookPdfPage, Ruling};
 
 #[cfg(test)]
 #[path = "pdf_export_tests.rs"]

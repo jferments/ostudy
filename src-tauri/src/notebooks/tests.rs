@@ -649,3 +649,261 @@ fn pictures_go_only_on_notebook_pages_and_only_pictures_name_a_draft() {
         })
         .unwrap();
 }
+
+#[test]
+fn a_notebook_is_saved_as_a_pdf_with_its_pictures() {
+    let database = library();
+    let paths = test_paths();
+    let destination = paths.app_data_dir().join("notebook-test.pdf");
+    database
+        .with_connection(|connection| {
+            let notebook = new_notebook(connection, "Cardiac cycle");
+            let page = page_ids(&notebook)[0].clone();
+            let (draft, asset) =
+                crate::asset_lifecycle::stage_test_image(connection, &paths, "import")?;
+            apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![picture(&id('1'), &page, &asset.id, Some(&draft.id))],
+                },
+                NOW + 10,
+            )?;
+            add_page(
+                connection,
+                AddNotebookPageInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    position: 2,
+                    paper: Some(Paper::Dots),
+                    page_size: Some(PageSize::Wide),
+                },
+                NOW + 20,
+            )?;
+            let opened = contents(connection, &notebook.notebook.id)?;
+
+            let files: Vec<(String, std::path::PathBuf)> =
+                save_pdf::picture_files(connection, &opened)?
+                    .into_iter()
+                    .map(|(asset_id, relative)| (asset_id, paths.resolve_relative(&relative)))
+                    .collect();
+            assert_eq!(files.len(), 1);
+            // The test image is only a PNG's signature; give it a real one.
+            let mut png = Vec::new();
+            image::RgbaImage::from_pixel(4, 2, image::Rgba([200, 30, 30, 255]))
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .unwrap();
+            std::fs::write(&files[0].1, png).map_err(CommandError::io)?;
+            assert_eq!(
+                save_pdf::write_notebook(&opened, &files, &destination)?,
+                (2, 0)
+            );
+            let bytes = std::fs::read(&destination).map_err(CommandError::io)?;
+            let reader =
+                oxidize_pdf::parser::PdfReader::new(std::io::Cursor::new(bytes.as_slice()))
+                    .unwrap();
+            assert_eq!(
+                oxidize_pdf::parser::PdfDocument::new(reader)
+                    .page_count()
+                    .unwrap(),
+                2
+            );
+
+            // A picture whose image cannot be read is left out, and counted.
+            std::fs::remove_file(&files[0].1).map_err(CommandError::io)?;
+            assert_eq!(
+                save_pdf::write_notebook(&opened, &files, &destination)?,
+                (2, 1)
+            );
+            Ok(())
+        })
+        .unwrap();
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}
+
+fn clip_input(x: f64, y: f64, width: f64, height: f64) -> StageDocumentClipInput {
+    StageDocumentClipInput {
+        draft_id: id('d'),
+        document_id: DOCUMENT.into(),
+        page_number: 2,
+        page_width: 612.0,
+        page_height: 792.0,
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+#[test]
+fn a_clip_is_drawn_sharply_within_one_tile_of_its_page() {
+    // A small clip draws at three pixels per point.
+    let (page, tile) = clips::clip_tile(&clip_input(100.0, 200.0, 150.0, 60.0)).unwrap();
+    assert_eq!(page, 2);
+    assert_eq!(
+        (
+            tile.page_width,
+            tile.page_height,
+            tile.left,
+            tile.top,
+            tile.width,
+            tile.height
+        ),
+        (1836, 2376, 300, 600, 450, 180)
+    );
+    // A whole page fits one tile on its longer side.
+    let (_, whole) = clips::clip_tile(&clip_input(0.0, 0.0, 612.0, 792.0)).unwrap();
+    assert_eq!((whole.width, whole.height), (791, 1024));
+    assert!(whole.is_valid());
+
+    for refused in [
+        clip_input(100.0, 200.0, 2.0, 60.0),
+        clip_input(-20.0, 200.0, 100.0, 60.0),
+        clip_input(600.0, 200.0, 100.0, 60.0),
+        clip_input(f64::NAN, 200.0, 100.0, 60.0),
+        StageDocumentClipInput {
+            page_number: 0,
+            ..clip_input(10.0, 10.0, 50.0, 50.0)
+        },
+        StageDocumentClipInput {
+            page_width: 20_000.0,
+            ..clip_input(10.0, 10.0, 50.0, 50.0)
+        },
+    ] {
+        assert_eq!(
+            clips::clip_tile(&refused).unwrap_err().code,
+            "invalid_document_clip"
+        );
+    }
+}
+
+#[test]
+fn a_document_page_lists_the_notebooks_its_clips_are_in() {
+    let clipped = |source: Value| {
+        serde_json::from_value::<AnnotationShape>(json!({
+            "kind": "image", "x": 1, "y": 1, "width": 10, "height": 10, "assetId": id('a'),
+            "source": source
+        }))
+    };
+    clipped(json!({ "documentId": DOCUMENT, "pageNumber": 2 }))
+        .unwrap()
+        .validate()
+        .unwrap();
+    for refused in [
+        json!({ "documentId": "not an id", "pageNumber": 2 }),
+        json!({ "documentId": DOCUMENT, "pageNumber": 0 }),
+    ] {
+        assert!(clipped(refused).unwrap().validate().is_err());
+    }
+    assert!(clipped(json!({ "documentId": DOCUMENT, "pageNumber": 2, "rect": [] })).is_err());
+
+    let database = library();
+    let paths = test_paths();
+    database
+        .with_connection(|connection| {
+            let cells = new_notebook(connection, "Cells");
+            let atlas = new_notebook(connection, "atlas");
+            let mut place = |notebook: &NotebookContentsDto, item: char, page_number: i64| {
+                let (draft, asset) =
+                    crate::asset_lifecycle::stage_test_image(connection, &paths, "import")?;
+                apply_changes(
+                    connection,
+                    &paths,
+                    ApplyNotebookItemChangesInput {
+                        notebook_id: notebook.notebook.id.clone(),
+                        changes: vec![change(json!({
+                            "op": "put", "id": id(item), "pageId": page_ids(notebook)[0],
+                            "assetDraftId": draft.id,
+                            "shape": {
+                                "kind": "image", "x": 40, "y": 40, "width": 120, "height": 80,
+                                "assetId": asset.id,
+                                "source": { "documentId": DOCUMENT, "pageNumber": page_number }
+                            }
+                        }))],
+                    },
+                    NOW + 10,
+                )
+            };
+            place(&cells, '1', 2)?;
+            place(&cells, '2', 2)?;
+            place(&atlas, '3', 2)?;
+            place(&atlas, '4', 1)?;
+
+            let listed = clips::clips_for_document(connection, DOCUMENT)?
+                .into_iter()
+                .map(|clip| (clip.page_number, clip.notebook_title))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                listed,
+                [
+                    (1, "atlas".to_string()),
+                    (2, "atlas".into()),
+                    (2, "Cells".into())
+                ]
+            );
+            assert!(clips::clips_for_document(connection, &id('e'))?.is_empty());
+            // An open notebook names the documents its clips came from.
+            let title: String = connection
+                .query_row(
+                    "SELECT title FROM documents WHERE id = ?1",
+                    [DOCUMENT],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            let opened = contents(connection, &cells.notebook.id)?;
+            assert_eq!(
+                opened.clip_documents.into_iter().collect::<Vec<_>>(),
+                [(DOCUMENT.to_string(), title)]
+            );
+            let empty = new_notebook(connection, "Empty");
+            assert!(contents(connection, &empty.notebook.id)?
+                .clip_documents
+                .is_empty());
+
+            delete(connection, &atlas.notebook.id)?;
+            assert_eq!(clips::clips_for_document(connection, DOCUMENT)?.len(), 1);
+            Ok(())
+        })
+        .unwrap();
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}
+
+#[test]
+fn a_drawn_clip_is_staged_in_the_notebooks_image_draft() {
+    let database = library();
+    let paths = test_paths();
+    let draft = database
+        .with_connection(|connection| {
+            Ok(crate::asset_lifecycle::stage_test_image(connection, &paths, "import")?.0)
+        })
+        .unwrap();
+    let png = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0];
+    let asset = crate::asset_lifecycle::stage_generated_png(
+        &database,
+        &paths,
+        &draft.id,
+        &png,
+        "Page 2 clip.png",
+    )
+    .unwrap();
+    assert_eq!(
+        (asset.mime_type.as_str(), asset.original_filename.as_str()),
+        ("image/png", "Page 2 clip.png")
+    );
+    database
+        .with_connection(|connection| {
+            assert_eq!(asset_state(connection, &asset.id), ("staged".into(), 0));
+            Ok(())
+        })
+        .unwrap();
+    // A draft that is gone takes no clip.
+    assert!(crate::asset_lifecycle::stage_generated_png(
+        &database,
+        &paths,
+        &id('f'),
+        &png,
+        "x.png"
+    )
+    .is_err());
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}

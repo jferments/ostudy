@@ -510,3 +510,28 @@ describe("selecting and text", () => {
     expect(gestures.up(at(1, "touch", 320, 305), surface, ctx)).toEqual([{ kind: "edit-text", annotation: note }]);
   });
 });
+
+describe("clipping", () => {
+  it("takes the rectangle dragged across one page, in points, and draws nothing", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "clip" });
+    const top = pageTop(2);
+    gestures.down(at(1, "mouse", 300, top + 192), surface, ctx);
+    const moved = gestures.move(at(1, "mouse", 100, top + 92), surface, ctx);
+    expect(only(moved, "lasso")[0]?.loop?.pageNumber).toBe(2);
+    const effects = gestures.up(at(1, "mouse", 100, top + 92), surface, ctx);
+    expect(only(effects, "clip")).toEqual([{ kind: "clip", pageNumber: 2, rect: { x: 100, y: 92, width: 200, height: 100 } }]);
+    expect(only(effects, "lasso")).toEqual([{ kind: "lasso", loop: null }]);
+    expect(created(effects)).toEqual([]);
+  });
+
+  it("clips nothing for a tap or a sliver too thin to see", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "clip", scale: 2 });
+    gestures.down(at(1, "mouse", 100, 100), surface, ctx);
+    expect(only(gestures.up(at(1, "mouse", 100, 100), surface, ctx), "clip")).toEqual([]);
+    gestures.down(at(2, "mouse", 100, 100), surface, ctx);
+    gestures.move(at(2, "mouse", 400, 103), surface, ctx);
+    expect(only(gestures.up(at(2, "mouse", 400, 103), surface, ctx), "clip")).toEqual([]);
+  });
+});

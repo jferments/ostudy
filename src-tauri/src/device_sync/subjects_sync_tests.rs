@@ -61,6 +61,8 @@ fn flashcards_only() -> SyncSelection {
         flashcards: true,
         documents: false,
         study_guides: false,
+        notes: false,
+        lessons: false,
         api_settings: false,
         api_credentials: false,
     }
