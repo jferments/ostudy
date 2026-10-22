@@ -643,6 +643,22 @@ pub(crate) async fn leased_write_subject_course(
     .await
 }
 
+#[tauri::command(rename = "update_lesson_from_sources")]
+pub(crate) async fn leased_update_lesson_from_sources(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::lessons::writing::update_lesson_from_sources(
+        app.state::<crate::database::Database>(),
+        app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "narrate_lesson_step")]
 pub(crate) async fn leased_narrate_lesson_step(
     app: AppHandle,

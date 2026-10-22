@@ -6,6 +6,7 @@ import {
   cancelSubjectCourseWriting,
   getSubjectCourseWritingProgress,
   listSubjectLessons,
+  updateLessonFromSources,
   writeSubjectCourse,
   type CourseWritingProgress,
   type SubjectLessons,
@@ -41,12 +42,12 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function startRun(subjectId: string) {
+function startRun(subjectId: string, rewrite: boolean) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
   publish(subjectId, { operationId, stopping: false, progress: null, outcome: null });
   watchProgress(subjectId, operationId);
-  void writeSubjectCourse(subjectId, operationId).then(
+  void writeSubjectCourse(subjectId, operationId, rewrite).then(
     (lessons) => settle(subjectId, operationId, { lessons }),
     (error: unknown) =>
       settle(
@@ -115,8 +116,14 @@ export interface SubjectCourse {
   /** How far the running course is, once it has said. */
   progress: CourseWritingProgress | null;
   writeError: string | null;
+  /** The lesson being written again from its sources. */
+  updating: string | null;
+  updateError: string | null;
   refresh: () => void;
+  update: (lessonId: string) => void;
   write: () => void;
+  /** Writes the whole course again; each lesson keeps its place. */
+  rewrite: () => void;
   stop: () => void;
   dismissWriteError: () => void;
 }
@@ -128,6 +135,8 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
   const [loading, setLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const run = useSyncExternalStore(subscribe, () => runs.get(subjectId) ?? null);
 
   const refresh = useCallback(() => {
@@ -174,10 +183,30 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
     stopping: run?.stopping ?? false,
     progress: run && !run.outcome ? run.progress : null,
     writeError,
+    updating,
+    updateError,
     refresh,
+    update: (lessonId: string) => {
+      setUpdating(lessonId);
+      setUpdateError(null);
+      updateLessonFromSources(lessonId)
+        .then(
+          (value) => {
+            lane.invalidate();
+            setCourse(value);
+            setReadError(null);
+          },
+          (error: unknown) => setUpdateError(getErrorMessage(error)),
+        )
+        .finally(() => setUpdating(null));
+    },
     write: () => {
       setWriteError(null);
-      startRun(subjectId);
+      startRun(subjectId, false);
+    },
+    rewrite: () => {
+      setWriteError(null);
+      startRun(subjectId, true);
     },
     stop: () => void stopRun(subjectId),
     dismissWriteError: () => setWriteError(null),

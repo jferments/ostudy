@@ -53,6 +53,11 @@ export interface WrittenLesson {
   checkCount: number;
   estimatedMinutes: number;
   sources: LessonSourceStatus;
+  /**
+   * False when a lesson written with AI teaches a part no longer in its
+   * document's study plan; a rewritten course keeps it after the others.
+   */
+  inStudyPlan: boolean;
   createdAt: number;
 }
 
@@ -260,18 +265,35 @@ export async function answerLessonCheck(
 }
 
 /**
+ * Writes a lesson written with AI again from the part of the subject it
+ * teaches, as its sources are now, and keeps it as the lesson's next
+ * revision. Returns the subject's lessons.
+ */
+export async function updateLessonFromSources(
+  lessonId: string,
+  operationId: string = createOperationId(),
+): Promise<SubjectLessons> {
+  return invoke<SubjectLessons>("update_lesson_from_sources", {
+    input: { lessonId, operationId },
+  });
+}
+
+/**
  * Writes the subject's course with the default document model: one lesson for
  * each top-level topic of its documents' learning plans, saved together when
- * every one is written. A subject that already has lessons, or a document
- * still being processed, is refused. Keep the operation id to stop the run
- * with `cancelSubjectCourseWriting`.
+ * every one is written. A subject that already has lessons is refused unless
+ * `rewrite`: then each lesson becomes the next revision of the lesson teaching
+ * the same part, or a new lesson. A document still being processed is
+ * refused. Keep the operation id to stop the run with
+ * `cancelSubjectCourseWriting`.
  */
 export async function writeSubjectCourse(
   subjectId: string,
   operationId: string = createOperationId(),
+  rewrite = false,
 ): Promise<SubjectLessons> {
   return invoke<SubjectLessons>("write_subject_course", {
-    input: { subjectId, operationId },
+    input: { subjectId, operationId, rewrite },
   });
 }
 
