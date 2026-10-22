@@ -29,6 +29,8 @@ fn lecture(steps: usize) -> LectureDto {
 
 fn question() -> Value {
     json!({
+        "timing": "before",
+        "style": "recall",
         "prompt": "Which shape has three sides?",
         "options": [
             {"text": "A square", "reply": "Not quite: a square has four sides."},
@@ -55,6 +57,7 @@ fn decoding_gives_options_native_identities_and_keeps_the_teachers_replies() {
     assert_eq!(script.slides[0].talk, "Look at title with me.");
     assert!(script.slides[1].question.is_none());
     let asked = script.slides[2].question.as_ref().unwrap();
+    assert_eq!(asked.timing, CheckTiming::Before);
     assert_eq!(asked.options[1].id, teaching::option_id("step:step-2", 1));
     assert_eq!(asked.correct_option_id, asked.options[1].id);
     assert_eq!(asked.options[1].text, "A triangle");

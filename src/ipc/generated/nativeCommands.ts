@@ -235,7 +235,7 @@ export interface NativeCommandGatewayMap {
   "move_notebook_to_subject": readonly [typeof GatewayModule27.moveNotebookToSubject];
   "move_subject": readonly [typeof GatewayModule42.moveSubject];
   "move_tutor_conversation": readonly [typeof GatewayModule44.moveTutorConversation];
-  "narrate_lecture_part": readonly [typeof GatewayModule24.narrateLecturePart];
+  "narrate_lecture_part": readonly [typeof GatewayModule24.askLectureQuestion, typeof GatewayModule24.narrateLecturePart];
   "narrate_lesson_step": readonly [typeof GatewayModule24.narrateLessonStep];
   "narrate_podcast_turn": readonly [typeof GatewayModule30.narratePodcastTurn];
   "open_document_source": readonly [typeof GatewayModule15.openDocumentSource];

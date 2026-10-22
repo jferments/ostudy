@@ -15,6 +15,7 @@ import {
   writeLessonLectureScript,
   answerLectureQuestion,
   narrateLecturePart,
+  askLectureQuestion,
   saveLessonProgress,
   updateLessonFromSources,
   writeSubjectCourse,
@@ -155,6 +156,10 @@ describe("lesson IPC", () => {
     await narrateLecturePart(lessonId, 2, "title");
     expect(invoke).toHaveBeenLastCalledWith("narrate_lecture_part", {
       input: { lessonId, revisionNumber: 2, slideKey: "title", replyTo: null },
+    });
+    await askLectureQuestion(lessonId, 2, "step:two-limbs");
+    expect(invoke).toHaveBeenLastCalledWith("narrate_lecture_part", {
+      input: { lessonId, revisionNumber: 2, slideKey: "step:two-limbs", ask: true },
     });
   });
 });

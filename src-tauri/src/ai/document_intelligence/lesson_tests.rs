@@ -21,6 +21,8 @@ fn wire_lesson() -> Value {
                 "narration": "Look at any triangle and count its sides. There are always three.",
                 "slidePoints": ["A triangle has three sides"],
                 "check": {
+                    "timing": "before",
+                    "style": "recall",
                     "prompt": "How many sides does a triangle have?",
                     "options": ["Three", "Four"],
                     "correctOption": 0,
@@ -98,6 +100,33 @@ fn decoding_resolves_aliases_and_builds_keys_and_checks_natively() {
     // The same answer decodes to the same lesson.
     assert!(decode(wire_lesson(), &knowledge).unwrap() == lesson);
     assert!(lesson.steps[1].check.is_none());
+    assert_eq!(lesson.steps[0].check_timing, CheckTiming::Before);
+    assert_eq!(lesson.steps[1].check_timing, CheckTiming::After);
+}
+
+#[test]
+fn a_lesson_asks_a_few_questions_not_one_on_every_step() {
+    let knowledge = catalog_fixture();
+    let mut wire = wire_lesson();
+    let step = wire["steps"][0].clone();
+    wire["steps"] = json!([step, step, step, step]);
+    let error = decode(wire.clone(), &knowledge).err().unwrap();
+    assert!(
+        error.message.contains("at most 3 questions"),
+        "{}",
+        error.message
+    );
+
+    wire["steps"][1]["check"] = Value::Null;
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(
+        lesson
+            .steps
+            .iter()
+            .filter(|step| step.check.is_some())
+            .count(),
+        3
+    );
 }
 
 #[test]

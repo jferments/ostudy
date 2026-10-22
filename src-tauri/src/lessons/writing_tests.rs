@@ -145,6 +145,8 @@ fn lesson_answer() -> String {
             "narration": "Cardiac output depends on how fast the heart beats.",
             "slidePoints": ["Output depends on heart rate"],
             "check": {
+                "timing": "after",
+                "style": "recall",
                 "prompt": "What does cardiac output depend on?",
                 "options": ["Heart rate", "Hair colour"],
                 "correctOption": 0,
@@ -498,6 +500,8 @@ fn lecture_answer(lecture: &crate::lessons::lecture::LectureDto) -> String {
         "talk": format!("Look at {} with me, because it matters.", slide.title),
         "question": if slide.key == "step:step-1" {
             json!({
+                "timing": "before",
+                "style": "predict",
                 "prompt": "If the heart beats faster, what happens to cardiac output?",
                 "options": [
                     {"text": "It rises", "reply": "Right. Output depends on heart rate, so it rises."},
@@ -568,6 +572,7 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
     let shown = serde_json::to_string(&script).unwrap();
     assert!(!shown.contains("correctOptionId"));
     assert!(!shown.contains("Not quite"));
+    assert!(shown.contains("\"timing\":\"before\""));
     assert_eq!(
         count(
             &database,
@@ -628,11 +633,27 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
                 &lesson_id,
                 1,
                 "step:step-1",
-                Some(&asked.options[1].id),
+                teaching::SpokenPart::Reply(&asked.options[1].id),
             )
         })
         .unwrap();
     assert!(reply.starts_with("Not quite."));
+    // A question asked before the talk is spoken as written.
+    let asking = database
+        .with_connection(|connection| {
+            teaching::spoken_text(
+                connection,
+                &lesson_id,
+                1,
+                "step:step-1",
+                teaching::SpokenPart::Question,
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        asking,
+        "If the heart beats faster, what happens to cardiac output?"
+    );
 
     // Writing again replaces the revision's script; deleting the lesson
     // deletes it.

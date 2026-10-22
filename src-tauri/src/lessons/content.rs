@@ -64,7 +64,27 @@ pub(crate) struct LessonStep {
     /// The bullets of this step's slide.
     pub slide_points: Vec<String>,
     pub check: Option<QuestionDefinition>,
+    /// When the check is asked. Content written before checks had a timing
+    /// asks every check after its step, and stores no timing for it.
+    #[serde(default, skip_serializing_if = "CheckTiming::is_after")]
+    pub check_timing: CheckTiming,
     pub knowledge_unit_ids: Vec<String>,
+}
+
+/// A check asked after its step reviews what was taught; one asked before
+/// asks the learner to predict what the step is about to teach.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CheckTiming {
+    Before,
+    #[default]
+    After,
+}
+
+impl CheckTiming {
+    pub(crate) fn is_after(&self) -> bool {
+        *self == Self::After
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -239,6 +259,8 @@ fn validate_step(step: &LessonStep) -> Result<(), CommandError> {
             ));
         }
         ValidatedQuestion::validate(check.clone())?;
+    } else if step.check_timing == CheckTiming::Before {
+        return Err(invalid("Only a step with a check can ask it first."));
     }
     count(
         "knowledge units in a step",

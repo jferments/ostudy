@@ -14,6 +14,7 @@ import {
 } from "../../ipc/externalFiles";
 import {
   answerLectureQuestion,
+  askLectureQuestion,
   answerLessonCheck,
   getLessonLecture,
   getLessonSlideDesigns,
@@ -40,6 +41,7 @@ vi.mock("../../ipc/common", () => ({
 }));
 vi.mock("../../ipc/lessons", () => ({
   answerLectureQuestion: vi.fn(),
+  askLectureQuestion: vi.fn(),
   answerLessonCheck: vi.fn(),
   getLessonLecture: vi.fn(),
   getLessonSlideDesigns: vi.fn(),
@@ -135,6 +137,7 @@ const multiplier: LessonStep = {
       { id: "a", text: "Small steps stacking" },
       { id: "b", text: "One big pump" },
     ],
+    timing: "after",
   },
   knowledgeUnitIds: [],
 };
@@ -212,6 +215,13 @@ describe("LectureView", () => {
             characters: 20,
           },
         ],
+        made: 1,
+      }),
+    );
+    vi.mocked(askLectureQuestion).mockReset();
+    vi.mocked(askLectureQuestion).mockImplementation(
+      async (_lesson, _revision, slideKey) => ({
+        segments: [{ assetId: `ask:${slideKey}`, characters: 20 }],
         made: 1,
       }),
     );
@@ -426,6 +436,7 @@ describe("LectureView", () => {
           slideKey: "step:two-limbs",
           talk: "Look at the first point: the two limbs do opposite jobs.",
           question: {
+            timing: "after",
             prompt: "Which limb lets water out?",
             options: [
               { id: "a".repeat(32), text: "The descending limb" },
@@ -542,6 +553,47 @@ describe("LectureView", () => {
       expect(
         slide().getByRole("heading", { name: "A quiet step" }),
       ).toBeTruthy();
+    });
+
+    it("asks a question before the talk aloud, then talks over the slide and goes on", async () => {
+      const asking = structuredClone(script);
+      asking.slides[1]!.question!.timing = "before";
+      vi.mocked(getLessonLectureScript).mockResolvedValue(asking);
+      vi.mocked(answerLectureQuestion).mockResolvedValue({
+        correct: true,
+        correctOptionId: "a".repeat(32),
+        reply: "Right. Let us see why.",
+      });
+      open("two-limbs");
+      await screen.findByText(/the notes are the teacher's lecture/);
+      fireEvent.click(screen.getByRole("button", { name: /Play lecture/ }));
+      await vi.waitFor(() =>
+        expect(audio().src).toBe("blob:ask:step:two-limbs"),
+      );
+      expect(narrateLecturePart).not.toHaveBeenCalled();
+      act(() => audio().dispatchEvent(new Event("ended")));
+
+      const dialog = within(
+        await screen.findByRole("dialog", { name: "What do you think?" }),
+      );
+      fireEvent.click(
+        dialog.getByRole("radio", { name: "The descending limb" }),
+      );
+      fireEvent.click(dialog.getByRole("button", { name: "Answer" }));
+      await vi.waitFor(() =>
+        expect(audio().src).toBe(`blob:reply:${"a".repeat(32)}`),
+      );
+
+      // The slide's talk follows the reply, and the lecture goes on after it
+      // without asking again.
+      act(() => audio().dispatchEvent(new Event("ended")));
+      await vi.waitFor(() =>
+        expect(audio().src).toBe("blob:talk:step:two-limbs"),
+      );
+      expect(screen.queryByRole("dialog")).toBeNull();
+      act(() => audio().dispatchEvent(new Event("ended")));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:step:quiet"));
+      expect(askLectureQuestion).toHaveBeenCalledTimes(1);
     });
 
     it("lets a question be answered without playing, and says nothing aloud", async () => {
