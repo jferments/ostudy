@@ -249,6 +249,7 @@ export interface NativeCommandGatewayMap {
   "prepare_lesson_lecture_pptx": readonly [typeof GatewayModule24.prepareLessonLecturePptx];
   "prepare_library_backup_async": readonly [typeof GatewayModule5.prepareLibraryBackup];
   "prepare_library_restore_async": readonly [typeof GatewayModule5.prepareLibraryRestore];
+  "prepare_notebook_pdf": readonly [typeof GatewayModule27.prepareNotebookPdf];
   "prepare_occlusion_image": readonly [typeof GatewayModule28.prepareOcclusionImage];
   "prepare_semantic_material": readonly [typeof GatewayModule23.prepareSemanticMaterial];
   "preview_card_draft": readonly [typeof GatewayModule6.previewCardDraft];

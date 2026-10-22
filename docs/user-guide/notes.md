@@ -39,6 +39,10 @@ Select a link to see **Open link** and **Edit link**; tapping a selected link ag
 
 A link whose target has been deleted (a document, a page, a study guide, a deck or a page of notes) stays on the page, struck through, and opens nothing.
 
+## Save a notebook as a PDF
+
+**Save PDF** in the notebook's header (a download button on a phone) saves the notebook as an ordinary PDF that any reader can open, after saving anything still pending, and asks where to put it. Each page keeps its size and paper, and its marks are drawn as they are on screen, the way [Save PDF](pdf-annotation.md#save-a-copy-with-your-annotations) draws a document's annotations: typed text uses IBM Plex Sans, and each sticky note is also a PDF note holding its whole text. Pictures are embedded at the size you gave them. A link to a page of the same notebook becomes a PDF link to that page; links to a document, a study guide, a deck or another notebook stay on the page as their labels, since the reader of the file has none of those. A picture whose image cannot be read is left out, and the message after saving says so.
+
 ## Where notes are kept
 
 Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). Device sync does not send them yet, just as it does not send PDF annotations, and they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**.

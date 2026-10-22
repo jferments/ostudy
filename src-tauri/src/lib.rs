@@ -427,6 +427,7 @@ pub fn run() {
             notebooks::delete_notebook_page,
             notebooks::move_notebook_page,
             notebooks::apply_notebook_item_changes,
+            library_session::commands::leased_prepare_notebook_pdf,
             material_ink::get_material_ink,
             material_ink::apply_material_ink_changes,
             lessons::list_subject_lessons,

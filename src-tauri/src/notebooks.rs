@@ -1290,6 +1290,10 @@ fn other_notebook() -> CommandError {
     )
 }
 
+#[path = "notebooks/save_pdf.rs"]
+mod save_pdf;
+pub(crate) use save_pdf::{prepare_notebook_pdf, PrepareNotebookPdfInput, PreparedNotebookPdfDto};
+
 #[cfg(test)]
 #[path = "notebooks/tests.rs"]
 mod tests;

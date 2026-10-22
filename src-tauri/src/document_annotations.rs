@@ -1095,6 +1095,7 @@ pub(crate) use page_text::{get_document_page_text, DocumentPageTextDto, GetDocum
 
 #[path = "document_annotations/pdf_export.rs"]
 mod pdf_export;
+pub(crate) use pdf_export::{notebook_pdf, NotebookPdfPage, Ruling};
 
 #[path = "document_annotations/annotated_pdf.rs"]
 mod annotated_pdf;
