@@ -36,6 +36,8 @@ const MAX_AUTHORING_SOURCES: usize = 100_000;
 /// (and that window's repair) does, so a small batch left the other provider
 /// slots idle; a few hundred pages now run as one continuous queue.
 const PREPARATION_BATCH_CHUNKS: usize = 4096;
+/// The most source chunks `materialize_source_groups` publishes at once.
+const SOURCE_PUBLICATION_CHUNKS: usize = 32;
 
 mod prompt;
 
@@ -317,7 +319,12 @@ pub(crate) async fn prepare_document(
     );
     for (batch_index, batch) in seeds.chunks(PREPARATION_BATCH_CHUNKS).enumerate() {
         check_canceled(&cancellation)?;
-        let groups = materialize_source_groups(database, batch)?;
+        // Publication stays in its own bounded transactions; only the provider
+        // queue spans the whole batch.
+        let mut groups = Vec::with_capacity(batch.len());
+        for publication in batch.chunks(SOURCE_PUBLICATION_CHUNKS) {
+            groups.extend(materialize_source_groups(database, publication)?);
+        }
         let mut sources = Vec::new();
         for (seed, group) in batch.iter().zip(groups) {
             if group.is_empty() {
