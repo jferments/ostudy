@@ -41,6 +41,10 @@ struct CloudAdaptiveState {
     limit: AtomicUsize,
     maximum: usize,
     successes: AtomicUsize,
+    /// Bumped by each step down. A failed request that started before the
+    /// latest step belongs to the stall that caused it and is not counted
+    /// again, so many requests timing out together cost one step, not one each.
+    epoch: AtomicUsize,
     notify: Notify,
 }
 
@@ -52,11 +56,15 @@ impl CloudAdaptiveState {
             limit: AtomicUsize::new(CLOUD_INITIAL_PROVIDER_PARALLELISM.min(maximum).max(1)),
             maximum,
             successes: AtomicUsize::new(0),
+            epoch: AtomicUsize::new(0),
             notify: Notify::new(),
         }
     }
 
-    async fn reserve(&self, cancellation: Option<&CancellationSignal>) -> Result<(), CommandError> {
+    async fn reserve(
+        &self,
+        cancellation: Option<&CancellationSignal>,
+    ) -> Result<usize, CommandError> {
         loop {
             let notified = self.notify.notified();
             let limit = self.limit.load(Ordering::Acquire);
@@ -67,7 +75,7 @@ impl CloudAdaptiveState {
                     .compare_exchange(active, active + 1, Ordering::AcqRel, Ordering::Acquire)
                     .is_ok()
             {
-                return Ok(());
+                return Ok(self.epoch.load(Ordering::Acquire));
             }
             match cancellation {
                 Some(signal) => tokio::select! {
@@ -84,9 +92,26 @@ impl CloudAdaptiveState {
         self.notify.notify_waiters();
     }
 
-    fn record_outcome(&self, succeeded: bool, retryable_failure: bool) -> Option<(usize, usize)> {
+    fn record_outcome(
+        &self,
+        started_epoch: usize,
+        succeeded: bool,
+        retryable_failure: bool,
+    ) -> Option<(usize, usize)> {
         if retryable_failure {
             self.successes.store(0, Ordering::Release);
+            if self
+                .epoch
+                .compare_exchange(
+                    started_epoch,
+                    started_epoch.wrapping_add(1),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_err()
+            {
+                return None;
+            }
             let minimum = CLOUD_MIN_PROVIDER_PARALLELISM.min(self.maximum).max(1);
             let previous = self
                 .limit
@@ -124,12 +149,18 @@ impl CloudAdaptiveState {
     fn limit(&self) -> usize {
         self.limit.load(Ordering::Acquire)
     }
+
+    #[cfg(test)]
+    fn epoch(&self) -> usize {
+        self.epoch.load(Ordering::Acquire)
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct ProviderSlot {
     _permit: OwnedSemaphorePermit,
     cloud: Option<Arc<CloudAdaptiveState>>,
+    started_epoch: usize,
 }
 
 impl Drop for ProviderSlot {
@@ -179,25 +210,29 @@ impl ProviderLanes {
             None => acquire.await.map_err(|_| provider_lane_closed())?,
         };
         let cloud = (network_scope == "cloud").then(|| self.cloud_state.clone());
-        if let Some(state) = cloud.as_ref() {
-            state.reserve(signal.as_ref()).await?;
-        }
+        let started_epoch = match cloud.as_ref() {
+            Some(state) => state.reserve(signal.as_ref()).await?,
+            None => 0,
+        };
         Ok(ProviderSlot {
             _permit: permit,
             cloud,
+            started_epoch,
         })
     }
 
+    #[cfg(test)]
     fn record_outcome(
         &self,
         network_scope: &str,
+        started_epoch: usize,
         succeeded: bool,
         retryable_failure: bool,
     ) -> Option<(usize, usize)> {
         (network_scope == "cloud")
             .then(|| {
                 self.cloud_state
-                    .record_outcome(succeeded, retryable_failure)
+                    .record_outcome(started_epoch, succeeded, retryable_failure)
             })
             .flatten()
     }
@@ -213,13 +248,16 @@ pub(crate) async fn acquire_provider_slot(
     PROVIDER_LANES.acquire(network_scope, cancellation).await
 }
 
+/// Report how the request holding `slot` ended, to adapt the cloud lane.
 pub(crate) fn record_provider_outcome(
-    network_scope: &str,
+    slot: &ProviderSlot,
     succeeded: bool,
     retryable_failure: bool,
 ) {
-    if let Some((previous, current)) =
-        PROVIDER_LANES.record_outcome(network_scope, succeeded, retryable_failure)
+    if let Some((previous, current)) = slot
+        .cloud
+        .as_ref()
+        .and_then(|state| state.record_outcome(slot.started_epoch, succeeded, retryable_failure))
     {
         crate::logging::debug_target(
             "ai.concurrency",
@@ -397,20 +435,41 @@ mod tests {
     #[test]
     fn cloud_lane_backs_off_on_retryable_failures_and_ramps_after_successes() {
         let lanes = ProviderLanes::new(6);
+        let fail = |lanes: &ProviderLanes| {
+            lanes.record_outcome("cloud", lanes.cloud_state.epoch(), false, true)
+        };
         assert_eq!(lanes.cloud_state.limit(), 6);
-        assert_eq!(lanes.record_outcome("cloud", false, true), Some((6, 5)));
-        assert_eq!(lanes.record_outcome("cloud", false, true), Some((5, 4)));
-        assert_eq!(lanes.record_outcome("cloud", false, true), Some((4, 3)));
-        assert_eq!(lanes.record_outcome("cloud", false, true), Some((3, 2)));
-        assert_eq!(lanes.record_outcome("cloud", false, true), None);
+        assert_eq!(fail(&lanes), Some((6, 5)));
+        assert_eq!(fail(&lanes), Some((5, 4)));
+        assert_eq!(fail(&lanes), Some((4, 3)));
+        assert_eq!(fail(&lanes), Some((3, 2)));
+        assert_eq!(fail(&lanes), None);
         for _ in 0..CLOUD_SUCCESS_RAMP_REQUESTS {
-            let result = lanes.record_outcome("cloud", true, false);
+            let result = lanes.record_outcome("cloud", lanes.cloud_state.epoch(), true, false);
             if result.is_some() {
                 assert_eq!(result, Some((2, 3)));
             }
         }
         assert_eq!(lanes.cloud_state.limit(), 3);
-        assert_eq!(lanes.record_outcome("local", false, true), None);
+        assert_eq!(lanes.record_outcome("local", 0, false, true), None);
+    }
+
+    #[test]
+    fn requests_failing_together_step_the_lane_down_once() {
+        let lanes = ProviderLanes::new(16);
+        let started = lanes.cloud_state.epoch();
+        let initial = lanes.cloud_state.limit();
+        // Eleven in-flight requests time out in the same provider stall.
+        let steps = (0..11)
+            .filter_map(|_| lanes.record_outcome("cloud", started, false, true))
+            .collect::<Vec<_>>();
+        assert_eq!(steps, vec![(initial, initial - 1)]);
+        // A request started after that step can step it down again.
+        let later = lanes.cloud_state.epoch();
+        assert_eq!(
+            lanes.record_outcome("cloud", later, false, true),
+            Some((initial - 1, initial - 2))
+        );
     }
 
     #[tokio::test]
