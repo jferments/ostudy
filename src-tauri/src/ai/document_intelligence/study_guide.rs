@@ -34,6 +34,10 @@ mod repair;
 mod section_plan;
 use completion::*;
 
+/// A section written past this multiple of its target is asked once to be
+/// written shorter. Asked for half of a tenth, three times is a guide at
+/// about 0.15 of its source.
+const SHORTEN_OVER_TARGET: usize = 3;
 /// Subjects listed for one section's coverage check.
 const MAX_CATALOG_SUBJECTS: usize = 24;
 use content::*;
@@ -128,7 +132,48 @@ pub(crate) async fn generate_study_guide_topic_section(
     .await?;
     let budget = writing.fit_output(completion_plan.initial_visible_tokens);
     if !budget.thin(knowledge.units.len(), &section.content) {
-        return Ok(section);
+        let written = generated_section_char_count(&section.content);
+        if written <= budget.target_chars.saturating_mul(SHORTEN_OVER_TARGET) {
+            return Ok(section);
+        }
+        // Models write several times the length a section asks for. One
+        // request rewrites the section shorter; the shorter wins, and a failed
+        // request keeps the first, so this can never cost a written section.
+        let draft = serde_json::to_string(&section.content).map_err(CommandError::serialization)?;
+        let user = format!(
+            "{user}\n\nAn earlier answer to this request follows. It has {written} characters, {}% of the length guide. Write the section again at about {} characters: keep every key idea and its qualifications, join related key points, and leave supporting details, examples and repeated study aids to the source.\n<ostudy-earlier-answer>\n{draft}\n</ostudy-earlier-answer>",
+            written.saturating_mul(100) / budget.target_chars.max(1),
+            budget.target_chars
+        );
+        let second = request_study_guide_section_with_retry(
+            runtime,
+            task,
+            &system,
+            &user,
+            AuthoringEvidence { images, knowledge },
+            completion_plan,
+            writing,
+            None,
+        )
+        .await;
+        let chosen = match second {
+            Ok(second)
+                if generated_section_char_count(&second.content) < written
+                    && !budget.thin(knowledge.units.len(), &second.content) =>
+            {
+                second
+            }
+            _ => section,
+        };
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_long_section_shortened",
+            "Asked once more for a section that came back far above its writing target; content is not logged.",
+            json!({"units": knowledge.units.len(), "written": written,
+                "chars": generated_section_char_count(&chosen.content),
+                "target": budget.target_chars}),
+        );
+        return Ok(chosen);
     }
     // One fresh request; the longer section wins, and a failed second request
     // keeps the first, so this can never cost a written section.
