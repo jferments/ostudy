@@ -94,7 +94,7 @@ describe("Documents guidance through the application controller", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
     await act(async () => { fireEvent.click(await screen.findByRole("menuitem", { name: "Document…" })); });
     await waitFor(() => expect(documentIpc.startDocumentFlashcardGeneration)
-      .toHaveBeenCalledWith(documentId, undefined));
+      .toHaveBeenCalledWith(documentId, undefined, undefined));
     expect(documentIpc.importDocument).toHaveBeenCalledTimes(1);
     expect(documentIpc.importDocument).toHaveBeenCalledWith(stagedId, {});
     expect(platformFiles.selectExternalImport).toHaveBeenCalledTimes(1);
