@@ -539,7 +539,7 @@ mod tests {
     fn provider_parallelism_is_bounded_by_execution_topology() {
         assert_eq!(
             crate::ai::concurrency::document_request_parallelism("cloud"),
-            4
+            8
         );
         assert_eq!(
             crate::ai::concurrency::document_request_parallelism("local"),

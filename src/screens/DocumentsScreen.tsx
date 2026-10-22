@@ -19,7 +19,7 @@ import { Textarea } from "../ui/primitives/FormControls";
 import { TextField } from "../ui/primitives/TextField";
 import { FormField } from "../ui/primitives/FormField";
 import {
-  DocumentRowProgress, GenerationDiagnostics, GenerationProgressPanel, generationPercent, statusLabel, processingPhaseLabel, formatDocumentType,
+  DocumentRowProgress, GenerationDiagnostics, GenerationProgressPanel, generationPercent, statusLabel, processingPhaseLabel, processingStepLabel, formatDocumentType,
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
@@ -276,7 +276,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     // Work under way shows as one bar in the row; a failed guide or card run keeps its panel below.
     const artifactBar = showArtifacts ? combinedArtifactProgress(document, live, guideJob, guideGenerating) : null;
     const rowProgress = artifactBar
-      ?? (processing && !showArtifacts ? { label: processingPhaseLabel(document, canceling, live), value: generationPercent(document, live) } : null);
+      ?? (processing && !showArtifacts ? { label: processingPhaseLabel(document, canceling, live, clockNow), value: generationPercent(document, live) } : null);
     const items: OverflowMenuItem[] = [];
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
@@ -378,7 +378,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         </div>
         {processing || guideGenerating ? (
           <span className="tw:sr-only" aria-live="polite">
-            {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
+            {processing ? processingStepLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
           </span>
         ) : null}
         {showArtifacts && !artifactBar ? (
