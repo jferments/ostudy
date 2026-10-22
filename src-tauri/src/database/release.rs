@@ -35,6 +35,9 @@ mod lesson_narration;
 #[path = "release/material_ink.rs"]
 mod material_ink;
 
+#[path = "release/document_study_exclusions.rs"]
+mod document_study_exclusions;
+
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
 
@@ -78,7 +81,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 21;
+pub(crate) const SCHEMA_VERSION: i64 = 22;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -212,6 +215,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "material_ink",
         checksum: "338768544f533b4d2960518cad610fdd0ed3f881f5bbf0277ceb74a3a1a21c08",
         sql: include_str!("../../schema/0021_material_ink.sql"),
+    },
+    ReleaseMigration {
+        version: 22,
+        name: "document_study_exclusions",
+        checksum: "ff47f442f9206e1610795cf14ad8827b1c513e35dc5452274cc6c211f574b480",
+        sql: include_str!("../../schema/0022_document_study_exclusions.sql"),
     },
 ];
 
@@ -435,6 +444,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     document_figures::validate_schema(connection, user_version)?;
     notebook_assets::validate_schema(connection, user_version)?;
     material_ink::validate_schema(connection, user_version)?;
+    document_study_exclusions::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
