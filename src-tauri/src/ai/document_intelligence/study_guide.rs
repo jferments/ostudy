@@ -58,6 +58,12 @@ pub(super) async fn generate_document_study_guide_editorial(
     editorial::generate(runtime, task, document_title, plan, sections, cancellation).await
 }
 
+/// The characters a document guide section is asked for from its own
+/// knowledge alone, before the whole guide's length target scales it.
+pub(crate) fn document_guide_section_chars(knowledge: &KnowledgeCatalog) -> usize {
+    WritingBudget::for_knowledge(knowledge).target_chars
+}
+
 pub(super) async fn plan_document_study_guide_sections(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -91,16 +97,19 @@ pub(crate) async fn generate_study_guide_topic_section(
     topic: &LearningTopic,
     source_text: &str,
     evidence: AuthoringEvidence<'_>,
+    length_scale: f64,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
     let AuthoringEvidence { images, knowledge } = evidence;
     let (system, user) =
         document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    let writing = WritingBudget::for_knowledge(knowledge).scaled(length_scale);
     let completion_plan = fit_guide_completion_plan(
         task,
         &system,
         &user,
         AuthoringEvidence { images, knowledge },
+        writing,
     )?;
     let section = request_study_guide_section_with_retry(
         runtime,
@@ -109,11 +118,11 @@ pub(crate) async fn generate_study_guide_topic_section(
         &user,
         AuthoringEvidence { images, knowledge },
         completion_plan,
+        writing,
         None,
     )
     .await?;
-    let budget =
-        WritingBudget::for_knowledge(knowledge).fit_output(completion_plan.initial_visible_tokens);
+    let budget = writing.fit_output(completion_plan.initial_visible_tokens);
     if !budget.thin(knowledge.units.len(), &section.content) {
         return Ok(section);
     }
@@ -127,6 +136,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         &user,
         AuthoringEvidence { images, knowledge },
         completion_plan,
+        writing,
         None,
     )
     .await;
@@ -160,6 +170,7 @@ pub(crate) fn preflight_document_study_guide_section(
     topic: &LearningTopic,
     source_text: &str,
     evidence: AuthoringEvidence<'_>,
+    length_scale: f64,
 ) -> Result<(), CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
     let AuthoringEvidence { images, knowledge } = evidence;
@@ -170,6 +181,7 @@ pub(crate) fn preflight_document_study_guide_section(
         &system,
         &user,
         AuthoringEvidence { images, knowledge },
+        WritingBudget::for_knowledge(knowledge).scaled(length_scale),
     )
     .map(|_| ())
 }
@@ -275,6 +287,7 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
             knowledge,
         },
         completion_plan,
+        WritingBudget::for_knowledge(knowledge),
         Some(cancellation),
     )
     .await
@@ -323,6 +336,7 @@ fn fit_collection_guide_request(
             images: &[],
             knowledge,
         },
+        WritingBudget::for_knowledge(knowledge),
     )?;
     Ok((user, completion_plan))
 }
@@ -353,11 +367,11 @@ async fn request_study_guide_section_with_retry(
     user: &str,
     evidence: AuthoringEvidence<'_>,
     completion_plan: StudyGuideCompletionPlan,
+    budget: WritingBudget,
     cancellation: Option<&CancellationSignal>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let AuthoringEvidence { images, knowledge } = evidence;
-    let writing =
-        WritingBudget::for_knowledge(knowledge).fit_output(completion_plan.initial_visible_tokens);
+    let writing = budget.fit_output(completion_plan.initial_visible_tokens);
     let initial = recovery::GuideRequest {
         system: system.to_string(),
         user: format!(
@@ -373,6 +387,7 @@ async fn request_study_guide_section_with_retry(
         knowledge,
         !images.is_empty(),
         completion_plan,
+        budget,
         |request| {
             ensure_context_budget(
                 task,
