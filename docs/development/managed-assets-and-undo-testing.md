@@ -4,7 +4,7 @@ Stage 3.3 makes the SQLite asset ledger authoritative while keeping filesystem c
 
 ## Safety rules
 
-- Test schema 21 against an isolated XDG profile before opening a regular library.
+- Test schema 22 against an isolated XDG profile before opening a regular library.
 - Do not open a schema-11 database with a schema-10 build.
 - Keep a copy of the regular application-data directory until the pull request is merged.
 - Never manually remove an image that is still referenced by a card or template.
@@ -42,7 +42,7 @@ XDG_STATE_HOME="$TEST_ROOT/state" \
 ./run-app.sh
 ```
 
-The profile should report schema 21 under **Settings → Storage**.
+The profile should report schema 22 under **Settings → Storage**.
 
 ## Card editor lifecycle
 

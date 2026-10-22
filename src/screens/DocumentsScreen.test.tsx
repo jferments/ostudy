@@ -23,6 +23,7 @@ vi.mock("../ipc/subjects", () => ({
   getSubjectLibrary: vi.fn(),
   moveDocumentToSubject: vi.fn(),
   setDocumentStudyRanges: vi.fn(),
+  setSubjectLeftOutDocuments: vi.fn(),
 }));
 vi.mock("../ipc/studyMaterials", () => ({
   getStudyTargetBundle: vi.fn(),
@@ -278,7 +279,7 @@ describe("DocumentsScreen", () => {
         "Document processing started. You can add more documents while this job runs.",
       );
       expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: true });
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -323,7 +324,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(within(importDialog).getByRole("button", { name: "Import" }));
     await waitFor(() => {
       expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: false });
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined, undefined);
     });
   });
 
@@ -428,7 +429,7 @@ describe("DocumentsScreen", () => {
     await chooseDocumentAction("Retry");
 
     await waitFor(() => {
-      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined, undefined);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
   });
@@ -930,8 +931,29 @@ describe("DocumentsScreen", () => {
       expect(screen.queryByText(/collection/iu)).toBeNull();
       const menu = await openDocumentActions();
       expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expect.arrayContaining([
-        "Reading range…", "Move to another subject…", "Remove from subject",
+        "Reading range…", "Leave out of study materials", "Move to another subject…", "Remove from subject",
       ]));
+    });
+
+    it("leaves a document out of its subject's study materials and lets it back in", async () => {
+      const leftOut = { ...library, documentFilingRevision: 5, leftOutDocumentIds: [documentId] };
+      vi.mocked(subjectsIpc.setSubjectLeftOutDocuments).mockResolvedValue(leftOut);
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id });
+
+      await screen.findByRole("heading", { name: "Cardiac physiology" });
+      await chooseDocumentAction("Leave out of study materials");
+
+      await waitFor(() => expect(subjectsIpc.setSubjectLeftOutDocuments).toHaveBeenCalledWith({
+        subjectId: cardiology.id, documentIds: [documentId], expectedDocumentFilingRevision: 4,
+      }));
+      expect(await screen.findByText(/left out of study materials/u)).toBeTruthy();
+
+      vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(leftOut);
+      vi.mocked(subjectsIpc.setSubjectLeftOutDocuments).mockResolvedValue({ ...library, documentFilingRevision: 6 });
+      await chooseDocumentAction("Use in study materials");
+      await waitFor(() => expect(subjectsIpc.setSubjectLeftOutDocuments).toHaveBeenLastCalledWith({
+        subjectId: cardiology.id, documentIds: [], expectedDocumentFilingRevision: 5,
+      }));
     });
 
     it("opens AI setup from Make study materials while the chosen service is gone", async () => {
@@ -998,7 +1020,7 @@ describe("DocumentsScreen", () => {
 
       await waitFor(() => {
         expect(subjectsIpc.moveDocumentToSubject).toHaveBeenCalledWith(expect.objectContaining({ documentId: looseId, subjectId: renal.id }));
-        expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(looseId, undefined);
+        expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(looseId, undefined, undefined);
       });
       expect(vi.mocked(subjectsIpc.moveDocumentToSubject).mock.invocationCallOrder[0])
         .toBeLessThan(vi.mocked(documentIpc.startDocumentFlashcardGeneration).mock.invocationCallOrder[0] ?? 0);

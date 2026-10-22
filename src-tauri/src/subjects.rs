@@ -18,6 +18,8 @@
 //! commands are adapters over the storage helpers here, so the current screens
 //! keep working until the Library replaces them.
 
+use std::collections::BTreeSet;
+
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -82,6 +84,8 @@ pub struct SubjectLibraryDto {
     pub decks: Vec<SubjectDeckPlacementDto>,
     pub documents: Vec<SubjectDocumentPlacementDto>,
     pub study_ranges: Vec<DocumentStudyRangeDto>,
+    /// Documents left out of their subject's study set, sorted.
+    pub left_out_document_ids: Vec<String>,
     pub check_these_count: i64,
 }
 
@@ -152,6 +156,16 @@ pub struct MoveDocumentToSubjectInput {
 pub struct SetDocumentStudyRangesInput {
     pub document_id: String,
     pub ranges: Vec<SourceRangeInput>,
+    pub expected_document_filing_revision: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetSubjectLeftOutDocumentsInput {
+    pub subject_id: String,
+    /// The subject's documents its study set leaves out; every other document
+    /// filed in it is let back in.
+    pub document_ids: Vec<String>,
     pub expected_document_filing_revision: i64,
 }
 
@@ -238,6 +252,18 @@ pub fn set_document_study_ranges(
 }
 
 #[tauri::command]
+pub fn set_subject_left_out_documents(
+    database: State<'_, Database>,
+    input: SetSubjectLeftOutDocumentsInput,
+) -> Result<SubjectLibraryDto, CommandError> {
+    validate_entity_id(&input.subject_id, "subject")?;
+    for document_id in &input.document_ids {
+        validate_entity_id(document_id, "document")?;
+    }
+    database.with_connection(|connection| set_left_out(connection, input))
+}
+
+#[tauri::command]
 pub fn get_subject_filing_reviews(
     database: State<'_, Database>,
 ) -> Result<Vec<SubjectFilingReviewDto>, CommandError> {
@@ -270,6 +296,7 @@ pub(crate) fn load_library(connection: &Connection) -> Result<SubjectLibraryDto,
         decks: deck_placements(connection)?,
         documents: document_placements(connection)?,
         study_ranges: study_ranges(connection, None)?,
+        left_out_document_ids: left_out_document_ids(connection)?,
         check_these_count: check_these_count(connection)?,
     })
 }
@@ -442,6 +469,65 @@ fn set_ranges(
     )?;
     tx.commit().map_err(CommandError::database)?;
     load_library(connection)
+}
+
+fn set_left_out(
+    connection: &mut Connection,
+    input: SetSubjectLeftOutDocumentsInput,
+) -> Result<SubjectLibraryDto, CommandError> {
+    validate_revision(input.expected_document_filing_revision, "document filing")?;
+    let now = unix_time_millis()?;
+    let tx = immediate(connection)?;
+    expect_revision(
+        &tx,
+        Revision::DocumentFiling,
+        input.expected_document_filing_revision,
+    )?;
+    if !subject_exists(&tx, &input.subject_id)? {
+        return Err(subject_not_found());
+    }
+    let left_out: BTreeSet<&str> = input.document_ids.iter().map(String::as_str).collect();
+    for document_id in &left_out {
+        let filed_in = document_subject(&tx, document_id)?.flatten();
+        if filed_in.as_deref() != Some(input.subject_id.as_str()) {
+            return Err(CommandError::new(
+                "document_not_in_subject",
+                "That document is no longer in this subject. Reload it and try again.",
+            ));
+        }
+    }
+    tx.execute(
+        "DELETE FROM document_study_exclusions
+         WHERE document_id IN (SELECT id FROM documents WHERE subject_id = ?1)",
+        [input.subject_id.as_str()],
+    )
+    .map_err(CommandError::database)?;
+    for document_id in left_out {
+        tx.execute(
+            "INSERT INTO document_study_exclusions(document_id, created_at) VALUES (?1, ?2)",
+            params![document_id, now],
+        )
+        .map_err(CommandError::database)?;
+    }
+    advance(
+        &tx,
+        Revision::DocumentFiling,
+        input.expected_document_filing_revision,
+        now,
+    )?;
+    tx.commit().map_err(CommandError::database)?;
+    load_library(connection)
+}
+
+fn left_out_document_ids(connection: &Connection) -> Result<Vec<String>, CommandError> {
+    let mut statement = connection
+        .prepare("SELECT document_id FROM document_study_exclusions ORDER BY document_id")
+        .map_err(CommandError::database)?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>();
+    ids.map_err(CommandError::database)
 }
 
 fn dismiss(

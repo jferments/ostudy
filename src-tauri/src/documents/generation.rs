@@ -151,6 +151,9 @@ async fn retry_pdf_flashcard_generation_inner(
         return Ok(result);
     }
     validate_retry_pdf_flashcard_generation(database, &input.document_id)?;
+    if let Some(deck_id) = input.destination_deck_id.as_deref() {
+        validate_entity_id(deck_id, "deck")?;
+    }
 
     let result = if processing_reserved {
         process_reserved_initial_flashcards(
@@ -160,6 +163,7 @@ async fn retry_pdf_flashcard_generation_inner(
             render_runtime,
             &input.document_id,
             &input.generation_instructions,
+            input.destination_deck_id.as_deref(),
         )
         .await
     } else {
@@ -170,6 +174,7 @@ async fn retry_pdf_flashcard_generation_inner(
             render_runtime,
             &input.document_id,
             &input.generation_instructions,
+            input.destination_deck_id.as_deref(),
         )
         .await
     };

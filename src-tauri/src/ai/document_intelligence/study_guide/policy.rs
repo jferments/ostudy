@@ -8,6 +8,9 @@
 use super::{KnowledgeCatalog, StudyGuideSectionContent};
 
 pub(super) const MAX_GENERATED_SECTION_CHARS: usize = 64 * 1024;
+/// A section shortened for the whole guide's length keeps room for its big
+/// idea and a few key points.
+const MIN_SCALED_CHARS: usize = 512;
 /// Below this many catalog units a short section can be complete.
 const MIN_UNITS_FOR_THIN_SECTION: usize = 4;
 pub(super) const MAX_OVERVIEW_CHARS: usize = MAX_GENERATED_SECTION_CHARS;
@@ -72,6 +75,19 @@ impl WritingBudget {
             target_chars,
             // The overview states the big idea in two or three sentences.
             overview_chars: (target_chars / 5).clamp(250, 500),
+        }
+    }
+
+    /// The guide's share for this section: `scale` is the whole guide's
+    /// length target over the sum of its sections' own budgets, at most 1.
+    pub(super) fn scaled(self, scale: f64) -> Self {
+        if !(scale > 0.0 && scale < 1.0) {
+            return self;
+        }
+        let target_chars = ((self.target_chars as f64 * scale) as usize).max(MIN_SCALED_CHARS);
+        Self {
+            target_chars,
+            overview_chars: (target_chars / 5).clamp(150, 500),
         }
     }
 

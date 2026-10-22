@@ -33,16 +33,16 @@ python3 scripts/guide-eval.py compare /path/to/runs/main-a5f4a16 /path/to/runs/m
 
 `--judge manual` writes every judge prompt to `judge/*.prompt.txt` and scores whatever `*.response.json` files exist, so a person or an assistant session can act as the judge. Saved verdicts are reused on a re-score; delete a `judge/` folder to judge again.
 
-## Rubric (version 2)
+## Rubric (version 3)
 
-A study guide is a condensed summary of the key ideas that sends the reader to the source, flashcards or lectures for the detail. It is not a rewrite of the source. Version 2 scores that: it replaces version 1's coverage criterion, which rewarded restating every fact, with key ideas, distillation and concision. The judge grades each guide section against the source chunks its locator names, and grades the whole guide against the whole source. Judged criteria are scored 1 to 5 with the anchors written into the judge prompts in `scripts/guide-eval.py`, then mapped to 0-100.
+A study guide is a condensed summary of the key ideas that sends the reader to the source, flashcards or lectures for the detail. It is not a rewrite of the source. Version 2 replaced version 1's coverage criterion, which rewarded restating every fact, with key ideas, distillation and concision. Version 3 lets the whole-guide judge read the whole source and guide (version 2 clipped both at 48,000 characters, so a long chapter's key ideas were judged from its first pages), counts key ideas instead of anchoring them, and moves the concision band to a tenth. The judge grades each guide section against the source chunks its locator names, and grades the whole guide against the whole source. Judged criteria are scored 1 to 5 with the anchors written into the judge prompts in `scripts/guide-eval.py`, then mapped to 0-100.
 
 | Criterion | Weight | Judged on | What it asks |
 | --- | --- | --- | --- |
 | Accuracy | 25% | each section, weighted by its length | Are the statements true to the source? Wrong or misleading statements are listed as major. |
-| Key ideas | 20% | whole guide | The judge first lists the source's key ideas, the overarching ones an expert would say a student must keep, then checks which the guide does not teach. |
+| Key ideas | 20% | whole guide | The judge lists, in source order, the ideas a summary a tenth of the source's length must keep (not supporting facts, values, examples or named techniques), and marks each taught, thin or missing in the guide. The score is the share taught, a thin idea counting half. |
 | Distillation | 15% | whole guide | Do the key ideas stand out, with details left to the source or gathered in tables, or does the guide restate the source? |
-| Concision | 10% | measured | Guide words per source word. From 0.03 to 0.15 scores 100. Above 0.15 the score falls, reaching 0 at 0.35. About a tenth is the aim, not a rule. |
+| Concision | 10% | measured | Guide words per source word. From 0.05 to 0.12 scores 100. Above 0.12 the score falls, reaching 0 at 0.25. A tenth is the aim and a fifth the ceiling. |
 | Source support | 10% | each section | Can each substantive statement be traced to the source? Correct outside knowledge still counts against it. |
 | Readability | 10% | each section | Scannable and clear, with comparable items in tables or short lists rather than paragraphs that recite fact after fact. |
 | Organization | 5% | whole guide | Learning order, section granularity, duplication, a framing overview. |
