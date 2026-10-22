@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
 import type { AnnotatedPage, FrameShape } from "../../../ipc/documentAnnotations";
+import type { DocumentClip } from "../../../ipc/notebooks";
 import { managedAssetUrl } from "../../../platform/assets";
 import { Icon } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
@@ -89,6 +90,9 @@ interface AnnotatorPageProps {
   onOpenAnnotation: (annotation: Annotation) => void;
   /** Ticks or clears a text note's checkbox; checkboxes can be pressed only with the Select tool. */
   onChangeText?: (annotation: Annotation, text: string) => void;
+  /** The notebooks this page was clipped into, one each, and how to open one at its clip. */
+  clips?: readonly DocumentClip[];
+  onOpenClip?: (clip: DocumentClip) => void;
 }
 
 /** One page: its render, highlights under it all, strokes and shapes, then text notes and the selection. */
@@ -118,9 +122,28 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
       style={{ width, height }}
     >
       {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} sharpTiles={tiles} /> : null}
+      {near && props.clips && props.clips.length > 0 && props.onOpenClip ? (
+        <ClipBadges clips={props.clips} onOpen={props.onOpenClip} />
+      ) : null}
     </div>
   );
 });
+
+/** "In your notes: …" for each notebook the page was clipped into, at the page's top corner, after the marks so it sits over them. */
+function ClipBadges({ clips, onOpen }: { clips: readonly DocumentClip[]; onOpen: (clip: DocumentClip) => void }) {
+  return (
+    <div className="tw:absolute tw:end-2 tw:top-2 tw:flex tw:max-w-[80%] tw:flex-col tw:items-end tw:gap-1">
+      {clips.map((clip) => (
+        // Pressing a badge opens the notebook; it never starts a mark on the page.
+        <Button key={clip.notebookId} size="small" variant="secondary" className="tw:max-w-full tw:shadow-sm"
+          onPointerDown={(event) => event.stopPropagation()} onClick={() => onOpen(clip)}>
+          <Icon name="pen" />
+          <span className="tw:truncate">{`In your notes: ${clip.notebookTitle}`}</span>
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 function PageContent({
   page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,

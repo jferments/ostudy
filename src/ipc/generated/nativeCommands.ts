@@ -207,6 +207,7 @@ export interface NativeCommandGatewayMap {
   "list_deck_card_summaries": readonly [typeof GatewayModule9.listDeckCardSummaries];
   "list_deck_source_citations": readonly [typeof GatewayModule15.listDeckSourceCitations];
   "list_decks": readonly [typeof GatewayModule9.listDecks];
+  "list_document_clips": readonly [typeof GatewayModule27.listDocumentClips];
   "list_documents": readonly [typeof GatewayModule15.listDocuments];
   "list_editor_drafts": readonly [typeof GatewayModule16.listEditorDrafts];
   "list_embedding_models": readonly [typeof GatewayModule17.listEmbeddingModels];
@@ -312,6 +313,7 @@ export interface NativeCommandGatewayMap {
   "set_tutor_conversation_archived": readonly [typeof GatewayModule44.setTutorConversationArchived];
   "set_tutor_project_archived": readonly [typeof GatewayModule44.setTutorProjectArchived];
   "share_prepared_export": readonly [typeof GatewayModule18.sharePreparedExport];
+  "stage_document_clip": readonly [typeof GatewayModule27.stageDocumentClip];
   "stage_image_collection_file": readonly [typeof GatewayModule21.stageImageCollectionFile];
   "stage_image_collection_file_chunk": readonly [typeof GatewayModule21.stageImageCollectionFileChunk];
   "stage_incoming_share": readonly [typeof GatewayModule18.stageIncomingShare];
