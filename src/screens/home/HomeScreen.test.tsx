@@ -356,7 +356,7 @@ describe("HomeScreen", () => {
     await screen.findByTestId("home-today");
     const tile = screen.getAllByTestId("subject-tile").find((element) => element.dataset.subjectId === "renal");
     expect(within(tile as HTMLElement).getByText("Preparing")).toBeTruthy();
-    expect(within(tile as HTMLElement).getByText("Extracting document content: Week 4 notes")).toBeTruthy();
+    expect(within(tile as HTMLElement).getByText("Opening your document: Week 4 notes")).toBeTruthy();
   });
 
   it("names a new subject and shows it at once", async () => {
