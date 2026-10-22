@@ -43,4 +43,4 @@ A link whose target has been deleted (a document, a page, a study guide, a deck 
 
 ## Where notes are kept
 
-Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). Device sync does not send them yet, just as it does not send PDF annotations, and they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**. A build of oStudy from before clips opens a library that has them, but leaves the clipped pictures out until a newer build opens it again; clips need no library upgrade.
+Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). [Device sync](device-sync.md) sends them, with their pictures, when **Notes** is selected; they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**. A build of oStudy from before clips opens a library that has them, but leaves the clipped pictures out until a newer build opens it again; clips need no library upgrade.

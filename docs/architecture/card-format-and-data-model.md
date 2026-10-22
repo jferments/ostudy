@@ -83,7 +83,7 @@ Select visible resolves loaded rows; select all matching resolves the complete c
 | `.studydeck` | One portable content/asset graph, no donor schedule or review history; fresh local schedules on import |
 | `.ostudy.json` | Strict content-only authoring input, whole-file validation then one transaction; no arbitrary internal IDs or history |
 | `.ostudybackup` | Coherent personal library plus required managed files, including history, templates, documents/guide graph, PDF page annotations, lessons and supported drafts; no credentials |
-| Device sync | Explicit authenticated one-way offer/merge of its allowed study graph; not every current database table (PDF page annotations, lessons, Tutor/knowledge state and drafts stay local) |
+| Device sync | Explicit authenticated one-way offer/merge of its allowed study graph; not every current database table (Tutor/knowledge state, drafts and device settings stay local) |
 | UI checkpoint | Device-local navigation/session hint, not learner-content interchange |
 
 Each has its own version and validation policy. A database migration number does not determine every external format version. Released migrations/checksums and supported readers are not stale merely because UI controls or parser names changed.
