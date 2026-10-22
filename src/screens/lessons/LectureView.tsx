@@ -23,7 +23,8 @@ import {
 import type { StudyGuidePdfTheme } from "../../ipc/studyGuides";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
-import { Dialog } from "../../ui/overlays/Dialog";
+import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { Dialog, Sheet } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
@@ -79,7 +80,8 @@ interface Asking {
  * talks over every slide and now and then stops to ask the class a question,
  * answers it and goes on; until then each step's narration is spoken. Play
  * lecture speaks from the current slide and moves on as each one ends;
- * choosing another slide stops it.
+ * choosing another slide stops it. On a phone the check waits behind Check
+ * yourself and opens in a sheet over the slide.
  */
 export function LectureView({
   lessonId,
@@ -115,6 +117,8 @@ export function LectureView({
   const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
   const ink = useMaterialInk(inkMaterial);
   const [inking, setInking] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const compact = useLayoutMode().layoutMode === "compact";
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
 
@@ -166,6 +170,7 @@ export function LectureView({
   const talk = taught(slide);
   const image = designs.images.get(slide.key);
   const step = steps.find((item) => item.key === slide.stepKey);
+  const checked = step ? answeredChecks[step.key] : undefined;
   const chooseTheme = (next: StudyGuidePdfTheme) => {
     setTheme(next);
     saveSlideTheme(next);
@@ -268,6 +273,7 @@ export function LectureView({
 
   const show = (next: number) => {
     stopLecture();
+    setCheckOpen(false);
     setIndex(next);
     headingRef.current?.focus();
   };
@@ -437,6 +443,18 @@ export function LectureView({
           </div>
         </article>
         <aside aria-label="With this slide" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:medium:col-start-2">
+          {step?.check && compact ? (
+            <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+              <Button variant="primary" className="tw:rounded-full" onClick={() => setCheckOpen(true)}>
+                <Icon name="help" size={16} /> Check yourself
+              </Button>
+              {checked ? (
+                <span className="tw:text-small tw:text-muted-foreground">
+                  {checked.correct ? "Answered right" : "Answered, not quite"}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {(talk?.talk ?? slide.notes).trim() ? (
             <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
               <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
@@ -452,7 +470,7 @@ export function LectureView({
               </Button>
             </div>
           ) : null}
-          {step?.check ? (
+          {step?.check && !compact ? (
             <StepCheck
               key={`${revisionNumber}-${step.key}`}
               lessonId={lessonId}
@@ -465,6 +483,33 @@ export function LectureView({
           {step ? <SlideCards key={step.key} subjectId={subjectId} step={step} showToast={showToast} /> : null}
         </aside>
       </div>
+      {checkOpen && compact && step?.check ? (
+        <Sheet
+          title="Check yourself"
+          width="small"
+          onClose={() => setCheckOpen(false)}
+          actions={
+            index < slides.length - 1 ? (
+              <Button variant="primary" className="tw:rounded-full" onClick={() => show(index + 1)}>
+                Next slide <Icon name="chevron-right" size={16} />
+              </Button>
+            ) : (
+              <Button className="tw:rounded-full" onClick={() => setCheckOpen(false)}>
+                Done
+              </Button>
+            )
+          }
+        >
+          <StepCheck
+            key={`${revisionNumber}-${step.key}`}
+            lessonId={lessonId}
+            revisionNumber={revisionNumber}
+            step={step}
+            answered={checked ?? null}
+            onAnswered={onAnswered}
+          />
+        </Sheet>
+      ) : null}
       {asking?.slide.question ? (
         <ClassQuestionDialog
           key={asking.slide.slideKey}
