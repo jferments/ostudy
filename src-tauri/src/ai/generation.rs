@@ -709,7 +709,7 @@ pub(crate) fn stage(file: &str) -> &'static str {
         "flashcards.rs" => "flashcard_authoring",
         "curation.rs" => "flashcard_curation",
         "artifact_metadata.rs" => "artifact_metadata",
-        "study_guide.rs" => "guide_authoring",
+        "study_guide.rs" | "section_plan.rs" => "guide_authoring",
         "lesson.rs" => "lesson_authoring",
         "mark_question.rs" => "mark_question",
         "lecture_script.rs" => "lecture_authoring",
