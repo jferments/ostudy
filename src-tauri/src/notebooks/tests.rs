@@ -650,6 +650,77 @@ fn pictures_go_only_on_notebook_pages_and_only_pictures_name_a_draft() {
         .unwrap();
 }
 
+#[test]
+fn a_notebook_is_saved_as_a_pdf_with_its_pictures() {
+    let database = library();
+    let paths = test_paths();
+    let destination = paths.app_data_dir().join("notebook-test.pdf");
+    database
+        .with_connection(|connection| {
+            let notebook = new_notebook(connection, "Cardiac cycle");
+            let page = page_ids(&notebook)[0].clone();
+            let (draft, asset) =
+                crate::asset_lifecycle::stage_test_image(connection, &paths, "import")?;
+            apply_changes(
+                connection,
+                &paths,
+                ApplyNotebookItemChangesInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    changes: vec![picture(&id('1'), &page, &asset.id, Some(&draft.id))],
+                },
+                NOW + 10,
+            )?;
+            add_page(
+                connection,
+                AddNotebookPageInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    position: 2,
+                    paper: Some(Paper::Dots),
+                    page_size: Some(PageSize::Wide),
+                },
+                NOW + 20,
+            )?;
+            let opened = contents(connection, &notebook.notebook.id)?;
+
+            let files: Vec<(String, std::path::PathBuf)> =
+                save_pdf::picture_files(connection, &opened)?
+                    .into_iter()
+                    .map(|(asset_id, relative)| (asset_id, paths.resolve_relative(&relative)))
+                    .collect();
+            assert_eq!(files.len(), 1);
+            // The test image is only a PNG's signature; give it a real one.
+            let mut png = Vec::new();
+            image::RgbaImage::from_pixel(4, 2, image::Rgba([200, 30, 30, 255]))
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .unwrap();
+            std::fs::write(&files[0].1, png).map_err(CommandError::io)?;
+            assert_eq!(
+                save_pdf::write_notebook(&opened, &files, &destination)?,
+                (2, 0)
+            );
+            let bytes = std::fs::read(&destination).map_err(CommandError::io)?;
+            let reader =
+                oxidize_pdf::parser::PdfReader::new(std::io::Cursor::new(bytes.as_slice()))
+                    .unwrap();
+            assert_eq!(
+                oxidize_pdf::parser::PdfDocument::new(reader)
+                    .page_count()
+                    .unwrap(),
+                2
+            );
+
+            // A picture whose image cannot be read is left out, and counted.
+            std::fs::remove_file(&files[0].1).map_err(CommandError::io)?;
+            assert_eq!(
+                save_pdf::write_notebook(&opened, &files, &destination)?,
+                (2, 1)
+            );
+            Ok(())
+        })
+        .unwrap();
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}
+
 fn clip_input(x: f64, y: f64, width: f64, height: f64) -> StageDocumentClipInput {
     StageDocumentClipInput {
         draft_id: id('d'),

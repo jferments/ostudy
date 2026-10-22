@@ -1,5 +1,7 @@
+import { createOperationId } from "./common";
 import type { Asset } from "./assets";
 import type { AnnotationShape } from "./documentAnnotations";
+import type { PreparedExport } from "./externalFiles";
 import { invoke } from "./transport";
 
 /** The paper a notebook page is drawn on. */
@@ -134,6 +136,24 @@ export async function applyNotebookItemChanges(
   return invoke<AppliedNotebookItemChanges>("apply_notebook_item_changes", {
     input: { notebookId, changes },
   });
+}
+
+export interface PreparedNotebookPdf {
+  preparedExport: PreparedExport;
+  pageCount: number;
+  /** Pictures whose image could not be read, and so were left out. */
+  missingPictureCount: number;
+}
+
+/**
+ * Prepares a PDF of a notebook: its pages with their paper, marks and
+ * pictures, and links to its own pages as PDF links.
+ */
+export async function prepareNotebookPdf(
+  notebookId: string,
+  operationId = createOperationId(),
+): Promise<PreparedNotebookPdf> {
+  return invoke<PreparedNotebookPdf>("prepare_notebook_pdf", { input: { notebookId, operationId } });
 }
 
 /** A region of a PDF page, in points from its top-left corner, and the page's size. */

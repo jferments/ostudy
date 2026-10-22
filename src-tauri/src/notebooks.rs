@@ -1295,6 +1295,9 @@ fn other_notebook() -> CommandError {
     )
 }
 
+#[path = "notebooks/save_pdf.rs"]
+mod save_pdf;
+pub(crate) use save_pdf::{prepare_notebook_pdf, PrepareNotebookPdfInput, PreparedNotebookPdfDto};
 #[path = "notebooks/clips.rs"]
 pub mod clips;
 pub(crate) use clips::{stage_document_clip, StageDocumentClipInput, StagedDocumentClipDto};
