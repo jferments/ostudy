@@ -458,6 +458,88 @@ fn a_document_s_generated_deck_goes_with_it_unless_it_was_filed_elsewhere() {
 }
 
 #[test]
+fn left_out_documents_leave_the_subject_study_set_until_let_back_in_or_moved() {
+    let database = Database::open_in_memory().unwrap();
+    database
+        .with_connection(|connection| {
+            let (kept, left_out, elsewhere) = (id('d'), id('e'), id('f'));
+            for (document, sha) in [(&kept, 'a'), (&left_out, 'b'), (&elsewhere, 'c')] {
+                seed_document(connection, document, 2, sha)?;
+            }
+            subject(connection, "Physics");
+            let mut library = subject(connection, "Biology");
+            let physics = subject_id(&library, "Physics");
+            let biology = subject_id(&library, "Biology");
+            for (document, subject) in [
+                (&kept, &biology),
+                (&left_out, &biology),
+                (&elsewhere, &physics),
+            ] {
+                library = move_document(
+                    connection,
+                    file_document_input(&library, document, Some(subject)),
+                )?;
+            }
+            let leave_out = |library: &SubjectLibraryDto, documents: &[&String]| {
+                SetSubjectLeftOutDocumentsInput {
+                    subject_id: biology.clone(),
+                    document_ids: documents
+                        .iter()
+                        .map(|document| (*document).clone())
+                        .collect(),
+                    expected_document_filing_revision: library.document_filing_revision,
+                }
+            };
+            let members = |connection: &Connection| {
+                collections::resolve_selection(
+                    connection,
+                    collections::SourceSelectionInput {
+                        collection_ids: vec![biology.clone()],
+                        documents: Vec::new(),
+                        exclusions: Vec::new(),
+                    },
+                )
+                .unwrap()
+                .members
+                .into_iter()
+                .map(|member| member.document_id)
+                .collect::<Vec<_>>()
+            };
+            assert_eq!(members(connection), [kept.clone(), left_out.clone()]);
+
+            let other_subject = set_left_out(connection, leave_out(&library, &[&elsewhere]));
+            assert_eq!(other_subject.unwrap_err().code, "document_not_in_subject");
+            let stale = SetSubjectLeftOutDocumentsInput {
+                expected_document_filing_revision: library.document_filing_revision - 1,
+                ..leave_out(&library, &[&left_out])
+            };
+            assert!(set_left_out(connection, stale).is_err());
+
+            let library = set_left_out(connection, leave_out(&library, &[&left_out]))?;
+            assert_eq!(
+                library.left_out_document_ids,
+                std::slice::from_ref(&left_out)
+            );
+            assert_eq!(members(connection), std::slice::from_ref(&kept));
+
+            // Saving the subject's choice again lets the others back in.
+            let library = set_left_out(connection, leave_out(&library, &[]))?;
+            assert!(library.left_out_document_ids.is_empty());
+            assert_eq!(members(connection), [kept.clone(), left_out.clone()]);
+
+            // A document that moves to another subject starts in its study set.
+            let library = set_left_out(connection, leave_out(&library, &[&left_out]))?;
+            let moved = move_document(
+                connection,
+                file_document_input(&library, &left_out, Some(&physics)),
+            )?;
+            assert!(moved.left_out_document_ids.is_empty());
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
 fn study_ranges_need_a_subject_and_follow_the_document_between_subjects() {
     let database = Database::open_in_memory().unwrap();
     database

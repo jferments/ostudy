@@ -553,7 +553,7 @@ fn second_pass_outline(
     outline
 }
 
-fn ensure_exact_append_destination(
+pub(crate) fn ensure_exact_append_destination(
     database: &Database,
     expected_deck_id: &str,
     deck_name: &str,
@@ -585,7 +585,7 @@ fn ensure_exact_append_destination(
     })
 }
 
-fn build_append_payload(
+pub(crate) fn build_append_payload(
     deck_name: &str,
     cards: &[SourceGroundedGeneratedCard],
 ) -> Result<String, CommandError> {

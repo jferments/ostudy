@@ -250,6 +250,7 @@ export interface NativeCommandGatewayMap {
   "prepare_lesson_lecture_pptx": readonly [typeof GatewayModule24.prepareLessonLecturePptx];
   "prepare_library_backup_async": readonly [typeof GatewayModule5.prepareLibraryBackup];
   "prepare_library_restore_async": readonly [typeof GatewayModule5.prepareLibraryRestore];
+  "prepare_notebook_pdf": readonly [typeof GatewayModule27.prepareNotebookPdf];
   "prepare_occlusion_image": readonly [typeof GatewayModule28.prepareOcclusionImage];
   "prepare_semantic_material": readonly [typeof GatewayModule23.prepareSemanticMaterial];
   "preview_card_draft": readonly [typeof GatewayModule6.previewCardDraft];
@@ -311,6 +312,7 @@ export interface NativeCommandGatewayMap {
   "set_document_study_ranges": readonly [typeof GatewayModule42.setDocumentStudyRanges];
   "set_image_set_filters": readonly [typeof GatewayModule22.setImageSetFilters];
   "set_platform_back_interception": readonly [typeof GatewayModule29.setPlatformBackInterception];
+  "set_subject_left_out_documents": readonly [typeof GatewayModule42.setSubjectLeftOutDocuments];
   "set_tutor_conversation_archived": readonly [typeof GatewayModule44.setTutorConversationArchived];
   "set_tutor_project_archived": readonly [typeof GatewayModule44.setTutorProjectArchived];
   "share_prepared_export": readonly [typeof GatewayModule18.sharePreparedExport];

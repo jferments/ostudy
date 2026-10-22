@@ -5,6 +5,7 @@ import * as assetsIpc from "../../ipc/assets";
 import * as decksIpc from "../../ipc/decks";
 import * as documentAnnotationsIpc from "../../ipc/documentAnnotations";
 import * as documentsIpc from "../../ipc/documents";
+import * as externalFilesIpc from "../../ipc/externalFiles";
 import * as notebooksIpc from "../../ipc/notebooks";
 import * as studyGuidesIpc from "../../ipc/studyGuides";
 import * as files from "../../platform/files";
@@ -21,7 +22,9 @@ vi.mock("../../ipc/notebooks", async (importOriginal) => ({
   addNotebookPage: vi.fn(),
   deleteNotebookPage: vi.fn(),
   moveNotebookPage: vi.fn(),
+  prepareNotebookPdf: vi.fn(),
 }));
+vi.mock("../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../ipc/assets", () => ({ beginAssetDraft: vi.fn(), cancelAssetDraft: vi.fn(), importImage: vi.fn() }));
 vi.mock("../../platform/assets", () => ({ managedAssetUrl: (id: string) => `blob:managed-${id}` }));
 vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
@@ -290,6 +293,31 @@ describe("notebook editor", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Removed" }));
     expect(showToast).toHaveBeenCalledWith("error", "What this link opened is no longer in your library.");
     expect(onPracticeDeck).not.toHaveBeenCalled();
+  });
+
+  it("saves the notebook as a PDF once what is pending is saved, and says what was left out", async () => {
+    const exportId = "9".repeat(32);
+    vi.mocked(notebooksIpc.prepareNotebookPdf).mockResolvedValue({
+      preparedExport: { id: exportId } as notebooksIpc.PreparedNotebookPdf["preparedExport"],
+      pageCount: 2,
+      missingPictureCount: 1,
+    });
+    vi.mocked(externalFilesIpc.publishPreparedExport).mockResolvedValue({} as Awaited<ReturnType<typeof externalFilesIpc.publishPreparedExport>>);
+    vi.mocked(externalFilesIpc.releasePreparedExport).mockResolvedValue();
+    const { canvas, showToast } = await openNotebook();
+    fireEvent.pointerDown(canvas, onPage(100, 100));
+    fireEvent.pointerMove(canvas, onPage(150, 140));
+    fireEvent.pointerUp(canvas, onPage(150, 140));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save notebook as PDF" }));
+
+    await waitFor(() => expect(externalFilesIpc.releasePreparedExport).toHaveBeenCalledWith(exportId));
+    const saved = vi.mocked(notebooksIpc.applyNotebookItemChanges).mock.invocationCallOrder.at(0) ?? Infinity;
+    const prepared = vi.mocked(notebooksIpc.prepareNotebookPdf).mock.invocationCallOrder.at(0) ?? -Infinity;
+    expect(saved).toBeLessThan(prepared);
+    expect(notebooksIpc.prepareNotebookPdf).toHaveBeenCalledWith(notebookId);
+    expect(externalFilesIpc.publishPreparedExport).toHaveBeenCalledWith(exportId);
+    expect(showToast).toHaveBeenCalledWith("success", "Saved 2 pages as a PDF. 1 picture could not be read and was left out.");
   });
 
   it("opens the document page a clip came from, and says when that document is gone", async () => {

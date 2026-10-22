@@ -92,7 +92,7 @@ Do not rename an arbitrary SQLite file to masquerade as a backup. The package ve
 
 When **Flashcards** is selected, question definitions, their presentations, practice attempts and review links, and question images travel and are checked like the rest of the flashcard data; records whose fields must agree are merged whole rather than field by field. A malformed package is rejected before anything is installed or merged. Editor drafts, question generation evidence and other local records stay on the sending device.
 
-Documents and Study Guides have explicit selectable scopes; Study Guides require Documents. Links between documents and flashcards travel only when both are selected. Ordinary appearance and application settings stay on each device, and so do PDF annotations, lessons and Tutor conversations. Provider settings and saved keys need the sender's explicit choice for each offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
+Documents, Study Guides, Notes and Lessons have explicit selectable scopes; Study Guides require Documents. Links between documents and flashcards travel only when both are selected. Ordinary appearance and application settings stay on each device, and so do Tutor conversations and the knowledge extracted from documents. Provider settings and saved keys need the sender's explicit choice for each offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
 
 ## Safety and factual accuracy
 

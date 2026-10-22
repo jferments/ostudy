@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
-import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
-import { getSettings } from "../ipc/settings";
 import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
-  getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
+  getDocumentTopicCardProjection, saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import { getStudyGuideReading, openStudyGuideSection, setStudyGuideSectionRead, type StudyGuideReading } from "../ipc/studyGuideReading";
@@ -23,7 +21,7 @@ import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Button } from "../ui/primitives/Button";
 import { Progress } from "../ui/primitives/Progress";
 import { GuideTextDialog } from "./study-guides/GuideDialogs";
-import { guidePdfPreferences } from "./study-guides/guidePdfPreferences";
+import { exportGuidePdf } from "./study-guides/exportGuidePdf";
 import { type GuideDestination, GuideOutline, guidePageId } from "./study-guides/GuideOutline";
 import { GuideOverviewPage, type GuidePageLink, GuideSectionPage } from "./study-guides/GuideReaderPages";
 import {
@@ -193,28 +191,8 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   async function exportPdf(): Promise<void> {
     if (!guide || isExporting || isGenerating || isSaving) return;
     setIsExporting(true);
-    let preparedExportId: string | null = null;
-    try {
-      // The look and the notes are Settings choices, read fresh for each export.
-      const { theme, includeNotes } = guidePdfPreferences(await getSettings());
-      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeNotes, theme);
-      preparedExportId = prepared.preparedExport.id;
-      if (prepared.mathSourceFallback && !await confirm({
-        title: "Export math as source notation?",
-        description: "Some equations use notation outside the native PDF math subset and will remain readable LaTeX source. The study guide in oStudy keeps its full typeset math.",
-        confirmLabel: "Export PDF",
-        cancelLabel: "Cancel",
-      })) return;
-      const receipt = await publishPreparedExport(prepared.preparedExport.id);
-      if (receipt) {
-        const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";
-        showToast("success", `Exported study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${annotationSummary}.`);
-      }
-    } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
-    finally {
-      if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
-      setIsExporting(false);
-    }
+    try { await exportGuidePdf({ kind: "document", id: documentId }, confirm, showToast); }
+    finally { setIsExporting(false); }
   }
   async function openSource(): Promise<void> {
     try { await openDocumentSource(documentId); } catch (error: unknown) { showToast("error", getErrorMessage(error)); }

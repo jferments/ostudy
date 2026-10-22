@@ -22,7 +22,12 @@ use super::{
 
 #[derive(Clone, Copy)]
 pub(crate) struct TableSpec {
+    /// What sync calls the rows: their baselines and conflicts are kept under
+    /// it. Usually the table's name; a table whose rows belong to different
+    /// categories is split into named parts by `where_clause`.
     pub name: &'static str,
+    /// The SQLite table.
+    pub table: &'static str,
     pub key_columns: &'static [&'static str],
     pub where_clause: Option<&'static str>,
     pub excluded_columns: &'static [&'static str],
@@ -40,19 +45,18 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("tags", &["id"]),
     TableSpec::new("card_templates", &["id"]),
     TableSpec::new("card_template_fields", &["id"]),
-    TableSpec {
-        name: "assets",
-        key_columns: &["id"],
-        where_clause: Some("lifecycle_state IN ('ready', 'deleted')"),
-        excluded_columns: &[
-            "draft_id",
-            "staged_relative_path",
-            "quarantine_relative_path",
-            "ready_at",
-            "verified_at",
-            "lifecycle_reason",
-        ],
-    },
+    // Card images. Notebook pictures and lesson audio are the other parts of
+    // `assets`, and travel with their own categories.
+    TableSpec::assets(
+        "assets",
+        "lifecycle_state IN ('ready', 'deleted')
+         AND (id IN (SELECT asset_id FROM note_assets)
+              OR id IN (SELECT asset_id FROM card_template_assets)
+              OR id IN (SELECT asset_id FROM question_attempt_assets)
+              OR (id NOT IN (SELECT asset_id FROM notebook_item_assets)
+                  AND id NOT IN (SELECT asset_id FROM speech_segments)
+                  AND id NOT IN (SELECT asset_id FROM speech_voices)))",
+    ),
     TableSpec::new("notes", &["id"]),
     TableSpec::new("question_generation_evidence", &["note_id"]),
     TableSpec::new("cards", &["id"]),
@@ -94,6 +98,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     // Provider metadata is a parent of optional document processing records.
     TableSpec {
         name: "ai_provider_profiles",
+        table: "ai_provider_profiles",
         key_columns: &["id"],
         where_clause: None,
         excluded_columns: &["credential_storage", "credential_epoch"],
@@ -139,6 +144,14 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("document_learning_plan_topics", &["plan_id", "topic_id"]),
     TableSpec::new("document_artifact_jobs", &["id"]),
     TableSpec::new("document_artifact_metadata", &["document_id"]),
+    TableSpec::new("document_annotations", &["id"]),
+    TableSpec::new("document_figure_scans", &["document_id"]),
+    TableSpec::new("document_figures", &["document_id", "figure_id"]),
+    TableSpec::new(
+        "document_figure_passages",
+        &["document_id", "figure_id", "ordinal"],
+    ),
+    TableSpec::new("document_figure_readings", &["document_id", "figure_id"]),
     // Study Guide artifact graph. `SyncSelection` only enables these when the
     // Study Guides category is selected (which itself requires Documents).
     TableSpec::new("document_study_guides", &["id"]),
@@ -150,6 +163,53 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     ),
     TableSpec::new("study_target_guides", &["id"]),
     TableSpec::new("study_target_guide_overlays", &["id"]),
+    TableSpec::new(
+        "document_study_guide_section_reads",
+        &["document_id", "topic_id"],
+    ),
+    TableSpec::new("document_study_guide_positions", &["document_id"]),
+    TableSpec::part(
+        "guide_ink",
+        "material_ink",
+        &["id"],
+        "document_id IS NOT NULL",
+    ),
+    // Notebooks.
+    TableSpec::new("notebooks", &["id"]),
+    TableSpec::new("notebook_pages", &["id"]),
+    TableSpec::new("notebook_items", &["id"]),
+    TableSpec::assets(
+        "notebook_pictures",
+        "lifecycle_state IN ('ready', 'deleted')
+         AND id IN (SELECT asset_id FROM notebook_item_assets)
+         AND id NOT IN (SELECT asset_id FROM note_assets)
+         AND id NOT IN (SELECT asset_id FROM card_template_assets)
+         AND id NOT IN (SELECT asset_id FROM question_attempt_assets)",
+    ),
+    TableSpec::new("notebook_item_assets", &["item_id"]),
+    // Lessons and what is made from them.
+    TableSpec::new("lessons", &["id"]),
+    TableSpec::new("lesson_revisions", &["lesson_id", "revision_number"]),
+    TableSpec::new(
+        "lesson_revision_units",
+        &["lesson_id", "revision_number", "unit_id"],
+    ),
+    TableSpec::new("lesson_progress", &["lesson_id"]),
+    TableSpec::new("lecture_scripts", &["lesson_id", "revision_number"]),
+    TableSpec::new("lesson_voices", &["lesson_id"]),
+    TableSpec::new("podcasts", &["id"]),
+    TableSpec::assets(
+        "lesson_audio",
+        "lifecycle_state IN ('ready', 'deleted')
+         AND (id IN (SELECT asset_id FROM speech_segments)
+              OR id IN (SELECT asset_id FROM speech_voices))
+         AND id NOT IN (SELECT asset_id FROM note_assets)
+         AND id NOT IN (SELECT asset_id FROM card_template_assets)
+         AND id NOT IN (SELECT asset_id FROM question_attempt_assets)",
+    ),
+    TableSpec::new("speech_segments", &["id"]),
+    TableSpec::new("speech_voices", &["id"]),
+    TableSpec::part("slide_ink", "material_ink", &["id"], "lesson_id IS NOT NULL"),
     // Cross-domain provenance is only enabled when both Documents and
     // Flashcards are selected.
     TableSpec::new("document_decks", &["document_id", "deck_id"]),
@@ -158,15 +218,52 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "study_target_card_origins",
         &["target_id", "target_note_id"],
     ),
+    TableSpec::new("note_annotation_sources", &["note_id"]),
 ];
 
 impl TableSpec {
     const fn new(name: &'static str, key_columns: &'static [&'static str]) -> Self {
         Self {
             name,
+            table: name,
             key_columns,
             where_clause: None,
             excluded_columns: &[],
+        }
+    }
+
+    /// The rows of `table` that `where_clause` picks, synchronized as `name`.
+    const fn part(
+        name: &'static str,
+        table: &'static str,
+        key_columns: &'static [&'static str],
+        where_clause: &'static str,
+    ) -> Self {
+        Self {
+            name,
+            table,
+            key_columns,
+            where_clause: Some(where_clause),
+            excluded_columns: &[],
+        }
+    }
+
+    /// A part of the managed assets, without the columns that only describe
+    /// this device's copy of the file.
+    const fn assets(name: &'static str, where_clause: &'static str) -> Self {
+        Self {
+            name,
+            table: "assets",
+            key_columns: &["id"],
+            where_clause: Some(where_clause),
+            excluded_columns: &[
+                "draft_id",
+                "staged_relative_path",
+                "quarantine_relative_path",
+                "ready_at",
+                "verified_at",
+                "lifecycle_reason",
+            ],
         }
     }
 }
@@ -232,8 +329,8 @@ pub(crate) fn merge_remote_database(
     let mut plans = Vec::with_capacity(SYNC_TABLES.len());
     for spec in SYNC_TABLES {
         if !selection.includes_table(spec.name)
-            || !table_exists(local, spec.name)?
-            || !table_exists(remote, spec.name)?
+            || !tables_exist(local, spec)?
+            || !tables_exist(remote, spec)?
         {
             continue;
         }
@@ -251,6 +348,8 @@ pub(crate) fn merge_remote_database(
     }
 
     let refiled = refile_from_deleted_subjects(&mut plans)?;
+    keep_own_narration(&mut plans);
+    follow_deleted_parents(&mut plans)?;
     let mut settled = settled_filings(&plans)?;
     // A deleted subject explains a refiled item better than the conflict does.
     settled.extend(refiled);
@@ -287,7 +386,7 @@ pub(crate) fn remember_sent_database(
 ) -> Result<(), CommandError> {
     let selection = selection.validate()?;
     for spec in SYNC_TABLES {
-        if !selection.includes_table(spec.name) || !table_exists(snapshot, spec.name)? {
+        if !selection.includes_table(spec.name) || !tables_exist(snapshot, spec)? {
             continue;
         }
         let rows = load_table(snapshot, spec)?;
@@ -422,7 +521,7 @@ fn plan_three_way_table(
             )
         };
         if !conflicting_fields.is_empty() {
-            if spec.name == "assets" {
+            if spec.table == "assets" {
                 return Err(CommandError::new(
                     "device_sync_asset_conflict",
                     "Two devices contain different bytes or metadata for the same managed image identity.",
@@ -679,6 +778,195 @@ fn refile_from_deleted_subjects(
     Ok(refiled)
 }
 
+/// What happens to a row whose parent the merge removed.
+#[derive(Clone, Copy)]
+enum OnParentDeleted {
+    /// The row goes too, as SQLite's `ON DELETE CASCADE` would remove it.
+    Delete,
+    /// The row stays and stops naming the parent (`ON DELETE SET NULL`).
+    Forget,
+}
+
+/// Rows that name a parent row in another synchronized table, in the order the
+/// merge settles them: a parent before its children. `columns` is the child's
+/// columns that hold the parent's key, in the order of the parent's key.
+const PARENTS: &[(&str, &[&str], &str, OnParentDeleted)] = &[
+    ("document_annotations", &["document_id"], "documents", OnParentDeleted::Delete),
+    ("document_figure_scans", &["document_id"], "documents", OnParentDeleted::Delete),
+    ("document_figures", &["document_id"], "documents", OnParentDeleted::Delete),
+    (
+        "document_figure_passages",
+        &["document_id", "figure_id"],
+        "document_figures",
+        OnParentDeleted::Delete,
+    ),
+    (
+        "document_figure_readings",
+        &["document_id", "figure_id"],
+        "document_figures",
+        OnParentDeleted::Delete,
+    ),
+    ("document_study_guide_section_reads", &["document_id"], "documents", OnParentDeleted::Delete),
+    (
+        "document_study_guide_section_reads",
+        &["topic_id"],
+        "document_learning_topics",
+        OnParentDeleted::Delete,
+    ),
+    ("document_study_guide_positions", &["document_id"], "documents", OnParentDeleted::Delete),
+    (
+        "document_study_guide_positions",
+        &["topic_id"],
+        "document_learning_topics",
+        OnParentDeleted::Delete,
+    ),
+    ("guide_ink", &["document_id"], "documents", OnParentDeleted::Delete),
+    ("notebooks", &["subject_id"], "document_collections", OnParentDeleted::Forget),
+    ("notebook_pages", &["notebook_id"], "notebooks", OnParentDeleted::Delete),
+    ("notebook_items", &["page_id"], "notebook_pages", OnParentDeleted::Delete),
+    ("notebook_item_assets", &["item_id"], "notebook_items", OnParentDeleted::Delete),
+    ("lessons", &["subject_id"], "document_collections", OnParentDeleted::Delete),
+    ("lesson_revisions", &["lesson_id"], "lessons", OnParentDeleted::Delete),
+    (
+        "lesson_revision_units",
+        &["lesson_id", "revision_number"],
+        "lesson_revisions",
+        OnParentDeleted::Delete,
+    ),
+    ("lesson_progress", &["lesson_id"], "lessons", OnParentDeleted::Delete),
+    (
+        "lesson_progress",
+        &["lesson_id", "revision_number"],
+        "lesson_revisions",
+        OnParentDeleted::Delete,
+    ),
+    (
+        "lecture_scripts",
+        &["lesson_id", "revision_number"],
+        "lesson_revisions",
+        OnParentDeleted::Delete,
+    ),
+    ("lesson_voices", &["lesson_id"], "lessons", OnParentDeleted::Delete),
+    ("podcasts", &["subject_id"], "document_collections", OnParentDeleted::Delete),
+    ("slide_ink", &["lesson_id"], "lessons", OnParentDeleted::Delete),
+    ("note_annotation_sources", &["note_id"], "notes", OnParentDeleted::Delete),
+    ("note_annotation_sources", &["document_id"], "documents", OnParentDeleted::Forget),
+];
+
+/// A mark, page, lesson or other row that one device added or changed while
+/// the other deleted its parent would name a parent that no longer exists.
+/// It follows its parent the way deleting the parent on this device would
+/// have treated it: removed with it, or kept without the reference. Both
+/// devices merge to the same rows, so both settle it the same way, and a
+/// conflict about a removed row is dropped since nothing is left to choose.
+fn follow_deleted_parents(plans: &mut [TablePlan]) -> Result<(), CommandError> {
+    for (child, columns, parent, on_deleted) in PARENTS {
+        let Some(kept) = plans
+            .iter()
+            .find(|plan| plan.spec.name == *parent)
+            .map(|plan| {
+                plan.merged
+                    .iter()
+                    .filter(|(_, payload)| payload.is_some())
+                    .map(|(key, _)| key.clone())
+                    .collect::<BTreeSet<_>>()
+            })
+        else {
+            continue;
+        };
+        let Some(plan) = plans.iter_mut().find(|plan| plan.spec.name == *child) else {
+            continue;
+        };
+        let mut removed = BTreeSet::new();
+        for (key, payload) in &mut plan.merged {
+            let Some(row) = payload.as_mut() else {
+                continue;
+            };
+            let cells = columns
+                .iter()
+                .map(|column| row.get(*column).cloned().unwrap_or(CellValue::Null))
+                .collect::<Vec<_>>();
+            if cells.iter().any(|cell| matches!(cell, CellValue::Null)) {
+                continue;
+            }
+            let parent_key = serde_json::to_string(&cells).map_err(CommandError::serialization)?;
+            if kept.contains(&parent_key) {
+                continue;
+            }
+            match on_deleted {
+                OnParentDeleted::Delete => {
+                    *payload = None;
+                    removed.insert(key.clone());
+                }
+                OnParentDeleted::Forget => {
+                    for column in *columns {
+                        row.insert((*column).to_string(), CellValue::Null);
+                    }
+                    for conflict in plan
+                        .conflicts
+                        .iter_mut()
+                        .filter(|conflict| &conflict.row_key == key)
+                    {
+                        conflict.selected_payload_json = optional_payload_json(Some(&*row))?;
+                    }
+                }
+            }
+        }
+        plan.conflicts
+            .retain(|conflict| !removed.contains(&conflict.row_key));
+    }
+    Ok(())
+}
+
+/// Narration audio is kept once per text and voice. When both devices spoke
+/// the same text in the same voice, each keeps its own recording: the other
+/// device's copy would break that rule, and the two sound the same.
+fn keep_own_narration(plans: &mut [TablePlan]) {
+    const SPOKEN_AS: [&str; 5] = ["text_sha256", "engine", "model_id", "voice", "format"];
+    let Some(segments) = plans
+        .iter_mut()
+        .find(|plan| plan.spec.name == "speech_segments")
+    else {
+        return;
+    };
+    let spoken = |row: &RowPayload| {
+        SPOKEN_AS
+            .iter()
+            .map(|column| row.get(*column).cloned())
+            .collect::<Vec<_>>()
+    };
+    let local_spoken = segments
+        .local
+        .values()
+        .map(|row| serde_json::to_string(&spoken(row)).unwrap_or_default())
+        .collect::<BTreeSet<_>>();
+    let mut dropped_assets = BTreeSet::new();
+    for (key, payload) in &mut segments.merged {
+        if segments.local.contains_key(key) {
+            continue;
+        }
+        let Some(row) = payload.as_ref() else {
+            continue;
+        };
+        if !local_spoken.contains(&serde_json::to_string(&spoken(row)).unwrap_or_default()) {
+            continue;
+        }
+        if let Some(asset_id) = row.get("asset_id") {
+            if let Ok(asset_key) = serde_json::to_string(&[asset_id]) {
+                dropped_assets.insert(asset_key);
+            }
+        }
+        *payload = None;
+    }
+    if let Some(audio) = plans.iter_mut().find(|plan| plan.spec.name == "lesson_audio") {
+        for key in dropped_assets {
+            if !audio.local.contains_key(&key) {
+                audio.merged.insert(key, None);
+            }
+        }
+    }
+}
+
 /// The single text value of a one-column row key.
 fn key_text(row_key: &str) -> Result<String, CommandError> {
     match serde_json::from_str::<Vec<CellValue>>(row_key)
@@ -925,7 +1213,7 @@ fn load_table(connection: &Connection, spec: &TableSpec) -> Result<TableRows, Co
         .where_clause
         .map(|clause| format!(" WHERE {clause}"))
         .unwrap_or_default();
-    let sql = format!("SELECT * FROM {}{where_sql}", quote_identifier(spec.name)?);
+    let sql = format!("SELECT * FROM {}{where_sql}", quote_identifier(spec.table)?);
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
     let columns = statement
         .column_names()
@@ -1013,7 +1301,7 @@ fn upsert_row(
     };
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) {}",
-        quote_identifier(spec.name)?,
+        quote_identifier(spec.table)?,
         quoted_columns.join(", "),
         placeholders,
         conflict_columns,
@@ -1054,7 +1342,7 @@ fn delete_row(
         .collect::<Result<Vec<_>, CommandError>>()?;
     let sql = format!(
         "DELETE FROM {} WHERE {}",
-        quote_identifier(spec.name)?,
+        quote_identifier(spec.table)?,
         predicates.join(" AND "),
     );
     let parameters = values
@@ -1130,6 +1418,29 @@ fn optional_payload_json(payload: Option<&RowPayload>) -> Result<Option<String>,
     payload
         .map(|payload| serde_json::to_string(payload).map_err(CommandError::serialization))
         .transpose()
+}
+
+/// Whether a database has the spec's table and every table its
+/// `where_clause` reads, which a library from an older release may lack.
+fn tables_exist(connection: &Connection, spec: &TableSpec) -> Result<bool, CommandError> {
+    if !table_exists(connection, spec.table)? {
+        return Ok(false);
+    }
+    for read in spec
+        .where_clause
+        .unwrap_or_default()
+        .split("FROM ")
+        .skip(1)
+    {
+        let table = read
+            .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+            .next()
+            .unwrap_or_default();
+        if !table_exists(connection, table)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn table_exists(connection: &Connection, table_name: &str) -> Result<bool, CommandError> {
@@ -1327,6 +1638,8 @@ mod tests {
             flashcards: false,
             documents: true,
             study_guides: false,
+            notes: false,
+            lessons: false,
             api_settings: false,
             api_credentials: false,
         };
