@@ -48,6 +48,9 @@ export const ICON_NAMES = [
   "lasso",
   "lightbulb",
   "link",
+  "list",
+  "list-checks",
+  "list-ordered",
   "listen",
   "maximize",
   "media",
@@ -74,6 +77,7 @@ export const ICON_NAMES = [
   "search",
   "settings",
   "shape-arrow",
+  "shape-curve",
   "shape-ellipse",
   "shape-line",
   "shape-rectangle",
@@ -334,6 +338,38 @@ function iconPath(name: IconName): ReactNode {
       return <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />;
     case "folder-open": // Lucide: folder-open
       return <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />;
+    case "list": // Lucide: list
+      return (
+        <>
+          <path d="M3 5h.01" />
+          <path d="M3 12h.01" />
+          <path d="M3 19h.01" />
+          <path d="M8 5h13" />
+          <path d="M8 12h13" />
+          <path d="M8 19h13" />
+        </>
+      );
+    case "list-checks": // Lucide: list-checks
+      return (
+        <>
+          <path d="M13 5h8" />
+          <path d="M13 12h8" />
+          <path d="M13 19h8" />
+          <path d="m3 17 2 2 4-4" />
+          <path d="m3 7 2 2 4-4" />
+        </>
+      );
+    case "list-ordered": // Lucide: list-ordered
+      return (
+        <>
+          <path d="M11 5h10" />
+          <path d="M11 12h10" />
+          <path d="M11 19h10" />
+          <path d="M4 4h1v5" />
+          <path d="M4 9h2" />
+          <path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />
+        </>
+      );
     case "formula": // Lucide: square-function
       return (
         <>
@@ -651,6 +687,14 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M13 5H19V11" />
           <path d="M19 5L5 19" />
+        </>
+      );
+    case "shape-curve": // Lucide: spline
+      return (
+        <>
+          <circle cx="19" cy="5" r="2" />
+          <circle cx="5" cy="19" r="2" />
+          <path d="M5 17A12 12 0 0 1 17 5" />
         </>
       );
     case "shape-ellipse": // Lucide: circle

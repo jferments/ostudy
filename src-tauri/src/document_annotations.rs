@@ -49,6 +49,8 @@ const FALLBACK_PAGE_SIZE: (f64, f64) = (612.0, 792.0);
 /// One annotation's geometry and look. Colors are `#rrggbb`; lengths are PDF
 /// points.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Every kind may carry `group`: marks on one page sharing a group are
+/// selected and moved together.
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AnnotationShape {
     Ink(InkStroke),
@@ -58,6 +60,7 @@ pub enum AnnotationShape {
     Rectangle(Frame),
     Ellipse(Frame),
     Text(TextNote),
+    Image(ImageMark),
 }
 
 /// A pen stroke. `points` holds `x, y, pressure` triples, pressure from 0 to 1.
@@ -71,6 +74,8 @@ pub struct InkStroke {
     pub color: String,
     pub stroke_width: f64,
     pub simulate_pressure: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// A translucent marker. A free stroke has `x, y` pairs in `points`; a
@@ -86,10 +91,12 @@ pub struct HighlightStroke {
     pub rects: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// A straight line or an arrow from (x1, y1) to (x2, y2); an arrow's head is at
-/// the second point.
+/// the second point, and at the first too when `both_ends` is set.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Segment {
@@ -99,9 +106,20 @@ pub struct Segment {
     pub y2: f64,
     pub color: String,
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash: Option<LineDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub both_ends: Option<bool>,
+    /// A curve: the two control points `[x1, y1, x2, y2]` of a cubic Bézier
+    /// from the first end to the second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curve: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
-/// The outline of a rectangle or of the ellipse inside it.
+/// The outline of a rectangle or of the ellipse inside it, optionally filled
+/// with `fill`. A filled frame may drop its outline with `border: false`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Frame {
@@ -111,6 +129,38 @@ pub struct Frame {
     pub height: f64,
     pub color: String,
     pub stroke_width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dash: Option<LineDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+/// How a line or outline is broken up; a solid line has none. Dashes and dots
+/// are spaced by the line's width.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineDash {
+    Dashed,
+    Dotted,
+}
+
+/// A picture placed on a notebook page: a managed image asset drawn into the
+/// box at (x, y) of `width` by `height`. Only notebook pages hold images; the
+/// notebook records which asset each one uses so the asset store keeps it.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageMark {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub asset_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// Typed text whose lines wrap at `width`; its height follows the text. A
@@ -131,10 +181,49 @@ pub struct TextNote {
     pub sticky: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collapsed: Option<bool>,
+    /// Only on a notebook page: the note is a link, and `text` is its label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<NoteLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
+/// Where a link on a notebook page goes. `button` shows it as a button that
+/// does the thing (a deck's Study starts Practice) rather than a small link.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NoteLink {
+    pub target: LinkTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub button: Option<bool>,
+}
+
+/// What a link names. Targets are looked up when a notebook opens, so a link
+/// whose target was deleted stays on the page and opens nothing.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum LinkTarget {
+    #[serde(rename_all = "camelCase")]
+    DocumentPage {
+        document_id: String,
+        page_number: i64,
+    },
+    #[serde(rename_all = "camelCase")]
+    StudyGuide { document_id: String },
+    #[serde(rename_all = "camelCase")]
+    Deck { deck_id: String },
+    #[serde(rename_all = "camelCase")]
+    NotebookPage {
+        notebook_id: String,
+        page_id: String,
+    },
+}
+
+/// A link's label is one short line.
+pub(crate) const MAX_LINK_LABEL_CHARS: usize = 200;
+
 impl AnnotationShape {
-    fn kind(&self) -> &'static str {
+    pub(crate) fn kind(&self) -> &'static str {
         match self {
             Self::Ink(_) => "ink",
             Self::Highlight(_) => "highlight",
@@ -143,10 +232,32 @@ impl AnnotationShape {
             Self::Rectangle(_) => "rectangle",
             Self::Ellipse(_) => "ellipse",
             Self::Text(_) => "text",
+            Self::Image(_) => "image",
         }
     }
 
-    fn validate(&self) -> Result<(), CommandError> {
+    /// The group the mark belongs to, if any.
+    pub(crate) fn group(&self) -> Option<&str> {
+        match self {
+            Self::Ink(stroke) => stroke.group.as_deref(),
+            Self::Highlight(stroke) => stroke.group.as_deref(),
+            Self::Line(segment) | Self::Arrow(segment) => segment.group.as_deref(),
+            Self::Rectangle(frame) | Self::Ellipse(frame) => frame.group.as_deref(),
+            Self::Text(note) => note.group.as_deref(),
+            Self::Image(image) => image.group.as_deref(),
+        }
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), CommandError> {
+        if let Some(group) = self.group() {
+            if !is_identifier(group) {
+                return Err(invalid("A group is named by a 32-character identifier."));
+            }
+        }
+        self.validate_shape()
+    }
+
+    fn validate_shape(&self) -> Result<(), CommandError> {
         match self {
             Self::Ink(stroke) => {
                 validate_points(&stroke.points, 3)?;
@@ -182,7 +293,21 @@ impl AnnotationShape {
                     return Err(invalid("A line needs two different end points."));
                 }
                 validate_color(&segment.color)?;
-                validate_stroke_width(segment.stroke_width)
+                validate_stroke_width(segment.stroke_width)?;
+                if let Some(curve) = &segment.curve {
+                    if curve.len() != 4 {
+                        return Err(invalid("A curve has two control points."));
+                    }
+                    for value in curve {
+                        validate_coordinate(*value)?;
+                    }
+                }
+                match segment.both_ends {
+                    None => Ok(()),
+                    Some(true) if matches!(self, Self::Arrow(_)) => Ok(()),
+                    Some(true) => Err(invalid("Only an arrow can have a head at both ends.")),
+                    Some(false) => Err(invalid("A one-headed arrow leaves bothEnds out.")),
+                }
             }
             Self::Rectangle(frame) | Self::Ellipse(frame) => {
                 validate_coordinate(frame.x)?;
@@ -190,7 +315,27 @@ impl AnnotationShape {
                 validate_extent(frame.x, frame.width)?;
                 validate_extent(frame.y, frame.height)?;
                 validate_color(&frame.color)?;
-                validate_stroke_width(frame.stroke_width)
+                validate_stroke_width(frame.stroke_width)?;
+                if let Some(fill) = &frame.fill {
+                    validate_color(fill)?;
+                }
+                match frame.border {
+                    None => Ok(()),
+                    Some(false) if frame.fill.is_some() => Ok(()),
+                    Some(false) => Err(invalid("A shape without a border needs a fill.")),
+                    Some(true) => Err(invalid("A shape with a border leaves border out.")),
+                }
+            }
+            Self::Image(image) => {
+                validate_coordinate(image.x)?;
+                validate_coordinate(image.y)?;
+                validate_extent(image.x, image.width)?;
+                validate_extent(image.y, image.height)?;
+                if is_identifier(&image.asset_id) {
+                    Ok(())
+                } else {
+                    Err(invalid("A picture names its image by its identifier."))
+                }
             }
             Self::Text(note) => {
                 validate_coordinate(note.x)?;
@@ -200,7 +345,11 @@ impl AnnotationShape {
                     return Err(invalid("A text note needs some text."));
                 }
                 let limit = match note.sticky {
+                    None if note.link.is_some() => MAX_LINK_LABEL_CHARS,
                     None => MAX_TEXT_CHARS,
+                    Some(true) if note.link.is_some() => {
+                        return Err(invalid("A sticky note cannot also be a link."))
+                    }
                     Some(true) => MAX_STICKY_CHARS,
                     Some(false) => {
                         return Err(invalid(
@@ -228,6 +377,9 @@ impl AnnotationShape {
                 {
                     return Err(invalid("A text note cannot contain control characters."));
                 }
+                if let Some(link) = &note.link {
+                    link.validate()?;
+                }
                 validate_color(&note.color)?;
                 if !note.font_size.is_finite()
                     || !(MIN_FONT_SIZE..=MAX_FONT_SIZE).contains(&note.font_size)
@@ -242,13 +394,14 @@ impl AnnotationShape {
     }
 
     /// The stored payload: the shape's own fields, without its kind.
-    fn payload_json(&self) -> Result<String, CommandError> {
+    pub(crate) fn payload_json(&self) -> Result<String, CommandError> {
         let json = match self {
             Self::Ink(stroke) => serde_json::to_string(stroke),
             Self::Highlight(stroke) => serde_json::to_string(stroke),
             Self::Line(segment) | Self::Arrow(segment) => serde_json::to_string(segment),
             Self::Rectangle(frame) | Self::Ellipse(frame) => serde_json::to_string(frame),
             Self::Text(note) => serde_json::to_string(note),
+            Self::Image(image) => serde_json::to_string(image),
         }
         .map_err(CommandError::serialization)?;
         if json.len() > MAX_PAYLOAD_BYTES {
@@ -259,7 +412,7 @@ impl AnnotationShape {
         Ok(json)
     }
 
-    fn from_stored(kind: &str, payload: &str) -> Result<Self, serde_json::Error> {
+    pub(crate) fn from_stored(kind: &str, payload: &str) -> Result<Self, serde_json::Error> {
         Ok(match kind {
             "ink" => Self::Ink(serde_json::from_str(payload)?),
             "highlight" => Self::Highlight(serde_json::from_str(payload)?),
@@ -268,12 +421,57 @@ impl AnnotationShape {
             "rectangle" => Self::Rectangle(serde_json::from_str(payload)?),
             "ellipse" => Self::Ellipse(serde_json::from_str(payload)?),
             "text" => Self::Text(serde_json::from_str(payload)?),
+            "image" => Self::Image(serde_json::from_str(payload)?),
             other => {
                 return Err(serde::de::Error::custom(format!(
                     "unknown annotation kind {other}"
                 )))
             }
         })
+    }
+}
+
+impl AnnotationShape {
+    /// Whether this is a link, which only a notebook page holds.
+    pub(crate) fn is_link(&self) -> bool {
+        matches!(self, Self::Text(TextNote { link: Some(_), .. }))
+    }
+
+    /// The managed asset a picture shows; only notebook pages hold pictures.
+    pub(crate) fn image_asset(&self) -> Option<&str> {
+        match self {
+            Self::Image(image) => Some(&image.asset_id),
+            _ => None,
+        }
+    }
+}
+
+impl NoteLink {
+    fn validate(&self) -> Result<(), CommandError> {
+        if self.button == Some(false) {
+            return Err(invalid("A link is either a button or not marked at all."));
+        }
+        let ids: Vec<&str> = match &self.target {
+            LinkTarget::DocumentPage {
+                document_id,
+                page_number,
+            } => {
+                if *page_number < 1 {
+                    return Err(invalid("A link to a page needs its page number."));
+                }
+                vec![document_id]
+            }
+            LinkTarget::StudyGuide { document_id } => vec![document_id],
+            LinkTarget::Deck { deck_id } => vec![deck_id],
+            LinkTarget::NotebookPage {
+                notebook_id,
+                page_id,
+            } => vec![notebook_id, page_id],
+        };
+        for id in ids {
+            validate_entity_id(id, "link target")?;
+        }
+        Ok(())
     }
 }
 
@@ -430,6 +628,12 @@ pub(crate) fn apply_changes(
                 return Err(page_missing());
             }
             shape.validate()?;
+            if shape.is_link() {
+                return Err(invalid("Links go on notebook pages, not on a document."));
+            }
+            if shape.image_asset().is_some() {
+                return Err(invalid("Pictures go on notebook pages, not on a document."));
+            }
         }
     }
 
@@ -748,12 +952,15 @@ fn measure_pages(paths: &AppPaths, renders: Vec<PageRender>) -> Vec<AnnotatedPag
         .collect()
 }
 
-fn validate_annotation_id(id: &str) -> Result<(), CommandError> {
-    if id.len() == 32
+fn is_identifier(id: &str) -> bool {
+    id.len() == 32
         && id
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-    {
+}
+
+fn validate_annotation_id(id: &str) -> Result<(), CommandError> {
+    if is_identifier(id) {
         Ok(())
     } else {
         Err(CommandError::new(
@@ -878,7 +1085,9 @@ fn other_document() -> CommandError {
 
 #[path = "document_annotations/page_tiles.rs"]
 mod page_tiles;
-pub(crate) use page_tiles::{render_document_page_tile, RenderDocumentPageTileInput};
+pub(crate) use page_tiles::{
+    pdf_source_path, render_document_page_tile, RenderDocumentPageTileInput,
+};
 
 #[path = "document_annotations/page_text.rs"]
 mod page_text;

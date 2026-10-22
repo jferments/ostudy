@@ -36,6 +36,7 @@ LIBRARY_VIEW_HEADINGS = {
     "decks": "All cards",
     "documents": "Documents",
     "study-guides": "Study Guides",
+    "notes": "Notes",
 }
 CHART_DATA_SELECTOR = "main section[aria-labelledby='progress-heading'] table"
 
@@ -688,10 +689,10 @@ WORKBENCH_TREE_XPATH = "//main//*[@data-testid='library-workbench']//nav[@aria-l
 
 
 def open_library_view(session_id: str, view: str, deadline: float) -> None:
-    """Open one of Library's pages: the Workbench ("decks"), Documents or Study guides.
+    """Open one of Library's pages: the Workbench ("decks"), Documents, Notes or Study guides.
 
     Library reopens the page used last. Every page carries Library's tabs:
-    Overview, Lessons, Study guides, Documents and Flashcards (the Workbench).
+    Overview, Lessons, Study guides, Documents, Notes and Flashcards (the Workbench).
     """
     library = find_element(
         session_id,

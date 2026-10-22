@@ -131,7 +131,8 @@ async fn process_initial_flashcards(
     if !processing_reserved {
         document_store::mark_document_processing(database, document_id)?;
     }
-    let stored = ensure_document_derivatives(database, paths, render_runtime, document_id).await?;
+    let (stored, figure_search) =
+        ensure_document_derivatives(database, paths, render_runtime.clone(), document_id).await?;
 
     let source = stored.source_descriptor()?;
     source.validate()?;
@@ -518,7 +519,21 @@ async fn process_initial_flashcards(
         })
     });
 
-    let (cards, guide) = parallel::run(card_future, guide_future).await;
+    // Figures are read beside cards and the guide once their search is done.
+    let figure_task = task.fork_usage();
+    let figure_reading = crate::document_figures::read_after_search(
+        crate::document_figures::ReadAfterSearch {
+            database,
+            paths,
+            render: &render_runtime,
+            runtime,
+            task: &figure_task,
+            document_id,
+        },
+        figure_search,
+    );
+    let ((cards, guide), ()) =
+        tokio::join!(parallel::run(card_future, guide_future), figure_reading);
     match guide {
         Ok(guide) => crate::logging::info_target(
             "documents.generation",
@@ -544,15 +559,20 @@ async fn process_initial_flashcards(
     cards
 }
 
+/// The figure search a rebuild started, which generation does not wait for.
+pub(crate) type FigureSearch = tauri::async_runtime::JoinHandle<()>;
+
 /// Extract, render and chunk the managed source when its derivatives are missing
-/// or were made by an older backend. No provider is contacted.
+/// or were made by an older backend. No provider is contacted. A rebuilt PDF
+/// also starts its figure search, returned so a caller can read its figures.
 pub(crate) async fn ensure_document_derivatives(
     database: &Database,
     paths: &AppPaths,
     render_runtime: PdfRenderRuntime,
     document_id: &str,
-) -> Result<InitialDocumentContext, CommandError> {
+) -> Result<(InitialDocumentContext, Option<FigureSearch>), CommandError> {
     let mut stored = load_context(database, document_id)?;
+    let mut figure_search = None;
     let source_path = paths.resolve_relative(&stored.source_relative_path);
     if !source_path.is_file() {
         return Err(CommandError::new(
@@ -577,6 +597,7 @@ pub(crate) async fn ensure_document_derivatives(
         let database_owned = database.clone();
         let paths_owned = paths.clone();
         let source_owned = source_path.clone();
+        let figure_runtime = render_runtime.clone();
         let id_owned = document_id.to_string();
         let (progress_sender, mut progress_receiver) =
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
@@ -629,9 +650,24 @@ pub(crate) async fn ensure_document_derivatives(
             )
         })??;
         document_ingestion::persist_ingested_document(database, document_id, &processed)?;
+        if format == DocumentFormat::Pdf {
+            // Figures are found beside generation, which does not wait for them.
+            let database = database.clone();
+            let document_id = document_id.to_string();
+            let source_path = source_path.clone();
+            figure_search = Some(tauri::async_runtime::spawn(async move {
+                crate::document_figures::find_after_ingestion(
+                    &database,
+                    figure_runtime,
+                    &document_id,
+                    source_path,
+                )
+                .await;
+            }));
+        }
         stored = load_context(database, document_id)?;
     }
-    Ok(stored)
+    Ok((stored, figure_search))
 }
 
 fn load_context(

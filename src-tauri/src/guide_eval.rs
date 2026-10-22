@@ -266,8 +266,9 @@ async fn import_and_ingest(
         ExternalImportPurpose::Document,
         source,
     )?;
-    let imported = import_staged_document(database, paths, &staged.id)?;
+    let imported = import_staged_document(database, paths, &staged.id, None)?;
     ensure_document_derivatives(database, paths, render_runtime, &imported.document_id).await?;
+    // The eval reads text and page renders; it does not wait for figures.
     Ok(imported.document_id)
 }
 

@@ -20,6 +20,7 @@ import { AnnotatorToolbar } from "./AnnotatorToolbar";
 import { MarkCardEditor, type CardMark } from "./MarkCardEditor";
 import { useAnnotatedPdfExport } from "./useAnnotatedPdfExport";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "./useAnnotatorViewport";
+import { useTextFormat } from "./textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "./useDocumentAnnotator";
 
 interface DocumentAnnotatorProps {
@@ -36,8 +37,8 @@ interface DocumentAnnotatorProps {
 /** How long a page opened from a card's source stays outlined. */
 const CITED_PAGE_MARK_MS = 2500;
 
-const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+export const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
+  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", c: "curve", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -217,6 +218,7 @@ function ReadyAnnotator({
   const focusMark = cited !== null && focusAnnotationId
     ? controller.annotations.get(cited)?.find((annotation) => annotation.id === focusAnnotationId) ?? null
     : null;
+  const textFormat = useTextFormat(controller);
   const { select, setTool, textHeight } = controller;
   // Once the pages have their size, the view goes to the card's mark and selects
   // it, or, without one, to the cited page, which is outlined for a moment.
@@ -281,6 +283,7 @@ function ReadyAnnotator({
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const command = key === "z" ? (event.shiftKey ? controller.redo : controller.undo)
         : key === "y" ? controller.redo
+          : key === "g" && controller.group.length > 0 ? () => controller.setGrouped(!event.shiftKey)
           : key === "=" || key === "+" ? viewport.zoomIn
             : key === "-" ? viewport.zoomOut
               : key === "0" ? viewport.fitToWidth
@@ -337,6 +340,7 @@ function ReadyAnnotator({
           onTool={chooseTool}
           style={controller.activeStyle}
           onStyle={controller.chooseStyle}
+          textFormat={textFormat.format}
           selection={selected ? {
             isText: selected.shape.kind === "text",
             isSticky: isStickyNote(selected.shape),
@@ -355,6 +359,8 @@ function ReadyAnnotator({
           onTogglePenOnly={controller.togglePenOnly}
           groupSize={controller.group.length}
           onDeleteGroup={controller.deleteGroup}
+          isOneGroup={controller.isOneGroup}
+          onGroup={controller.setGrouped}
           eraseMode={controller.eraseMode}
           onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
@@ -376,6 +382,7 @@ function ReadyAnnotator({
           coarse={inputMode === "coarse"}
           markedPage={outlined}
         />
+        {textFormat.dialog}
         {cited !== null ? (
           <p role="status" className="tw:sr-only">
             {openedAtMark ? `Opened at the card's mark on page ${cited}` : `Opened at page ${cited}`}

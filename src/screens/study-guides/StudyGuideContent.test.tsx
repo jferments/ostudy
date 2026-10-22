@@ -51,6 +51,18 @@ describe("StudyGuideStructuredContent", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Check yourself" })).toBeTruthy();
   });
 
+  it("shows a designed page over text kept for screen readers, with the checks still live", () => {
+    const { container } = render(<StudyGuideStructuredContent content={content()} headingLevel={2} showTerms={false}
+      designedPage={{ url: "blob:page", width: 538, height: 700 }} />);
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:page");
+    expect(screen.getByRole("heading", { level: 2, name: "Starling forces" }).closest(".tw\\:sr-only")).not.toBeNull();
+    const check = screen.getByRole("region", { name: "Check yourself" });
+    expect(check.closest(".tw\\:sr-only")).toBeNull();
+    fireEvent.click(within(check).getByRole("button", { name: "Show answer" }));
+    expect(within(check).getByText("The net filtration pressure.")).toBeTruthy();
+  });
+
   it("keeps its own check-yourself progress when no caller owns it", () => {
     render(<StudyGuideStructuredContent content={content()} />);
 

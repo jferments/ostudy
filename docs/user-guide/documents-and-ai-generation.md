@@ -4,7 +4,7 @@ Library's **Documents** page keeps a local copy of each source you add and turns
 
 ## Before you begin
 
-Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a provider is set up, Documents shows a warning saying so.
+Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a model is chosen for that task, **Make study materials**, **Make a study guide**, **Make more cards…** and **Retry** open the AI setup guide in **Settings → AI** instead.
 
 For a scanned PDF on desktop, install the OCR runtime and trained data described in your platform's installation guide. Android packages an English Tesseract model with the application and needs no separate OCR installation or download. A missing platform capability can make the Documents page unavailable rather than sending the original file elsewhere.
 
@@ -12,11 +12,12 @@ The original file is not uploaded to the model. ostudy keeps a local copy, reads
 
 ## Add a document
 
-On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. For a PDF, **Import document** then asks whether to **Use images from this document** (on unless you turn it off): with it on, oStudy finds the document's figures once its pages are read (see [Figures](#figures)); with it off, the document is used as text. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
 
 Each document is one row: its format, length and when it was added, its reading range if it has one, what it has made so far (**Study guide**, its cards, or **Nothing made yet**), its status while it is being read or after a failure, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
 - **Annotate**, for a PDF whose pages have been drawn ([Annotating PDF pages](pdf-annotation.md)).
+- **Figures**, for the same PDFs: the figures oStudy found in it ([Figures](#figures)).
 - **Reading range…**, for a document in a subject (see [Documents in a subject](#documents-in-a-subject)).
 - **Add to a subject…** or **Move to another subject…**, and **Remove from subject**.
 - **Make more cards…**, once the document has a deck.
@@ -75,6 +76,18 @@ ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, 
 
 The format is detected from the file's contents. The older Word, PowerPoint and Excel formats also need their usual file extension, and CSV needs its `.csv` extension because it has no signature of its own. Renaming a file does not make it a supported format. Web pages, audio, and other formats an underlying library might read are not supported.
 
+## Figures
+
+For a PDF imported with its images on, oStudy looks for its figures once the pages are read, beside card and guide writing, without contacting a provider. A figure is a picture or a drawing big enough to study. Logos and other marks that repeat in the same place on several pages, pictures in the header or footer band, ruled tables and boxed paragraphs are left out, and so is a page that is one scanned picture.
+
+**Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
+
+When your AI model can see images, oStudy also reads each figure on its page, beside card and guide writing: a short title, what the figure shows, how the text uses it, and how much it matters (**Essential**, **Key figure**, **Helpful** or **Minor**). It also marks a figure that is not worth studying, such as a decorative photo. **Read figures with AI** in the page's **…** menu reads them for a document imported earlier, and **Read figures again** reads them anew. A model that cannot see images leaves figures with their captions and passages, and the page says so. Searching again keeps what was read of a figure found in the same place.
+
+A document imported before figures existed, or with its images off, shows **Find figures** or **Use images** there. **Stop using images** in the page's **…** menu forgets the figures found, hidden ones included, and **Find figures again** searches the PDF again.
+
+Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. Figures are not yet used by flashcards, study guides or lessons; that comes next.
+
 ## How sources are read
 
 ostudy keeps a managed copy of the source and extracts its text, structure, images and page renders. What is extracted is interpreted once and saved; flashcards, study guides and Tutor all reuse it, and changing the chat or guide model does not repeat it.
@@ -119,7 +132,7 @@ On desktop, closing while documents are processing warns that the work will be i
 
 **Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 
-Remake a guide from the document's menu. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
+Remake a guide from the document's menu. Its row shows a new Study Guide bar straight away: **Preparing** while oStudy plans the sections, then how many sections are completed ("3 / 14 sections completed"), **Organizing the guide** while it adds chapters and the introduction, and **Saving guide**. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
 
 ## Analysis details
 
@@ -137,7 +150,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
 Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 

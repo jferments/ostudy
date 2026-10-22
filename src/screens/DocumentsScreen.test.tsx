@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as aiProfilesIpc from "../ipc/aiProfiles";
 import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as annotationIpc from "../ipc/documentAnnotations";
+import * as figureIpc from "../ipc/documentFigures";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as studyMaterialsIpc from "../ipc/studyMaterials";
@@ -13,6 +15,10 @@ import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../ipc/aiProfiles", () => ({
+  getAiTaskDefaults: vi.fn(),
+  listAiProviderProfiles: vi.fn(),
+}));
 vi.mock("../ipc/subjects", () => ({
   getSubjectLibrary: vi.fn(),
   moveDocumentToSubject: vi.fn(),
@@ -28,6 +34,13 @@ vi.mock("../ipc/documentAnnotations", () => ({
   getDocumentAnnotations: vi.fn(),
   applyDocumentAnnotationChanges: vi.fn(),
   MAX_ANNOTATION_CHANGES_PER_REQUEST: 500,
+  renderDocumentPageTile: vi.fn(),
+}));
+vi.mock("../ipc/documentFigures", () => ({
+  getDocumentFigures: vi.fn(),
+  findDocumentFigures: vi.fn(),
+  setDocumentFiguresUseImages: vi.fn(),
+  setDocumentFigureHidden: vi.fn(),
 }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
@@ -146,7 +159,7 @@ function makeProgress(phase: string): documentIpc.DocumentGenerationProgress {
 function renderDocuments(
   showToast = vi.fn(),
   refreshDecks = vi.fn().mockResolvedValue([]),
-  props: { subjectId?: string | null; onOpenSubject?: (subjectId: string | null) => void } = {},
+  props: { subjectId?: string | null; onOpenSubject?: (subjectId: string | null) => void; onSetUpAi?: () => void } = {},
 ) {
   render(
     <OverlayProvider>
@@ -208,6 +221,10 @@ describe("DocumentsScreen", () => {
     } as studyGuideIpc.DocumentStudyGuide);
     vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue(null);
     vi.mocked(studyGuideIpc.getDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
+    vi.mocked(aiProfilesIpc.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: "openrouter" });
+    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([
+      { id: "openrouter" } as aiProfilesIpc.AiProviderProfileSummary,
+    ]);
   });
 
   it("shows a simple upload-first empty state without archive controls", async () => {
@@ -237,13 +254,22 @@ describe("DocumentsScreen", () => {
       documentId,
     });
     vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
-    vi.mocked(documentIpc.listDocuments)
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([completed]);
+    // The library holds the document only once it is imported, which now
+    // waits for the import dialog while Documents keeps polling.
+    vi.mocked(documentIpc.listDocuments).mockImplementation(async () => (
+      vi.mocked(documentIpc.importDocument).mock.calls.length > 0 ? [completed] : []
+    ));
     const { showToast, refreshDecks } = renderDocuments();
     await screen.findByRole("heading", { name: "No documents yet" });
 
     await chooseUpload("Document…");
+    // A PDF asks whether to use its images, which are on unless turned off.
+    const importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    expect(within(importDialog).getByText("cardiac-physiology.pdf")).toBeTruthy();
+    expect(within(importDialog).getByRole("checkbox", { name: "Use images from this document" })
+      .getAttribute("aria-checked")).toBe("true");
+    expect(documentIpc.importDocument).not.toHaveBeenCalled();
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Import" }));
 
     await waitFor(() => {
       expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
@@ -251,7 +277,7 @@ describe("DocumentsScreen", () => {
         "info",
         "Document processing started. You can add more documents while this job runs.",
       );
-      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: true });
       expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
@@ -267,6 +293,38 @@ describe("DocumentsScreen", () => {
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("12 sec")).toBeTruthy();
     expect(within(dialog).getByText("45,678")).toBeTruthy();
+  });
+
+  it("imports a PDF without its images when the learner turns them off, and not at all on cancel", async () => {
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "document",
+      detectedKind: "pdf",
+      displayName: "renal.pdf",
+      mediaType: "application/pdf",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
+    vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId });
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
+    renderDocuments();
+    await screen.findByRole("heading", { name: "No documents yet" });
+
+    await chooseUpload("Document…");
+    let importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import document" })).toBeNull());
+    expect(documentIpc.importDocument).not.toHaveBeenCalled();
+
+    await chooseUpload("Document…");
+    importDialog = await screen.findByRole("dialog", { name: "Import document" });
+    fireEvent.click(within(importDialog).getByRole("checkbox", { name: "Use images from this document" }));
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Import" }));
+    await waitFor(() => {
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), { useImages: false });
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId, undefined);
+    });
   });
 
   it("shows detected non-PDF formats with truthful canonical section counts in metadata", async () => {
@@ -578,7 +636,7 @@ describe("DocumentsScreen", () => {
 
     const menu = await openDocumentActions();
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Annotate", "Make more cards…", "Make a study guide", "Rename…", "Details", "Delete",
+      "Annotate", "Figures", "Make more cards…", "Make a study guide", "Rename…", "Details", "Delete",
     ]);
   });
 
@@ -618,6 +676,58 @@ describe("DocumentsScreen", () => {
     expect(documentIpc.generateMoreDocumentFlashcards).not.toHaveBeenCalled();
   });
 
+  it("shows a fresh guide bar as soon as a finished guide is remade", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([{
+      id: "c".repeat(32), documentId, planId: "d".repeat(32), artifactKind: "study_guide",
+      state: "succeeded", totalUnits: 14, completedUnits: 14, safeErrorCode: "", safeErrorMessage: "",
+      apiTokenCount: 1_000, apiTokenUsageComplete: true,
+      createdAt: 1, startedAt: 2, updatedAt: 3, completedAt: 4,
+    }]);
+    // The new run is still rebuilding the outline: it has no record of its own yet.
+    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockReturnValue(new Promise(() => undefined));
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Remake the study guide");
+
+    // The finished guide's full bar does not linger; the row shows the new run starting.
+    const row = await screen.findByTestId("document-row-progress");
+    expect(within(row).getByText("Making a study guide")).toBeTruthy();
+    expect(within(row).getByRole("progressbar").getAttribute("aria-valuenow")).toBeNull();
+    const details = await openGenerationDetails();
+    expect(within(details).getByText("Preparing")).toBeTruthy();
+    expect(within(details).queryByText(/Study Guide usage/u)).toBeNull();
+  });
+
+  it("opens AI setup from a document's Make actions while no model is set", async () => {
+    vi.mocked(aiProfilesIpc.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null });
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    const onSetUpAi = vi.fn();
+    renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { onSetUpAi });
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+    await chooseDocumentAction("Make a study guide");
+    expect(onSetUpAi).toHaveBeenCalledTimes(1);
+    await chooseDocumentAction("Make more cards…");
+    expect(onSetUpAi).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog", { name: "Make more cards" })).toBeNull();
+    expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
+  });
+
+  it("makes the study guide itself once a model is set", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    const onSetUpAi = vi.fn();
+    renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { onSetUpAi });
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+    await chooseDocumentAction("Make a study guide");
+    await waitFor(() => expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId));
+    expect(onSetUpAi).not.toHaveBeenCalled();
+  });
+
   it("opens a PDF's pages for annotation and returns to the list", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     vi.mocked(annotationIpc.getDocumentAnnotations).mockResolvedValue({ documentId, pages: [], annotations: [] });
@@ -631,6 +741,22 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
     expect(annotationIpc.applyDocumentAnnotationChanges).not.toHaveBeenCalled();
+  });
+
+  it("opens a PDF's figures and returns to the list", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(figureIpc.getDocumentFigures).mockResolvedValue({
+      documentId, useImages: true, state: "none", scannedAt: null, reading: "none", readAt: null, figures: [],
+    });
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await chooseDocumentAction("Figures");
+
+    expect(await screen.findByText("No figures found yet")).toBeTruthy();
+    expect(figureIpc.getDocumentFigures).toHaveBeenCalledWith(documentId);
+    fireEvent.click(screen.getByRole("button", { name: "Back to documents" }));
+    expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
   });
 
   it("offers annotation only for PDFs whose pages were drawn", async () => {
@@ -806,6 +932,19 @@ describe("DocumentsScreen", () => {
       expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expect.arrayContaining([
         "Reading range…", "Move to another subject…", "Remove from subject",
       ]));
+    });
+
+    it("opens AI setup from Make study materials while the chosen service is gone", async () => {
+      vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([]);
+      const onSetUpAi = vi.fn();
+      renderDocuments(vi.fn(), vi.fn().mockResolvedValue([]), { subjectId: cardiology.id, onSetUpAi });
+
+      const make = await screen.findByRole("button", { name: /Make study materials/u });
+      await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalled());
+      await act(async () => undefined);
+      fireEvent.click(make);
+      expect(onSetUpAi).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("dialog", { name: "Make study materials" })).toBeNull();
     });
 
     it("files a loose document in a subject from Add to…", async () => {

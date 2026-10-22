@@ -6,6 +6,7 @@ import {
   cancelSubjectCourseWriting,
   getLesson,
   getLessonLecture,
+  getLessonSlideDesigns,
   prepareLessonLecturePptx,
   getSubjectCourseWritingProgress,
   listSubjectLessons,
@@ -63,6 +64,13 @@ describe("lesson IPC", () => {
     await getLessonLecture(lessonId, 2);
     expect(invoke).toHaveBeenLastCalledWith("get_lesson_lecture", {
       input: { lessonId, revisionNumber: 2 },
+    });
+  });
+
+  it("lays out a revision's slides in the chosen theme", async () => {
+    await getLessonSlideDesigns(lessonId, 3, "plum");
+    expect(invoke).toHaveBeenLastCalledWith("get_lesson_slide_designs", {
+      input: { lessonId, revisionNumber: 3, theme: "plum" },
     });
   });
 

@@ -14,7 +14,9 @@ import {
 } from "../../ipc/externalFiles";
 import {
   answerLectureQuestion,
+  answerLessonCheck,
   getLessonLecture,
+  getLessonSlideDesigns,
   getLessonLectureScript,
   narrateLecturePart,
   narrateLessonStep,
@@ -22,7 +24,9 @@ import {
   writeLessonLectureScript,
   type Lecture,
   type LectureScript,
+  type LessonStep,
 } from "../../ipc/lessons";
+import { getMaterialInk } from "../../ipc/materialInk";
 import { getSpeechSettings } from "../../ipc/speech";
 import {
   createManagedMediaObjectUrl,
@@ -36,7 +40,9 @@ vi.mock("../../ipc/common", () => ({
 }));
 vi.mock("../../ipc/lessons", () => ({
   answerLectureQuestion: vi.fn(),
+  answerLessonCheck: vi.fn(),
   getLessonLecture: vi.fn(),
+  getLessonSlideDesigns: vi.fn(),
   getLessonLectureScript: vi.fn(),
   narrateLecturePart: vi.fn(),
   narrateLessonStep: vi.fn(),
@@ -44,6 +50,15 @@ vi.mock("../../ipc/lessons", () => ({
   writeLessonLectureScript: vi.fn(),
 }));
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+vi.mock("../../ipc/materialInk", () => ({ getMaterialInk: vi.fn() }));
+vi.mock("../ink/InkEditor", () => ({
+  InkEditor: ({ pageKey, pages, onClose }: { pageKey?: string; pages: { key: string }[]; onClose: () => void }) => (
+    <div>
+      <p>Writing on {pages.length} slides from {pageKey}</p>
+      <button type="button" onClick={onClose}>Back to the lecture</button>
+    </div>
+  ),
+}));
 vi.mock("../../ipc/externalFiles", () => ({
   publishPreparedExport: vi.fn(),
   releasePreparedExport: vi.fn(),
@@ -102,7 +117,24 @@ const lecture: Lecture = {
   ],
 };
 
-function open(stepKey: string | null = null) {
+const multiplier: LessonStep = {
+  key: "multiplier",
+  title: "The multiplier",
+  blocks: [],
+  narration: "Each pump adds a little.",
+  slidePoints: ["Small steps stack"],
+  checkKind: "single_choice",
+  check: {
+    prompt: "What builds the gradient?",
+    options: [
+      { id: "a", text: "Small steps stacking" },
+      { id: "b", text: "One big pump" },
+    ],
+  },
+  knowledgeUnitIds: [],
+};
+
+function open(stepKey: string | null = null, onAnswered = vi.fn()) {
   const onClose = vi.fn();
   render(
     <LectureView
@@ -110,7 +142,11 @@ function open(stepKey: string | null = null) {
       revisionNumber={2}
       lessonTitle="Loop of Henle"
       stepKey={stepKey}
+      steps={[multiplier]}
+      answered={{}}
+      onAnswered={onAnswered}
       onClose={onClose}
+      showToast={vi.fn()}
     />,
   );
   return onClose;
@@ -130,6 +166,24 @@ describe("LectureView", () => {
   beforeEach(() => {
     vi.mocked(getLessonLecture).mockReset();
     vi.mocked(getLessonLecture).mockResolvedValue(lecture);
+    vi.mocked(getLessonSlideDesigns).mockReset();
+    vi.mocked(getLessonSlideDesigns).mockImplementation(async (lessonId, revisionNumber, theme) => ({
+      lessonId,
+      revisionNumber,
+      theme,
+      slides: lecture.slides.map((item) => ({ key: item.key, svg: `<svg data-theme="${theme}"/>` })),
+    }));
+    let made = 0;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => `blob:design-${(made += 1)}`),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    window.localStorage.clear();
+    vi.mocked(getMaterialInk).mockReset();
+    vi.mocked(getMaterialInk).mockResolvedValue([]);
+    vi.mocked(answerLessonCheck).mockReset();
     vi.mocked(getSpeechSettings).mockResolvedValue({
       profileId: "r".repeat(32),
       modelId: "fish-audio/drama-3",
@@ -512,5 +566,69 @@ describe("LectureView", () => {
         slide().getByRole("heading", { name: "Two limbs, two jobs" }),
       ).toBeTruthy();
     });
+  });
+  it("shows each slide designed in the chosen theme and remembers the theme", async () => {
+    open("multiplier");
+    await vi.waitFor(() => expect(screen.getByTestId("lecture-slide").querySelector("img")).toBeTruthy());
+    expect(getLessonSlideDesigns).toHaveBeenLastCalledWith("lesson-1", 2, "navy");
+    // The slide's text stays for screen readers beside its picture.
+    expect(slide().getByRole("heading", { name: "The multiplier" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Slides" }).querySelectorAll("img")).toHaveLength(5);
+
+    fireEvent.click(screen.getByRole("button", { name: "Theme: Navy" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Plum" }));
+    await vi.waitFor(() => expect(getLessonSlideDesigns).toHaveBeenLastCalledWith("lesson-1", 2, "plum"));
+    expect(await screen.findByRole("button", { name: "Theme: Plum" })).toBeTruthy();
+    expect(window.localStorage.getItem("ostudy.lectureSlideTheme")).toBe("plum");
+  });
+
+  it("draws the learner's marks over a slide and opens the slides to write on at the current one", async () => {
+    vi.mocked(getMaterialInk).mockResolvedValue([{
+      id: "m".repeat(32),
+      pageKey: "step:multiplier",
+      shape: { kind: "line", x1: 10, y1: 10, x2: 200, y2: 90, color: "#d64545", strokeWidth: 3 },
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    }]);
+    open("multiplier");
+    await vi.waitFor(() => expect(screen.getByTestId("lecture-slide").querySelector("[data-ink-overlay]")).toBeTruthy());
+    expect(getMaterialInk).toHaveBeenCalledWith({ kind: "lesson", lessonId: "lesson-1" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write on slides" }));
+    expect(await screen.findByText("Writing on 5 slides from step:multiplier")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the lecture" }));
+    expect(await screen.findByText("Slide 4 of 5")).toBeTruthy();
+    expect(getMaterialInk).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the plain slide when the designed slides cannot be laid out", async () => {
+    vi.mocked(getLessonSlideDesigns).mockRejectedValue(new Error("no fonts"));
+    open("multiplier");
+    expect(await screen.findByText("Slide 4 of 5")).toBeTruthy();
+    await vi.waitFor(() => expect(getLessonSlideDesigns).toHaveBeenCalled());
+    expect(screen.getByTestId("lecture-slide").querySelector("img")).toBeNull();
+    expect(slide().getByText("Small steps stack")).toBeTruthy();
+  });
+
+  it("answers a step's check beside its slide", async () => {
+    const onAnswered = vi.fn();
+    const result = {
+      correct: true,
+      correctOptionId: "a",
+      explanation: "Each pass adds a little.",
+      progress: { revisionNumber: 2, currentStep: 1, furthestStep: 1, finishedAt: null, checks: {} },
+    };
+    vi.mocked(answerLessonCheck).mockResolvedValue(result as never);
+    open("multiplier", onAnswered);
+    const check = within(await screen.findByTestId("lesson-check"));
+    fireEvent.click(check.getByRole("radio", { name: "Small steps stacking" }));
+    fireEvent.click(check.getByRole("button", { name: "Check answer" }));
+    expect(await check.findByText("Each pass adds a little.")).toBeTruthy();
+    expect(answerLessonCheck).toHaveBeenCalledWith("lesson-1", 2, "multiplier", "a");
+    expect(onAnswered).toHaveBeenCalledWith(result);
+
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.queryByTestId("lesson-check")).toBeNull();
   });
 });

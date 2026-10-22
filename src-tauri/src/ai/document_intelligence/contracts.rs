@@ -50,6 +50,8 @@ pub(crate) struct OutlineSection {
 pub(crate) struct SourcePageImage {
     pub page_number: i64,
     pub bytes: Vec<u8>,
+    /// The figure this image is a close crop of; `None` for a whole unit.
+    pub crop_of: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

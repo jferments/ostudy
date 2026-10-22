@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
@@ -10,22 +11,39 @@ import {
   narrateLecturePart,
   prepareLessonLecturePptx,
   writeLessonLectureScript,
+  type AnsweredCheck,
   type Lecture,
   type LectureAnswer,
   type LectureScript,
   type LectureScriptSlide,
   type LectureSlide,
+  type LessonCheckResult,
+  type LessonStep,
 } from "../../ipc/lessons";
+import type { StudyGuidePdfTheme } from "../../ipc/studyGuides";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Dialog } from "../../ui/overlays/Dialog";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
+import { InkEditor } from "../ink/InkEditor";
+import { InkOverlay } from "../ink/InkOverlay";
+import { useMaterialInk } from "../ink/useMaterialInk";
+import { readSlideTheme, saveSlideTheme, useSlideDesigns } from "./useSlideDesigns";
 import { useVoiceAvailable } from "./useVoiceAvailable";
+
+const SLIDE_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string }> = [
+  { value: "navy", name: "Navy" },
+  { value: "sage", name: "Sage" },
+  { value: "slate", name: "Slate" },
+  { value: "plum", name: "Plum" },
+];
 
 interface LectureViewProps {
   lessonId: string;
@@ -33,8 +51,17 @@ interface LectureViewProps {
   lessonTitle: string;
   /** The step the lesson was on, so the lecture opens at its slide. */
   stepKey: string | null;
+  /** The lesson's steps, whose checks are answered beside their slides. */
+  steps: LessonStep[];
+  answered: Record<string, AnsweredCheck>;
+  onAnswered: (result: LessonCheckResult) => void;
   onClose: () => void;
+  showToast: ShowToast;
 }
+
+/** A slide's designed picture is laid out at 720 by 405 points. */
+const SLIDE_WIDTH = 720;
+const SLIDE_HEIGHT = 405;
 
 /** A question the teacher is asking; `resumeAt` is the slide the lecture goes on to. */
 interface Asking {
@@ -43,13 +70,25 @@ interface Asking {
 }
 
 /**
- * A lesson as slides. Once the teacher's lecture is written, the teacher
+ * A lesson as slides, laid out natively in one of the study guide themes;
+ * the plain slides show while they are laid out or if that fails. A step's
+ * check is answered beside its slide. Once the teacher's lecture is written, the teacher
  * talks over every slide and now and then stops to ask the class a question,
  * answers it and goes on; until then each step's narration is spoken. Play
  * lecture speaks from the current slide and moves on as each one ends;
  * choosing another slide stops it.
  */
-export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, onClose }: LectureViewProps) {
+export function LectureView({
+  lessonId,
+  revisionNumber,
+  lessonTitle,
+  stepKey,
+  steps,
+  answered: answeredChecks,
+  onAnswered,
+  onClose,
+  showToast,
+}: LectureViewProps) {
   const lane = useRequestLane();
   const scriptLane = useRequestLane();
   const [lecture, setLecture] = useState<Lecture | null>(null);
@@ -67,6 +106,11 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
   const voiceAvailable = useVoiceAvailable();
+  const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
+  const designs = useSlideDesigns(lessonId, revisionNumber, theme);
+  const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
+  const ink = useMaterialInk(inkMaterial);
+  const [inking, setInking] = useState(false);
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
 
@@ -116,6 +160,12 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const taught = (item: LectureSlide | undefined) => script?.slides.find((part) => part.slideKey === item?.key);
   const canLecture = script ? true : slides.some((item) => spoken(item));
   const talk = taught(slide);
+  const image = designs.images.get(slide.key);
+  const step = steps.find((item) => item.key === slide.stepKey);
+  const chooseTheme = (next: StudyGuidePdfTheme) => {
+    setTheme(next);
+    saveSlideTheme(next);
+  };
 
   // The teacher talks over each slide in turn and stops after one that asks
   // the class a question; answering it goes on from the next slide.
@@ -218,6 +268,21 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
     headingRef.current?.focus();
   };
 
+  if (inking) {
+    const pages = slides.flatMap((item) => {
+      const picture = designs.images.get(item.key);
+      return picture ? [{ key: item.key, width: SLIDE_WIDTH, height: SLIDE_HEIGHT, image: picture }] : [];
+    });
+    return (
+      <InkEditor material={inkMaterial} pages={pages} pageKey={slide.key} title={lecture.title}
+        description="Lecture slides" closeLabel="Back to the lecture" showToast={showToast}
+        onClose={() => {
+          setInking(false);
+          ink.reload();
+        }} />
+    );
+  }
+
   return (
     <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
       <header className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
@@ -230,9 +295,25 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
           </h1>
         </div>
         <div className="tw:flex tw:flex-wrap tw:gap-2">
+          <OverflowMenu
+            label={`Theme: ${SLIDE_THEMES.find((option) => option.value === theme)?.name ?? "Navy"}`}
+            triggerPresentation="text"
+            className="tw:rounded-full"
+            items={SLIDE_THEMES.map((option) => ({
+              id: option.value,
+              label: option.name,
+              checked: option.value === theme,
+              onSelect: () => chooseTheme(option.value),
+            }))}
+          />
           {script === null ? (
             <Button className="tw:rounded-full" disabled={writing || lecturing} onClick={writeScript}>
               <Icon name="sparkles" size={16} /> {writing ? "Writing the lecture…" : "Write the teacher's lecture"}
+            </Button>
+          ) : null}
+          {designs.images.size === slides.length ? (
+            <Button className="tw:rounded-full" disabled={lecturing} onClick={() => setInking(true)}>
+              <Icon name="pen" size={16} /> Write on slides
             </Button>
           ) : null}
           <Button className="tw:rounded-full" disabled={saving} onClick={() => void saveDeck()}>
@@ -259,7 +340,7 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
       {scriptError ? <InlineNotice kind="error">{scriptError}</InlineNotice> : null}
       {saved ? <InlineNotice kind={saved.kind}>{saved.text}</InlineNotice> : null}
       {voice.error ? <InlineNotice kind="error">The lecture could not be read aloud: {voice.error}</InlineNotice> : null}
-      <div className="tw:grid tw:items-start tw:gap-6 tw:wide:grid-cols-[15rem_minmax(0,1fr)] tw:medium:grid-cols-[13rem_minmax(0,1fr)]">
+      <div className="tw:grid tw:items-start tw:gap-6 tw:wide:grid-cols-[11rem_minmax(0,1fr)_20rem] tw:medium:grid-cols-[10rem_minmax(0,1fr)]">
         <nav
           aria-label="Slides"
           className="tw:hidden tw:rounded-lg tw:bg-(--ostudy-color-canvas-inset) tw:p-3 tw:wide:block tw:medium:block"
@@ -275,10 +356,24 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
                     position === index && "tw:bg-card tw:font-semibold tw:shadow-sm",
                   )}
                 >
-                  <span aria-hidden="true" className="tw:w-5 tw:shrink-0 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
-                    {position + 1}
+                  <span className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-1">
+                    {designs.images.has(item.key) ? (
+                      <span className="tw:relative tw:block">
+                        <img
+                          src={designs.images.get(item.key)}
+                          alt=""
+                          className="tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border"
+                        />
+                        <InkOverlay marks={ink.marks.get(item.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} />
+                      </span>
+                    ) : null}
+                    <span className="tw:flex tw:gap-2">
+                      <span aria-hidden="true" className="tw:w-4 tw:shrink-0 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
+                        {position + 1}
+                      </span>
+                      <span className="tw:min-w-0 tw:flex-1 tw:break-words">{item.title}</span>
+                    </span>
                   </span>
-                  <span className="tw:min-w-0 tw:flex-1 tw:break-words">{item.title}</span>
                 </ItemTrigger>
               </li>
             ))}
@@ -287,8 +382,17 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
         <article aria-labelledby={titleId} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
           <section
             data-testid="lecture-slide"
-            className="tw:flex tw:aspect-video tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5"
+            className={cn(
+              "tw:flex tw:aspect-video tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
+              image
+                ? "tw:relative tw:overflow-hidden tw:shadow-md tw:ring-1 tw:ring-border"
+                : "tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5",
+            )}
           >
+            {image ? <img src={image} alt="" className="tw:block tw:size-full" /> : null}
+            {image ? <InkOverlay marks={ink.marks.get(slide.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} /> : null}
+            {/* The designed slide is a picture of this text, which stays for screen readers. */}
+            <div className={image ? "tw:sr-only" : "tw:contents"}>
             <h2
               id={titleId}
               ref={headingRef}
@@ -309,22 +413,8 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
                 ))}
               </ul>
             ) : null}
-          </section>
-          {(talk?.talk ?? slide.notes).trim() ? (
-            <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
-              <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
-                {talk ? "The teacher says" : "Speaker notes"}
-              </h3>
-              <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
-            </section>
-          ) : null}
-          {talk?.question && !lecturing ? (
-            <div>
-              <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
-                <Icon name="help" size={16} /> Answer the teacher's question
-              </Button>
             </div>
-          ) : null}
+          </section>
           <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-3">
             <Button className="tw:rounded-full" disabled={index === 0} onClick={() => show(index - 1)}>
               <Icon name="chevron-left" size={16} /> Back
@@ -342,6 +432,33 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
             </Button>
           </div>
         </article>
+        <aside aria-label="With this slide" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:medium:col-start-2">
+          {(talk?.talk ?? slide.notes).trim() ? (
+            <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
+              <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
+                {talk ? "The teacher says" : "Speaker notes"}
+              </h3>
+              <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
+            </section>
+          ) : null}
+          {talk?.question && !lecturing ? (
+            <div>
+              <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
+                <Icon name="help" size={16} /> Answer the teacher's question
+              </Button>
+            </div>
+          ) : null}
+          {step?.check ? (
+            <StepCheck
+              key={`${revisionNumber}-${step.key}`}
+              lessonId={lessonId}
+              revisionNumber={revisionNumber}
+              step={step}
+              answered={answeredChecks[step.key] ?? null}
+              onAnswered={onAnswered}
+            />
+          ) : null}
+        </aside>
       </div>
       {asking?.slide.question ? (
         <ClassQuestionDialog

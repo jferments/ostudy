@@ -3,24 +3,16 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
-import {
-  answerLessonCheck,
-  getLesson,
-  saveLessonProgress,
-  type Lesson,
-  type LessonCheckResult,
-  type LessonProgress,
-  type LessonStep,
-} from "../../ipc/lessons";
+import { getLesson, saveLessonProgress, type Lesson, type LessonProgress } from "../../ipc/lessons";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
-import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { LectureView } from "./LectureView";
 import { LessonBlocks } from "./LessonBlocks";
+import { StepCheck } from "./StepCheck";
 import { StepNarration } from "./StepNarration";
 
 interface LessonPlayerProps {
@@ -111,7 +103,11 @@ export function LessonPlayer({
         revisionNumber={lesson.revisionNumber}
         lessonTitle={lesson.content.title}
         stepKey={current.key}
+        steps={steps}
+        answered={progress?.checks ?? {}}
+        onAnswered={(result) => record(result.progress)}
         onClose={() => setLecture(false)}
+        showToast={showToast}
       />
     );
   }
@@ -243,94 +239,5 @@ function StepMark({ index, done }: { index: number; done: boolean }) {
     >
       {done ? <Icon name="check" size={12} /> : index + 1}
     </span>
-  );
-}
-
-/** One step's check: choose, check, and see why. */
-function StepCheck({
-  lessonId,
-  revisionNumber,
-  step,
-  answered,
-  onAnswered,
-}: {
-  lessonId: string;
-  revisionNumber: number;
-  step: LessonStep;
-  answered: { optionId: string; correct: boolean } | null;
-  onAnswered: (result: LessonCheckResult) => void;
-}) {
-  const check = step.check!;
-  const [choice, setChoice] = useState(answered?.optionId ?? "");
-  const [result, setResult] = useState<LessonCheckResult | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const headingId = useId();
-  const outcome = result ? result.correct : answered && answered.optionId === choice ? answered.correct : null;
-
-  const submit = () => {
-    if (!choice) return;
-    setChecking(true);
-    setError(null);
-    answerLessonCheck(lessonId, revisionNumber, step.key, choice).then(
-      (value) => {
-        setResult(value);
-        setChecking(false);
-        onAnswered(value);
-      },
-      (failure: unknown) => {
-        setError(getErrorMessage(failure));
-        setChecking(false);
-      },
-    );
-  };
-
-  return (
-    <section
-      aria-labelledby={headingId}
-      data-testid="lesson-check"
-      className="tw:flex tw:flex-col tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-5 tw:compact:p-4"
-    >
-      <h2 id={headingId} className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
-        Quick check
-      </h2>
-      <p className="tw:m-0 tw:text-body-large tw:font-medium tw:break-words">{check.prompt}</p>
-      <RadioGroup
-        label={check.prompt}
-        value={choice}
-        options={check.options.map((option) => ({
-          value: option.id,
-          label: <span className="tw:break-words">{option.text}</span>,
-          className: cn(
-            "tw:rounded-md tw:px-3",
-            result && option.id === result.correctOptionId && "tw:bg-success-soft",
-            result && !result.correct && option.id === choice && "tw:bg-destructive/10",
-          ),
-        }))}
-        onValueChange={(value) => {
-          setChoice(value);
-          setResult(null);
-        }}
-      />
-      {error ? <InlineNotice kind="error">The answer was not checked: {error}</InlineNotice> : null}
-      {outcome === null ? (
-        <div>
-          <Button variant="primary" className="tw:rounded-full" disabled={!choice || checking} onClick={submit}>
-            Check answer
-          </Button>
-        </div>
-      ) : (
-        <div
-          role="status"
-          className={cn(
-            "tw:grid tw:gap-1 tw:rounded-md tw:px-4 tw:py-3",
-            outcome ? "tw:bg-success-soft" : "tw:bg-warning-soft",
-          )}
-        >
-          <strong className="tw:font-semibold">{outcome ? "Right." : "Not quite."}</strong>
-          {result?.explanation ? <span>{result.explanation}</span> : null}
-        </div>
-      )}
-    </section>
   );
 }

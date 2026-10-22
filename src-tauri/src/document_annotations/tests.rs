@@ -93,6 +93,10 @@ fn arrow(x2: f64) -> AnnotationShape {
         y2: 40.0,
         color: "#d92d20".into(),
         stroke_width: 2.0,
+        dash: None,
+        both_ends: None,
+        curve: None,
+        group: None,
     })
 }
 
@@ -139,6 +143,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             color: "#1d4ed8".into(),
             stroke_width: 1.5,
             simulate_pressure: false,
+            group: None,
         }),
         AnnotationShape::Highlight(HighlightStroke {
             points: vec![10.0, 12.0, 80.0, 12.5],
@@ -146,6 +151,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             stroke_width: 12.0,
             rects: None,
             text: None,
+            group: None,
         }),
         text_highlight(
             vec![72.0, 100.0, 200.5, 11.0, 72.0, 113.0, 90.0, 11.0],
@@ -158,6 +164,10 @@ fn every_kind() -> Vec<AnnotationShape> {
             y2: 0.0,
             color: "#111111".into(),
             stroke_width: 1.0,
+            dash: None,
+            both_ends: None,
+            curve: None,
+            group: None,
         }),
         arrow(30.0),
         AnnotationShape::Rectangle(Frame {
@@ -167,6 +177,10 @@ fn every_kind() -> Vec<AnnotationShape> {
             height: 20.0,
             color: "#16a34a".into(),
             stroke_width: 2.0,
+            dash: None,
+            fill: None,
+            border: None,
+            group: None,
         }),
         AnnotationShape::Ellipse(Frame {
             x: 5.0,
@@ -175,6 +189,34 @@ fn every_kind() -> Vec<AnnotationShape> {
             height: 20.0,
             color: "#16a34a".into(),
             stroke_width: 2.0,
+            dash: None,
+            fill: None,
+            border: None,
+            group: None,
+        }),
+        AnnotationShape::Arrow(Segment {
+            x1: 20.0,
+            y1: 50.0,
+            x2: 120.0,
+            y2: 60.0,
+            color: "#7c3aed".into(),
+            stroke_width: 2.5,
+            dash: Some(LineDash::Dashed),
+            both_ends: Some(true),
+            curve: Some(vec![40.0, 10.0, 90.0, 100.0]),
+            group: Some("ab".repeat(16)),
+        }),
+        AnnotationShape::Ellipse(Frame {
+            x: 50.0,
+            y: 60.0,
+            width: 30.0,
+            height: 30.0,
+            color: "#0f766e".into(),
+            stroke_width: 1.0,
+            dash: Some(LineDash::Dotted),
+            fill: Some("#ccfbf1".into()),
+            border: Some(false),
+            group: None,
         }),
         AnnotationShape::Text(TextNote {
             x: 12.0,
@@ -185,6 +227,8 @@ fn every_kind() -> Vec<AnnotationShape> {
             font_size: 12.0,
             sticky: None,
             collapsed: None,
+            link: None,
+            group: None,
         }),
         AnnotationShape::Text(TextNote {
             x: 300.0,
@@ -195,6 +239,8 @@ fn every_kind() -> Vec<AnnotationShape> {
             font_size: 10.0,
             sticky: Some(true),
             collapsed: None,
+            link: None,
+            group: None,
         }),
     ]
 }
@@ -273,6 +319,7 @@ fn shapes_outside_their_limits_are_refused() {
             color: "#000000".into(),
             stroke_width: 2.0,
             simulate_pressure: true,
+            group: None,
         })
     };
     let text = |text: &str, font_size: f64| {
@@ -285,6 +332,8 @@ fn shapes_outside_their_limits_are_refused() {
             font_size,
             sticky: None,
             collapsed: None,
+            link: None,
+            group: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -295,6 +344,10 @@ fn shapes_outside_their_limits_are_refused() {
             height,
             color: "#000000".into(),
             stroke_width: 1.0,
+            dash: None,
+            fill: None,
+            border: None,
+            group: None,
         })
     };
     let mut line = arrow(30.0);
@@ -679,6 +732,7 @@ fn text_highlight(rects: Vec<f64>, text: &str) -> AnnotationShape {
         stroke_width: 12.0,
         rects: Some(rects),
         text: Some(text.into()),
+        group: None,
     })
 }
 
@@ -758,6 +812,8 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
             font_size: 10.0,
             sticky,
             collapsed: None,
+            link: None,
+            group: None,
         })
     };
     let long = "a".repeat(MAX_TEXT_CHARS + 1);
@@ -785,6 +841,8 @@ fn only_a_sticky_note_can_be_collapsed() {
             font_size: 10.0,
             sticky,
             collapsed,
+            link: None,
+            group: None,
         })
     };
     let folded = note(Some(true), Some(true));
@@ -796,4 +854,97 @@ fn only_a_sticky_note_can_be_collapsed() {
     note(Some(true), None).validate().unwrap();
     assert!(note(None, Some(true)).validate().is_err());
     assert!(note(Some(true), Some(false)).validate().is_err());
+}
+
+#[test]
+fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() {
+    let segment = |both_ends: Option<bool>| Segment {
+        x1: 0.0,
+        y1: 0.0,
+        x2: 40.0,
+        y2: 0.0,
+        color: "#111111".into(),
+        stroke_width: 2.0,
+        dash: Some(LineDash::Dotted),
+        both_ends,
+        curve: None,
+        group: None,
+    };
+    AnnotationShape::Arrow(segment(Some(true)))
+        .validate()
+        .unwrap();
+    AnnotationShape::Line(segment(None)).validate().unwrap();
+    assert!(AnnotationShape::Line(segment(Some(true)))
+        .validate()
+        .is_err());
+    assert!(AnnotationShape::Arrow(segment(Some(false)))
+        .validate()
+        .is_err());
+    let wire = serde_json::to_value(AnnotationShape::Arrow(segment(Some(true)))).unwrap();
+    assert_eq!(wire["dash"], "dotted");
+    assert_eq!(wire["bothEnds"], true);
+
+    let frame = |fill: Option<&str>, border: Option<bool>| {
+        AnnotationShape::Rectangle(Frame {
+            x: 1.0,
+            y: 1.0,
+            width: 20.0,
+            height: 20.0,
+            color: "#111111".into(),
+            stroke_width: 1.0,
+            dash: None,
+            fill: fill.map(Into::into),
+            border,
+            group: None,
+        })
+    };
+    frame(Some("#fef3c7"), None).validate().unwrap();
+    frame(Some("#fef3c7"), Some(false)).validate().unwrap();
+    assert!(frame(None, Some(false)).validate().is_err());
+    assert!(frame(Some("#fef3c7"), Some(true)).validate().is_err());
+    assert!(frame(Some("yellow"), None).validate().is_err());
+    assert!(
+        serde_json::from_value::<AnnotationShape>(serde_json::json!({
+            "kind": "line", "x1": 0, "y1": 0, "x2": 4, "y2": 0, "color": "#111111",
+            "strokeWidth": 1, "dash": "wavy"
+        }))
+        .is_err()
+    );
+}
+
+#[test]
+fn curves_have_two_control_points_and_groups_are_named_by_identifiers() {
+    let curve = |curve: Option<Vec<f64>>, group: Option<String>| {
+        AnnotationShape::Line(Segment {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 40.0,
+            y2: 0.0,
+            color: "#111111".into(),
+            stroke_width: 2.0,
+            dash: None,
+            both_ends: None,
+            curve,
+            group,
+        })
+    };
+    curve(Some(vec![10.0, 30.0, 30.0, 30.0]), None)
+        .validate()
+        .unwrap();
+    assert!(curve(Some(vec![10.0, 30.0]), None).validate().is_err());
+    assert!(curve(Some(vec![10.0, 30.0, 30.0, -1.0]), None)
+        .validate()
+        .is_err());
+    curve(None, Some("0123456789abcdef".repeat(2)))
+        .validate()
+        .unwrap();
+    assert!(curve(None, Some("not a group".into())).validate().is_err());
+    let ink = AnnotationShape::Ink(InkStroke {
+        points: vec![1.0, 2.0, 0.5],
+        color: "#111111".into(),
+        stroke_width: 1.0,
+        simulate_pressure: true,
+        group: Some("ABCDEF0123456789".repeat(2)),
+    });
+    assert!(ink.validate().is_err(), "identifiers are lowercase");
 }

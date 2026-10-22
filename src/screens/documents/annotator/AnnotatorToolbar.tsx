@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { Icon, type IconName } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
@@ -9,12 +9,15 @@ import {
   isShapeTool,
   SHAPE_TOOLS,
   STYLE_CHOICES,
+  type ActiveStyle,
   type AnnotatorTool,
   type EraseMode,
   type ShapeTool,
   type StyleFamily,
   type ToolStyle,
 } from "./annotationModel";
+import { ColorChoices, ShapeLookChoices, SizeField } from "./StyleChoices";
+import type { TextFormat } from "./textFormat";
 
 interface ToolDescription { label: string; icon: IconName; shortcut: string; }
 
@@ -27,12 +30,20 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   sticky: { label: "Sticky note", icon: "sticky-note", shortcut: "S" },
   line: { label: "Line", icon: "shape-line", shortcut: "L" },
   arrow: { label: "Arrow", icon: "shape-arrow", shortcut: "A" },
+  curve: { label: "Curve", icon: "shape-curve", shortcut: "C" },
   rectangle: { label: "Box", icon: "shape-rectangle", shortcut: "R" },
   ellipse: { label: "Ellipse", icon: "shape-ellipse", shortcut: "O" },
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
+const PICK_TOOLS: readonly AnnotatorTool[] = ["select", "lasso"];
+const DRAW_TOOLS: readonly AnnotatorTool[] = ["pen", "highlighter"];
+
+/** A thin rule between groups of controls, so each group reads as one. */
+function Divider() {
+  return <span aria-hidden="true" className="tw:mx-0.5 tw:h-5 tw:w-px tw:shrink-0 tw:bg-border" />;
+}
 const NOTE_TOOLS: readonly AnnotatorTool[] = ["text", "sticky"];
 
 interface AnnotatorToolbarProps {
@@ -45,8 +56,10 @@ interface AnnotatorToolbarProps {
   lastNote: "text" | "sticky";
   onTool: (tool: AnnotatorTool) => void;
   /** The style the color and size choices change: the selection's, or the tool's. */
-  style: { family: StyleFamily; style: ToolStyle } | null;
+  style: ActiveStyle | null;
   onStyle: (patch: Partial<ToolStyle>) => void;
+  /** Lists and formulas, while a text note is typed or selected. */
+  textFormat?: TextFormat | null;
   selection: { isText: boolean; isSticky: boolean; isCollapsed: boolean } | null;
   /** Folds the selected sticky note to its icon, or opens it back out. */
   onToggleCollapsed: () => void;
@@ -55,6 +68,10 @@ interface AnnotatorToolbarProps {
   /** How many annotations the lasso took. */
   groupSize: number;
   onDeleteGroup: () => void;
+  /** Whether the selected annotations are one saved group, which moves and selects together. */
+  isOneGroup: boolean;
+  /** Joins the selected annotations into a group, or ungroups them. */
+  onGroup: (grouped: boolean) => void;
   /** Opens a new card made from the selected annotation. */
   onMakeCard?: () => void;
   canUndo: boolean;
@@ -111,8 +128,21 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-page tw:py-1.5 tw:compact:px-1">
       <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:overflow-x-auto tw:compact:gap-1">
-        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-nowrap tw:gap-3 tw:compact:gap-1">
-          <ToolbarGroup label="Tools" className="tw:flex-nowrap">
+        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:compact:flex-nowrap tw:compact:gap-1">
+          {compact ? null : (
+            <ToolbarGroup label="Tools" className="tw:flex-nowrap tw:items-center">
+              {PICK_TOOLS.map(toolButton)}
+              <Divider />
+              {DRAW_TOOLS.map(toolButton)}
+              <Divider />
+              {NOTE_TOOLS.map(toolButton)}
+              <Divider />
+              {SHAPE_TOOLS.map(toolButton)}
+              <Divider />
+              {toolButton("eraser")}
+            </ToolbarGroup>
+          )}
+          {compact ? <ToolbarGroup label="Tools" className="tw:flex-nowrap">
             {MAIN_TOOLS.map(toolButton)}
             {compact ? (
               <OverflowMenu
@@ -137,7 +167,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               />
             ) : SHAPE_TOOLS.map(toolButton)}
             {toolButton("eraser")}
-          </ToolbarGroup>
+          </ToolbarGroup> : null}
           {compact ? null : (
             <>
               <ToolbarGroup label="History" className="tw:flex-nowrap">{history}</ToolbarGroup>
@@ -197,17 +227,6 @@ const ERASE_HINTS: Record<EraseMode, string> = {
 };
 
 type StyleChoices = (typeof STYLE_CHOICES)[StyleFamily];
-type ActiveStyle = NonNullable<AnnotatorToolbarProps["style"]>;
-
-function swatchActions(style: ActiveStyle, choices: StyleChoices, onStyle: AnnotatorToolbarProps["onStyle"]) {
-  return choices.swatches.map((swatch) => (
-    <ToolbarAction key={swatch.color} label={swatch.label} pressed={style.style.color === swatch.color}
-      onClick={() => onStyle({ color: swatch.color })}>
-      <span aria-hidden="true" className="tw:size-5 tw:rounded-full tw:ring-1 tw:ring-foreground/30"
-        style={{ backgroundColor: swatch.color }} />
-    </ToolbarAction>
-  ));
-}
 
 function sizeActions(style: ActiveStyle, choices: StyleChoices, onStyle: AnnotatorToolbarProps["onStyle"]) {
   return choices.sizes.map((choice, index) => (
@@ -233,13 +252,23 @@ function StyleRow(props: AnnotatorToolbarProps) {
     return (
       <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
         <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
+          {props.isOneGroup ? (
+            <ToolbarAction label="Ungroup" aria-keyshortcuts="Control+Shift+G Meta+Shift+G" onClick={() => props.onGroup(false)}>
+              Ungroup
+            </ToolbarAction>
+          ) : props.groupSize > 1 ? (
+            <ToolbarAction label="Group" aria-keyshortcuts="Control+G Meta+G" onClick={() => props.onGroup(true)}>
+              Group
+            </ToolbarAction>
+          ) : null}
           <ToolbarAction label={`Delete ${props.groupSize} selected`} aria-keyshortcuts="Delete Backspace"
             onClick={props.onDeleteGroup} className="tw:text-destructive">
             <Icon name="delete" />
           </ToolbarAction>
         </Toolbar>
         <span className="tw:truncate tw:text-label tw:text-muted-foreground">
-          {props.groupSize} selected{compact ? "" : ". Drag them to move them together."}
+          {props.isOneGroup ? "Group of " : ""}{props.groupSize}{props.isOneGroup ? "" : " selected"}
+          {compact ? "" : ". Drag them to move them together."}
         </span>
       </div>
     );
@@ -291,26 +320,68 @@ function StyleRow(props: AnnotatorToolbarProps) {
     </ToolbarGroup>
   ) : null;
   const label = selection ? "Selected annotation" : "Color and size";
+  const textActions = props.textFormat ? <TextFormatActions format={props.textFormat} /> : null;
   if (compact) {
     return (
       <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-1">
         {style && choices ? <StyleSheetButton style={style} choices={choices} onStyle={onStyle} /> : null}
+        {textActions}
         {selectionActions}
       </Toolbar>
     );
   }
   return (
-    <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:overflow-x-auto tw:coarse:min-h-touch">
-      <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-3">
-        {style && choices ? (
-          <>
-            <ToolbarGroup label="Color" className="tw:flex-nowrap">{swatchActions(style, choices, onStyle)}</ToolbarGroup>
-            <ToolbarGroup label={sizeGroupLabel(style)} className="tw:flex-nowrap">{sizeActions(style, choices, onStyle)}</ToolbarGroup>
-          </>
-        ) : null}
-        {selectionActions}
-      </Toolbar>
+    // A narrow pane, as beside a document, wraps the groups onto a second line.
+    <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:coarse:min-h-touch">
+      {style && choices ? (
+        <fieldset disabled={disabled} className="tw:m-0 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-3 tw:gap-y-1 tw:border-0 tw:p-0">
+          <legend className="tw:sr-only">{selection ? "Style of the selected annotation" : label}</legend>
+          <div className="tw:flex tw:shrink-0 tw:flex-nowrap tw:items-center"><ColorChoices style={style} onStyle={onStyle} /></div>
+          <Divider />
+          <div className="tw:flex tw:flex-nowrap tw:items-center tw:gap-1">
+            <Toolbar label={sizeGroupLabel(style)} className="tw:flex-nowrap tw:gap-1">{sizeActions(style, choices, onStyle)}</Toolbar>
+            <SizeField style={style} onStyle={onStyle} />
+          </div>
+          <ShapeLookChoices style={style} onStyle={onStyle} layout="row" divider={<Divider />} />
+        </fieldset>
+      ) : null}
+      {textActions ? (
+        <>
+          <Divider />
+          <Toolbar label="Text format" disabled={disabled} className="tw:flex-nowrap">{textActions}</Toolbar>
+        </>
+      ) : null}
+      {selectionActions ? (
+        // What can be done with the selection sits apart, at the row's end.
+        <Toolbar label={label} disabled={disabled} className="tw:ms-auto tw:flex-nowrap tw:gap-3">
+          {selectionActions}
+        </Toolbar>
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Bullets, numbers, checkboxes and formulas for a text note. Pressing one
+ * keeps the note being typed open, so it acts on the lines being typed.
+ */
+function TextFormatActions({ format }: { format: TextFormat }) {
+  const keepTyping = (event: MouseEvent) => event.preventDefault();
+  return (
+    <ToolbarGroup label="Text" className="tw:flex-nowrap">
+      <ToolbarAction label="Bulleted list" onMouseDown={keepTyping} onClick={() => format.onList("bullet")}>
+        <Icon name="list" />
+      </ToolbarAction>
+      <ToolbarAction label="Numbered list" onMouseDown={keepTyping} onClick={() => format.onList("number")}>
+        <Icon name="list-ordered" />
+      </ToolbarAction>
+      <ToolbarAction label="Checklist" onMouseDown={keepTyping} onClick={() => format.onList("check")}>
+        <Icon name="list-checks" />
+      </ToolbarAction>
+      <ToolbarAction label="Insert formula" onMouseDown={keepTyping} onClick={format.onFormula}>
+        <Icon name="formula" />
+      </ToolbarAction>
+    </ToolbarGroup>
   );
 }
 
@@ -343,12 +414,16 @@ function StyleSheetButton({ style, choices, onStyle }: {
           <div className="tw:grid tw:gap-4">
             <div className="tw:grid tw:gap-2">
               <p className="tw:m-0 tw:text-label tw:font-medium tw:text-muted-foreground">Color</p>
-              <Toolbar label="Color" className="tw:gap-1">{swatchActions(style, choices, onStyle)}</Toolbar>
+              <ColorChoices style={style} onStyle={onStyle} />
             </div>
             <div className="tw:grid tw:gap-2">
               <p className="tw:m-0 tw:text-label tw:font-medium tw:text-muted-foreground">{sizeGroupLabel(style)}</p>
-              <Toolbar label={sizeGroupLabel(style)} className="tw:gap-1">{sizeActions(style, choices, onStyle)}</Toolbar>
+              <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+                <Toolbar label={sizeGroupLabel(style)} className="tw:gap-1">{sizeActions(style, choices, onStyle)}</Toolbar>
+                <SizeField style={style} onStyle={onStyle} />
+              </div>
             </div>
+            <ShapeLookChoices style={style} onStyle={onStyle} layout="sheet" />
           </div>
         </Sheet>
       ) : null}

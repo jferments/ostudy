@@ -9,6 +9,9 @@
 mod ai;
 mod analytics;
 mod annotation_cards;
+/// The desktop build's release/development identity; Android takes its
+/// identity from the Gradle build type instead.
+#[cfg(desktop)]
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
@@ -43,6 +46,7 @@ mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
+mod document_figures;
 mod document_generation;
 mod document_import;
 mod document_ingestion;
@@ -86,9 +90,11 @@ mod library_backup_commands;
 mod library_lock;
 mod library_session;
 mod logging;
+mod material_ink;
 mod media;
 mod media_assets;
 pub mod migration_contract;
+mod notebooks;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;
@@ -405,10 +411,28 @@ pub fn run() {
             library_session::commands::leased_draft_mark_question,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
+            document_figures::get_document_figures,
+            document_figures::set_document_figures_use_images,
+            document_figures::set_document_figure_hidden,
+            library_session::commands::leased_find_document_figures,
+            library_session::commands::leased_read_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
+            notebooks::list_notebooks,
+            notebooks::create_notebook,
+            notebooks::get_notebook,
+            notebooks::rename_notebook,
+            notebooks::move_notebook_to_subject,
+            notebooks::delete_notebook,
+            notebooks::add_notebook_page,
+            notebooks::delete_notebook_page,
+            notebooks::move_notebook_page,
+            notebooks::apply_notebook_item_changes,
+            material_ink::get_material_ink,
+            material_ink::apply_material_ink_changes,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
+            lessons::slide_design::get_lesson_slide_designs,
             lessons::pptx::prepare_lesson_lecture_pptx,
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,
@@ -452,6 +476,7 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
+            document_study_guide_export::get_document_study_guide_section_page,
             document_study_guide_export::prepare_collection_study_guide_pdf,
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
