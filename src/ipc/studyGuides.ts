@@ -419,6 +419,24 @@ export async function getDocumentStudyGuideSectionPage(
   });
 }
 
+/** A document's study guide's At a glance page, set as a designed page in a PDF theme. */
+export interface StudyGuideGlancePage {
+  documentId: string;
+  guideRevision: number;
+  theme: StudyGuidePdfTheme;
+  /** The page as a standalone SVG image. */
+  svg: string;
+}
+
+export async function getDocumentStudyGuideGlancePage(
+  documentId: string,
+  theme: StudyGuidePdfTheme,
+): Promise<StudyGuideGlancePage> {
+  return invoke<StudyGuideGlancePage>("get_document_study_guide_glance_page", {
+    input: { documentId, theme },
+  });
+}
+
 export async function prepareDocumentStudyGuidePdf(
   documentId: string,
   includeAnnotations: boolean,
