@@ -50,6 +50,7 @@ pub(crate) fn generate_window_flashcards<'a>(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn generate_study_guide_topic_section<'a>(
     runtime: &'a AiRuntimeState,
     task: &'a DocumentTaskContext,
@@ -58,6 +59,7 @@ pub(crate) fn generate_study_guide_topic_section<'a>(
     topic: &'a LearningTopic,
     source_text: &'a str,
     evidence: AuthoringEvidence<'a>,
+    length_scale: f64,
 ) -> impl Future<Output = Result<GroundedStudyGuideSection, CommandError>> + 'a {
     observe(
         task.diagnostics.as_ref(),
@@ -71,6 +73,7 @@ pub(crate) fn generate_study_guide_topic_section<'a>(
             topic,
             source_text,
             evidence,
+            length_scale,
         ),
         |_| 1,
     )

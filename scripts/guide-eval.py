@@ -25,7 +25,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUNNER = ROOT / "src-tauri/target/debug/guide-eval"
-RUBRIC_VERSION = 2
+RUBRIC_VERSION = 3
 # Weights of the rubric criteria in the 0-100 guide score. A guide is a
 # condensed summary of the key ideas that sends the reader to the source for
 # the rest, so condensing is scored as well as accuracy. Cost is reported
@@ -40,15 +40,18 @@ WEIGHTS = {
     "organization": 0.05,
     "pointers": 0.05,
 }
-# Guide words per source word. About a tenth is the aim, not a rule: anything
-# from TARGET_RATIO_LOW to TARGET_RATIO_HIGH scores full concision, and the
-# score falls to 0 at ZERO_RATIO.
-TARGET_RATIO_LOW = 0.03
-TARGET_RATIO_HIGH = 0.15
-ZERO_RATIO = 0.35
+# Guide words per source word. A tenth is the aim and a fifth the ceiling:
+# anything from TARGET_RATIO_LOW to TARGET_RATIO_HIGH scores full concision,
+# and the score falls to 0 at ZERO_RATIO.
+TARGET_RATIO_LOW = 0.05
+TARGET_RATIO_HIGH = 0.12
+ZERO_RATIO = 0.25
 MAX_SECTION_SOURCE_CHARS = 14_000
-MAX_GUIDE_SOURCE_CHARS = 48_000
-MAX_GUIDE_TEXT_CHARS = 48_000
+# The whole-guide judge reads the whole source and guide: clipped at 48,000
+# characters, version 2 judged a 55-page chapter's key ideas from its first
+# pages only. These bounds fit a long textbook chapter in the judge's context.
+MAX_GUIDE_SOURCE_CHARS = 640_000
+MAX_GUIDE_TEXT_CHARS = 160_000
 
 SECTION_JUDGE = """You are grading one section of an AI-written study guide against the source pages it was written from. A student will learn from this guide, so errors and invented facts matter most.
 
@@ -68,16 +71,17 @@ GUIDE_JUDGE = """You are grading an AI-written study guide for one source docume
 
 Read the SOURCE (ordered excerpts with their headings), then the GUIDE (overview and sections in reading order).
 
-First list the key ideas of the source: the overarching ideas an expert teacher would say a student must keep, usually between five and twenty for a chapter. Facts that only support a key idea (individual values, examples, product details, exhaustive lists) are not key ideas. Then decide which key ideas the guide does not teach. Mentioning a term without explaining it does not count as teaching it. End-of-chapter questions, references and front matter in the source are not ideas.
+First list the key ideas of the source: the ideas a condensed summary about a tenth of the source's length must keep, because a student needs them to understand the rest of the source. Name them in source order, usually five to fifteen for a chapter, each as one short statement. A key idea is an overarching mechanism, principle, relationship or distinction. Supporting facts are not key ideas, even when the source spends a paragraph on them: individual values, examples, named techniques or instruments, anatomical or product details, exhaustive lists, and exceptions belong to the source and the flashcards. End-of-chapter questions, references and front matter in the source are not ideas.
+
+Then give each key idea a status in the guide: "taught" when the guide states and explains it, "thin" when the guide only names it or states it without the explanation a student needs, "missing" when it is absent. A key idea taught in a table, a key point or an explanation counts as taught.
 
 Score each criterion from 1 to 5 using these anchors:
-- keyIdeas: 5 every key idea is taught; 4 one is missing or thin; 3 two or three are missing; 2 many are missing; 1 most are missing.
 - distillation: 5 a condensed summary: key ideas stand out, details are left to the source or gathered in tables; 4 mostly condensed with a few stretches of detail; 3 about half the guide restates details the source already lists; 2 mostly a detailed rewrite of the source; 1 a full rewrite, or so thin it teaches nothing.
 - organization: 5 logical order for learning the topic, sensible section granularity, no duplicated content, an overview that frames the material; 4 good with small lapses; 3 usable but fragmented, duplicated or oddly ordered; 2 hard to navigate; 1 incoherent.
 - pointers: 5 every section tells the student where the details are (source pages, sections, cards); 4 most do; 3 some do; 2 rarely; 1 never.
 
 Reply with JSON only:
-{"keyIdeas": ["..."], "missingKeyIdeas": ["..."], "duplicatedContent": ["..."], "detailHeavySections": ["<section title>"], "keyIdeasScore": <1-5>, "distillation": <1-5>, "organization": <1-5>, "pointers": <1-5>, "notes": "<one or two sentences>"}"""
+{"keyIdeas": [{"idea": "...", "status": "taught"|"thin"|"missing"}], "duplicatedContent": ["..."], "detailHeavySections": ["<section title>"], "distillation": <1-5>, "organization": <1-5>, "pointers": <1-5>, "notes": "<one or two sentences>"}"""
 
 
 # ---------------------------------------------------------------- generate --
@@ -255,6 +259,22 @@ def concision_score(ratio: float | None) -> float | None:
     return max(0.0, 100.0 * (1 - (ratio - TARGET_RATIO_HIGH) / (ZERO_RATIO - TARGET_RATIO_HIGH)))
 
 
+def key_ideas(verdict: dict[str, Any] | None) -> list[dict[str, str]]:
+    ideas = (verdict or {}).get("keyIdeas") or []
+    return [{"idea": str(i.get("idea", "")), "status": str(i.get("status", "")).lower()}
+            for i in ideas if isinstance(i, dict)]
+
+
+def key_idea_score(verdict: dict[str, Any] | None) -> float | None:
+    """The share of the judge's key ideas the guide teaches, a thin one
+    counting half: counted, not a 1-5 anchor, so one idea moves it a little."""
+    ideas = key_ideas(verdict)
+    if not ideas:
+        return None
+    credit = {"taught": 1.0, "thin": 0.5}
+    return 100.0 * sum(credit.get(i["status"], 0.0) for i in ideas) / len(ideas)
+
+
 def deterministic_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
     guide = outcome.get("guide") or {}
     chunks = (outcome.get("source") or {}).get("chunks", [])
@@ -349,6 +369,10 @@ def call_judge(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
         "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}],
     }
+    if "api.anthropic.com" in args.judge_base_url:
+        # Anthropic's OpenAI-compatible endpoint refuses both for current
+        # models; the prompt already asks for one JSON object.
+        del body["temperature"], body["response_format"]
     request = urllib.request.Request(
         args.judge_base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
@@ -437,16 +461,18 @@ def score_document(directory: Path, title: str, args: argparse.Namespace) -> dic
         weighted = [(max(weight, 1), scale(v.get(name))) for weight, v in section_verdicts]
         weighted = [(w, s) for w, s in weighted if s is not None]
         criteria[name] = (sum(w * s for w, s in weighted) / sum(w for w, _ in weighted)) if weighted else None
-    for name, key in (("keyIdeas", "keyIdeasScore"), ("distillation", "distillation"),
-                      ("organization", "organization"), ("pointers", "pointers")):
-        criteria[name] = scale(guide_verdict.get(key)) if guide_verdict else None
+    for name in ("distillation", "organization", "pointers"):
+        criteria[name] = scale(guide_verdict.get(name)) if guide_verdict else None
+    criteria["keyIdeas"] = key_idea_score(guide_verdict)
     criteria["concision"] = concision_score(metrics["lengthRatio"])
     result["criteria"] = {k: (round(v, 1) if v is not None else None) for k, v in criteria.items()}
     claims = [c for _, v in section_verdicts for c in v.get("unsupportedClaims", [])]
     result["majorUnsupportedClaims"] = sum(c.get("severity") == "major" for c in claims)
     result["minorUnsupportedClaims"] = sum(c.get("severity") == "minor" for c in claims)
     if guide_verdict:
-        result["missingKeyIdeas"] = guide_verdict.get("missingKeyIdeas", [])
+        ideas = key_ideas(guide_verdict)
+        result["missingKeyIdeas"] = [i["idea"] for i in ideas if i["status"] == "missing"]
+        result["thinKeyIdeas"] = [i["idea"] for i in ideas if i["status"] == "thin"]
         result["detailHeavySections"] = guide_verdict.get("detailHeavySections", [])
     complete = not pending and all(v is not None for v in criteria.values())
     result["score"] = round(sum(WEIGHTS[k] * criteria[k] for k in WEIGHTS), 1) if complete else None
@@ -528,6 +554,8 @@ def render_summary(summary: dict[str, Any]) -> str:
                           f"{d['error'].get('message', '')} ({d['error'].get('code', '')})"]
         if d.get("missingKeyIdeas"):
             lines += ["", f"- {d['document']} misses: " + "; ".join(d["missingKeyIdeas"])]
+        if d.get("thinKeyIdeas"):
+            lines += ["", f"- {d['document']} thin: " + "; ".join(d["thinKeyIdeas"])]
         if d.get("detailHeavySections"):
             lines += ["", f"- {d['document']} detail-heavy sections: " + "; ".join(d["detailHeavySections"])]
     return "\n".join(lines) + "\n"
