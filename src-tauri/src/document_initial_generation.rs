@@ -88,6 +88,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
     instructions: &'a GenerationInstructions,
+    destination_deck_id: Option<&'a str>,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -96,6 +97,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
         render_runtime,
         document_id,
         instructions,
+        destination_deck_id,
         false,
     ))
 }
@@ -107,6 +109,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
     instructions: &'a GenerationInstructions,
+    destination_deck_id: Option<&'a str>,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -115,6 +118,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
         render_runtime,
         document_id,
         instructions,
+        destination_deck_id,
         true,
     ))
 }
@@ -126,8 +130,13 @@ async fn process_initial_flashcards(
     render_runtime: PdfRenderRuntime,
     document_id: &str,
     instructions: &GenerationInstructions,
+    destination_deck_id: Option<&str>,
     processing_reserved: bool,
 ) -> Result<InitialGenerationResult, CommandError> {
+    // A chosen deck is checked before any work starts, and again at commit.
+    if let Some(deck_id) = destination_deck_id {
+        destination_deck_name(database, deck_id)?;
+    }
     if !processing_reserved {
         document_store::mark_document_processing(database, document_id)?;
     }
@@ -401,12 +410,24 @@ async fn process_initial_flashcards(
         }
 
         document_store::mark_job_committing(database, document_id, &job_id, grounded_cards.len())?;
-        let payload = build_generated_import_json(&stored, &grounded_cards)?;
+        let payload = match destination_deck_id {
+            Some(deck_id) => crate::document_more::build_append_payload(
+                &destination_deck_name(database, deck_id)?,
+                &grounded_cards,
+            )?,
+            None => build_generated_import_json(&stored, &grounded_cards)?,
+        };
         let (api_token_count, api_token_usage_complete) = task.usage_summary();
         let result = import_generated_flashcards_bytes_with_commit_context(
             database,
             payload.as_bytes(),
             |connection, import_result, commit_context, now| {
+                if destination_deck_id.is_some_and(|deck_id| deck_id != import_result.deck_id) {
+                    return Err(CommandError::new(
+                        "document_destination_deck_changed",
+                        "The chosen deck changed while its cards were being written. Choose it again and retry.",
+                    ));
+                }
                 link_imported_notes_to_topics(
                     connection,
                     document_id,
@@ -471,14 +492,17 @@ async fn process_initial_flashcards(
                         "The document changed before generated cards could be committed.",
                     ));
                 }
-                // The new deck joins its document's subject, so studying the
-                // subject includes the document's cards.
-                crate::subjects::file_generated_deck_with_document(
-                    connection,
-                    document_id,
-                    None,
-                    now,
-                )?;
+                // A new deck joins its document's subject, so studying the
+                // subject includes the document's cards. A chosen deck stays
+                // where the learner keeps it.
+                if destination_deck_id.is_none() {
+                    crate::subjects::file_generated_deck_with_document(
+                        connection,
+                        document_id,
+                        None,
+                        now,
+                    )?;
+                }
                 let job_changed = connection
                     .execute(
                         "UPDATE document_generation_jobs
@@ -711,6 +735,33 @@ fn load_context(
     })
 }
 
+/// The name of the existing deck a document's first cards go into. Cards are
+/// appended by name, so the name must pick out that deck alone.
+pub(crate) fn destination_deck_name(
+    database: &Database,
+    deck_id: &str,
+) -> Result<String, CommandError> {
+    let name: Option<String> = database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT name FROM decks
+                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
+                [deck_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)
+    })?;
+    let Some(name) = name else {
+        return Err(CommandError::new(
+            "document_destination_deck_missing",
+            "The chosen deck is no longer in the library. Choose another deck.",
+        ));
+    };
+    crate::document_more::ensure_exact_append_destination(database, deck_id, &name)?;
+    Ok(name)
+}
+
 fn build_generated_import_json(
     document: &InitialDocumentContext,
     cards: &[crate::document_card_topics::SourceGroundedGeneratedCard],
@@ -736,6 +787,64 @@ fn build_generated_import_json(
 mod tests {
     use super::*;
     use crate::document_domain::{SourceLocator, SourceUnitKind};
+
+    fn deck(database: &Database, name: &str) -> String {
+        database
+            .with_connection(|connection| {
+                crate::decks::create_deck_in_connection(
+                    connection,
+                    crate::decks::CreateDeckInput {
+                        name: name.to_string(),
+                        description: None,
+                    },
+                )
+            })
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn a_chosen_deck_must_be_an_active_deck_its_name_picks_out() {
+        let database = Database::open_in_memory().unwrap();
+        let renal = deck(&database, "Renal physiology");
+        assert_eq!(
+            destination_deck_name(&database, &renal).unwrap(),
+            "Renal physiology"
+        );
+
+        let missing = destination_deck_name(&database, &"f".repeat(32)).unwrap_err();
+        assert_eq!(missing.code, "document_destination_deck_missing");
+
+        let archived = deck(&database, "Old cards");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "UPDATE decks SET archived_at = 1 WHERE id = ?1",
+                        [archived.as_str()],
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let archived = destination_deck_name(&database, &archived).unwrap_err();
+        assert_eq!(archived.code, "document_destination_deck_missing");
+
+        // Cards are appended by name, so a second active deck with that name
+        // could take them instead.
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO decks(id,name,description,created_at,updated_at,revision)
+                         SELECT ?1,name,description,created_at,updated_at,1 FROM decks WHERE id = ?2",
+                        [&"e".repeat(32), &renal],
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let ambiguous = destination_deck_name(&database, &renal).unwrap_err();
+        assert_eq!(ambiguous.code, "document_generated_deck_name_ambiguous");
+    }
 
     #[test]
     fn generated_import_payload_contains_card_content_but_not_internal_provenance() {

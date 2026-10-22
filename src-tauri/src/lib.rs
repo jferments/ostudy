@@ -251,6 +251,7 @@ pub fn run() {
             subjects::move_deck_to_subject,
             subjects::move_document_to_subject,
             subjects::set_document_study_ranges,
+            subjects::set_subject_left_out_documents,
             subjects::get_subject_filing_reviews,
             subjects::dismiss_subject_filing_review,
             deletion_commands::delete_deck_with_undo,

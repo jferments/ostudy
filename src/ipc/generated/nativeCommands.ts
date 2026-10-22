@@ -310,6 +310,7 @@ export interface NativeCommandGatewayMap {
   "set_document_study_ranges": readonly [typeof GatewayModule42.setDocumentStudyRanges];
   "set_image_set_filters": readonly [typeof GatewayModule22.setImageSetFilters];
   "set_platform_back_interception": readonly [typeof GatewayModule29.setPlatformBackInterception];
+  "set_subject_left_out_documents": readonly [typeof GatewayModule42.setSubjectLeftOutDocuments];
   "set_tutor_conversation_archived": readonly [typeof GatewayModule44.setTutorConversationArchived];
   "set_tutor_project_archived": readonly [typeof GatewayModule44.setTutorProjectArchived];
   "share_prepared_export": readonly [typeof GatewayModule18.sharePreparedExport];
