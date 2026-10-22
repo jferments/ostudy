@@ -21,9 +21,9 @@ use crate::{
     task_cancellation::{current_signal, CancellationSignal},
 };
 
-pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 8;
-pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 8;
-const CLOUD_INITIAL_PROVIDER_PARALLELISM: usize = 6;
+pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 12;
+pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 16;
+const CLOUD_INITIAL_PROVIDER_PARALLELISM: usize = 8;
 const CLOUD_MIN_PROVIDER_PARALLELISM: usize = 2;
 const CLOUD_SUCCESS_RAMP_REQUESTS: usize = 8;
 const USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM: usize = 1;
@@ -282,41 +282,42 @@ where
     let (sender, mut receiver) =
         tokio::sync::mpsc::unbounded_channel::<(Item, tokio::sync::oneshot::Sender<bool>)>();
     let run = &run;
-    let (worker0, worker1, worker2, worker3, worker4, worker5, worker6, worker7) = {
-        let worker = |slot: usize| {
-            let sender = sender.clone();
-            let next = &next;
-            async move {
-                if slot >= worker_count {
+    let worker = |slot: usize| {
+        let sender = sender.clone();
+        let next = &next;
+        async move {
+            if slot >= worker_count {
+                return;
+            }
+            loop {
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                if index >= work_items {
                     return;
                 }
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    if index >= work_items {
-                        return;
-                    }
-                    let item = run(index).await;
-                    let (acknowledge, acknowledged) = tokio::sync::oneshot::channel();
-                    if sender.send((item, acknowledge)).is_err() {
-                        return;
-                    }
-                    if !matches!(acknowledged.await, Ok(true)) {
-                        return;
-                    }
+                let item = run(index).await;
+                let (acknowledge, acknowledged) = tokio::sync::oneshot::channel();
+                if sender.send((item, acknowledge)).is_err() {
+                    return;
+                }
+                if !matches!(acknowledged.await, Ok(true)) {
+                    return;
                 }
             }
-        };
-        (
-            worker(0),
-            worker(1),
-            worker(2),
-            worker(3),
-            worker(4),
-            worker(5),
-            worker(6),
-            worker(7),
-        )
+        }
     };
+    // Workers borrow the caller's state, so they are polled here rather than
+    // spawned; a finished worker is dropped and the rest keep going.
+    let mut workers = (0..worker_count)
+        .map(|slot| Box::pin(worker(slot)))
+        .collect::<Vec<_>>();
+    let workers = std::future::poll_fn(move |context| {
+        workers.retain_mut(|worker| worker.as_mut().poll(context).is_pending());
+        if workers.is_empty() {
+            std::task::Poll::Ready(())
+        } else {
+            std::task::Poll::Pending
+        }
+    });
     drop(sender);
 
     let collector = async move {
@@ -342,9 +343,7 @@ where
         first_consumer_error.map_or(Ok(()), Err)
     };
 
-    let (_, _, _, _, _, _, _, _, result) = tokio::join!(
-        worker0, worker1, worker2, worker3, worker4, worker5, worker6, worker7, collector
-    );
+    let (_, result) = tokio::join!(workers, collector);
     result
 }
 
@@ -356,7 +355,7 @@ mod tests {
 
     #[test]
     fn cloud_windows_overlap_while_user_managed_servers_stay_serial() {
-        assert_eq!(document_request_parallelism("cloud"), 8);
+        assert_eq!(document_request_parallelism("cloud"), 12);
         assert_eq!(document_request_parallelism("local"), 1);
         assert_eq!(document_request_parallelism("lan"), 1);
     }
@@ -422,6 +421,32 @@ mod tests {
         signal.cancel();
         let error = lanes.acquire("cloud", Some(&signal)).await.unwrap_err();
         assert_eq!(error.code, "ai_request_canceled");
+    }
+
+    #[tokio::test]
+    async fn queue_overlaps_up_to_the_document_limit() {
+        let active = AtomicUsize::new(0);
+        let maximum = AtomicUsize::new(0);
+        run_bounded_provider_queue(
+            40,
+            CLOUD_DOCUMENT_PARALLELISM,
+            |_| {
+                let active = &active;
+                let maximum = &maximum;
+                async move {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    maximum.fetch_max(now, Ordering::SeqCst);
+                    for _ in 0..32 {
+                        tokio::task::yield_now().await;
+                    }
+                    active.fetch_sub(1, Ordering::SeqCst);
+                }
+            },
+            |_| Ok::<QueueControl, ()>(QueueControl::Continue),
+        )
+        .await
+        .unwrap();
+        assert_eq!(maximum.load(Ordering::SeqCst), CLOUD_DOCUMENT_PARALLELISM);
     }
 
     #[tokio::test]
