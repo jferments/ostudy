@@ -57,51 +57,58 @@ async fn curate_cards(
         }),
     );
 
-    let mut retained = Vec::new();
-    let mut cursor = 0_usize;
-    while cursor < batches.len() {
-        let end = (cursor + parallelism).min(batches.len());
-        let indices = (cursor..end).collect::<Vec<_>>();
-        let p0 = indices.first().copied();
-        let p1 = indices.get(1).copied();
-        let p2 = indices.get(2).copied();
-        let p3 = indices.get(3).copied();
-        let (r0, r1, r2, r3) = tokio::join!(
-            curation_slot(runtime, task, &outline_json, &batches, p0),
-            curation_slot(runtime, task, &outline_json, &batches, p1),
-            curation_slot(runtime, task, &outline_json, &batches, p2),
-            curation_slot(runtime, task, &outline_json, &batches, p3),
-        );
-
-        for (batch_index, result) in [r0, r1, r2, r3].into_iter().flatten() {
-            let batch = &batches[batch_index];
-            match result {
-                Ok(keep) => retained.extend(
-                    keep.into_iter()
-                        .filter_map(|index| batch.get(index).cloned()),
-                ),
-                Err(error) => {
-                    crate::logging::warn_target(
-                        "ai.document.curation",
-                        "document_curation_batch_skipped",
-                        "A bounded curation batch failed; validated candidates from that batch were retained rather than discarded.",
-                        json!({
-                            "batch": batch_index + 1,
-                            "candidates": batch.len(),
-                            "code": error.code.as_str(),
-                            "detail": bounded_diagnostic(&error.message, 400),
-                        }),
-                    );
-                    retained.extend(batch.iter().cloned());
-                }
+    // One continuous queue: every batch runs, a free slot refills at once, and
+    // the deck keeps batch order however the requests finish.
+    let mut results = (0..batches.len()).map(|_| None).collect::<Vec<_>>();
+    crate::ai::concurrency::run_bounded_provider_queue(
+        batches.len(),
+        parallelism,
+        |index| curation_slot(runtime, task, &outline_json, &batches, Some(index)),
+        |outcome| {
+            if let Some((index, result)) = outcome {
+                results[index] = Some(result);
             }
-        }
-        cursor = end;
-    }
-
+            Ok::<_, CommandError>(crate::ai::concurrency::QueueControl::Continue)
+        },
+    )
+    .await?;
+    let mut retained = retained_candidates(&batches, results);
     let mut seen = HashSet::new();
     retained.retain(|card| seen.insert(card_identity(card)));
     Ok(retained)
+}
+
+/// The kept cards of each batch, in batch order. A batch whose curation
+/// failed, or never reported, keeps all of its validated candidates.
+fn retained_candidates(
+    batches: &[Vec<Value>],
+    results: Vec<Option<Result<Vec<usize>, CommandError>>>,
+) -> Vec<Value> {
+    let mut retained = Vec::new();
+    for (batch_index, (batch, result)) in batches.iter().zip(results).enumerate() {
+        match result {
+            Some(Ok(keep)) => retained.extend(
+                keep.into_iter()
+                    .filter_map(|index| batch.get(index).cloned()),
+            ),
+            Some(Err(error)) => {
+                crate::logging::warn_target(
+                    "ai.document.curation",
+                    "document_curation_batch_skipped",
+                    "A bounded curation batch failed; validated candidates from that batch were retained rather than discarded.",
+                    json!({
+                        "batch": batch_index + 1,
+                        "candidates": batch.len(),
+                        "code": error.code.as_str(),
+                        "detail": bounded_diagnostic(&error.message, 400),
+                    }),
+                );
+                retained.extend(batch.iter().cloned());
+            }
+            None => retained.extend(batch.iter().cloned()),
+        }
+    }
+    retained
 }
 
 fn deduplicate_candidates(cards: Vec<Value>) -> Vec<Value> {
@@ -386,6 +393,52 @@ mod tests {
         assert_eq!(
             batches.iter().map(Vec::len).collect::<Vec<_>>(),
             vec![32, 32, 6]
+        );
+    }
+
+    #[test]
+    fn every_batch_is_kept_in_order_when_more_batches_than_slots_finish() {
+        let batches = (0..10)
+            .map(|batch| {
+                vec![
+                    json!({"batch": batch, "card": 0}),
+                    json!({"batch": batch, "card": 1}),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let results = (0..10)
+            .map(|batch| match batch {
+                3 => Some(Err(CommandError::new("ai_document_output_invalid", "bad"))),
+                7 => None,
+                _ => Some(Ok(vec![1])),
+            })
+            .collect::<Vec<_>>();
+        let kept = retained_candidates(&batches, results);
+        let described = kept
+            .iter()
+            .map(|card| {
+                (
+                    card["batch"].as_i64().unwrap(),
+                    card["card"].as_i64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            described,
+            vec![
+                (0, 1),
+                (1, 1),
+                (2, 1),
+                (3, 0),
+                (3, 1),
+                (4, 1),
+                (5, 1),
+                (6, 1),
+                (7, 0),
+                (7, 1),
+                (8, 1),
+                (9, 1)
+            ]
         );
     }
 
