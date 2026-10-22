@@ -68,9 +68,9 @@ pub(super) fn fit_guide_completion_plan(
     system: &str,
     user: &str,
     evidence: AuthoringEvidence<'_>,
+    writing: WritingBudget,
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
     let schema = protocol::schema(evidence.knowledge, !evidence.images.is_empty());
-    let writing = WritingBudget::for_knowledge(evidence.knowledge);
     let preferred = StudyGuideCompletionPlan::for_writing_budget(writing);
     choose_plan(preferred, evidence.knowledge.units.len(), |plan| {
         let planned_user = format!(

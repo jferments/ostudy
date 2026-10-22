@@ -8,6 +8,7 @@ import {
   getSubjectLibrary,
   moveDocumentToSubject,
   setDocumentStudyRanges,
+  setSubjectLeftOutDocuments,
   type DocumentStudyRange,
   type SubjectLibrary,
 } from "../../ipc/subjects";
@@ -20,8 +21,12 @@ export interface DocumentFiling {
   /** The document's subject, or null for No subject. */
   subjectOf: (documentId: string) => string | null;
   rangesOf: (documentId: string) => DocumentStudyRange[];
+  /** Whether the document is left out of its subject's study materials. */
+  isLeftOut: (documentId: string) => boolean;
   moveDocument: (documentId: string, subjectId: string | null) => Promise<boolean>;
   setRanges: (documentId: string, ranges: SourceRangeInput[]) => Promise<boolean>;
+  /** Leaves exactly these of the subject's documents out of its study materials. */
+  setLeftOut: (subjectId: string, documentIds: string[]) => Promise<boolean>;
 }
 
 /**
@@ -84,6 +89,7 @@ export function useDocumentFiling(): DocumentFiling {
     subjectOf: (documentId) =>
       library?.documents.find((placement) => placement.documentId === documentId)?.subjectId ?? null,
     rangesOf: (documentId) => library?.studyRanges.filter((range) => range.documentId === documentId) ?? [],
+    isLeftOut: (documentId) => library?.leftOutDocumentIds.includes(documentId) ?? false,
     moveDocument: (documentId, subjectId) =>
       write((current) =>
         moveDocumentToSubject({ documentId, subjectId, expectedDocumentFilingRevision: current.documentFilingRevision }),
@@ -91,6 +97,10 @@ export function useDocumentFiling(): DocumentFiling {
     setRanges: (documentId, ranges) =>
       write((current) =>
         setDocumentStudyRanges({ documentId, ranges, expectedDocumentFilingRevision: current.documentFilingRevision }),
+      ),
+    setLeftOut: (subjectId, documentIds) =>
+      write((current) =>
+        setSubjectLeftOutDocuments({ subjectId, documentIds, expectedDocumentFilingRevision: current.documentFilingRevision }),
       ),
   };
 }

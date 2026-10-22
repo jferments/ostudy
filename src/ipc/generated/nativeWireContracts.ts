@@ -97,6 +97,7 @@ export interface NativeSubjectLibrary {
   decks: NativeSubjectDeckPlacement[];
   documents: NativeSubjectDocumentPlacement[];
   studyRanges: NativeDocumentStudyRange[];
+  leftOutDocumentIds: string[];
   checkTheseCount: number;
 }
 

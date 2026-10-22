@@ -214,6 +214,7 @@ export function makeSubjectLibrary(overrides: Partial<SubjectLibrary> = {}): Sub
     decks: [],
     documents: [],
     studyRanges: [],
+    leftOutDocumentIds: [],
     checkTheseCount: 0,
     ...overrides,
   };

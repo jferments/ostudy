@@ -33,6 +33,13 @@ mod recovery;
 mod repair;
 mod section_plan;
 use completion::*;
+
+/// A section written past this multiple of its target is asked once to be
+/// written shorter. Asked for half of a tenth, three times is a guide at
+/// about 0.15 of its source.
+const SHORTEN_OVER_TARGET: usize = 3;
+/// Subjects listed for one section's coverage check.
+const MAX_CATALOG_SUBJECTS: usize = 24;
 use content::*;
 use policy::*;
 
@@ -56,6 +63,12 @@ pub(super) async fn generate_document_study_guide_editorial(
     cancellation: &CancellationSignal,
 ) -> Result<(StudyGuideOverview, StudyGuideEditorial), CommandError> {
     editorial::generate(runtime, task, document_title, plan, sections, cancellation).await
+}
+
+/// The characters a document guide section is asked for from its own
+/// knowledge alone, before the whole guide's length target scales it.
+pub(crate) fn document_guide_section_chars(knowledge: &KnowledgeCatalog) -> usize {
+    WritingBudget::for_knowledge(knowledge).target_chars
 }
 
 pub(super) async fn plan_document_study_guide_sections(
@@ -83,6 +96,7 @@ pub(super) async fn plan_document_study_guide_sections(
 /// deterministic publication order. This domain task receives bounded source
 /// evidence and returns content plus selections from the supplied unit catalog.
 /// Native code owns topic IDs, locators, hierarchy, and provenance fingerprints.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_study_guide_topic_section(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -91,16 +105,19 @@ pub(crate) async fn generate_study_guide_topic_section(
     topic: &LearningTopic,
     source_text: &str,
     evidence: AuthoringEvidence<'_>,
+    length_scale: f64,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
     let AuthoringEvidence { images, knowledge } = evidence;
     let (system, user) =
         document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    let writing = WritingBudget::for_knowledge(knowledge).scaled(length_scale);
     let completion_plan = fit_guide_completion_plan(
         task,
         &system,
         &user,
         AuthoringEvidence { images, knowledge },
+        writing,
     )?;
     let section = request_study_guide_section_with_retry(
         runtime,
@@ -109,13 +126,54 @@ pub(crate) async fn generate_study_guide_topic_section(
         &user,
         AuthoringEvidence { images, knowledge },
         completion_plan,
+        writing,
         None,
     )
     .await?;
-    let budget =
-        WritingBudget::for_knowledge(knowledge).fit_output(completion_plan.initial_visible_tokens);
+    let budget = writing.fit_output(completion_plan.initial_visible_tokens);
     if !budget.thin(knowledge.units.len(), &section.content) {
-        return Ok(section);
+        let written = generated_section_char_count(&section.content);
+        if written <= budget.target_chars.saturating_mul(SHORTEN_OVER_TARGET) {
+            return Ok(section);
+        }
+        // Models write several times the length a section asks for. One
+        // request rewrites the section shorter; the shorter wins, and a failed
+        // request keeps the first, so this can never cost a written section.
+        let draft = serde_json::to_string(&section.content).map_err(CommandError::serialization)?;
+        let user = format!(
+            "{user}\n\nAn earlier answer to this request follows. It has {written} characters, {}% of the length guide. Write the section again at about {} characters: keep every key idea and its qualifications, join related key points, and leave supporting details, examples and repeated study aids to the source.\n<ostudy-earlier-answer>\n{draft}\n</ostudy-earlier-answer>",
+            written.saturating_mul(100) / budget.target_chars.max(1),
+            budget.target_chars
+        );
+        let second = request_study_guide_section_with_retry(
+            runtime,
+            task,
+            &system,
+            &user,
+            AuthoringEvidence { images, knowledge },
+            completion_plan,
+            writing,
+            None,
+        )
+        .await;
+        let chosen = match second {
+            Ok(second)
+                if generated_section_char_count(&second.content) < written
+                    && !budget.thin(knowledge.units.len(), &second.content) =>
+            {
+                second
+            }
+            _ => section,
+        };
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_long_section_shortened",
+            "Asked once more for a section that came back far above its writing target; content is not logged.",
+            json!({"units": knowledge.units.len(), "written": written,
+                "chars": generated_section_char_count(&chosen.content),
+                "target": budget.target_chars}),
+        );
+        return Ok(chosen);
     }
     // One fresh request; the longer section wins, and a failed second request
     // keeps the first, so this can never cost a written section.
@@ -127,6 +185,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         &user,
         AuthoringEvidence { images, knowledge },
         completion_plan,
+        writing,
         None,
     )
     .await;
@@ -160,6 +219,7 @@ pub(crate) fn preflight_document_study_guide_section(
     topic: &LearningTopic,
     source_text: &str,
     evidence: AuthoringEvidence<'_>,
+    length_scale: f64,
 ) -> Result<(), CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
     let AuthoringEvidence { images, knowledge } = evidence;
@@ -170,6 +230,7 @@ pub(crate) fn preflight_document_study_guide_section(
         &system,
         &user,
         AuthoringEvidence { images, knowledge },
+        WritingBudget::for_knowledge(knowledge).scaled(length_scale),
     )
     .map(|_| ())
 }
@@ -191,6 +252,70 @@ fn validate_document_guide_input(
         ));
     }
     Ok(())
+}
+
+/// Subjects of a catalog, in source order, so a section spanning several of
+/// them can be checked against every one. Their units name them; the
+/// smallest are dropped past the limit.
+fn catalog_subjects(knowledge: &KnowledgeCatalog) -> Vec<String> {
+    let mut subjects: Vec<(String, usize)> = Vec::new();
+    for unit in &knowledge.units {
+        let topic = unit.content.topic.trim();
+        if topic.is_empty() {
+            continue;
+        }
+        match subjects
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case(topic))
+        {
+            Some((_, count)) => *count += 1,
+            None => subjects.push((topic.to_string(), 1)),
+        }
+    }
+    // "Regulation of food intake: leptin" counts toward "Regulation of food
+    // intake" when the catalog names that subject too, so one subject split
+    // across narrow labels is not mistaken for several minor ones.
+    let mut index = 0;
+    while index < subjects.len() {
+        let parent = subjects[index]
+            .0
+            .split_once(':')
+            .map(|(parent, _)| parent.trim().to_string())
+            .and_then(|parent| {
+                subjects
+                    .iter()
+                    .position(|(name, _)| name.eq_ignore_ascii_case(&parent))
+            });
+        match parent {
+            Some(parent) if parent != index => {
+                let (_, count) = subjects.remove(index);
+                let parent = if parent > index { parent - 1 } else { parent };
+                subjects[parent].1 += count;
+            }
+            _ => index += 1,
+        }
+    }
+    if subjects.len() < 2 {
+        return Vec::new();
+    }
+    if subjects.len() > MAX_CATALOG_SUBJECTS {
+        let mut counts = subjects.iter().map(|(_, count)| *count).collect::<Vec<_>>();
+        counts.sort_unstable_by(|a, b| b.cmp(a));
+        let least = counts[MAX_CATALOG_SUBJECTS - 1];
+        let mut room = MAX_CATALOG_SUBJECTS - counts.iter().filter(|count| **count > least).count();
+        subjects.retain(|(_, count)| {
+            if *count != least {
+                return *count > least;
+            }
+            let keep = room > 0;
+            room = room.saturating_sub(1);
+            keep
+        });
+    }
+    subjects
+        .into_iter()
+        .map(|(name, count)| format!("{name} ({count})"))
+        .collect()
 }
 
 fn document_study_guide_prompt(
@@ -225,8 +350,15 @@ fn document_study_guide_prompt(
             topic.key_concepts.join("; ")
         ));
     }
+    let subjects = catalog_subjects(knowledge);
+    if !subjects.is_empty() {
+        goals.push_str(&format!(
+            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units is at least mentioned, in a key point that may join several related subjects, a table row or a clause; only the section's big idea gets more than a sentence. One with only one or two units may be left to the source.\n",
+            subjects.join("; ")
+        ));
+    }
     let user = format!(
-        "Document: {document_title}\n\nThe whole-document learning plan follows. Use it only to see where this section sits and what other sections cover.\n<ostudy-learning-plan>\n{global_context}\n</ostudy-learning-plan>\n\nWrite the study-guide section for this learning topic.\nTopic: {}\nTopic summary: {}\nCanonical source units: {}–{}\n{goals}{visual_instruction}\n\nShared knowledge catalog for this topic (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nSummarize the key ideas of these knowledge units while checking their original evidence and preserving qualifications.",
+        "Document: {document_title}\n\nThe whole-document learning plan follows. Use it only to see where this section sits and what other sections cover.\n<ostudy-learning-plan>\n{global_context}\n</ostudy-learning-plan>\n\nWrite the study-guide section for this learning topic.\nTopic: {}\nTopic summary: {}\nCanonical source units: {}–{}\n{goals}{visual_instruction}\n\nShared knowledge catalog for this topic (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nSummarize the key ideas of these knowledge units, from the first source unit to the last, while checking their original evidence and preserving qualifications. The topic's title may name only its first part: give every main idea of the catalog its place, briefly, rather than spending the section on the first one.",
         topic.title,
         topic.summary,
         topic.source_locator.first(),
@@ -275,6 +407,7 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
             knowledge,
         },
         completion_plan,
+        WritingBudget::for_knowledge(knowledge),
         Some(cancellation),
     )
     .await
@@ -323,6 +456,7 @@ fn fit_collection_guide_request(
             images: &[],
             knowledge,
         },
+        WritingBudget::for_knowledge(knowledge),
     )?;
     Ok((user, completion_plan))
 }
@@ -346,6 +480,7 @@ fn collection_study_guide_system_prompt() -> String {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn request_study_guide_section_with_retry(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -353,11 +488,11 @@ async fn request_study_guide_section_with_retry(
     user: &str,
     evidence: AuthoringEvidence<'_>,
     completion_plan: StudyGuideCompletionPlan,
+    budget: WritingBudget,
     cancellation: Option<&CancellationSignal>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let AuthoringEvidence { images, knowledge } = evidence;
-    let writing =
-        WritingBudget::for_knowledge(knowledge).fit_output(completion_plan.initial_visible_tokens);
+    let writing = budget.fit_output(completion_plan.initial_visible_tokens);
     let initial = recovery::GuideRequest {
         system: system.to_string(),
         user: format!(
@@ -373,6 +508,7 @@ async fn request_study_guide_section_with_retry(
         knowledge,
         !images.is_empty(),
         completion_plan,
+        budget,
         |request| {
             ensure_context_budget(
                 task,
@@ -462,12 +598,12 @@ A study guide is a condensed summary of the key ideas, not a rewrite of the sour
 
 Choose what matters: the overarching ideas, mechanisms, relationships and distinctions an expert teacher would make sure a learner keeps. Leave out individual values, product and brand details, exhaustive lists, minor exceptions and side examples unless they are the point of the topic. When the evidence lists many comparable items, keep only the important ones and put them in one table (or a short list in keyPoints) instead of prose; never write paragraph after paragraph that recites fact after fact. Teach the subject, not the document: state the ideas themselves, and never describe the source's tables, slides, layout or labels or what \"the source\" shows.
 
-Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
+Cover breadth before depth: every main idea of the catalog gets its key point before any one idea gets a table, steps or an explanation, so a section never spends its length on its first idea and drops the later ones. Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
 - overview: the big idea in 2 or 3 sentences: what this topic is about and why it matters.
-- keyPoints: the key ideas, usually three to five, each one or two plain sentences that a learner could repeat from memory. They are the heart of the section.
+- keyPoints: the key ideas, covering the main ideas the catalog teaches from its first source unit to its last, each one plain sentence that a learner could repeat from memory. A topic on one idea needs three to five; a topic that moves through several ideas needs up to eight, never more: when it has more subjects than that, one key point joins several related subjects. They are the heart of the section.
 - explanations: only for the one to three key ideas that need a short explanation of how or why (a mechanism, a cause, a consequence). Each has a short heading naming the idea and one short paragraph. Many topics need one or none.
 - tables: for three or more parallel items compared on two or more attributes, with only the rows and columns a learner needs. At most one or two. Copy names, numbers and units exactly. Do not repeat a table's cells in prose.
-- processSteps: only when an ordered sequence is itself a key idea, in short steps.
+- processSteps: only when an ordered sequence is itself a key idea, in a few short steps.
 - comparisons: only for a central contrast that no table or key point already makes.
 - importantTerms: usually []; at most three terms central to the topic that the section uses without defining, one sentence each.
 - callouts: usually none, at most one, earning its place: key_idea for the single insight that ties the topic together, warning for a caution or a frequent error, tip for a way to remember something, note otherwise. Do not restate a key point.

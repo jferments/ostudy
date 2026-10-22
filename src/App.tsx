@@ -310,6 +310,7 @@ function App() {
                                   subject={librarySubject}
                                   showToast={controller.showToast}
                                   onPracticeCards={controller.practiceCards}
+                                  onSetUpAi={() => void controller.openAiSetup()}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "documents" ? (

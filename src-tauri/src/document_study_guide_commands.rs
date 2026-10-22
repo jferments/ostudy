@@ -276,6 +276,7 @@ pub(crate) async fn generate_document_study_guide_from_plan(
             plan,
             job_id: &job.id,
             evidence: topic_evidence,
+            length_scale: 1.0,
         })
         .await
     }

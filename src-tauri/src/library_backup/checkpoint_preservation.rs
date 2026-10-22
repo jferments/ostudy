@@ -317,6 +317,16 @@ const CONTRACTS: &[Contract] = &[
             description: "slide and guide page marks",
         }],
     },
+    // Which documents a subject's study set leaves out is chosen in the app;
+    // the upgrade only creates its table.
+    Contract {
+        version: 22,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "document_study_exclusions",
+            description: "documents left out of a subject's study set",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the
