@@ -262,6 +262,8 @@ fn scheduler_context_is_scoped_and_sanitized_like_review_attributions() {
             flashcards: false,
             documents: false,
             study_guides: false,
+            notes: false,
+            lessons: false,
             api_settings: true,
             api_credentials: false,
         },

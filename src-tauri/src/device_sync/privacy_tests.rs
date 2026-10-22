@@ -53,6 +53,8 @@ fn every_valid_sync_selection_excludes_chat_and_semantic_projection_rows() {
             flashcards: bits & 1 != 0,
             documents: bits & 2 != 0,
             study_guides: bits & 4 != 0,
+            notes: false,
+            lessons: false,
             api_settings: bits & 8 != 0,
             api_credentials: bits & 16 != 0,
         };
@@ -212,6 +214,8 @@ fn every_valid_sync_selection_leaves_a_complete_graph_for_a_studied_document() {
             flashcards: bits & 1 != 0,
             documents: bits & 2 != 0,
             study_guides: bits & 4 != 0,
+            notes: false,
+            lessons: false,
             api_settings: bits & 8 != 0,
             api_credentials: bits & 16 != 0,
         };

@@ -65,6 +65,8 @@ fn device_sync_round_trip_preserves_managed_audio_asset() {
         flashcards: true,
         documents: false,
         study_guides: false,
+        notes: false,
+        lessons: false,
         api_settings: false,
         api_credentials: false,
     };
