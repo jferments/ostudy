@@ -31,10 +31,10 @@
 #let plain(runs) = runs.map(run => run.at("t", default: run.at("src", default: ""))).join()
 
 // ---------- Building blocks ----------
-#let tile(body, fill: T.accent-soft, inset: (x: 5mm, y: 4mm)) = block(width: 100%, fill: fill, radius: 2mm, inset: inset, above: 4mm, below: 4mm, breakable: false, body)
-#let bullets(items) = pad(left: 1mm, grid(columns: (4.5mm, 1fr), row-gutter: 1.6mm,
+#let tile(body, fill: T.accent-soft, inset: (x: 4.5mm, y: 3mm)) = block(width: 100%, fill: fill, radius: 2mm, inset: inset, above: 2.6mm, below: 2.6mm, breakable: false, body)
+#let bullets(items) = pad(left: 1mm, grid(columns: (4.5mm, 1fr), row-gutter: 1.2mm,
   ..items.map(item => (text(font: ui, fill: T.accent, weight: 700, "—"), rt(item))).flatten()))
-#let subheading(body) = block(above: 4mm, below: 2mm, sticky: true, text(font: ui, size: 8.8pt, weight: 700, fill: T.primary, rt(body)))
+#let subheading(body) = block(above: 3mm, below: 1.5mm, sticky: true, text(font: ui, size: 8.8pt, weight: 700, fill: T.primary, rt(body)))
 
 #let callout-style(label) = if label == "Watch out" {
   (fill: T.warn-soft, color: T.warn)

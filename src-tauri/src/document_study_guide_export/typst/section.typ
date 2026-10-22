@@ -9,7 +9,7 @@
 #set document(title: plain(data.section.title))
 #set page(width: 190mm, height: auto, margin: (x: 13mm, top: 12mm, bottom: 9mm), fill: paper)
 #set text(font: (T.body, "Libertinus Serif"), size: T.body-size, fill: T.ink, lang: "en", hyphenate: true)
-#set par(justify: true, leading: 0.64em, spacing: 0.85em)
+#set par(justify: true, leading: 0.6em, spacing: 0.75em)
 #show math.equation: set text(font: ("New Computer Modern Math",))
 
 #place(top + left, dx: -13mm, dy: -12mm, rect(width: 190mm, height: 2.4mm, fill: T.primary))
