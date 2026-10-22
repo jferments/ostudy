@@ -1211,7 +1211,7 @@ mod tests {
         // 50,000 words is about 300,000 characters; 0.08 of it is 24,000,
         // asked for as 24,000 / 2.7 = 8,888.
         assert_eq!(length_scale(50_000, 88_880), 0.1);
-        assert_eq!(length_scale(50_000, 10_000), 1.0);
+        assert_eq!(length_scale(50_000, 8_000), 1.0);
         assert_eq!(length_scale(0, 20_000), 1.0);
         assert_eq!(length_scale(50_000, 0), 1.0);
     }
