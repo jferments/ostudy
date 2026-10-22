@@ -293,6 +293,34 @@ pub(crate) fn transition_document_artifact_job(
     load_document_artifact_job(database, job_id)
 }
 
+/// A study guide learns how many sections it has only after planning them,
+/// while it is still preparing; progress then counts those sections.
+pub(crate) fn resize_document_artifact_job(
+    database: &Database,
+    job_id: &str,
+    total_units: usize,
+) -> Result<(), CommandError> {
+    validate_entity_id(job_id, "artifact job")?;
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let changed = connection
+            .execute(
+                "UPDATE document_artifact_jobs
+                 SET total_units = ?1, updated_at = ?2
+                 WHERE id = ?3 AND state = 'preparing' AND completed_units <= ?1",
+                params![to_i64(total_units), now, job_id],
+            )
+            .map_err(CommandError::database)?;
+        if changed != 1 {
+            return Err(CommandError::new(
+                "document_artifact_job_changed",
+                "The document artifact job changed before its sections were planned.",
+            ));
+        }
+        Ok(())
+    })
+}
+
 pub(crate) fn complete_document_artifact_job(
     database: &Database,
     job_id: &str,

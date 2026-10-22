@@ -30,6 +30,7 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { SlideCards } from "./SlideCards";
 import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
 import { InkEditor } from "../ink/InkEditor";
@@ -49,6 +50,8 @@ interface LectureViewProps {
   lessonId: string;
   revisionNumber: number;
   lessonTitle: string;
+  /** The lesson's subject, whose decks a slide's cards go to first. */
+  subjectId: string;
   /** The step the lesson was on, so the lecture opens at its slide. */
   stepKey: string | null;
   /** The lesson's steps, whose checks are answered beside their slides. */
@@ -82,6 +85,7 @@ export function LectureView({
   lessonId,
   revisionNumber,
   lessonTitle,
+  subjectId,
   stepKey,
   steps,
   answered: answeredChecks,
@@ -458,6 +462,7 @@ export function LectureView({
               onAnswered={onAnswered}
             />
           ) : null}
+          {step ? <SlideCards key={step.key} subjectId={subjectId} step={step} showToast={showToast} /> : null}
         </aside>
       </div>
       {asking?.slide.question ? (

@@ -102,6 +102,7 @@ export function LessonPlayer({
         lessonId={lessonId}
         revisionNumber={lesson.revisionNumber}
         lessonTitle={lesson.content.title}
+        subjectId={lesson.lesson.subjectId}
         stepKey={current.key}
         steps={steps}
         answered={progress?.checks ?? {}}

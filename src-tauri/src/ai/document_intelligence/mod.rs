@@ -48,6 +48,7 @@ pub(crate) use observed::{
     generate_collection_study_guide_topic_section, generate_document_study_guide_editorial,
     generate_lecture_script, generate_lesson, generate_podcast_script,
     generate_study_guide_topic_section, generate_window_flashcards,
+    plan_document_study_guide_sections,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use podcast_script::{
@@ -55,7 +56,7 @@ pub(crate) use podcast_script::{
 };
 pub(crate) use study_guide::{
     preflight_collection_study_guide_section, preflight_document_study_guide_section,
-    CollectionStudyGuideAuthoring,
+    validate_section_plan, CollectionStudyGuideAuthoring, GuideTopicBrief, PlannedGuideSection,
 };
 pub(crate) use transport::{
     request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,
