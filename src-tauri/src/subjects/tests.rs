@@ -516,8 +516,11 @@ fn left_out_documents_leave_the_subject_study_set_until_let_back_in_or_moved() {
             assert!(set_left_out(connection, stale).is_err());
 
             let library = set_left_out(connection, leave_out(&library, &[&left_out]))?;
-            assert_eq!(library.left_out_document_ids, [left_out.clone()]);
-            assert_eq!(members(connection), [kept.clone()]);
+            assert_eq!(
+                library.left_out_document_ids,
+                std::slice::from_ref(&left_out)
+            );
+            assert_eq!(members(connection), std::slice::from_ref(&kept));
 
             // Saving the subject's choice again lets the others back in.
             let library = set_left_out(connection, leave_out(&library, &[]))?;

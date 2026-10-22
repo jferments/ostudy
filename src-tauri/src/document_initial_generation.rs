@@ -123,6 +123,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_initial_flashcards(
     database: &Database,
     paths: &AppPaths,
