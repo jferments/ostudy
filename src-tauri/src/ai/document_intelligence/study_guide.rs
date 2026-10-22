@@ -33,6 +33,9 @@ mod recovery;
 mod repair;
 mod section_plan;
 use completion::*;
+
+/// Subjects listed for one section's coverage check.
+const MAX_CATALOG_SUBJECTS: usize = 24;
 use content::*;
 use policy::*;
 
@@ -193,6 +196,47 @@ fn validate_document_guide_input(
     Ok(())
 }
 
+/// Subjects of a catalog, in source order, so a section spanning several of
+/// them can be checked against every one. Their units name them; the
+/// smallest are dropped past the limit.
+fn catalog_subjects(knowledge: &KnowledgeCatalog) -> Vec<String> {
+    let mut subjects: Vec<(String, usize)> = Vec::new();
+    for unit in &knowledge.units {
+        let topic = unit.content.topic.trim();
+        if topic.is_empty() {
+            continue;
+        }
+        match subjects
+            .iter_mut()
+            .find(|(name, _)| name.eq_ignore_ascii_case(topic))
+        {
+            Some((_, count)) => *count += 1,
+            None => subjects.push((topic.to_string(), 1)),
+        }
+    }
+    if subjects.len() < 2 {
+        return Vec::new();
+    }
+    if subjects.len() > MAX_CATALOG_SUBJECTS {
+        let mut counts = subjects.iter().map(|(_, count)| *count).collect::<Vec<_>>();
+        counts.sort_unstable_by(|a, b| b.cmp(a));
+        let least = counts[MAX_CATALOG_SUBJECTS - 1];
+        let mut room = MAX_CATALOG_SUBJECTS - counts.iter().filter(|count| **count > least).count();
+        subjects.retain(|(_, count)| {
+            if *count != least {
+                return *count > least;
+            }
+            let keep = room > 0;
+            room = room.saturating_sub(1);
+            keep
+        });
+    }
+    subjects
+        .into_iter()
+        .map(|(name, count)| format!("{name} ({count})"))
+        .collect()
+}
+
 fn document_study_guide_prompt(
     _task: &DocumentTaskContext,
     document_title: &str,
@@ -223,6 +267,13 @@ fn document_study_guide_prompt(
         goals.push_str(&format!(
             "Key concepts the section should make clear, not just name: {}\n",
             topic.key_concepts.join("; ")
+        ));
+    }
+    let subjects = catalog_subjects(knowledge);
+    if !subjects.is_empty() {
+        goals.push_str(&format!(
+            "Subjects of this topic's knowledge in source order, with their unit counts: {}. Every subject with several units gets at least a key point, a table row or a sentence; one with only one or two units may be left to the source.\n",
+            subjects.join("; ")
         ));
     }
     let user = format!(

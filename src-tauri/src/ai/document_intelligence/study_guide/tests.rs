@@ -348,3 +348,39 @@ fn repeated_knowledge_targets_are_kept_once() {
     .unwrap();
     assert_eq!(section.knowledge_support.len(), 1);
 }
+
+#[test]
+fn catalog_subjects_keep_source_order_and_the_largest_past_the_limit() {
+    let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+    let template = catalog.units[0].clone();
+    let with_topic = |topic: &str| {
+        let mut unit = template.clone();
+        unit.content.topic = topic.to_string();
+        unit
+    };
+    assert!(catalog_subjects(&catalog).is_empty());
+    catalog.units = [
+        "Swallowing",
+        "swallowing",
+        "Gastric emptying",
+        " ",
+        "Defecation",
+    ]
+    .into_iter()
+    .map(with_topic)
+    .collect();
+    assert_eq!(
+        catalog_subjects(&catalog),
+        ["Swallowing (2)", "Gastric emptying (1)", "Defecation (1)"]
+    );
+    catalog.units = (0..MAX_CATALOG_SUBJECTS + 2)
+        .map(|index| with_topic(&format!("S{index}")))
+        .chain([with_topic("S5"), with_topic("S9")])
+        .collect();
+    let subjects = catalog_subjects(&catalog);
+    assert_eq!(subjects.len(), MAX_CATALOG_SUBJECTS);
+    assert_eq!(subjects[0], "S0 (1)");
+    assert!(subjects.contains(&"S5 (2)".to_string()));
+    assert!(subjects.contains(&"S9 (2)".to_string()));
+    assert!(!subjects.contains(&"S25 (1)".to_string()));
+}
