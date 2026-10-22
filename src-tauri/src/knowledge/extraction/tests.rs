@@ -448,3 +448,43 @@ fn picture_only_sources_wait_for_vision_without_failing_their_window() {
     let error = defer_picture_only_sources(vec![cover]).unwrap_err();
     assert_eq!(error.code, IMAGES_REQUIRE_VISION);
 }
+
+#[test]
+fn number_repair_names_the_number_and_offers_the_evidence_that_prints_it() {
+    let (_, mut first, _, _) = fixture();
+    first.text = "Gastric emptying slows after a fatty meal.".into();
+    first.refresh_identity().unwrap();
+    let mut second = first.clone();
+    second.segment_key = "1:0:0".into();
+    second.text = "Plasma osmolarity is about 290 mOsm/L.".into();
+    second.refresh_identity().unwrap();
+    let sources = [first, second];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let printing = catalog
+        .entries
+        .iter()
+        .position(|entry| entry.source_id == sources[1].id)
+        .unwrap();
+    let mut draft = proposal("E0");
+    draft["statement"] = json!("Plasma osmolarity is about 290 mOsm/L.");
+    let report = decode::AnalysisReport {
+        rejected: vec![decode::RejectedUnit {
+            slot: 0,
+            proposal: draft,
+            code: "unsupported_number".to_string(),
+        }],
+        ..decode::AnalysisReport::default()
+    };
+
+    assert!(repair_scope(&report, &catalog, &sources)
+        .positions
+        .contains(&printing));
+    let reason = report.repair_prompt(&catalog, &sources)["rejectedProposals"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(reason.contains("The number 290 is not printed"));
+    assert!(reason.contains(&EvidenceCatalog::alias(printing)));
+    let (user, _) = build_repair_request(&report, &catalog, &sources);
+    assert!(user.contains(&format!("\"id\":\"{}\"", EvidenceCatalog::alias(printing))));
+}
