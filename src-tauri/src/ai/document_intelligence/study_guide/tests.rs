@@ -397,3 +397,18 @@ fn catalog_subjects_keep_source_order_and_the_largest_past_the_limit() {
     assert!(subjects.contains(&"S9 (2)".to_string()));
     assert!(!subjects.contains(&"S25 (1)".to_string()));
 }
+
+#[test]
+fn a_guide_length_scale_shortens_each_section_to_a_floor() {
+    let budget = WritingBudget::from_signals(64, 64_000);
+    assert_eq!(budget.target_chars, 3_000);
+    assert_eq!(budget.scaled(1.0), budget);
+    assert_eq!(budget.scaled(0.0), budget);
+    assert_eq!(budget.scaled(f64::NAN), budget);
+    let half = budget.scaled(0.5);
+    assert_eq!(half.target_chars, 1_500);
+    assert_eq!(half.overview_chars, 300);
+    let tiny = budget.scaled(0.01);
+    assert_eq!(tiny.target_chars, 512);
+    assert_eq!(tiny.overview_chars, 150);
+}

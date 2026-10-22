@@ -55,8 +55,9 @@ pub(crate) use podcast_script::{
     PodcastLesson, PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
 };
 pub(crate) use study_guide::{
-    preflight_collection_study_guide_section, preflight_document_study_guide_section,
-    validate_section_plan, CollectionStudyGuideAuthoring, GuideTopicBrief, PlannedGuideSection,
+    document_guide_section_chars, preflight_collection_study_guide_section,
+    preflight_document_study_guide_section, validate_section_plan, CollectionStudyGuideAuthoring,
+    GuideTopicBrief, PlannedGuideSection,
 };
 pub(crate) use transport::{
     request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,

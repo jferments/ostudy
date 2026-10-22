@@ -50,6 +50,12 @@ mod partition_checkpoints;
 mod preservation;
 mod sections;
 
+/// Characters per word of English prose, spaces included, to compare a
+/// source's word count with a writing budget in characters.
+const GUIDE_CHARS_PER_SOURCE_WORD: usize = 6;
+/// Sections come back about twice the length their request names (1.9 times
+/// on the GI eval chapter, 2026-10-22), so a guide asks for half its target.
+const WRITTEN_PER_REQUESTED: usize = 2;
 // Old topic checkpoints may have replaced partition prose with a short plan
 // summary. Invalidate only derived guide checkpoints, never learner cards or
 // shared source knowledge. Cleanup still waits for successful publication.
@@ -71,6 +77,10 @@ pub(crate) struct StudyGuideGenerationExecution<'a> {
     pub plan: &'a DocumentLearningPlan,
     pub job_id: &'a str,
     pub evidence: Vec<StudyGuideTopicEvidence>,
+    /// How much of its own budget each section is asked to write, so the
+    /// whole guide comes to about a tenth of the source; set once its
+    /// sections are planned.
+    pub length_scale: f64,
 }
 
 pub(crate) async fn execute_study_guide_generation(
@@ -123,6 +133,7 @@ pub(crate) async fn execute_study_guide_generation(
         Ok::<_, CommandError>((planned, guide, catalogs))
     }
     .await;
+    let source_words = sections::source_words(execution.plan, &execution.evidence);
     let (planned, guide, catalogs) = match knowledge {
         Ok(value) => value,
         Err(error) => {
@@ -154,8 +165,22 @@ pub(crate) async fn execute_study_guide_generation(
     let execution = StudyGuideGenerationExecution {
         plan: &guide,
         evidence,
+        length_scale: length_scale(
+            source_words,
+            catalogs
+                .iter()
+                .map(crate::ai::document_intelligence::document_guide_section_chars)
+                .sum(),
+        ),
         ..execution
     };
+    crate::logging::info_target(
+        "ai.document.study_guide",
+        "study_guide_length_planned",
+        "Sized the guide's sections from the source's length; no content is logged.",
+        serde_json::json!({"document":execution.document_id,"sourceWords":source_words,
+            "sections":guide.topics.len(),"lengthScale":execution.length_scale}),
+    );
     if guide.topics.len() != learning_topic_count {
         resize_document_artifact_job(execution.database, execution.job_id, guide.topics.len())?;
     }
@@ -393,6 +418,19 @@ pub(crate) async fn execute_study_guide_generation(
         &[&contract_key, &section_plan_key],
     );
     Ok(published)
+}
+
+/// A guide is about a tenth of its source. Each section's own budget comes
+/// from its knowledge alone, so their sum can be far more than that for a
+/// long source; every section then gets the same share of its budget. A
+/// guide already within that target is left as is.
+fn length_scale(source_words: usize, section_budget_chars: usize) -> f64 {
+    let target_chars =
+        source_words.saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD) / 10 / WRITTEN_PER_REQUESTED;
+    if section_budget_chars == 0 || target_chars == 0 {
+        return 1.0;
+    }
+    (target_chars as f64 / section_budget_chars as f64).min(1.0)
 }
 
 /// One knowledge catalog per topic of `plan`, each shared unit taught once.
@@ -717,6 +755,7 @@ async fn author_topic(
                 images: &evidence.images,
                 knowledge,
             },
+            execution.length_scale,
         )
     };
     let partitions = match split {
@@ -786,6 +825,7 @@ async fn author_topic(
                 images: &evidence.images,
                 knowledge,
             },
+            execution.length_scale,
         )
         .await?;
         root_task.ensure_current(execution.database)?;
@@ -1157,6 +1197,16 @@ mod tests {
                 anchor_hash: "1".repeat(64),
             }],
         }
+    }
+
+    #[test]
+    fn length_scale_aims_at_a_tenth_of_the_source() {
+        // 50,000 words is about 300,000 characters; a tenth is 30,000, asked
+        // for as 15,000.
+        assert_eq!(length_scale(50_000, 60_000), 0.25);
+        assert_eq!(length_scale(50_000, 10_000), 1.0);
+        assert_eq!(length_scale(0, 20_000), 1.0);
+        assert_eq!(length_scale(50_000, 0), 1.0);
     }
 
     #[test]
