@@ -200,7 +200,8 @@ pub(crate) fn create_package(
         let snapshot =
             Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(CommandError::database)?;
-        let (asset_count, asset_bytes) = if selection.flashcards {
+        // Card images, notebook pictures and lesson audio are managed assets.
+        let (asset_count, asset_bytes) = if selection.flashcards || selection.notes || selection.lessons {
             export_assets(&snapshot, paths, &transaction)?
         } else {
             (0, 0)
@@ -813,3 +814,7 @@ mod media_asset_tests;
 #[cfg(test)]
 #[path = "subjects_sync_tests.rs"]
 mod subjects_sync_tests;
+
+#[cfg(test)]
+#[path = "content_sync_tests.rs"]
+mod content_sync_tests;

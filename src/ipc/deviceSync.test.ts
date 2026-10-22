@@ -26,6 +26,8 @@ describe("device synchronization IPC", () => {
       flashcards: true,
       documents: true,
       studyGuides: true,
+      notes: true,
+      lessons: true,
       apiSettings: true,
       apiCredentials: true,
     };
@@ -50,6 +52,8 @@ describe("device synchronization IPC", () => {
       flashcards: true,
       documents: true,
       studyGuides: true,
+      notes: true,
+      lessons: true,
       apiSettings: false,
       apiCredentials: false,
     };

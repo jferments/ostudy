@@ -55,6 +55,8 @@ interface DocumentsScreenProps {
   onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
+  /** Opens a notebook at one of its pages, such as one a page was clipped into. */
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
 }
 
 type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
@@ -101,7 +103,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     string | null | undefined
   >(undefined);
   const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
-  const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
+  const [annotating, setAnnotating] = useState<{ id: string; title: string; subjectId: string | null } | null>(null);
   // The guide a Remake replaces, by document. Its finished record stays the
   // latest one until the new run has planned its sections, so it is not shown.
   const [remadeGuideJobIds, setRemadeGuideJobIds] = useState<Record<string, string>>({});
@@ -197,6 +199,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+        subjectId={annotating.subjectId}
+        onOpenNotebook={props.onOpenNotebook}
       />
     );
   }
@@ -276,7 +280,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const items: OverflowMenuItem[] = [];
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
-      onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+      onSelect: () => setAnnotating({ id: document.id, title: document.title, subjectId: subjectOf(document) }),
     });
     if (canAnnotateDocument(document)) items.push({
       id: "figures", label: "Figures", disabled: deleting,
