@@ -91,9 +91,10 @@ pub(super) fn briefs<'a>(
                 first_unit: topic.source_locator.first(),
                 last_unit: topic.source_locator.last(),
                 source_words: words * own / chunks,
-                core_statements: core
+                // The planner samples these through the topic in source
+                // order, so the core units stand alone when there are any.
+                core_statements: if core.is_empty() { other } else { core }
                     .into_iter()
-                    .chain(other)
                     .map(|unit| unit.content.statement.as_str())
                     .collect(),
             }
@@ -179,11 +180,16 @@ fn merge_topics(
         .iter()
         .flat_map(|topic| topic.evidence_hashes.iter().cloned())
         .collect::<Vec<_>>();
-    let key_concepts = if section.key_ideas.is_empty() {
-        distinct(members.iter().flat_map(|topic| &topic.key_concepts))
-    } else {
-        section.key_ideas.clone()
-    };
+    // The planner's key ideas lead; the members' own concepts follow so the
+    // author still sees what the later pages teach.
+    let key_concepts = section
+        .key_ideas
+        .iter()
+        .cloned()
+        .chain(distinct(
+            members.iter().flat_map(|topic| &topic.key_concepts),
+        ))
+        .collect();
     let evidence_hash = hash_text(&format!(
         "guide-section-v1|{}|{}|{}",
         members
@@ -470,7 +476,15 @@ mod tests {
         assert_eq!(guide.topics[0].id, plan.topics[0].id);
         assert_eq!(guide.topics[1].id, plan.topics[2].id);
         assert_eq!(guide.topics[1].title, "Gas exchange");
-        assert_eq!(guide.topics[1].key_concepts, ["Gas exchange matters."]);
+        assert_eq!(
+            guide.topics[1].key_concepts,
+            [
+                "Gas exchange matters.",
+                "Concept 2",
+                "Concept 3",
+                "Concept 4"
+            ]
+        );
         assert_eq!(guide.topics[1].evidence_chunk_indices, [4, 5, 6, 7, 8, 9]);
         assert_eq!(guide.topics[1].source_locator.unit_numbers, [3, 4, 5, 6]);
         assert_eq!(guide.topics[0].summary, "Summary 0. Summary 1.");

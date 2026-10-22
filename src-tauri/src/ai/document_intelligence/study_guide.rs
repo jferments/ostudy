@@ -226,7 +226,7 @@ fn document_study_guide_prompt(
         ));
     }
     let user = format!(
-        "Document: {document_title}\n\nThe whole-document learning plan follows. Use it only to see where this section sits and what other sections cover.\n<ostudy-learning-plan>\n{global_context}\n</ostudy-learning-plan>\n\nWrite the study-guide section for this learning topic.\nTopic: {}\nTopic summary: {}\nCanonical source units: {}–{}\n{goals}{visual_instruction}\n\nShared knowledge catalog for this topic (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nSummarize the key ideas of these knowledge units while checking their original evidence and preserving qualifications.",
+        "Document: {document_title}\n\nThe whole-document learning plan follows. Use it only to see where this section sits and what other sections cover.\n<ostudy-learning-plan>\n{global_context}\n</ostudy-learning-plan>\n\nWrite the study-guide section for this learning topic.\nTopic: {}\nTopic summary: {}\nCanonical source units: {}–{}\n{goals}{visual_instruction}\n\nShared knowledge catalog for this topic (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nSummarize the key ideas of these knowledge units, from the first source unit to the last, while checking their original evidence and preserving qualifications. The topic's title may name only its first part: give every main idea of the catalog its place, briefly, rather than spending the section on the first one.",
         topic.title,
         topic.summary,
         topic.source_locator.first(),
