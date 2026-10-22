@@ -61,12 +61,14 @@ const railHeading = "tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tra
 const pageHeading = "tw:m-0 tw:min-w-0 tw:scroll-mt-24 tw:break-words tw:text-title tw:font-semibold tw:tracking-tighter tw:text-foreground tw:outline-none tw:wide:text-display";
 
 export function GuideOverviewPage({
-  guide, guideTitle, order, layoutMode, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
+  guide, guideTitle, order, layoutMode, pageStyle, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
 }: GuideSourceProps & {
   guide: DocumentStudyGuide;
   guideTitle: string;
   order: GuideReadingOrder;
   layoutMode: LayoutMode;
+  /** The overview reads as a designed At a glance page in this theme, or as plain text. */
+  pageStyle: GuidePageStyle;
   guideNote: StudyGuideOverlay | null;
   actionsDisabled: boolean;
   onNavigate: (destination: GuideDestination) => void;
@@ -83,6 +85,8 @@ export function GuideOverviewPage({
   const first = order.entries[0];
   const concepts = guide.overview.keyConcepts.slice(0, 6);
   const wide = layoutMode === "wide";
+  const glance = useDesignedSectionPage(sourceProps.documentId, null, pageStyle === "plain" ? null : pageStyle,
+    `${guide.id}:${guide.revision}:${guide.updatedAt}`);
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={guideNote} disabled={actionsDisabled}
       onEdit={onEditNote} onRemove={onRemoveNote} />
@@ -95,6 +99,15 @@ export function GuideOverviewPage({
         <h1 id={headingId} tabIndex={-1} className={pageHeading}><StudyMarkdown text={guideTitle} inline /></h1>
         <SourceChip {...sourceProps} detail={formatSourceLength(sourceProps.source)} />
       </header>
+      {glance === "loading" ? (
+        <div aria-hidden="true" className="tw:aspect-[4/3] tw:w-full tw:rounded-md tw:bg-card tw:ring-1 tw:ring-border" />
+      ) : glance !== null ? (
+        <div className="tw:overflow-hidden tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border">
+          <img src={glance.url} alt="" data-testid="guide-glance-page" className="tw:block tw:h-auto tw:w-full" />
+        </div>
+      ) : null}
+      {/* The designed page is a picture of the summary, objectives and concepts, which stay for screen readers. */}
+      <div className={glance === null ? "tw:contents" : "tw:sr-only"}>
       {guide.overview.summary.trim() ? (
         <GuideMinuteBox id={`${ids}-minute`} page><StudyMarkdown text={guide.overview.summary} /></GuideMinuteBox>
       ) : null}
@@ -123,6 +136,7 @@ export function GuideOverviewPage({
           </dl>
         </section>
       ) : null}
+      </div>
       {chapters.length > 0 ? (
         <section aria-labelledby={`${ids}-chapters`} className="tw:grid tw:gap-3">
           <h2 id={`${ids}-chapters`} className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Chapters</h2>

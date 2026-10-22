@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
-import { getDocumentStudyGuideSectionPage, type StudyGuidePdfTheme } from "../../ipc/studyGuides";
+import {
+  getDocumentStudyGuideGlancePage,
+  getDocumentStudyGuideSectionPage,
+  type StudyGuidePdfTheme,
+} from "../../ipc/studyGuides";
 
 /** How guide sections read: as a designed page in a PDF theme, or as plain text. */
 export type GuidePageStyle = "plain" | StudyGuidePdfTheme;
@@ -52,26 +56,30 @@ function svgSize(svg: string): { width: number; height: number } | null {
 }
 
 /**
- * One section laid out natively as a designed page in `theme`, as an image URL. A newer
+ * One section, or with a null `topicId` the guide's At a glance page, laid out natively
+ * as a designed page in `theme`, as an image URL. A newer
  * section, theme or guide text replaces an older read, the image is released when it is
  * replaced or the page closes, and a layout failure gives the plain page.
  */
 export function useDesignedSectionPage(
   documentId: string,
-  topicId: string,
+  topicId: string | null,
   theme: StudyGuidePdfTheme | null,
   /** Changes whenever the section's generated text does. */
   contentKey: string,
 ): DesignedSectionPage {
   const lane = useRequestLane();
   const [page, setPage] = useState<{ request: string; picture: SectionPagePicture | null } | null>(null);
-  const request = theme === null ? null : `${documentId}:${topicId}:${theme}:${contentKey}`;
+  const request = theme === null ? null : `${documentId}:${topicId ?? "glance"}:${theme}:${contentKey}`;
 
   useEffect(() => {
     if (theme === null || request === null) return;
     let live = true;
     let made: string | null = null;
-    void latestResult(lane, () => getDocumentStudyGuideSectionPage(documentId, topicId, theme)).then(
+    const read = () => topicId === null
+      ? getDocumentStudyGuideGlancePage(documentId, theme)
+      : getDocumentStudyGuideSectionPage(documentId, topicId, theme);
+    void latestResult(lane, read).then(
       (value) => {
         if (value === undefined || !live) return;
         const size = svgSize(value.svg);

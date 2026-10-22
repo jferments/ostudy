@@ -1,7 +1,7 @@
 import { invoke } from "./transport";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDocumentStudyGuideSectionPage } from "./studyGuides";
+import { getDocumentStudyGuideGlancePage, getDocumentStudyGuideSectionPage } from "./studyGuides";
 
 vi.mock("./transport", () => ({ invoke: vi.fn() }));
 
@@ -18,6 +18,13 @@ describe("study guide IPC", () => {
     await getDocumentStudyGuideSectionPage(documentId, topicId, "sage");
     expect(invoke).toHaveBeenCalledWith("get_document_study_guide_section_page", {
       input: { documentId, topicId, theme: "sage" },
+    });
+  });
+
+  it("asks for the At a glance page in a theme", async () => {
+    await getDocumentStudyGuideGlancePage(documentId, "plum");
+    expect(invoke).toHaveBeenCalledWith("get_document_study_guide_glance_page", {
+      input: { documentId, theme: "plum" },
     });
   });
 });

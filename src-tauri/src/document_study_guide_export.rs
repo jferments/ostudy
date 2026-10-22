@@ -83,6 +83,24 @@ pub(crate) struct StudyGuideSectionPageDto {
     pub svg: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GetStudyGuideGlancePageInput {
+    pub document_id: String,
+    #[serde(default)]
+    pub theme: StudyGuidePdfTheme,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StudyGuideGlancePageDto {
+    pub document_id: String,
+    pub guide_revision: i64,
+    pub theme: StudyGuidePdfTheme,
+    /// The guide's At a glance page as a standalone SVG.
+    pub svg: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StudyGuidePdfSummary {
@@ -390,6 +408,37 @@ fn read_section_page(
         theme: input.theme,
         svg,
     })
+}
+
+/// A document's study guide's At a glance page, set in the PDF export's theme.
+/// Read-only, like the section pages; the reader falls back to its plain
+/// overview when this fails.
+#[tauri::command]
+pub(crate) async fn get_document_study_guide_glance_page(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: GetStudyGuideGlancePageInput,
+) -> Result<StudyGuideGlancePageDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let effective = load_effective_export(&database, &paths, &input.document_id, false)?;
+        let svg = guide_typst::glance_page_svg(&effective, input.theme)?;
+        Ok(StudyGuideGlancePageDto {
+            document_id: input.document_id,
+            guide_revision: effective.guide_revision,
+            theme: input.theme,
+            svg,
+        })
+    })
+    .await
+    .map_err(|error| {
+        CommandError::new(
+            "study_guide_page_layout_failed",
+            format!("Could not lay out the designed study-guide page: {error}"),
+        )
+    })?
 }
 
 /// Section indices in the order the reader numbers them: by chapter when the
@@ -1119,6 +1168,27 @@ mod tests {
         assert!(blocks
             .iter()
             .any(|block| matches!(block, ExportBlock::Heading(text) if text == "Key points")));
+    }
+
+    #[test]
+    fn glance_pages_set_the_overview_concepts_and_key_ideas_in_every_theme() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        export.key_concepts = vec!["Preload: stretch before contraction".into()];
+        for theme in [
+            StudyGuidePdfTheme::Navy,
+            StudyGuidePdfTheme::Sage,
+            StudyGuidePdfTheme::Slate,
+            StudyGuidePdfTheme::Plum,
+        ] {
+            let svg = guide_typst::glance_page_svg(&export, theme).unwrap();
+            assert!(svg.starts_with("<svg"), "{theme:?}");
+            assert!(svg.contains("viewBox=\"0 0 538"), "{theme:?}");
+        }
+        // A guide with only an overview still sets its page.
+        let mut bare = test_export();
+        bare.key_concepts.clear();
+        assert!(guide_typst::glance_page_svg(&bare, StudyGuidePdfTheme::Navy).is_ok());
     }
 
     #[test]

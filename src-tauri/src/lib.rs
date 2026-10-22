@@ -476,6 +476,7 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
             document_study_guide_export::get_document_study_guide_section_page,
+            document_study_guide_export::get_document_study_guide_glance_page,
             document_study_guide_export::prepare_collection_study_guide_pdf,
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
