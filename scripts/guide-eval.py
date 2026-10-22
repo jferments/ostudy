@@ -349,6 +349,10 @@ def call_judge(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
         "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}],
     }
+    if "api.anthropic.com" in args.judge_base_url:
+        # Anthropic's OpenAI-compatible endpoint refuses both for current
+        # models; the prompt already asks for one JSON object.
+        del body["temperature"], body["response_format"]
     request = urllib.request.Request(
         args.judge_base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
