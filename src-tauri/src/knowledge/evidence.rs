@@ -380,9 +380,17 @@ mod tests {
         }
         assert!(catalog.resolve(&["E999999".to_string()]).is_err());
         assert!(catalog.resolve(&["E00".to_string()]).is_err());
-        assert!(catalog
-            .resolve(&["E0".to_string(), "E0".to_string()])
-            .is_err());
+        // A repeated or padded alias still names one native span.
+        let tidied = catalog
+            .resolve(&["E1".to_string(), " E0".to_string(), "E1 ".to_string()])
+            .unwrap();
+        assert_eq!(tidied.len(), 2);
+        assert_eq!(
+            tidied[0].id,
+            catalog.resolve(&["E0".to_string()]).unwrap()[0].id
+        );
+        assert!(catalog.resolve(&[" ".to_string()]).is_err());
+        assert!(catalog.resolve(&[]).is_err());
     }
 
     #[test]
