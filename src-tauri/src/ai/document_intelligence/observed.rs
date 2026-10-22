@@ -17,6 +17,7 @@ use crate::{
     task_cancellation::CancellationSignal,
 };
 
+use super::study_guide::{GuideTopicBrief, PlannedGuideSection};
 use super::{
     flashcards, lecture_script, lesson, podcast_script, study_guide, AiRuntimeState,
     AuthoringEvidence, CollectionStudyGuideAuthoring, DocumentOutline, DocumentTaskContext,
@@ -93,6 +94,30 @@ pub(crate) fn generate_document_study_guide_editorial<'a>(
             document_title,
             plan,
             sections,
+            cancellation,
+        ),
+        |_| 1,
+    )
+}
+
+pub(crate) fn plan_document_study_guide_sections<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    document_title: &'a str,
+    document_summary: &'a str,
+    topics: &'a [GuideTopicBrief<'a>],
+    cancellation: &'a CancellationSignal,
+) -> impl Future<Output = Result<Vec<PlannedGuideSection>, CommandError>> + 'a {
+    observe(
+        task.diagnostics.as_ref(),
+        task.diagnostic_window_key.as_deref(),
+        Kind::GuideEditorial,
+        study_guide::plan_document_study_guide_sections(
+            runtime,
+            task,
+            document_title,
+            document_summary,
+            topics,
             cancellation,
         ),
         |_| 1,

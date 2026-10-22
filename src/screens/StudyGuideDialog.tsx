@@ -390,7 +390,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
               onResetSection={(override) => void discardOverlay(override, "Section edit reset.")}
               onDiscardConflict={(conflict) => void discardOverlay(conflict, "Older section edit discarded.")} />
           ) : (
-            <GuideOverviewPage guide={guide} guideTitle={guideTitle} order={order} layoutMode={layoutMode}
+            <GuideOverviewPage guide={guide} guideTitle={guideTitle} order={order} layoutMode={layoutMode} pageStyle={pageStyle}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               guideNote={guideNote} actionsDisabled={actionsDisabled} onNavigate={navigate}
               onEditNote={beginGuideNote} onRemoveNote={(note) => void discardOverlay(note, "Guide note removed.")} />
