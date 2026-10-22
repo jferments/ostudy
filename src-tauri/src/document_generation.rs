@@ -326,6 +326,8 @@ async fn generation_slot(
     let mut root_task = input.task.clone();
     root_task.diagnostic_window_key = Some(root_key.clone());
 
+    let card_budget =
+        crate::document_scale::window_card_ceiling(input.plan, locator.unit_numbers.len());
     let result: Result<Vec<Value>, CommandError> = async {
         let partitions = authoring_plan::partition_catalog(&catalogs[position], |knowledge| {
             document_intelligence::preflight_window_flashcards(
@@ -335,13 +337,15 @@ async fn generation_slot(
                 window,
                 document_intelligence::AuthoringEvidence { images, knowledge },
                 document_intelligence::FlashcardGenerationLimits {
-                    maximum_cards: input.plan.max_cards_per_window,
+                    maximum_cards: card_budget,
                     completion_token_floor: 0,
                 },
             )
         })?;
-        let budgets =
-            authoring_plan::allocate_nonzero_budgets(input.plan.max_cards_per_window, &partitions)?;
+        let budgets = authoring_plan::allocate_nonzero_budgets(
+            card_budget.max(partitions.len()),
+            &partitions,
+        )?;
         let child_keys = partitions
             .iter()
             .enumerate()
@@ -369,7 +373,7 @@ async fn generation_slot(
                 "sourceUnitStart": locator.first(),
                 "sourceUnitEnd": locator.last(),
                 "sourceTokens": window.token_estimate,
-                "cardBudget": input.plan.max_cards_per_window,
+                "cardBudget": card_budget,
                 "plannedSubrequests": partitions.len(),
             }),
         );

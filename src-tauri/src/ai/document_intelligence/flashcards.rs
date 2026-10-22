@@ -25,7 +25,7 @@ use super::{
     transport::{ensure_context_budget, request_json, JsonTaskRequest},
 };
 
-pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 13;
+pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 14;
 pub(crate) const FLASHCARD_SCHEMA_VERSION: i64 = 8;
 
 pub(crate) struct FlashcardGenerationLimits {
@@ -134,11 +134,12 @@ fn flashcard_prompt(
     );
     let locator = window.source_locator();
     let user = format!(
-        "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nCreate at most {maximum_cards} high-value learning cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
+        "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nThis passage spans {} source unit(s). Create at most {maximum_cards} learning cards; that is a ceiling, not a target. First list in keyIdeas the ideas from this passage that a learner must know to understand the topic: its mechanisms, key terms, relationships, and the specific facts or numbers that matter. Leave out minor details a learner would not be expected to recall. Then write cards for those key ideas only. A page rich in important content may need up to about 10 cards, a light page one or none, and most pages 2 to 10. Bundle related small facts into one matching, grouping, ordering or select-all card rather than several factoid cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
         window.partition_title,
         window.partition_index + 1,
         locator.first(),
         locator.last(),
+        locator.unit_numbers.len(),
     );
     let user = format!(
         "{user}\n\nShared knowledge units and exact supporting source excerpts:\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nAuthor from these units. Recall cards use knowledgeUnitIds: one target, or at most two for a necessary comparison. Interactive cards instead use an assessment object with criterion, ambiguous=false, and component-level knowledgeUnitIds. Bind every graded answer component: each option for choice questions, the true/false statement (and correction when false), every matching pair, every grouping item membership, and every adjacent ordering edge. Prompt text, grouping category labels, and isolated ordering item labels may also carry context bindings but are not separately required. Use only unambiguous relations supported by this catalog. IDs must come from this catalog. Do not put IDs or provenance into visible card text or tags. Preserve each unit's conditions. A definition card is bidirectional: use it only when both directions are meaningful; otherwise use basic.",
@@ -242,6 +243,10 @@ struct KnowledgeCard {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct KnowledgeCards {
+    /// The passage's key ideas, named before its cards so the cards are sized
+    /// to them. Only planning; nothing is stored.
+    #[serde(default, rename = "keyIdeas")]
+    _key_ideas: Vec<Value>,
     // Only the outer response is atomic. Deserialize each envelope in isolation.
     cards: Vec<Value>,
 }

@@ -26,6 +26,18 @@ pub(crate) const OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
 pub(crate) const GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 3_072;
 pub(crate) const CURATION_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
 
+/// The most cards one source page (or other source unit) may get. It is a
+/// ceiling, not a target: the model names each passage's key ideas and sizes
+/// its cards to them, so a light page gets one card or none.
+pub(crate) const MAX_CARDS_PER_SOURCE_UNIT: usize = 10;
+
+/// The card ceiling for one generation window spanning `source_units` pages.
+pub(crate) fn window_card_ceiling(plan: DocumentScalePlan, source_units: usize) -> usize {
+    source_units
+        .saturating_mul(MAX_CARDS_PER_SOURCE_UNIT)
+        .clamp(1, plan.max_cards_per_window.max(1))
+}
+
 pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
     2_048_usize
         .saturating_add(maximum_cards.saturating_mul(384))
@@ -420,6 +432,14 @@ mod tests {
             generation_source_token_budget(plan, &compound).unwrap(),
             plan.generation_window_max_tokens * 65 / 100
         );
+    }
+
+    #[test]
+    fn card_ceiling_scales_with_pages_within_the_response_ceiling() {
+        let plan = DocumentScalePlan::for_unit_count(55);
+        assert_eq!(window_card_ceiling(plan, 0), 1);
+        assert_eq!(window_card_ceiling(plan, 1), MAX_CARDS_PER_SOURCE_UNIT);
+        assert_eq!(window_card_ceiling(plan, 5), plan.max_cards_per_window);
     }
 
     #[test]
