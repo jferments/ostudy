@@ -59,6 +59,11 @@ vi.mock("../ink/InkEditor", () => ({
     </div>
   ),
 }));
+vi.mock("./SlideCards", () => ({
+  SlideCards: ({ subjectId, step }: { subjectId: string; step: { key: string } }) => (
+    <p>Cards for {step.key} in {subjectId}</p>
+  ),
+}));
 vi.mock("../../ipc/externalFiles", () => ({
   publishPreparedExport: vi.fn(),
   releasePreparedExport: vi.fn(),
@@ -141,6 +146,7 @@ function open(stepKey: string | null = null, onAnswered = vi.fn()) {
       lessonId="lesson-1"
       revisionNumber={2}
       lessonTitle="Loop of Henle"
+      subjectId="subject-1"
       stepKey={stepKey}
       steps={[multiplier]}
       answered={{}}
@@ -630,5 +636,12 @@ describe("LectureView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
     expect(screen.queryByTestId("lesson-check")).toBeNull();
+  });
+
+  it("offers a step's cards beside its slide, for the lesson's subject", async () => {
+    open("multiplier");
+    expect(await screen.findByText("Cards for multiplier in subject-1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.queryByText(/Cards for/)).toBeNull();
   });
 });

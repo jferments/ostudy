@@ -31,11 +31,14 @@ mod editorial;
 mod policy;
 mod recovery;
 mod repair;
+mod section_plan;
 use completion::*;
 use content::*;
 use policy::*;
 
 const MAX_GLOBAL_CONTEXT_BYTES: usize = 18_000;
+
+pub(crate) use section_plan::{validate_section_plan, GuideTopicBrief, PlannedGuideSection};
 
 pub(crate) struct CollectionStudyGuideAuthoring<'a> {
     pub(crate) topic_title: &'a str,
@@ -53,6 +56,25 @@ pub(super) async fn generate_document_study_guide_editorial(
     cancellation: &CancellationSignal,
 ) -> Result<(StudyGuideOverview, StudyGuideEditorial), CommandError> {
     editorial::generate(runtime, task, document_title, plan, sections, cancellation).await
+}
+
+pub(super) async fn plan_document_study_guide_sections(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    document_summary: &str,
+    topics: &[GuideTopicBrief<'_>],
+    cancellation: &CancellationSignal,
+) -> Result<Vec<PlannedGuideSection>, CommandError> {
+    section_plan::plan_document_study_guide_sections(
+        runtime,
+        task,
+        document_title,
+        document_summary,
+        topics,
+        cancellation,
+    )
+    .await
 }
 
 /// Generate one source-grounded guide section for one stable learning topic.
