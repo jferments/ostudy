@@ -24,6 +24,8 @@ On a wide screen, **Document beside** opens a PDF from your library next to the 
 
 **Add picture** asks for an image file (PNG, JPEG, GIF or WebP, up to 25 MB) and puts it near the top of the page in view, selected, at its own size or smaller so it fits within the page's margins. Drag it to move it; drag a corner to resize it, keeping its shape, or hold **Shift** to stretch it. Pictures group, undo and delete like any other mark. The image is kept in your library for as long as a picture uses it, and library backups include it. Pictures go on notebook pages only, not on PDF pages.
 
+A picture can also come from a PDF: **Clip to notes** in the PDF annotator copies part of a page into a notebook, and the clip keeps a way back to its page. Select it to see **From Lecture 7 · p. 4**, which opens that page over the notebook, or beside it when a document is open there. See [Clips](pdf-annotation.md#clips).
+
 ## Links
 
 **Add link** (or **K**) opens **Add a link**. Choose what it opens:
@@ -39,6 +41,10 @@ Select a link to see **Open link** and **Edit link**; tapping a selected link ag
 
 A link whose target has been deleted (a document, a page, a study guide, a deck or a page of notes) stays on the page, struck through, and opens nothing.
 
+## Save a notebook as a PDF
+
+**Save PDF** in the notebook's header (a download button on a phone) saves the notebook as an ordinary PDF that any reader can open, after saving anything still pending, and asks where to put it. Each page keeps its size and paper, and its marks are drawn as they are on screen, the way [Save PDF](pdf-annotation.md#save-a-copy-with-your-annotations) draws a document's annotations: typed text uses IBM Plex Sans, and each sticky note is also a PDF note holding its whole text. Pictures are embedded at the size you gave them. A link to a page of the same notebook becomes a PDF link to that page; links to a document, a study guide, a deck or another notebook stay on the page as their labels, since the reader of the file has none of those. A picture whose image cannot be read is left out, and the message after saving says so.
+
 ## Where notes are kept
 
-Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). Device sync does not send them yet, just as it does not send PDF annotations, and they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**.
+Notebooks live in your library and are part of every [library backup](backups-imports-and-sharing.md). [Device sync](device-sync.md) sends them, with their pictures, when **Notes** is selected; they are not part of a shared deck. Deleting a subject moves its notebooks to **No subject**. A build of oStudy from before clips opens a library that has them, but leaves the clipped pictures out until a newer build opens it again; clips need no library upgrade.

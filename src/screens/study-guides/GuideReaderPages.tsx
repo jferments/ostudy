@@ -11,6 +11,7 @@ import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowM
 import { Badge } from "../../ui/primitives/Badge";
 import { Button } from "../../ui/primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/primitives/Card";
+import { Switch } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ListRowMedia } from "../../ui/primitives/ListRow";
 import { useOptionalTutor } from "../tutor/TutorContext";
@@ -61,12 +62,14 @@ const railHeading = "tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tra
 const pageHeading = "tw:m-0 tw:min-w-0 tw:scroll-mt-24 tw:break-words tw:text-title tw:font-semibold tw:tracking-tighter tw:text-foreground tw:outline-none tw:wide:text-display";
 
 export function GuideOverviewPage({
-  guide, guideTitle, order, layoutMode, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
+  guide, guideTitle, order, layoutMode, pageStyle, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
 }: GuideSourceProps & {
   guide: DocumentStudyGuide;
   guideTitle: string;
   order: GuideReadingOrder;
   layoutMode: LayoutMode;
+  /** The overview reads as a designed At a glance page in this theme, or as plain text. */
+  pageStyle: GuidePageStyle;
   guideNote: StudyGuideOverlay | null;
   actionsDisabled: boolean;
   onNavigate: (destination: GuideDestination) => void;
@@ -83,6 +86,8 @@ export function GuideOverviewPage({
   const first = order.entries[0];
   const concepts = guide.overview.keyConcepts.slice(0, 6);
   const wide = layoutMode === "wide";
+  const glance = useDesignedSectionPage(sourceProps.documentId, null, pageStyle === "plain" ? null : pageStyle,
+    `${guide.id}:${guide.revision}:${guide.updatedAt}`);
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={guideNote} disabled={actionsDisabled}
       onEdit={onEditNote} onRemove={onRemoveNote} />
@@ -95,6 +100,15 @@ export function GuideOverviewPage({
         <h1 id={headingId} tabIndex={-1} className={pageHeading}><StudyMarkdown text={guideTitle} inline /></h1>
         <SourceChip {...sourceProps} detail={formatSourceLength(sourceProps.source)} />
       </header>
+      {glance === "loading" ? (
+        <div aria-hidden="true" className="tw:aspect-[4/3] tw:w-full tw:rounded-md tw:bg-card tw:ring-1 tw:ring-border" />
+      ) : glance !== null ? (
+        <div className="tw:overflow-hidden tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border">
+          <img src={glance.url} alt="" data-testid="guide-glance-page" className="tw:block tw:h-auto tw:w-full" />
+        </div>
+      ) : null}
+      {/* The designed page is a picture of the summary, objectives and concepts, which stay for screen readers. */}
+      <div className={glance === null ? "tw:contents" : "tw:sr-only"}>
       {guide.overview.summary.trim() ? (
         <GuideMinuteBox id={`${ids}-minute`} page><StudyMarkdown text={guide.overview.summary} /></GuideMinuteBox>
       ) : null}
@@ -123,6 +137,7 @@ export function GuideOverviewPage({
           </dl>
         </section>
       ) : null}
+      </div>
       {chapters.length > 0 ? (
         <section aria-labelledby={`${ids}-chapters`} className="tw:grid tw:gap-3">
           <h2 id={`${ids}-chapters`} className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Chapters</h2>
@@ -223,12 +238,22 @@ export function GuideSectionPage({
   // links, comes on screen.
   const endRef = useRef<HTMLDivElement>(null);
   const endOnScreen = useOnScreen(endRef, layoutMode === "compact");
+  const [hideMeanings, setHideMeanings] = useState(readHideTermMeanings);
+  const chooseHideMeanings = (hide: boolean) => {
+    setHideMeanings(hide);
+    saveHideTermMeanings(hide);
+  };
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={note} disabled={actionsDisabled}
       onEdit={onEditNote} onRemove={onRemoveNote} />
     {section.content.importantTerms.length > 0 && !override ? (
-      <RailSection title="Important terms">
-        <GuideTermList terms={section.content.importantTerms} className="tw:text-small" />
+      <RailSection title="Important terms" action={
+        <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+          <Switch checked={hideMeanings} onCheckedChange={chooseHideMeanings} />
+          Hide meanings
+        </label>
+      }>
+        <GuideTermList terms={section.content.importantTerms} className="tw:text-small" hideMeanings={hideMeanings} />
       </RailSection>
     ) : null}
     <GuideSourceBlock {...sourceProps} detail={range} />
@@ -326,11 +351,35 @@ export function GuideSectionPage({
   </>;
 }
 
-function RailSection({ title, children }: { title: string; children: ReactNode }) {
+const HIDE_MEANINGS_KEY = "ostudy.guideHideTermMeanings";
+
+/** Whether term meanings were last hidden on this device, so the learner can test themselves. */
+function readHideTermMeanings(): boolean {
+  try {
+    return window.localStorage.getItem(HIDE_MEANINGS_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveHideTermMeanings(hide: boolean): void {
+  try {
+    window.localStorage.setItem(HIDE_MEANINGS_KEY, String(hide));
+  } catch {
+    // A convenience only; the switch still works for this page.
+  }
+}
+
+function RailSection({ title, action = null, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   const id = `guide-rail-${useId().replaceAll(":", "")}`;
   return (
     <section aria-labelledby={id} className="tw:grid tw:min-w-0 tw:gap-2.5">
-      <h2 id={id} className={railHeading}>{title}</h2>
+      {action ? (
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
+          <h2 id={id} className={railHeading}>{title}</h2>
+          {action}
+        </div>
+      ) : <h2 id={id} className={railHeading}>{title}</h2>}
       {children}
     </section>
   );

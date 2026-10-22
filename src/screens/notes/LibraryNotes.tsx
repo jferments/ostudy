@@ -33,6 +33,15 @@ import { NotebookThumbnail, PAPER_LABELS } from "./paper";
 interface LibraryNotesProps extends Omit<NotebookLinkActions, "onOpenNotebook"> {
   subject: LibrarySubjectScope;
   showToast: ShowToast;
+  /** A notebook to open at one of its pages, such as one a document page was clipped into. */
+  openRequest?: NotebookOpenRequest | null;
+  onOpenRequestConsumed?: (requestId: number) => void;
+}
+
+export interface NotebookOpenRequest {
+  requestId: number;
+  notebookId: string;
+  pageId: string;
 }
 
 const PAGE_SIZE_OPTIONS = [
@@ -56,7 +65,7 @@ const MAX_TITLE_CHARS = 200;
  * first page, and New notebook. Everything groups them under their subjects.
  * Opening one makes it the page.
  */
-export function LibraryNotes({ subject, showToast, ...links }: LibraryNotesProps) {
+export function LibraryNotes({ subject, showToast, openRequest = null, onOpenRequestConsumed, ...links }: LibraryNotesProps) {
   const subjects = useLibrarySubjects(subject);
   const [notebooks, setNotebooks] = useState<NotebookSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +84,12 @@ export function LibraryNotes({ subject, showToast, ...links }: LibraryNotesProps
     });
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!openRequest) return;
+    // The notebook names itself once it opens.
+    setOpen({ notebookId: openRequest.notebookId, title: "Notes", pageId: openRequest.pageId });
+    onOpenRequestConsumed?.(openRequest.requestId);
+  }, [onOpenRequestConsumed, openRequest]);
 
   if (open) {
     return (

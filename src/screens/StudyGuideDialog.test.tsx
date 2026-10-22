@@ -16,6 +16,7 @@ import {
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
   getDocumentStudyGuideSectionPage,
+  getDocumentStudyGuideGlancePage,
   prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
@@ -48,6 +49,7 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentTopicCardIds: vi.fn(),
     getDocumentTopicCardProjection: vi.fn(),
     getDocumentStudyGuideSectionPage: vi.fn(),
+    getDocumentStudyGuideGlancePage: vi.fn(),
     prepareDocumentStudyGuidePdf: vi.fn(),
     saveDocumentStudyGuideOverlay: vi.fn(),
   };
@@ -387,6 +389,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Sections read as plain pages unless a test lays one out.
   vi.mocked(getDocumentStudyGuideSectionPage).mockRejectedValue(new Error("no layout in tests"));
+  vi.mocked(getDocumentStudyGuideGlancePage).mockRejectedValue(new Error("no layout in tests"));
   vi.mocked(getMaterialInk).mockResolvedValue([]);
   vi.mocked(getSettings).mockResolvedValue({} as AppSettings);
   onPracticeCards.mockClear();
@@ -717,6 +720,25 @@ describe("StudyGuideDialog", () => {
     expect(within(note).getByRole("button", { name: "Remove note" })).toBeTruthy();
   });
 
+  it("hides term meanings to test yourself, shows one at a time, and remembers the choice", async () => {
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+    await openSection("Preload");
+
+    const terms = within(screen.getByRole("complementary", { name: "About this section" })).getByRole("region", { name: "Important terms" });
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(within(terms).queryByText("End-diastolic ventricular stretch.")).toBeNull();
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("true");
+    fireEvent.click(within(terms).getByRole("button", { name: "Show what Preload means" }));
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("false");
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+  });
+
   it("keeps section actions in one menu and guide actions in the top bar", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
@@ -751,6 +773,25 @@ describe("StudyGuideDialog", () => {
     expect(await screen.findByText("Writing on Preload, 538.58 by 700")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Back to the guide" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Preload" })).toBeTruthy();
+  });
+
+  it("shows the overview as a designed At a glance page, and as text in the plain style", async () => {
+    vi.mocked(getDocumentStudyGuideGlancePage).mockResolvedValue({
+      documentId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 400" xmlns="http://www.w3.org/2000/svg"/>',
+    });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:glance") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+
+    expect((await screen.findByTestId("guide-glance-page")).getAttribute("src")).toBe("blob:glance");
+    expect(getDocumentStudyGuideGlancePage).toHaveBeenCalledWith(documentId, "navy");
+    const trigger = screen.getByRole("button", { name: "Page: Navy" });
+    await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
+    fireEvent.click(trigger);
+    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitemcheckbox", { name: "Plain" }));
+    await waitFor(() => expect(screen.queryByTestId("guide-glance-page")).toBeNull());
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:glance");
   });
 
   it("reopens on the section last opened and records each section opened", async () => {

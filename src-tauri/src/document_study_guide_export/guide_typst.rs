@@ -29,6 +29,7 @@ use crate::error::CommandError;
 
 const TEMPLATE: &str = include_str!("typst/guide.typ");
 const SECTION_TEMPLATE: &str = include_str!("typst/section.typ");
+const GLANCE_TEMPLATE: &str = include_str!("typst/glance.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
 const BLOCKS: &str = include_str!("typst/blocks.typ");
 const BUNDLED_FONTS: &[&[u8]] = include!(concat!(env!("OUT_DIR"), "/pdf_fonts.rs"));
@@ -171,6 +172,38 @@ pub(super) fn section_page_svg(
     let page = compile_world(SECTION_TEMPLATE, files).and_then(|document| match document.pages() {
         [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
         pages => Err(format!("the section came out as {} pages", pages.len())),
+    });
+    typst::comemo::evict(0);
+    page.map_err(page_error)
+}
+
+/// At most this many key ideas and warnings on the At a glance page.
+const MAX_GLANCE_IDEAS: usize = 6;
+const MAX_GLANCE_WARNINGS: usize = 3;
+
+/// The guide's At a glance page for the reader: its overview, objectives, key concepts,
+/// first key ideas and warnings, on one page as tall as they need.
+pub(super) fn glance_page_svg(
+    export: &EffectiveGuideExport,
+    theme: StudyGuidePdfTheme,
+) -> Result<String, CommandError> {
+    let cram = CramSheet::collect(export);
+    let data = json!({
+        "theme": theme.key(),
+        "overview": runs(&export.overview),
+        "objectives": run_list(&export.learning_objectives),
+        "keyConcepts": run_list(&export.key_concepts),
+        "keyIdeas": cram.key_ideas.into_iter().take(MAX_GLANCE_IDEAS).collect::<Vec<_>>(),
+        "warnings": cram.warnings.into_iter().take(MAX_GLANCE_WARNINGS).collect::<Vec<_>>(),
+    });
+    let mut files = HashMap::new();
+    files.insert(
+        file_id("/data.json"),
+        Bytes::new(serde_json::to_vec(&data).map_err(|error| page_error(error.to_string()))?),
+    );
+    let page = compile_world(GLANCE_TEMPLATE, files).and_then(|document| match document.pages() {
+        [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
+        pages => Err(format!("the page came out as {} pages", pages.len())),
     });
     typst::comemo::evict(0);
     page.map_err(page_error)

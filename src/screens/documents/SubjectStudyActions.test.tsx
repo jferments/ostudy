@@ -58,7 +58,7 @@ describe("SubjectStudyActions", () => {
       target: { kind: "collection", id: subjectId },
       outputPolicy: { flashcards: true, studyGuide: true },
     })));
-    expect(lessons.writeSubjectCourse).toHaveBeenCalledWith(subjectId, expect.any(String));
+    expect(lessons.writeSubjectCourse).toHaveBeenCalledWith(subjectId, expect.any(String), false);
     expect(await screen.findByText("Writing lessons")).toBeTruthy();
   });
 

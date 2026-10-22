@@ -14,9 +14,13 @@ interface DocumentsSectionProps {
   onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
+  /** Opens a notebook at one of its pages, such as one a page was clipped into. */
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
 }
 
-export function DocumentsSection({ refreshDecks, onPracticeCards, onStudySubject, onOpenSubject, showToast, onSetUpAi, subjectId }: DocumentsSectionProps) {
+export function DocumentsSection({
+  refreshDecks, onPracticeCards, onStudySubject, onOpenSubject, showToast, onSetUpAi, subjectId, onOpenNotebook,
+}: DocumentsSectionProps) {
   const capabilities = usePlatformCapabilities();
   const documentProcessingAvailable = capabilities.native === null || capabilities.native.services.nativePdfRender.state === "available";
   if (!documentProcessingAvailable) return <DocumentsDevelopmentStub />;
@@ -29,6 +33,7 @@ export function DocumentsSection({ refreshDecks, onPracticeCards, onStudySubject
       showToast={showToast}
       onSetUpAi={onSetUpAi}
       subjectId={subjectId}
+      onOpenNotebook={onOpenNotebook}
     />
   </div>;
 }

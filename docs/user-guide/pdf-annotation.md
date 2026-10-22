@@ -27,6 +27,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 | Line, Arrow, Box, Ellipse | L, A, R, O | Drag from one corner or end to the other. Hold Shift for a square, a circle, or a line at a multiple of 45 degrees |
 | Curve | C | Drag from one end to the other to draw a gentle arc, then select it and drag its two square control points to bend it. Its arrowheads can be none, one or both |
 | Eraser | E | Drag across annotations to remove each one it touches. Choose **Erase part of a stroke** beside it to take away only the part of a pen or highlighter stroke you drag across, leaving the rest as separate strokes (text highlights, shapes and notes are still erased whole); **Erase whole annotations** goes back. A stylus's eraser end, if it has one, erases with any tool, in the chosen way |
+| Clip to notes | X | Drag a rectangle across part of a page, such as a diagram, and choose a notebook (or name a new one, filed in the document's subject). The part is drawn again from the PDF, sharply, and placed as a picture below what is already on the notebook's last page, or on a new page when there is no room. See [Clips](#clips) |
 
 The row under the tools sets the color and size of what you draw next. Beside the color swatches, **Any color** opens the full color picker, and colors you pick there stay beside the swatches. Beside the sizes, you can type any width or text size in points. Lines, arrows, boxes and ellipses can be solid, dashed or dotted. An arrow can have a head at one end or at both. A box or ellipse can be **Filled**: choose its fill color and switch its **Border** off or on. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** and **Collapse to an icon** or **Expand note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
 
@@ -75,6 +76,10 @@ Every tool works by touch, on any screen size:
 
 Keyboard shortcuts need a hardware keyboard. Handwriting is stored as ink, not as text: handwriting recognition is not available yet.
 
+## Clips
+
+A clip is a picture of part of a PDF page, made with **Clip to notes**, that lives in a notebook. It remembers the page it came from: in the notebook, selecting it shows **From Lecture 7 · p. 4**, which opens that page (beside the notes, when a document is open there). The page in turn shows **In your notes: Cardiac cycle map** at its top corner, once for each notebook it was clipped into; choosing it saves your annotations and opens that notebook at the clip. After a clip, **Open notebook** in the message that confirms it goes there too. The clip is drawn at up to three pixels per point (216 dpi), and at most 1024 pixels on its longer side; it is an ordinary picture you can move, resize and delete, and deleting it removes the page's mention. If the document is deleted, the clip stays and its button says the document was removed. Clip to notes is offered in **Library → Documents**' annotator; a document open beside a notebook does not offer it yet.
+
 ## Keyboard and screen readers
 
 With the Select tool, Tab moves through the annotations on the pages in view. Focusing one selects it, the arrow keys move it by one point (ten with Shift), Delete removes it, and Enter opens a text or sticky note. The tools are toolbar buttons that announce their keyboard shortcuts.
@@ -85,7 +90,7 @@ With the Select tool, Tab moves through the annotations on the pages in view. Fo
 
 ## Where annotations are kept
 
-Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync does not send them yet, so each device keeps its own. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes, and for a collapsed sticky note, from before notes could collapse) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from stays on the device too: device sync and shared decks do not carry it.
+Annotations belong to their document in your library. A whole-library backup includes them, and restoring the backup restores them. Device sync sends them with **Documents**. A build of oStudy from before text highlighting (or, for sticky notes, from before sticky notes, and for a collapsed sticky note, from before notes could collapse) opens a library that has them, but leaves them out until a newer build opens it again. Deleting a document deletes its annotations. Which marks your cards were made from travels with device sync when both **Documents** and **Flashcards** are sent; shared decks do not carry it.
 
 Storing annotations needs library schema 8, cards from marks need schema 10, and saving an annotated copy needs schema 14. The first launch of a build with the annotator upgrades the library and keeps a pre-upgrade checkpoint; see [Library upgrades](library-upgrades.md#the-document-annotations-update-schema-8).
 

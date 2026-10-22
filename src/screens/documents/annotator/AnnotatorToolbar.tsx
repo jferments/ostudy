@@ -34,6 +34,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   rectangle: { label: "Box", icon: "shape-rectangle", shortcut: "R" },
   ellipse: { label: "Ellipse", icon: "shape-ellipse", shortcut: "O" },
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
+  clip: { label: "Clip to notes", icon: "crop", shortcut: "X" },
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
@@ -65,6 +66,8 @@ interface AnnotatorToolbarProps {
   onToggleCollapsed: () => void;
   onDeleteSelection: () => void;
   onEditSelection: () => void;
+  /** Offers the Clip tool, which copies part of a PDF page into a notebook. */
+  canClip?: boolean;
   /** How many annotations the lasso took. */
   groupSize: number;
   onDeleteGroup: () => void;
@@ -140,6 +143,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               {SHAPE_TOOLS.map(toolButton)}
               <Divider />
               {toolButton("eraser")}
+              {props.canClip ? <><Divider />{toolButton("clip")}</> : null}
             </ToolbarGroup>
           )}
           {compact ? <ToolbarGroup label="Tools" className="tw:flex-nowrap">
@@ -167,6 +171,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               />
             ) : SHAPE_TOOLS.map(toolButton)}
             {toolButton("eraser")}
+            {props.canClip ? toolButton("clip") : null}
           </ToolbarGroup> : null}
           {compact ? null : (
             <>
@@ -219,6 +224,7 @@ const HINTS: Partial<Record<AnnotatorTool, string>> = {
   select: "Tap an annotation to select it, or drag across several.",
   lasso: "Draw a loop around annotations to select them together.",
   eraser: "Drag across annotations to erase them.",
+  clip: "Drag across part of the page to clip it into a notebook.",
 };
 
 const ERASE_HINTS: Record<EraseMode, string> = {

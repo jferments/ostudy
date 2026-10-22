@@ -614,7 +614,7 @@ function lessonSummary(
     subjectId,
     title,
     revision: 1,
-    written: { revisionNumber: 1, origin: "generated", stepCount: 8, checkCount: 2, estimatedMinutes: 12, sources: "current", createdAt: 1 },
+    written: { revisionNumber: 1, origin: "generated", stepCount: 8, checkCount: 2, estimatedMinutes: 12, sources: "current", inStudyPlan: true, createdAt: 1 },
     progress: {
       revisionNumber: 1,
       currentStep: progress.currentStep,

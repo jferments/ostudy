@@ -142,6 +142,7 @@ export interface NativeCommandGatewayMap {
   "get_document_marked_cards": readonly [typeof GatewayModule3.getDocumentMarkedCards];
   "get_document_page_text": readonly [typeof GatewayModule12.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule40.getDocumentStudyGuide];
+  "get_document_study_guide_glance_page": readonly [typeof GatewayModule40.getDocumentStudyGuideGlancePage];
   "get_document_study_guide_reading": readonly [typeof GatewayModule39.getStudyGuideReading];
   "get_document_study_guide_section_page": readonly [typeof GatewayModule40.getDocumentStudyGuideSectionPage];
   "get_document_topic_card_ids": readonly [typeof GatewayModule40.getDocumentTopicCardIds];
@@ -207,6 +208,7 @@ export interface NativeCommandGatewayMap {
   "list_deck_card_summaries": readonly [typeof GatewayModule9.listDeckCardSummaries];
   "list_deck_source_citations": readonly [typeof GatewayModule15.listDeckSourceCitations];
   "list_decks": readonly [typeof GatewayModule9.listDecks];
+  "list_document_clips": readonly [typeof GatewayModule27.listDocumentClips];
   "list_documents": readonly [typeof GatewayModule15.listDocuments];
   "list_editor_drafts": readonly [typeof GatewayModule16.listEditorDrafts];
   "list_embedding_models": readonly [typeof GatewayModule17.listEmbeddingModels];
@@ -248,6 +250,7 @@ export interface NativeCommandGatewayMap {
   "prepare_lesson_lecture_pptx": readonly [typeof GatewayModule24.prepareLessonLecturePptx];
   "prepare_library_backup_async": readonly [typeof GatewayModule5.prepareLibraryBackup];
   "prepare_library_restore_async": readonly [typeof GatewayModule5.prepareLibraryRestore];
+  "prepare_notebook_pdf": readonly [typeof GatewayModule27.prepareNotebookPdf];
   "prepare_occlusion_image": readonly [typeof GatewayModule28.prepareOcclusionImage];
   "prepare_semantic_material": readonly [typeof GatewayModule23.prepareSemanticMaterial];
   "preview_card_draft": readonly [typeof GatewayModule6.previewCardDraft];
@@ -312,6 +315,7 @@ export interface NativeCommandGatewayMap {
   "set_tutor_conversation_archived": readonly [typeof GatewayModule44.setTutorConversationArchived];
   "set_tutor_project_archived": readonly [typeof GatewayModule44.setTutorProjectArchived];
   "share_prepared_export": readonly [typeof GatewayModule18.sharePreparedExport];
+  "stage_document_clip": readonly [typeof GatewayModule27.stageDocumentClip];
   "stage_image_collection_file": readonly [typeof GatewayModule21.stageImageCollectionFile];
   "stage_image_collection_file_chunk": readonly [typeof GatewayModule21.stageImageCollectionFileChunk];
   "stage_incoming_share": readonly [typeof GatewayModule18.stageIncomingShare];
@@ -337,6 +341,7 @@ export interface NativeCommandGatewayMap {
   "update_deck_folder": readonly [typeof GatewayModule8.updateDeckFolder];
   "update_device_sync_name": readonly [typeof GatewayModule10.updateDeviceSyncName];
   "update_document_collection": readonly [typeof GatewayModule7.updateDocumentCollection];
+  "update_lesson_from_sources": readonly [typeof GatewayModule24.updateLessonFromSources];
   "update_tutor_project": readonly [typeof GatewayModule44.updateTutorProject];
   "wait_for_openrouter_sign_in": readonly [typeof GatewayModule0.waitForOpenRouterSignIn];
   "write_lesson_lecture_script": readonly [typeof GatewayModule24.writeLessonLectureScript];

@@ -403,6 +403,8 @@ pub fn start_device_pairing(
                 flashcards: true,
                 documents: false,
                 study_guides: false,
+                notes: false,
+                lessons: false,
                 api_settings: include_api,
                 api_credentials: include_api,
             }
@@ -496,10 +498,12 @@ pub fn start_device_pairing(
     crate::logging::info(
         "device_sync_offer_created",
         format!(
-            "session={session_id} transport={transport:?} endpoint={endpoint} flashcards={} documents={} study_guides={} api_settings={} api_credentials={}",
+            "session={session_id} transport={transport:?} endpoint={endpoint} flashcards={} documents={} study_guides={} notes={} lessons={} api_settings={} api_credentials={}",
             selection.flashcards,
             selection.documents,
             selection.study_guides,
+            selection.notes,
+            selection.lessons,
             selection.api_settings,
             selection.api_credentials,
         ),
@@ -1406,12 +1410,14 @@ where
         crate::logging::info(
             "device_sync_merge_started",
             format!(
-                "session={} sender={} flashcards={} documents={} study_guides={} api_settings={}",
+                "session={} sender={} flashcards={} documents={} study_guides={} notes={} lessons={} api_settings={}",
                 invitation.session_id,
                 sender.id,
                 extracted.selection.flashcards,
                 extracted.selection.documents,
                 extracted.selection.study_guides,
+                extracted.selection.notes,
+                extracted.selection.lessons,
                 extracted.selection.api_settings,
             ),
         );
