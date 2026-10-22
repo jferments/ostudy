@@ -11,6 +11,7 @@ import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowM
 import { Badge } from "../../ui/primitives/Badge";
 import { Button } from "../../ui/primitives/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/primitives/Card";
+import { Switch } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ListRowMedia } from "../../ui/primitives/ListRow";
 import { useOptionalTutor } from "../tutor/TutorContext";
@@ -237,12 +238,22 @@ export function GuideSectionPage({
   // links, comes on screen.
   const endRef = useRef<HTMLDivElement>(null);
   const endOnScreen = useOnScreen(endRef, layoutMode === "compact");
+  const [hideMeanings, setHideMeanings] = useState(readHideTermMeanings);
+  const chooseHideMeanings = (hide: boolean) => {
+    setHideMeanings(hide);
+    saveHideTermMeanings(hide);
+  };
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={note} disabled={actionsDisabled}
       onEdit={onEditNote} onRemove={onRemoveNote} />
     {section.content.importantTerms.length > 0 && !override ? (
-      <RailSection title="Important terms">
-        <GuideTermList terms={section.content.importantTerms} className="tw:text-small" />
+      <RailSection title="Important terms" action={
+        <label className="tw:flex tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+          <Switch checked={hideMeanings} onCheckedChange={chooseHideMeanings} />
+          Hide meanings
+        </label>
+      }>
+        <GuideTermList terms={section.content.importantTerms} className="tw:text-small" hideMeanings={hideMeanings} />
       </RailSection>
     ) : null}
     <GuideSourceBlock {...sourceProps} detail={range} />
@@ -340,11 +351,35 @@ export function GuideSectionPage({
   </>;
 }
 
-function RailSection({ title, children }: { title: string; children: ReactNode }) {
+const HIDE_MEANINGS_KEY = "ostudy.guideHideTermMeanings";
+
+/** Whether term meanings were last hidden on this device, so the learner can test themselves. */
+function readHideTermMeanings(): boolean {
+  try {
+    return window.localStorage.getItem(HIDE_MEANINGS_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveHideTermMeanings(hide: boolean): void {
+  try {
+    window.localStorage.setItem(HIDE_MEANINGS_KEY, String(hide));
+  } catch {
+    // A convenience only; the switch still works for this page.
+  }
+}
+
+function RailSection({ title, action = null, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   const id = `guide-rail-${useId().replaceAll(":", "")}`;
   return (
     <section aria-labelledby={id} className="tw:grid tw:min-w-0 tw:gap-2.5">
-      <h2 id={id} className={railHeading}>{title}</h2>
+      {action ? (
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
+          <h2 id={id} className={railHeading}>{title}</h2>
+          {action}
+        </div>
+      ) : <h2 id={id} className={railHeading}>{title}</h2>}
       {children}
     </section>
   );
