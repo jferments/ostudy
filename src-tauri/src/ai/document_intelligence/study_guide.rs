@@ -92,6 +92,7 @@ pub(super) async fn plan_document_study_guide_sections(
 /// deterministic publication order. This domain task receives bounded source
 /// evidence and returns content plus selections from the supplied unit catalog.
 /// Native code owns topic IDs, locators, hierarchy, and provenance fingerprints.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_study_guide_topic_section(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -434,6 +435,7 @@ fn collection_study_guide_system_prompt() -> String {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn request_study_guide_section_with_retry(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,

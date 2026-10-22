@@ -50,6 +50,7 @@ pub(crate) fn generate_window_flashcards<'a>(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn generate_study_guide_topic_section<'a>(
     runtime: &'a AiRuntimeState,
     task: &'a DocumentTaskContext,

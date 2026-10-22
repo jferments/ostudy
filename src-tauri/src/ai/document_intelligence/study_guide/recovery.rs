@@ -13,6 +13,7 @@ pub(super) struct GuideRequest {
     pub(super) visible_tokens: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run<F, Fut>(
     initial: GuideRequest,
     knowledge: &KnowledgeCatalog,
