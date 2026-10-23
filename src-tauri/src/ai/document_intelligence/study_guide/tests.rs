@@ -165,14 +165,6 @@ fn prompt_asks_for_a_condensed_summary_of_key_ideas_with_lists_in_tables() {
 }
 
 #[test]
-fn prompt_asks_for_printed_scientific_notation() {
-    let prompt = study_guide_system_prompt();
-    assert!(prompt.contains("Unicode subscripts and superscripts"));
-    assert!(prompt.contains("HCO₃⁻, Ca²⁺"));
-    assert!(prompt.contains("H2 receptor, vitamin B12"));
-}
-
-#[test]
 fn concise_generated_section_passes_native_style_validation() {
     let parsed = parse_study_guide_section(json!({
         "overview": "Preload is ventricular filling/stretch before systole and influences stroke volume.",

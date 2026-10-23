@@ -28,6 +28,7 @@ mod completion;
 mod content;
 mod dedupe;
 mod editorial;
+mod notation;
 mod policy;
 mod recovery;
 mod repair;
@@ -98,6 +99,34 @@ pub(super) async fn plan_document_study_guide_sections(
 /// Native code owns topic IDs, locators, hierarchy, and provenance fingerprints.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_study_guide_topic_section(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    document_title: &str,
+    plan: &DocumentLearningPlan,
+    topic: &LearningTopic,
+    source_text: &str,
+    evidence: AuthoringEvidence<'_>,
+    length_scale: f64,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    let mut section = write_study_guide_topic_section(
+        runtime,
+        task,
+        document_title,
+        plan,
+        topic,
+        source_text,
+        evidence,
+        length_scale,
+    )
+    .await?;
+    // Models write formulas flat (HCO3-) however they are asked, and asking
+    // cost accuracy, so the source's printed spellings are restored here.
+    notation::print_source_notation(source_text, &mut section.content);
+    Ok(section)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_study_guide_topic_section(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     document_title: &str,
@@ -613,8 +642,6 @@ Cover breadth before depth: every main idea of the catalog gets its key point be
 - visualExplanations: only for attached images that carry a key idea the text lacks. Do not describe a diagram that is only mentioned in text.
 
 Teach only what the evidence supports. Background needed to connect two supported ideas may appear as one short clause; never add causes, conditions, numbers or examples the evidence does not give. Preserve qualifications, numerical signs, units, exceptions, contradictions and uncertainty. When page images are attached, read table and figure structure (which value belongs to which row and column) from the image and exact wording and numbers from the text. Do not reproduce source paragraphs, citations, page numbers, source IDs, topic IDs, flashcards or mastery claims. Outside retrievalChecks, do not turn the guide into a quiz.
-
-Write scientific notation as it is printed, with Unicode subscripts and superscripts in every field: chemical formulas, ions and charges as H₂O, CO₂, HCO₃⁻, Ca²⁺, Fe³⁺ and SO₄²⁻; isotopes as ¹⁴C; powers and units as 10⁻³, m² and mmol·L⁻¹. Extracted source text often loses these marks (H2O, Ca2+, 10-3), so restore them where the meaning is clear, but leave names whose digits are not subscripts as they are (H2 receptor, vitamin B12, COVID-19, type 2 diabetes).
 
 Return only the required structured result. The result has exactly two top-level fields: content and knowledgeUnitIds. Select knowledgeUnitIds only from the supplied catalog, naming only the units the section actually teaches; units it leaves to the source and the flashcards are not selected. These IDs are internal metadata, not guide prose. The content object has exactly these fields: overview, keyPoints, explanations, importantTerms, processSteps, comparisons, commonMisconceptions, callouts, tables, workedExamples, retrievalChecks, and visualExplanations. Use [] for unused categories, not null or alternate property names. Each explanation has exactly heading and body; each important term has exactly term and explanation; each comparison has exactly subjectA, subjectB, and relationship; each callout has exactly kind, title, and body; each table has exactly title, columns, rows, and caption; each worked example has exactly title, prompt, steps, answer, and takeaway; each retrieval check has exactly prompt and answer; each visual explanation has exactly title and explanation. Do not invent alternate field names. Never invent citations or provenance. Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}. Study-guide schema version: {STUDY_GUIDE_SCHEMA_VERSION}."
     )
