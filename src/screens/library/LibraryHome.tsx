@@ -17,6 +17,7 @@ import { NewSubjectSheet } from "../home/NewSubjectSheet";
 import { MAX_SESSION_DECKS } from "../home/TodayStrip";
 import { useDocumentPreparations } from "../home/useDocumentPreparations";
 import { SubjectActions, useLibrarySubjects } from "./LibrarySubjects";
+import { NewStudySetSheet } from "./NewStudySetSheet";
 
 interface LibraryHomeProps {
   /** Opens one of a subject's pages; `null` is No subject. */
@@ -40,6 +41,7 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
   const subjects = useLibrarySubjects(ALL);
   const preparations = useDocumentPreparations();
   const [creating, setCreating] = useState(false);
+  const [makingSet, setMakingSet] = useState(false);
   const headingId = useId();
 
   if (!subjects.ready || !home?.summary || !home.library) {
@@ -74,8 +76,8 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
             <Button data-testid="library-all-cards" onClick={onOpenAllCards}>
               <Icon name="cards" size={15} /> All cards
             </Button>
-            <Button variant="primary" data-testid="library-new-subject" onClick={() => setCreating(true)}>
-              <Icon name="plus" size={16} /> New subject
+            <Button variant="primary" data-testid="library-new-study-set" onClick={() => setMakingSet(true)}>
+              <Icon name="sparkles" size={16} /> New study set
             </Button>
           </div>
         }
@@ -106,7 +108,7 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
         ))}
         <li className="tw:min-w-0">
           <ItemTrigger
-            data-testid="library-new-subject-tile"
+            data-testid="library-new-subject"
             onClick={() => setCreating(true)}
             className="tw:flex tw:size-full tw:min-h-40 tw:cursor-pointer tw:flex-col tw:items-center tw:justify-center tw:gap-2 tw:rounded-lg tw:border-[1.5px] tw:border-dashed tw:border-border tw:bg-transparent tw:font-sans tw:text-body tw:font-semibold tw:text-primary tw:outline-none tw:transition-colors tw:hover:bg-foreground/4 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:min-h-16 tw:compact:flex-row"
           >
@@ -114,6 +116,21 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
           </ItemTrigger>
         </li>
       </ul>
+      {makingSet ? (
+        <NewStudySetSheet
+          subjects={home.library.subjects}
+          onClose={() => {
+            setMakingSet(false);
+            home.refresh();
+          }}
+          onCreated={(subjectId, library) => {
+            setMakingSet(false);
+            if (library) home.acceptLibrary(library);
+            home.refresh();
+            onOpenSubject(subjectId, "documents");
+          }}
+        />
+      ) : null}
       {creating ? (
         <NewSubjectSheet
           onClose={() => setCreating(false)}

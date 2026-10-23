@@ -72,7 +72,7 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
       {course.writeError ? (
         <InlineNotice kind="error">
           The lessons were not written: {course.writeError}{" "}
-          <Button size="small" variant="text" onClick={course.write}>
+          <Button size="small" variant="text" onClick={() => course.write()}>
             Try again
           </Button>
         </InlineNotice>
@@ -142,7 +142,7 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
             <Icon name="lightbulb" size={22} />
           </span>
           <p className="tw:m-0 tw:min-w-0 tw:flex-[1_1_12rem] tw:text-body tw:text-muted-foreground">No lessons yet.</p>
-          <Button variant="primary" className="tw:rounded-full" onClick={course.write}>
+          <Button variant="primary" className="tw:rounded-full" onClick={() => course.write()}>
             <Icon name="sparkles" size={16} /> Create lessons
           </Button>
         </Card>

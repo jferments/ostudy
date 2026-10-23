@@ -217,6 +217,22 @@ pub(crate) fn compile_template_svgs(template: &str, data: &Value) -> Result<Vec<
     pages
 }
 
+/// Lays out another compiled-in template the same way, with `data` as its
+/// /data.json, and returns the PDF bytes.
+pub(crate) fn compile_template_pdf(template: &str, data: &Value) -> Result<Vec<u8>, String> {
+    let mut files = HashMap::new();
+    files.insert(
+        file_id("/data.json"),
+        Bytes::new(serde_json::to_vec(data).map_err(|error| error.to_string())?),
+    );
+    let pdf = compile_world(template, files).and_then(|document| {
+        typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .map_err(|diagnostics| describe(&diagnostics))
+    });
+    typst::comemo::evict(0);
+    pdf
+}
+
 /// The laid-out text of each page, including running headers and repeated
 /// table headers that PDF text extraction skips as artifacts.
 #[cfg(test)]

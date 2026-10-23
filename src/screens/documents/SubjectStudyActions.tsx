@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { listDecks, type DeckSummary } from "../../ipc/decks";
 import type { DocumentSummary } from "../../ipc/documents";
@@ -17,6 +17,7 @@ import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
 import { useSubjectCourse } from "../lessons/useSubjectCourse";
 import { formatDocumentType } from "./DocumentProgress";
+import { queueStudySet, takeStudySet } from "./pendingStudySets";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
 interface SubjectStudyActionsProps {
@@ -45,6 +46,10 @@ interface SubjectStudyActionsProps {
 /** What one Make asks for: the bundle's outputs, and the subject's lessons. */
 export interface MaterialsChoice extends StudyTargetOutputPolicy {
   lessons: boolean;
+  /** A podcast about the first lessons, once they are written. */
+  podcast?: boolean;
+  /** Lecture audio with the new lessons; the setting decides when not given. */
+  lectureAudio?: boolean;
 }
 
 /** One Make from the sheet: what to make, from which documents, and how to write new cards. */
@@ -89,7 +94,22 @@ export function SubjectStudyActions({
   // The bundle and lessons wait for the cards a Make started, since both read them.
   const [waiting, setWaiting] = useState<{ choice: MaterialsChoice; documentIds: string[] } | null>(null);
   const [makeError, setMakeError] = useState<string | null>(null);
-  const stillWorking = waiting?.documentIds.some(isDocumentWorking) ?? false;
+  // A document not listed yet has only just been added, so it is still to be read.
+  const stillWorking = waiting?.documentIds.some(
+    (documentId) => isDocumentWorking(documentId) || !documents.some((document) => document.id === documentId),
+  ) ?? false;
+  // A New study set made for this subject waits here for its documents.
+  useEffect(() => {
+    const set = takeStudySet(subjectId);
+    if (set) setWaiting({ choice: set, documentIds: set.documentIds });
+  }, [subjectId]);
+  // A page that closes while waiting hands the wait back for the next one.
+  const latestWaiting = useRef(waiting);
+  latestWaiting.current = waiting;
+  useEffect(() => () => {
+    const left = latestWaiting.current;
+    if (left) queueStudySet(subjectId, { ...left.choice, documentIds: left.documentIds });
+  }, [subjectId]);
   useEffect(() => {
     if (!waiting || stillWorking) return;
     setWaiting(null);
@@ -101,13 +121,13 @@ export function SubjectStudyActions({
   // A course is written once; rewriting one is a separate decision.
   const lessonsMade = (course.course?.lessons.length ?? 0) > 0;
   const lessonsKnown = course.course !== null;
-  if (!hasDocuments && !status && !lessonsMade) return null;
+  if (!hasDocuments && !status && !lessonsMade && !waiting) return null;
 
   function startOutputs(choice: MaterialsChoice): void {
     if (choice.flashcards || choice.studyGuide) {
       void bundle.run({ flashcards: choice.flashcards, studyGuide: choice.studyGuide });
     }
-    if (choice.lessons) course.write();
+    if (choice.lessons) course.write({ podcast: choice.podcast ?? false, lectureAudio: choice.lectureAudio });
   }
 
   async function make(request: MakeRequest): Promise<void> {
@@ -137,7 +157,7 @@ export function SubjectStudyActions({
         <div className="tw:grid tw:min-w-0 tw:flex-1 tw:gap-2">
           {waiting ? <CardsProgress count={waiting.documentIds.length} /> : null}
           {bundle.busy ? <BundleProgress status={status} /> : null}
-          {course.writing ? <LessonsProgress progress={course.progress} /> : null}
+          {course.writing ? <LessonsProgress progress={course.progress} podcast={course.writingPodcast} /> : null}
         </div>
         {bundle.busy || course.writing ? (
           <Button
@@ -180,6 +200,9 @@ export function SubjectStudyActions({
       ) : null}
       {course.writeError ? (
         <InlineNotice kind="warning" className="tw:basis-full">{`Lessons were not written: ${course.writeError}`}</InlineNotice>
+      ) : null}
+      {course.podcastError ? (
+        <InlineNotice kind="warning" className="tw:basis-full">{`The podcast was not written: ${course.podcastError}`}</InlineNotice>
       ) : null}
       {choosing ? (
         <MakeMaterialsSheet
@@ -357,8 +380,19 @@ function CardsProgress({ count }: { count: number }) {
   );
 }
 
-function LessonsProgress({ progress }: { progress: CourseWritingProgress | null }) {
+function LessonsProgress({ progress, podcast }: { progress: CourseWritingProgress | null; podcast: boolean }) {
   const planned = progress?.planned ?? null;
+  if (podcast) {
+    return (
+      <div className="tw:grid tw:min-w-0 tw:gap-1.5" role="status" aria-live="polite">
+        <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-small">
+          <span className="tw:truncate">Writing the podcast</span>
+          <span className="tw:shrink-0 tw:text-muted-foreground">Working…</span>
+        </div>
+        <Progress value={null} max={100} label="Podcast progress" valueText="Working…" />
+      </div>
+    );
+  }
   const label = planned === null ? "Planning…" : `${progress?.written ?? 0} / ${planned}`;
   return (
     <div className="tw:grid tw:min-w-0 tw:gap-1.5" role="status" aria-live="polite">

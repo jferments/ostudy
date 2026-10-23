@@ -9,6 +9,7 @@ import * as studyMaterials from "../../ipc/studyMaterials";
 import { resetCourseRunsForTests } from "../lessons/useSubjectCourse";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { makeDeck, makeSubjectLibrary } from "../../test/factories";
+import { queueStudySet, takeStudySet } from "./pendingStudySets";
 import { SubjectStudyActions } from "./SubjectStudyActions";
 
 vi.mock("../../ipc/studyMaterials", () => ({
@@ -83,6 +84,31 @@ describe("SubjectStudyActions", () => {
     })));
     expect(lessons.writeSubjectCourse).toHaveBeenCalledWith(subjectId, expect.any(String), false);
     expect(await screen.findByText("Writing lessons")).toBeTruthy();
+  });
+
+  it("starts a New study set's materials once its documents are read", async () => {
+    const added = "e".repeat(32);
+    queueStudySet(subjectId, { flashcards: true, studyGuide: false, lessons: true, podcast: true, documentIds: [added] });
+    // The new document is not listed yet, then it is read.
+    const { update } = renderActions({ documents: [] });
+    expect(await screen.findByText("Making flashcards")).toBeTruthy();
+    update({ documents: [{ ...document(added, "Notes", deckId), lifecycleState: "processing" }] });
+    expect(studyMaterials.beginStudyTargetBundle).not.toHaveBeenCalled();
+    update({ documents: [document(added, "Notes", deckId)] });
+    await waitFor(() => expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith(expect.objectContaining({
+      outputPolicy: { flashcards: true, studyGuide: false },
+    })));
+    expect(lessons.writeSubjectCourse).toHaveBeenCalledWith(subjectId, expect.any(String), false);
+    expect(takeStudySet(subjectId)).toBeNull();
+  });
+
+  it("hands a waiting study set back when its page closes", async () => {
+    const added = "e".repeat(32);
+    queueStudySet(subjectId, { flashcards: true, studyGuide: true, lessons: false, documentIds: [added] });
+    const { unmount } = renderActions({ documents: [] });
+    expect(await screen.findByText("Making flashcards")).toBeTruthy();
+    unmount();
+    expect(takeStudySet(subjectId)).toEqual(expect.objectContaining({ documentIds: [added], studyGuide: true }));
   });
 
   it("makes only what is ticked", async () => {

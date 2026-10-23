@@ -38,7 +38,8 @@ mod math_layout;
 mod math_source;
 
 pub(crate) use guide_typst::{
-    compile_template_svgs, plain_sans_font, runs as rich_runs, StudyGuidePdfTheme,
+    compile_template_pdf, compile_template_svgs, plain_sans_font, runs as rich_runs,
+    StudyGuidePdfTheme,
 };
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";

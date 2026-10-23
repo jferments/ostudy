@@ -109,6 +109,7 @@ mod projections;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod source_notes;
 mod startup;
 mod study_activity;
 mod study_calendar;
@@ -460,6 +461,7 @@ pub fn run() {
             lessons::podcasts::get_podcast,
             lessons::podcasts::delete_podcast,
             library_session::commands::leased_write_podcast,
+            library_session::commands::leased_write_source_notes,
             library_session::commands::leased_narrate_podcast_turn,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,

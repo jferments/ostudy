@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as lessonsIpc from "../../ipc/lessons";
+import * as podcastsIpc from "../../ipc/podcasts";
 import * as settingsIpc from "../../ipc/settings";
 import * as speechIpc from "../../ipc/speech";
 import {
@@ -25,6 +26,7 @@ vi.mock("../../ipc/lessons", () => ({
   getLesson: vi.fn(),
   narrateLessonStep: vi.fn(),
 }));
+vi.mock("../../ipc/podcasts", () => ({ PODCAST_MINUTES: { default: 15 }, writePodcast: vi.fn() }));
 vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn(async () => ({ lectureAudioWithNewLessons: false })) }));
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(async () => ({ profileId: null })) }));
 
@@ -88,6 +90,26 @@ describe("useSubjectCourse", () => {
     await waitFor(() => expect(result.current.updateError).toBe("Part gone"));
     expect(result.current.updating).toBeNull();
     expect(result.current.course).toEqual(WRITTEN);
+  });
+
+  it("writes a podcast about the first written lessons after the course when asked", async () => {
+    const written = (id: string) => ({ id, subjectId: "cardiac", title: id, revision: 1, written: {}, progress: null });
+    const course = {
+      subjectId: "cardiac",
+      lessons: [written("a"), { ...written("planned"), written: null }, written("b"), written("c"), written("d")],
+    } as lessonsIpc.SubjectLessons;
+    vi.mocked(lessonsIpc.writeSubjectCourse).mockResolvedValue(course);
+    const podcast = deferred<never>();
+    vi.mocked(podcastsIpc.writePodcast).mockReturnValue(podcast.promise);
+    const { result } = renderHook(() => useSubjectCourse("cardiac"));
+    act(() => result.current.write({ podcast: true }));
+    await waitFor(() => expect(result.current.writingPodcast).toBe(true));
+    expect(result.current.writing).toBe(true);
+    expect(podcastsIpc.writePodcast).toHaveBeenCalledWith("cardiac", ["a", "b", "c"], 15);
+    await act(async () => podcast.reject(new Error("No voice")));
+    await waitFor(() => expect(result.current.writing).toBe(false));
+    expect(result.current.course).toEqual(course);
+    expect(result.current.podcastError).toBe("No voice");
   });
 
   it("rewrites an existing course as a run of its own", async () => {
@@ -193,5 +215,14 @@ describe("makeLectureAudio", () => {
     vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: null } as speechIpc.SpeechSettings);
     await makeLectureAudio(course);
     expect(lessonsIpc.narrateLessonStep).not.toHaveBeenCalled();
+  });
+
+  it("follows a study set's own choice over the setting", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: false } as settingsIpc.AppSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    await makeLectureAudio(course, false);
+    expect(lessonsIpc.narrateLessonStep).not.toHaveBeenCalled();
+    await makeLectureAudio(course, true);
+    expect(lessonsIpc.narrateLessonStep).toHaveBeenCalledWith("lesson-1", 3, "a");
   });
 });

@@ -15,6 +15,7 @@ import {
   type CourseWritingProgress,
   type SubjectLessons,
 } from "../../ipc/lessons";
+import { PODCAST_MINUTES, writePodcast } from "../../ipc/podcasts";
 
 /** How often a running course is asked how far it is. */
 export const COURSE_PROGRESS_INTERVAL_MS = 1500;
@@ -28,9 +29,14 @@ interface CourseRun {
   operationId: string;
   stopping: boolean;
   progress: CourseWritingProgress | null;
+  /** True while the podcast asked for with the course is being written. */
+  podcast: boolean;
   /** Set when the run ends; the page that sees it clears it. */
-  outcome: { lessons: SubjectLessons } | { error: string } | { stopped: true } | null;
+  outcome: { lessons: SubjectLessons; podcastError?: string } | { error: string } | { stopped: true } | null;
 }
+
+/** How many of a new course's first lessons its podcast talks through. */
+export const COURSE_PODCAST_LESSONS = 3;
 
 const runs = new Map<string, CourseRun>();
 const listeners = new Set<() => void>();
@@ -46,15 +52,34 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function startRun(subjectId: string, rewrite: boolean) {
+/** What a new course is followed by. */
+export interface CourseExtras {
+  /** A podcast about the first lessons. */
+  podcast?: boolean;
+  /** Lecture audio for every lesson, whatever the setting says; false makes none. */
+  lectureAudio?: boolean;
+}
+
+function startRun(subjectId: string, rewrite: boolean, { podcast = false, lectureAudio }: CourseExtras = {}) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
-  publish(subjectId, { operationId, stopping: false, progress: null, outcome: null });
+  publish(subjectId, { operationId, stopping: false, progress: null, podcast: false, outcome: null });
   watchProgress(subjectId, operationId);
   void writeSubjectCourse(subjectId, operationId, rewrite).then(
-    (lessons) => {
-      settle(subjectId, operationId, { lessons });
-      void makeLectureAudio(lessons);
+    async (lessons) => {
+      void makeLectureAudio(lessons, lectureAudio);
+      const written = lessons.lessons.filter((lesson) => lesson.written).slice(0, COURSE_PODCAST_LESSONS);
+      const run = runs.get(subjectId);
+      if (!podcast || written.length === 0 || run?.operationId !== operationId || run.stopping) {
+        return settle(subjectId, operationId, { lessons });
+      }
+      publish(subjectId, { ...run, podcast: true });
+      // The lessons are saved whatever happens to the podcast.
+      const podcastError = await writePodcast(subjectId, written.map((lesson) => lesson.id), PODCAST_MINUTES.default).then(
+        () => undefined,
+        (error: unknown) => getErrorMessage(error),
+      );
+      settle(subjectId, operationId, podcastError === undefined ? { lessons } : { lessons, podcastError });
     },
     (error: unknown) =>
       settle(
@@ -73,10 +98,11 @@ function startRun(subjectId: string, rewrite: boolean) {
  * lecture plays without waiting for the voice. Audio is optional: the
  * lessons are already saved, and a step that fails is spoken when played.
  */
-export async function makeLectureAudio(course: SubjectLessons): Promise<void> {
+export async function makeLectureAudio(course: SubjectLessons, wanted?: boolean): Promise<void> {
+  if (wanted === false) return;
   try {
     const [settings, speech] = await Promise.all([getSettings(), getSpeechSettings()]);
-    if (settings.lectureAudioWithNewLessons === false || speech.profileId === null) return;
+    if (speech.profileId === null || (wanted === undefined && settings.lectureAudioWithNewLessons === false)) return;
   } catch {
     return;
   }
@@ -150,12 +176,17 @@ export interface SubjectCourse {
   /** How far the running course is, once it has said. */
   progress: CourseWritingProgress | null;
   writeError: string | null;
+  /** True while the podcast asked for with the course is being written. */
+  writingPodcast: boolean;
+  /** Why the podcast asked for with the course was not written. */
+  podcastError: string | null;
   /** The lesson being written again from its sources. */
   updating: string | null;
   updateError: string | null;
   refresh: () => void;
   update: (lessonId: string) => void;
-  write: () => void;
+  /** Writes the course, then what `extras` asks for. */
+  write: (extras?: CourseExtras) => void;
   /** Writes the whole course again; each lesson keeps its place. */
   rewrite: () => void;
   stop: () => void;
@@ -169,6 +200,7 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
   const [loading, setLoading] = useState(true);
   const [readError, setReadError] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
+  const [podcastError, setPodcastError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const run = useSyncExternalStore(subscribe, () => runs.get(subjectId) ?? null);
@@ -204,6 +236,7 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
       setCourse(outcome.lessons);
       setReadError(null);
       setLoading(false);
+      setPodcastError(outcome.podcastError ?? null);
     } else if ("error" in outcome) {
       setWriteError(outcome.error);
     }
@@ -217,6 +250,8 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
     stopping: run?.stopping ?? false,
     progress: run && !run.outcome ? run.progress : null,
     writeError,
+    writingPodcast: run !== null && run.outcome === null && run.podcast,
+    podcastError,
     updating,
     updateError,
     refresh,
@@ -234,9 +269,10 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
         )
         .finally(() => setUpdating(null));
     },
-    write: () => {
+    write: (extras) => {
       setWriteError(null);
-      startRun(subjectId, false);
+      setPodcastError(null);
+      startRun(subjectId, false, extras);
     },
     rewrite: () => {
       setWriteError(null);

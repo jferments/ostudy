@@ -18,6 +18,7 @@ mod observed;
 mod outline;
 mod podcast_script;
 mod schemas;
+mod source_notes;
 mod study_guide;
 mod support;
 pub(crate) use support::is_output_failure;
@@ -53,6 +54,11 @@ pub(crate) use observed::{
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use podcast_script::{
     PodcastLesson, PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
+};
+#[cfg(test)]
+pub(crate) use source_notes::SourceNotesSection;
+pub(crate) use source_notes::{
+    generate_source_notes, SourceNotes, MAX_PROMPT_CHARS as MAX_SOURCE_PROMPT_CHARS,
 };
 pub(crate) use study_guide::{
     document_guide_section_chars, preflight_collection_study_guide_section,

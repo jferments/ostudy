@@ -446,8 +446,11 @@ describe("HomeScreen", () => {
     expect(welcome.querySelector("p")).toBeNull();
     expect(within(welcome).queryByRole("button", { name: "Open Library" })).toBeNull();
     expect(screen.queryByTestId("home-today")).toBeNull();
+    // A document always goes into a subject, so importing one starts a study set.
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a document" }));
-    expect(jobs.current.uploadDocument).toHaveBeenCalledOnce();
+    const studySet = await screen.findByRole("dialog", { name: "New study set" });
+    fireEvent.click(within(studySet).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New study set" })).toBeNull());
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a deck" }));
     const importDialog = await screen.findByRole("dialog", { name: "Import deck" });
     fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));

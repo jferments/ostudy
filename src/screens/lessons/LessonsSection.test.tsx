@@ -49,6 +49,8 @@ function course(overrides: Partial<SubjectCourse> = {}): SubjectCourse {
     stopping: false,
     progress: null,
     writeError: null,
+    writingPodcast: false,
+    podcastError: null,
     updating: null,
     updateError: null,
     refresh: vi.fn(),

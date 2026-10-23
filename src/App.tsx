@@ -165,7 +165,7 @@ function App() {
   const homeScreen = (
     <HomeScreen
       onStartReview={startReview}
-      onOpenSubject={(subjectId) => void controller.openSubject(subjectId)}
+      onOpenSubject={(subjectId, page) => void controller.openSubject(subjectId, page)}
       onOpenLesson={openLesson}
       onOpenLibrary={() => void controller.openLibrary()}
       onPracticeSubject={(subjectId) => void controller.practiceSubject(subjectId)}
