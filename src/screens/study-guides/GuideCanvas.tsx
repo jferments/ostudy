@@ -20,6 +20,7 @@ import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowM
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ItemTrigger } from "../../ui/primitives/Item";
 import {
   createAnnotationId,
   isCollapsedSticky,
@@ -286,9 +287,9 @@ function ReadyGuide({
       .filter((button) => button.pageIndex === page.pageNumber - 1)
       .map((button) => (
         // Fills the room the heading keeps for it; on a touch screen it reaches past that room.
-        <button key={button.topicId} type="button" data-guide-practice={button.topicId}
+        <ItemTrigger key={button.topicId} data-guide-practice={button.topicId}
           aria-label={`Practice flashcards for ${titles.get(button.topicId) ?? "this section"}`}
-          className="tw:absolute tw:flex tw:items-center tw:justify-center tw:gap-[0.3em] tw:rounded-full tw:border-0 tw:bg-primary tw:font-sans tw:font-semibold tw:text-primary-foreground tw:shadow-sm tw:outline-none tw:hover:bg-primary/90 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:coarse:after:absolute tw:coarse:after:-inset-3 tw:coarse:after:content-['']"
+          className="tw:absolute tw:flex tw:items-center tw:justify-center tw:gap-[0.3em] tw:rounded-full tw:border-0 tw:bg-primary tw:font-sans tw:font-semibold tw:text-primary-foreground tw:shadow-sm tw:outline-none tw:hover:bg-primary/90 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:coarse:min-h-0 tw:coarse:after:absolute tw:coarse:after:-inset-3 tw:coarse:after:content-['']"
           style={{
             left: button.x * scale,
             top: button.y * scale,
@@ -300,7 +301,7 @@ function ReadyGuide({
           onClick={() => onPractice(button.topicId)}>
           <Icon name="practice" size={Math.max(10, 9 * scale)} />
           Practice
-        </button>
+        </ItemTrigger>
       )),
     unavailableLinks: unavailable,
   }), [canvas.practice, inkPages, onPractice, titles, unavailable]);
@@ -597,11 +598,11 @@ export function GuideCanvasContents({ canvas, currentKey, readTopicIds, sectionM
       ) : null}
       <ol className="tw:m-0 tw:grid tw:list-none tw:gap-0.5 tw:p-0">
         <li className="tw:flex tw:min-w-0">
-          <button type="button" className={cn(rowBase, currentKey === null ? currentRow : otherRow)}
+          <ItemTrigger className={cn(rowBase, currentKey === null ? currentRow : otherRow)}
             aria-current={currentKey === null ? "location" : undefined} onClick={() => onGo(cover)}>
             <span aria-hidden="true" className={cn(marker, "tw:border-border-strong tw:text-muted-foreground")}><Icon name="book" size={14} /></span>
             <span className="tw:min-w-0 tw:flex-1 tw:break-words">Cover and contents</span>
-          </button>
+          </ItemTrigger>
         </li>
         {canvas.contents.map((entry) => {
           const entryKey = `${entry.kind}:${entry.key}`;
@@ -609,31 +610,31 @@ export function GuideCanvasContents({ canvas, currentKey, readTopicIds, sectionM
           if (entry.kind === "chapter") {
             return (
               <li key={entryKey} className="tw:mt-3 tw:flex tw:min-w-0">
-                <button type="button" className={cn(rowBase, "tw:min-h-9 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide",
+                <ItemTrigger className={cn(rowBase, "tw:min-h-9 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide",
                   current ? currentRow : "tw:text-muted-foreground tw:hover:bg-muted tw:hover:text-foreground")}
                   aria-current={current ? "location" : undefined} onClick={() => onGo(entry)}>
                   <span className="tw:min-w-0 tw:flex-1 tw:break-words">{`${entry.number}. ${entry.title}`}</span>
-                </button>
+                </ItemTrigger>
               </li>
             );
           }
           if (entry.kind !== "section") {
             return (
               <li key={entryKey} className="tw:mt-3 tw:flex tw:min-w-0">
-                <button type="button" className={cn(rowBase, current ? currentRow : otherRow)}
+                <ItemTrigger className={cn(rowBase, current ? currentRow : otherRow)}
                   aria-current={current ? "location" : undefined} onClick={() => onGo(entry)}>
                   <span aria-hidden="true" className={cn(marker, "tw:border-border-strong tw:text-muted-foreground")}>
                     <Icon name={entry.kind === "cram" ? "lightbulb" : "list-checks"} size={14} />
                   </span>
                   <span className="tw:min-w-0 tw:flex-1 tw:break-words">{entry.title}</span>
-                </button>
+                </ItemTrigger>
               </li>
             );
           }
           const read = readTopicIds.has(entry.key);
           return (
             <li key={entryKey} className="tw:flex tw:min-w-0 tw:items-center tw:gap-1">
-              <button type="button" className={cn(rowBase, current ? currentRow : otherRow)}
+              <ItemTrigger className={cn(rowBase, current ? currentRow : otherRow)}
                 aria-current={current ? "location" : undefined} onClick={() => onGo(entry)}>
                 <span aria-hidden="true" className={cn(marker, current
                   ? "tw:border-transparent tw:bg-primary tw:font-semibold tw:text-primary-foreground"
@@ -643,7 +644,7 @@ export function GuideCanvasContents({ canvas, currentKey, readTopicIds, sectionM
                 </span>
                 <span className="tw:min-w-0 tw:flex-1 tw:break-words">{entry.title}</span>
                 {read ? <span className="tw:sr-only">, read</span> : null}
-              </button>
+              </ItemTrigger>
               <OverflowMenu label={`${entry.number} ${entry.title} actions`} triggerVariant="ghost" items={sectionMenu(entry.key)}
                 className="tw:size-8 tw:shrink-0 tw:coarse:size-11" />
             </li>
