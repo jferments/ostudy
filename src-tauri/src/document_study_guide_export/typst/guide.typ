@@ -114,8 +114,11 @@
     [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
     if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
-  for b in s.blocks { block-view(b) }
-  for (i, f) in s.figures.enumerate() { figure-view(f, number + "." + str(i + 1)) }
+  for (i, b) in s.blocks.enumerate() {
+    block-view(b)
+    if i == s.figureAfter { figures-view(s.figures, number) }
+  }
+  if s.blocks.len() == 0 { figures-view(s.figures, number) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }

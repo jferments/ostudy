@@ -1104,7 +1104,7 @@ fn other_document() -> CommandError {
 }
 
 #[path = "document_annotations/page_tiles.rs"]
-mod page_tiles;
+pub(crate) mod page_tiles;
 pub(crate) use page_tiles::{
     pdf_source_path, render_document_page_tile, RenderDocumentPageTileInput,
 };

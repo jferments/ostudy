@@ -109,8 +109,20 @@
   }
 }
 
-#let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false)[
-  #align(center, image(f.path, width: 100%, height: auto, fit: "contain"))
+#let figure-body(f, n) = [
+  #align(center, image(f.path, width: f.width * 1mm, height: auto, fit: "contain"))
   #v(1.5mm)
   #set par(justify: false)
   #text(font: ui, size: 7.6pt, fill: T.muted)[#text(weight: 700, fill: T.primary, "Figure " + n + "  ") #rt(f.title)#if f.caption.len() > 0 [. #rt(f.caption)]]]
+
+#let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false, width: 100%, figure-body(f, n))
+
+// Two narrow figures share a row; anything else stacks.
+#let figures-view(figures, number) = {
+  if figures.len() == 2 and figures.all(f => f.width <= 84) {
+    block(above: 4mm, below: 4mm, breakable: false, grid(columns: (1fr, 1fr), column-gutter: 6mm,
+      ..figures.enumerate().map(((i, f)) => figure-body(f, number + "." + str(i + 1)))))
+  } else {
+    for (i, f) in figures.enumerate() { figure-view(f, number + "." + str(i + 1)) }
+  }
+}

@@ -26,11 +26,13 @@ use crate::{
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
     paths::AppPaths,
+    pdf_render_backend::PdfRenderRuntime,
     study_materials::{load_collection_study_guide, CollectionStudyGuide},
     util::validate_entity_id,
 };
 
 mod canvas;
+mod figures;
 mod guide_typst;
 mod math_layout;
 mod math_source;
@@ -170,6 +172,7 @@ enum ExportBlock {
 pub(crate) fn prepare_document_study_guide_pdf(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
     input: PrepareStudyGuidePdfInput,
 ) -> Result<PreparedStudyGuidePdfDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
@@ -195,6 +198,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
     let effective = load_effective_export(
         database.inner(),
         paths.inner(),
+        Some(runtime.inner()),
         &input.document_id,
         input.include_annotations,
     )?;
@@ -340,13 +344,16 @@ pub(crate) fn prepare_collection_study_guide_pdf(
 pub(crate) async fn get_document_study_guide_canvas(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
     input: GetStudyGuideCanvasInput,
 ) -> Result<canvas::StudyGuideCanvasDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     let database = database.inner().clone();
     let paths = paths.inner().clone();
+    let runtime = runtime.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let effective = load_effective_export(&database, &paths, &input.document_id, false)?;
+        let effective =
+            load_effective_export(&database, &paths, Some(&runtime), &input.document_id, false)?;
         canvas::guide_canvas(&input.document_id, &effective, input.theme)
     })
     .await
@@ -367,11 +374,13 @@ pub(crate) async fn open_document_study_guide_pdf(
     app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
     input: GetStudyGuideCanvasInput,
 ) -> Result<(), CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     let database = database.inner().clone();
     let paths = paths.inner().clone();
+    let runtime = runtime.inner().clone();
     let cache = app.path().app_cache_dir().map_err(|error| {
         CommandError::new(
             "study_guide_open_failed",
@@ -379,7 +388,8 @@ pub(crate) async fn open_document_study_guide_pdf(
         )
     })?;
     let destination = tauri::async_runtime::spawn_blocking(move || {
-        let effective = load_effective_export(&database, &paths, &input.document_id, true)?;
+        let effective =
+            load_effective_export(&database, &paths, Some(&runtime), &input.document_id, true)?;
         let destination = cache
             .join("study-guides")
             .join(&input.document_id)
@@ -432,9 +442,12 @@ fn legacy_math_fallback() -> bool {
     true
 }
 
+/// `runtime` draws the source figures the guide shows; without it the guide
+/// is laid out with its text alone.
 fn load_effective_export(
     database: &Database,
     paths: &AppPaths,
+    runtime: Option<&PdfRenderRuntime>,
     document_id: &str,
     include_annotations: bool,
 ) -> Result<EffectiveGuideExport, CommandError> {
@@ -460,14 +473,17 @@ fn load_effective_export(
                 )
             })
     })?;
+    let source_figures = runtime.and_then(|runtime| {
+        figures::SourceFigures::load(database, paths, runtime, document_id, &guide.sections)
+    });
     compose_effective_export(
         database,
         paths,
         document_id,
-        document_title,
-        source_filename,
+        (document_title, source_filename),
         guide,
         include_annotations,
+        source_figures.as_ref(),
     )
 }
 
@@ -475,10 +491,10 @@ fn compose_effective_export(
     database: &Database,
     paths: &AppPaths,
     document_id: &str,
-    document_title: String,
-    source_filename: String,
+    (document_title, source_filename): (String, String),
     guide: DocumentStudyGuide,
     include_annotations: bool,
+    source_figures: Option<&figures::SourceFigures<'_>>,
 ) -> Result<EffectiveGuideExport, CommandError> {
     let mut guide_notes = Vec::new();
     let mut overlays_by_topic = HashMap::<String, Vec<&StudyGuideOverlay>>::new();
@@ -533,13 +549,17 @@ fn compose_effective_export(
             }
         }
         let figures = if body_override.is_none() {
-            load_export_figures(
+            let attached = load_export_figures(
                 database,
                 paths,
                 document_id,
                 &section.source_locator,
                 &section.content.visual_explanations,
-            )
+            );
+            match source_figures {
+                Some(source) if attached.is_empty() => source.for_section(&section.topic_id),
+                _ => attached,
+            }
         } else {
             Vec::new()
         };

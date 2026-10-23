@@ -67,14 +67,32 @@ impl StudyGuidePdfTheme {
 
 /// An image placed in the guide, already encoded as PNG.
 #[derive(Clone, Debug)]
-pub(super) struct FigureImage(pub(super) Vec<u8>);
+pub(super) struct FigureImage {
+    png: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+/// A figure is at most this wide and this tall on the page, in millimetres,
+/// so a page holds text and no more than about three figures.
+const FIGURE_MAX_WIDTH_MM: f64 = 150.0;
+const FIGURE_MAX_HEIGHT_MM: f64 = 70.0;
+const FIGURE_MIN_WIDTH_MM: f64 = 45.0;
 
 impl FigureImage {
     pub(super) fn from_rgba(rgba: image::RgbaImage) -> Option<Self> {
-        let mut bytes = Vec::new();
-        rgba.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        let (width, height) = rgba.dimensions();
+        let mut png = Vec::new();
+        rgba.write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
             .ok()?;
-        Some(Self(bytes))
+        Some(Self { png, width, height })
+    }
+
+    /// The width it is placed at: as wide as it can be without passing the
+    /// height limit, and never so narrow its labels cannot be read.
+    fn width_mm(&self) -> f64 {
+        let aspect = f64::from(self.width.max(1)) / f64::from(self.height.max(1));
+        (FIGURE_MAX_HEIGHT_MM * aspect).clamp(FIGURE_MIN_WIDTH_MM, FIGURE_MAX_WIDTH_MM)
     }
 }
 
@@ -428,6 +446,13 @@ fn section_data(
     figure_count: &mut usize,
 ) -> Value {
     let mut lead_used = false;
+    // Figures go under the key points they illustrate, or after the overview.
+    let figure_after = section
+        .body_lines
+        .iter()
+        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
+        .map_or(0, |heading| heading + 1)
+        .min(section.body_lines.len().saturating_sub(1));
     let blocks = section
         .body_lines
         .iter()
@@ -445,9 +470,10 @@ fn section_data(
             // stay bounded.
             let path = format!("/figures/{figure_count}.png");
             *figure_count += 1;
-            files.insert(file_id(&path), Bytes::new(figure.image.0.clone()));
+            files.insert(file_id(&path), Bytes::new(figure.image.png.clone()));
             json!({
                 "path": path,
+                "width": figure.image.width_mm(),
                 "title": runs(&figure.title),
                 "caption": runs(&figure.caption),
             })
@@ -459,6 +485,7 @@ fn section_data(
         "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,
         "figures": figures,
+        "figureAfter": figure_after,
         "notes": run_list(&section.notes),
     })
 }
