@@ -337,11 +337,19 @@ fn build_semantic_windows_internal(
         if end >= units.len() {
             break;
         }
+        // Overlap is measured the way the window was bounded, and never reaches
+        // back past the window's midpoint. A page of many tiny, image-backed
+        // pieces fills a window by complexity at a few tokens each; counting
+        // tokens alone stepped back to `start + 1`, so the next window moved
+        // one piece and the same page was sent a dozen times.
         let mut next_start = end;
         let mut overlap = 0_usize;
-        while next_start > start + 1 && overlap < overlap_tokens {
+        let earliest = start + (end - start).div_ceil(2);
+        while next_start > earliest && overlap < overlap_tokens {
             next_start -= 1;
-            overlap = overlap.saturating_add(units[next_start].token_estimate.max(1));
+            let unit = &units[next_start];
+            overlap =
+                overlap.saturating_add(unit.token_estimate.max(unit.complexity_estimate).max(1));
         }
         start = next_start.max(start + 1);
     }
@@ -686,6 +694,31 @@ mod tests {
             .flat_map(|window| window.source_locator.unit_numbers.iter().copied())
             .collect::<BTreeSet<_>>();
         assert_eq!(covered, BTreeSet::from([1, 2, 3]));
+    }
+
+    #[test]
+    fn tiny_structured_pieces_are_sent_about_once_not_once_per_piece() {
+        // One page of figure labels: a few tokens each, but each carries a
+        // table penalty, so complexity fills a window long before tokens do.
+        let labels = (0..120)
+            .map(|index| {
+                let mut label = chunk(index, &[7], 4);
+                label.element_types = vec!["table".to_string()];
+                label
+            })
+            .collect::<Vec<_>>();
+        let windows = build_semantic_windows(&labels, 8_000, 18, 500);
+        assert!(windows.len() <= 25, "{} windows", windows.len());
+        for index in 0..120 {
+            let carrying = windows
+                .iter()
+                .filter(|w| (w.first_chunk_index..=w.last_chunk_index).contains(&index))
+                .count();
+            assert!(
+                (1..=2).contains(&carrying),
+                "label {index} in {carrying} windows"
+            );
+        }
     }
 
     #[test]

@@ -14,7 +14,7 @@ use ostudy_lib::guide_eval::{self, GuideEvalProvider, GuideEvalRequest};
 
 const USAGE: &str =
     "usage: guide-eval --source FILE --out DIR --provider llama_cpp|deepseek|openrouter \
---base-url URL --model ID [--reasoning EFFORT] [--timeout-ms N] [--allow-insecure-http]";
+--base-url URL --model ID [--reasoning EFFORT] [--timeout-ms N] [--allow-insecure-http] [--cards]";
 
 fn main() -> ExitCode {
     match parse(std::env::args().skip(1).collect()) {
@@ -66,10 +66,15 @@ fn parse(arguments: Vec<String>) -> Result<(GuideEvalRequest, PathBuf), String> 
     let mut reasoning_effort = "automatic".to_string();
     let mut request_timeout_ms = 300_000_i64;
     let mut allow_insecure_http = false;
+    let mut cards = false;
     let mut arguments = arguments.into_iter();
     while let Some(flag) = arguments.next() {
         if flag == "--allow-insecure-http" {
             allow_insecure_http = true;
+            continue;
+        }
+        if flag == "--cards" {
+            cards = true;
             continue;
         }
         let value = arguments
@@ -119,6 +124,7 @@ fn parse(arguments: Vec<String>) -> Result<(GuideEvalRequest, PathBuf), String> 
             request_timeout_ms,
         },
         resource_dir: None,
+        cards,
     };
     Ok((request, out))
 }

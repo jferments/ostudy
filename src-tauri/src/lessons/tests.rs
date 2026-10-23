@@ -3,7 +3,9 @@ use serde_json::json;
 
 use super::{
     authoring::{add_authored_revision, create_authored_lesson, MAX_LESSONS_PER_SUBJECT},
-    content::{canonical_json, LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS},
+    content::{
+        canonical_json, CheckTiming, LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS,
+    },
     fixture::{loop_of_henle, CORRECT_OPTION},
     list_lessons, read_lesson, save_progress, GetLessonInput, SaveLessonProgressInput,
     SourceStatus,
@@ -202,6 +204,36 @@ fn stored_content_round_trips_and_refuses_a_newer_version() {
         ValidatedLesson::parse(&unknown).err().unwrap().code,
         "lesson_invalid"
     );
+}
+
+#[test]
+fn a_check_is_asked_after_its_step_unless_the_lesson_says_before() {
+    // Content written before checks had a timing stores none: it reads as
+    // after, and is written back the same way.
+    let after = ValidatedLesson::validate(loop_of_henle(&[UNIT])).unwrap();
+    let json = canonical_json(&after.content).unwrap();
+    assert!(!json.contains("checkTiming"));
+    assert_eq!(
+        ValidatedLesson::parse(&json).unwrap().content.steps[1].check_timing,
+        CheckTiming::After
+    );
+
+    let mut content = loop_of_henle(&[UNIT]);
+    content.steps[1].check_timing = CheckTiming::Before;
+    let before = ValidatedLesson::validate(content).unwrap();
+    let json = canonical_json(&before.content).unwrap();
+    assert!(json.contains("\"checkTiming\":\"before\""));
+    assert!(ValidatedLesson::parse(&json).unwrap().content == before.content);
+
+    let database = library();
+    let id = create(&database, before.content).unwrap();
+    let lesson = read(&database, &id, None);
+    let wire = serde_json::to_string(&lesson.content.steps[1].check).unwrap();
+    assert!(wire.contains("\"timing\":\"before\""), "{wire}");
+
+    let mut unchecked = loop_of_henle(&[]);
+    unchecked.steps[0].check_timing = CheckTiming::Before;
+    assert!(rejected(unchecked).contains("Only a step with a check"));
 }
 
 #[test]
@@ -977,6 +1009,7 @@ fn a_kept_lecture_script_must_follow_its_revisions_slides() {
         ]
     );
     let question = |slide_key: &str| ClassQuestion {
+        timing: CheckTiming::After,
         prompt: "Which limb pumps salt out?".into(),
         options: (0..2)
             .map(|index| ClassOption {

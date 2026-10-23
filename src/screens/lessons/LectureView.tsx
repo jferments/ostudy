@@ -6,6 +6,7 @@ import { getErrorMessage } from "../../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
 import {
   answerLectureQuestion,
+  askLectureQuestion,
   getLessonLecture,
   getLessonLectureScript,
   narrateLecturePart,
@@ -67,7 +68,10 @@ interface LectureViewProps {
 const SLIDE_WIDTH = 720;
 const SLIDE_HEIGHT = 405;
 
-/** A question the teacher is asking; `resumeAt` is the slide the lecture goes on to. */
+/**
+ * A question the teacher is asking; `resumeAt` is the slide the lecture goes
+ * on to, which is the asking slide's own talk when the question comes first.
+ */
 interface Asking {
   slide: LectureScriptSlide;
   resumeAt: number | null;
@@ -176,9 +180,10 @@ export function LectureView({
     saveSlideTheme(next);
   };
 
-  // The teacher talks over each slide in turn and stops after one that asks
-  // the class a question; answering it goes on from the next slide.
-  const teach = (from: number) => {
+  // The teacher talks over each slide in turn. A question asked after the
+  // talk goes on from the next slide once answered; one asked before it is
+  // spoken first, and the slide's talk follows the answer.
+  const teach = (from: number, asked = false) => {
     const item = slides[from];
     const part = taught(item);
     if (!item || !part) {
@@ -186,9 +191,17 @@ export function LectureView({
       return;
     }
     setIndex(from);
+    if (part.question?.timing === "before" && !asked) {
+      voice.speak(
+        () => askLectureQuestion(lessonId, revisionNumber, item.key),
+        () => setAsking({ slide: part, resumeAt: from }),
+      );
+      return;
+    }
     voice.speak(
       () => narrateLecturePart(lessonId, revisionNumber, item.key),
-      () => (part.question ? setAsking({ slide: part, resumeAt: from + 1 }) : teach(from + 1)),
+      () =>
+        part.question?.timing === "after" ? setAsking({ slide: part, resumeAt: from + 1 }) : teach(from + 1),
     );
   };
 
@@ -221,8 +234,9 @@ export function LectureView({
 
   const closeQuestion = (goOn: boolean) => {
     const resumeAt = asking?.resumeAt ?? null;
+    const first = asking?.slide.question?.timing === "before";
     setAsking(null);
-    if (goOn && resumeAt !== null) teach(resumeAt);
+    if (goOn && resumeAt !== null) teach(resumeAt, first);
     else stopLecture();
   };
 
@@ -577,7 +591,7 @@ function ClassQuestionDialog({
 
   return (
     <Dialog
-      title="The teacher asks the class"
+      title={question.timing === "before" ? "What do you think?" : "The teacher asks the class"}
       width="small"
       busy={checking}
       onClose={() => onClose(false)}

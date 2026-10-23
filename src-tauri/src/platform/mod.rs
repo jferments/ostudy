@@ -14,6 +14,12 @@ pub(crate) const BROWSER_RETURN_URL: Option<&str> = Some(android::BROWSER_RETURN
 #[cfg(not(target_os = "android"))]
 pub(crate) const BROWSER_RETURN_URL: Option<&str> = None;
 
+/// Process-wide choices that must be made before the windowing toolkit starts.
+pub(crate) fn prepare_process() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    desktop::prefer_desktop_file_chooser();
+}
+
 use std::{
     future::Future,
     path::PathBuf,

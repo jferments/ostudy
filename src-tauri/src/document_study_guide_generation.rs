@@ -15,7 +15,7 @@ use crate::{
         document_intelligence::{
             generate_document_study_guide_editorial, generate_study_guide_topic_section,
             plan_document_study_guide_sections, AuthoringEvidence, DocumentTaskContext,
-            PlannedGuideSection, SourcePageImage,
+            PlannedGuideSection,
         },
         AiRuntimeState,
     },
@@ -67,7 +67,6 @@ const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v5-lossless-
 pub(crate) struct StudyGuideTopicEvidence {
     pub topic_id: String,
     pub source_text: String,
-    pub images: Vec<SourcePageImage>,
 }
 
 pub(crate) struct StudyGuideGenerationExecution<'a> {
@@ -756,10 +755,7 @@ async fn author_topic(
             execution.plan,
             topic,
             &evidence.source_text,
-            AuthoringEvidence {
-                images: &evidence.images,
-                knowledge,
-            },
+            AuthoringEvidence { knowledge },
             execution.length_scale,
         )
     };
@@ -826,10 +822,7 @@ async fn author_topic(
             execution.plan,
             topic,
             &evidence.source_text,
-            AuthoringEvidence {
-                images: &evidence.images,
-                knowledge,
-            },
+            AuthoringEvidence { knowledge },
             execution.length_scale,
         )
         .await?;
@@ -1220,7 +1213,6 @@ mod tests {
         let evidence = [StudyGuideTopicEvidence {
             topic_id: "wrong".to_string(),
             source_text: "Evidence".to_string(),
-            images: Vec::new(),
         }];
         assert_ne!(plan.topics[0].id, evidence[0].topic_id);
     }

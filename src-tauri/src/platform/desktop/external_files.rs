@@ -18,6 +18,24 @@ use crate::{
 
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 
+/// The dialog plugin opens a GTK native file chooser on Linux. GTK only hands
+/// it to the desktop's file chooser portal, the picker KDE, GNOME and the
+/// others draw themselves, inside a sandbox or when `GTK_USE_PORTAL=1`; on a
+/// plain install it otherwise draws its own GTK dialog. Ask for the portal
+/// unless the person set the variable. GTK falls back to its own dialog when
+/// no portal is running, and message dialogs stay GTK's either way.
+#[cfg(target_os = "linux")]
+pub(crate) fn prefer_desktop_file_chooser() {
+    const VARIABLE: &str = "GTK_USE_PORTAL";
+    if std::env::var_os(VARIABLE).is_none() {
+        // Runs first in `run`, before GTK or any other thread starts.
+        std::env::set_var(VARIABLE, "1");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn prefer_desktop_file_chooser() {}
+
 pub(super) struct DesktopExternalFilePort;
 
 impl ExternalFilePort for DesktopExternalFilePort {

@@ -113,6 +113,17 @@ export function LessonPlayer({
     );
   }
   const last = step === steps.length - 1;
+  // A check asked before is a prediction, so it comes ahead of the teaching.
+  const stepCheck = (
+    <StepCheck
+      key={`${lesson.revisionNumber}-${current.key}`}
+      lessonId={lessonId}
+      revisionNumber={lesson.revisionNumber}
+      step={current}
+      answered={progress?.checks[current.key] ?? null}
+      onAnswered={(result) => record(result.progress)}
+    />
+  );
   const finish = () => {
     setFinishing(true);
     void goTo(step, true)?.finally(() => {
@@ -177,17 +188,9 @@ export function LessonPlayer({
               </Button>
             </div>
           </header>
+          {current.check?.timing === "before" ? stepCheck : null}
           <LessonBlocks blocks={current.blocks} />
-          {current.check ? (
-            <StepCheck
-              key={`${lesson.revisionNumber}-${current.key}`}
-              lessonId={lessonId}
-              revisionNumber={lesson.revisionNumber}
-              step={current}
-              answered={progress?.checks[current.key] ?? null}
-              onAnswered={(result) => record(result.progress)}
-            />
-          ) : null}
+          {current.check?.timing === "after" ? stepCheck : null}
           <div className="tw:sticky tw:bottom-0 tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:py-3">
             <Button className="tw:rounded-full" disabled={step === 0} onClick={() => void goTo(step - 1)}>
               <Icon name="chevron-left" size={16} /> Back

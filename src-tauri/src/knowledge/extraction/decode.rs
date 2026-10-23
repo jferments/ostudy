@@ -115,9 +115,119 @@ impl AnalysisReport {
             })
             .collect()
     }
-    pub(crate) fn repair_prompt(&self) -> Value {
-        json!({"rejectedProposals":self.rejected,"sourcesWithoutDisposition":self.missing_sources})
+    /// Each rejection carries a plain reason, worked out here rather than
+    /// stored, so a checkpoint keeps only its code. A bare code such as
+    /// unsupported_number left the model guessing which number to fix.
+    pub(crate) fn repair_prompt(
+        &self,
+        catalog: &EvidenceCatalog,
+        sources: &[SourceRecord],
+    ) -> Value {
+        let rejected = self
+            .rejected
+            .iter()
+            .map(|item| {
+                let mut entry = json!({"slot":item.slot,"proposal":item.proposal,"code":item.code});
+                if let Some(reason) = rejection_reason(item, catalog, sources) {
+                    entry["reason"] = Value::String(reason);
+                }
+                entry
+            })
+            .collect::<Vec<_>>();
+        json!({"rejectedProposals":rejected,"sourcesWithoutDisposition":self.missing_sources})
     }
+}
+
+fn rejection_reason(
+    item: &RejectedUnit,
+    catalog: &EvidenceCatalog,
+    sources: &[SourceRecord],
+) -> Option<String> {
+    let reason = match item.code.as_str() {
+        "unsupported_number" => {
+            let number = unsupported_number_of(item, catalog, sources)?;
+            let printing = printing_evidence(&number, catalog, sources)
+                .into_iter()
+                .map(EvidenceCatalog::alias)
+                .collect::<Vec<_>>();
+            let fix = if printing.is_empty() {
+                "No supplied evidence prints it, so rewrite the unit without it or return null."
+                    .to_string()
+            } else {
+                format!("Evidence that prints it: {}. Cite it and copy the value exactly as printed, or rewrite the unit without the number.", printing.join(", "))
+            };
+            format!("The number {number} is not printed in the text of any evidence this unit cites. Numbers are checked against cited evidence text, not figures or page images. {fix}")
+        }
+        "invalid_evidence_selection" | "missing_evidence" | "unknown_source" => {
+            "Cite between one and eight distinct evidence IDs from the supplied catalog."
+                .to_string()
+        }
+        "mixed_source_authority" => {
+            "Cite evidence from one source, or from parts of the same document only.".to_string()
+        }
+        "malformed_unit" => {
+            "The unit did not match the unit schema; supply every required field.".to_string()
+        }
+        _ => return None,
+    };
+    Some(reason)
+}
+
+/// The number a rejected draft states that none of its cited evidence prints,
+/// recomputed from the stored draft.
+pub(crate) fn unsupported_number_of(
+    item: &RejectedUnit,
+    catalog: &EvidenceCatalog,
+    sources: &[SourceRecord],
+) -> Option<String> {
+    if item.code != "unsupported_number" {
+        return None;
+    }
+    let strings = |key: &str| {
+        item.proposal
+            .get(key)
+            .and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let ids = strings("evidenceIds")
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let evidence = catalog.resolve(&ids).ok()?;
+    let cited_ids = evidence
+        .iter()
+        .map(|reference| reference.source_id.as_str())
+        .collect::<HashSet<_>>();
+    let cited = sources
+        .iter()
+        .filter(|source| cited_ids.contains(source.id.as_str()))
+        .collect::<Vec<_>>();
+    let statement = item.proposal.get("statement").and_then(Value::as_str)?;
+    numbers::first_unsupported(
+        std::iter::once(statement).chain(strings("qualifications")),
+        &cited,
+    )
+}
+
+/// The first evidence span of each window source (at most two) whose text
+/// prints `number`, so a repair can cite the span that vouches for it.
+pub(crate) fn printing_evidence(
+    number: &str,
+    catalog: &EvidenceCatalog,
+    sources: &[SourceRecord],
+) -> Vec<usize> {
+    sources
+        .iter()
+        .filter(|source| numbers::prints(source, number))
+        .filter_map(|source| {
+            catalog
+                .entries
+                .iter()
+                .position(|reference| reference.source_id == source.id)
+        })
+        .take(2)
+        .collect()
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

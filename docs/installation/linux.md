@@ -123,6 +123,10 @@ Run:
 
 The diagnostic output names the missing or mismatched tool instead of allowing a later build step to fail ambiguously.
 
+### Open and save dialogs look like GTK, not your desktop
+
+oStudy asks for your desktop's own file picker through the file chooser portal (`xdg-desktop-portal`, with the backend for your desktop such as `xdg-desktop-portal-kde` or `xdg-desktop-portal-gnome`). When no portal is running, it falls back to GTK's picker. Install your desktop's portal backend to get its picker. To keep GTK's picker, start oStudy with `GTK_USE_PORTAL=0`.
+
 
 ## Production package and uninstall safety
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/documents";
-import { generationPercent, processingPhaseLabel, processingStepLabel, timeLeft } from "./DocumentProgress";
+import { generationPercent, processingPhaseLabel, processingStepLabel, readingDetail, timeLeft } from "./DocumentProgress";
 
 function document(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
@@ -33,6 +33,12 @@ function reading(completedWindows: number, overrides: Partial<DocumentGeneration
 }
 
 describe("reading progress in plain words", () => {
+  it("names pages, not the internal pieces being read", () => {
+    expect(readingDetail(document(), reading(112))).toBe("Pages 20–23 of 55");
+    expect(readingDetail(document(), reading(112, { currentPageStart: 9, currentPageEnd: 9 }))).toBe("Page 9 of 55");
+    expect(readingDetail(document(), reading(0, { currentPageStart: null, currentPageEnd: null }))).toBe("55 pages");
+    expect(readingDetail(document({ sourceUnitKind: "slide", sourceUnitCount: 12 }), reading(3, { currentPageStart: 4, currentPageEnd: null }))).toBe("Slide 4 of 12");
+  });
   it("fills the bar from the passages read, after page preparation", () => {
     expect(generationPercent(document(), reading(0))).toBe(20);
     expect(generationPercent(document(), reading(296))).toBe(58);
