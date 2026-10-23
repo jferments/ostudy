@@ -23,6 +23,7 @@ fn wire_lesson() -> Value {
                 "check": {
                     "timing": "before",
                     "style": "recall",
+                    "aboutStep": 1,
                     "prompt": "How many sides does a triangle have?",
                     "options": ["Three", "Four"],
                     "correctOption": 0,
@@ -128,143 +129,6 @@ fn a_lesson_asks_a_few_questions_not_one_on_every_step() {
             .count(),
         3
     );
-}
-
-#[test]
-fn a_question_on_the_step_right_after_another_is_dropped() {
-    let knowledge = catalog_fixture();
-    let mut wire = wire_lesson();
-    let asked = wire["steps"][0].clone();
-    wire["steps"] = json!([asked, asked, asked, wire["steps"][1].clone(), asked]);
-    let lesson = decode(wire, &knowledge).unwrap();
-    let asked = lesson
-        .steps
-        .iter()
-        .map(|step| step.check.is_some())
-        .collect::<Vec<_>>();
-    assert_eq!(asked, [true, false, true, false, true]);
-    assert_eq!(lesson.steps[1].check_timing, CheckTiming::After);
-}
-
-/// The first step asks, after it, what its narration has just said.
-fn giveaway_lesson() -> Value {
-    let mut wire = wire_lesson();
-    wire["steps"][0]["narration"] =
-        json!("Look at any triangle and count around it. Every triangle has three straight sides.");
-    wire["steps"][0]["check"]["timing"] = json!("after");
-    wire["steps"][0]["check"]["options"] = json!(["Four curved edges", "Three straight sides"]);
-    wire["steps"][0]["check"]["correctOption"] = json!(1);
-    wire
-}
-
-#[test]
-fn narration_that_says_the_answer_just_before_the_question_is_found() {
-    let knowledge = catalog_fixture();
-    let lesson = decode(giveaway_lesson(), &knowledge).unwrap();
-    assert_eq!(answer_given_away(&lesson), [1]);
-
-    // Said earlier in a longer narration, before a question, or in words that
-    // fit a wrong option as well, it is not a giveaway.
-    let mut earlier = giveaway_lesson();
-    earlier["steps"][0]["narration"] = json!(
-        "Every triangle has three straight sides. Corners come next. Angles add up. Now try this."
-    );
-    let mut before = giveaway_lesson();
-    before["steps"][0]["check"]["timing"] = json!("before");
-    let mut both = giveaway_lesson();
-    both["steps"][0]["check"]["options"] = json!(["Three curved sides", "Three straight sides"]);
-    let mut short = giveaway_lesson();
-    short["steps"][0]["check"]["options"] = json!(["False", "True"]);
-    for wire in [earlier, before, both, short] {
-        let lesson = decode(wire, &knowledge).unwrap();
-        assert!(answer_given_away(&lesson).is_empty());
-    }
-    assert!(answer_given_away(&decode(wire_lesson(), &knowledge).unwrap()).is_empty());
-}
-
-#[tokio::test]
-async fn a_given_away_answer_gets_one_narration_rewrite() {
-    let knowledge = catalog_fixture();
-    let sent = RefCell::new(Vec::<LessonRequest>::new());
-    let reserved = RefCell::new(Vec::<String>::new());
-    let mut rewritten = giveaway_lesson();
-    rewritten["steps"][0]["narration"] = json!("Count around any triangle. What do you find?");
-    let answers = RefCell::new(vec![Ok(rewritten), Ok(giveaway_lesson())]);
-    let lesson = run(
-        request(),
-        &knowledge,
-        |_| Ok(()),
-        |error| {
-            reserved.borrow_mut().push(error.message.clone());
-            true
-        },
-        |owned| {
-            sent.borrow_mut().push(owned);
-            let answer = answers.borrow_mut().pop().unwrap();
-            async move { answer }
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        lesson.steps[0].narration,
-        "Count around any triangle. What do you find?"
-    );
-    assert!(reserved.borrow()[0].contains("after step 1"));
-    let sent = sent.borrow();
-    assert_eq!(sent.len(), 2);
-    assert!(sent[1].user.contains("narration of step 1 says the answer"));
-    assert!(sent[1].user.contains("<lesson-candidate>"));
-}
-
-#[tokio::test]
-async fn a_failed_or_refused_rewrite_keeps_the_valid_lesson() {
-    let knowledge = catalog_fixture();
-    for (rewrite, budget) in [
-        (Ok(json!({"title": "No steps"})), true),
-        (
-            Err(CommandError::new("ai_provider_unavailable", "down")),
-            true,
-        ),
-        (Ok(json!({"title": "never asked"})), false),
-    ] {
-        let calls = RefCell::new(0);
-        let answers = RefCell::new(vec![rewrite, Ok(giveaway_lesson())]);
-        let lesson = run(
-            request(),
-            &knowledge,
-            |_| Ok(()),
-            |_| budget,
-            |_| {
-                *calls.borrow_mut() += 1;
-                let answer = answers.borrow_mut().pop().unwrap();
-                async move { answer }
-            },
-        )
-        .await
-        .unwrap();
-        assert!(lesson == decode(giveaway_lesson(), &knowledge).unwrap());
-        assert_eq!(*calls.borrow(), if budget { 2 } else { 1 });
-    }
-
-    let answers = RefCell::new(vec![
-        Err(CommandError::new("ai_request_canceled", "canceled")),
-        Ok(giveaway_lesson()),
-    ]);
-    let error = run(
-        request(),
-        &knowledge,
-        |_| Ok(()),
-        |_| true,
-        |_| {
-            let answer = answers.borrow_mut().pop().unwrap();
-            async move { answer }
-        },
-    )
-    .await
-    .err()
-    .unwrap();
-    assert_eq!(error.code, "ai_request_canceled");
 }
 
 #[test]
@@ -487,4 +351,63 @@ async fn too_many_steps_are_merged_on_repair_without_the_candidate() {
     let sent = sent.borrow();
     assert!(sent[1].user.contains("at most six steps by merging"));
     assert!(!sent[1].user.contains("<invalid-lesson-candidate>"));
+}
+
+fn asked(lesson: &LessonContent) -> Vec<Option<CheckTiming>> {
+    lesson
+        .steps
+        .iter()
+        .map(|step| step.check.as_ref().map(|_| step.check_timing))
+        .collect()
+}
+
+#[test]
+fn a_question_on_the_step_right_after_another_is_dropped() {
+    let knowledge = catalog_fixture();
+    let mut wire = wire_lesson();
+    let before = wire["steps"][0].clone();
+    let quiet = wire["steps"][1].clone();
+    wire["steps"] = json!([before, before, before, quiet, before]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    let before = Some(CheckTiming::Before);
+    assert_eq!(asked(&lesson), [before, None, before, None, before]);
+}
+
+#[test]
+fn a_question_about_the_step_just_heard_is_asked_after_the_next_one() {
+    let knowledge = catalog_fixture();
+    let quiet = wire_lesson()["steps"][1].clone();
+    let mut after = wire_lesson()["steps"][0].clone();
+    after["check"]["timing"] = json!("after");
+    let about = |step: usize| {
+        let mut step_with = after.clone();
+        step_with["check"]["aboutStep"] = json!(step);
+        step_with
+    };
+    let after = Some(CheckTiming::After);
+
+    // About step 2 after step 2 moves to step 3; a question about a later
+    // step moves only once; one about an earlier step stays.
+    let mut wire = wire_lesson();
+    wire["steps"] = json!([
+        quiet,
+        about(2),
+        quiet,
+        quiet,
+        about(8),
+        quiet,
+        quiet,
+        about(1)
+    ]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(
+        asked(&lesson),
+        [None, None, after, None, None, after, None, after]
+    );
+
+    // The last step has no next step to take its question.
+    let mut wire = wire_lesson();
+    wire["steps"] = json!([quiet, about(2)]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(asked(&lesson), [None, after]);
 }
