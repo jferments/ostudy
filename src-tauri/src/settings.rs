@@ -161,7 +161,11 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         )?,
         guide_pdf_theme: get_setting(connection, "guidePdfTheme", default_guide_pdf_theme())?,
         guide_pdf_include_notes: get_setting(connection, "guidePdfIncludeNotes", true)?,
-        lecture_audio_with_new_lessons: get_setting(connection, "lectureAudioWithNewLessons", true)?,
+        lecture_audio_with_new_lessons: get_setting(
+            connection,
+            "lectureAudioWithNewLessons",
+            true,
+        )?,
     })
 }
 
