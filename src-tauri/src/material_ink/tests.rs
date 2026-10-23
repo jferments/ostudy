@@ -152,6 +152,35 @@ fn text_highlights_links_and_odd_page_keys_are_refused() {
 }
 
 #[test]
+fn guide_pages_hold_links_and_report_the_ones_whose_target_is_gone() {
+    let database = library();
+    database
+        .with_connection(|connection| {
+            let link = |target: Value| {
+                shape(json!({
+                    "kind": "text", "x": 10, "y": 10, "width": 120, "text": "Open", "color": "#111111",
+                    "fontSize": 14, "link": { "target": target }
+                }))
+            };
+            let page = link(json!({ "kind": "documentPage", "documentId": DOCUMENT, "pageNumber": 2 }));
+            let deck = link(json!({ "kind": "deck", "deckId": id('c') }));
+            apply(
+                connection,
+                guide(),
+                vec![
+                    put(id('1'), "chapter:0123456789abcdef0123456789abcdef:1", page),
+                    put(id('2'), "cram:1", deck),
+                ],
+            )?;
+            let opened = read(connection, &guide())?;
+            assert_eq!(opened.marks.len(), 2);
+            assert_eq!(opened.unavailable_link_ids, [id('2')]);
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
 fn deleting_the_lesson_or_document_deletes_its_marks() {
     let database = library();
     database

@@ -35,9 +35,12 @@ interface StudyGuidesScreenProps {
   onOpenRequestConsumed?: (requestId: number) => void;
   /** Opens AI setup; Remake goes there while no model is chosen for guides. */
   onSetUpAi?: () => void;
+  /** Where links on a guide's pages lead: a deck's Practice, and a notes page. */
+  onPracticeDeck?: (deckId: string) => void | Promise<void>;
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
 }
 
-export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed, onSetUpAi }: StudyGuidesScreenProps) {
+export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed, onSetUpAi, onPracticeDeck, onOpenNotebook }: StudyGuidesScreenProps) {
   const confirm = useConfirm();
   const controller = useStudyGuidesController({ subject, showToast, openRequest, onOpenRequestConsumed });
   const tutor = useOptionalTutor();
@@ -108,11 +111,15 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
           />
         ) : (
           <StudyGuideDialog
+            key={controller.selected.targetId}
             documentId={controller.selected.targetId}
             documentTitle={controller.selected.title}
             source={controller.selected.source ?? null}
             showToast={showToast}
             onPracticeCards={onPracticeCards}
+            onPracticeDeck={onPracticeDeck}
+            onOpenNotebook={onOpenNotebook}
+            onOpenGuide={(documentId, title) => controller.openGuide({ targetKind: "document", targetId: documentId, title })}
             onClose={controller.closeGuide}
           />
         )}

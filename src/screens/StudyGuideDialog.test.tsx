@@ -5,7 +5,7 @@ import { requiredTestValue as required } from "../test/factories";
 import { layoutWidths, matchesLayoutQuery, type ViewportLayout } from "../test/viewport";
 import type { ShowToast } from "../components/Toast";
 import { openDocumentSource } from "../ipc/documents";
-import { getMaterialInk } from "../ipc/materialInk";
+import { getMaterialInk, readMaterialInk } from "../ipc/materialInk";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import {
@@ -17,9 +17,12 @@ import {
   getDocumentTopicCardProjection,
   getDocumentStudyGuideSectionPage,
   getDocumentStudyGuideGlancePage,
+  getDocumentStudyGuideCanvas,
+  openDocumentStudyGuidePdf,
   prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
+  type StudyGuideCanvas,
   type PreparedStudyGuidePdf,
   type StudyGuideOverlay,
 } from "../ipc/studyGuides";
@@ -50,20 +53,14 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentTopicCardProjection: vi.fn(),
     getDocumentStudyGuideSectionPage: vi.fn(),
     getDocumentStudyGuideGlancePage: vi.fn(),
+    getDocumentStudyGuideCanvas: vi.fn(),
+    openDocumentStudyGuidePdf: vi.fn(),
     prepareDocumentStudyGuidePdf: vi.fn(),
     saveDocumentStudyGuideOverlay: vi.fn(),
   };
 });
 
-vi.mock("../ipc/materialInk", () => ({ getMaterialInk: vi.fn() }));
-vi.mock("./ink/InkEditor", () => ({
-  InkEditor: ({ title, pages, onClose }: { title: string; pages: { key: string; width: number; height: number }[]; onClose: () => void }) => (
-    <div>
-      <p>Writing on {title}, {pages.map((page) => `${page.width} by ${page.height}`).join()}</p>
-      <button type="button" onClick={onClose}>Back to the guide</button>
-    </div>
-  ),
-}));
+vi.mock("../ipc/materialInk", () => ({ getMaterialInk: vi.fn(), readMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
 
 vi.mock("../ipc/studyGuideReading", () => ({
   getStudyGuideReading: vi.fn(),
@@ -387,6 +384,8 @@ function readingStore(initial: Partial<StudyGuideReading> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The reader opens as plain text unless a test opens the canvas.
+  window.localStorage.setItem("ostudy.guidePageStyle", "plain");
   // Sections read as plain pages unless a test lays one out.
   vi.mocked(getDocumentStudyGuideSectionPage).mockRejectedValue(new Error("no layout in tests"));
   vi.mocked(getDocumentStudyGuideGlancePage).mockRejectedValue(new Error("no layout in tests"));
@@ -743,55 +742,71 @@ describe("StudyGuideDialog", () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    // Export and a guide's only other action sit in the bar itself, not behind a menu.
-    expect(await screen.findByRole("button", { name: "Export PDF" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add guide note" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Study guide actions" })).toBeNull();
+    // Opening the guide in a PDF reader sits in the bar; saving a copy and the rest are in its menu.
+    expect(await screen.findByRole("button", { name: "Open in PDF reader" })).toBeTruthy();
+    const guideMenu = await openMenu(screen.getByRole("button", { name: "Study guide actions" }));
+    expect(within(guideMenu).getAllByRole("menuitem").map((item) => item.textContent))
+      .toEqual(["Save a copy as PDF…", "Add guide note", "Remake the study guide"]);
+    fireEvent.keyDown(guideMenu, { key: "Escape" });
 
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
     expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Add note", "Edit or rewrite this section"]);
   });
 
-  it("writes on a section's designed page and draws the marks over it", async () => {
-    vi.mocked(getDocumentStudyGuideSectionPage).mockResolvedValue({
-      documentId, topicId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 700" xmlns="http://www.w3.org/2000/svg"/>',
-    });
-    vi.mocked(getMaterialInk).mockResolvedValue([{
-      id: "m".repeat(32), pageKey: topicId, revision: 1, createdAt: 1, updatedAt: 1,
-      shape: { kind: "line", x1: 10, y1: 10, x2: 200, y2: 90, color: "#d64545", strokeWidth: 3 },
-    }]);
+  it("opens in a page theme as the guide's PDF pages on one canvas, with its contents beside them", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "sage");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    const contents = await screen.findByRole("navigation", { name: "Study guide contents" });
+    expect(getDocumentStudyGuideCanvas).toHaveBeenCalledWith(documentId, "sage");
+    expect(readMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId });
+    expect(within(contents).getAllByRole("button").map((button) => button.textContent?.trim()).filter(Boolean)).toEqual([
+      "Cover and contents", "1. Loads", "1.1Preload", "1.2Afterload", "Cram sheet", "Self-test",
+    ]);
+    expect(document.querySelectorAll("[data-annotator-page]")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Add link" })).toBeTruthy();
+
+    // Each section's Practice button starts Practice on its linked cards.
+    fireEvent.click(await screen.findByRole("button", { name: "Practice flashcards for 1.1 Preload" }));
+    await waitFor(() => expect(onPracticeCards).toHaveBeenCalledWith(linkedCardIds));
+    expect(mockedCardIds).toHaveBeenCalledWith(documentId, [topicId]);
+
+    // A section's own actions sit in its contents row.
+    const menu = await openMenu(within(contents).getByRole("button", { name: "1.2 Afterload actions" }));
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent))
+      .toEqual(["Practice this section's flashcards", "Mark as read", "Edit or rewrite this section"]);
+  });
+
+  it("opens the guide in the system's PDF reader in the chosen theme", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "plum");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    vi.mocked(openDocumentStudyGuidePdf).mockResolvedValue(undefined);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    await openSection("Preload");
-    await waitFor(() => expect(document.querySelector("[data-ink-overlay]")).toBeTruthy());
-    expect(getMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId });
-    await chooseFromMenu(screen.getByRole("button", { name: "Section actions for Preload" }), "Write on this page");
-    expect(await screen.findByText("Writing on Preload, 538.58 by 700")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Back to the guide" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Preload" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Open in PDF reader" }));
+    await waitFor(() => expect(openDocumentStudyGuidePdf).toHaveBeenCalledWith(documentId, "plum"));
   });
 
-  it("shows the overview as a designed At a glance page, and as text in the plain style", async () => {
-    vi.mocked(getDocumentStudyGuideGlancePage).mockResolvedValue({
-      documentId, guideRevision: 1, theme: "navy", svg: '<svg viewBox="0 0 538.58 400" xmlns="http://www.w3.org/2000/svg"/>',
-    });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:glance") });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+  it("offers the plain text when the pages cannot be laid out", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "navy");
+    vi.mocked(getDocumentStudyGuideCanvas).mockRejectedValue(new Error("no fonts"));
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    expect((await screen.findByTestId("guide-glance-page")).getAttribute("src")).toBe("blob:glance");
-    expect(getDocumentStudyGuideGlancePage).toHaveBeenCalledWith(documentId, "navy");
-    const trigger = screen.getByRole("button", { name: "Page: Navy" });
-    await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
-    fireEvent.click(trigger);
-    fireEvent.click(within(await screen.findByRole("menu")).getByRole("menuitemcheckbox", { name: "Plain" }));
-    await waitFor(() => expect(screen.queryByTestId("guide-glance-page")).toBeNull());
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:glance");
+    expect(await screen.findByText("The study guide's pages could not be laid out: no fonts")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Read as plain text" }));
+    expect(await screen.findByRole("article", { name: "Physiology" })).toBeTruthy();
+    expect(window.localStorage.getItem("ostudy.guidePageStyle")).toBe("plain");
   });
 
   it("reopens on the section last opened and records each section opened", async () => {
@@ -1047,7 +1062,7 @@ describe("StudyGuideDialog", () => {
     vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "plum", guidePdfIncludeNotes: includeNotes } as AppSettings);
     renderGuide({ showToast });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
 
     await waitFor(() => {
       expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "plum");
@@ -1067,7 +1082,7 @@ describe("StudyGuideDialog", () => {
     mockedPublish.mockResolvedValue(null);
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
 
     await waitFor(() => expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, true, "sage"));
   });
@@ -1078,7 +1093,7 @@ describe("StudyGuideDialog", () => {
     const showToast = vi.fn();
     renderGuide({ showToast });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("error", "The PDF could not be prepared."));
     expect(mockedPublish).not.toHaveBeenCalled();
@@ -1092,7 +1107,7 @@ describe("StudyGuideDialog", () => {
     mockedPublish.mockResolvedValue({ preparedExportId: "8".repeat(32), displayName: "math.pdf", destinationKind: "file", completedAt: 123 });
     const showToast = vi.fn();
     renderGuide({ showToast });
-    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
     const confirmation = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(within(confirmation).getByText(/outside the native PDF math subset.*readable LaTeX source/iu)).toBeTruthy();
@@ -1310,6 +1325,28 @@ describe("Study-guide mathematical presentation", () => {
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
   });
 });
+
+/** The two-section guide laid out on four pages: the cover, one chapter, the cram sheet and the self-test. */
+function guideCanvas(): StudyGuideCanvas {
+  const page = (key: string) => ({ key, width: 538.58, height: 700, svg: '<svg viewBox="0 0 538.58 700" xmlns="http://www.w3.org/2000/svg"/>' });
+  return {
+    documentId,
+    guideRevision: 1,
+    theme: "sage",
+    pages: [page("front:1"), page("chapter:loads:1"), page("cram:1"), page("test:1")],
+    contents: [
+      { kind: "chapter", key: "loads", title: "Loads", number: "1", pageIndex: 1, y: 40 },
+      { kind: "section", key: topicId, title: "Preload", number: "1.1", pageIndex: 1, y: 120 },
+      { kind: "section", key: afterloadTopicId, title: "Afterload", number: "1.2", pageIndex: 1, y: 420 },
+      { kind: "cram", key: "cram", title: "Cram sheet", number: "", pageIndex: 2, y: 40 },
+      { kind: "selfTest", key: "selfTest", title: "Self-test", number: "", pageIndex: 3, y: 40 },
+    ],
+    practice: [
+      { topicId, pageIndex: 1, x: 450, y: 118, width: 68, height: 18.4 },
+      { topicId: afterloadTopicId, pageIndex: 1, x: 450, y: 418, width: 68, height: 18.4 },
+    ],
+  };
+}
 
 function setLayout(layout: ViewportLayout): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({

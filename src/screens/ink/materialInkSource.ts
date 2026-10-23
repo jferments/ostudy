@@ -1,5 +1,5 @@
 import type { AnnotatedPage, DocumentAnnotation } from "../../ipc/documentAnnotations";
-import { applyMaterialInkChanges, getMaterialInk, type InkChange, type InkMark, type InkMaterial } from "../../ipc/materialInk";
+import { applyMaterialInkChanges, readMaterialInk, type InkChange, type InkMark, type InkMaterial } from "../../ipc/materialInk";
 import type { AnnotatorSource } from "../documents/annotator/useDocumentAnnotator";
 
 /** A designed page to write on: its key, its size in points, and its picture. */
@@ -38,11 +38,20 @@ export function inkAnnotations(pages: readonly InkPage[], marks: readonly InkMar
   };
 }
 
-/** Reads and saves a material's marks for the annotator, on the pages it was opened with. */
-export function materialInkSource(material: InkMaterial, pages: readonly InkPage[]): AnnotatorSource {
+/**
+ * Reads and saves a material's marks for the annotator, on the pages it was opened with.
+ * `onUnavailableLinks` hears which links lead nowhere each time the marks load.
+ */
+export function materialInkSource(
+  material: InkMaterial,
+  pages: readonly InkPage[],
+  onUnavailableLinks?: (ids: ReadonlySet<string>) => void,
+): AnnotatorSource {
   return {
     async load() {
-      return inkAnnotations(pages, await getMaterialInk(material));
+      const ink = await readMaterialInk(material);
+      onUnavailableLinks?.(new Set(ink.unavailableLinkIds));
+      return inkAnnotations(pages, ink.marks);
     },
     async send(_key, changes) {
       const sent = changes.map((change): InkChange => {

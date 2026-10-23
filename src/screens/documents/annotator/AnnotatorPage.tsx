@@ -48,6 +48,11 @@ export interface PageDraft {
  */
 export interface PaperPages {
   background: (page: AnnotatedPage) => ReactNode;
+  /**
+   * Controls over the marks, such as a guide section's Practice button, placed
+   * in page points at `scale` CSS pixels a point. They stop their own presses from starting a mark.
+   */
+  foreground?: (page: AnnotatedPage, scale: number) => ReactNode;
   /** Links whose target is gone, shown as removed. */
   unavailableLinks: ReadonlySet<string>;
 }
@@ -122,6 +127,7 @@ export const AnnotatorPage = memo(function AnnotatorPage(props: AnnotatorPagePro
       style={{ width, height }}
     >
       {near ? <PageContent {...props} imageUrl={image.url} imageFailed={image.failed || !page.imageAvailable} sharpTiles={tiles} /> : null}
+      {near && props.paperPages?.foreground ? props.paperPages.foreground(page, scale) : null}
       {near && props.clips && props.clips.length > 0 && props.onOpenClip ? (
         <ClipBadges clips={props.clips} onOpen={props.onOpenClip} />
       ) : null}

@@ -42,8 +42,8 @@ export interface LinkChoice {
 interface LinkDialogProps {
   /** The link being changed; none adds a new one. */
   initial: LinkChoice | null;
-  /** The notebook the link sits in, and its pages, for links within it. */
-  notebookId: string;
+  /** The notebook the link sits in, and its pages, for links within it; none on a study guide's pages. */
+  notebookId?: string;
   onClose: () => void;
   onSave: (choice: LinkChoice) => void;
 }
@@ -61,7 +61,7 @@ export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogP
   const [documentId, setDocumentId] = useState(start && "documentId" in start ? start.documentId : "");
   const [pageNumber, setPageNumber] = useState(String(start?.kind === "documentPage" ? start.pageNumber : 1));
   const [deckId, setDeckId] = useState(start?.kind === "deck" ? start.deckId : "");
-  const [targetNotebookId, setTargetNotebookId] = useState(start?.kind === "notebookPage" ? start.notebookId : notebookId);
+  const [targetNotebookId, setTargetNotebookId] = useState(start?.kind === "notebookPage" ? start.notebookId : notebookId ?? "");
   const [pageId, setPageId] = useState(start?.kind === "notebookPage" ? start.pageId : "");
   const [label, setLabel] = useState(initial?.label ?? "");
   const [labelEdited, setLabelEdited] = useState(initial !== null);
@@ -83,6 +83,8 @@ export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogP
         decks: decks.filter((deck) => deck.archivedAt === null),
         notebooks,
       });
+      // Outside a notebook, a notes-page link starts at the first notebook.
+      setTargetNotebookId((chosen) => chosen || (notebooks[0]?.notebook.id ?? ""));
     }, (error: unknown) => {
       if (current) setLoadError(getErrorMessage(error));
     });

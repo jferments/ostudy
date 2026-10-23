@@ -95,7 +95,11 @@ fn assemble(
     mut anchors: Vec<CanvasAnchor>,
 ) -> StudyGuideCanvasDto {
     anchors.retain(|anchor| anchor.page >= 1 && anchor.page <= pages.len());
-    anchors.sort_by(|a, b| (a.page, a.y).partial_cmp(&(b.page, b.y)).unwrap_or(std::cmp::Ordering::Equal));
+    anchors.sort_by(|a, b| {
+        (a.page, a.y)
+            .partial_cmp(&(b.page, b.y))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let keys = page_keys(pages.len(), &anchors, export.chapters.is_empty());
     let numbers = section_numbers(export);
     let contents = anchors
@@ -108,19 +112,38 @@ fn assemble(
                         .iter()
                         .enumerate()
                         .find(|(_, chapter)| chapter.key == anchor.key)?;
-                    (StudyGuideCanvasEntryKind::Chapter, chapter.title.clone(), (index + 1).to_string())
+                    (
+                        StudyGuideCanvasEntryKind::Chapter,
+                        chapter.title.clone(),
+                        (index + 1).to_string(),
+                    )
                 }
                 "section" => {
-                    let section = export.sections.iter().find(|section| section.key == anchor.key)?;
+                    let section = export
+                        .sections
+                        .iter()
+                        .find(|section| section.key == anchor.key)?;
                     let number = numbers
                         .iter()
                         .find(|(key, _)| *key == anchor.key)
                         .map(|(_, number)| number.clone())
                         .unwrap_or_default();
-                    (StudyGuideCanvasEntryKind::Section, section.title.clone(), number)
+                    (
+                        StudyGuideCanvasEntryKind::Section,
+                        section.title.clone(),
+                        number,
+                    )
                 }
-                "cram" => (StudyGuideCanvasEntryKind::Cram, "Cram sheet".to_string(), String::new()),
-                "selfTest" => (StudyGuideCanvasEntryKind::SelfTest, "Self-test".to_string(), String::new()),
+                "cram" => (
+                    StudyGuideCanvasEntryKind::Cram,
+                    "Cram sheet".to_string(),
+                    String::new(),
+                ),
+                "selfTest" => (
+                    StudyGuideCanvasEntryKind::SelfTest,
+                    "Self-test".to_string(),
+                    String::new(),
+                ),
                 _ => return None,
             };
             Some(StudyGuideCanvasEntryDto {
@@ -205,7 +228,12 @@ fn section_numbers(export: &EffectiveGuideExport) -> Vec<(String, String)> {
         return reading_order(export)
             .into_iter()
             .enumerate()
-            .map(|(position, index)| (export.sections[index].key.clone(), (position + 1).to_string()))
+            .map(|(position, index)| {
+                (
+                    export.sections[index].key.clone(),
+                    (position + 1).to_string(),
+                )
+            })
             .collect();
     }
     export
@@ -213,11 +241,18 @@ fn section_numbers(export: &EffectiveGuideExport) -> Vec<(String, String)> {
         .iter()
         .enumerate()
         .flat_map(|(chapter, entry)| {
-            entry.section_indices.iter().enumerate().map(move |(position, index)| {
-                (index, format!("{}.{}", chapter + 1, position + 1))
-            })
+            entry
+                .section_indices
+                .iter()
+                .enumerate()
+                .map(move |(position, index)| (index, format!("{}.{}", chapter + 1, position + 1)))
         })
-        .filter_map(|(index, number)| export.sections.get(*index).map(|section| (section.key.clone(), number)))
+        .filter_map(|(index, number)| {
+            export
+                .sections
+                .get(*index)
+                .map(|section| (section.key.clone(), number))
+        })
         .collect()
 }
 
@@ -246,7 +281,14 @@ mod tests {
         ];
         assert_eq!(
             page_keys(6, &anchors, false),
-            ["front:1", "chapter:c1:1", "chapter:c1:2", "chapter:c2:1", "cram:1", "test:1"]
+            [
+                "front:1",
+                "chapter:c1:1",
+                "chapter:c1:2",
+                "chapter:c2:1",
+                "cram:1",
+                "test:1"
+            ]
         );
     }
 
@@ -275,15 +317,27 @@ mod tests {
             .iter()
             .find(|entry| entry.kind == StudyGuideCanvasEntryKind::Chapter)
             .unwrap();
-        assert_eq!((chapter.title.as_str(), chapter.number.as_str()), ("Loads", "1"));
+        assert_eq!(
+            (chapter.title.as_str(), chapter.number.as_str()),
+            ("Loads", "1")
+        );
         let sections: Vec<_> = canvas
             .contents
             .iter()
             .filter(|entry| entry.kind == StudyGuideCanvasEntryKind::Section)
             .map(|entry| (entry.title.as_str(), entry.number.as_str()))
             .collect();
-        assert_eq!(sections, [(export.sections[0].title.as_str(), "1.1"), ("Afterload", "1.2")]);
-        assert!(canvas.contents.iter().all(|entry| entry.page_index >= chapter.page_index));
+        assert_eq!(
+            sections,
+            [
+                (export.sections[0].title.as_str(), "1.1"),
+                ("Afterload", "1.2")
+            ]
+        );
+        assert!(canvas
+            .contents
+            .iter()
+            .all(|entry| entry.page_index >= chapter.page_index));
         assert_eq!(canvas.practice.len(), 2);
         for button in &canvas.practice {
             let page = &canvas.pages[button.page_index];
@@ -299,6 +353,9 @@ mod tests {
             anchor("section", "t2", 2, 400.0),
             anchor("section", "t3", 3, 100.0),
         ];
-        assert_eq!(page_keys(3, &anchors, true), ["front:1", "body:1", "body:2"]);
+        assert_eq!(
+            page_keys(3, &anchors, true),
+            ["front:1", "body:1", "body:2"]
+        );
     }
 }

@@ -5,8 +5,9 @@
 //! material, validated by the same rules as a document annotation
 //! (`AnnotationShape`). A lesson's pages are its slide keys and a guide's are
 //! its sections' topic ids; the designed pages are laid out natively, so marks
-//! are placed in the page's own points. These pages have no text layer and no
-//! links, so text highlights and links are refused.
+//! are placed in the page's own points. These pages have no text layer, so
+//! text highlights are refused. A guide's pages may hold links, as a
+//! notebook's do, looked up when the guide opens; slides hold none.
 //!
 //! Writes carry the whole new state of each mark, so a request repeated after
 //! a lost response changes nothing further. Whole-library backups keep the
@@ -95,6 +96,8 @@ pub struct InkMarkDto {
 pub struct MaterialInkDto {
     /// Earlier marks first.
     pub marks: Vec<InkMarkDto>,
+    /// Links whose document, page, guide, deck or notebook page is gone.
+    pub unavailable_link_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -208,7 +211,14 @@ pub(crate) fn read(
             ),
         }
     }
-    Ok(MaterialInkDto { marks })
+    let unavailable_link_ids = crate::notebooks::unavailable_links(
+        connection,
+        marks.iter().map(|mark| (mark.id.as_str(), &mark.shape)),
+    )?;
+    Ok(MaterialInkDto {
+        marks,
+        unavailable_link_ids,
+    })
 }
 
 pub(crate) fn apply_changes(
@@ -237,10 +247,8 @@ pub(crate) fn apply_changes(
             if matches!(shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
                 return Err(invalid("A designed page has no text to highlight."));
             }
-            if shape.is_link() {
-                return Err(invalid(
-                    "Links go in notebooks, not on slides or guide pages.",
-                ));
+            if shape.is_link() && matches!(input.material, InkMaterial::Lesson { .. }) {
+                return Err(invalid("Links go in notebooks or guides, not on slides."));
             }
         }
     }
