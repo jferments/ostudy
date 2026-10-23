@@ -103,6 +103,63 @@ pub(super) fn render_bytes(
     pdf
 }
 
+/// One laid-out page of the guide for the reader's canvas: its size in points
+/// and the page as a standalone SVG.
+#[derive(Clone, Debug)]
+pub(super) struct CanvasPage {
+    pub(super) width: f64,
+    pub(super) height: f64,
+    pub(super) svg: String,
+}
+
+/// Where a chapter, section, Practice button, cram sheet or self-test landed:
+/// its 1-based page and its top-left corner in points from the page's.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(super) struct CanvasAnchor {
+    pub(super) kind: String,
+    pub(super) key: String,
+    pub(super) page: usize,
+    pub(super) x: f64,
+    pub(super) y: f64,
+}
+
+/// The whole guide laid out exactly as the PDF export lays it out, as one SVG
+/// per page, with where each chapter, section and Practice button landed.
+pub(super) fn canvas(
+    export: &EffectiveGuideExport,
+    theme: StudyGuidePdfTheme,
+) -> Result<(Vec<CanvasPage>, Vec<CanvasAnchor>), CommandError> {
+    use typst::introspection::{Introspector, MetadataElem};
+    let laid_out = compile(export, theme).map(|document| {
+        let options = typst_svg::SvgOptions::default();
+        let pages = document
+            .pages()
+            .iter()
+            .map(|page| CanvasPage {
+                width: page.frame.width().to_pt(),
+                height: page.frame.height().to_pt(),
+                svg: typst_svg::svg(page, &options),
+            })
+            .collect::<Vec<_>>();
+        let label = typst::foundations::Label::new(typst::utils::PicoStr::intern("canvas-anchor"))
+            .expect("static label");
+        let anchors = document
+            .introspector()
+            .query(&typst::foundations::Selector::Label(label))
+            .iter()
+            .filter_map(|content| {
+                let value = &content.to_packed::<MetadataElem>()?.value;
+                serde_json::to_value(value)
+                    .ok()
+                    .and_then(|value| serde_json::from_value::<CanvasAnchor>(value).ok())
+            })
+            .collect::<Vec<_>>();
+        (pages, anchors)
+    });
+    typst::comemo::evict(0);
+    laid_out
+}
+
 fn compile(
     export: &EffectiveGuideExport,
     theme: StudyGuidePdfTheme,
@@ -432,6 +489,7 @@ fn guide_data(
         .iter()
         .map(|chapter| {
             json!({
+                "key": chapter.key,
                 "title": runs(&chapter.title),
                 "intro": runs(&chapter.introduction),
                 "sections": chapter.section_indices,
@@ -491,6 +549,7 @@ fn section_data(
         })
         .collect::<Vec<_>>();
     json!({
+        "key": section.key,
         "title": runs(&section.title),
         "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,

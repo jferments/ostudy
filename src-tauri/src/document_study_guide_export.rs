@@ -10,7 +10,8 @@ use std::{collections::HashMap, fs};
 
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::{
     database::Database,
@@ -29,6 +30,7 @@ use crate::{
     util::validate_entity_id,
 };
 
+mod canvas;
 mod guide_typst;
 mod math_layout;
 mod math_source;
@@ -137,6 +139,8 @@ struct EffectiveGuideExport {
 
 #[derive(Clone, Debug)]
 struct EffectiveExportChapter {
+    /// The editorial chapter's id, which names its pages on the reader's canvas.
+    key: String,
     title: String,
     introduction: String,
     section_indices: Vec<usize>,
@@ -441,6 +445,76 @@ pub(crate) async fn get_document_study_guide_glance_page(
     })?
 }
 
+/// A document's whole study guide as the reader's canvas: every page the PDF
+/// export lays out, with its contents and Practice buttons. Read-only; the
+/// learner's marks are stored separately under each page's key.
+#[tauri::command]
+pub(crate) async fn get_document_study_guide_canvas(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: GetStudyGuideGlancePageInput,
+) -> Result<canvas::StudyGuideCanvasDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let effective = load_effective_export(&database, &paths, &input.document_id, false)?;
+        canvas::guide_canvas(&input.document_id, &effective, input.theme)
+    })
+    .await
+    .map_err(|error| {
+        CommandError::new(
+            "study_guide_page_layout_failed",
+            format!("Could not lay out the study guide: {error}"),
+        )
+    })?
+}
+
+/// Opens a document's study guide in the system's PDF reader. The PDF is
+/// written to one reader file per document, replaced on every open, so the
+/// learner never picks a save location.
+#[tauri::command]
+pub(crate) async fn open_document_study_guide_pdf(
+    app: AppHandle,
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: GetStudyGuideGlancePageInput,
+) -> Result<(), CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    let destination = tauri::async_runtime::spawn_blocking(move || {
+        let effective = load_effective_export(&database, &paths, &input.document_id, true)?;
+        let destination = paths.resolve_relative(&format!(
+            "reader/study-guides/{}/{}-study-guide.pdf",
+            input.document_id,
+            portable_filename(&effective.document_title)
+        ));
+        if let Some(parent) = destination.parent() {
+            // An earlier open's file may carry an older title.
+            let _ = fs::remove_dir_all(parent);
+            fs::create_dir_all(parent).map_err(CommandError::io)?;
+        }
+        guide_typst::render(&effective, input.theme, &destination)?;
+        Ok::<_, CommandError>(destination)
+    })
+    .await
+    .map_err(|error| {
+        CommandError::new(
+            "study_guide_export_failed",
+            format!("Could not write the study guide PDF: {error}"),
+        )
+    })??;
+    app.opener()
+        .open_path(destination.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|error| {
+            CommandError::new(
+                "study_guide_open_failed",
+                format!("The operating system could not open the study guide PDF: {error}"),
+            )
+        })
+}
+
 /// Section indices in the order the reader numbers them: by chapter when the
 /// guide has an editorial organization, otherwise as generated.
 fn reading_order(export: &EffectiveGuideExport) -> Vec<usize> {
@@ -607,6 +681,7 @@ fn compose_effective_export(
                     })
                     .collect::<Result<Vec<_>, CommandError>>()?;
                 Ok(EffectiveExportChapter {
+                    key: chapter.id.clone(),
                     title: chapter.title.clone(),
                     introduction: chapter.introduction.clone(),
                     section_indices,
@@ -1197,6 +1272,7 @@ mod tests {
         export.sections.push(rich_section("Afterload"));
         assert_eq!(reading_order(&export), vec![0, 1]);
         export.chapters = vec![EffectiveExportChapter {
+            key: "chapter-loads".into(),
             title: "Loads".into(),
             introduction: String::new(),
             section_indices: vec![1, 0],
@@ -1302,6 +1378,7 @@ mod tests {
             figures: Vec::new(),
         });
         export.chapters = vec![EffectiveExportChapter {
+            key: "chapter-hemodynamics".to_string(),
             title: "Hemodynamic foundations".to_string(),
             introduction: "These sections establish the physiologic relationships needed to understand later cardiovascular therapies.".to_string(),
             section_indices: vec![0, 1],
