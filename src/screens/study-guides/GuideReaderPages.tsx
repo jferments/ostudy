@@ -31,7 +31,8 @@ import {
   sectionReadingText,
   splitOverviewConcept,
 } from "./guideModel";
-import { type CheckProgressMap, GuideMinuteBox, GuidePaper, GuideTermList, StudyGuideStructuredContent } from "./StudyGuideContent";
+import { GuidePaper } from "./GuidePaper";
+import { type CheckProgressMap, GuideMinuteBox, GuideTermList, StudyGuideStructuredContent } from "./StudyGuideContent";
 import type { GuidePageStyle } from "./useDesignedSectionPage";
 import type { InkMark } from "../../ipc/materialInk";
 
