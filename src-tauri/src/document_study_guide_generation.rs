@@ -53,10 +53,9 @@ mod sections;
 /// Characters per word of English prose, spaces included, to compare a
 /// source's word count with a writing budget in characters.
 const GUIDE_CHARS_PER_SOURCE_WORD: usize = 6;
-/// A guide aims at this many hundredths of its source's length: Jay, 2026-10-22,
-/// chose 0.08 of the words so that the denser pages come near a tenth of the
-/// source's pages.
-const GUIDE_PERCENT_OF_SOURCE: usize = 8;
+/// A guide aims at this many hundredths of its source's words. Jay,
+/// 2026-10-23, chose 0.10 over 0.08, which covered too few key ideas.
+const GUIDE_PERCENT_OF_SOURCE: usize = 10;
 /// Words of a guide outside its sections: the introduction, the learning
 /// objectives and the chapter introductions.
 const GUIDE_FRAME_WORDS: usize = 150;
@@ -82,7 +81,7 @@ pub(crate) struct StudyGuideGenerationExecution<'a> {
     pub job_id: &'a str,
     pub evidence: Vec<StudyGuideTopicEvidence>,
     /// How much of its own budget each section is asked to write, so the
-    /// whole guide comes to about 0.08 of the source; set once its
+    /// whole guide comes to about 0.10 of the source; set once its
     /// sections are planned.
     pub length_scale: f64,
 }
@@ -424,7 +423,7 @@ pub(crate) async fn execute_study_guide_generation(
     Ok(published)
 }
 
-/// A guide is 0.08 of its source. Each section's own budget comes from its
+/// A guide is 0.10 of its source. Each section's own budget comes from its
 /// knowledge alone, so their sum can be far more than that for a long
 /// source; every section then gets the same share of its budget, which it
 /// writes as a number of key points. A guide already within that target is
@@ -1206,10 +1205,10 @@ mod tests {
     }
 
     #[test]
-    fn length_scale_aims_at_eight_hundredths_of_the_source() {
-        // 0.08 of 50,000 words is 4,000; 3,850 of them, 23,100 characters,
+    fn length_scale_aims_at_a_tenth_of_the_source() {
+        // 0.10 of 50,000 words is 5,000; 4,850 of them, 29,100 characters,
         // are the sections'.
-        assert_eq!(length_scale(50_000, 231_000), 0.1);
+        assert_eq!(length_scale(50_000, 291_000), 0.1);
         assert_eq!(length_scale(50_000, 8_000), 1.0);
         assert_eq!(length_scale(0, 20_000), 1.0);
         assert_eq!(length_scale(50_000, 0), 1.0);

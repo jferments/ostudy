@@ -179,7 +179,7 @@ async fn write_study_guide_topic_section(
             section.content.key_points.len(),
             written.saturating_mul(100) / budget.target_chars.max(1),
             policy::KEY_POINT_WORDS,
-            budget.words()
+            budget.words_asked()
         );
         let second = request_study_guide_section_with_retry(
             runtime,

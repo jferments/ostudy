@@ -22,7 +22,7 @@ const SECTION_FRAME_WORDS: usize = 45;
 pub(super) const KEY_POINT_WORDS: usize = 22;
 /// Key points a section is asked for, however small or large its share.
 const MIN_KEY_POINTS: usize = 2;
-const MAX_KEY_POINTS_ASKED: usize = 8;
+const MAX_KEY_POINTS_ASKED: usize = 10;
 pub(super) const MAX_OVERVIEW_CHARS: usize = MAX_GENERATED_SECTION_CHARS;
 pub(super) const MAX_KEY_POINTS: usize = 32;
 pub(super) const MAX_KEY_POINT_CHARS: usize = 16 * 1024;
@@ -130,6 +130,14 @@ impl WritingBudget {
             .clamp(MIN_KEY_POINTS, MAX_KEY_POINTS_ASKED)
     }
 
+    /// Words the section is told it has: what its key points, overview and
+    /// check hold. Told more words than its capped key points hold, a model
+    /// fills them with longer key points (30 words instead of 22).
+    pub(super) fn words_asked(self) -> usize {
+        self.words()
+            .min(SECTION_FRAME_WORDS + self.key_points_asked() * KEY_POINT_WORDS)
+    }
+
     pub(super) fn exceeded_by(self, section: &StudyGuideSectionContent) -> bool {
         section.overview.chars().count() > self.overview_chars
             || super::content::generated_section_char_count(section) > self.target_chars
@@ -150,7 +158,7 @@ impl WritingBudget {
         let key_points = self.key_points_asked();
         format!(
             "Length guide: this section has about {} words across all fields. Write at most {key_points} keyPoints, one per key idea, each one sentence of at most {KEY_POINT_WORDS} words; when the topic has more ideas than {key_points}, join related ones into one key point. Write the overview as one sentence of at most 30 words, and exactly one retrievalCheck. A table or an explanation takes the place of a key point: add one only when a key idea cannot be stated without it, and then write one key point fewer. Leave everything else to the source and the flashcards, but do not drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
-            self.words()
+            self.words_asked()
         )
     }
 }
@@ -186,6 +194,10 @@ mod tests {
         assert_eq!(budget(512).key_points_asked(), MIN_KEY_POINTS);
         assert_eq!(budget(3_000).key_points_asked(), MAX_KEY_POINTS_ASKED);
         assert!(budget(800).instructions().contains("at most 4 keyPoints"));
+        // A section with room for more than the most key points it can be
+        // asked for is told only the words those key points hold.
+        assert_eq!(budget(6_000).words_asked(), 45 + 10 * 22);
+        assert_eq!(budget(800).words_asked(), 133);
     }
 
     #[test]
