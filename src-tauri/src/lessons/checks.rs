@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 
-use super::{progress, require_lesson, revision_content, LessonProgressDto};
+use super::{content::CheckTiming, progress, require_lesson, revision_content, LessonProgressDto};
 use crate::{
     cards::questions::{QuestionBody, QuestionDefinition},
     database::Database,
@@ -27,6 +27,7 @@ use crate::{
 pub struct LessonCheckDto {
     pub prompt: String,
     pub options: Vec<LessonCheckOptionDto>,
+    pub timing: CheckTiming,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,7 +63,7 @@ pub struct LessonCheckResultDto {
     pub progress: LessonProgressDto,
 }
 
-pub(super) fn view(check: &QuestionDefinition) -> Option<LessonCheckDto> {
+pub(super) fn view(check: &QuestionDefinition, timing: CheckTiming) -> Option<LessonCheckDto> {
     match &check.question {
         QuestionBody::SingleChoice {
             prompt, options, ..
@@ -80,6 +81,7 @@ pub(super) fn view(check: &QuestionDefinition) -> Option<LessonCheckDto> {
             Some(LessonCheckDto {
                 prompt: plain(prompt),
                 options,
+                timing,
             })
         }
         _ => None,

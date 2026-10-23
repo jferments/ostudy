@@ -21,6 +21,8 @@ fn wire_lesson() -> Value {
                 "narration": "Look at any triangle and count its sides. There are always three.",
                 "slidePoints": ["A triangle has three sides"],
                 "check": {
+                    "timing": "before",
+                    "style": "recall",
                     "prompt": "How many sides does a triangle have?",
                     "options": ["Three", "Four"],
                     "correctOption": 0,
@@ -98,6 +100,33 @@ fn decoding_resolves_aliases_and_builds_keys_and_checks_natively() {
     // The same answer decodes to the same lesson.
     assert!(decode(wire_lesson(), &knowledge).unwrap() == lesson);
     assert!(lesson.steps[1].check.is_none());
+    assert_eq!(lesson.steps[0].check_timing, CheckTiming::Before);
+    assert_eq!(lesson.steps[1].check_timing, CheckTiming::After);
+}
+
+#[test]
+fn a_lesson_asks_a_few_questions_not_one_on_every_step() {
+    let knowledge = catalog_fixture();
+    let mut wire = wire_lesson();
+    let step = wire["steps"][0].clone();
+    wire["steps"] = json!([step, step, step, step]);
+    let error = decode(wire.clone(), &knowledge).err().unwrap();
+    assert!(
+        error.message.contains("at most 3 questions"),
+        "{}",
+        error.message
+    );
+
+    wire["steps"][1]["check"] = Value::Null;
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(
+        lesson
+            .steps
+            .iter()
+            .filter(|step| step.check.is_some())
+            .count(),
+        3
+    );
 }
 
 #[test]
@@ -294,4 +323,30 @@ async fn a_request_that_does_not_fit_is_never_sent() {
     .unwrap();
     assert_eq!(error.code, "ai_document_context_budget");
     assert_eq!(*calls.borrow(), 0);
+}
+
+#[tokio::test]
+async fn too_many_steps_are_merged_on_repair_without_the_candidate() {
+    let knowledge = catalog_fixture();
+    let sent = RefCell::new(Vec::<LessonRequest>::new());
+    let mut long = wire_lesson();
+    let step = long["steps"][1].clone();
+    long["steps"] = json!(vec![step; 9]);
+    let answers = RefCell::new(vec![Ok(wire_lesson()), Ok(long)]);
+    run(
+        request(),
+        &knowledge,
+        |_| Ok(()),
+        |_| true,
+        |owned| {
+            sent.borrow_mut().push(owned);
+            let answer = answers.borrow_mut().pop().unwrap();
+            async move { answer }
+        },
+    )
+    .await
+    .unwrap();
+    let sent = sent.borrow();
+    assert!(sent[1].user.contains("at most six steps by merging"));
+    assert!(!sent[1].user.contains("<invalid-lesson-candidate>"));
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as lessonsIpc from "../../ipc/lessons";
@@ -68,6 +68,7 @@ function makeLesson(progress: lessonsIpc.LessonProgress | null): lessonsIpc.Less
             { id: "a", text: "More filling" },
             { id: "b", text: "Less filling" },
           ],
+          timing: "after",
         }),
       ],
     },
@@ -130,6 +131,25 @@ describe("LessonPlayer", () => {
     expect(await within(check).findByText("Not quite.")).toBeTruthy();
     expect(within(check).getByText("Filling stretches the muscle.")).toBeTruthy();
     expect(lessonsIpc.answerLessonCheck).toHaveBeenCalledWith("lesson-1", 2, "volume", "b");
+  });
+
+  it("asks a prediction ahead of the step's teaching and a check after it", async () => {
+    const lesson = makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 }));
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(lesson);
+    renderPlayer();
+    let check = await screen.findByTestId("lesson-check");
+    expect(within(check).getByText("Quick check")).toBeTruthy();
+    const point = screen.getByText("Stroke volume point");
+    expect(point.compareDocumentPosition(check) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    cleanup();
+
+    lesson.content.steps[1]!.check!.timing = "before";
+    renderPlayer();
+    check = await screen.findByTestId("lesson-check");
+    expect(within(check).getByText("What do you think?")).toBeTruthy();
+    expect(
+      screen.getByText("Stroke volume point").compareDocumentPosition(check) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
   });
 
   it("shows an earlier answer's outcome when the step reopens", async () => {

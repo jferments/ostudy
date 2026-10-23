@@ -264,7 +264,10 @@ pub(crate) fn read_lesson(
                     narration: step.narration,
                     slide_points: step.slide_points,
                     check_kind: step.check.as_ref().map(|check| check.question.kind()),
-                    check: step.check.as_ref().and_then(checks::view),
+                    check: step
+                        .check
+                        .as_ref()
+                        .and_then(|check| checks::view(check, step.check_timing)),
                     knowledge_unit_ids: step.knowledge_unit_ids,
                 })
                 .collect(),

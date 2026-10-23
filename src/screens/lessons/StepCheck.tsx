@@ -53,7 +53,7 @@ export function StepCheck({
       className="tw:flex tw:flex-col tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-5 tw:compact:p-4"
     >
       <h2 id={headingId} className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
-        Quick check
+        {check.timing === "before" ? "What do you think?" : "Quick check"}
       </h2>
       <p className="tw:m-0 tw:text-body-large tw:font-medium tw:break-words">{check.prompt}</p>
       <RadioGroup

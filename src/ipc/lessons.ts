@@ -112,9 +112,16 @@ export interface LessonStep {
   knowledgeUnitIds: string[];
 }
 
+/**
+ * When a question is asked: `after` reviews what was just taught; `before`
+ * asks the learner to predict what is about to be taught.
+ */
+export type QuestionTiming = "before" | "after";
+
 export interface LessonCheck {
   prompt: string;
   options: { id: string; text: string }[];
+  timing: QuestionTiming;
 }
 
 export interface LessonCheckResult {
@@ -350,6 +357,7 @@ export async function narrateLessonStep(
 
 /** A question the teacher asks the class; its answer stays native until answered. */
 export interface LectureQuestion {
+  timing: QuestionTiming;
   prompt: string;
   options: { id: string; text: string }[];
 }
@@ -358,7 +366,7 @@ export interface LectureScriptSlide {
   slideKey: string;
   /** What the teacher says over the slide. */
   talk: string;
-  /** Asked after the talk, on a few step slides. */
+  /** Asked before or after the talk, on a few step slides. */
   question: LectureQuestion | null;
 }
 
@@ -423,5 +431,16 @@ export async function narrateLecturePart(
 ): Promise<LessonStepNarration> {
   return invoke<LessonStepNarration>("narrate_lecture_part", {
     input: { lessonId, revisionNumber, slideKey, replyTo },
+  });
+}
+
+/** Speaks a slide's question, for one the teacher asks before the talk. */
+export async function askLectureQuestion(
+  lessonId: string,
+  revisionNumber: number,
+  slideKey: string,
+): Promise<LessonStepNarration> {
+  return invoke<LessonStepNarration>("narrate_lecture_part", {
+    input: { lessonId, revisionNumber, slideKey, ask: true },
   });
 }
