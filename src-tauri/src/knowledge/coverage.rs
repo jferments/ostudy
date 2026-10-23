@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{
-    contracts::{hash, invalid, SourceRecord},
-    evidence::{EvidenceCatalog, EvidenceReference, EvidenceSelector},
+    contracts::{hash, invalid, EvidenceImage, SourceRecord},
+    evidence::{EvidenceCatalog, EvidenceReference},
     extraction::decode::AcceptedUnit,
 };
 use crate::error::CommandError;
@@ -43,6 +43,10 @@ pub(crate) struct CoverageReceipt {
     version: u32,
     plan_hash: String,
     images_attached: bool,
+    /// The page images a window attached when it showed only some of its
+    /// sources' pages; absent when it showed all of them or none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    attached_images: Vec<EvidenceImage>,
     regions: Vec<Region>,
 }
 
@@ -52,16 +56,23 @@ impl CoverageReceipt {
         catalog: &EvidenceCatalog,
     ) -> Result<Self, CommandError> {
         // An omitted attachment is still planned, not interpreted or unreadable.
-        let planned = EvidenceCatalog::build(sources, true)?;
+        let mut planned = EvidenceCatalog::build(sources, true)?;
+        let attached_images = catalog.images_at(None);
+        let images_attached = !attached_images.is_empty();
+        // A window that shows only some of its pages leaves the others to the
+        // neighbouring window that shows them; they are not its gaps.
+        let attached_images =
+            if images_attached && attached_images.len() < planned.images_at(None).len() {
+                planned = EvidenceCatalog::build_attaching(sources, &attached_images)?;
+                attached_images
+            } else {
+                Vec::new()
+            };
         if planned.entries.len() > MAX_REGIONS {
             return Err(invalid(
                 "The evidence coverage plan exceeds its region limit.",
             ));
         }
-        let images_attached = catalog
-            .entries
-            .iter()
-            .any(|entry| matches!(entry.selector, EvidenceSelector::Image { .. }));
         let exposed = catalog
             .entries
             .iter()
@@ -95,6 +106,7 @@ impl CoverageReceipt {
             version: VERSION,
             plan_hash,
             images_attached,
+            attached_images,
             regions,
         })
     }
@@ -181,7 +193,11 @@ impl CoverageReceipt {
         accepted: &[AcceptedUnit],
         no_learning: &[String],
     ) -> Result<(), CommandError> {
-        let catalog = EvidenceCatalog::build(sources, self.images_attached)?;
+        let catalog = if self.attached_images.is_empty() {
+            EvidenceCatalog::build(sources, self.images_attached)?
+        } else {
+            EvidenceCatalog::build_attaching(sources, &self.attached_images)?
+        };
         let mut expected = Self::new(sources, &catalog)?;
         if self.version != VERSION
             || self.plan_hash != expected.plan_hash

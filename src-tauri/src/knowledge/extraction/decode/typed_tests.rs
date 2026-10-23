@@ -289,7 +289,10 @@ fn document_annotation_draft_survives_checkpoint_but_is_not_a_whole_window_repai
         serde_json::to_value(&report).unwrap()
     );
     assert_eq!(restored.accepted.len(), 2);
-    assert_eq!(restored.repair_prompt()["rejectedProposals"], json!([]));
+    assert_eq!(
+        restored.repair_prompt(&catalog, &sources)["rejectedProposals"],
+        json!([])
+    );
     let details = serde_json::to_value(&restored.accepted[1].content.details).unwrap();
     assert_eq!(details["draft"], draft);
     let diagnostic = report_diagnostic(&restored);

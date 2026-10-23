@@ -286,11 +286,6 @@ pub(super) fn guide_evidence(
     if guide.topics.len() == evidence.len() {
         return evidence;
     }
-    let maximum_images = evidence
-        .iter()
-        .map(|topic| topic.images.len())
-        .max()
-        .unwrap_or(0);
     ranges(sections, evidence.len())
         .into_iter()
         .zip(&guide.topics)
@@ -304,11 +299,6 @@ pub(super) fn guide_evidence(
                     .filter(|text| !text.trim().is_empty())
                     .collect::<Vec<_>>()
                     .join("\n\n"),
-                images: members
-                    .iter()
-                    .flat_map(|member| member.images.iter().cloned())
-                    .take(maximum_images)
-                    .collect(),
             }
         })
         .collect()
@@ -470,7 +460,6 @@ mod tests {
             .map(|(index, topic)| StudyGuideTopicEvidence {
                 topic_id: topic.id.clone(),
                 source_text: format!("Text {index}"),
-                images: Vec::new(),
             })
             .collect()
     }
@@ -532,12 +521,10 @@ mod tests {
             StudyGuideTopicEvidence {
                 topic_id: plan.topics[0].id.clone(),
                 source_text: "one two".to_string(),
-                images: Vec::new(),
             },
             StudyGuideTopicEvidence {
                 topic_id: plan.topics[1].id.clone(),
                 source_text: "one two three four".to_string(),
-                images: Vec::new(),
             },
         ];
         let catalogs = vec![KnowledgeCatalog::default(), KnowledgeCatalog::default()];
