@@ -101,7 +101,7 @@ export function GuideOverviewPage({
       </header>
       <OnPaper paper={paper}>
       {guide.overview.summary.trim() ? (
-        <GuideMinuteBox id={`${ids}-minute`} page paper={paper}><StudyMarkdown text={guide.overview.summary} /></GuideMinuteBox>
+        <GuideMinuteBox id={`${ids}-minute`} page paper={paper !== null}><StudyMarkdown text={guide.overview.summary} /></GuideMinuteBox>
       ) : null}
       {guide.overview.learningObjectives.length > 0 ? (
         <section aria-labelledby={`${ids}-objectives`} className="tw:grid tw:gap-3">
