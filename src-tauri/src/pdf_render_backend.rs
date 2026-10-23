@@ -677,6 +677,66 @@ pub(crate) fn page_characters(
     }
 }
 
+/// One character of a page's text layer with its font size and baseline in
+/// PDF points (baseline measured upward); `None` for a space or line break
+/// the PDF only implies.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PageGlyph {
+    pub text: char,
+    pub metrics: Option<GlyphMetrics>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct GlyphMetrics {
+    pub font_size: f64,
+    pub baseline: f64,
+}
+
+/// Reads every page's glyphs in order, handing each page to `visitor` with
+/// its page number.
+pub(crate) fn page_glyphs<F>(
+    runtime: &PdfRenderRuntime,
+    source_path: &std::path::Path,
+    mut visitor: F,
+) -> Result<usize, PdfRenderError>
+where
+    F: FnMut(usize, Vec<PageGlyph>),
+{
+    if runtime.backend_id != active_backend_id() {
+        return Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "The PDF renderer runtime does not match the active renderer backend.",
+        ));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let _pdfium = runtime.exclusive();
+        let document = runtime
+            .pdfium
+            .load_pdf_from_file(source_path, None)
+            .map_err(|error| {
+                PdfRenderError::new(PdfRenderErrorKind::Open, None, error.to_string())
+            })?;
+        let total_pages = page_count(&document)?;
+        for index in 0..total_pages {
+            visitor(index + 1, glyphs_of_page(&document, index)?);
+        }
+        Ok(total_pages)
+    }
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (source_path, &mut visitor);
+        Err(PdfRenderError::new(
+            PdfRenderErrorKind::Bind,
+            None,
+            "This platform's PDF renderer does not expose page text positions yet.",
+        ))
+    }
+}
+
 /// What one page draws, for finding its figures: its image, vector-path,
 /// shading and form objects and its runs of text, each boxed
 /// `[x, y, width, height]` in points from the top-left corner of the page as
@@ -1217,6 +1277,49 @@ fn characters_of_page(
         height: f64::from(height),
         characters,
     })
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn glyphs_of_page(
+    document: &pdfium_render::prelude::PdfDocument<'_>,
+    index: usize,
+) -> Result<Vec<PageGlyph>, PdfRenderError> {
+    let page_number = index + 1;
+    let render_error = |error: pdfium_render::prelude::PdfiumError| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            error.to_string(),
+        )
+    };
+    let page_index = PdfPageIndex::try_from(index).map_err(|_| {
+        PdfRenderError::new(
+            PdfRenderErrorKind::RenderPage,
+            Some(page_number),
+            "The PDF page index exceeded the renderer's supported range.",
+        )
+    })?;
+    let page = document.pages().get(page_index).map_err(render_error)?;
+    let text = page.text().map_err(render_error)?;
+    let mut glyphs = Vec::new();
+    for character in text.chars().iter().take(MAX_PAGE_CHARACTERS) {
+        let Some(value) = character.unicode_char() else {
+            continue;
+        };
+        let metrics = if character.is_generated().unwrap_or(false) {
+            None
+        } else {
+            character.origin_y().ok().map(|baseline| GlyphMetrics {
+                font_size: f64::from(character.scaled_font_size().value),
+                baseline: f64::from(baseline.value),
+            })
+        };
+        glyphs.push(PageGlyph {
+            text: value,
+            metrics,
+        });
+    }
+    Ok(glyphs)
 }
 
 /// One page's graphics and text runs through the same page-to-device mapping

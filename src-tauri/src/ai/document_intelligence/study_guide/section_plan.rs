@@ -386,7 +386,7 @@ fn user_prompt(
     });
     let context = serde_json::to_string(&context).map_err(CommandError::serialization)?;
     Ok(format!(
-        "Plan the sections of a study guide for this source. The guide as a whole should be roughly a tenth of the source's length, so a section covers what a learner can take in within a few minutes. For this source write between {fewest} and {most} sections, never more than {most}: most sections join several neighbouring topics. Use fewer when the source stays on one idea and more when it moves between distinct ideas. Every topic from T0 to T{} belongs to exactly one section.\n\n<ostudy-guide-topics>\n{context}\n</ostudy-guide-topics>",
+        "Plan the sections of a study guide for this source. The guide as a whole should be about a tenth of the source's length, so a section covers what a learner can take in within a few minutes. For this source write between {fewest} and {most} sections, never more than {most}: most sections join several neighbouring topics. Use fewer when the source stays on one idea and more when it moves between distinct ideas. Every topic from T0 to T{} belongs to exactly one section.\n\n<ostudy-guide-topics>\n{context}\n</ostudy-guide-topics>",
         topics.len().saturating_sub(1)
     ))
 }

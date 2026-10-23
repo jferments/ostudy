@@ -153,11 +153,12 @@ fn prompt_asks_for_a_condensed_summary_of_key_ideas_with_lists_in_tables() {
     assert!(prompt.to_ascii_lowercase().contains("study-guide author"));
     assert!(prompt.contains("condensed summary of the key ideas, not a rewrite"));
     assert!(prompt.contains("keyPoints: the key ideas"));
+    assert!(prompt.contains("The length guide names how many"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
     assert!(prompt.contains("Each idea appears once in the section"));
-    assert!(prompt.contains("overview: the big idea in 2 or 3 sentences"));
+    assert!(prompt.contains("overview: the big idea in one sentence"));
     assert!(prompt.contains("put them in one table"));
     assert!(prompt.contains(&format!(
         "Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}"
