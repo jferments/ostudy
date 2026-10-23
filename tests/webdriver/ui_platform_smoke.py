@@ -896,10 +896,15 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, home)
-    # Home names itself in a visually hidden h1; the library is still empty
-    # here, so Home shows its welcome.
+    # Home names itself in a visually hidden h1. Opening a subject's tabs made
+    # the smoke subject, so Home lists it rather than showing its welcome.
     webdriver.wait_for_main_heading(session_id, "Home", deadline)
-    webdriver.wait_for_main_heading(session_id, "Your library is empty", deadline)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={json.dumps(webdriver.SMOKE_SUBJECT_NAME)}]]",
+        deadline,
+    )
     assert_no_horizontal_overflow(session_id, "compact Home")
 
     settings = webdriver.find_element(

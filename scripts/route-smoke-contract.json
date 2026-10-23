@@ -449,7 +449,7 @@
               "webdriver.click(session_id, home)"
             ],
             "assertionFragments": [
-              "webdriver.wait_for_main_heading(session_id, \"Your library is empty\", deadline)",
+              "f\"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={json.dumps(webdriver.SMOKE_SUBJECT_NAME)}]]\",",
               "assert_no_horizontal_overflow(session_id, \"compact Home\")"
             ]
           }
