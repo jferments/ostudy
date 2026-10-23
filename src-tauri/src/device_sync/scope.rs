@@ -479,7 +479,8 @@ pub(crate) fn sanitize_snapshot(
     // Lesson narration and lessons themselves travel, but the knowledge units
     // they are written from do not (removed below), and the speech setting is
     // this device's choice, like its other settings. So is which of a
-    // subject's documents its study set leaves out.
+    // subject's documents its study set leaves out, and how Notes is
+    // organized in folders and pins.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -500,7 +501,9 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM review_day_rollup_built_decks;
              DELETE FROM review_day_rollups;
              DELETE FROM speech_settings;
-             DELETE FROM document_study_exclusions;",
+             DELETE FROM document_study_exclusions;
+             DELETE FROM notebook_shelf;
+             DELETE FROM note_folders;",
         )
         .map_err(CommandError::database)?;
 

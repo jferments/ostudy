@@ -35,6 +35,9 @@ const MAX_ITEMS_PER_NOTEBOOK: i64 = 50_000;
 const MAX_CHANGES_PER_REQUEST: usize = 500;
 /// Marks the list sends with each notebook so its first page can be drawn small.
 const MAX_PREVIEW_ITEMS: i64 = 400;
+/// Links a notebook's tile names, and how much of each label.
+const MAX_LINK_LABELS: usize = 4;
+const MAX_LINK_LABEL_CHARS: usize = 40;
 
 /// The paper a page is drawn on.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -147,6 +150,12 @@ pub struct NotebookSummaryDto {
     pub notebook: NotebookDto,
     pub page_count: i64,
     pub link_count: i64,
+    /// The first few links' labels, in page order, each once.
+    pub link_labels: Vec<String>,
+    /// Its Notes folder; None is the top of Notes.
+    pub folder_id: Option<String>,
+    /// When it was pinned; None when it is not.
+    pub pinned_at: Option<i64>,
     pub first_page: Option<NotebookPageDto>,
     /// The first page's earliest marks, in drawing order.
     pub preview: Vec<NotebookItemDto>,
@@ -388,10 +397,19 @@ pub(crate) fn list(connection: &Connection) -> Result<Vec<NotebookSummaryDto>, C
             Some(page) => page_items(connection, &page.id, MAX_PREVIEW_ITEMS)?,
             None => Vec::new(),
         };
+        let link_labels = if link_count > 0 {
+            link_labels(connection, &notebook.id)?
+        } else {
+            Vec::new()
+        };
+        let shelf = folders::shelf(connection, &notebook.id)?;
         summaries.push(NotebookSummaryDto {
             notebook,
             page_count,
             link_count,
+            link_labels,
+            folder_id: shelf.folder_id,
+            pinned_at: shelf.pinned_at,
             first_page,
             preview,
         });
@@ -923,6 +941,37 @@ fn delete_item(connection: &Connection, notebook_id: &str, id: &str) -> Result<(
     }
 }
 
+/// The labels of a notebook's first links, in page order, each once.
+fn link_labels(connection: &Connection, notebook_id: &str) -> Result<Vec<String>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT json_extract(i.payload_json, '$.text') FROM notebook_items i
+             JOIN notebook_pages p ON p.id = i.page_id
+             WHERE p.notebook_id = ?1 AND i.kind = 'text'
+               AND json_type(i.payload_json, '$.link') IS NOT NULL
+             ORDER BY p.position, i.created_at, i.id
+             LIMIT 40",
+        )
+        .map_err(CommandError::database)?;
+    let texts = statement
+        .query_map([notebook_id], |row| row.get::<_, Option<String>>(0))
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let mut labels: Vec<String> = Vec::new();
+    for text in texts.into_iter().flatten() {
+        let label = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let label: String = label.chars().take(MAX_LINK_LABEL_CHARS).collect();
+        if !label.is_empty() && !labels.contains(&label) {
+            labels.push(label);
+        }
+        if labels.len() == MAX_LINK_LABELS {
+            break;
+        }
+    }
+    Ok(labels)
+}
+
 /// The links among `items` whose target is gone: a deleted document, a page
 /// past its end, a document without a study guide, a deleted deck, or a
 /// notebook page that was removed. Guide pages hold links too.
@@ -1303,6 +1352,8 @@ mod save_pdf;
 pub(crate) use save_pdf::{prepare_notebook_pdf, PrepareNotebookPdfInput, PreparedNotebookPdfDto};
 #[path = "notebooks/clips.rs"]
 pub mod clips;
+#[path = "notebooks/folders.rs"]
+pub mod folders;
 pub(crate) use clips::{stage_document_clip, StageDocumentClipInput, StagedDocumentClipDto};
 
 #[cfg(test)]

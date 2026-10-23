@@ -363,7 +363,14 @@ fn links_to_missing_targets_stay_and_are_reported_unavailable() {
                 opened.unavailable_link_ids,
                 vec![id('2'), id('3'), id('5'), id('6'), id('8')]
             );
-            assert_eq!(list(connection)?[0].link_count, 8);
+            let listed = list(connection)?;
+            assert_eq!(listed[0].link_count, 8);
+            // Every link here has the same label, so the tile names it once.
+            assert_eq!(listed[0].link_labels, vec!["Study the cells".to_string()]);
+            assert_eq!(
+                (listed[0].folder_id.clone(), listed[0].pinned_at),
+                (None, None)
+            );
 
             connection
                 .execute("UPDATE decks SET deleted_at = 5 WHERE id = ?1", [DECK])

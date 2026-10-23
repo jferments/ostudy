@@ -46,6 +46,12 @@ export interface NotebookSummary {
   notebook: Notebook;
   pageCount: number;
   linkCount: number;
+  /** The first few links' labels, in page order, each once. */
+  linkLabels: string[];
+  /** Its Notes folder; null is the top of Notes. */
+  folderId: string | null;
+  /** When it was pinned; null when it is not. */
+  pinnedAt: number | null;
   firstPage: NotebookPage | null;
   preview: NotebookItem[];
 }
@@ -103,6 +109,42 @@ export async function moveNotebookToSubject(notebookId: string, subjectId: strin
 
 export async function deleteNotebook(notebookId: string): Promise<void> {
   return invoke<void>("delete_notebook", { input: { notebookId } });
+}
+
+/** A folder in Notes. Folders may hold folders, a few levels deep. */
+export interface NoteFolder {
+  id: string;
+  /** The folder it is inside; null is the top of Notes. */
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+}
+
+/** Every Notes folder, each folder after the one it is inside. */
+export async function listNoteFolders(): Promise<NoteFolder[]> {
+  return invoke<NoteFolder[]>("list_note_folders");
+}
+
+export async function createNoteFolder(name: string, parentId: string | null = null): Promise<NoteFolder> {
+  return invoke<NoteFolder>("create_note_folder", { input: { name, parentId } });
+}
+
+export async function renameNoteFolder(folderId: string, name: string): Promise<NoteFolder> {
+  return invoke<NoteFolder>("rename_note_folder", { input: { folderId, name } });
+}
+
+/** Deletes the folder and the folders inside it; their notebooks go back to the top. */
+export async function deleteNoteFolder(folderId: string): Promise<void> {
+  return invoke<void>("delete_note_folder", { input: { folderId } });
+}
+
+/** Puts a notebook in a folder, or back at the top with null. */
+export async function putNotebookInFolder(notebookId: string, folderId: string | null): Promise<void> {
+  return invoke<void>("put_notebook_in_folder", { input: { notebookId, folderId } });
+}
+
+export async function pinNotebook(notebookId: string, pinned: boolean): Promise<void> {
+  return invoke<void>("pin_notebook", { input: { notebookId, pinned } });
 }
 
 /** Adds a page at `position` (from 1; past the end adds it last), with the notebook's paper unless given. */

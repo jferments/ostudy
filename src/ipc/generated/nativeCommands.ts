@@ -87,6 +87,7 @@ export interface NativeCommandGatewayMap {
   "create_deck": readonly [typeof GatewayModule9.createDeck];
   "create_deck_folder": readonly [typeof GatewayModule8.createDeckFolder];
   "create_document_collection": readonly [typeof GatewayModule7.createDocumentCollection];
+  "create_note_folder": readonly [typeof GatewayModule27.createNoteFolder];
   "create_notebook": readonly [typeof GatewayModule27.createNotebook];
   "create_subject": readonly [typeof GatewayModule43.createSubject];
   "create_tutor_conversation": readonly [typeof GatewayModule45.createTutorConversation];
@@ -101,6 +102,7 @@ export interface NativeCommandGatewayMap {
   "delete_document": readonly [typeof GatewayModule15.deleteDocument];
   "delete_document_collection": readonly [typeof GatewayModule7.deleteDocumentCollection];
   "delete_document_study_guide": readonly [typeof GatewayModule41.deleteDocumentStudyGuide];
+  "delete_note_folder": readonly [typeof GatewayModule27.deleteNoteFolder];
   "delete_notebook": readonly [typeof GatewayModule27.deleteNotebook];
   "delete_notebook_page": readonly [typeof GatewayModule27.deleteNotebookPage];
   "delete_podcast": readonly [typeof GatewayModule30.deletePodcast];
@@ -214,6 +216,7 @@ export interface NativeCommandGatewayMap {
   "list_incoming_shares": readonly [typeof GatewayModule18.listIncomingShares];
   "list_latest_document_study_guide_jobs": readonly [typeof GatewayModule13.listLatestDocumentStudyGuideJobs];
   "list_matching_cards": readonly [typeof GatewayModule6.listMatchingCards];
+  "list_note_folders": readonly [typeof GatewayModule27.listNoteFolders];
   "list_notebooks": readonly [typeof GatewayModule27.listNotebooks];
   "list_semantic_scope_choices": readonly [typeof GatewayModule23.listSemanticScopeChoices];
   "list_study_guide_page": readonly [typeof GatewayModule41.listStudyGuidePage];
@@ -241,6 +244,7 @@ export interface NativeCommandGatewayMap {
   "open_document_study_guide_pdf": readonly [typeof GatewayModule41.openDocumentStudyGuidePdf];
   "open_document_study_guide_section": readonly [typeof GatewayModule40.openStudyGuideSection];
   "open_editor_draft": readonly [typeof GatewayModule16.openEditorDraft];
+  "pin_notebook": readonly [typeof GatewayModule27.pinNotebook];
   "prepare_annotated_pdf": readonly [typeof GatewayModule12.prepareAnnotatedPdf];
   "prepare_collection_study_guide_pdf": readonly [typeof GatewayModule42.prepareCollectionStudyGuidePdf];
   "prepare_collection_synthesis": readonly [typeof GatewayModule23.prepareCollectionSynthesis];
@@ -258,6 +262,7 @@ export interface NativeCommandGatewayMap {
   "preview_question_draft": readonly [typeof GatewayModule35.previewQuestionDraft];
   "preview_semantic_preparation": readonly [typeof GatewayModule23.previewSemanticPreparation];
   "preview_template_cards": readonly [typeof GatewayModule44.previewTemplateCards];
+  "put_notebook_in_folder": readonly [typeof GatewayModule27.putNotebookInFolder];
   "read_document_figures": readonly [typeof GatewayModule14.readDocumentFigures];
   "read_document_source_asset": readonly [typeof GatewayModule41.readDocumentSourceAsset];
   "read_media_asset": readonly [typeof GatewayModule4.readMediaAsset];
@@ -274,6 +279,7 @@ export interface NativeCommandGatewayMap {
   "remove_document_collection_membership": readonly [typeof GatewayModule7.removeDocumentCollectionMembership];
   "remove_speech_voice": readonly [typeof GatewayModule39.removeSpeechVoice];
   "rename_document": readonly [typeof GatewayModule15.renameDocument];
+  "rename_note_folder": readonly [typeof GatewayModule27.renameNoteFolder];
   "rename_notebook": readonly [typeof GatewayModule27.renameNotebook];
   "rename_speech_voice": readonly [typeof GatewayModule39.renameSpeechVoice];
   "rename_subject": readonly [typeof GatewayModule43.renameSubject];
