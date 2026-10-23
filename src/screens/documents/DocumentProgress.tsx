@@ -136,8 +136,7 @@ function generationStage(document: DocumentSummary, progress: DocumentGeneration
     detail: "Recovering text from pages whose native PDF text layer was unreliable.",
   };
   if (progress?.phase === "understanding material") return {
-    title: "Reading your document",
-    detail: `${progress.completedWindows} / ${progress.totalWindows} source chunks prepared${progress.currentPageStart === null ? "" : ` · ${sourceUnitPluralLabel(document.sourceUnitKind)} ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`}. Validated knowledge is saved incrementally.`,
+    title: "Reading your document", detail: readingDetail(document, progress),
   };
   if (progress?.phase === "organizing knowledge") return {
     title: "Putting what it learned in order", detail: "Building the learning outline from saved interpretations, not rereading the raw document.",
@@ -152,6 +151,15 @@ function generationStage(document: DocumentSummary, progress: DocumentGeneration
     title: "Checking the flashcards", detail: "Removing duplicates and low-value candidates before committing the deck.",
   };
   return { title: "Finishing up", detail: "Completing the current bounded task and preparing durable study content." };
+}
+/** Where reading has reached, in the document's own units rather than internal pieces. */
+export function readingDetail(document: DocumentSummary, progress: DocumentGenerationProgress): string {
+  const total = document.sourceUnitCount;
+  const start = progress.currentPageStart;
+  if (start === null) return `${total.toLocaleString()} ${sourceUnitPluralLabel(document.sourceUnitKind)}`;
+  const end = Math.max(start, progress.currentPageEnd ?? start);
+  if (end === start) return `${sourceUnitSingularHeading(document.sourceUnitKind)} ${start} of ${total}`;
+  return `${sourceUnitHeading(document.sourceUnitKind)} ${start}–${end} of ${total}`;
 }
 function ingestionStage(phase: string | undefined): { title: string; detail: string } | null {
   switch (phase) {
@@ -255,6 +263,14 @@ export function formatDocumentType(sourceFormat: string): string {
 export function sourceUnitHeading(sourceUnitKind: string): string {
   const plural = sourceUnitPluralLabel(sourceUnitKind);
   return plural.charAt(0).toUpperCase() + plural.slice(1);
+}
+function sourceUnitSingularHeading(sourceUnitKind: string): string {
+  switch (sourceUnitKind) {
+    case "time_segment": return "Time segment";
+    case "page": case "slide": case "chapter": case "section": case "segment": case "image":
+      return sourceUnitHeading(sourceUnitKind).slice(0, -1);
+    default: return "Source unit";
+  }
 }
 function sourceUnitPluralLabel(sourceUnitKind: string): string {
   switch (sourceUnitKind) {
