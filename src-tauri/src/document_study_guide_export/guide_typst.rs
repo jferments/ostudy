@@ -28,8 +28,6 @@ use super::{
 use crate::error::CommandError;
 
 const TEMPLATE: &str = include_str!("typst/guide.typ");
-const SECTION_TEMPLATE: &str = include_str!("typst/section.typ");
-const GLANCE_TEMPLATE: &str = include_str!("typst/glance.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
 const BLOCKS: &str = include_str!("typst/blocks.typ");
 const BUNDLED_FONTS: &[&[u8]] = include!(concat!(env!("OUT_DIR"), "/pdf_fonts.rs"));
@@ -199,99 +197,6 @@ pub(crate) fn compile_template_svgs(template: &str, data: &Value) -> Result<Vec<
     });
     typst::comemo::evict(0);
     pages
-}
-
-/// Lays out one section as the reader's live page: its body and figures in
-/// `theme`, on a single page as tall as they need, as a standalone SVG. The
-/// reader keeps the heading, terms and check questions interactive, so the
-/// page leaves them out.
-pub(super) fn section_page_svg(
-    section: &EffectiveExportSection,
-    number: &str,
-    theme: StudyGuidePdfTheme,
-) -> Result<String, CommandError> {
-    let mut files = HashMap::new();
-    let mut figure_count = 0_usize;
-    let live = EffectiveExportSection {
-        body_lines: live_blocks(&section.body_lines),
-        notes: Vec::new(),
-        ..section.clone()
-    };
-    let data = json!({
-        "theme": theme.key(),
-        "number": number,
-        "section": section_data(&live, &mut files, &mut figure_count),
-    });
-    files.insert(
-        file_id("/data.json"),
-        Bytes::new(serde_json::to_vec(&data).map_err(|error| page_error(error.to_string()))?),
-    );
-    let page = compile_world(SECTION_TEMPLATE, files).and_then(|document| match document.pages() {
-        [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
-        pages => Err(format!("the section came out as {} pages", pages.len())),
-    });
-    typst::comemo::evict(0);
-    page.map_err(page_error)
-}
-
-/// At most this many key ideas and warnings on the At a glance page.
-const MAX_GLANCE_IDEAS: usize = 6;
-const MAX_GLANCE_WARNINGS: usize = 3;
-
-/// The guide's At a glance page for the reader: its overview, objectives, key concepts,
-/// first key ideas and warnings, on one page as tall as they need.
-pub(super) fn glance_page_svg(
-    export: &EffectiveGuideExport,
-    theme: StudyGuidePdfTheme,
-) -> Result<String, CommandError> {
-    let cram = CramSheet::collect(export);
-    let data = json!({
-        "theme": theme.key(),
-        "overview": runs(&export.overview),
-        "objectives": run_list(&export.learning_objectives),
-        "keyConcepts": run_list(&export.key_concepts),
-        "keyIdeas": cram.key_ideas.into_iter().take(MAX_GLANCE_IDEAS).collect::<Vec<_>>(),
-        "warnings": cram.warnings.into_iter().take(MAX_GLANCE_WARNINGS).collect::<Vec<_>>(),
-    });
-    let mut files = HashMap::new();
-    files.insert(
-        file_id("/data.json"),
-        Bytes::new(serde_json::to_vec(&data).map_err(|error| page_error(error.to_string()))?),
-    );
-    let page = compile_world(GLANCE_TEMPLATE, files).and_then(|document| match document.pages() {
-        [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
-        pages => Err(format!("the page came out as {} pages", pages.len())),
-    });
-    typst::comemo::evict(0);
-    page.map_err(page_error)
-}
-
-/// The blocks the live page sets: everything but the terms and check
-/// questions, with the headings that introduced them.
-pub(super) fn live_blocks(blocks: &[ExportBlock]) -> Vec<ExportBlock> {
-    let reader_owned = |block: &ExportBlock| {
-        matches!(
-            block,
-            ExportBlock::Terms(_) | ExportBlock::RetrievalCheck { .. }
-        )
-    };
-    blocks
-        .iter()
-        .enumerate()
-        .filter(|(index, block)| {
-            !reader_owned(block)
-                && !(matches!(block, ExportBlock::Heading(_))
-                    && blocks.get(index + 1).is_some_and(reader_owned))
-        })
-        .map(|(_, block)| block.clone())
-        .collect()
-}
-
-fn page_error(detail: String) -> CommandError {
-    CommandError::new(
-        "study_guide_page_layout_failed",
-        format!("Could not lay out the designed study-guide page: {detail}"),
-    )
 }
 
 /// The laid-out text of each page, including running headers and repeated

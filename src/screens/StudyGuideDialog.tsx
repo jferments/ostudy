@@ -33,7 +33,7 @@ import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
 import { GuideCanvas, type GuideCanvasLeave, type GuideCanvasLinkActions } from "./study-guides/GuideCanvas";
 import {
   GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
-} from "./study-guides/useDesignedSectionPage";
+} from "./study-guides/guidePageStyle";
 
 interface StudyGuideDialogProps extends GuideCanvasLinkActions {
   documentId: string; documentTitle: string;
@@ -427,7 +427,6 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
           ) : null}
           {currentEntry ? (
             <GuideSectionPage key={currentEntry.section.topicId} guide={guide} entry={currentEntry} sectionCount={order.entries.length} layoutMode={layoutMode}
-              pageStyle="plain" marks={[]} onWriteOnPage={() => undefined}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               projection={topicCards[currentEntry.section.topicId]}
               previous={neighbor(order.entries, currentEntry, -1)} next={neighbor(order.entries, currentEntry, 1)}
@@ -443,7 +442,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
               onResetSection={(override) => void discardOverlay(override, "Section edit reset.")}
               onDiscardConflict={(conflict) => void discardOverlay(conflict, "Older section edit discarded.")} />
           ) : (
-            <GuideOverviewPage guide={guide} guideTitle={guideTitle} order={order} layoutMode={layoutMode} pageStyle="plain"
+            <GuideOverviewPage guide={guide} guideTitle={guideTitle} order={order} layoutMode={layoutMode}
               documentId={documentId} documentTitle={documentTitle} source={source} onOpenSource={() => void openSource()}
               guideNote={guideNote} actionsDisabled={actionsDisabled} onNavigate={navigate}
               onEditNote={beginGuideNote} onRemoveNote={(note) => void discardOverlay(note, "Guide note removed.")} />

@@ -5,7 +5,7 @@ import { requiredTestValue as required } from "../test/factories";
 import { layoutWidths, matchesLayoutQuery, type ViewportLayout } from "../test/viewport";
 import type { ShowToast } from "../components/Toast";
 import { openDocumentSource } from "../ipc/documents";
-import { getMaterialInk, readMaterialInk } from "../ipc/materialInk";
+import { readMaterialInk } from "../ipc/materialInk";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import {
@@ -15,8 +15,6 @@ import {
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
-  getDocumentStudyGuideSectionPage,
-  getDocumentStudyGuideGlancePage,
   getDocumentStudyGuideCanvas,
   openDocumentStudyGuidePdf,
   prepareDocumentStudyGuidePdf,
@@ -51,8 +49,6 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentStudyGuide: vi.fn(),
     getDocumentTopicCardIds: vi.fn(),
     getDocumentTopicCardProjection: vi.fn(),
-    getDocumentStudyGuideSectionPage: vi.fn(),
-    getDocumentStudyGuideGlancePage: vi.fn(),
     getDocumentStudyGuideCanvas: vi.fn(),
     openDocumentStudyGuidePdf: vi.fn(),
     prepareDocumentStudyGuidePdf: vi.fn(),
@@ -60,7 +56,7 @@ vi.mock("../ipc/studyGuides", async () => {
   };
 });
 
-vi.mock("../ipc/materialInk", () => ({ getMaterialInk: vi.fn(), readMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
+vi.mock("../ipc/materialInk", () => ({ readMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
 
 vi.mock("../ipc/studyGuideReading", () => ({
   getStudyGuideReading: vi.fn(),
@@ -386,10 +382,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   // The reader opens as plain text unless a test opens the canvas.
   window.localStorage.setItem("ostudy.guidePageStyle", "plain");
-  // Sections read as plain pages unless a test lays one out.
-  vi.mocked(getDocumentStudyGuideSectionPage).mockRejectedValue(new Error("no layout in tests"));
-  vi.mocked(getDocumentStudyGuideGlancePage).mockRejectedValue(new Error("no layout in tests"));
-  vi.mocked(getMaterialInk).mockResolvedValue([]);
   vi.mocked(getSettings).mockResolvedValue({} as AppSettings);
   onPracticeCards.mockClear();
   mockedCancel.mockResolvedValue(undefined);

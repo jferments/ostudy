@@ -1,11 +1,12 @@
 //! Ink on study materials: what a learner writes and draws on a lesson's
-//! lecture slides and on a document study guide's designed section pages.
+//! lecture slides and on a document study guide's PDF pages.
 //!
 //! Every mark is one `material_ink` row (release schema 21) on one page of one
 //! material, validated by the same rules as a document annotation
 //! (`AnnotationShape`). A lesson's pages are its slide keys and a guide's are
-//! its sections' topic ids; the designed pages are laid out natively, so marks
-//! are placed in the page's own points. These pages have no text layer, so
+//! the keys its canvas gives each PDF page (`chapter:<id>:2`; marks from the
+//! earlier single section pages keep a topic id). Both are laid out natively,
+//! so marks are placed in the page's own points. These pages have no text layer, so
 //! text highlights are refused. A guide's pages may hold links, as a
 //! notebook's do, looked up when the guide opens; slides hold none.
 //!
@@ -37,7 +38,7 @@ pub enum InkMaterial {
     /// A lesson's lecture slides, whichever revision is shown.
     #[serde(rename_all = "camelCase")]
     Lesson { lesson_id: String },
-    /// A document's study guide, as designed section pages.
+    /// A document's study guide, as its PDF pages.
     #[serde(rename_all = "camelCase")]
     StudyGuide { document_id: String },
 }

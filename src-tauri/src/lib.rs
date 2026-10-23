@@ -481,8 +481,6 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
-            document_study_guide_export::get_document_study_guide_section_page,
-            document_study_guide_export::get_document_study_guide_glance_page,
             document_study_guide_export::get_document_study_guide_canvas,
             document_study_guide_export::open_document_study_guide_pdf,
             document_study_guide_export::prepare_collection_study_guide_pdf,

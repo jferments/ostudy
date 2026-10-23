@@ -399,44 +399,6 @@ export async function getDocumentTopicCardIds(
   });
 }
 
-/** One section of a document's study guide set as a designed page in a PDF theme. */
-export interface StudyGuideSectionPage {
-  documentId: string;
-  topicId: string;
-  guideRevision: number;
-  theme: StudyGuidePdfTheme;
-  /** The page as a standalone SVG image. */
-  svg: string;
-}
-
-export async function getDocumentStudyGuideSectionPage(
-  documentId: string,
-  topicId: string,
-  theme: StudyGuidePdfTheme,
-): Promise<StudyGuideSectionPage> {
-  return invoke<StudyGuideSectionPage>("get_document_study_guide_section_page", {
-    input: { documentId, topicId, theme },
-  });
-}
-
-/** A document's study guide's At a glance page, set as a designed page in a PDF theme. */
-export interface StudyGuideGlancePage {
-  documentId: string;
-  guideRevision: number;
-  theme: StudyGuidePdfTheme;
-  /** The page as a standalone SVG image. */
-  svg: string;
-}
-
-export async function getDocumentStudyGuideGlancePage(
-  documentId: string,
-  theme: StudyGuidePdfTheme,
-): Promise<StudyGuideGlancePage> {
-  return invoke<StudyGuideGlancePage>("get_document_study_guide_glance_page", {
-    input: { documentId, theme },
-  });
-}
-
 /** One page of the whole guide as the reader's canvas, in points, with the key its marks are saved under. */
 export interface StudyGuideCanvasPage {
   /** `front:1`, `chapter:<id>:2`, `body:3`, `cram:1`, `test:1`: the part of the guide and the page within it. */

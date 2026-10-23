@@ -1,7 +1,7 @@
 import type { AnnotationShape } from "./documentAnnotations";
 import { invoke } from "./transport";
 
-/** What marks are drawn on: a lesson's lecture slides or a document study guide's designed pages. */
+/** What marks are drawn on: a lesson's lecture slides or a document study guide's PDF pages. */
 export type InkMaterial =
   | { kind: "lesson"; lessonId: string }
   | { kind: "studyGuide"; documentId: string };

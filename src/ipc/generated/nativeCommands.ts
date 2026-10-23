@@ -143,9 +143,7 @@ export interface NativeCommandGatewayMap {
   "get_document_page_text": readonly [typeof GatewayModule12.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule40.getDocumentStudyGuide];
   "get_document_study_guide_canvas": readonly [typeof GatewayModule40.getDocumentStudyGuideCanvas];
-  "get_document_study_guide_glance_page": readonly [typeof GatewayModule40.getDocumentStudyGuideGlancePage];
   "get_document_study_guide_reading": readonly [typeof GatewayModule39.getStudyGuideReading];
-  "get_document_study_guide_section_page": readonly [typeof GatewayModule40.getDocumentStudyGuideSectionPage];
   "get_document_topic_card_ids": readonly [typeof GatewayModule40.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule40.getDocumentTopicCardProjection];
   "get_embedding_options": readonly [typeof GatewayModule17.getEmbeddingOptions];

@@ -10,7 +10,7 @@ use std::{collections::HashMap, fs};
 
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::{
@@ -67,40 +67,10 @@ pub(crate) struct PrepareCollectionStudyGuidePdfInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct GetStudyGuideSectionPageInput {
-    pub document_id: String,
-    pub topic_id: String,
-    #[serde(default)]
-    pub theme: StudyGuidePdfTheme,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StudyGuideSectionPageDto {
-    pub document_id: String,
-    pub topic_id: String,
-    pub guide_revision: i64,
-    pub theme: StudyGuidePdfTheme,
-    /// The section's designed page as a standalone SVG.
-    pub svg: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct GetStudyGuideGlancePageInput {
+pub(crate) struct GetStudyGuideCanvasInput {
     pub document_id: String,
     #[serde(default)]
     pub theme: StudyGuidePdfTheme,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StudyGuideGlancePageDto {
-    pub document_id: String,
-    pub guide_revision: i64,
-    pub theme: StudyGuidePdfTheme,
-    /// The guide's At a glance page as a standalone SVG.
-    pub svg: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -363,88 +333,6 @@ pub(crate) fn prepare_collection_study_guide_pdf(
     })
 }
 
-/// One section of a document's study guide as the reader's designed page, set
-/// in the PDF export's theme. Read-only: nothing is stored, and the reader
-/// falls back to its plain page when this fails.
-#[tauri::command]
-pub(crate) async fn get_document_study_guide_section_page(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: GetStudyGuideSectionPageInput,
-) -> Result<StudyGuideSectionPageDto, CommandError> {
-    validate_entity_id(&input.document_id, "document")?;
-    let database = database.inner().clone();
-    let paths = paths.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || read_section_page(&database, &paths, input))
-        .await
-        .map_err(|error| {
-            CommandError::new(
-                "study_guide_page_layout_failed",
-                format!("Could not lay out the designed study-guide page: {error}"),
-            )
-        })?
-}
-
-fn read_section_page(
-    database: &Database,
-    paths: &AppPaths,
-    input: GetStudyGuideSectionPageInput,
-) -> Result<StudyGuideSectionPageDto, CommandError> {
-    let effective = load_effective_export(database, paths, &input.document_id, false)?;
-    let (section, number) = reading_order(&effective)
-        .into_iter()
-        .enumerate()
-        .find_map(|(position, index)| {
-            let section = &effective.sections[index];
-            (section.key == input.topic_id).then(|| (section, (position + 1).to_string()))
-        })
-        .ok_or_else(|| {
-            CommandError::new(
-                "document_study_guide_section_not_found",
-                "That section is no longer in the study guide.",
-            )
-        })?;
-    let svg = guide_typst::section_page_svg(section, &number, input.theme)?;
-    Ok(StudyGuideSectionPageDto {
-        document_id: input.document_id,
-        topic_id: input.topic_id,
-        guide_revision: effective.guide_revision,
-        theme: input.theme,
-        svg,
-    })
-}
-
-/// A document's study guide's At a glance page, set in the PDF export's theme.
-/// Read-only, like the section pages; the reader falls back to its plain
-/// overview when this fails.
-#[tauri::command]
-pub(crate) async fn get_document_study_guide_glance_page(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    input: GetStudyGuideGlancePageInput,
-) -> Result<StudyGuideGlancePageDto, CommandError> {
-    validate_entity_id(&input.document_id, "document")?;
-    let database = database.inner().clone();
-    let paths = paths.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let effective = load_effective_export(&database, &paths, &input.document_id, false)?;
-        let svg = guide_typst::glance_page_svg(&effective, input.theme)?;
-        Ok(StudyGuideGlancePageDto {
-            document_id: input.document_id,
-            guide_revision: effective.guide_revision,
-            theme: input.theme,
-            svg,
-        })
-    })
-    .await
-    .map_err(|error| {
-        CommandError::new(
-            "study_guide_page_layout_failed",
-            format!("Could not lay out the designed study-guide page: {error}"),
-        )
-    })?
-}
-
 /// A document's whole study guide as the reader's canvas: every page the PDF
 /// export lays out, with its contents and Practice buttons. Read-only; the
 /// learner's marks are stored separately under each page's key.
@@ -452,7 +340,7 @@ pub(crate) async fn get_document_study_guide_glance_page(
 pub(crate) async fn get_document_study_guide_canvas(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: GetStudyGuideGlancePageInput,
+    input: GetStudyGuideCanvasInput,
 ) -> Result<canvas::StudyGuideCanvasDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     let database = database.inner().clone();
@@ -471,25 +359,34 @@ pub(crate) async fn get_document_study_guide_canvas(
 }
 
 /// Opens a document's study guide in the system's PDF reader. The PDF is
-/// written to one reader file per document, replaced on every open, so the
-/// learner never picks a save location.
+/// written to one file per document in the app's cache directory, replaced
+/// on every open, so the learner never picks a save location and the
+/// library keeps no copy.
 #[tauri::command]
 pub(crate) async fn open_document_study_guide_pdf(
     app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
-    input: GetStudyGuideGlancePageInput,
+    input: GetStudyGuideCanvasInput,
 ) -> Result<(), CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     let database = database.inner().clone();
     let paths = paths.inner().clone();
+    let cache = app.path().app_cache_dir().map_err(|error| {
+        CommandError::new(
+            "study_guide_open_failed",
+            format!("The app's cache folder is unavailable: {error}"),
+        )
+    })?;
     let destination = tauri::async_runtime::spawn_blocking(move || {
         let effective = load_effective_export(&database, &paths, &input.document_id, true)?;
-        let destination = paths.resolve_relative(&format!(
-            "reader/study-guides/{}/{}-study-guide.pdf",
-            input.document_id,
-            portable_filename(&effective.document_title)
-        ));
+        let destination = cache
+            .join("study-guides")
+            .join(&input.document_id)
+            .join(format!(
+                "{}-study-guide.pdf",
+                portable_filename(&effective.document_title)
+            ));
         if let Some(parent) = destination.parent() {
             // An earlier open's file may carry an older title.
             let _ = fs::remove_dir_all(parent);
@@ -1217,36 +1114,7 @@ mod tests {
     }
 
     #[test]
-    fn live_section_pages_set_the_body_in_every_theme_without_terms_or_checks() {
-        let mut section = rich_section("Afterload");
-        section
-            .body_lines
-            .insert(4, ExportBlock::Heading("Important terms".into()));
-        for theme in [
-            StudyGuidePdfTheme::Navy,
-            StudyGuidePdfTheme::Sage,
-            StudyGuidePdfTheme::Slate,
-            StudyGuidePdfTheme::Plum,
-        ] {
-            let svg = guide_typst::section_page_svg(&section, "3", theme).unwrap();
-            assert!(svg.starts_with("<svg"), "{theme:?}");
-            assert!(svg.contains("viewBox=\"0 0 538"), "{theme:?}");
-        }
-        let blocks = guide_typst::live_blocks(&section.body_lines);
-        assert!(blocks.iter().all(|block| !matches!(
-            block,
-            ExportBlock::Terms(_) | ExportBlock::RetrievalCheck { .. }
-        )));
-        assert!(!blocks
-            .iter()
-            .any(|block| matches!(block, ExportBlock::Heading(text) if text == "Important terms")));
-        assert!(blocks
-            .iter()
-            .any(|block| matches!(block, ExportBlock::Heading(text) if text == "Key points")));
-    }
-
-    #[test]
-    fn glance_pages_set_the_overview_concepts_and_key_ideas_in_every_theme() {
+    fn the_canvas_lays_out_every_page_in_every_theme() {
         let mut export = test_export();
         export.sections.push(rich_section("Afterload"));
         export.key_concepts = vec!["Preload: stretch before contraction".into()];
@@ -1256,14 +1124,13 @@ mod tests {
             StudyGuidePdfTheme::Slate,
             StudyGuidePdfTheme::Plum,
         ] {
-            let svg = guide_typst::glance_page_svg(&export, theme).unwrap();
-            assert!(svg.starts_with("<svg"), "{theme:?}");
-            assert!(svg.contains("viewBox=\"0 0 538"), "{theme:?}");
+            let canvas = canvas::guide_canvas("document-1", &export, theme).unwrap();
+            assert!(!canvas.pages.is_empty(), "{theme:?}");
+            for page in &canvas.pages {
+                assert!(page.svg.starts_with("<svg"), "{theme:?}");
+            }
+            assert_eq!(canvas.practice.len(), 2, "{theme:?}");
         }
-        // A guide with only an overview still sets its page.
-        let mut bare = test_export();
-        bare.key_concepts.clear();
-        assert!(guide_typst::glance_page_svg(&bare, StudyGuidePdfTheme::Navy).is_ok());
     }
 
     #[test]

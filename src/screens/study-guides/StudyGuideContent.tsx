@@ -15,7 +15,6 @@ import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
 import { StudyGuideSourceFigures } from "../StudyGuideSourceFigures";
 import { sectionBlocks } from "./guideModel";
-import type { DesignedSectionPage } from "./useDesignedSectionPage";
 
 /** How far a learner got with one retrieval check. Kept in memory only. */
 export interface CheckProgress { revealed: boolean; result: "yes" | "not_yet" | null }
@@ -38,13 +37,6 @@ export interface StudyGuideStructuredContentProps {
   /** Check-yourself progress owned by the caller; without it the block keeps its own. */
   checkProgress?: CheckProgressMap;
   onCheckProgressChange?: (next: CheckProgressMap) => void;
-  /**
-   * The section set as a designed page: its image, or "loading" while it is laid out. The
-   * blocks stay for screen readers and the check questions stay interactive below it.
-   */
-  designedPage?: DesignedSectionPage;
-  /** Drawn over the designed page, at its size: the learner's marks. */
-  designedOverlay?: ReactNode;
 }
 
 type Level = 2 | 3 | 4 | 5;
@@ -79,8 +71,6 @@ export function StudyGuideStructuredContent({
   showTerms = true,
   checkProgress,
   onCheckProgressChange,
-  designedPage = null,
-  designedOverlay = null,
 }: StudyGuideStructuredContentProps) {
   const generatedId = `guide-block-${useId().replaceAll(":", "")}`;
   const prefix = idPrefix ?? generatedId;
@@ -95,16 +85,7 @@ export function StudyGuideStructuredContent({
       "tw:flex tw:min-w-0 tw:flex-col tw:break-words tw:font-(family-name:--card-font-family) tw:leading-(--ostudy-font-line-height-reading)",
       page ? "tw:gap-6 tw:text-body-large tw:compact:gap-5 tw:compact:text-body" : "tw:gap-5 tw:text-body",
     )}>
-      {designedPage === "loading" ? (
-        <div aria-hidden="true" className="tw:aspect-[3/4] tw:w-full tw:rounded-md tw:bg-card tw:ring-1 tw:ring-border" />
-      ) : designedPage !== null ? (
-        <div className="tw:relative tw:overflow-hidden tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border">
-          <img src={designedPage.url} alt="" className="tw:block tw:h-auto tw:w-full" />
-          {designedOverlay}
-        </div>
-      ) : null}
-      {/* The designed page is a picture of these blocks, which stay for screen readers. */}
-      <div className={designedPage === null ? "tw:contents" : "tw:sr-only"}>
+      <>
         {blockKeys.has("minute") ? (
           <GuideMinuteBox id={id("minute")} page={page} level={level}>
             {content.overview.trim() ? <StudyMarkdown text={content.overview} /> : null}
@@ -199,7 +180,7 @@ export function StudyGuideStructuredContent({
             <GuideTermList terms={content.importantTerms} className={uiText} />
           </section>
         ) : null}
-      </div>
+      </>
       {blockKeys.has("check") ? (
         <CheckYourself checks={content.retrievalChecks} headingId={id("check")} level={level} page={page}
           progress={checkProgress} onProgressChange={onCheckProgressChange} />

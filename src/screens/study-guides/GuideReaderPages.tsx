@@ -32,9 +32,6 @@ import {
   splitOverviewConcept,
 } from "./guideModel";
 import { type CheckProgressMap, GuideMinuteBox, GuideTermList, StudyGuideStructuredContent } from "./StudyGuideContent";
-import { type GuidePageStyle, useDesignedSectionPage } from "./useDesignedSectionPage";
-import type { InkMark } from "../../ipc/materialInk";
-import { InkOverlay } from "../ink/InkOverlay";
 
 /** A neighbor page for the previous and next links. */
 export interface GuidePageLink {
@@ -62,14 +59,12 @@ const railHeading = "tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tra
 const pageHeading = "tw:m-0 tw:min-w-0 tw:scroll-mt-24 tw:break-words tw:text-title tw:font-semibold tw:tracking-tighter tw:text-foreground tw:outline-none tw:wide:text-display";
 
 export function GuideOverviewPage({
-  guide, guideTitle, order, layoutMode, pageStyle, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
+  guide, guideTitle, order, layoutMode, guideNote, actionsDisabled, onNavigate, onEditNote, onRemoveNote, ...sourceProps
 }: GuideSourceProps & {
   guide: DocumentStudyGuide;
   guideTitle: string;
   order: GuideReadingOrder;
   layoutMode: LayoutMode;
-  /** The overview reads as a designed At a glance page in this theme, or as plain text. */
-  pageStyle: GuidePageStyle;
   guideNote: StudyGuideOverlay | null;
   actionsDisabled: boolean;
   onNavigate: (destination: GuideDestination) => void;
@@ -86,8 +81,6 @@ export function GuideOverviewPage({
   const first = order.entries[0];
   const concepts = guide.overview.keyConcepts.slice(0, 6);
   const wide = layoutMode === "wide";
-  const glance = useDesignedSectionPage(sourceProps.documentId, null, pageStyle === "plain" ? null : pageStyle,
-    `${guide.id}:${guide.revision}:${guide.updatedAt}`);
   const aboutBlocks = <>
     <GuideNoteBlock label="Your note" note={guideNote} disabled={actionsDisabled}
       onEdit={onEditNote} onRemove={onRemoveNote} />
@@ -100,15 +93,7 @@ export function GuideOverviewPage({
         <h1 id={headingId} tabIndex={-1} className={pageHeading}><StudyMarkdown text={guideTitle} inline /></h1>
         <SourceChip {...sourceProps} detail={formatSourceLength(sourceProps.source)} />
       </header>
-      {glance === "loading" ? (
-        <div aria-hidden="true" className="tw:aspect-[4/3] tw:w-full tw:rounded-md tw:bg-card tw:ring-1 tw:ring-border" />
-      ) : glance !== null ? (
-        <div className="tw:overflow-hidden tw:rounded-md tw:shadow-md tw:ring-1 tw:ring-border">
-          <img src={glance.url} alt="" data-testid="guide-glance-page" className="tw:block tw:h-auto tw:w-full" />
-        </div>
-      ) : null}
-      {/* The designed page is a picture of the summary, objectives and concepts, which stay for screen readers. */}
-      <div className={glance === null ? "tw:contents" : "tw:sr-only"}>
+      <>
       {guide.overview.summary.trim() ? (
         <GuideMinuteBox id={`${ids}-minute`} page><StudyMarkdown text={guide.overview.summary} /></GuideMinuteBox>
       ) : null}
@@ -137,7 +122,7 @@ export function GuideOverviewPage({
           </dl>
         </section>
       ) : null}
-      </div>
+      </>
       {chapters.length > 0 ? (
         <section aria-labelledby={`${ids}-chapters`} className="tw:grid tw:gap-3">
           <h2 id={`${ids}-chapters`} className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Chapters</h2>
@@ -175,7 +160,7 @@ export function GuideOverviewPage({
 }
 
 export function GuideSectionPage({
-  guide, entry, sectionCount, layoutMode, pageStyle, marks, onWriteOnPage, projection, previous, next, checkProgress, onCheckProgressChange,
+  guide, entry, sectionCount, layoutMode, projection, previous, next, checkProgress, onCheckProgressChange,
   actionsDisabled, onNavigate, read, onSetRead, onPractice, onEditNote, onRemoveNote, onEditSection, onResetSection, onDiscardConflict,
   ...sourceProps
 }: GuideSourceProps & {
@@ -183,12 +168,6 @@ export function GuideSectionPage({
   entry: GuideSectionEntry;
   sectionCount: number;
   layoutMode: LayoutMode;
-  /** Sections read as a designed page in this theme, or as plain text. */
-  pageStyle: GuidePageStyle;
-  /** The learner's marks on this section's designed page. */
-  marks: readonly InkMark[];
-  /** Opens the designed page to write on. */
-  onWriteOnPage: () => void;
   projection: TopicCardProjection | undefined;
   previous: GuidePageLink | null;
   next: GuidePageLink | null;
@@ -212,9 +191,6 @@ export function GuideSectionPage({
   const note = findEditingOverlay(guide.overlays, topicId, "note", guide.id);
   const override = findEditingOverlay(guide.overlays, topicId, "override", guide.id);
   const conflict = findConflictedOverride(guide.overlays, topicId);
-  // A section the learner rewrote reads as their text, never as a page of the generated one.
-  const designedPage = useDesignedSectionPage(sourceProps.documentId, topicId,
-    override || pageStyle === "plain" ? null : pageStyle, `${guide.id}:${section.contentHash}`);
   const minutes = readingMinutes(sectionReadingText(section, override));
   const range = formatLocatorRange(section.sourceLocator);
   const headingId = `${guidePageId(topicId)}-title`;
@@ -225,8 +201,6 @@ export function GuideSectionPage({
     ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
       onSelect: () => tutor.openContext(tutorTarget) }] : []),
     { id: "read", label: read ? "Mark as unread" : "Mark as read", onSelect: () => onSetRead(!read) },
-    ...(designedPage !== null && designedPage !== "loading"
-      ? [{ id: "write", label: "Write on this page", disabled: actionsDisabled, onSelect: onWriteOnPage }] : []),
     { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
     { id: "edit", label: "Edit or rewrite this section", disabled: actionsDisabled, onSelect: onEditSection },
     ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled, onSelect: () => onRemoveNote(note) }] : []),
@@ -287,10 +261,7 @@ export function GuideSectionPage({
       ) : (
         <StudyGuideStructuredContent content={section.content} headingLevel={2} idPrefix={guideBlockPrefix(topicId)}
           sectionNumber={number} showTerms={false} figureSource={{ documentId: sourceProps.documentId, locator: section.sourceLocator }}
-          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} designedPage={designedPage}
-          designedOverlay={designedPage !== null && designedPage !== "loading" ? (
-            <InkOverlay marks={marks} width={designedPage.width} height={designedPage.height} />
-          ) : null} />
+          checkProgress={checkProgress} onCheckProgressChange={onCheckProgressChange} />
       )}
       <div ref={endRef} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-7 tw:compact:gap-6">
         {cardCount === null ? null : cardCount > 0 ? (
