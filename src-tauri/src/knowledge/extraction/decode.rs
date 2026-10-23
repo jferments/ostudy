@@ -56,7 +56,11 @@ impl AnalysisReport {
     /// A source can support another source's primary claim, or consist entirely
     /// of explicit region dispositions, without owning a knowledge unit.
     pub(crate) fn requires_paid_repair(&self, sources: &[SourceRecord]) -> bool {
-        if !self.rejected.is_empty() {
+        if self
+            .rejected
+            .iter()
+            .any(|rejected| !number_printed_nowhere(rejected, sources))
+        {
             return true;
         }
         if let Some(coverage) = &self.coverage {
@@ -212,6 +216,33 @@ pub(crate) fn unsupported_number_of(
 
 /// The first evidence span of each window source (at most two) whose text
 /// prints `number`, so a repair can cite the span that vouches for it.
+/// A unit rejected for a number that no source in its window prints. A repair
+/// sees only this window's evidence, so it cannot ground that number; the
+/// window that prints it states the fact there.
+fn number_printed_nowhere(item: &RejectedUnit, sources: &[SourceRecord]) -> bool {
+    if item.code != "unsupported_number" {
+        return false;
+    }
+    let text = |key: &str| {
+        item.proposal
+            .get(key)
+            .and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let statement = item
+        .proposal
+        .get("statement")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let window = sources.iter().collect::<Vec<_>>();
+    numbers::first_unsupported(
+        std::iter::once(statement).chain(text("qualifications")),
+        &window,
+    )
+    .is_some()
+}
+
 pub(crate) fn printing_evidence(
     number: &str,
     catalog: &EvidenceCatalog,
