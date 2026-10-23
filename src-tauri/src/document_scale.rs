@@ -26,16 +26,39 @@ pub(crate) const OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
 pub(crate) const GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS: usize = 3_072;
 pub(crate) const CURATION_VISIBLE_COMPLETION_TOKENS: usize = 2_048;
 
-/// The most cards one source page (or other source unit) may get. It is a
-/// ceiling, not a target: the model names each passage's key ideas and sizes
-/// its cards to them, so a light page gets one card or none.
+/// Cards for a page of ordinary content. The model names each passage's key
+/// ideas and sizes its cards to them, so a light page gets one card or none and
+/// a page dense with important content up to [`MAX_CARDS_PER_SOURCE_UNIT`].
+pub(crate) const TYPICAL_CARDS_PER_SOURCE_UNIT: usize = 5;
+/// The most cards one source page (or other source unit) may get.
 pub(crate) const MAX_CARDS_PER_SOURCE_UNIT: usize = 10;
 
-/// The card ceiling for one generation window spanning `source_units` pages.
-pub(crate) fn window_card_ceiling(plan: DocumentScalePlan, source_units: usize) -> usize {
-    source_units
-        .saturating_mul(MAX_CARDS_PER_SOURCE_UNIT)
-        .clamp(1, plan.max_cards_per_window.max(1))
+/// How many cards one generation window should aim for and may not exceed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct WindowCardBudget {
+    pub typical: usize,
+    pub ceiling: usize,
+}
+
+/// The card budget for a window covering `pages` source pages, where a page
+/// shared with neighbouring windows counts as a share of a page in each.
+pub(crate) fn window_card_budget(plan: DocumentScalePlan, pages: f64) -> WindowCardBudget {
+    let pages = if pages.is_finite() {
+        pages.max(0.0)
+    } else {
+        0.0
+    };
+    let response_ceiling = plan.max_cards_per_window.max(1);
+    let scaled = |per_page: usize, round: fn(f64) -> f64| {
+        let cards = round(pages * per_page as f64);
+        // Bounded above by the response ceiling, so the cast cannot truncate.
+        (cards.min(response_ceiling as f64) as usize).clamp(1, response_ceiling)
+    };
+    let ceiling = scaled(MAX_CARDS_PER_SOURCE_UNIT, f64::ceil);
+    WindowCardBudget {
+        typical: scaled(TYPICAL_CARDS_PER_SOURCE_UNIT, f64::round).min(ceiling),
+        ceiling,
+    }
 }
 
 pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usize {
@@ -435,11 +458,53 @@ mod tests {
     }
 
     #[test]
-    fn card_ceiling_scales_with_pages_within_the_response_ceiling() {
+    fn card_budget_aims_at_five_a_page_and_caps_at_ten_within_the_response() {
         let plan = DocumentScalePlan::for_unit_count(55);
-        assert_eq!(window_card_ceiling(plan, 0), 1);
-        assert_eq!(window_card_ceiling(plan, 1), MAX_CARDS_PER_SOURCE_UNIT);
-        assert_eq!(window_card_ceiling(plan, 5), plan.max_cards_per_window);
+        let budget = |pages| window_card_budget(plan, pages);
+        assert_eq!(
+            budget(0.0),
+            WindowCardBudget {
+                typical: 1,
+                ceiling: 1
+            }
+        );
+        assert_eq!(
+            budget(f64::NAN),
+            WindowCardBudget {
+                typical: 1,
+                ceiling: 1
+            }
+        );
+        assert_eq!(
+            budget(1.0),
+            WindowCardBudget {
+                typical: 5,
+                ceiling: 10
+            }
+        );
+        // A page split across three windows gets about a third of its cards in each.
+        assert_eq!(
+            budget(1.0 / 3.0),
+            WindowCardBudget {
+                typical: 2,
+                ceiling: 4
+            }
+        );
+        assert_eq!(
+            budget(1.5),
+            WindowCardBudget {
+                typical: 8,
+                ceiling: 15
+            }
+        );
+        let max = plan.max_cards_per_window;
+        assert_eq!(
+            budget(5.0),
+            WindowCardBudget {
+                typical: max,
+                ceiling: max
+            }
+        );
     }
 
     #[test]

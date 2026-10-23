@@ -25,10 +25,12 @@ use super::{
     transport::{ensure_context_budget, request_json, JsonTaskRequest},
 };
 
-pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 14;
+pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 15;
 pub(crate) const FLASHCARD_SCHEMA_VERSION: i64 = 8;
 
 pub(crate) struct FlashcardGenerationLimits {
+    /// What a passage of ordinary density should get; at most `maximum_cards`.
+    pub typical_cards: usize,
     pub maximum_cards: usize,
     pub completion_token_floor: usize,
 }
@@ -57,6 +59,7 @@ pub(crate) async fn generate_window_flashcards(
         outline,
         window,
         knowledge,
+        limits.typical_cards.clamp(1, maximum_cards),
         maximum_cards,
     )?;
     request_flashcards_with_retry(
@@ -97,6 +100,7 @@ pub(crate) fn preflight_window_flashcards(
         outline,
         window,
         knowledge,
+        limits.typical_cards.clamp(1, maximum_cards),
         maximum_cards,
     )?;
     let schema = assessment::generation_schema(
@@ -124,6 +128,7 @@ fn flashcard_prompt(
     outline: &DocumentOutline,
     window: &SemanticWindow,
     knowledge: &KnowledgeCatalog,
+    typical_cards: usize,
     maximum_cards: usize,
 ) -> Result<(String, String), CommandError> {
     let outline_json = outline_context_for_window(outline, window)?;
@@ -134,7 +139,7 @@ fn flashcard_prompt(
     );
     let locator = window.source_locator();
     let user = format!(
-        "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nThis passage spans {} source unit(s). Create at most {maximum_cards} learning cards; that is a ceiling, not a target. First list in keyIdeas the ideas from this passage that a learner must know to understand the topic: its mechanisms, key terms, relationships, and the specific facts or numbers that matter. Leave out minor details a learner would not be expected to recall. Then write cards for those key ideas only. A page rich in important content may need up to about 10 cards, a light page one or none, and most pages 2 to 10. Bundle related small facts into one matching, grouping, ordering or select-all card rather than several factoid cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
+        "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nThis passage spans {} source unit(s). Aim for about {typical_cards} learning cards, about 5 per page of ordinary content, and never more than {maximum_cards}. First list in keyIdeas the ideas from this passage that a learner must know to understand the topic: its mechanisms, key terms, relationships, and the specific facts or numbers that matter. Leave out minor details a learner would not be expected to recall. Then write cards for those key ideas only. A page dense with important content may need up to 10 cards, and a light page one or none. Bundle related small facts into one matching, grouping, ordering or select-all card rather than several factoid cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
         window.partition_title,
         window.partition_index + 1,
         locator.first(),
