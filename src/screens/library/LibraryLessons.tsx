@@ -1,24 +1,20 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
-import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
 import type { LibrarySubjectScope } from "../../navigation/appDestinations";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
-import { Button } from "../../ui/primitives/Button";
 import { EmptyState, LoadingState } from "../../ui/primitives/EmptyState";
-import { ListRow, ListRowMedia, ListRows } from "../../ui/primitives/ListRow";
-import { Panel } from "../../ui/primitives/Panel";
-import { useHomeLessons } from "../home/HomeStudyPanels";
 import { LessonPlayer } from "../lessons/LessonPlayer";
 import { LessonsSection } from "../lessons/LessonsSection";
 import { PodcastPlayer } from "../lessons/PodcastPlayer";
 import { PodcastsSection } from "../lessons/PodcastsSection";
 import { useSubjectCourse } from "../lessons/useSubjectCourse";
 import { useLibraryFullPage } from "./LibraryFrame";
-import { lessonMeta } from "./LibraryOverview";
 import { useLibrarySubjects, type LibrarySubjects } from "./LibrarySubjects";
 
 interface LibraryLessonsProps {
+  /** The subject's lessons, or its podcasts. */
+  page: "lessons" | "podcasts";
   subject: LibrarySubjectScope;
   /** The lesson playing, if any; it belongs to the chosen subject. */
   openLessonId: string | null;
@@ -28,16 +24,17 @@ interface LibraryLessonsProps {
 }
 
 /**
- * The chosen subject's course: where to pick up, every lesson in order, and
- * writing more. Everything lists every subject's lessons; No subject has none,
- * since lessons belong to a subject.
+ * The chosen subject's course (where to pick up, every lesson in order, and
+ * writing more), or its podcasts. No subject has neither, since both belong
+ * to a subject.
  */
-export function LibraryLessons({ subject, openLessonId, onOpenLesson, onCloseLesson, showToast }: LibraryLessonsProps) {
+export function LibraryLessons({ page, subject, openLessonId, onOpenLesson, onCloseLesson, showToast }: LibraryLessonsProps) {
   const subjects = useLibrarySubjects(subject);
   if (subject.kind === "subject") {
     return (
       <SubjectLessons
         key={subject.subjectId}
+        page={page}
         subjectId={subject.subjectId}
         subjects={subjects}
         openLessonId={openLessonId}
@@ -47,11 +44,16 @@ export function LibraryLessons({ subject, openLessonId, onOpenLesson, onCloseLes
       />
     );
   }
-  if (subject.kind === "none") return <EmptyState icon="book" title="Lessons belong to a subject" />;
-  return <AllLessons subjects={subjects} onOpenLesson={onOpenLesson} />;
+  return (
+    <EmptyState
+      icon={page === "lessons" ? "book" : "headphones"}
+      title={page === "lessons" ? "Lessons belong to a subject" : "Podcasts belong to a subject"}
+    />
+  );
 }
 
 function SubjectLessons({
+  page,
   subjectId,
   subjects,
   openLessonId,
@@ -59,6 +61,7 @@ function SubjectLessons({
   onCloseLesson,
   showToast,
 }: {
+  page: "lessons" | "podcasts";
   subjectId: string;
   subjects: LibrarySubjects;
   openLessonId: string | null;
@@ -102,57 +105,26 @@ function SubjectLessons({
       </PageScaffold>
     );
   }
-  if (course.loading && !course.course) return <LoadingState label="Loading lessons…" />;
+  if (course.loading && !course.course) {
+    return <LoadingState label={page === "lessons" ? "Loading lessons…" : "Loading podcasts…"} />;
+  }
+  if (page === "podcasts") {
+    return (
+      <div data-testid="library-podcasts" className="tw:flex tw:max-w-3xl tw:flex-col tw:gap-8">
+        <PodcastsSection
+          headingId={podcastsHeadingId}
+          subjectId={subjectId}
+          lessons={written}
+          onOpenPodcast={setOpenPodcastId}
+        />
+      </div>
+    );
+  }
   const hasSources = (tile?.summary.sourceCount ?? 0) > 0;
   if (!hasSources && written.length === 0) return <EmptyState icon="book" title="No lessons yet" />;
   return (
     <div data-testid="library-lessons" className="tw:flex tw:max-w-3xl tw:flex-col tw:gap-8">
       <LessonsSection headingId={headingId} course={course} hasSources={hasSources} onOpenLesson={onOpenLesson} />
-      <PodcastsSection
-        headingId={podcastsHeadingId}
-        subjectId={subjectId}
-        lessons={written}
-        onOpenPodcast={setOpenPodcastId}
-      />
     </div>
-  );
-}
-
-function AllLessons({
-  subjects,
-  onOpenLesson,
-}: {
-  subjects: LibrarySubjects;
-  onOpenLesson: (subjectId: string, lessonId: string) => void;
-}) {
-  const { summary } = useHomeSummary();
-  const subjectIds = useMemo(
-    () => subjects.subjects.flatMap((tile) => (tile.subjectId === null ? [] : [tile.subjectId])),
-    [subjects.subjects],
-  );
-  const lessons = useHomeLessons(subjectIds, summary?.today.scheduledReviews ?? 0);
-  const names = new Map(subjects.subjects.map((tile) => [tile.subjectId, tile.name]));
-  if (!lessons) return <LoadingState label="Loading lessons…" />;
-  // In each subject's course order, subjects in the learner's order.
-  const all = subjectIds.flatMap((id) => (lessons.bySubject.get(id) ?? []).filter((lesson) => lesson.written !== null));
-  if (all.length === 0) return <EmptyState icon="book" title="No lessons yet" />;
-  return (
-    <Panel data-testid="library-lessons" className="tw:max-w-4xl">
-      <ListRows>
-        {all.map((lesson) => (
-          <ListRow
-            key={lesson.id}
-            leading={<ListRowMedia icon="book" />}
-            title={lesson.title}
-            meta={`${names.get(lesson.subjectId) ?? "Subject"} · ${lessonMeta(lesson)}`}
-            trailing={
-              <Button variant="secondary" size="small" aria-label={`Open ${lesson.title}`} onClick={() => onOpenLesson(lesson.subjectId, lesson.id)}>
-                {lesson.progress && lesson.progress.finishedAt === null ? "Resume" : "Open"}
-              </Button>
-            }
-          />
-        ))}
-      </ListRows>
-    </Panel>
   );
 }

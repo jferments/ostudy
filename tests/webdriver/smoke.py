@@ -31,12 +31,10 @@ PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
 ANALYTICS_SCREEN_SELECTOR = "main section[aria-label='Learning summary']"
 # Library hosts these sections as its views. Each keeps its own page heading.
 LIBRARY_VIEW_HEADINGS = {
-    "overview": "Overview",
     "lessons": "Lessons",
-    "decks": "All cards",
+    "podcasts": "Podcasts",
     "documents": "Documents",
     "study-guides": "Study Guides",
-    "notes": "Notes",
 }
 CHART_DATA_SELECTOR = "main section[aria-labelledby='progress-heading'] table"
 
@@ -688,12 +686,12 @@ WORKBENCH_SELECTOR = "main [data-testid='library-workbench']"
 WORKBENCH_TREE_XPATH = "//main//*[@data-testid='library-workbench']//nav[@aria-label='Library']"
 
 
-def open_library_view(session_id: str, view: str, deadline: float) -> None:
-    """Open one of Library's pages: the Workbench ("decks"), Documents, Notes or Study guides.
+SUBJECT_TILE_XPATH = "//main//*[@data-testid='library-subject-tiles']//*[@data-testid='library-subject-tile']"
+SMOKE_SUBJECT_NAME = "Smoke subject"
 
-    Library reopens the page used last. Every page carries Library's tabs:
-    Overview, Lessons, Study guides, Documents, Notes and Flashcards (the Workbench).
-    """
+
+def open_library_home(session_id: str, deadline: float) -> None:
+    """Library's own page: every subject as a tile, with All cards in its header."""
     library = find_element(
         session_id,
         "css selector",
@@ -707,29 +705,50 @@ def open_library_view(session_id: str, view: str, deadline: float) -> None:
         "button[data-testid='nav-library'][aria-current='page']",
         deadline,
     )
+    find_element(session_id, "css selector", "main [data-testid='library-subject-tiles']", deadline)
+
+
+def create_library_subject(session_id: str, name: str, deadline: float) -> None:
+    """Create a subject from Library's New subject sheet; the app opens its Documents."""
+    click(session_id, find_element(session_id, "css selector", "main button[data-testid='library-new-subject']", deadline))
+    set_input_text(session_id, "css selector", "[role='dialog'] input", name, deadline)
+    click_text_button(session_id, "Create subject", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='library-subject-name'][normalize-space(.)={json.dumps(name)}]",
+        deadline,
+    )
+
+
+def open_library_view(session_id: str, view: str, deadline: float) -> None:
+    """Open one of Library's pages.
+
+    Library opens on its subject tiles. "decks" opens the Workbench on All cards
+    from Library's header; "documents", "study-guides", "lessons" and "podcasts"
+    open on the first subject's tabs, creating a subject when the library has none.
+    """
+    open_library_home(session_id, deadline)
     if view == "decks":
-        # Whichever Library page opens, its Flashcards tab leads to the Workbench.
-        find_element(
-            session_id,
-            "xpath",
-            "//main//*[@data-testid='library-workbench']"
-            " | //main//nav[@aria-label='Library pages']//button[@data-testid='library-view-decks']",
-            deadline,
-        )
-        if not element_exists(session_id, "css selector", WORKBENCH_SELECTOR):
-            switcher = find_element(
-                session_id,
-                "css selector",
-                "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
-                deadline,
-            )
-            click(session_id, switcher)
+        click(session_id, find_element(session_id, "css selector", "main button[data-testid='library-all-cards']", deadline))
         find_element(session_id, "css selector", WORKBENCH_SELECTOR, deadline)
         return
+    if element_exists(session_id, "xpath", SUBJECT_TILE_XPATH):
+        click(
+            session_id,
+            find_element(
+                session_id,
+                "xpath",
+                f"({SUBJECT_TILE_XPATH})[1]//button[@data-testid='library-subject-open']",
+                deadline,
+            ),
+        )
+    else:
+        create_library_subject(session_id, SMOKE_SUBJECT_NAME, deadline)
     switcher = find_element(
         session_id,
         "css selector",
-        f"main nav[aria-label='Library pages'] button[data-testid='library-view-{view}']",
+        f"main nav[aria-label='Subject pages'] button[data-testid='library-view-{view}']",
         deadline,
     )
     click(session_id, switcher)

@@ -109,6 +109,17 @@ export interface NativeSubjectFilingReview {
   label: string;
 }
 
+export interface NativeSubjectCover {
+  documentId: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface NativeHomeSubjectSummary {
   subjectId: string | null;
   dueReviews: number;
@@ -119,6 +130,10 @@ export interface NativeHomeSubjectSummary {
   deckCount: number;
   sourceCount: number;
   hasOverviewGuide: boolean;
+  guideCount: number;
+  lessonCount: number;
+  podcastCount: number;
+  cover: NativeSubjectCover | null;
   dueDeckIds: string[];
 }
 

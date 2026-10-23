@@ -229,25 +229,25 @@ describe("StudyGuidesScreen", () => {
     render(
       <LayoutModeProvider>
         <OverlayProvider>
-          <LibraryFrame view="study-guides" onSelectView={vi.fn()} subject={{ kind: "all" }} onChooseSubject={vi.fn()} onStartReview={vi.fn()} onPracticeSubject={vi.fn()} showToast={vi.fn()}>
+          <LibraryFrame view="study-guides" onSelectView={vi.fn()} subject={{ kind: "none" }} onChooseSubject={vi.fn()} onOpenLibrary={vi.fn()} onStartReview={vi.fn()} onPracticeSubject={vi.fn()} showToast={vi.fn()}>
             <StudyGuidesScreen showToast={vi.fn()} onPracticeCards={vi.fn()} />
           </LibraryFrame>
         </OverlayProvider>
       </LayoutModeProvider>,
     );
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Subject pages" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(screen.getByRole("dialog", { name: "Guide Distributive shock" })).toBeTruthy();
     // The reader's sticky top bar starts at the edges, right under the app header.
-    expect(screen.queryByRole("navigation", { name: "Library pages" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Subject pages" })).toBeNull();
     expect(screen.getByTestId("library").className).toContain("tw:p-0");
 
     fireEvent.click(screen.getByRole("button", { name: "Close guide" }));
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Library pages" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Library pages" }).closest("div.tw\\:px-5")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Subject pages" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Subject pages" }).closest("div.tw\\:px-5")).toBeTruthy();
   });
 
   it("lists and opens subject study guides from the main Study Guides page", async () => {

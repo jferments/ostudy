@@ -27,14 +27,17 @@ const CHECKPOINT_V2_FILENAME: &str = "ui-checkpoint-v2.json";
 const FLASHCARDS_WORKSPACES: &[&str] = &["decks", "templates", "search", "transfer"];
 
 /// A restorable destination. Home and Review, then Library's Overview and
-/// Lessons pages, then its Notes page, joined the released values; every older value still reads,
-/// so a checkpoint saved by an earlier build opens where it was left.
+/// Lessons pages, then its Notes page, then a subject's Podcasts page, joined
+/// the released values; every older value still reads, so a checkpoint saved
+/// by an earlier build opens where it was left. Overview is Library's page of
+/// subjects.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum CheckpointSection {
     Home,
     Overview,
     Lessons,
+    Podcasts,
     Decks,
     StudyGuides,
     Documents,
@@ -598,6 +601,7 @@ mod tests {
             ("home", CheckpointSection::Home),
             ("overview", CheckpointSection::Overview),
             ("lessons", CheckpointSection::Lessons),
+            ("podcasts", CheckpointSection::Podcasts),
             ("decks", CheckpointSection::Decks),
             ("study-guides", CheckpointSection::StudyGuides),
             ("documents", CheckpointSection::Documents),

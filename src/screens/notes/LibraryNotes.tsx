@@ -61,8 +61,8 @@ const PAPER_OPTIONS = [
 const MAX_TITLE_CHARS = 200;
 
 /**
- * Library's Notes page: the chosen subject's notebooks, each shown by its
- * first page, and New notebook. Everything groups them under their subjects.
+ * The Notes destination: notebooks, each shown by its first page, and New
+ * notebook. With every subject in scope they are grouped under their subjects.
  * Opening one makes it the page.
  */
 export function LibraryNotes({ subject, showToast, openRequest = null, onOpenRequestConsumed, ...links }: LibraryNotesProps) {
@@ -118,9 +118,8 @@ export function LibraryNotes({ subject, showToast, openRequest = null, onOpenReq
 
   return (
     <div data-testid="library-notes" className="tw:grid tw:min-w-0 tw:gap-4">
-      {/* The tabs name the page; its title is for headings navigation. */}
-      <h1 className="tw:sr-only">Notes</h1>
-      <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-3">
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+        <h1 className="tw:m-0 tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight">Notes</h1>
         <Button variant="primary" onClick={() => setCreating(true)}>
           <Icon name="plus" />
           New notebook

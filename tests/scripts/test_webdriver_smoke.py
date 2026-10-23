@@ -298,17 +298,31 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
 
-    def test_library_views_open_through_main_navigation_then_the_library_tabs(self) -> None:
-        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click, patch.object(self.smoke, "wait_for_main_heading") as heading:
+    def test_library_views_open_a_subject_from_its_tile_then_its_tabs(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click, patch.object(self.smoke, "element_exists", return_value=True), patch.object(self.smoke, "wait_for_main_heading") as heading:
             self.smoke.open_library_view("session-1", "study-guides", 42.0)
         clicked = [call.args[1] for call in click.call_args_list]
         self.assertEqual(clicked[0], "button[data-testid='nav-library']")
-        self.assertIn("nav[aria-label='Library pages']", clicked[1])
-        self.assertIn("library-view-study-guides", clicked[1])
+        self.assertIn("library-subject-open", clicked[1])
+        self.assertIn("nav[aria-label='Subject pages']", clicked[2])
+        self.assertIn("library-view-study-guides", clicked[2])
         selectors = [call.args[2] for call in find_element.call_args_list]
         self.assertIn("button[data-testid='nav-library'][aria-current='page']", selectors)
         self.assertIn("button[data-testid='library-view-study-guides'][aria-current='page']", selectors)
         heading.assert_called_once_with("session-1", "Study Guides", 42.0)
+
+    def test_library_cards_open_all_cards_from_library_s_header(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]), patch.object(self.smoke, "click") as click:
+            self.smoke.open_library_view("session-1", "decks", 42.0)
+        self.assertEqual(
+            [call.args[1] for call in click.call_args_list],
+            ["button[data-testid='nav-library']", "main button[data-testid='library-all-cards']"],
+        )
+
+    def test_library_views_create_a_subject_when_the_library_has_none(self) -> None:
+        with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]), patch.object(self.smoke, "click"), patch.object(self.smoke, "element_exists", return_value=False), patch.object(self.smoke, "create_library_subject") as create, patch.object(self.smoke, "wait_for_main_heading"):
+            self.smoke.open_library_view("session-1", "lessons", 42.0)
+        create.assert_called_once_with("session-1", self.smoke.SMOKE_SUBJECT_NAME, 42.0)
 
     def test_today_count_must_agree_on_home_and_its_badge(self) -> None:
         with patch.object(self.smoke, "find_element", side_effect=lambda *args: args[2]) as find_element, patch.object(self.smoke, "click") as click:

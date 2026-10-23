@@ -7,13 +7,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class MobileNavigationContractTests(unittest.TestCase):
-    def test_navigation_names_five_destinations_beside_header_search(self) -> None:
+    def test_navigation_names_five_destinations_beside_header_search_and_settings(self) -> None:
         contract = json.loads((ROOT / "scripts/route-smoke-contract.json").read_text())
         navigation = contract["navigation"]
         destinations = [entry["id"] for entry in navigation["destinations"]]
         actions = [entry["id"] for entry in navigation["headerActions"]]
-        self.assertEqual(destinations, ["home", "library", "tutor", "progress", "settings"])
-        self.assertEqual(actions, ["search"])
+        self.assertEqual(destinations, ["home", "library", "notes", "tutor", "progress"])
+        self.assertEqual(actions, ["search", "settings"])
         self.assertFalse(set(destinations) & set(actions))
         main_navigation = (ROOT / "src/components/MainNavigation.tsx").read_text()
         header = (ROOT / "src/components/AppHeaderBar.tsx").read_text()
@@ -21,9 +21,10 @@ class MobileNavigationContractTests(unittest.TestCase):
         self.assertNotIn('"more"', main_navigation)
         self.assertNotIn("COMPACT_", main_navigation)
         self.assertIn('data-testid="app-search"', header)
-        # The wide rail keeps the Settings gear; phones list Settings as a destination.
+        # Settings is never a destination: the wide rail keeps its gear at the
+        # foot, and a phone's top bar carries it beside Search.
         self.assertIn('data-testid="app-settings"', header)
-        self.assertIn('"app-settings"', main_navigation)
+        self.assertNotIn("settings", main_navigation)
         app = (ROOT / "src/App.tsx").read_text()
         self.assertIn('onSettings={() => navigate("settings")}', app)
         self.assertIn("onSearch={() => void controller.openSearch()}", app)

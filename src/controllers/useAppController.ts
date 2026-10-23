@@ -21,9 +21,9 @@ import {
 } from "../ipc/uiCheckpoint";
 import {
   ALL_SUBJECTS,
-  isLibrarySection,
+  isSubjectSection,
   type LibraryScope,
-  type LibrarySection,
+  type SubjectSection,
   type LibrarySubjectScope,
 } from "../navigation/appDestinations";
 import {
@@ -54,6 +54,7 @@ export type AppSection =
   | "home"
   | "overview"
   | "lessons"
+  | "podcasts"
   | "decks"
   | "study-guides"
   | "documents"
@@ -175,8 +176,6 @@ export function useAppController() {
   // Library reopens the view and subject the learner used last in this process.
   /** The subject whose materials Library shows. Process-local, never checkpointed. */
   const [librarySubject, setLibrarySubject] = useState<LibrarySubjectScope>(ALL_SUBJECTS);
-  const lastLibrarySectionRef = useRef<LibrarySection>("decks");
-  if (isLibrarySection(section)) lastLibrarySectionRef.current = section;
   const returnPracticeToOriginRef = useRef<() => Promise<void>>(async () => undefined);
   const [hasUnsavedCard, setHasUnsavedCard] = useState(false);
   const [hasUnsavedSettings, setHasUnsavedSettings] = useState(false);
@@ -269,7 +268,8 @@ export function useAppController() {
           } else {
             setFlashcardsRoute(createFlashcardsRootRoute(restoredWorkspace, requestId));
           }
-          setSection(restoredSection);
+          // The checkpoint keeps no subject, and a subject's pages need one.
+          setSection(withSubject(restoredSection, ALL_SUBJECTS));
           if (restoredCheckpoint.practice) {
             practiceCursorRef.current = {
               sessionId: restoredCheckpoint.practice.sessionId,
@@ -610,6 +610,15 @@ export function useAppController() {
   }
 
   async function openSearch(): Promise<void> {
+    await openAllCardsWorkspace("search");
+  }
+
+  /** Opens the Workbench on every card in the library. */
+  async function openAllCards(): Promise<void> {
+    await openAllCardsWorkspace("decks");
+  }
+
+  async function openAllCardsWorkspace(workspace: "decks" | "search"): Promise<void> {
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     if (!(await canLeaveCurrentSection())) return;
@@ -617,30 +626,32 @@ export function useAppController() {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
     }
+    setLibrarySubject(ALL_SUBJECTS);
     setSection("decks");
-    setFlashcardsRoute(createFlashcardsRootRoute("search", nextFlashcardsRequestId()));
+    setFlashcardsRoute(createFlashcardsRootRoute(workspace, nextFlashcardsRequestId()));
     void refreshDecks().catch((error: unknown) =>
       showToast("error", getErrorMessage(error)),
     );
   }
 
   /**
-   * Opens Library from anywhere. No scope opens the view the learner used
-   * last; `subjectId` puts that subject's decks in view (`null` is No
-   * subject's unsorted decks); `deckId` opens the deck. The Workbench reads
-   * the scope from the Library route (see workbenchLaunchFor).
+   * Opens Library from anywhere. No scope opens Library's page of subjects;
+   * `subjectId` puts that subject's decks in view (`null` is No subject's
+   * unsorted decks); `deckId` opens the deck. The Workbench reads the scope
+   * from the Library route (see workbenchLaunchFor).
    */
   async function openLibrary(scope: LibraryScope = {}): Promise<void> {
-    if (scope.deckId === undefined && scope.subjectId === undefined) {
-      await navigate(lastLibrarySectionRef.current);
-      return;
-    }
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     if (!(await canLeaveCurrentSection())) return;
     if (leavingPracticeWorkflow) {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
+    }
+    if (scope.deckId === undefined && scope.subjectId === undefined) {
+      setLibrarySubject(ALL_SUBJECTS);
+      setSection("overview");
+      return;
     }
     if (scope.deckId !== undefined) {
       openFlashcardsDeck(scope.deckId);
@@ -657,10 +668,14 @@ export function useAppController() {
   }
 
   /**
-   * Opens a subject's page in Library on its Overview; `null` opens No
-   * subject's.
+   * Opens one of a subject's pages in Library, its Flashcards unless `page`
+   * names another; `null` opens No subject's.
    */
-  async function openSubject(subjectId: string | null): Promise<void> {
+  async function openSubject(subjectId: string | null, page: SubjectSection = "decks"): Promise<void> {
+    if (page === "decks") {
+      await openLibrary({ subjectId });
+      return;
+    }
     const leavingPracticeWorkflow = practiceWorkflow !== null;
     if (!(await confirmPracticeTermination())) return;
     if (!(await canLeaveCurrentSection())) return;
@@ -669,7 +684,7 @@ export function useAppController() {
       setPracticeWorkflow(null);
     }
     setLibrarySubject(subjectScopeOf(subjectId));
-    setSection("overview");
+    setSection(page);
   }
 
   /**
@@ -820,7 +835,7 @@ export function useAppController() {
       analyticsRequestSequence.current += 1;
       setAnalyticsLaunch({ requestId, ...analytics });
     }
-    setSection(restoredTarget.section);
+    setSection(withSubject(restoredTarget.section, librarySubject));
   }
 
   async function returnPracticeToOrigin(): Promise<void> {
@@ -898,8 +913,8 @@ export function useAppController() {
     openAiSetup,
     navigate,
     /** The Library view the Library destination opens: the last one used. */
-    librarySection: lastLibrarySectionRef.current,
     openSearch,
+    openAllCards,
     openLibrary,
     openSubject,
     /** The subject whose materials Library shows. */
@@ -962,6 +977,14 @@ function createCheckpointSnapshot(state: CheckpointSnapshotState): SaveUiCheckpo
     practice,
     analytics: state.section === "analytics" ? state.analytics ?? undefined : undefined,
   };
+}
+
+/**
+ * A subject's pages other than Flashcards show one subject; without one,
+ * Library opens on its own page of subjects instead.
+ */
+function withSubject(section: AppSection, subject: LibrarySubjectScope): AppSection {
+  return subject.kind === "all" && section !== "decks" && isSubjectSection(section) ? "overview" : section;
 }
 
 function subjectScopeOf(subjectId: string | null): LibrarySubjectScope {

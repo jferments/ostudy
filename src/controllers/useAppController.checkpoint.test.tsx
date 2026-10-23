@@ -80,7 +80,6 @@ function Harness() {
           ? `${controller.flashcardsRoute.analyticsSearchLaunch.requestId}|${controller.flashcardsRoute.analyticsSearchLaunch.source}|${controller.flashcardsRoute.analyticsSearchLaunch.tagIds.join(",")}`
           : "none"}
       </output>
-      <output aria-label="library section">{controller.librarySection}</output>
       <output aria-label="library subject">
         {controller.librarySubject.kind === "subject" ? controller.librarySubject.subjectId : controller.librarySubject.kind}
       </output>
@@ -118,6 +117,9 @@ function Harness() {
       </button>
       <button type="button" onClick={() => void controller.openSubject(null)}>
         Open No subject
+      </button>
+      <button type="button" onClick={() => void controller.openSubject("c".repeat(32), "lessons")}>
+        Open subject lessons
       </button>
       <button type="button" onClick={() => controller.chooseLibrarySubject({ kind: "all" })}>
         Choose Everything
@@ -486,33 +488,35 @@ describe("application checkpoint lifecycle", () => {
     await waitFor(() => expect(dispatchPlatformBack()).toBe(false));
   });
 
-  it("opens Search/Filter and subjects inside Library and remembers the Library view", async () => {
+  it("opens Search/Filter and subjects inside Library", async () => {
     renderHarness();
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
-    expect(screen.getByLabelText("library section").textContent).toBe("decks");
 
     fireEvent.click(screen.getByRole("button", { name: "Open Search" }));
     await waitFor(() => expect(screen.getByLabelText("route view").textContent).toBe("search"));
     expect(screen.getByLabelText("section").textContent).toBe("decks");
 
-    // A subject opens on its Library page; No subject has one too.
+    // A subject opens on its Flashcards; No subject has them too.
     fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("overview"));
+    await waitFor(() => expect(screen.getByLabelText("subject focus").textContent).toBe("c".repeat(32)));
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
     expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
-    expect(screen.getByLabelText("library section").textContent).toBe("overview");
     fireEvent.click(screen.getByRole("button", { name: "Open No subject" }));
     await waitFor(() => expect(screen.getByLabelText("library subject").textContent).toBe("none"));
 
+    // Or on another of its pages.
+    fireEvent.click(screen.getByRole("button", { name: "Open subject lessons" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("lessons"));
+    expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
+
+    // The subject stays chosen across its pages and destinations.
     fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
-    expect(screen.getByLabelText("library section").textContent).toBe("documents");
-    // The subject stays chosen across Library's pages and destinations.
     fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
-    expect(screen.getByLabelText("library section").textContent).toBe("documents");
-    expect(screen.getByLabelText("library subject").textContent).toBe("none");
+    expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
 
-    // On Flashcards, choosing a subject opens its cards in the Workbench.
+    // On Flashcards, choosing every subject opens All cards in the Workbench.
     fireEvent.click(screen.getByRole("button", { name: "Open Decks" }));
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
     fireEvent.click(screen.getByRole("button", { name: "Choose Everything" }));
@@ -520,14 +524,11 @@ describe("application checkpoint lifecycle", () => {
     expect(screen.getByLabelText("subject focus").textContent).toBe("none");
 
     vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
-    expect(screen.getByLabelText("library subject").textContent).toBe("c".repeat(32));
-    fireEvent.click(screen.getByRole("button", { name: "Open subject" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("overview"));
+    fireEvent.click(screen.getByRole("button", { name: "Open subject lessons" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("lessons"));
     lifecycle("background");
     await waitFor(() =>
-      expect(vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.at(-1)?.[0].section).toBe("overview"),
+      expect(vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.at(-1)?.[0].section).toBe("lessons"),
     );
     for (const [saved] of vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls) {
       // The focus request and the chosen subject are process-local.
@@ -536,18 +537,9 @@ describe("application checkpoint lifecycle", () => {
     }
   });
 
-  it("opens Library as last left, scoped to a subject, or at a deck", async () => {
+  it("opens Library on its page of subjects, scoped to a subject, or at a deck", async () => {
     renderHarness();
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
-    fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
-    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("home"));
-    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
-    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
 
     fireEvent.click(screen.getByRole("button", { name: "Open Library for subject" }));
     await waitFor(() =>
@@ -555,6 +547,12 @@ describe("application checkpoint lifecycle", () => {
     );
     expect(screen.getByLabelText("section").textContent).toBe("decks");
     expect(screen.getByLabelText("route view").textContent).toBe("decks");
+    fireEvent.click(screen.getByRole("button", { name: "Open Documents" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("documents"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Library" }));
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("overview"));
+    expect(screen.getByLabelText("library subject").textContent).toBe("all");
 
     fireEvent.click(screen.getByRole("button", { name: "Open Library for No subject" }));
     await waitFor(() =>
@@ -570,7 +568,7 @@ describe("application checkpoint lifecycle", () => {
     expect(screen.getByLabelText("section").textContent).toBe("decks");
   });
 
-  it("restores Study Guides behind a resumable session and returns there", async () => {
+  it("restores a session begun on Study guides and returns to Library's subjects, since no subject was kept", async () => {
     vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
       schemaVersion: 2,
       updatedAt: 1,
@@ -596,7 +594,7 @@ describe("application checkpoint lifecycle", () => {
     await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
     expect(screen.getByLabelText("return target").textContent).toBe("study-guides||");
     fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
-    expect(screen.getByLabelText("section").textContent).toBe("study-guides");
+    expect(screen.getByLabelText("section").textContent).toBe("overview");
     expect(screen.getByLabelText("workflow").textContent).toBe("none");
   });
 

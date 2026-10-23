@@ -25,44 +25,45 @@
         "label": "Library"
       },
       {
+        "id": "notes",
+        "label": "Notes"
+      },
+      {
         "id": "tutor",
         "label": "Tutor"
       },
       {
         "id": "progress",
         "label": "Progress"
-      },
-      {
-        "id": "settings",
-        "label": "Settings"
       }
     ],
     "library": {
       "destination": "library",
+      "page": "overview",
       "views": [
         {
           "id": "overview",
-          "label": "Overview"
+          "label": "Library"
         },
         {
-          "id": "lessons",
-          "label": "Lessons"
+          "id": "decks",
+          "label": "Flashcards"
         },
         {
           "id": "study-guides",
           "label": "Study guides"
         },
         {
+          "id": "lessons",
+          "label": "Lessons"
+        },
+        {
+          "id": "podcasts",
+          "label": "Podcasts"
+        },
+        {
           "id": "documents",
           "label": "Documents"
-        },
-        {
-          "id": "notes",
-          "label": "Notes"
-        },
-        {
-          "id": "decks",
-          "label": "Flashcards"
         }
       ]
     },
@@ -70,6 +71,10 @@
       {
         "id": "search",
         "label": "Search"
+      },
+      {
+        "id": "settings",
+        "label": "Settings"
       }
     ]
   },
@@ -135,7 +140,7 @@
             ],
             "assertionFragments": [
               "heading.textContent?.trim() === 'Your library is empty'",
-              "assertEquals(\"Home|Library|Tutor|Progress|Settings\", homeSnapshot.getString(\"navigation\"))",
+              "assertEquals(\"Home|Library|Notes|Tutor|Progress\", homeSnapshot.getString(\"navigation\"))",
               "assertEquals(\"nav-home\", homeSnapshot.getString(\"current\"))",
               "assertTrue(homeSnapshot.getBoolean(\"importDeck\"))",
               "assertFalse(homeSnapshot.getBoolean(\"todayStrip\"))"
@@ -146,7 +151,7 @@
     },
     {
       "id": "overview",
-      "label": "Overview",
+      "label": "Library",
       "placement": {
         "destination": "library",
         "libraryView": "overview"
@@ -160,15 +165,30 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
-              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
-              "webdriver.open_library_view(session_id, view, deadline)",
               "verify_library_subject_pages(session_id, deadline, \"wide\")",
-              "verify_library_subject_pages(session_id, deadline, \"compact\")"
+              "verify_library_subject_pages(session_id, deadline, \"compact\")",
+              "webdriver.open_library_home(session_id, deadline)"
             ],
             "assertionFragments": [
-              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
-              "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
-              "Library subject placement drifted"
+              "webdriver.wait_for_main_heading(session_id, \"Library\", deadline)",
+              "assert_no_horizontal_overflow(session_id, f\"{layout} Library\")",
+              "Library still shows the old subject list"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "e_processRestartKeepsInterruptedPracticeSession"
+            },
+            "entryFragments": [
+              "fun e_processRestartKeepsInterruptedPracticeSession()",
+              "End session"
+            ],
+            "assertionFragments": [
+              "=== 'Library'",
+              "library-subject-tiles"
             ]
           }
         ]
@@ -190,15 +210,41 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
-              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
-              "webdriver.open_library_view(session_id, view, deadline)",
               "verify_library_subject_pages(session_id, deadline, \"wide\")",
-              "verify_library_subject_pages(session_id, deadline, \"compact\")"
+              "verify_library_subject_pages(session_id, deadline, \"compact\")",
+              "for view in (\"lessons\", \"podcasts\"):",
+              "webdriver.open_library_view(session_id, view, deadline)"
             ],
             "assertionFragments": [
-              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
-              "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
-              "Library subject placement drifted"
+              "assert_no_horizontal_overflow(session_id, f\"{layout} subject {view}\")"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "podcasts",
+      "label": "Podcasts",
+      "placement": {
+        "destination": "library",
+        "libraryView": "podcasts"
+      },
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
+              "verify_library_subject_pages(session_id, deadline, \"wide\")",
+              "verify_library_subject_pages(session_id, deadline, \"compact\")",
+              "for view in (\"lessons\", \"podcasts\"):",
+              "webdriver.open_library_view(session_id, view, deadline)"
+            ],
+            "assertionFragments": [
+              "assert_no_horizontal_overflow(session_id, f\"{layout} subject {view}\")"
             ]
           }
         ]
@@ -219,7 +265,7 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
+              "main nav[aria-label='Subject pages'] button[data-testid='library-view-decks']",
               "webdriver.click(session_id, workbench)"
             ],
             "assertionFragments": [
@@ -233,7 +279,7 @@
             "path": "tests/webdriver/card_listing_followup_smoke.py",
             "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
             "entryFragments": [
-              "EXPECTED_NAVIGATION = [\"Home\", \"Library\", \"Tutor\", \"Progress\"]",
+              "EXPECTED_NAVIGATION = [\"Home\", \"Library\", \"Notes\", \"Tutor\", \"Progress\"]",
               "assert_medium_navigation(session_id, deadline)",
               "webdriver.open_library_view(session_id, \"decks\", deadline)"
             ],
@@ -251,7 +297,8 @@
             },
             "entryFragments": [
               "fun a1_freshLibraryUsesQuietNavigation()",
-              "document.querySelector('main [data-testid=\\\"home-first-run\\\"]') && document.querySelector('[data-testid=\\\"nav-library\\\"]')?.click(); true"
+              "document.querySelector('main [data-testid=\\\"home-first-run\\\"]') && document.querySelector('[data-testid=\\\"nav-library\\\"]')?.click(); true",
+              "library-all-cards"
             ],
             "assertionFragments": [
               "main [data-testid='library-workbench'] nav[aria-label='Library']",
@@ -284,25 +331,8 @@
             "assertionFragments": [
               "\"Study Guides\",",
               "wide Study Guides destination",
-              "button[data-testid='library-view-study-guides'][aria-current='page']",
-              "Study Guides checkpoint restart"
-            ]
-          },
-          {
-            "runner": "android-emulator",
-            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
-            "instrumentationCase": {
-              "class": "AndroidSmokeTest",
-              "method": "e_processRestartKeepsInterruptedPracticeSession"
-            },
-            "entryFragments": [
-              "fun e_processRestartKeepsInterruptedPracticeSession()",
-              "End session"
-            ],
-            "assertionFragments": [
-              "=== 'Study Guides'",
-              "library-view-study-guides",
-              "aria-current"
+              "Study Guides checkpoint restart",
+              "main [data-testid='library-subject-tiles']"
             ]
           }
         ]
@@ -323,7 +353,7 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "main nav[aria-label='Library pages'] button[data-testid='library-view-documents']",
+              "main nav[aria-label='Subject pages'] button[data-testid='library-view-documents']",
               "webdriver.click(session_id, documents)"
             ],
             "assertionFragments": [
@@ -340,7 +370,7 @@
             },
             "entryFragments": [
               "fun c_documentsViewAndAndroidBackReturnHome()",
-              "library-view-documents"
+              "library-subject-documents"
             ],
             "assertionFragments": [
               "=== 'Documents'",
@@ -354,8 +384,7 @@
       "id": "notes",
       "label": "Notes",
       "placement": {
-        "destination": "library",
-        "libraryView": "notes"
+        "destination": "notes"
       },
       "smoke": {
         "coverage": "route-entry",
@@ -366,15 +395,14 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:",
-              "for view, heading in ((\"overview\", \"Overview\"), (\"lessons\", \"Lessons\"), (\"notes\", \"Notes\")):",
-              "webdriver.open_library_view(session_id, view, deadline)",
               "verify_library_subject_pages(session_id, deadline, \"wide\")",
-              "verify_library_subject_pages(session_id, deadline, \"compact\")"
+              "verify_library_subject_pages(session_id, deadline, \"compact\")",
+              "button[data-testid='nav-notes']",
+              "webdriver.click(session_id, notes)"
             ],
             "assertionFragments": [
-              "\"//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']\"",
-              "assert_no_horizontal_overflow(session_id, f\"{layout} Library {heading}\")",
-              "Library subject placement drifted"
+              "webdriver.wait_for_main_heading(session_id, \"Notes\", deadline)",
+              "assert_no_horizontal_overflow(session_id, f\"{layout} Notes\")"
             ]
           }
         ]
@@ -421,7 +449,7 @@
               "webdriver.click(session_id, home)"
             ],
             "assertionFragments": [
-              "webdriver.wait_for_main_heading(session_id, \"Your library is empty\", deadline)",
+              "f\"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={json.dumps(webdriver.SMOKE_SUBJECT_NAME)}]]\",",
               "assert_no_horizontal_overflow(session_id, \"compact Home\")"
             ]
           }
@@ -535,7 +563,7 @@
       "id": "settings",
       "label": "Settings",
       "placement": {
-        "destination": "settings"
+        "headerAction": "settings"
       },
       "smoke": {
         "coverage": "route-entry",
@@ -581,6 +609,7 @@
     "home",
     "overview",
     "lessons",
+    "podcasts",
     "decks",
     "study-guides",
     "documents",
@@ -615,7 +644,7 @@
             "entryFragments": [
               "//main//*[@data-testid='home-today']//button[normalize-space(.)='Start review']",
               "Opening and dismissing selected-deck Practice setup",
-              "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options…\", deadline)",
+              "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice with options\u2026\", deadline)",
               "choose_menu_item(session_id, f\"{deck_name} actions\", \"Practice\", deadline)",
               "//main//button[normalize-space(.)='Practice']",
               "click(session_id, practice_button)"
@@ -647,8 +676,8 @@
             ],
             "assertionFragments": [
               "=== 'nav-home'",
-              "library-view-study-guides",
-              "=== 'Study Guides'"
+              "library-subject-tiles",
+              "=== 'Library'"
             ]
           }
         ]

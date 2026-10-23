@@ -54,13 +54,13 @@ class RouteSmokeContractTests(unittest.TestCase):
     def test_repository_contract_passes(self) -> None:
         completed = self.run_verifier(ROOT)
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("11 application sections, 1 application workflow", completed.stdout)
-        self.assertIn("11 checkpoint sections", completed.stdout)
+        self.assertIn("12 application sections, 1 application workflow", completed.stdout)
+        self.assertIn("12 checkpoint sections", completed.stdout)
         self.assertIn(
-            "5 navigation destinations, 6 Library views, 1 header actions",
+            "5 navigation destinations, 6 Library views, 2 header actions",
             completed.stdout,
         )
-        self.assertIn("13 route-entry; 0 presence-only", completed.stdout)
+        self.assertIn("14 route-entry; 0 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
 
     def test_internal_practice_retains_protected_smoke(self) -> None:
@@ -154,18 +154,18 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("sections opened by navigation destinations drifted", completed.stderr)
 
-    def test_settings_destination_stays_wired_to_settings(self) -> None:
+    def test_settings_header_action_stays_wired_to_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             self.copy_fixture(fixture)
             shell = fixture / "src/App.tsx"
             source = shell.read_text(encoding="utf-8")
-            opening = '  settings: "settings",\n'
+            opening = 'onSettings={() => navigate("settings")}'
             self.assertIn(opening, source)
-            shell.write_text(source.replace(opening, '  settings: "home",\n', 1), encoding="utf-8")
+            shell.write_text(source.replace(opening, 'onSettings={() => navigate("home")}', 1), encoding="utf-8")
             completed = self.run_verifier(fixture)
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("sections opened by navigation destinations drifted", completed.stderr)
+            self.assertIn("header action settings does not open section settings", completed.stderr)
 
     def test_rejects_flashcards_workspace_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
