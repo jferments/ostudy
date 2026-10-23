@@ -30,6 +30,11 @@ export interface AppSettings {
   guidePdfTheme?: "navy" | "sage" | "slate" | "plum";
   /** Whether an exported study guide PDF carries the learner's notes. */
   guidePdfIncludeNotes?: boolean;
+  /**
+   * Whether a new course's lessons have their narration spoken and kept as
+   * soon as they are written, when a lesson voice is set up. On by default.
+   */
+  lectureAudioWithNewLessons?: boolean;
 }
 
 export interface AppInfo {

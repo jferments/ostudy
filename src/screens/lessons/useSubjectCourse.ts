@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
+import { getSettings } from "../../ipc/settings";
+import { getSpeechSettings } from "../../ipc/speech";
 import {
   cancelSubjectCourseWriting,
+  getLesson,
   getSubjectCourseWritingProgress,
   listSubjectLessons,
+  narrateLessonStep,
   updateLessonFromSources,
   writeSubjectCourse,
   type CourseWritingProgress,
@@ -48,7 +52,10 @@ function startRun(subjectId: string, rewrite: boolean) {
   publish(subjectId, { operationId, stopping: false, progress: null, outcome: null });
   watchProgress(subjectId, operationId);
   void writeSubjectCourse(subjectId, operationId, rewrite).then(
-    (lessons) => settle(subjectId, operationId, { lessons }),
+    (lessons) => {
+      settle(subjectId, operationId, { lessons });
+      void makeLectureAudio(lessons);
+    },
     (error: unknown) =>
       settle(
         subjectId,
@@ -58,6 +65,33 @@ function startRun(subjectId: string, rewrite: boolean) {
           : { error: getErrorMessage(error) },
       ),
   );
+}
+
+/**
+ * Speaks and keeps each new lesson's narration when the learner asked for
+ * lecture audio with new lessons and a lesson voice is set up, so the
+ * lecture plays without waiting for the voice. Audio is optional: the
+ * lessons are already saved, and a step that fails is spoken when played.
+ */
+export async function makeLectureAudio(course: SubjectLessons): Promise<void> {
+  try {
+    const [settings, speech] = await Promise.all([getSettings(), getSpeechSettings()]);
+    if (settings.lectureAudioWithNewLessons === false || speech.profileId === null) return;
+  } catch {
+    return;
+  }
+  for (const summary of course.lessons) {
+    if (!summary.written) continue;
+    try {
+      const lesson = await getLesson(summary.id);
+      for (const step of lesson.content.steps) {
+        if (!step.narration.trim()) continue;
+        await narrateLessonStep(summary.id, lesson.revisionNumber, step.key).catch(() => undefined);
+      }
+    } catch {
+      // The lesson could not be read; its audio is made when it is played.
+    }
+  }
 }
 
 /**

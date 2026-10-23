@@ -188,6 +188,10 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
         name: "guidePdfIncludeNotes",
         ty: TypeScriptType::Boolean,
     },
+    FieldContract {
+        name: "lectureAudioWithNewLessons",
+        ty: TypeScriptType::Boolean,
+    },
 ];
 
 const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
@@ -516,6 +520,7 @@ pub fn representative_fixtures() -> Value {
             new_day_start_hour: 4,
             guide_pdf_theme: "sage".to_string(),
             guide_pdf_include_notes: true,
+            lecture_audio_with_new_lessons: true,
         },
         "completedRestore": restore.clone(),
         "librarySession": SessionStatus {

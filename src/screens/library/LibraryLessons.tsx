@@ -83,7 +83,7 @@ function SubjectLessons({
 
   if (playing && tile && openLessonId) {
     return (
-      <PageScaffold width="workspace" aria-label={`${tile.name} lesson`}>
+      <PageScaffold width="full" aria-label={`${tile.name} lesson`}>
         <LessonPlayer
           lessonId={openLessonId}
           subjectName={tile.name}

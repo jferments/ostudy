@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as lessonsIpc from "../../ipc/lessons";
@@ -10,10 +10,26 @@ vi.mock("../../ipc/common", () => ({
 vi.mock("../../ipc/lessons", () => ({
   getLesson: vi.fn(),
   saveLessonProgress: vi.fn(),
-  answerLessonCheck: vi.fn(),
-  getLessonLecture: vi.fn(),
-  getLessonLectureScript: vi.fn(async () => null),
-  narrateLessonStep: vi.fn(),
+}));
+// The lecture has its own tests; here it reports the step it shows and finishes.
+vi.mock("./LectureView", () => ({
+  LectureView: (props: {
+    stepKey: string | null;
+    position?: string;
+    backLabel: string;
+    onStepShown?: (stepKey: string) => void;
+    onFinish?: () => void;
+    onClose: () => void;
+  }) => (
+    <div data-testid="lecture-view">
+      <p>Opens at {props.stepKey ?? "the title"}</p>
+      <p>{props.position}</p>
+      <button type="button" onClick={() => props.onStepShown?.("rate")}>Show heart rate</button>
+      <button type="button" onClick={() => props.onStepShown?.("volume")}>Show stroke volume</button>
+      <button type="button" onClick={props.onFinish}>Finish lesson</button>
+      <button type="button" onClick={props.onClose}>{props.backLabel}</button>
+    </div>
+  ),
 }));
 
 function makeProgress(overrides: Partial<lessonsIpc.LessonProgress> = {}): lessonsIpc.LessonProgress {
@@ -91,14 +107,16 @@ describe("LessonPlayer", () => {
     );
   });
 
-  it("resumes where the learner stopped and saves each move", async () => {
+  it("opens the lecture where the learner stopped and saves each new step it shows", async () => {
     vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 })));
     renderPlayer();
-    expect(await screen.findByRole("heading", { level: 1, name: "Stroke volume" })).toBeTruthy();
-    expect(screen.getByText("Lesson 2 · Step 2 of 2")).toBeTruthy();
+    expect(await screen.findByText("Opens at volume")).toBeTruthy();
+    expect(screen.getByText("Lesson 2 of 5")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: /Back/u }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Heart rate" })).toBeTruthy();
+    // Showing the step it opened at saves nothing new.
+    fireEvent.click(screen.getByRole("button", { name: "Show stroke volume" }));
+    expect(lessonsIpc.saveLessonProgress).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Show heart rate" }));
     expect(lessonsIpc.saveLessonProgress).toHaveBeenCalledWith("lesson-1", 2, 0, false);
   });
 
@@ -107,92 +125,28 @@ describe("LessonPlayer", () => {
       makeLesson(makeProgress({ currentStep: 1, furthestStep: 1, finishedAt: 5 })),
     );
     const props = renderPlayer();
-    expect(await screen.findByRole("heading", { level: 1, name: "Heart rate" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Next/u }));
-    fireEvent.click(await screen.findByRole("button", { name: /Finish lesson/u }));
+    expect(await screen.findByText("Opens at rate")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
     await vi.waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
     expect(lessonsIpc.saveLessonProgress).toHaveBeenLastCalledWith("lesson-1", 2, 1, true);
-  });
-
-  it("checks an answer natively and explains it", async () => {
-    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 })));
-    vi.mocked(lessonsIpc.answerLessonCheck).mockResolvedValue({
-      correct: false,
-      correctOptionId: "a",
-      explanation: "Filling stretches the muscle.",
-      progress: makeProgress({ currentStep: 1, checks: { volume: { optionId: "b", correct: false } } }),
-    });
-    renderPlayer();
-    const check = await screen.findByTestId("lesson-check");
-    const submit = within(check).getByRole("button", { name: "Check answer" });
-    expect((submit as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(within(check).getByRole("radio", { name: "Less filling" }));
-    fireEvent.click(submit);
-    expect(await within(check).findByText("Not quite.")).toBeTruthy();
-    expect(within(check).getByText("Filling stretches the muscle.")).toBeTruthy();
-    expect(lessonsIpc.answerLessonCheck).toHaveBeenCalledWith("lesson-1", 2, "volume", "b");
-  });
-
-  it("asks a prediction ahead of the step's teaching and a check after it", async () => {
-    const lesson = makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 }));
-    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(lesson);
-    renderPlayer();
-    let check = await screen.findByTestId("lesson-check");
-    expect(within(check).getByText("Quick check")).toBeTruthy();
-    const point = screen.getByText("Stroke volume point");
-    expect(point.compareDocumentPosition(check) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    cleanup();
-
-    lesson.content.steps[1]!.check!.timing = "before";
-    renderPlayer();
-    check = await screen.findByTestId("lesson-check");
-    expect(within(check).getByText("What do you think?")).toBeTruthy();
-    expect(
-      screen.getByText("Stroke volume point").compareDocumentPosition(check) & Node.DOCUMENT_POSITION_PRECEDING,
-    ).toBeTruthy();
-  });
-
-  it("shows an earlier answer's outcome when the step reopens", async () => {
-    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(
-      makeLesson(makeProgress({ currentStep: 1, checks: { volume: { optionId: "a", correct: true } } })),
-    );
-    renderPlayer();
-    const check = await screen.findByTestId("lesson-check");
-    expect(within(check).getByText("Right.")).toBeTruthy();
-    expect(within(check).queryByRole("button", { name: "Check answer" })).toBeNull();
   });
 
   it("tells the learner when their place was not saved", async () => {
     vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(null));
     vi.mocked(lessonsIpc.saveLessonProgress).mockRejectedValue(new Error("Disk full"));
     const props = renderPlayer();
-    fireEvent.click(await screen.findByRole("button", { name: /Next/u }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Stroke volume" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Show stroke volume" }));
     await vi.waitFor(() =>
       expect(props.showToast).toHaveBeenCalledWith("error", "Your place in this lesson was not saved: Disk full"),
     );
   });
 
-  it("views the lesson as a lecture at the current step and comes back to it", async () => {
-    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(makeProgress({ currentStep: 1, furthestStep: 1 })));
-    vi.mocked(lessonsIpc.getLessonLecture).mockResolvedValue({
-      lessonId: "lesson-1",
-      revisionNumber: 2,
-      title: "Cardiac output",
-      slides: [
-        { key: "title", kind: "title", stepKey: null, title: "Cardiac output", points: [], notes: "" },
-        { key: "step:rate", kind: "step", stepKey: "rate", title: "Heart rate", points: [], notes: "" },
-        { key: "step:volume", kind: "step", stepKey: "volume", title: "Stroke volume", points: ["Filling"], notes: "" },
-      ],
-    });
-    renderPlayer();
-    fireEvent.click(await screen.findByRole("button", { name: /View as lecture/u }));
-    expect(await screen.findByText("Slide 3 of 3")).toBeTruthy();
-    expect(lessonsIpc.getLessonLecture).toHaveBeenCalledWith("lesson-1", 2);
-
-    const breadcrumb = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
-    fireEvent.click(breadcrumb.getByRole("button", { name: /Cardiac output/u }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Stroke volume" })).toBeTruthy();
+  it("goes back to the subject's lessons", async () => {
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(null));
+    const props = renderPlayer();
+    await screen.findByTestId("lecture-view");
+    fireEvent.click(screen.getByRole("button", { name: "Cardiac physiology" }));
+    expect(props.onClose).toHaveBeenCalledOnce();
   });
 
   it("says when the lesson cannot open", async () => {

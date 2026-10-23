@@ -7,19 +7,24 @@ import { Button } from "../../ui/primitives/Button";
 import { RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 
-/** One step's check: choose, check, and see why. */
+/**
+ * One step's check: choose, check, and see why. `grid` lays the answers out
+ * two by two on wider screens, beside a lecture's notes.
+ */
 export function StepCheck({
   lessonId,
   revisionNumber,
   step,
   answered,
   onAnswered,
+  layout = "list",
 }: {
   lessonId: string;
   revisionNumber: number;
   step: LessonStep;
   answered: { optionId: string; correct: boolean } | null;
   onAnswered: (result: LessonCheckResult) => void;
+  layout?: "list" | "grid";
 }) {
   const check = step.check!;
   const [choice, setChoice] = useState(answered?.optionId ?? "");
@@ -59,11 +64,13 @@ export function StepCheck({
       <RadioGroup
         label={check.prompt}
         value={choice}
+        className={layout === "grid" ? "tw:grid tw:grid-cols-2 tw:gap-2 tw:compact:grid-cols-1" : undefined}
         options={check.options.map((option) => ({
           value: option.id,
           label: <span className="tw:break-words">{option.text}</span>,
           className: cn(
             "tw:rounded-md tw:px-3",
+            layout === "grid" && "tw:border tw:border-solid tw:border-border tw:py-2",
             result && option.id === result.correctOptionId && "tw:bg-success-soft",
             result && !result.correct && option.id === choice && "tw:bg-destructive/10",
           ),

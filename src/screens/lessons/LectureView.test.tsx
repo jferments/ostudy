@@ -162,6 +162,7 @@ function open(
         steps={[multiplier]}
         answered={answered}
         onAnswered={onAnswered}
+        backLabel="Loop of Henle"
         onClose={onClose}
         showToast={vi.fn()}
       />
@@ -293,6 +294,40 @@ describe("LectureView", () => {
       (screen.getByRole("button", { name: /Next/ }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("reports each step it shows and finishes the lesson from the last slide", async () => {
+    const onStepShown = vi.fn();
+    const onFinish = vi.fn();
+    render(
+      <LayoutModeProvider>
+        <LectureView
+          lessonId="lesson-1"
+          revisionNumber={2}
+          lessonTitle="Loop of Henle"
+          subjectId="subject-1"
+          stepKey="multiplier"
+          steps={[multiplier]}
+          answered={{}}
+          onAnswered={vi.fn()}
+          onStepShown={onStepShown}
+          onFinish={onFinish}
+          backLabel="Kidney"
+          position="Lesson 2 of 6"
+          onClose={vi.fn()}
+          showToast={vi.fn()}
+        />
+      </LayoutModeProvider>,
+    );
+    expect(await screen.findByText("Slide 4 of 5")).toBeTruthy();
+    expect(screen.getByText("Lesson 2 of 6 · 5 slides")).toBeTruthy();
+    expect(onStepShown).toHaveBeenLastCalledWith("multiplier");
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Finish lesson/ }));
+    expect(onFinish).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Slide 2: Two limbs, two jobs" }));
+    expect(onStepShown).toHaveBeenLastCalledWith("two-limbs");
+    expect(screen.getByRole("button", { name: /Kidney/ })).toBeTruthy();
   });
 
   it("plays from the first step, skips a step with nothing to say, and stops after the last", async () => {
@@ -499,9 +534,7 @@ describe("LectureView", () => {
           "Look at the first point: the two limbs do opposite jobs.",
         ),
       ).toBeTruthy();
-      expect(
-        screen.getByText(/the notes are the teacher's lecture/),
-      ).toBeTruthy();
+      expect(screen.getByText("The teacher says")).toBeTruthy();
       expect(
         screen.queryByRole("button", { name: /Write the teacher's lecture/ }),
       ).toBeNull();
@@ -532,7 +565,7 @@ describe("LectureView", () => {
         reply: "Not quite. The ascending limb is watertight.",
       });
       open();
-      await screen.findByText(/the notes are the teacher's lecture/);
+      await screen.findByText("The teacher says");
       fireEvent.click(screen.getByRole("button", { name: /Play lecture/ }));
       await vi.waitFor(() => expect(audio().src).toBe("blob:talk:title"));
       expect(narrateLessonStep).not.toHaveBeenCalled();
@@ -591,7 +624,7 @@ describe("LectureView", () => {
         reply: "Right. Let us see why.",
       });
       open("two-limbs");
-      await screen.findByText(/the notes are the teacher's lecture/);
+      await screen.findByText("The teacher says");
       fireEvent.click(screen.getByRole("button", { name: /Play lecture/ }));
       await vi.waitFor(() =>
         expect(audio().src).toBe("blob:ask:step:two-limbs"),

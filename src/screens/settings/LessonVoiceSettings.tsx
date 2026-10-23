@@ -10,6 +10,7 @@ import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TASK_GRID, TaskOffRow } from "./DefaultAiModelSettings";
 import { SpeechVoicesDialog } from "./SpeechVoicesDialog";
+import { SwitchRow } from "./SettingsControls";
 
 const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground";
 
@@ -24,10 +25,13 @@ const fieldClass = "tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:
 export function LessonVoiceSettings({
   connectionsKey,
   onAddOpenRouter,
+  lectureAudio,
 }: {
   connectionsKey: unknown;
   /** Offered when no OpenRouter connection can speak. */
   onAddOpenRouter?: () => void;
+  /** Whether new lessons get their lecture audio made, shown once a voice is chosen. */
+  lectureAudio?: { checked: boolean; onChange: (checked: boolean) => void };
 }) {
   const wide = useLayoutMode().layoutMode === "wide";
   const lane = useRequestLane();
@@ -171,6 +175,13 @@ export function LessonVoiceSettings({
   );
   const feedback = (
     <>
+      {lectureAudio && settings.profileId ? (
+        <SwitchRow
+          label="Make lecture audio with new lessons"
+          checked={lectureAudio.checked}
+          onChange={lectureAudio.onChange}
+        />
+      ) : null}
       {error ? <InlineNotice kind="error">The lesson voice was not saved: {error}</InlineNotice> : null}
       {voices !== "closed" ? (
         <SpeechVoicesDialog

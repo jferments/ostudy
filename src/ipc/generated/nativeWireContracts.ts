@@ -38,6 +38,7 @@ export interface NativeAppSettings {
   newDayStartHour: number;
   guidePdfTheme: "navy" | "sage" | "slate" | "plum";
   guidePdfIncludeNotes: boolean;
+  lectureAudioWithNewLessons: boolean;
 }
 
 export interface NativeCompletedLibraryRestore {
