@@ -2,7 +2,7 @@ import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/docu
 import type { DocumentArtifactJob } from "../../ipc/studyGuides";
 import { Progress } from "../../ui/primitives/Progress";
 import { isActiveArtifactJob } from "../../controllers/useDocumentArtifactProgress";
-import { activeWindowDetail } from "./DocumentProgress";
+import { activeWindowDetail, generationStage } from "./DocumentProgress";
 import { progressStyles } from "./presentation";
 
 type ArtifactProgress = {
@@ -11,6 +11,9 @@ type ArtifactProgress = {
   complete: boolean;
   failed: boolean;
 };
+
+/** Phases in which flashcards themselves are being written or saved. */
+const AUTHORING_PHASES = new Set(["generating", "curating", "committing"]);
 
 function ratio(completed: number, total: number): number | null {
   return total > 0 ? Math.round(100 * Math.max(0, Math.min(completed, total)) / total) : null;
@@ -32,7 +35,12 @@ export function flashcardProgress(
       || document.safeErrorCode === "ai_request_canceled";
     return { value, status: stopped ? "Stopped" : "Needs attention", complete: false, failed: true };
   }
+  // Before cards are written the document is still being read or planned;
+  // a planned window count would look like stalled card work.
+  const waiting = document.lifecycleState === "processing" && progress !== null
+    && !AUTHORING_PHASES.has(progress.phase) && document.generationCompletedWindowCount === 0;
   const status = progress?.phase === "curating" ? "Reviewing cards"
+    : waiting ? "Waiting"
     : document.generationWindowCount > 0
       ? `${document.generationCompletedWindowCount} / ${document.generationWindowCount} windows`
       : "Preparing";
@@ -112,10 +120,20 @@ export function LearningArtifactProgressPanel({ document, progress, guideJob, gu
 }) {
   const activeWindows = progress?.phase === "generating"
     ? activeWindowDetail(progress, document.generationWindowCount, document.sourceUnitKind) : null;
+  // What the document is doing before either artifact can start: reading,
+  // organizing or planning, each with its own counts.
+  const step = document.lifecycleState === "processing" && progress !== null && !AUTHORING_PHASES.has(progress.phase)
+    ? generationStage(document, progress) : null;
+  const guideUsage = guideJob && (guideJob.apiTokenCount !== null || !isActiveArtifactJob(guideJob))
+    ? guideUsageDetail(guideJob) : null;
   return <div className={progressStyles.panel} aria-live="polite">
+    {step ? <div className="tw:grid tw:min-w-0 tw:gap-1" data-testid="document-current-step">
+      <div className={progressStyles.heading}><span>{step.title}</span></div>
+      <div className={progressStyles.detail}>{step.detail}</div>
+    </div> : null}
     <ArtifactRow label="Flashcards" progress={flashcardProgress(document, progress)} />
     <ArtifactRow label="Study Guide" progress={guideProgress(guideJob, guideStarting)} />
-    {guideJob ? <div className={progressStyles.detail}>{guideUsageDetail(guideJob)}</div> : null}
+    {guideUsage ? <div className={progressStyles.detail}>{guideUsage}</div> : null}
     {activeWindows ? <div className={progressStyles.detail}>{activeWindows}</div> : null}
     {guideJob?.safeErrorMessage ? <div className="tw:text-small tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}
     {readFailed ? <div className={progressStyles.detail}>Progress unavailable; showing the last saved status.</div> : null}
