@@ -115,8 +115,13 @@
     if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
   for (i, b) in s.blocks.enumerate() {
-    block-view(b)
-    if i == s.figureAfter { figures-view(s.figures, number) }
+    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) {
+      wrapped-bullets(b.items, s.figures.first(), number + ".1")
+      figures-view(s.figures.slice(1), number, first: 2)
+    } else {
+      block-view(b)
+      if i == s.figureAfter { figures-view(s.figures, number) }
+    }
   }
   if s.blocks.len() == 0 { figures-view(s.figures, number) }
   if s.notes.len() > 0 {

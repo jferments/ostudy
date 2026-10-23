@@ -109,20 +109,45 @@
   }
 }
 
-#let figure-body(f, n) = [
-  #align(center, image(f.path, width: f.width * 1mm, height: auto, fit: "contain"))
+#let figure-body(f, n, width: auto) = [
+  #align(center, image(f.path, width: if width == auto { f.width * 1mm } else { width }, height: auto, fit: "contain"))
   #v(1.5mm)
   #set par(justify: false)
   #text(font: ui, size: 7.6pt, fill: T.muted)[#text(weight: 700, fill: T.primary, "Figure " + n + "  ") #rt(f.title)#if f.caption.len() > 0 [. #rt(f.caption)]]]
 
 #let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false, width: 100%, figure-body(f, n))
 
-// Two narrow figures share a row; anything else stacks.
-#let figures-view(figures, number) = {
+// Two narrow figures share a row; anything else stacks. `first` numbers them
+// after a figure already set beside the text.
+#let figures-view(figures, number, first: 1) = {
   if figures.len() == 2 and figures.all(f => f.width <= 84) {
     block(above: 4mm, below: 4mm, breakable: false, grid(columns: (1fr, 1fr), column-gutter: 6mm,
-      ..figures.enumerate().map(((i, f)) => figure-body(f, number + "." + str(i + 1)))))
+      ..figures.enumerate().map(((i, f)) => figure-body(f, number + "." + str(first + i)))))
   } else {
-    for (i, f) in figures.enumerate() { figure-view(f, number + "." + str(i + 1)) }
+    for (i, f) in figures.enumerate() { figure-view(f, number + "." + str(first + i)) }
   }
 }
+
+// A figure no wider than this sits beside the text that leads up to it;
+// a wider one keeps the full width below it.
+#let float-max-width = 112
+#let floats(f) = f.width <= float-max-width
+
+// Sets figure `f` at the right of the first bullet points, as many as reach
+// its height, then runs the rest across the full width.
+#let wrapped-bullets(items, f, n) = layout(size => {
+  let gutter = 5mm
+  let width = calc.min(f.width * 1mm, size.width * 0.42)
+  let side = figure-body(f, n, width: width)
+  let tall = measure(block(width: width, side)).height
+  let column = size.width - width - gutter
+  let count = 0
+  let used = 0pt
+  while count < items.len() and used < tall {
+    used += measure(block(width: column, bullets((items.at(count),)))).height + 1.2mm
+    count += 1
+  }
+  block(above: 2mm, below: 3mm, breakable: false, grid(columns: (1fr, width), column-gutter: gutter,
+    bullets(items.slice(0, count)), side))
+  if count < items.len() { bullets(items.slice(count)) }
+})

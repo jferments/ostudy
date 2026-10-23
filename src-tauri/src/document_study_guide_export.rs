@@ -1341,6 +1341,38 @@ mod tests {
     }
 
     #[test]
+    fn a_narrow_figure_sits_beside_the_key_points_and_a_wide_one_below() {
+        let mut export = test_export();
+        let points = (1..=6)
+            .map(|index| format!("Key point number {index} about ventricular filling."))
+            .collect::<Vec<_>>();
+        let section = &mut export.sections[0];
+        section.body_lines = vec![
+            ExportBlock::Paragraph("Preload reflects ventricular filling.".to_string()),
+            ExportBlock::Heading("Key points".to_string()),
+            ExportBlock::Bullets(points.clone()),
+        ];
+        for (title, width, height) in [("Narrow loop", 3, 4), ("Wide pressure trace", 8, 2)] {
+            section.figures.push(ExportFigure {
+                image: guide_typst::FigureImage::from_rgba(image::RgbaImage::new(width, height))
+                    .unwrap(),
+                title: title.to_string(),
+                caption: String::new(),
+            });
+        }
+        let (bytes, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        assert!(String::from_utf8_lossy(&bytes).contains("/Subtype/Image"));
+        let all = pages.join("\n");
+        for point in &points {
+            assert!(all.contains(point.as_str()), "{point}");
+        }
+        assert!(all.contains("Figure 1.1"));
+        assert!(all.contains("Narrow loop"));
+        assert!(all.contains("Figure 1.2"));
+        assert!(all.contains("Wide pressure trace"));
+    }
+
+    #[test]
     fn rendered_pdf_contains_bookmarks_and_contents_links() {
         let (bytes, _) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);
         let raw = String::from_utf8_lossy(&bytes);
