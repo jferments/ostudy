@@ -108,8 +108,27 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
             .map(|passage| passage.page_number)
             .collect(),
         title: title.trim().to_string(),
-        shows: rest.to_string(),
+        shows: caption_detail(rest),
     })
+}
+
+/// The caption's sentences after its title, up to the abbreviation key
+/// ("ACh, Acetylcholine; …") or a fragment the caption search cut short.
+fn caption_detail(rest: &str) -> String {
+    let mut kept = Vec::new();
+    for sentence in rest.split(". ") {
+        let sentence = sentence.trim().trim_end_matches('.');
+        let key = sentence.split_once(", ").is_some_and(|(term, _)| {
+            !term.contains(' ')
+                && term.chars().any(|c| c.is_ascii_uppercase())
+                && term.chars().skip(1).any(|c| c.is_ascii_uppercase())
+        });
+        if sentence.is_empty() || key || sentence.ends_with([',', ';', ':']) {
+            break;
+        }
+        kept.push(sentence);
+    }
+    kept.join(". ")
 }
 
 /// "Fig. 8.12 Mechanism of …" reads "Mechanism of …".

@@ -166,9 +166,16 @@ fn an_unread_numbered_figure_shows_once_when_its_caption_matches_the_section() {
         figures[0].title,
         "Mechanism of HCl secretion by gastric parietal cells"
     );
+    // The abbreviation key is left out.
+    assert_eq!(figures[0].caption, "Source page 23");
+
     assert_eq!(
-        figures[0].caption,
-        "ATP, adenosine triphosphate. Source page 23"
+        caption_detail("Initial saliva is produced by acinar cells. ACh, Acetylcholine; ATP,"),
+        "Initial saliva is produced by acinar cells"
+    );
+    assert_eq!(
+        caption_detail("Efferent neurons synapse in the plexuses. ACh,"),
+        "Efferent neurons synapse in the plexuses"
     );
 
     let mut unlabelled = unread(
