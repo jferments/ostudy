@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { DocumentSummary } from "../../ipc/documents";
+import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/documents";
 import type { DocumentArtifactJob } from "../../ipc/studyGuides";
 import {
   flashcardProgress, guideProgress, guideUsageDetail, LearningArtifactProgressPanel,
@@ -119,5 +119,36 @@ describe("durable learning-artifact progress", () => {
       ...document, lifecycleState: "processing", generatedDeckId: null,
       safeErrorCode: "ai_document_output_invalid",
     }, null).failed).toBe(false);
+  });
+
+  it("says what the document is doing before cards or the guide can start", () => {
+    const planning = {
+      ...document, lifecycleState: "processing", generatedDeckId: null, sourceUnitCount: 55,
+      sourceUnitKind: "page", sourceFormat: "pdf", renderedPageCount: 55,
+      outlineWindowCount: 40, outlineCompletedWindowCount: 12,
+      generationWindowCount: 58, generationCompletedWindowCount: 0,
+    } as DocumentSummary;
+    const live = {
+      phase: "outline", currentWindow: 13, currentWindowEnd: 20, currentPageStart: 14, currentPageEnd: 19,
+      completedWindows: 12, totalWindows: 40,
+    } as DocumentGenerationProgress;
+    render(<LearningArtifactProgressPanel document={planning} progress={live}
+      guideJob={{ ...job, state: "preparing", completedUnits: 0 }} guideStarting={true} readFailed={false} />);
+    expect(screen.getByText("Planning the study material")).toBeTruthy();
+    expect(screen.getByText("Active windows 13–20 of 40 · pages 14–19.")).toBeTruthy();
+    expect(screen.getByText("Waiting")).toBeTruthy();
+    expect(screen.queryByText(/58 windows/)).toBeNull();
+    expect(screen.queryByText(/Awaiting provider usage/)).toBeNull();
+  });
+
+  it("drops the step line once cards are being written", () => {
+    const writing = { ...document, lifecycleState: "processing", generatedDeckId: null,
+      generationCompletedWindowCount: 3 } as DocumentSummary;
+    const live = { phase: "generating", currentWindow: 4, currentWindowEnd: null,
+      currentPageStart: null, currentPageEnd: null } as DocumentGenerationProgress;
+    render(<LearningArtifactProgressPanel document={writing} progress={live} guideJob={null}
+      guideStarting={false} readFailed={false} />);
+    expect(screen.queryByTestId("document-current-step")).toBeNull();
+    expect(screen.getByText("3 / 10 windows")).toBeTruthy();
   });
 });

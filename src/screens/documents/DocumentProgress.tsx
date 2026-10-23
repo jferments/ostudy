@@ -123,7 +123,7 @@ function formatActivityAge(ageSeconds: number): string {
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
-function generationStage(document: DocumentSummary, progress: DocumentGenerationProgress | null): { title: string; detail: string } {
+export function generationStage(document: DocumentSummary, progress: DocumentGenerationProgress | null): { title: string; detail: string } {
   if (document.sourceUnitCount === 0) return ingestionStage(progress?.phase) ?? {
     title: "Opening your document", detail: `Reading the ${formatDocumentType(document.sourceFormat)} source and building semantic chunks.`,
   };
@@ -137,6 +137,10 @@ function generationStage(document: DocumentSummary, progress: DocumentGeneration
   };
   if (progress?.phase === "understanding material") return {
     title: "Reading your document", detail: readingDetail(document, progress),
+  };
+  if (progress?.phase === "indexing saved material") return {
+    title: "Indexing what it learned",
+    detail: progress.totalWindows > 0 ? `${progress.completedWindows} of ${progress.totalWindows}` : "Making saved knowledge searchable.",
   };
   if (progress?.phase === "organizing knowledge") return {
     title: "Putting what it learned in order", detail: "Building the learning outline from saved interpretations, not rereading the raw document.",
