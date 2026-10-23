@@ -2,7 +2,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as lessonsIpc from "../../ipc/lessons";
-import { COURSE_PROGRESS_INTERVAL_MS, resetCourseRunsForTests, useSubjectCourse } from "./useSubjectCourse";
+import * as settingsIpc from "../../ipc/settings";
+import * as speechIpc from "../../ipc/speech";
+import {
+  COURSE_PROGRESS_INTERVAL_MS,
+  makeLectureAudio,
+  resetCourseRunsForTests,
+  useSubjectCourse,
+} from "./useSubjectCourse";
 
 vi.mock("../../ipc/common", () => ({
   createOperationId: () => "operation-1",
@@ -15,7 +22,11 @@ vi.mock("../../ipc/lessons", () => ({
   cancelSubjectCourseWriting: vi.fn(),
   getSubjectCourseWritingProgress: vi.fn(),
   updateLessonFromSources: vi.fn(),
+  getLesson: vi.fn(),
+  narrateLessonStep: vi.fn(),
 }));
+vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn(async () => ({ lectureAudioWithNewLessons: false })) }));
+vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(async () => ({ profileId: null })) }));
 
 const EMPTY: lessonsIpc.SubjectLessons = { subjectId: "cardiac", lessons: [] };
 const WRITTEN = {
@@ -139,5 +150,48 @@ describe("useSubjectCourse", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("makeLectureAudio", () => {
+  const course = {
+    subjectId: "cardiac",
+    lessons: [
+      { id: "lesson-1", subjectId: "cardiac", title: "Filling", revision: 1, written: {}, progress: null },
+      { id: "lesson-2", subjectId: "cardiac", title: "Planned", revision: 1, written: null, progress: null },
+    ],
+  } as unknown as lessonsIpc.SubjectLessons;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue({
+      revisionNumber: 3,
+      content: {
+        steps: [
+          { key: "a", narration: "Say this." },
+          { key: "b", narration: "  " },
+        ],
+      },
+    } as unknown as lessonsIpc.Lesson);
+    vi.mocked(lessonsIpc.narrateLessonStep).mockResolvedValue({ segments: [], made: 1 });
+  });
+
+  it("speaks each written lesson's narration when asked for and a voice is set up", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: true } as settingsIpc.AppSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    await makeLectureAudio(course);
+    expect(lessonsIpc.getLesson).toHaveBeenCalledTimes(1);
+    expect(lessonsIpc.narrateLessonStep).toHaveBeenCalledTimes(1);
+    expect(lessonsIpc.narrateLessonStep).toHaveBeenCalledWith("lesson-1", 3, "a");
+  });
+
+  it("makes nothing when turned off or without a voice", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: false } as settingsIpc.AppSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    await makeLectureAudio(course);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue({} as settingsIpc.AppSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: null } as speechIpc.SpeechSettings);
+    await makeLectureAudio(course);
+    expect(lessonsIpc.narrateLessonStep).not.toHaveBeenCalled();
   });
 });

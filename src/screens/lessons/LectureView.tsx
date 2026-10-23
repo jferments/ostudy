@@ -29,9 +29,10 @@ import { Dialog, Sheet } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
-import { RadioGroup } from "../../ui/primitives/FormControls";
+import { Disclosure, RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { LessonBlocks } from "./LessonBlocks";
 import { SlideCards } from "./SlideCards";
 import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
@@ -60,6 +61,15 @@ interface LectureViewProps {
   steps: LessonStep[];
   answered: Record<string, AnsweredCheck>;
   onAnswered: (result: LessonCheckResult) => void;
+  /** Called with the step whose slide is shown, so the lesson keeps its place. */
+  onStepShown?: (stepKey: string) => void;
+  /** Finishes the lesson from its last slide. */
+  onFinish?: () => void;
+  finishing?: boolean;
+  /** Where the back link goes, such as the subject's lessons. */
+  backLabel: string;
+  /** Where this lesson sits in its course, such as "Lesson 2 of 6". */
+  position?: string;
   onClose: () => void;
   showToast: ShowToast;
 }
@@ -78,14 +88,15 @@ interface Asking {
 }
 
 /**
- * A lesson as slides, laid out natively in one of the study guide themes;
- * the plain slides show while they are laid out or if that fails. A step's
- * check is answered beside its slide. Once the teacher's lecture is written, the teacher
- * talks over every slide and now and then stops to ask the class a question,
- * answers it and goes on; until then each step's narration is spoken. Play
- * lecture speaks from the current slide and moves on as each one ends;
- * choosing another slide stops it. On a phone the check waits behind Check
- * yourself and opens in a sheet over the slide.
+ * A lesson as its lecture: the slides, laid out natively in one of the study
+ * guide themes (the plain slides show while they are laid out or if that
+ * fails), a filmstrip of them against the page's edge, and under the slide
+ * its notes, the step's own reading, its check and its cards. Once the
+ * teacher's lecture is written, the teacher talks over every slide and now
+ * and then stops to ask the class a question, answers it and goes on; until
+ * then each step's narration is spoken. Play lecture speaks from the current
+ * slide and moves on as each one ends; choosing another slide stops it. On a
+ * phone the check waits behind Check yourself and opens in a sheet.
  */
 export function LectureView({
   lessonId,
@@ -96,6 +107,11 @@ export function LectureView({
   steps,
   answered: answeredChecks,
   onAnswered,
+  onStepShown,
+  onFinish,
+  finishing = false,
+  backLabel,
+  position,
   onClose,
   showToast,
 }: LectureViewProps) {
@@ -125,6 +141,12 @@ export function LectureView({
   const compact = useLayoutMode().layoutMode === "compact";
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
+  const shownStep = lecture?.slides[index]?.stepKey ?? null;
+  const reportStep = useRef(onStepShown);
+  reportStep.current = onStepShown;
+  useEffect(() => {
+    if (shownStep) reportStep.current?.(shownStep);
+  }, [shownStep]);
 
   useEffect(() => {
     void latestResult(lane, () => getLessonLecture(lessonId, revisionNumber)).then(
@@ -155,7 +177,7 @@ export function LectureView({
 
   if (readError || !lecture) {
     return (
-      <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
+      <LectureFrame backLabel={backLabel} onClose={onClose}>
         {readError ? (
           <InlineNotice kind="error">This lecture could not open: {readError}</InlineNotice>
         ) : (
@@ -308,14 +330,14 @@ export function LectureView({
   }
 
   return (
-    <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
+    <LectureFrame backLabel={backLabel} onClose={onClose}>
       <header className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
         <div className="tw:flex tw:min-w-0 tw:flex-col tw:gap-1">
           <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-            {slides.length} slides · {script ? "the notes are the teacher's lecture" : "the notes are the narration"}
+            {[position, `${slides.length} slides`].filter(Boolean).join(" · ")}
           </p>
           <h1 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight tw:break-words">
-            {lecture.title} · lecture
+            {lessonTitle}
           </h1>
         </div>
         <div className="tw:flex tw:flex-wrap tw:gap-2">
@@ -364,40 +386,43 @@ export function LectureView({
       {scriptError ? <InlineNotice kind="error">{scriptError}</InlineNotice> : null}
       {saved ? <InlineNotice kind={saved.kind}>{saved.text}</InlineNotice> : null}
       {voice.error ? <InlineNotice kind="error">The lecture could not be read aloud: {voice.error}</InlineNotice> : null}
-      <div className="tw:grid tw:items-start tw:gap-6 tw:wide:grid-cols-[11rem_minmax(0,1fr)_20rem] tw:medium:grid-cols-[10rem_minmax(0,1fr)]">
+      <div className="tw:grid tw:items-start tw:gap-5 tw:wide:grid-cols-[8.5rem_minmax(0,1fr)] tw:medium:grid-cols-[7rem_minmax(0,1fr)]">
         <nav
           aria-label="Slides"
-          className="tw:hidden tw:rounded-lg tw:bg-(--ostudy-color-canvas-inset) tw:p-3 tw:wide:block tw:medium:block"
+          className="tw:sticky tw:top-0 tw:hidden tw:max-h-[calc(100dvh-6rem)] tw:overflow-y-auto tw:wide:block tw:medium:block"
         >
-          <ol className="tw:m-0 tw:flex tw:list-none tw:flex-col tw:gap-0.5 tw:p-0">
+          <ol className="tw:m-0 tw:flex tw:list-none tw:flex-col tw:gap-2 tw:p-0">
             {slides.map((item, position) => (
               <li key={item.key}>
                 <ItemTrigger
                   aria-current={position === index ? "step" : undefined}
+                  aria-label={`Slide ${position + 1}: ${item.title}`}
                   onClick={() => show(position)}
                   className={cn(
-                    "tw:w-full tw:items-center tw:gap-2.5 tw:rounded-md tw:px-2 tw:py-2 tw:text-start tw:text-small tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
-                    position === index && "tw:bg-card tw:font-semibold tw:shadow-sm",
+                    "tw:w-full tw:items-start tw:gap-1.5 tw:rounded-md tw:p-1 tw:text-start tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
+                    position === index && "tw:bg-accent",
                   )}
                 >
-                  <span className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-1">
-                    {designs.images.has(item.key) ? (
-                      <span className="tw:relative tw:block">
-                        <img
-                          src={designs.images.get(item.key)}
-                          alt=""
-                          className="tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border"
-                        />
-                        <InkOverlay marks={ink.marks.get(item.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} />
-                      </span>
-                    ) : null}
-                    <span className="tw:flex tw:gap-2">
-                      <span aria-hidden="true" className="tw:w-4 tw:shrink-0 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
-                        {position + 1}
-                      </span>
-                      <span className="tw:min-w-0 tw:flex-1 tw:break-words">{item.title}</span>
-                    </span>
+                  <span aria-hidden="true" className="tw:w-4 tw:shrink-0 tw:pt-0.5 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
+                    {position + 1}
                   </span>
+                  {designs.images.has(item.key) ? (
+                    <span className="tw:relative tw:block tw:min-w-0 tw:flex-1">
+                      <img
+                        src={designs.images.get(item.key)}
+                        alt=""
+                        className={cn(
+                          "tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border",
+                          position === index && "tw:ring-2 tw:ring-primary",
+                        )}
+                      />
+                      <InkOverlay marks={ink.marks.get(item.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} />
+                    </span>
+                  ) : (
+                    <span className="tw:grid tw:aspect-video tw:min-w-0 tw:flex-1 tw:place-items-center tw:overflow-hidden tw:rounded-sm tw:bg-card tw:p-1 tw:text-caption tw:ring-1 tw:ring-border tw:break-words">
+                      {item.title}
+                    </span>
+                  )}
                 </ItemTrigger>
               </li>
             ))}
@@ -407,7 +432,7 @@ export function LectureView({
           <section
             data-testid="lecture-slide"
             className={cn(
-              "tw:flex tw:aspect-video tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
+              "tw:flex tw:aspect-video tw:w-full tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
               image
                 ? "tw:relative tw:overflow-hidden tw:shadow-md tw:ring-1 tw:ring-border"
                 : "tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5",
@@ -439,63 +464,81 @@ export function LectureView({
             ) : null}
             </div>
           </section>
-          <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-3">
+          <div className="tw:flex tw:items-center tw:justify-between tw:gap-3">
             <Button className="tw:rounded-full" disabled={index === 0} onClick={() => show(index - 1)}>
               <Icon name="chevron-left" size={16} /> Back
             </Button>
             <span className="tw:text-small tw:tabular-nums tw:text-muted-foreground">
               Slide {index + 1} of {slides.length}
             </span>
-            <Button
-              variant="primary"
-              className="tw:rounded-full"
-              disabled={index === slides.length - 1}
-              onClick={() => show(index + 1)}
-            >
-              Next <Icon name="chevron-right" size={16} />
-            </Button>
+            {index === slides.length - 1 && onFinish ? (
+              <Button variant="primary" className="tw:rounded-full" disabled={finishing} onClick={onFinish}>
+                <Icon name="check" size={16} /> Finish lesson
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                className="tw:rounded-full"
+                disabled={index === slides.length - 1}
+                onClick={() => show(index + 1)}
+              >
+                Next <Icon name="chevron-right" size={16} />
+              </Button>
+            )}
+          </div>
+          <div className="tw:grid tw:items-start tw:gap-5 tw:wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section aria-label="With this slide" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
+              {step?.check && compact ? (
+                <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+                  <Button variant="primary" className="tw:rounded-full" onClick={() => setCheckOpen(true)}>
+                    <Icon name="help" size={16} /> Check yourself
+                  </Button>
+                  {checked ? (
+                    <span className="tw:text-small tw:text-muted-foreground">
+                      {checked.correct ? "Answered right" : "Answered, not quite"}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {(talk?.talk ?? slide.notes).trim() ? (
+                <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
+                  <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
+                    {talk ? "The teacher says" : "Notes"}
+                  </h3>
+                  <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
+                </section>
+              ) : null}
+              {talk?.question && !lecturing ? (
+                <div>
+                  <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
+                    <Icon name="help" size={16} /> Answer the teacher's question
+                  </Button>
+                </div>
+              ) : null}
+              {step && step.blocks.length > 0 ? (
+                <Disclosure title="Read this step" className="tw:bg-card">
+                  <div className="tw:p-4">
+                    <LessonBlocks blocks={step.blocks} />
+                  </div>
+                </Disclosure>
+              ) : null}
+            </section>
+            <section aria-label="Practice" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
+              {step?.check && !compact ? (
+                <StepCheck
+                  key={`${revisionNumber}-${step.key}`}
+                  lessonId={lessonId}
+                  revisionNumber={revisionNumber}
+                  step={step}
+                  answered={answeredChecks[step.key] ?? null}
+                  onAnswered={onAnswered}
+                  layout="grid"
+                />
+              ) : null}
+              {step ? <SlideCards key={step.key} subjectId={subjectId} step={step} showToast={showToast} /> : null}
+            </section>
           </div>
         </article>
-        <aside aria-label="With this slide" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4 tw:medium:col-start-2">
-          {step?.check && compact ? (
-            <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
-              <Button variant="primary" className="tw:rounded-full" onClick={() => setCheckOpen(true)}>
-                <Icon name="help" size={16} /> Check yourself
-              </Button>
-              {checked ? (
-                <span className="tw:text-small tw:text-muted-foreground">
-                  {checked.correct ? "Answered right" : "Answered, not quite"}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          {(talk?.talk ?? slide.notes).trim() ? (
-            <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
-              <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
-                {talk ? "The teacher says" : "Speaker notes"}
-              </h3>
-              <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
-            </section>
-          ) : null}
-          {talk?.question && !lecturing ? (
-            <div>
-              <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
-                <Icon name="help" size={16} /> Answer the teacher's question
-              </Button>
-            </div>
-          ) : null}
-          {step?.check && !compact ? (
-            <StepCheck
-              key={`${revisionNumber}-${step.key}`}
-              lessonId={lessonId}
-              revisionNumber={revisionNumber}
-              step={step}
-              answered={answeredChecks[step.key] ?? null}
-              onAnswered={onAnswered}
-            />
-          ) : null}
-          {step ? <SlideCards key={step.key} subjectId={subjectId} step={step} showToast={showToast} /> : null}
-        </aside>
       </div>
       {checkOpen && compact && step?.check ? (
         <Sheet
@@ -644,11 +687,11 @@ function ClassQuestionDialog({
 }
 
 function LectureFrame({
-  lessonTitle,
+  backLabel,
   onClose,
   children,
 }: {
-  lessonTitle: string;
+  backLabel: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -656,7 +699,7 @@ function LectureFrame({
     <div data-testid="lecture-view" className="tw:flex tw:flex-col tw:gap-4">
       <nav aria-label="Breadcrumb">
         <Button size="small" variant="text" className="tw:ps-0" onClick={onClose}>
-          <Icon name="chevron-left" size={16} /> {lessonTitle}
+          <Icon name="chevron-left" size={16} /> {backLabel}
         </Button>
       </nav>
       {children}

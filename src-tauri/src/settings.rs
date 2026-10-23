@@ -65,6 +65,10 @@ pub struct AppSettingsDto {
     pub guide_pdf_theme: String,
     #[serde(default = "default_true")]
     pub guide_pdf_include_notes: bool,
+    /// Whether a new course's lessons have their narration spoken and kept
+    /// as soon as they are written, when a lesson voice is set up.
+    #[serde(default = "default_true")]
+    pub lecture_audio_with_new_lessons: bool,
 }
 
 fn default_guide_pdf_theme() -> String {
@@ -157,6 +161,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         )?,
         guide_pdf_theme: get_setting(connection, "guidePdfTheme", default_guide_pdf_theme())?,
         guide_pdf_include_notes: get_setting(connection, "guidePdfIncludeNotes", true)?,
+        lecture_audio_with_new_lessons: get_setting(connection, "lectureAudioWithNewLessons", true)?,
     })
 }
 
@@ -315,6 +320,10 @@ fn save_settings_in_connection(
         (
             "guidePdfIncludeNotes",
             serde_json::to_string(&settings.guide_pdf_include_notes),
+        ),
+        (
+            "lectureAudioWithNewLessons",
+            serde_json::to_string(&settings.lecture_audio_with_new_lessons),
         ),
     ];
     for (key, serialized) in entries {

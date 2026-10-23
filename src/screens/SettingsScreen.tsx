@@ -225,7 +225,16 @@ export function SettingsScreen({
               <DefaultAiModelSettings
                 controller={aiController}
                 onAddOpenRouter={addOpenRouter}
-                extraRows={<LessonVoiceSettings connectionsKey={aiController.profiles} onAddOpenRouter={addOpenRouter} />}
+                extraRows={
+                  <LessonVoiceSettings
+                    connectionsKey={aiController.profiles}
+                    onAddOpenRouter={addOpenRouter}
+                    lectureAudio={{
+                      checked: draft.lectureAudioWithNewLessons ?? true,
+                      onChange: (lectureAudioWithNewLessons) => update({ lectureAudioWithNewLessons }),
+                    }}
+                  />
+                }
               />
             }
           />

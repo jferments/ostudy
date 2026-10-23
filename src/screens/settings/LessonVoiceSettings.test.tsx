@@ -91,6 +91,21 @@ describe("LessonVoiceSettings", () => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   });
 
+  it("offers lecture audio with new lessons once a voice is chosen", async () => {
+    vi.mocked(getSpeechSettings).mockResolvedValue(settings());
+    const onChange = vi.fn();
+    const view = render(<LessonVoiceSettings connectionsKey={1} lectureAudio={{ checked: true, onChange }} />);
+    const toggle = await screen.findByRole("switch", { name: "Make lecture audio with new lessons" });
+    fireEvent.click(toggle);
+    expect(onChange.mock.calls[0]?.[0]).toBe(false);
+    view.unmount();
+
+    vi.mocked(getSpeechSettings).mockResolvedValue(settings({ profileId: null }));
+    render(<LessonVoiceSettings connectionsKey={2} lectureAudio={{ checked: true, onChange }} />);
+    await screen.findByRole("combobox", { name: "Lesson voice connection" });
+    expect(screen.queryByRole("switch", { name: "Make lecture audio with new lessons" })).toBeNull();
+  });
+
   it("saves a voice against the revision it showed", async () => {
     vi.mocked(getSpeechSettings).mockResolvedValue(settings());
     vi.mocked(saveSpeechSettings).mockResolvedValue(settings({ voice: "bm_george", revision: 1 }));
