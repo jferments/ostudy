@@ -11,6 +11,7 @@
     "displayQuestionOnAnswer": false,
     "guidePdfIncludeNotes": true,
     "guidePdfTheme": "sage",
+    "lectureAudioWithNewLessons": true,
     "materialPreference": "automatic",
     "motionPreference": "system",
     "newDayStartHour": 4,
