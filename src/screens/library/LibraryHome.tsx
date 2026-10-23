@@ -13,7 +13,6 @@ import { ItemTrigger } from "../../ui/primitives/Item";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { cropTile } from "../documents/figures/cropTile";
 import { buildSubjectTiles, countLabel, SUBJECT_COLORS, type SubjectTile } from "../home/homeModel";
-import { NewSubjectSheet } from "../home/NewSubjectSheet";
 import { MAX_SESSION_DECKS } from "../home/TodayStrip";
 import { useDocumentPreparations } from "../home/useDocumentPreparations";
 import { SubjectActions, useLibrarySubjects } from "./LibrarySubjects";
@@ -40,8 +39,8 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
   const home = useOptionalHomeSummary();
   const subjects = useLibrarySubjects(ALL);
   const preparations = useDocumentPreparations();
-  const [creating, setCreating] = useState(false);
-  const [makingSet, setMakingSet] = useState(false);
+  // A new study set, or materials added to the subject named here.
+  const [makingSet, setMakingSet] = useState<{ subjectId?: string } | null>(null);
   const headingId = useId();
 
   if (!subjects.ready || !home?.summary || !home.library) {
@@ -76,9 +75,6 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
             <Button data-testid="library-all-cards" onClick={onOpenAllCards}>
               <Icon name="cards" size={15} /> All cards
             </Button>
-            <Button variant="primary" data-testid="library-new-study-set" onClick={() => setMakingSet(true)}>
-              <Icon name="sparkles" size={16} /> New study set
-            </Button>
           </div>
         }
       />
@@ -99,6 +95,7 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
                     name={tile.name}
                     subjects={subjects}
                     onChooseSubject={onChooseSubject}
+                    onAddMaterials={() => setMakingSet({ subjectId: tile.subjectId ?? undefined })}
                     showToast={showToast}
                   />
                 ) : null
@@ -108,38 +105,27 @@ export function LibraryHome({ onOpenSubject, onChooseSubject, onOpenAllCards, on
         ))}
         <li className="tw:min-w-0">
           <ItemTrigger
-            data-testid="library-new-subject"
-            onClick={() => setCreating(true)}
+            data-testid="library-new-study-set"
+            onClick={() => setMakingSet({})}
             className="tw:flex tw:size-full tw:min-h-40 tw:cursor-pointer tw:flex-col tw:items-center tw:justify-center tw:gap-2 tw:rounded-lg tw:border-[1.5px] tw:border-dashed tw:border-border tw:bg-transparent tw:font-sans tw:text-body tw:font-semibold tw:text-primary tw:outline-none tw:transition-colors tw:hover:bg-foreground/4 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:compact:min-h-16 tw:compact:flex-row"
           >
-            <Icon name="plus" size={22} /> New subject
+            New study set <Icon name="plus" size={22} />
           </ItemTrigger>
         </li>
       </ul>
       {makingSet ? (
         <NewStudySetSheet
           subjects={home.library.subjects}
+          subjectId={makingSet.subjectId}
           onClose={() => {
-            setMakingSet(false);
+            setMakingSet(null);
             home.refresh();
           }}
           onCreated={(subjectId, library) => {
-            setMakingSet(false);
+            setMakingSet(null);
             if (library) home.acceptLibrary(library);
             home.refresh();
             onOpenSubject(subjectId, "documents");
-          }}
-        />
-      ) : null}
-      {creating ? (
-        <NewSubjectSheet
-          onClose={() => setCreating(false)}
-          onCreated={(library, name) => {
-            setCreating(false);
-            home.acceptLibrary(library);
-            home.refresh();
-            const created = library.subjects.find((subject) => subject.name === name);
-            if (created) onOpenSubject(created.id, "documents");
           }}
         />
       ) : null}

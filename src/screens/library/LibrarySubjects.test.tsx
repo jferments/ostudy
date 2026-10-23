@@ -33,6 +33,7 @@ function Header({ onChooseSubject }: { onChooseSubject: () => void }) {
       onChooseSubject={onChooseSubject}
       onStartReview={vi.fn()}
       onPracticeSubject={vi.fn()}
+      onOpenDocuments={vi.fn()}
       showToast={vi.fn()}
     />
   );

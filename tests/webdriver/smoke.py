@@ -709,10 +709,10 @@ def open_library_home(session_id: str, deadline: float) -> None:
 
 
 def create_library_subject(session_id: str, name: str, deadline: float) -> None:
-    """Create a subject from Library's New subject sheet; the app opens its Documents."""
-    click(session_id, find_element(session_id, "css selector", "main button[data-testid='library-new-subject']", deadline))
+    """Create an empty subject from Library's New study set tile; the app opens its Documents."""
+    click(session_id, find_element(session_id, "css selector", "main button[data-testid='library-new-study-set']", deadline))
     set_input_text(session_id, "css selector", "[role='dialog'] input", name, deadline)
-    click_text_button(session_id, "Create subject", deadline)
+    click(session_id, find_element(session_id, "css selector", "[role='dialog'] button[data-testid='new-study-set-create']", deadline))
     find_element(
         session_id,
         "xpath",
