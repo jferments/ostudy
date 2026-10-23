@@ -13,6 +13,16 @@ pub(super) const MAX_GENERATED_SECTION_CHARS: usize = 64 * 1024;
 const MIN_SCALED_CHARS: usize = 512;
 /// Below this many catalog units a short section can be complete.
 const MIN_UNITS_FOR_THIN_SECTION: usize = 4;
+/// Characters per word of written prose, spaces included.
+const CHARS_PER_WORD: usize = 6;
+/// Words of a section besides its key points: a one-sentence overview and
+/// one retrieval check.
+const SECTION_FRAME_WORDS: usize = 45;
+/// The most words one key point may have.
+pub(super) const KEY_POINT_WORDS: usize = 22;
+/// Key points a section is asked for, however small or large its share.
+const MIN_KEY_POINTS: usize = 2;
+const MAX_KEY_POINTS_ASKED: usize = 10;
 pub(super) const MAX_OVERVIEW_CHARS: usize = MAX_GENERATED_SECTION_CHARS;
 pub(super) const MAX_KEY_POINTS: usize = 32;
 pub(super) const MAX_KEY_POINT_CHARS: usize = 16 * 1024;
@@ -102,6 +112,32 @@ impl WritingBudget {
         }
     }
 
+    /// Words this section may use.
+    pub(super) fn words(self) -> usize {
+        self.target_chars / CHARS_PER_WORD
+    }
+
+    /// Key points that fit the section's words. Models keep a count they are
+    /// given but not a length in characters: asked for 500 characters they
+    /// wrote seven 23-word key points and two checks, about 1,100.
+    pub(super) fn key_points(self) -> usize {
+        (self.words().saturating_sub(SECTION_FRAME_WORDS) + KEY_POINT_WORDS / 2) / KEY_POINT_WORDS
+    }
+
+    /// `key_points`, kept within what a section can be asked for.
+    pub(super) fn key_points_asked(self) -> usize {
+        self.key_points()
+            .clamp(MIN_KEY_POINTS, MAX_KEY_POINTS_ASKED)
+    }
+
+    /// Words the section is told it has: what its key points, overview and
+    /// check hold. Told more words than its capped key points hold, a model
+    /// fills them with longer key points (30 words instead of 22).
+    pub(super) fn words_asked(self) -> usize {
+        self.words()
+            .min(SECTION_FRAME_WORDS + self.key_points_asked() * KEY_POINT_WORDS)
+    }
+
     pub(super) fn exceeded_by(self, section: &StudyGuideSectionContent) -> bool {
         section.overview.chars().count() > self.overview_chars
             || super::content::generated_section_char_count(section) > self.target_chars
@@ -119,11 +155,10 @@ impl WritingBudget {
     }
 
     pub(super) fn instructions(self) -> String {
+        let key_points = self.key_points_asked();
         format!(
-            "Length guide: roughly {} words ({} characters) across all fields together, about a tenth of this topic's source; the overview states the big idea in roughly {} characters or fewer. Models tend to write about twice what they are asked for, so stop once the key ideas are stated: a central topic may need a little more, a simple one less. Spend the space on the key ideas and leave details to the source. Do not pad a simple topic or drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
-            self.target_chars / 6,
-            self.target_chars,
-            self.overview_chars
+            "Length guide: this section has about {} words across all fields. Write at most {key_points} keyPoints, one per key idea, each one sentence of at most {KEY_POINT_WORDS} words; when the topic has more ideas than {key_points}, join related ones into one key point. Write the overview as one sentence of at most 30 words, and exactly one retrievalCheck. A table or an explanation takes the place of a key point: add one only when a key idea cannot be stated without it, and then write one key point fewer. Leave everything else to the source and the flashcards, but do not drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
+            self.words_asked()
         )
     }
 }
@@ -146,6 +181,23 @@ mod tests {
         assert!(budget.thin(8, &overview_only));
         assert!(!budget.thin(8, &with_key_points));
         assert!(!budget.thin(3, &overview_only));
+    }
+
+    #[test]
+    fn a_section_is_asked_for_the_key_points_its_words_hold() {
+        let budget = |target_chars| WritingBudget {
+            target_chars,
+            overview_chars: 150,
+        };
+        // 133 words: 45 for the overview and check, four of 22 for key points.
+        assert_eq!(budget(800).key_points_asked(), 4);
+        assert_eq!(budget(512).key_points_asked(), MIN_KEY_POINTS);
+        assert_eq!(budget(3_000).key_points_asked(), MAX_KEY_POINTS_ASKED);
+        assert!(budget(800).instructions().contains("at most 4 keyPoints"));
+        // A section with room for more than the most key points it can be
+        // asked for is told only the words those key points hold.
+        assert_eq!(budget(6_000).words_asked(), 45 + 10 * 22);
+        assert_eq!(budget(800).words_asked(), 133);
     }
 
     #[test]

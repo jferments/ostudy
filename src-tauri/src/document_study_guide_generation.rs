@@ -53,9 +53,12 @@ mod sections;
 /// Characters per word of English prose, spaces included, to compare a
 /// source's word count with a writing budget in characters.
 const GUIDE_CHARS_PER_SOURCE_WORD: usize = 6;
-/// Sections come back about twice the length their request names (1.9 times
-/// on the GI eval chapter, 2026-10-22), so a guide asks for half its target.
-const WRITTEN_PER_REQUESTED: usize = 2;
+/// A guide aims at this many hundredths of its source's words. Jay,
+/// 2026-10-23, chose 0.10 over 0.08, which covered too few key ideas.
+const GUIDE_PERCENT_OF_SOURCE: usize = 10;
+/// Words of a guide outside its sections: the introduction, the learning
+/// objectives and the chapter introductions.
+const GUIDE_FRAME_WORDS: usize = 150;
 // Old topic checkpoints may have replaced partition prose with a short plan
 // summary. Invalidate only derived guide checkpoints, never learner cards or
 // shared source knowledge. Cleanup still waits for successful publication.
@@ -77,7 +80,7 @@ pub(crate) struct StudyGuideGenerationExecution<'a> {
     pub job_id: &'a str,
     pub evidence: Vec<StudyGuideTopicEvidence>,
     /// How much of its own budget each section is asked to write, so the
-    /// whole guide comes to about a tenth of the source; set once its
+    /// whole guide comes to about 0.10 of the source; set once its
     /// sections are planned.
     pub length_scale: f64,
 }
@@ -419,13 +422,15 @@ pub(crate) async fn execute_study_guide_generation(
     Ok(published)
 }
 
-/// A guide is about a tenth of its source. Each section's own budget comes
-/// from its knowledge alone, so their sum can be far more than that for a
-/// long source; every section then gets the same share of its budget. A
-/// guide already within that target is left as is.
+/// A guide is 0.10 of its source. Each section's own budget comes from its
+/// knowledge alone, so their sum can be far more than that for a long
+/// source; every section then gets the same share of its budget, which it
+/// writes as a number of key points. A guide already within that target is
+/// left as is.
 fn length_scale(source_words: usize, section_budget_chars: usize) -> f64 {
-    let target_chars =
-        source_words.saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD) / 10 / WRITTEN_PER_REQUESTED;
+    let target_chars = (source_words.saturating_mul(GUIDE_PERCENT_OF_SOURCE) / 100)
+        .saturating_sub(GUIDE_FRAME_WORDS)
+        .saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD);
     if section_budget_chars == 0 || target_chars == 0 {
         return 1.0;
     }
@@ -1194,10 +1199,10 @@ mod tests {
 
     #[test]
     fn length_scale_aims_at_a_tenth_of_the_source() {
-        // 50,000 words is about 300,000 characters; a tenth is 30,000, asked
-        // for as 15,000.
-        assert_eq!(length_scale(50_000, 60_000), 0.25);
-        assert_eq!(length_scale(50_000, 10_000), 1.0);
+        // 0.10 of 50,000 words is 5,000; 4,850 of them, 29,100 characters,
+        // are the sections'.
+        assert_eq!(length_scale(50_000, 291_000), 0.1);
+        assert_eq!(length_scale(50_000, 8_000), 1.0);
         assert_eq!(length_scale(0, 20_000), 1.0);
         assert_eq!(length_scale(50_000, 0), 1.0);
     }

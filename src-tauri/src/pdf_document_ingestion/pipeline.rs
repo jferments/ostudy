@@ -14,6 +14,7 @@ use super::{
     },
     errors::map_pdf_backend_error,
     files::sha256_hex,
+    notation::restore_printed_notation,
     ocr::recover_ocr_pages,
     recovery::{expand_semantic_recovery_pages, rescue_alternate_native_text},
     rendering::render_standard_pages,
@@ -66,6 +67,7 @@ where
             ),
         );
     }
+    restore_printed_notation(render_runtime, document_id, source_path, &mut semantic);
     for page in &mut semantic.pages {
         page.text = normalize_page_text(&page.text);
     }

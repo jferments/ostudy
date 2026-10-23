@@ -8,7 +8,7 @@
 
 #set document(title: data.title)
 #set text(font: (T.body, "Libertinus Serif"), size: T.body-size, fill: T.ink, lang: "en", hyphenate: true)
-#set par(justify: true, leading: 0.64em, spacing: 0.85em)
+#set par(justify: true, leading: 0.6em, spacing: 0.75em)
 #show math.equation: set text(font: ("New Computer Modern Math",))
 
 // The reader's canvas finds chapters, sections and their Practice buttons
@@ -85,7 +85,7 @@
 ]
 
 // ---------- Running pages ----------
-#set page(paper: "a4", fill: paper, margin: (top: 22mm, bottom: 18mm, x: 20mm),
+#set page(paper: "a4", fill: paper, margin: (top: 18mm, bottom: 15mm, x: 16mm),
   header: context [
     #set text(font: ui, size: 7pt, fill: T.muted)
     #text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source
