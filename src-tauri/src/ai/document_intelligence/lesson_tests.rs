@@ -112,22 +112,11 @@ fn a_lesson_asks_a_few_questions_not_one_on_every_step() {
     let asked = wire["steps"][0].clone();
     let quiet = wire["steps"][1].clone();
     wire["steps"] = json!([asked, quiet, asked, quiet, asked, quiet, asked]);
-    let error = decode(wire.clone(), &knowledge).err().unwrap();
-    assert!(
-        error.message.contains("at most 3 questions"),
-        "{}",
-        error.message
-    );
-
-    wire["steps"][6]["check"] = Value::Null;
     let lesson = decode(wire, &knowledge).unwrap();
+    let before = Some(CheckTiming::Before);
     assert_eq!(
-        lesson
-            .steps
-            .iter()
-            .filter(|step| step.check.is_some())
-            .count(),
-        3
+        asked_on(&lesson),
+        [before, None, before, None, before, None, None]
     );
 }
 
@@ -353,7 +342,7 @@ async fn too_many_steps_are_merged_on_repair_without_the_candidate() {
     assert!(!sent[1].user.contains("<invalid-lesson-candidate>"));
 }
 
-fn asked(lesson: &LessonContent) -> Vec<Option<CheckTiming>> {
+fn asked_on(lesson: &LessonContent) -> Vec<Option<CheckTiming>> {
     lesson
         .steps
         .iter()
@@ -370,7 +359,7 @@ fn a_question_on_the_step_right_after_another_is_dropped() {
     wire["steps"] = json!([before, before, before, quiet, before]);
     let lesson = decode(wire, &knowledge).unwrap();
     let before = Some(CheckTiming::Before);
-    assert_eq!(asked(&lesson), [before, None, before, None, before]);
+    assert_eq!(asked_on(&lesson), [before, None, before, None, before]);
 }
 
 #[test]
@@ -401,7 +390,7 @@ fn a_question_about_the_step_just_heard_is_asked_after_the_next_one() {
     ]);
     let lesson = decode(wire, &knowledge).unwrap();
     assert_eq!(
-        asked(&lesson),
+        asked_on(&lesson),
         [None, None, after, None, None, after, None, after]
     );
 
@@ -409,5 +398,5 @@ fn a_question_about_the_step_just_heard_is_asked_after_the_next_one() {
     let mut wire = wire_lesson();
     wire["steps"] = json!([quiet, about(2)]);
     let lesson = decode(wire, &knowledge).unwrap();
-    assert_eq!(asked(&lesson), [None, after]);
+    assert_eq!(asked_on(&lesson), [None, after]);
 }

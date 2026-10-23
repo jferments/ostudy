@@ -285,23 +285,17 @@ pub(super) fn decode(
         }
     }
     // Two questions in a row read as a quiz, and the first already closes
-    // that part of the lesson, so the second is dropped.
+    // that part of the lesson, so the second is dropped; so is any question
+    // past the third. The teaching is sound either way, so neither refuses
+    // the lesson.
     let mut asked_last = false;
+    let mut asked = 0;
     for step in &mut wire.steps {
-        if asked_last {
+        if asked_last || asked == MAX_WIRE_CHECKS {
             step.check = None;
         }
         asked_last = step.check.is_some();
-    }
-    let checks = wire
-        .steps
-        .iter()
-        .filter(|step| step.check.is_some())
-        .count();
-    if checks > MAX_WIRE_CHECKS {
-        return Err(output_error(format!(
-            "A lesson asks at most {MAX_WIRE_CHECKS} questions, but this one asks {checks}."
-        )));
+        asked += usize::from(asked_last);
     }
     let steps = wire
         .steps
