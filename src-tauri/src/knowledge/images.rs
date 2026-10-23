@@ -24,9 +24,11 @@ const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES: usize = 24 * 1024 * 1024;
 /// Managed renders stay lossless on disk; a provider gets a legible JPEG copy
 /// sized near what vision models read natively, which keeps requests small.
+/// A 120 DPI page render (about 1000 x 1400) keeps its size, so small table
+/// numbers stay readable, and goes out as roughly 200 KB.
 const UPLOAD_LONG_EDGE: u32 = 1568;
-const UPLOAD_JPEG_QUALITY: u8 = 85;
-const REENCODE_ABOVE_BYTES: usize = 384 * 1024;
+const UPLOAD_JPEG_QUALITY: u8 = 80;
+const REENCODE_ABOVE_BYTES: usize = 64 * 1024;
 /// Upload copies remembered by stored-content hash: a page render goes out in
 /// many requests (reading, cards, guide), and is re-encoded once.
 const REMEMBERED_UPLOAD_COPIES: usize = 64;

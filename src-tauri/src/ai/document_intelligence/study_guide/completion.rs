@@ -70,7 +70,7 @@ pub(super) fn fit_guide_completion_plan(
     evidence: AuthoringEvidence<'_>,
     writing: WritingBudget,
 ) -> Result<StudyGuideCompletionPlan, CommandError> {
-    let schema = protocol::schema(evidence.knowledge, !evidence.images.is_empty());
+    let schema = protocol::schema(evidence.knowledge, false);
     let preferred = StudyGuideCompletionPlan::for_writing_budget(writing);
     choose_plan(preferred, evidence.knowledge.units.len(), |plan| {
         let planned_user = format!(
@@ -88,7 +88,7 @@ pub(super) fn fit_guide_completion_plan(
                 user_text: &planned_user,
                 schema: &schema,
                 max_tokens: task.completion_token_ceiling(plan.repair_visible_tokens),
-                images: evidence.images,
+                images: &[],
             },
         )
     })

@@ -139,7 +139,6 @@ pub(crate) struct DocumentScalePlan {
     pub generation_window_max_tokens: usize,
     pub generation_window_max_units: usize,
     pub generation_window_overlap_tokens: usize,
-    pub max_images_per_window: usize,
     pub max_cards_per_window: usize,
 }
 
@@ -160,11 +159,12 @@ impl DocumentScalePlan {
         Self::for_provider(source_unit_count, "llama_cpp")
     }
 
-    /// Conservative provider defaults used by deterministic tests when no
-    /// current capability snapshot is available.
+    /// Conservative defaults used by deterministic tests when no current
+    /// capability snapshot is available. The baseline no longer differs by
+    /// provider; tests still name one to show that.
     #[cfg(test)]
-    pub(crate) fn for_provider(source_unit_count: usize, provider_kind: &str) -> Self {
-        baseline_plan(source_unit_count, provider_kind)
+    pub(crate) fn for_provider(source_unit_count: usize, _provider_kind: &str) -> Self {
+        baseline_plan(source_unit_count)
     }
 
     pub(crate) fn for_capabilities(
@@ -173,7 +173,7 @@ impl DocumentScalePlan {
         effective_reasoning_effort: &str,
         calibration: DocumentCostCalibration,
     ) -> Result<Self, CommandError> {
-        let mut plan = baseline_plan(source_unit_count, &capabilities.provider_kind);
+        let mut plan = baseline_plan(source_unit_count);
         let Some(context_window) = capabilities.context_window_tokens else {
             return Ok(plan);
         };
@@ -195,17 +195,14 @@ impl DocumentScalePlan {
             effective_reasoning_effort,
             generation_visible_completion_tokens(plan.max_cards_per_window),
         );
-        let generation_image_count = if capabilities.image_input {
-            plan.max_images_per_window
-        } else {
-            0
-        };
         plan.generation_window_max_tokens = context_bounded_source_tokens(
             plan.generation_window_max_tokens,
             context_window,
             generation_output,
             GENERATION_FIXED_PROMPT_RESERVE,
-            generation_image_count,
+            // Card and guide requests carry no page images: those go only to
+            // knowledge extraction.
+            0,
             calibration,
             MIN_GENERATION_SOURCE_TOKENS,
         )?;
@@ -221,7 +218,7 @@ impl DocumentScalePlan {
 
     pub(crate) fn planning_fingerprint(self) -> String {
         format!(
-            "scale={}|partition={}/{}/{}:{}|outline={}/{}/{}|generation={}/{}/{}|images={}|cards={}",
+            "scale={}|partition={}/{}/{}:{}|outline={}/{}/{}|generation={}/{}/{}|cards={}",
             self.label(),
             self.partition_target_tokens,
             self.partition_max_tokens,
@@ -233,13 +230,12 @@ impl DocumentScalePlan {
             self.generation_window_max_tokens,
             self.generation_window_max_units,
             self.generation_window_overlap_tokens,
-            self.max_images_per_window,
             self.max_cards_per_window,
         )
     }
 }
 
-fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScalePlan {
+fn baseline_plan(source_unit_count: usize) -> DocumentScalePlan {
     if source_unit_count <= LARGE_DOCUMENT_UNIT_THRESHOLD {
         return DocumentScalePlan {
             class: DocumentScaleClass::Standard,
@@ -253,7 +249,6 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
             generation_window_max_tokens: 6_500,
             generation_window_max_units: 14,
             generation_window_overlap_tokens: 500,
-            max_images_per_window: if provider_kind == "deepseek" { 0 } else { 4 },
             max_cards_per_window: 12,
         };
     }
@@ -274,7 +269,6 @@ fn baseline_plan(source_unit_count: usize, provider_kind: &str) -> DocumentScale
         generation_window_max_tokens: 10_000,
         generation_window_max_units: 18,
         generation_window_overlap_tokens: 500,
-        max_images_per_window: if provider_kind == "deepseek" { 0 } else { 3 },
         max_cards_per_window: 16,
     }
 }
@@ -379,9 +373,7 @@ pub(crate) fn validate_automatic_job_calibrated(
     let generation_source_estimate = source_tokens.saturating_add(
         generation_window_count.saturating_mul(plan.generation_window_overlap_tokens),
     );
-    let maximum_images = generation_window_count.saturating_mul(plan.max_images_per_window);
-    let generation_prompt =
-        calibration.calibrated_prompt_tokens(generation_source_estimate, maximum_images);
+    let generation_prompt = calibration.calibrated_prompt_tokens(generation_source_estimate, 0);
     let generation_completion = capabilities.completion_token_ceiling(
         effective_reasoning_effort,
         generation_visible_completion_tokens(plan.max_cards_per_window),
@@ -559,9 +551,6 @@ mod tests {
             assert_eq!(plan.generation_window_max_units, 18);
             assert_eq!(plan.max_cards_per_window, 16);
         }
-        assert_eq!(deepseek.max_images_per_window, 0);
-        assert_eq!(llama.max_images_per_window, 3);
-        assert_eq!(openrouter.max_images_per_window, 3);
     }
 
     #[test]

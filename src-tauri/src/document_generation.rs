@@ -54,7 +54,6 @@ struct WindowGenerationRequest<'a> {
     document_title: &'a str,
     outline: &'a document_intelligence::DocumentOutline,
     window: &'a SemanticWindow,
-    images: &'a [document_intelligence::SourcePageImage],
     typical_cards: usize,
     maximum_cards: usize,
     diagnostic_prefix: &'a str,
@@ -69,11 +68,6 @@ struct WindowGenerationRequest<'a> {
 pub(crate) async fn execute_generation_windows(
     mut input: GenerationExecution<'_>,
 ) -> Result<Vec<Value>, CommandError> {
-    let source_assets = if input.task.include_page_images {
-        document_store::load_source_assets(input.database, input.document_id)?
-    } else {
-        Vec::new()
-    };
     let mut cached = std::mem::take(&mut input.cached_cards);
     if cached.len() < input.windows.len() {
         cached.resize_with(input.windows.len(), || None);
@@ -212,7 +206,6 @@ pub(crate) async fn execute_generation_windows(
             let position = missing[queue_index];
             let input = &input;
             let catalogs = &catalogs;
-            let source_assets = &source_assets;
             async move {
                 let result = async {
                     let window = &input.windows[position];
@@ -222,17 +215,7 @@ pub(crate) async fn execute_generation_windows(
                         input.job_id,
                         window.window_index,
                     )?;
-                    let images = if input.task.include_page_images {
-                        document_store::load_window_images(
-                            input.paths,
-                            source_assets,
-                            window,
-                            input.plan.max_images_per_window,
-                        )?
-                    } else {
-                        Vec::new()
-                    };
-                    generation_slot(input, catalogs, position, &images).await
+                    generation_slot(input, catalogs, position).await
                 }
                 .await;
                 (position, result)
@@ -312,7 +295,6 @@ async fn generation_slot(
     input: &GenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
     position: usize,
-    images: &[document_intelligence::SourcePageImage],
 ) -> Result<Vec<Value>, CommandError> {
     let window = &input.windows[position];
     let locator = window.source_locator();
@@ -337,7 +319,7 @@ async fn generation_slot(
                 input.document_title,
                 input.outline,
                 window,
-                document_intelligence::AuthoringEvidence { images, knowledge },
+                document_intelligence::AuthoringEvidence { knowledge },
                 document_intelligence::FlashcardGenerationLimits {
                     typical_cards: budget.typical,
                     maximum_cards: card_budget,
@@ -396,7 +378,6 @@ async fn generation_slot(
                 document_title: input.document_title,
                 outline: input.outline,
                 window,
-                images,
                 typical_cards: share_of(budget.typical, maximum_cards, card_budget),
                 maximum_cards,
                 diagnostic_prefix: input.diagnostic_prefix,
@@ -492,7 +473,6 @@ async fn generate_window_with_recovery(
         input.outline,
         input.window,
         document_intelligence::AuthoringEvidence {
-            images: input.images,
             knowledge: input.knowledge,
         },
         document_intelligence::FlashcardGenerationLimits {
@@ -537,7 +517,6 @@ async fn generate_window_with_recovery(
                 input.outline,
                 input.window,
                 document_intelligence::AuthoringEvidence {
-                    images: input.images,
                     knowledge: input.knowledge,
                 },
                 document_intelligence::FlashcardGenerationLimits {

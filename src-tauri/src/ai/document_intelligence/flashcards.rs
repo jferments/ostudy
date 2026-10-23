@@ -44,7 +44,7 @@ pub(crate) async fn generate_window_flashcards(
     evidence: AuthoringEvidence<'_>,
     limits: FlashcardGenerationLimits,
 ) -> Result<Vec<Value>, CommandError> {
-    let AuthoringEvidence { images, knowledge } = evidence;
+    let AuthoringEvidence { knowledge } = evidence;
     if knowledge.units.is_empty() {
         return Ok(Vec::new());
     }
@@ -67,7 +67,7 @@ pub(crate) async fn generate_window_flashcards(
         task,
         &system,
         &user,
-        AuthoringEvidence { images, knowledge },
+        AuthoringEvidence { knowledge },
         maximum_cards,
         limits.completion_token_floor,
     )
@@ -85,7 +85,7 @@ pub(crate) fn preflight_window_flashcards(
     evidence: AuthoringEvidence<'_>,
     limits: FlashcardGenerationLimits,
 ) -> Result<(), CommandError> {
-    let AuthoringEvidence { images, knowledge } = evidence;
+    let AuthoringEvidence { knowledge } = evidence;
     if knowledge.units.is_empty() {
         return Ok(());
     }
@@ -117,7 +117,7 @@ pub(crate) fn preflight_window_flashcards(
             user_text: &user,
             schema: &schema,
             max_tokens: maximum_tokens,
-            images,
+            images: &[],
         },
     )
 }
@@ -169,7 +169,7 @@ async fn request_flashcards_with_retry(
     maximum_cards: usize,
     completion_token_floor: usize,
 ) -> Result<Vec<Value>, CommandError> {
-    let AuthoringEvidence { images, knowledge } = evidence;
+    let AuthoringEvidence { knowledge } = evidence;
     task.question_policy.validate()?;
     let schema = assessment::generation_schema(
         flashcard_schema(maximum_cards),
@@ -186,7 +186,7 @@ async fn request_flashcards_with_retry(
             user_text: user,
             schema: &schema,
             max_tokens: maximum_tokens,
-            images,
+            images: &[],
         },
     )
     .await
@@ -218,7 +218,7 @@ async fn request_flashcards_with_retry(
                     user_text: &repaired,
                     schema: &schema,
                     max_tokens: maximum_tokens,
-                    images,
+                    images: &[],
                 },
             )
             .await
