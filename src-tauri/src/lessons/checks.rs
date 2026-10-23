@@ -264,7 +264,7 @@ fn step_overflow() -> CommandError {
 }
 
 /// The text of a rich document. Lesson checks are written as plain paragraphs.
-fn plain(document: &Value) -> String {
+pub(crate) fn plain(document: &Value) -> String {
     fn collect(node: &Value, out: &mut Vec<String>) {
         if let Some(text) = node.get("text").and_then(Value::as_str) {
             out.push(text.to_string());
