@@ -35,10 +35,9 @@ mod repair;
 mod section_plan;
 use completion::*;
 
-/// A section written past this multiple of its target is asked once to be
-/// written shorter. Asked for half of a tenth, three times is a guide at
-/// about 0.15 of its source.
-const SHORTEN_OVER_TARGET: usize = 3;
+/// A section written past this multiple of its target, or with more than one
+/// key point past its count, is asked once to be written shorter.
+const SHORTEN_OVER_TARGET: usize = 2;
 /// Subjects listed for one section's coverage check.
 const MAX_CATALOG_SUBJECTS: usize = 24;
 use content::*;
@@ -122,6 +121,9 @@ pub(crate) async fn generate_study_guide_topic_section(
     // Models write formulas flat (HCO3-) however they are asked, and asking
     // cost accuracy, so the source's printed spellings are restored here.
     notation::print_source_notation(source_text, &mut section.content);
+    // One check a section; the flashcards made from the same knowledge do
+    // the rest of the testing.
+    section.content.retrieval_checks.truncate(1);
     Ok(section)
 }
 
@@ -162,7 +164,10 @@ async fn write_study_guide_topic_section(
     let budget = writing.fit_output(completion_plan.initial_visible_tokens);
     if !budget.thin(knowledge.units.len(), &section.content) {
         let written = generated_section_char_count(&section.content);
-        if written <= budget.target_chars.saturating_mul(SHORTEN_OVER_TARGET) {
+        let key_points = budget.key_points_asked();
+        if written <= budget.target_chars.saturating_mul(SHORTEN_OVER_TARGET)
+            && section.content.key_points.len() <= key_points + 1
+        {
             return Ok(section);
         }
         // Models write several times the length a section asks for. One
@@ -170,9 +175,11 @@ async fn write_study_guide_topic_section(
         // request keeps the first, so this can never cost a written section.
         let draft = serde_json::to_string(&section.content).map_err(CommandError::serialization)?;
         let user = format!(
-            "{user}\n\nAn earlier answer to this request follows. It has {written} characters, {}% of the length guide. Write the section again at about {} characters: keep every key idea and its qualifications, join related key points, and leave supporting details, examples and repeated study aids to the source.\n<ostudy-earlier-answer>\n{draft}\n</ostudy-earlier-answer>",
+            "{user}\n\nAn earlier answer to this request follows. It has {} key points and {written} characters, {}% of the length guide. Write the section again with at most {key_points} key points of at most {} words each, about {} words in all: keep every key idea and its qualifications, join related key points, and leave supporting details, examples and repeated study aids to the source.\n<ostudy-earlier-answer>\n{draft}\n</ostudy-earlier-answer>",
+            section.content.key_points.len(),
             written.saturating_mul(100) / budget.target_chars.max(1),
-            budget.target_chars
+            policy::KEY_POINT_WORDS,
+            budget.words()
         );
         let second = request_study_guide_section_with_retry(
             runtime,
@@ -627,9 +634,9 @@ A study guide is a condensed summary of the key ideas, not a rewrite of the sour
 
 Choose what matters: the overarching ideas, mechanisms, relationships and distinctions an expert teacher would make sure a learner keeps. Leave out individual values, product and brand details, exhaustive lists, minor exceptions and side examples unless they are the point of the topic. When the evidence lists many comparable items, keep only the important ones and put them in one table (or a short list in keyPoints) instead of prose; never write paragraph after paragraph that recites fact after fact. Teach the subject, not the document: state the ideas themselves, and never describe the source's tables, slides, layout or labels or what \"the source\" shows.
 
-Cover breadth before depth: every main idea of the catalog gets its key point before any one idea gets a table, steps or an explanation, so a section never spends its length on its first idea and drops the later ones. Each idea appears once in the section. Most sections need only overview, keyPoints, retrievalChecks and one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
-- overview: the big idea in 2 or 3 sentences: what this topic is about and why it matters.
-- keyPoints: the key ideas, covering the main ideas the catalog teaches from its first source unit to its last, each one plain sentence that a learner could repeat from memory. A topic on one idea needs three to five; a topic that moves through several ideas needs up to eight, never more: when it has more subjects than that, one key point joins several related subjects. They are the heart of the section.
+Cover breadth before depth: every main idea of the catalog gets its key point before any one idea gets a table, steps or an explanation, so a section never spends its length on its first idea and drops the later ones. Each idea appears once in the section. Most sections need only overview, keyPoints and retrievalChecks, with at most one table or one explanation. Every other field is usually []: use one only when it carries a key idea the section would otherwise miss, never to fill the structure.
+- overview: the big idea in one sentence: what this topic is about and why it matters.
+- keyPoints: the key ideas, covering the main ideas the catalog teaches from its first source unit to its last, each one plain sentence that a learner could repeat from memory. The length guide names how many: when the topic has more ideas than that, one key point joins several related ones. They are the heart of the section.
 - explanations: only for the one to three key ideas that need a short explanation of how or why (a mechanism, a cause, a consequence). Each has a short heading naming the idea and one short paragraph. Many topics need one or none.
 - tables: for three or more parallel items compared on two or more attributes, with only the rows and columns a learner needs. At most one or two. Copy names, numbers and units exactly. Do not repeat a table's cells in prose.
 - processSteps: only when an ordered sequence is itself a key idea, in a few short steps.
@@ -638,7 +645,7 @@ Cover breadth before depth: every main idea of the catalog gets its key point be
 - callouts: usually none, at most one, earning its place: key_idea for the single insight that ties the topic together, warning for a caution or a frequent error, tip for a way to remember something, note otherwise. Do not restate a key point.
 - commonMisconceptions: usually []; at most one real, likely error, with its correction.
 - workedExamples: only when the topic is a calculation or reasoning method the evidence supports; never invent a scenario.
-- retrievalChecks: two short questions on the key ideas, each with a one-sentence answer.
+- retrievalChecks: one short question on the most important key idea, with a one-sentence answer.
 - visualExplanations: only for attached images that carry a key idea the text lacks. Do not describe a diagram that is only mentioned in text.
 
 Teach only what the evidence supports. Background needed to connect two supported ideas may appear as one short clause; never add causes, conditions, numbers or examples the evidence does not give. Preserve qualifications, numerical signs, units, exceptions, contradictions and uncertainty. When page images are attached, read table and figure structure (which value belongs to which row and column) from the image and exact wording and numbers from the text. Do not reproduce source paragraphs, citations, page numbers, source IDs, topic IDs, flashcards or mastery claims. Outside retrievalChecks, do not turn the guide into a quiz.

@@ -57,10 +57,9 @@ const GUIDE_CHARS_PER_SOURCE_WORD: usize = 6;
 /// chose 0.08 of the words so that the denser pages come near a tenth of the
 /// source's pages.
 const GUIDE_PERCENT_OF_SOURCE: usize = 8;
-/// Sections come back longer than their request names: 2.7 times on the Nunn,
-/// GI and Clayton eval chapters at dcac7007 (2026-10-22), shortening pass
-/// included, so a guide asks for its target divided by this many tenths.
-const WRITTEN_TENTHS_PER_REQUESTED: usize = 27;
+/// Words of a guide outside its sections: the introduction, the learning
+/// objectives and the chapter introductions.
+const GUIDE_FRAME_WORDS: usize = 150;
 // Old topic checkpoints may have replaced partition prose with a short plan
 // summary. Invalidate only derived guide checkpoints, never learner cards or
 // shared source knowledge. Cleanup still waits for successful publication.
@@ -425,15 +424,15 @@ pub(crate) async fn execute_study_guide_generation(
     Ok(published)
 }
 
-/// A guide is about a tenth of its source. Each section's own budget comes
-/// from its knowledge alone, so their sum can be far more than that for a
-/// long source; every section then gets the same share of its budget. A
-/// guide already within that target is left as is.
+/// A guide is 0.08 of its source. Each section's own budget comes from its
+/// knowledge alone, so their sum can be far more than that for a long
+/// source; every section then gets the same share of its budget, which it
+/// writes as a number of key points. A guide already within that target is
+/// left as is.
 fn length_scale(source_words: usize, section_budget_chars: usize) -> f64 {
-    let target_chars = source_words
-        .saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD * GUIDE_PERCENT_OF_SOURCE * 10)
-        / 100
-        / WRITTEN_TENTHS_PER_REQUESTED;
+    let target_chars = (source_words.saturating_mul(GUIDE_PERCENT_OF_SOURCE) / 100)
+        .saturating_sub(GUIDE_FRAME_WORDS)
+        .saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD);
     if section_budget_chars == 0 || target_chars == 0 {
         return 1.0;
     }
@@ -1208,9 +1207,9 @@ mod tests {
 
     #[test]
     fn length_scale_aims_at_eight_hundredths_of_the_source() {
-        // 50,000 words is about 300,000 characters; 0.08 of it is 24,000,
-        // asked for as 24,000 / 2.7 = 8,888.
-        assert_eq!(length_scale(50_000, 88_880), 0.1);
+        // 0.08 of 50,000 words is 4,000; 3,850 of them, 23,100 characters,
+        // are the sections'.
+        assert_eq!(length_scale(50_000, 231_000), 0.1);
         assert_eq!(length_scale(50_000, 8_000), 1.0);
         assert_eq!(length_scale(0, 20_000), 1.0);
         assert_eq!(length_scale(50_000, 0), 1.0);
