@@ -471,7 +471,6 @@ pub fn run() {
             document_study_guide_reading::get_document_study_guide_reading,
             document_study_guide_reading::open_document_study_guide_section,
             document_study_guide_reading::set_document_study_guide_section_read,
-            document_study_guide_reading::list_continue_reading_study_guides,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,

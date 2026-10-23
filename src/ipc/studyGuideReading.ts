@@ -16,20 +16,6 @@ export interface StudyGuideReading {
   lastOpenedAt: number | null;
 }
 
-/** A guide the learner opened and has not finished. */
-export interface ContinueReadingItem {
-  documentId: string;
-  guideId: string;
-  title: string;
-  subjectId: string | null;
-  sectionCount: number;
-  readSectionCount: number;
-  topicId: string;
-  /** The open section's 0-based place in the guide. */
-  sectionIndex: number;
-  openedAt: number;
-}
-
 /** Null when the document has no guide. */
 export async function getStudyGuideReading(
   documentId: string,
@@ -62,14 +48,5 @@ export async function setStudyGuideSectionRead(
 ): Promise<StudyGuideReading> {
   return invoke<StudyGuideReading>("set_document_study_guide_section_read", {
     input: { documentId, guideId, topicId, read },
-  });
-}
-
-/** Unfinished guides, most recently opened first; `limit` is 1 to 20. */
-export async function listContinueReading(
-  limit = 3,
-): Promise<ContinueReadingItem[]> {
-  return invoke<ContinueReadingItem[]>("list_continue_reading_study_guides", {
-    input: { limit },
   });
 }

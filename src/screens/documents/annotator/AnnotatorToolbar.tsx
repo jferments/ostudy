@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { Icon, type IconName } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
@@ -39,7 +39,8 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
 const PICK_TOOLS: readonly AnnotatorTool[] = ["select", "lasso"];
-const DRAW_TOOLS: readonly AnnotatorTool[] = ["pen", "highlighter"];
+/** Marking and unmarking sit together, as in note-taking and PDF apps. */
+const MARK_TOOLS: readonly AnnotatorTool[] = ["pen", "highlighter", "eraser"];
 
 /** A thin rule between groups of controls, so each group reads as one. */
 function Divider() {
@@ -61,7 +62,13 @@ interface AnnotatorToolbarProps {
   onStyle: (patch: Partial<ToolStyle>) => void;
   /** Lists and formulas, while a text note is typed or selected. */
   textFormat?: TextFormat | null;
-  selection: { isText: boolean; isSticky: boolean; isCollapsed: boolean } | null;
+  selection: { isText: boolean; isSticky: boolean; isCollapsed: boolean; isLink?: boolean; linkRemoved?: boolean } | null;
+  /** Follows the selected link. */
+  onOpenLink?: () => void;
+  /** Offers Add link among the tools that put something on the page. */
+  onAddLink?: () => void;
+  /** Where the reader is and whether marks are saved, at the toolbar's end. */
+  status?: ReactNode;
   /** Folds the selected sticky note to its icon, or opens it back out. */
   onToggleCollapsed: () => void;
   onDeleteSelection: () => void;
@@ -97,17 +104,19 @@ interface AnnotatorToolbarProps {
 }
 
 /**
- * Tools, undo and zoom on the first row; the color and size of what is drawn
- * next (or of the selected annotation) on the second. A phone keeps each row
- * within one screen width: the note tools, shape tools and zoom fold into menus, undo moves
- * to the second row, and color and size open in a sheet.
+ * One row of tools in groups (pick, mark, add, history, view), then one row
+ * that shows only what the active tool or selection can change, as graphics
+ * and PDF editors do. The shapes share one button that keeps the last shape
+ * and lists the others. A phone keeps each row within one screen width: the
+ * note tools, shape tools and zoom fold into menus, undo moves to the second
+ * row, and color and size open in a sheet.
  */
 export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
   const { compact, tool } = props;
   const shapeActive = isShapeTool(tool);
   const toolButton = (name: AnnotatorTool) => (
-    <ToolbarAction key={name} label={TOOLS[name].label} pressed={tool === name}
-      aria-keyshortcuts={TOOLS[name].shortcut} onClick={() => props.onTool(name)}>
+    <ToolbarAction key={name} label={TOOLS[name].label} title={`${TOOLS[name].label} (${TOOLS[name].shortcut})`}
+      pressed={tool === name} aria-keyshortcuts={TOOLS[name].shortcut} onClick={() => props.onTool(name)}>
       <Icon name={TOOLS[name].icon} />
     </ToolbarAction>
   );
@@ -115,10 +124,10 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
   const noteActive = NOTE_TOOLS.includes(tool);
   const shownNote = noteActive ? tool : props.lastNote;
   const history = [
-    <ToolbarAction key="undo" label="Undo" disabled={!props.canUndo} aria-keyshortcuts="Control+Z Meta+Z" onClick={props.onUndo}>
+    <ToolbarAction key="undo" label="Undo" title="Undo (Ctrl+Z)" disabled={!props.canUndo} aria-keyshortcuts="Control+Z Meta+Z" onClick={props.onUndo}>
       <Icon name="undo" />
     </ToolbarAction>,
-    <ToolbarAction key="redo" label="Redo" disabled={!props.canRedo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+    <ToolbarAction key="redo" label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!props.canRedo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
       onClick={props.onRedo}>
       <Icon name="redo" />
     </ToolbarAction>,
@@ -128,27 +137,23 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
       Pen only
     </ToolbarAction>
   ) : null;
-  return (
-    <div className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-page tw:py-1.5 tw:compact:px-1">
-      <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:overflow-x-auto tw:compact:gap-1">
-        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-wrap tw:gap-x-3 tw:gap-y-1 tw:compact:flex-nowrap tw:compact:gap-1">
-          {compact ? null : (
-            <ToolbarGroup label="Tools" className="tw:flex-nowrap tw:items-center">
-              {PICK_TOOLS.map(toolButton)}
-              <Divider />
-              {DRAW_TOOLS.map(toolButton)}
-              <Divider />
-              {NOTE_TOOLS.map(toolButton)}
-              <Divider />
-              {SHAPE_TOOLS.map(toolButton)}
-              <Divider />
-              {toolButton("eraser")}
-              {props.canClip ? <><Divider />{toolButton("clip")}</> : null}
-            </ToolbarGroup>
-          )}
-          {compact ? <ToolbarGroup label="Tools" className="tw:flex-nowrap">
-            {MAIN_TOOLS.map(toolButton)}
-            {compact ? (
+  const addLink = props.onAddLink ? (
+    <ToolbarAction key="link" label="Add link" title="Add link (K)" aria-keyshortcuts="K" onClick={props.onAddLink}>
+      <Icon name="link" />
+    </ToolbarAction>
+  ) : null;
+  const status = props.status ? (
+    <div className="tw:flex tw:shrink-0 tw:items-center tw:gap-2 tw:text-label tw:whitespace-nowrap tw:text-muted-foreground">
+      {props.status}
+    </div>
+  ) : null;
+  if (compact) {
+    return (
+      <div className="tw:grid tw:min-w-0 tw:gap-1 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-1 tw:py-1.5">
+        <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-1 tw:overflow-x-auto">
+          <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-nowrap tw:gap-1">
+            <ToolbarGroup label="Tools" className="tw:flex-nowrap">
+              {MAIN_TOOLS.map(toolButton)}
               <OverflowMenu
                 label={noteActive ? `Notes: ${TOOLS[tool].label}` : "Notes"}
                 triggerIcon={TOOLS[shownNote].icon}
@@ -158,8 +163,6 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                   id: note, label: TOOLS[note].label, onSelect: () => props.onTool(note),
                 }))}
               />
-            ) : NOTE_TOOLS.map(toolButton)}
-            {compact ? (
               <OverflowMenu
                 label={shapeActive ? `Shapes: ${TOOLS[tool].label}` : "Shapes"}
                 triggerIcon={TOOLS[shownShape].icon}
@@ -169,30 +172,11 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                   id: shape, label: TOOLS[shape].label, onSelect: () => props.onTool(shape),
                 }))}
               />
-            ) : SHAPE_TOOLS.map(toolButton)}
-            {toolButton("eraser")}
-            {props.canClip ? toolButton("clip") : null}
-          </ToolbarGroup> : null}
-          {compact ? null : (
-            <>
-              <ToolbarGroup label="History" className="tw:flex-nowrap">{history}</ToolbarGroup>
-              {penOnly ? <ToolbarGroup label="Input">{penOnly}</ToolbarGroup> : null}
-              <ToolbarGroup label="Zoom" className="tw:ml-auto tw:flex-nowrap">
-                <ToolbarAction label="Zoom out" disabled={!props.canZoomOut} aria-keyshortcuts="Control+- Meta+-" onClick={props.onZoomOut}>
-                  <Icon name="zoom-out" />
-                </ToolbarAction>
-                <ToolbarAction label={`Automatic zoom (now ${props.zoomPercent}%)`} pressed={props.fit}
-                  aria-keyshortcuts="Control+0 Meta+0" onClick={props.onFit} className="tw:min-w-14 tw:tabular-nums">
-                  {props.zoomPercent}%
-                </ToolbarAction>
-                <ToolbarAction label="Zoom in" disabled={!props.canZoomIn} aria-keyshortcuts="Control+= Meta+=" onClick={props.onZoomIn}>
-                  <Icon name="zoom-in" />
-                </ToolbarAction>
-              </ToolbarGroup>
-            </>
-          )}
-        </Toolbar>
-        {compact ? (
+              {toolButton("eraser")}
+              {addLink}
+              {props.canClip ? toolButton("clip") : null}
+            </ToolbarGroup>
+          </Toolbar>
           <OverflowMenu
             label={`Zoom (${props.zoomPercent}%)`}
             triggerIcon="zoom-in"
@@ -203,15 +187,68 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               { id: "fit", label: "Automatic zoom", onSelect: props.onFit, disabled: props.fit },
             ]}
           />
-        ) : null}
-      </div>
-      {compact ? (
+        </div>
         <div className="tw:flex tw:min-h-touch tw:min-w-0 tw:items-center tw:gap-1">
           <Toolbar label="History" disabled={props.disabled} className="tw:flex-nowrap tw:gap-1">{history}</Toolbar>
           <StyleRow {...props} />
-          {penOnly ? <Toolbar label="Input" disabled={props.disabled} className="tw:ml-auto tw:flex-nowrap">{penOnly}</Toolbar> : null}
+          {penOnly ? <Toolbar label="Input" disabled={props.disabled} className="tw:ms-auto tw:flex-nowrap">{penOnly}</Toolbar> : null}
+          {status ? <div className={cn(!penOnly && "tw:ms-auto")}>{status}</div> : null}
         </div>
-      ) : <StyleRow {...props} />}
+      </div>
+    );
+  }
+  return (
+    <div className="tw:grid tw:min-w-0 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background">
+      <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-3 tw:px-3 tw:py-1">
+        <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-wrap tw:gap-x-2 tw:gap-y-1">
+          <ToolbarGroup label="Pick" className="tw:flex-nowrap">{PICK_TOOLS.map(toolButton)}</ToolbarGroup>
+          <Divider />
+          <ToolbarGroup label="Mark" className="tw:flex-nowrap">{MARK_TOOLS.map(toolButton)}</ToolbarGroup>
+          <Divider />
+          <ToolbarGroup label="Add" className="tw:flex-nowrap">
+            {NOTE_TOOLS.map(toolButton)}
+            <span className="tw:flex tw:items-center">
+              {toolButton(shownShape)}
+              <OverflowMenu
+                label="More shapes"
+                triggerIcon="chevron-down"
+                className="tw:w-5 tw:min-w-5 tw:px-0"
+                disabled={props.disabled}
+                items={SHAPE_TOOLS.map((shape) => ({
+                  id: shape,
+                  label: TOOLS[shape].label,
+                  checked: shape === shownShape,
+                  onSelect: () => props.onTool(shape),
+                }))}
+              />
+            </span>
+            {addLink}
+            {props.canClip ? toolButton("clip") : null}
+          </ToolbarGroup>
+          <Divider />
+          <ToolbarGroup label="History" className="tw:flex-nowrap">{history}</ToolbarGroup>
+          <div className="tw:ms-auto tw:flex tw:items-center tw:gap-2">
+            {penOnly ? <ToolbarGroup label="Input">{penOnly}</ToolbarGroup> : null}
+            <ToolbarGroup label="Zoom" className="tw:flex-nowrap">
+              <ToolbarAction label="Zoom out" title="Zoom out (Ctrl+-)" disabled={!props.canZoomOut} aria-keyshortcuts="Control+- Meta+-" onClick={props.onZoomOut}>
+                <Icon name="zoom-out" />
+              </ToolbarAction>
+              <ToolbarAction label={`Automatic zoom (now ${props.zoomPercent}%)`} title="Fit to width (Ctrl+0)" pressed={props.fit}
+                aria-keyshortcuts="Control+0 Meta+0" onClick={props.onFit} className="tw:min-w-14 tw:tabular-nums">
+                {props.zoomPercent}%
+              </ToolbarAction>
+              <ToolbarAction label="Zoom in" title="Zoom in (Ctrl+=)" disabled={!props.canZoomIn} aria-keyshortcuts="Control+= Meta+=" onClick={props.onZoomIn}>
+                <Icon name="zoom-in" />
+              </ToolbarAction>
+            </ToolbarGroup>
+          </div>
+        </Toolbar>
+        {status ? <><Divider />{status}</> : null}
+      </div>
+      {/* The active tool's or selection's settings, on a strip of their own. */}
+      <div className="tw:min-w-0 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1">
+        <StyleRow {...props} />
+      </div>
     </div>
   );
 }
@@ -219,18 +256,6 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
 const DOT_SIZES = ["tw:size-1.5", "tw:size-2.5", "tw:size-3.5"] as const;
 const SAMPLE_DOT_SIZES = ["tw:size-3", "tw:size-4", "tw:size-5"] as const;
 const LETTER_SIZES = ["tw:text-caption", "tw:text-body", "tw:text-section"] as const;
-
-const HINTS: Partial<Record<AnnotatorTool, string>> = {
-  select: "Tap an annotation to select it, or drag across several.",
-  lasso: "Draw a loop around annotations to select them together.",
-  eraser: "Drag across annotations to erase them.",
-  clip: "Drag across part of the page to clip it into a notebook.",
-};
-
-const ERASE_HINTS: Record<EraseMode, string> = {
-  whole: "Drag across annotations to erase them.",
-  part: "Drag across pen and highlighter strokes to erase just that part.",
-};
 
 type StyleChoices = (typeof STYLE_CHOICES)[StyleFamily];
 
@@ -274,7 +299,6 @@ function StyleRow(props: AnnotatorToolbarProps) {
         </Toolbar>
         <span className="tw:truncate tw:text-label tw:text-muted-foreground">
           {props.isOneGroup ? "Group of " : ""}{props.groupSize}{props.isOneGroup ? "" : " selected"}
-          {compact ? "" : ". Drag them to move them together."}
         </span>
       </div>
     );
@@ -291,21 +315,20 @@ function StyleRow(props: AnnotatorToolbarProps) {
             <Icon name="scissors" />
           </ToolbarAction>
         </Toolbar>
-        {compact ? null : <span className="tw:truncate tw:text-label tw:text-muted-foreground">{ERASE_HINTS[eraseMode]}</span>}
       </div>
     );
   }
-  if (!choices && !selection) {
-    return (
-      <p className="tw:m-0 tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:px-1 tw:text-label tw:text-muted-foreground tw:coarse:min-h-touch">
-        <span className="tw:truncate">{HINTS[tool] ?? ""}</span>
-      </p>
-    );
-  }
+  // Nothing to set: the strip keeps its height, so the pages never jump.
+  if (!choices && !selection) return <div aria-hidden="true" className="tw:min-h-7 tw:coarse:min-h-touch" />;
   const selectionActions = selection ? (
     <ToolbarGroup label="Selection" className="tw:flex-nowrap">
+      {selection.isLink && props.onOpenLink ? (
+        <ToolbarAction label={selection.linkRemoved ? "Link target removed" : "Open link"} onClick={props.onOpenLink}>
+          <Icon name="arrow-right" />
+        </ToolbarAction>
+      ) : null}
       {selection.isText ? (
-        <ToolbarAction label={selection.isSticky ? "Open note" : "Edit text"} onClick={onEditSelection}>
+        <ToolbarAction label={selection.isLink ? "Edit link" : selection.isSticky ? "Open note" : "Edit text"} onClick={onEditSelection}>
           <Icon name="edit" />
         </ToolbarAction>
       ) : null}

@@ -7,7 +7,6 @@ import { listLatestDocumentStudyGuideJobs } from "../ipc/documentArtifactProgres
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import * as studyGuides from "../ipc/studyGuides";
-import { listContinueReading } from "../ipc/studyGuideReading";
 import { requiredTestValue as required } from "../test/factories";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
@@ -39,7 +38,7 @@ vi.mock("../ipc/externalFiles", async () => {
   return { ...actual, publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() };
 });
 
-vi.mock("../ipc/studyGuideReading", () => ({ listContinueReading: vi.fn() }));
+vi.mock("../ipc/studyGuideReading", () => ({}));
 
 vi.mock("./CollectionStudyGuideDialog", () => ({
   CollectionStudyGuideDialog: ({
@@ -130,7 +129,6 @@ describe("StudyGuidesScreen", () => {
     vi.clearAllMocks();
     setLayoutMode("wide");
     vi.mocked(studyGuides.listStudyGuidePage).mockResolvedValue(page());
-    vi.mocked(listContinueReading).mockResolvedValue([]);
     vi.mocked(listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
     vi.mocked(aiProfiles.getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: "openrouter" });
     vi.mocked(aiProfiles.listAiProviderProfiles).mockResolvedValue([
@@ -171,23 +169,12 @@ describe("StudyGuidesScreen", () => {
     ]);
   });
 
-  it("offers to resume the guide last opened and opens it with its source", async () => {
-    vi.mocked(listContinueReading).mockResolvedValue([{
-      documentId: "a".repeat(32), guideId: "b".repeat(32), title: "Distributive shock", subjectId: null,
-      sectionCount: 6, readSectionCount: 2, topicId: "9".repeat(32), sectionIndex: 2, openedAt: 20,
-    }]);
+  it("lists guides without a separate Continue reading band", async () => {
     renderScreen();
 
-    const band = await screen.findByRole("region", { name: "Distributive shock" });
-    expect(within(band).getByText("Continue reading")).toBeTruthy();
-    expect(within(band).getByText("Section 3 of 6 · 2 read")).toBeTruthy();
-    expect(listContinueReading).toHaveBeenCalledWith(1);
-    fireEvent.click(within(band).getByRole("button", { name: "Resume" }));
-
-    const reader = await screen.findByRole("dialog", { name: "Guide Distributive shock" });
-    expect(within(reader).getByText("Source shock.pdf pdf 12 page")).toBeTruthy();
-    fireEvent.click(within(reader).getByRole("button", { name: "Close guide" }));
-    await waitFor(() => expect(listContinueReading).toHaveBeenCalledTimes(2));
+    expect(await screen.findAllByTestId("guide-card")).not.toHaveLength(0);
+    expect(screen.queryByText("Continue reading")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
   });
 
   it("loads a bounded projection, searches, sorts, and opens through screen state", async () => {

@@ -391,7 +391,7 @@ describe("document annotator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected" }));
     await waitFor(() => expect(savedChanges(2)).toHaveLength(2));
     expect(savedChanges(2).every((change) => change.op === "delete")).toBe(true);
-    expect(screen.getByText("Draw a loop around annotations to select them together.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Delete \d+ selected$/ })).toBeNull();
   });
 
   it("erases part of a highlighter stroke, as one step to undo", async () => {
@@ -405,7 +405,6 @@ describe("document annotator", () => {
     expect(pressed("Erase whole annotations")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Erase part of a stroke" }));
     expect(pressed("Erase part of a stroke")).toBe("true");
-    expect(screen.getByText("Drag across pen and highlighter strokes to erase just that part.")).toBeTruthy();
     drag(canvas, [[150, 480], [150, 520]]);
 
     await waitFor(() => expect(savedChanges(1)).toHaveLength(3));

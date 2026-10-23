@@ -203,7 +203,6 @@ export interface NativeCommandGatewayMap {
   "list_ai_provider_models": readonly [typeof GatewayModule0.listAiProviderModels];
   "list_ai_provider_profiles": readonly [typeof GatewayModule0.listAiProviderProfiles];
   "list_card_template_summaries": readonly [typeof GatewayModule43.listCardTemplateSummaries];
-  "list_continue_reading_study_guides": readonly [typeof GatewayModule39.listContinueReading];
   "list_deck_card_summaries": readonly [typeof GatewayModule9.listDeckCardSummaries];
   "list_deck_source_citations": readonly [typeof GatewayModule15.listDeckSourceCitations];
   "list_decks": readonly [typeof GatewayModule9.listDecks];

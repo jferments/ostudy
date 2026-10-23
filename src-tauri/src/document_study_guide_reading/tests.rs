@@ -129,7 +129,6 @@ fn a_new_guide_has_nothing_read_and_no_place_to_resume() {
     assert_eq!(state.section_count, 3);
     assert!(state.read_topic_ids.is_empty());
     assert_eq!((state.last_topic_id, state.last_opened_at), (None, None));
-    assert!(continue_reading(&connection, 5).unwrap().is_empty());
 }
 
 #[test]
@@ -140,16 +139,6 @@ fn opening_a_section_is_where_the_guide_reopens() {
     assert_eq!(state.last_topic_id.as_deref(), Some(TOPICS[1]));
     assert_eq!(state.last_opened_at, Some(20));
     assert!(state.read_topic_ids.is_empty());
-
-    let items = continue_reading(&connection, 5).unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].guide_id, FIRST_GUIDE);
-    assert_eq!(items[0].topic_id, TOPICS[1]);
-    assert_eq!(items[0].section_index, 1);
-    assert_eq!(
-        (items[0].read_section_count, items[0].section_count),
-        (0, 3)
-    );
 }
 
 #[test]
@@ -180,18 +169,6 @@ fn marking_read_is_repeatable_and_keeps_the_first_read_time() {
 }
 
 #[test]
-fn a_finished_guide_leaves_continue_reading() {
-    let mut connection = library();
-    open(&mut connection, FIRST_GUIDE, TOPICS[2], 10);
-    for topic in TOPICS {
-        mark(&mut connection, FIRST_GUIDE, topic, true, 20).unwrap();
-    }
-    assert!(continue_reading(&connection, 5).unwrap().is_empty());
-    mark(&mut connection, FIRST_GUIDE, TOPICS[1], false, 30).unwrap();
-    assert_eq!(continue_reading(&connection, 5).unwrap().len(), 1);
-}
-
-#[test]
 fn a_remade_guide_keeps_marks_only_on_unchanged_sections() {
     let mut connection = library();
     open(&mut connection, FIRST_GUIDE, TOPICS[1], 10);
@@ -207,12 +184,6 @@ fn a_remade_guide_keeps_marks_only_on_unchanged_sections() {
         vec![TOPICS[0].to_string(), TOPICS[2].to_string()]
     );
     assert_eq!(state.last_topic_id.as_deref(), Some(TOPICS[1]));
-    let items = continue_reading(&connection, 5).unwrap();
-    assert_eq!(items[0].guide_id, SECOND_GUIDE);
-    assert_eq!(
-        (items[0].read_section_count, items[0].section_count),
-        (2, 3)
-    );
 
     // Reading the rewritten text marks it again, with a new time.
     mark(&mut connection, SECOND_GUIDE, TOPICS[1], true, 40).unwrap();
@@ -269,23 +240,4 @@ fn deleting_the_document_or_its_guide_clears_its_reading() {
         .unwrap();
     assert_eq!(count(&connection, "document_study_guide_section_reads"), 0);
     assert_eq!(count(&connection, "document_study_guide_positions"), 0);
-}
-
-#[test]
-fn continue_reading_is_newest_first_and_bounded() {
-    let mut connection = library();
-    open(&mut connection, FIRST_GUIDE, TOPICS[0], 10);
-    assert!(continue_reading(&connection, 0).is_err());
-    assert!(continue_reading(&connection, MAX_CONTINUE_READING + 1).is_err());
-    assert_eq!(continue_reading(&connection, 1).unwrap().len(), 1);
-    assert_eq!(
-        continue_reading(&connection, 1).unwrap()[0].title,
-        connection
-            .query_row(
-                "SELECT title FROM documents WHERE id = ?1",
-                [DOCUMENT],
-                |row| { row.get::<_, String>(0) }
-            )
-            .unwrap()
-    );
 }

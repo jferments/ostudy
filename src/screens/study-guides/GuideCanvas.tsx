@@ -474,28 +474,6 @@ function ReadyGuide({
         </aside>
       ) : null}
       <div className="tw:flex tw:min-w-0 tw:flex-1 tw:basis-0 tw:flex-col" onKeyDown={keyDown}>
-        <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-3 tw:py-1.5">
-          <Button size="small" variant="secondary" aria-keyshortcuts="K" disabled={busy} onClick={() => setLinkDialog({ editing: null })}>
-            <Icon name="link" />
-            Add link
-          </Button>
-          {selected && selectedLink ? (
-            <>
-              <Button size="small" variant="secondary" onClick={() => onFollow(selected)}>
-                <Icon name={selectedLink.button ? "practice" : "arrow-right"} />
-                {unavailable.has(selected.id) ? "Removed" : "Open link"}
-              </Button>
-              <Button size="small" variant="ghost" onClick={() => setLinkDialog({ editing: selected })}>
-                <Icon name="edit" />
-                Edit link
-              </Button>
-            </>
-          ) : null}
-          <span className="tw:ms-auto tw:text-label tw:whitespace-nowrap tw:text-muted-foreground" role="status">
-            {`Page ${current} of ${pages.length}`}
-          </span>
-          <SaveStatus state={controller.saveState} onRetry={controller.retrySave} />
-        </div>
         <AnnotatorToolbar
           compact={compact}
           disabled={busy}
@@ -510,7 +488,15 @@ function ReadyGuide({
             isText: selected.shape.kind === "text",
             isSticky: isStickyNote(selected.shape),
             isCollapsed: isCollapsedSticky(selected.shape),
+            isLink: selectedLink !== null,
+            linkRemoved: unavailable.has(selected.id),
           } : null}
+          onOpenLink={selected && selectedLink ? () => onFollow(selected) : undefined}
+          onAddLink={busy ? undefined : () => setLinkDialog({ editing: null })}
+          status={<>
+            <span role="status" className="tw:tabular-nums">{`Page ${current} of ${pages.length}`}</span>
+            <SaveStatus state={controller.saveState} onRetry={controller.retrySave} />
+          </>}
           onToggleCollapsed={() => {
             const page = selected ? pages[selected.pageNumber - 1] : undefined;
             if (page) controller.toggleStickyCollapsed(page);
