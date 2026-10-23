@@ -52,15 +52,7 @@ function renderHeader({
 }
 
 describe("AppHeaderBar", () => {
-  it("offers only Search in a phone's header; Settings is in its bottom bar", () => {
-    const { onSearch } = renderHeader({ width: 390 });
-    const header = screen.getByTestId("app-header");
-    fireEvent.click(within(header).getByRole("button", { name: "Search" }));
-    expect(onSearch).toHaveBeenCalledTimes(1);
-    expect(within(header).queryByTestId("app-settings")).toBeNull();
-  });
-
-  it.each([1000, 1440])("offers Search and the Settings gear without window controls at %s px", (width) => {
+  it.each([390, 1000, 1440])("offers Search and the Settings gear without window controls at %s px", (width) => {
     const { onSearch, onSettings } = renderHeader({ width });
     const header = screen.getByTestId("app-header");
     fireEvent.click(within(header).getByRole("button", { name: "Search" }));

@@ -15,7 +15,6 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Panel } from "../../ui/primitives/Panel";
 import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
-import { processingPhaseLabel } from "../documents/DocumentProgress";
 import { DeckTransferDialog } from "../flashcards/DeckTransferDialog";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
@@ -27,12 +26,11 @@ import {
   countLabel,
   sortSubjectTiles,
   SUBJECT_SORT_OPTIONS,
-  type DocumentPreparations,
-  type SubjectPreparation,
   type SubjectSort,
   type SubjectTile,
 } from "./homeModel";
 import { NewSubjectSheet } from "./NewSubjectSheet";
+import { useDocumentPreparations } from "./useDocumentPreparations";
 import { SubjectTileCard } from "./SubjectTileCard";
 import { TodayStrip } from "./TodayStrip";
 
@@ -99,25 +97,7 @@ export function HomeScreen({
     setSortState(next);
   }
 
-  const preparations = useMemo<DocumentPreparations>(() => {
-    const running = new Map<string, SubjectPreparation>();
-    if (!jobs) return running;
-    for (const document of jobs.documents) {
-      if (document.lifecycleState === "processing") {
-        running.set(document.id, {
-          step: processingPhaseLabel(
-            document,
-            jobs.cancelingDocumentIds.has(document.id),
-            jobs.generationProgress[document.id] ?? null,
-          ),
-          documentTitle: document.title,
-        });
-      } else if (jobs.guideGeneratingDocumentIds.has(document.id)) {
-        running.set(document.id, { step: "Writing a study guide", documentTitle: document.title });
-      }
-    }
-    return running;
-  }, [jobs]);
+  const preparations = useDocumentPreparations();
 
   const tiles = useMemo(
     () => (summary && library ? buildSubjectTiles(summary, library, preparations) : null),

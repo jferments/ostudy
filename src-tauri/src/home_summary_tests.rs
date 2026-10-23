@@ -859,3 +859,86 @@ fn review_history_is_read_through_indexes_with_and_without_statistics() {
         })
         .unwrap();
 }
+
+#[test]
+fn counts_each_subjects_materials_and_picks_its_tile_figure() {
+    Database::open_in_memory()
+        .unwrap()
+        .with_connection(|connection| {
+            let time = study_time(NOW, 4);
+            let (bio, chem, second) = {
+                let mut library = Library::at(connection, study_time(NOW, 4));
+                let bio = library.subject("Biology", 0);
+                let chem = library.subject("Chemistry", 1);
+                let first = library.document(Some(&bio));
+                let second = library.document(Some(&bio));
+                let unfiled = library.document(None);
+                for (index, title) in ["Cells", "Tissues"].iter().enumerate() {
+                    library.exec(
+                        "INSERT INTO lessons(id, subject_id, sort_order, title, revision,
+                         created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, 1, 1, 1)",
+                        params![format!("{:032x}", 0xa0 + index), bio, index as i64, title],
+                    );
+                }
+                library.exec(
+                    "INSERT INTO podcasts(id, subject_id, title, target_minutes, model_id,
+                     first_voice, second_voice, script_json, provenance_json, created_at)
+                 VALUES (?1, ?2, 'Cells', 15, 'model', 'a', 'b', '{}', '{}', 1)",
+                    params!["b".repeat(32), bio],
+                );
+                library.overview_guide(&bio, "active");
+                // A small figure, a large unread one, and a smaller one the reading
+                // marked worth studying, which wins.
+                let figure = |document: &str, id: &str, ordinal: i64, width: f64, height: f64| {
+                    library.exec(
+                        "INSERT INTO document_figures(document_id, figure_id, ordinal,
+                         page_number, page_width, page_height, kind, box_left, box_top,
+                         box_width, box_height, hidden, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, 2, 612, 792, 'image', 50, 60, ?4, ?5, 0, 1, 1)",
+                        params![document, id, ordinal, width, height],
+                    );
+                };
+                figure(&first, "p00002-01", 0, 20.0, 20.0);
+                figure(&first, "p00002-02", 1, 500.0, 600.0);
+                figure(&second, "p00002-01", 0, 300.0, 200.0);
+                figure(&unfiled, "p00002-01", 0, 300.0, 200.0);
+                library.exec(
+                    "INSERT INTO document_figure_readings(document_id, figure_id, title,
+                     shows, concepts_json, explained_json, importance,
+                     worth_studying, provider, model, read_at)
+                 VALUES (?1, 'p00002-01', 'Cell', 'A cell.', '[]', '[]', 4, 1, 'test', 'test', 1)",
+                    params![second],
+                );
+                (bio, chem, second)
+            };
+
+            let summary = summary(connection, &time);
+            let bio_entry = entry(&summary, &bio);
+            assert_eq!(bio_entry.lesson_count, 2);
+            assert_eq!(bio_entry.podcast_count, 1);
+            assert_eq!(bio_entry.guide_count, 1);
+            let cover = bio_entry.cover.as_ref().expect("Biology has a figure");
+            assert_eq!(cover.document_id, second);
+            assert_eq!(cover.page_number, 2);
+            assert_eq!(
+                (cover.left, cover.top, cover.width, cover.height),
+                (50.0, 60.0, 300.0, 200.0)
+            );
+
+            let chem_entry = entry(&summary, &chem);
+            assert_eq!(
+                (
+                    chem_entry.lesson_count,
+                    chem_entry.podcast_count,
+                    chem_entry.guide_count
+                ),
+                (0, 0, 0)
+            );
+            assert!(chem_entry.cover.is_none());
+            // No subject has no tile figure.
+            assert!(summary.no_subject.cover.is_none());
+            Ok(())
+        })
+        .unwrap();
+}

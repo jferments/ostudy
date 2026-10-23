@@ -1,18 +1,18 @@
 # Subjects and deck organization
 
-Subjects live in Library's subject list: beside the page on a wider window, and behind the subject's name at the top on a phone. The [Library Workbench guide](flashcards-workspace.md) covers the card list, authoring, selection, and contextual import/export; this guide explains how subjects hold decks and documents and how to keep them in order.
+Subjects are the tiles on Library's page. The [Library Workbench guide](flashcards-workspace.md) covers the card list, authoring, selection, and contextual import/export; this guide explains how subjects hold decks and documents and how to keep them in order.
 
 ## Subjects hold decks and documents
 
-A subject keeps one course's decks, documents, guides and lessons together. Choosing a subject in Library's list shows its decks on the **Flashcards** tab and its documents on the **Documents** tab; there is no second grouping inside either tab. A deck or document belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, which the list shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
+A subject keeps one course's decks, documents, guides and lessons together. Choosing a subject's tile shows its decks on the **Flashcards** tab and its documents on the **Documents** tab; there is no second grouping inside either tab. A deck or document belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, whose tile shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
 
-Choose **New subject** at the end of Library's subject list, or on Home, to create a subject. On the Flashcards tab, the first entry lists the cards of all the subject's decks and offers **Practice…** for those decks and **New deck** to start a deck in it; **New deck** also ends the subject's deck list.
+Choose **New subject** on Library's page, or on Home, to create a subject. On the Flashcards tab, the first entry lists the cards of all the subject's decks and offers **Practice…** for those decks and **New deck** to start a deck in it; **New deck** also ends the subject's deck list.
 
 When subjects arrived, or when a sync met two choices, some entries may have had more than one sensible place. Each was given one, and **Check these (N)** appears at the top of the Workbench's decks, and Home shows the same **Check these**. It lists those entries with the reason for each. Move any that belong elsewhere with **Move to subject…**, and choose **Dismiss** once an entry looks right.
 
 ## Subject actions
 
-The **…** beside the chosen subject's name offers **Rename…**, **Move up**, **Move down**, and **Delete subject…**. Move up and Move down change the subject's place in Library's list and on Home. No subject and Everything have no menu.
+The **…** beside the chosen subject's name offers **Rename…**, **Move up**, **Move down**, and **Delete subject…**. Move up and Move down change the subject's place on Library's page and on Home. No subject has no menu.
 
 **Delete subject…** asks for confirmation. The subject's decks and documents move to No subject with their cards and schedules; the subject's study guide and lessons are deleted. It never deletes a deck. Use deck deletion only when you intend to remove study material and its associated data.
 

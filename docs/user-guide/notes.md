@@ -4,7 +4,7 @@ A notebook is pages of paper you write and draw on with the same tools as [Annot
 
 ## Find and make notebooks
 
-Open **Library → Notes**. It shows the chosen subject's notebooks, each as a small picture of its first page with how many pages and links it has; **Everything** groups them under their subjects, and **No subject** has its own. Choose a notebook's picture to open it. Its **…** menu has **Rename**, **Move to subject** and **Delete notebook**; deleting removes every page and cannot be undone.
+Open **Notes** in the main navigation. It shows your notebooks grouped under their subjects, each as a small picture of its first page with how many pages and links it has; **No subject** has its own group. Choose a notebook's picture to open it. Its **…** menu has **Rename**, **Move to subject** and **Delete notebook**; deleting removes every page and cannot be undone.
 
 **New notebook** asks for a name, the subject, the paper (**Blank**, **Lined**, **Grid** or **Dots**) and the page size: **Letter**, **A4**, or **Wide**, a landscape page twice as wide as Letter with room for mind maps and diagrams.
 

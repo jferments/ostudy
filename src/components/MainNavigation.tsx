@@ -2,7 +2,6 @@ import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { destinationOf, type AppDestination } from "../navigation/appDestinations";
 import type { IconName } from "../ui/icons/Icon";
 import { AppNavigation, type NavigationBadge } from "../ui/layout/AppNavigation";
-import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 
 interface MainNavigationProps {
   section: AppSection;
@@ -15,25 +14,24 @@ interface MainNavigationProps {
 const ITEMS: ReadonlyArray<{ destination: AppDestination; icon: IconName; label: string }> = [
   { destination: "home", icon: "home", label: "Home" },
   { destination: "library", icon: "library", label: "Library" },
+  { destination: "notes", icon: "sticky-note", label: "Notes" },
   { destination: "tutor", icon: "chat", label: "Tutor" },
   { destination: "progress", icon: "analytics", label: "Progress" },
-  { destination: "settings", icon: "settings", label: "Settings" },
 ];
 
-/** Home, Library, Tutor, Progress and Settings; Home carries today's count. */
+/**
+ * Home, Library, Notes, Tutor and Progress; Home carries today's count.
+ * Settings sits at the foot of the side rail, or in a phone's top bar.
+ */
 export function MainNavigation({ section, activeWorkflow, dueToday, onSelect }: MainNavigationProps) {
-  const { layoutMode } = useLayoutMode();
   const active = destinationOf(section, activeWorkflow);
-  // A phone's bottom bar ends with Settings; the side rail keeps it at its foot.
-  const items = layoutMode === "compact" ? ITEMS : ITEMS.filter((item) => item.destination !== "settings");
   return (
     <AppNavigation
-      items={items.map((item) => ({
+      items={ITEMS.map((item) => ({
         id: item.destination,
         label: item.label,
         icon: item.icon,
         active: item.destination === active,
-        testId: item.destination === "settings" ? "app-settings" : undefined,
         badge:
           item.destination === "home" && dueToday !== null && dueToday > 0
             ? dueTodayBadge(dueToday)

@@ -66,11 +66,12 @@ function current(): string[] {
 }
 
 describe("MainNavigation", () => {
-  it.each([1000, 1440])("names Home, Library, Tutor and Progress at %s px, with Settings at the rail's foot", (width) => {
+  it.each([390, 1000, 1440])("names Home, Library, Notes, Tutor and Progress at %s px", (width) => {
     renderNavigation({ width });
     expect(buttons().map((button) => button.querySelector('[data-slot="nav-label"]')?.textContent)).toEqual([
       "Home",
       "Library",
+      "Notes",
       "Tutor",
       "Progress",
     ]);
@@ -81,29 +82,17 @@ describe("MainNavigation", () => {
     expect(screen.queryByRole("button", { name: /maximize|restore window|full screen/iu })).toBeNull();
   });
 
-  it("ends a phone's bottom bar with Settings", () => {
-    renderNavigation({ width: 390 });
-    expect(buttons().map((button) => button.querySelector('[data-slot="nav-label"]')?.textContent)).toEqual([
-      "Home",
-      "Library",
-      "Tutor",
-      "Progress",
-      "Settings",
-    ]);
-    expect(screen.getByRole("button", { name: "Settings" }).getAttribute("data-testid")).toBe("app-settings");
-  });
-
   it("routes each destination through the typed callback", () => {
     const { onSelect } = renderNavigation({ width: 390 });
-    for (const label of ["Home", "Library", "Tutor", "Progress", "Settings"]) {
+    for (const label of ["Home", "Library", "Notes", "Tutor", "Progress"]) {
       fireEvent.click(screen.getByRole("button", { name: label }));
     }
     expect(onSelect.mock.calls.map(([destination]) => destination)).toEqual([
       "home",
       "library",
+      "notes",
       "tutor",
       "progress",
-      "settings",
     ]);
   });
 
@@ -115,16 +104,16 @@ describe("MainNavigation", () => {
     ["review", "nav-home"],
     ["tutor", "nav-tutor"],
     ["analytics", "nav-progress"],
+    ["notes", "nav-notes"],
+    ["lessons", "nav-library"],
+    ["podcasts", "nav-library"],
   ] as const)("highlights the destination that holds %s", (section, testId) => {
     renderNavigation({ section, width: 390 });
     expect(current()).toEqual([testId]);
   });
 
-  it("highlights Settings in a phone's bottom bar and nothing in the rail, where Settings is at the foot", () => {
-    const view = renderNavigation({ section: "settings", width: 390 });
-    expect(current()).toEqual(["app-settings"]);
-    view.unmount();
-    renderNavigation({ section: "settings" });
+  it("highlights nothing while Settings is open", () => {
+    renderNavigation({ section: "settings", width: 390 });
     expect(current()).toEqual([]);
   });
 

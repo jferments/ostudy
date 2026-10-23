@@ -1,31 +1,30 @@
 import type { ReactNode } from "react";
 
-import { LIBRARY_SECTIONS, type LibrarySection } from "../../navigation/appDestinations";
+import { SUBJECT_SECTIONS, type SubjectSection } from "../../navigation/appDestinations";
 import { cn } from "../../ui/internal/cn";
 import { ItemTrigger } from "../../ui/primitives/Item";
 
-/** Phones use the short labels so all six tabs fit. */
-const VIEWS: Readonly<Record<LibrarySection, { label: string; short: string }>> = {
-  overview: { label: "Overview", short: "Overview" },
-  lessons: { label: "Lessons", short: "Lessons" },
-  "study-guides": { label: "Study guides", short: "Guides" },
-  documents: { label: "Documents", short: "Docs" },
-  notes: { label: "Notes", short: "Notes" },
+/** Phones use the short labels so all five tabs fit. */
+const VIEWS: Readonly<Record<SubjectSection, { label: string; short: string }>> = {
   decks: { label: "Flashcards", short: "Cards" },
+  "study-guides": { label: "Study guides", short: "Guides" },
+  lessons: { label: "Lessons", short: "Lessons" },
+  podcasts: { label: "Podcasts", short: "Podcasts" },
+  documents: { label: "Documents", short: "Docs" },
 };
 
 interface LibraryTabsProps {
-  view: LibrarySection;
+  view: SubjectSection;
   /** Choosing the open page again returns it to its first view. */
-  onSelectView: (view: LibrarySection) => void;
+  onSelectView: (view: SubjectSection) => void;
   /** Page-wide actions at the end of the row, such as Import deck. */
   actions?: ReactNode;
   className?: string;
 }
 
 /**
- * Library's pages as folder tabs: Overview, Lessons, Study guides, Documents,
- * Notes and Flashcards (the Workbench), each showing the chosen subject. The open
+ * A subject's pages as folder tabs: Flashcards (the Workbench), Study guides,
+ * Lessons, Podcasts and Documents. The open
  * page's tab is in front, joined to the page below it; the others sit back on
  * a shaded face.
  */
@@ -38,9 +37,9 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
       )}
     >
       {/* The row overlaps the line below it so the front tab can cover it. */}
-      <nav aria-label="Library pages" data-tour-anchor="library.views" className="tw:-mb-px tw:min-w-0 tw:overflow-x-auto">
+      <nav aria-label="Subject pages" data-tour-anchor="library.views" className="tw:-mb-px tw:min-w-0 tw:overflow-x-auto">
         <ul className="tw:m-0 tw:flex tw:list-none tw:items-end tw:gap-1 tw:p-0">
-          {LIBRARY_SECTIONS.map((section) => {
+          {SUBJECT_SECTIONS.map((section) => {
             const active = section === view;
             return (
               <li key={section} className="tw:shrink-0">

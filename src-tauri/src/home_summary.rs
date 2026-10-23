@@ -66,10 +66,37 @@ pub struct HomeSubjectSummaryDto {
     /// Whether the subject has a published overview guide (always false for
     /// No subject).
     pub has_overview_guide: bool,
+    /// Active study guides of the subject's documents, plus its overview
+    /// guide.
+    pub guide_count: i64,
+    /// Lessons in the subject's course (always 0 for No subject).
+    pub lesson_count: i64,
+    /// Podcasts made for the subject (always 0 for No subject).
+    pub podcast_count: i64,
+    /// The figure Library shows on the subject's tile, if its documents have
+    /// one worth showing.
+    pub cover: Option<SubjectCoverDto>,
     /// The decks holding the subject's due cards, sorted: the scope its
     /// scheduled session starts with.
     pub due_deck_ids: Vec<String>,
 }
+
+/// Where a subject's tile figure sits: a box on one page of one of its
+/// documents, in the page's own units.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubjectCoverDto {
+    pub document_id: String,
+    pub page_number: i64,
+    pub page_width: f64,
+    pub page_height: f64,
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Eq for SubjectCoverDto {}
 
 /// What Start review would study today across the whole library.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -156,6 +183,38 @@ pub(crate) fn load_home_summary(
     for subject_id in subjects_with_overview_guides(connection)? {
         if let Some(entry) = groups.get_mut(&Some(subject_id)) {
             entry.has_overview_guide = true;
+            entry.guide_count += 1;
+        }
+    }
+    for (subject_id, guide_count) in grouped_counts(
+        connection,
+        "SELECT document.subject_id, COUNT(DISTINCT guide.document_id)
+         FROM document_study_guides guide
+         JOIN documents document ON document.id = guide.document_id
+         WHERE guide.state = 'active'
+         GROUP BY document.subject_id",
+    )? {
+        group(&mut groups, subject_id).guide_count += guide_count;
+    }
+    for (subject_id, lesson_count) in grouped_counts(
+        connection,
+        "SELECT subject_id, COUNT(*) FROM lessons GROUP BY subject_id",
+    )? {
+        if let Some(entry) = groups.get_mut(&subject_id) {
+            entry.lesson_count = lesson_count;
+        }
+    }
+    for (subject_id, podcast_count) in grouped_counts(
+        connection,
+        "SELECT subject_id, COUNT(*) FROM podcasts GROUP BY subject_id",
+    )? {
+        if let Some(entry) = groups.get_mut(&subject_id) {
+            entry.podcast_count = podcast_count;
+        }
+    }
+    for (subject_id, cover) in subject_covers(connection)? {
+        if let Some(entry) = groups.get_mut(&Some(subject_id)) {
+            entry.cover = Some(cover);
         }
     }
 
@@ -261,6 +320,64 @@ fn subjects_with_overview_guides(connection: &Connection) -> Result<Vec<String>,
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([], |row| row.get(0))
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>();
+    rows.map_err(CommandError::database)
+}
+
+/// Figures smaller than this share of their page are too small for a tile.
+const MIN_COVER_PAGE_SHARE: f64 = 0.03;
+
+/// Each subject's tile figure: among the visible figures of its documents,
+/// one the figure reading marked worth studying first, then the most
+/// important, then the largest on its page; ties go to the earliest document
+/// and figure, so the choice is stable.
+fn subject_covers(connection: &Connection) -> Result<Vec<(String, SubjectCoverDto)>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT subject_id, document_id, page_number, page_width, page_height,
+                    box_left, box_top, box_width, box_height
+             FROM (
+                 SELECT document.subject_id, figure.document_id, figure.page_number,
+                        figure.page_width, figure.page_height, figure.box_left,
+                        figure.box_top, figure.box_width, figure.box_height,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY document.subject_id
+                            ORDER BY COALESCE(reading.worth_studying, 0) DESC,
+                                     COALESCE(reading.importance, 0) DESC,
+                                     (figure.box_width * figure.box_height)
+                                         / (figure.page_width * figure.page_height) DESC,
+                                     document.created_at, figure.document_id, figure.ordinal
+                        ) AS choice
+                 FROM document_figures figure
+                 JOIN documents document ON document.id = figure.document_id
+                 LEFT JOIN document_figure_readings reading
+                   ON reading.document_id = figure.document_id
+                  AND reading.figure_id = figure.figure_id
+                 WHERE figure.hidden = 0
+                   AND document.subject_id IS NOT NULL
+                   AND (figure.box_width * figure.box_height)
+                       >= ?1 * figure.page_width * figure.page_height
+             )
+             WHERE choice = 1",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map(params![MIN_COVER_PAGE_SHARE], |row| {
+            Ok((
+                row.get(0)?,
+                SubjectCoverDto {
+                    document_id: row.get(1)?,
+                    page_number: row.get(2)?,
+                    page_width: row.get(3)?,
+                    page_height: row.get(4)?,
+                    left: row.get(5)?,
+                    top: row.get(6)?,
+                    width: row.get(7)?,
+                    height: row.get(8)?,
+                },
+            ))
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>();
     rows.map_err(CommandError::database)

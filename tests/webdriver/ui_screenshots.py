@@ -403,7 +403,7 @@ def close_overlays(ctx: Context) -> None:
 
 
 SHELL_MARKER = "//button[@data-testid='nav-library' or @data-testid='nav-decks']"
-LIBRARY_VIEWS = ("overview", "lessons", "decks", "documents", "study-guides")
+LIBRARY_VIEWS = ("overview", "lessons", "podcasts", "decks", "documents", "study-guides")
 DESTINATION_OF = {"home": "home", "tutor": "tutor", "analytics": "progress"}
 
 
@@ -429,6 +429,25 @@ def show_workbench_tree(ctx: Context) -> None:
         back = f"{workbench}//button[@aria-label='Library']"
         click(ctx, close_editor if exists(ctx, close_editor) else back)
     find(ctx, f"{workbench}//nav[@aria-label='Library']")
+
+
+LIBRARY_TILES = "//main//*[@data-testid='library-subject-tiles']"
+
+
+def open_library_page(ctx: Context, section: str) -> None:
+    """Library opens on its subject tiles: All cards opens the Workbench, and a
+    subject's pages are tabs inside the seeded subject."""
+    if section == "overview":
+        return
+    if section == "decks":
+        click(ctx, "//main//button[@data-testid='library-all-cards']")
+        return
+    tile = (
+        f"{LIBRARY_TILES}//*[@data-testid='library-subject-tile']"
+        f"[.//h2[normalize-space(.)={xpath_literal(seed.SUBJECT_PAGE)}]]"
+    )
+    click(ctx, f"{tile}//button[@data-testid='library-subject-open']")
+    click(ctx, f"//main//nav[@aria-label='Subject pages']//button[@data-testid='library-view-{section}']")
 
 
 def choose_everything(ctx: Context) -> None:
@@ -458,17 +477,21 @@ def go(ctx: Context, section: str) -> None:
         elif section in LIBRARY_VIEWS:
             click(ctx, "//button[@data-testid='nav-library']")
             settle_dialogs(ctx)
-            # Library opens its last page; every page carries Library's tabs.
-            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages']")
-            show_workbench_tree(ctx)
-            choose_everything(ctx)
-            show_workbench_tree(ctx)
-            if section == "decks" and exists(ctx, WORKBENCH):
-                # The Workbench is Library's first page.
-                pass
+            find(ctx, f"{WORKBENCH} | //main//nav[@aria-label='Library pages'] | {LIBRARY_TILES}")
+            if exists(ctx, LIBRARY_TILES):
+                open_library_page(ctx, section)
             else:
-                # Choosing the open view again returns it to its first page.
-                click(ctx, f"//main//nav[@aria-label='Library pages']//button[@data-testid='library-view-{section}']")
+                # Builds before the subject tiles: Library opens its last page,
+                # and every page carries Library's tabs.
+                show_workbench_tree(ctx)
+                choose_everything(ctx)
+                show_workbench_tree(ctx)
+                if section == "decks" and exists(ctx, WORKBENCH):
+                    # The Workbench is Library's first page.
+                    pass
+                else:
+                    # Choosing the open view again returns it to its first page.
+                    click(ctx, f"//main//nav[@aria-label='Library pages']//button[@data-testid='library-view-{section}']")
         else:
             click(ctx, f"//button[@data-testid='nav-{DESTINATION_OF[section]}']")
     elif section == "settings" and ctx.layout == "compact":
@@ -692,9 +715,13 @@ def open_subject(ctx: Context) -> None:
         ctx,
         f"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={xpath_literal(name)}]]//button",
     )
-    # A subject opens on its Library Overview.
     find(ctx, f"//main//*[@data-testid='library-subject-name'][normalize-space(.)={xpath_literal(name)}]")
-    find(ctx, "//main//*[@data-testid='library-overview']//*[@data-testid='library-overview-facts']")
+    if exists(ctx, "//main//nav[@aria-label='Subject pages']"):
+        # A subject opens on its Flashcards, with its pages as tabs.
+        find(ctx, WORKBENCH)
+    else:
+        # Builds before the subject tiles opened a subject's Library Overview.
+        find(ctx, "//main//*[@data-testid='library-overview']//*[@data-testid='library-overview-facts']")
 
 
 def open_first_run(ctx: Context) -> None:
@@ -804,8 +831,9 @@ def scroll_card_editor(ctx: Context) -> None:
 
 def open_guides(ctx: Context) -> None:
     go(ctx, "study-guides")
+    in_subject = exists(ctx, "//main//nav[@aria-label='Subject pages']")
     for document in seed.DOCUMENTS:
-        if document.topics:
+        if document.topics and (not in_subject or document.subject == seed.SUBJECT_PAGE):
             find(ctx, f"//main//li[@data-testid='guide-card']//h3[normalize-space(.)={xpath_literal(document.title)}]")
 
 
@@ -817,14 +845,20 @@ def open_guide_reader(ctx: Context) -> None:
 
 
 def open_documents(ctx: Context) -> None:
-    """Everything's Documents groups the documents under their subjects, then No subject."""
+    """Documents lists a subject's documents; builds before the subject tiles grouped
+    every document under its subject, then No subject."""
     go(ctx, "documents")
+    in_subject = exists(ctx, "//main//nav[@aria-label='Subject pages']")
     for document in seed.DOCUMENTS:
+        row = f"//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]"
+        if in_subject:
+            if document.subject == seed.SUBJECT_PAGE:
+                find(ctx, f"//main{row}")
+            continue
         group = document.subject or "No subject"
         find(
             ctx,
-            f"//main//section[@data-testid='document-group'][.//h2[normalize-space(text())={xpath_literal(group)}]]"
-            f"//li[@data-testid='document-row']//h3[normalize-space(.)={xpath_literal(document.title)}]",
+            f"//main//section[@data-testid='document-group'][.//h2[normalize-space(text())={xpath_literal(group)}]]{row}",
         )
 
 

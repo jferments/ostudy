@@ -2,13 +2,13 @@
 
 Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: the chosen subject's decks and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
-Library's pages are tabs under the chosen subject's name: **Overview**, **Lessons**, **Study guides**, **Documents**, and **Flashcards** (the Workbench). **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose in Library's subject list; there is no second list of subjects inside it.
+A subject's pages are tabs under its name: **Flashcards** (the Workbench), **Study guides**, **Lessons**, **Podcasts** and **Documents**; **All cards** on Library's page opens the Workbench on every card, without tabs. **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose on Library's page; there is no second list of subjects inside it.
 
 ## The tree
 
-The tree starts with all of the chosen subject's cards (**All of Physiology**, for example; **All cards** under Everything and **Unsorted cards** under No subject), then has two sections:
+The tree starts with all of the chosen subject's cards (**All of Physiology**, for example; **All cards** for every card and **Unsorted cards** under No subject), then has two sections:
 
-- **Decks** lists the subject's decks in your order, each with its card count, and ends with **New deck**. Under Everything it lists every deck, each with its subject's badge. The subject's archived decks sit behind **Archived decks (N)**. See [Subjects and deck organization](flashcards-organization.md).
+- **Decks** lists the subject's decks in your order, each with its card count, and ends with **New deck**. Under All cards it lists every deck, each with its subject's badge. The subject's archived decks sit behind **Archived decks (N)**. See [Subjects and deck organization](flashcards-organization.md).
 - **Tags** shows the eight tags the subject's cards use most; **Show all N tags** lists the rest. A tag chosen in a subject shows only that subject's cards with the tag.
 
 Choosing the first entry, a deck, or a tag shows its cards in the list. A subject's documents are on its **Documents** tab.
@@ -25,7 +25,7 @@ The app keeps a device-local presentation checkpoint for useful destinations, in
 
 When the library has no active decks, **All cards** shows **No cards yet** with **New deck** and **Import deck**. On a phone the tree's **New deck** starts one. There are no empty folder tiles, selection controls, or collapse controls to work around. An archived-only library still lists its decks under **Archived decks (N)**.
 
-A new deck goes under the subject you created it in, or under No subject when you start it from Everything or No subject. See [Subjects and deck organization](flashcards-organization.md) to file it later.
+A new deck goes under the subject you created it in, or under No subject when you start it from All cards or No subject. See [Subjects and deck organization](flashcards-organization.md) to file it later.
 
 ## The card list
 

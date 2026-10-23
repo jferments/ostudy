@@ -21,8 +21,26 @@ export interface HomeSubjectSummary {
   /** Documents filed in the subject. */
   sourceCount: number;
   hasOverviewGuide: boolean;
+  /** Active study guides of the subject's documents, plus its overview guide. */
+  guideCount: number;
+  lessonCount: number;
+  podcastCount: number;
+  /** The figure Library shows on the subject's tile, if its documents have one. */
+  cover: SubjectCover | null;
   /** The decks holding the subject's due cards: its scheduled session's scope. */
   dueDeckIds: string[];
+}
+
+/** A box on one page of one of a subject's documents, in the page's own units. */
+export interface SubjectCover {
+  documentId: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /** What Start review studies today across the whole library. */
