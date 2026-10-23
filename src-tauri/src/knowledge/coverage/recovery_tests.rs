@@ -6,6 +6,7 @@ fn receipt(states: &[(&str, bool, Disposition)]) -> CoverageReceipt {
         version: VERSION,
         plan_hash: hash("recovery test"),
         images_attached: false,
+        attached_images: Vec::new(),
         regions: states
             .iter()
             .enumerate()

@@ -9,6 +9,7 @@ use super::{
     },
 };
 use crate::document_semantics::SemanticChunk;
+use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SemanticWorkEstimate {
@@ -19,7 +20,7 @@ pub(crate) struct SemanticWorkEstimate {
 
 pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> SemanticWorkEstimate {
     let mut result = SemanticWorkEstimate::default();
-    let mut window = Window::default();
+    let mut sources = Vec::<(String, &[String])>::new();
     for chunk in chunks {
         let parts = split_text(&chunk.full_text, MAX_SOURCE_CHARS);
         let parts = if parts.is_empty() && !chunk.source_locator.asset_ids.is_empty() {
@@ -35,22 +36,42 @@ pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> Semanti
             image_groups
         };
         for part in parts {
-            let chars = part.chars().count();
             for images in &image_groups {
-                result.characters = result.characters.saturating_add(chars);
-                if !window.admits(&part, images) {
-                    window.flush(&mut result, attach_images);
-                }
-                window.push(&part, images);
+                sources.push((part.clone(), images));
             }
         }
+    }
+    // As in `extraction::plan_windows`, a page is shown with the sources that
+    // start on it, and a page none starts on with the first that reaches it.
+    let starts = sources
+        .iter()
+        .filter_map(|(_, images)| images.first())
+        .collect::<HashSet<_>>();
+    let mut placed = HashSet::new();
+    let mut window = Window::default();
+    for (part, images) in &sources {
+        let shown = images
+            .iter()
+            .enumerate()
+            .filter(|(index, image)| {
+                *index == 0 || (!starts.contains(image) && placed.insert(*image))
+            })
+            .map(|(_, image)| image)
+            .collect::<Vec<_>>();
+        result.characters = result.characters.saturating_add(part.chars().count());
+        if !window.admits(part, &shown) {
+            window.flush(&mut result, attach_images);
+        }
+        window.push(part, &shown);
     }
     window.flush(&mut result, attach_images);
     result
 }
 
-/// Mirrors `extraction::batch_ranges`: neighbouring sources share a window
-/// while its text, complexity and distinct page images stay within budget.
+/// Mirrors `extraction::plan_windows`: neighbouring sources share a window
+/// while its text, complexity and distinct shown pages stay within budget. It
+/// does not move a split page whole to the next window, so it may count a
+/// request more than the planner sends.
 #[derive(Default)]
 struct Window<'a> {
     sources: usize,
@@ -60,14 +81,14 @@ struct Window<'a> {
 }
 
 impl<'a> Window<'a> {
-    fn new_images(&self, images: &'a [String]) -> usize {
+    fn new_images(&self, images: &[&'a String]) -> usize {
         images
             .iter()
             .filter(|image| !self.images.contains(image))
             .count()
     }
 
-    fn admits(&self, part: &str, images: &'a [String]) -> bool {
+    fn admits(&self, part: &str, images: &[&'a String]) -> bool {
         let new_images = self.new_images(images);
         self.sources == 0
             || (self.sources < EXTRACTION_BATCH_SOURCES
@@ -79,7 +100,7 @@ impl<'a> Window<'a> {
                     <= EXTRACTION_BATCH_COMPLEXITY_UNITS)
     }
 
-    fn push(&mut self, part: &str, images: &'a [String]) {
+    fn push(&mut self, part: &str, images: &[&'a String]) {
         let new_images = self.new_images(images);
         self.sources += 1;
         self.chars += part.chars().count();
@@ -87,7 +108,7 @@ impl<'a> Window<'a> {
             .complexity
             .saturating_add(extraction_complexity_units(part, new_images));
         for image in images {
-            if !self.images.contains(&image) {
+            if !self.images.contains(image) {
                 self.images.push(image);
             }
         }

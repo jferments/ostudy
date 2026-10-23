@@ -55,14 +55,23 @@ pub(super) fn unsupported_number(
     content: &KnowledgeUnitInput,
     cited: &[&SourceRecord],
 ) -> Option<String> {
+    first_unsupported(
+        std::iter::once(content.statement.as_str())
+            .chain(content.qualifications.iter().map(String::as_str)),
+        cited,
+    )
+}
+
+/// `unsupported_number` over raw statement text, for a draft that was never
+/// admitted (a repair prompt explains which number failed).
+pub(super) fn first_unsupported<'a>(
+    stated: impl Iterator<Item = &'a str>,
+    cited: &[&SourceRecord],
+) -> Option<String> {
     let texts = cited
         .iter()
-        .filter(|source| {
-            !source.text.trim().is_empty()
-                && !NO_TEXT_MARKERS
-                    .iter()
-                    .any(|marker| source.text.contains(marker))
-        })
+        .copied()
+        .filter(|source| has_text_layer(source))
         .map(|source| source.text.as_str())
         .collect::<Vec<_>>();
     if texts.is_empty() {
@@ -72,11 +81,22 @@ pub(super) fn unsupported_number(
         .iter()
         .flat_map(|text| numbers(text))
         .collect::<HashSet<_>>();
-    std::iter::once(content.statement.as_str())
-        .chain(content.qualifications.iter().map(String::as_str))
+    stated
         .flat_map(numbers)
         .filter(|number| checked(number))
         .find(|number| !printed.contains(number))
+}
+
+/// Whether a source's own text layer prints `number` as `numbers` reads it.
+pub(super) fn prints(source: &SourceRecord, number: &str) -> bool {
+    has_text_layer(source) && numbers(&source.text).iter().any(|found| found == number)
+}
+
+fn has_text_layer(source: &SourceRecord) -> bool {
+    !source.text.trim().is_empty()
+        && !NO_TEXT_MARKERS
+            .iter()
+            .any(|marker| source.text.contains(marker))
 }
 
 #[cfg(test)]

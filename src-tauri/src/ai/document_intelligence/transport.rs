@@ -181,7 +181,7 @@ async fn execute_request(
     cancellation: Option<&CancellationSignal>,
     stage: &str,
 ) -> Result<Value, CommandError> {
-    let _provider_slot =
+    let provider_slot =
         crate::ai::concurrency::acquire_provider_slot(&task.network_scope, cancellation).await?;
     let future = async {
         if let Some(cancellation) = cancellation {
@@ -218,7 +218,7 @@ async fn execute_request(
     )
     .await;
     crate::ai::concurrency::record_provider_outcome(
-        &task.network_scope,
+        &provider_slot,
         result.is_ok(),
         result
             .as_ref()

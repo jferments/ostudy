@@ -54,7 +54,7 @@ struct WindowGenerationRequest<'a> {
     document_title: &'a str,
     outline: &'a document_intelligence::DocumentOutline,
     window: &'a SemanticWindow,
-    images: &'a [document_intelligence::SourcePageImage],
+    typical_cards: usize,
     maximum_cards: usize,
     diagnostic_prefix: &'a str,
     knowledge: &'a KnowledgeCatalog,
@@ -68,11 +68,6 @@ struct WindowGenerationRequest<'a> {
 pub(crate) async fn execute_generation_windows(
     mut input: GenerationExecution<'_>,
 ) -> Result<Vec<Value>, CommandError> {
-    let source_assets = if input.task.include_page_images {
-        document_store::load_source_assets(input.database, input.document_id)?
-    } else {
-        Vec::new()
-    };
     let mut cached = std::mem::take(&mut input.cached_cards);
     if cached.len() < input.windows.len() {
         cached.resize_with(input.windows.len(), || None);
@@ -211,7 +206,6 @@ pub(crate) async fn execute_generation_windows(
             let position = missing[queue_index];
             let input = &input;
             let catalogs = &catalogs;
-            let source_assets = &source_assets;
             async move {
                 let result = async {
                     let window = &input.windows[position];
@@ -221,17 +215,7 @@ pub(crate) async fn execute_generation_windows(
                         input.job_id,
                         window.window_index,
                     )?;
-                    let images = if input.task.include_page_images {
-                        document_store::load_window_images(
-                            input.paths,
-                            source_assets,
-                            window,
-                            input.plan.max_images_per_window,
-                        )?
-                    } else {
-                        Vec::new()
-                    };
-                    generation_slot(input, catalogs, position, &images).await
+                    generation_slot(input, catalogs, position).await
                 }
                 .await;
                 (position, result)
@@ -311,7 +295,6 @@ async fn generation_slot(
     input: &GenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
     position: usize,
-    images: &[document_intelligence::SourcePageImage],
 ) -> Result<Vec<Value>, CommandError> {
     let window = &input.windows[position];
     let locator = window.source_locator();
@@ -326,6 +309,9 @@ async fn generation_slot(
     let mut root_task = input.task.clone();
     root_task.diagnostic_window_key = Some(root_key.clone());
 
+    let budget =
+        crate::document_scale::window_card_budget(input.plan, page_share(input.windows, position));
+    let card_budget = budget.ceiling;
     let result: Result<Vec<Value>, CommandError> = async {
         let partitions = authoring_plan::partition_catalog(&catalogs[position], |knowledge| {
             document_intelligence::preflight_window_flashcards(
@@ -333,15 +319,18 @@ async fn generation_slot(
                 input.document_title,
                 input.outline,
                 window,
-                document_intelligence::AuthoringEvidence { images, knowledge },
+                document_intelligence::AuthoringEvidence { knowledge },
                 document_intelligence::FlashcardGenerationLimits {
-                    maximum_cards: input.plan.max_cards_per_window,
+                    typical_cards: budget.typical,
+                    maximum_cards: card_budget,
                     completion_token_floor: 0,
                 },
             )
         })?;
-        let budgets =
-            authoring_plan::allocate_nonzero_budgets(input.plan.max_cards_per_window, &partitions)?;
+        let budgets = authoring_plan::allocate_nonzero_budgets(
+            card_budget.max(partitions.len()),
+            &partitions,
+        )?;
         let child_keys = partitions
             .iter()
             .enumerate()
@@ -369,7 +358,8 @@ async fn generation_slot(
                 "sourceUnitStart": locator.first(),
                 "sourceUnitEnd": locator.last(),
                 "sourceTokens": window.token_estimate,
-                "cardBudget": input.plan.max_cards_per_window,
+                "cardBudget": card_budget,
+                "typicalCards": budget.typical,
                 "plannedSubrequests": partitions.len(),
             }),
         );
@@ -388,7 +378,7 @@ async fn generation_slot(
                 document_title: input.document_title,
                 outline: input.outline,
                 window,
-                images,
+                typical_cards: share_of(budget.typical, maximum_cards, card_budget),
                 maximum_cards,
                 diagnostic_prefix: input.diagnostic_prefix,
                 knowledge,
@@ -446,6 +436,32 @@ async fn generation_slot(
     })
 }
 
+/// How many source pages window `position` covers. A page shared by several
+/// windows counts as an equal share of a page in each, so overlapping windows
+/// and a dense page split across windows do not multiply its cards.
+fn page_share(windows: &[SemanticWindow], position: usize) -> f64 {
+    windows[position]
+        .source_locator
+        .unit_numbers
+        .iter()
+        .map(|page| {
+            let holders = windows
+                .iter()
+                .filter(|window| window.source_locator.unit_numbers.contains(page))
+                .count();
+            1.0 / holders.max(1) as f64
+        })
+        .sum()
+}
+
+/// `typical` scaled from a `whole` budget to a `part` of it, at least one.
+fn share_of(typical: usize, part: usize, whole: usize) -> usize {
+    typical
+        .saturating_mul(part)
+        .div_ceil(whole.max(1))
+        .clamp(1, part.max(1))
+}
+
 async fn generate_window_with_recovery(
     input: WindowGenerationRequest<'_>,
 ) -> Result<Vec<Value>, CommandError> {
@@ -457,10 +473,10 @@ async fn generate_window_with_recovery(
         input.outline,
         input.window,
         document_intelligence::AuthoringEvidence {
-            images: input.images,
             knowledge: input.knowledge,
         },
         document_intelligence::FlashcardGenerationLimits {
+            typical_cards: input.typical_cards,
             maximum_cards: first_budget,
             completion_token_floor: 0,
         },
@@ -501,10 +517,10 @@ async fn generate_window_with_recovery(
                 input.outline,
                 input.window,
                 document_intelligence::AuthoringEvidence {
-                    images: input.images,
                     knowledge: input.knowledge,
                 },
                 document_intelligence::FlashcardGenerationLimits {
+                    typical_cards: share_of(input.typical_cards, reduced_budget, first_budget),
                     maximum_cards: reduced_budget,
                     completion_token_floor,
                 },
@@ -539,7 +555,7 @@ mod tests {
     fn provider_parallelism_is_bounded_by_execution_topology() {
         assert_eq!(
             crate::ai::concurrency::document_request_parallelism("cloud"),
-            8
+            12
         );
         assert_eq!(
             crate::ai::concurrency::document_request_parallelism("local"),
@@ -567,5 +583,53 @@ mod tests {
 
         let truncation = CommandError::new("ai_document_output_truncated", "length");
         assert!(should_retry_with_smaller_output(&truncation, 10));
+    }
+
+    fn window(index: usize, pages: Vec<i64>) -> SemanticWindow {
+        let locator = crate::document_domain::SourceLocator::new(
+            crate::document_domain::SourceUnitKind::Page,
+            pages,
+            None,
+        )
+        .unwrap();
+        SemanticWindow {
+            window_index: index,
+            partition_index: 0,
+            partition_title: String::new(),
+            first_chunk_index: index as i64,
+            last_chunk_index: index as i64,
+            page_start: locator.first(),
+            page_end: locator.last(),
+            source_locator: locator,
+            token_estimate: 1,
+            source_text: "text".into(),
+        }
+    }
+
+    #[test]
+    fn shared_pages_are_split_between_their_windows() {
+        // Pages 1-4, with page 4 shared by the next window, then page 5 split
+        // across three windows.
+        let windows = [
+            window(0, vec![1, 2, 3, 4]),
+            window(1, vec![4, 5]),
+            window(2, vec![5]),
+            window(3, vec![5]),
+        ];
+        let shares = (0..windows.len())
+            .map(|position| page_share(&windows, position))
+            .collect::<Vec<_>>();
+        assert!((shares[0] - 3.5).abs() < 1e-9);
+        assert!((shares[1] - (0.5 + 1.0 / 3.0)).abs() < 1e-9);
+        assert!((shares[2] - 1.0 / 3.0).abs() < 1e-9);
+        assert!((shares.iter().sum::<f64>() - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn typical_cards_scale_with_a_partial_budget() {
+        assert_eq!(share_of(8, 16, 16), 8);
+        assert_eq!(share_of(8, 5, 16), 3);
+        assert_eq!(share_of(1, 2, 16), 1);
+        assert_eq!(share_of(5, 0, 0), 1);
     }
 }

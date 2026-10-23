@@ -108,15 +108,14 @@ pub(crate) async fn generate_study_guide_topic_section(
     length_scale: f64,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
-    let AuthoringEvidence { images, knowledge } = evidence;
-    let (system, user) =
-        document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    let AuthoringEvidence { knowledge } = evidence;
+    let (system, user) = document_study_guide_prompt(task, document_title, plan, topic, knowledge)?;
     let writing = WritingBudget::for_knowledge(knowledge).scaled(length_scale);
     let completion_plan = fit_guide_completion_plan(
         task,
         &system,
         &user,
-        AuthoringEvidence { images, knowledge },
+        AuthoringEvidence { knowledge },
         writing,
     )?;
     let section = request_study_guide_section_with_retry(
@@ -124,7 +123,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         task,
         &system,
         &user,
-        AuthoringEvidence { images, knowledge },
+        AuthoringEvidence { knowledge },
         completion_plan,
         writing,
         None,
@@ -150,7 +149,7 @@ pub(crate) async fn generate_study_guide_topic_section(
             task,
             &system,
             &user,
-            AuthoringEvidence { images, knowledge },
+            AuthoringEvidence { knowledge },
             completion_plan,
             writing,
             None,
@@ -183,7 +182,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         task,
         &system,
         &user,
-        AuthoringEvidence { images, knowledge },
+        AuthoringEvidence { knowledge },
         completion_plan,
         writing,
         None,
@@ -222,14 +221,13 @@ pub(crate) fn preflight_document_study_guide_section(
     length_scale: f64,
 ) -> Result<(), CommandError> {
     validate_document_guide_input(source_text, &evidence)?;
-    let AuthoringEvidence { images, knowledge } = evidence;
-    let (system, user) =
-        document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    let AuthoringEvidence { knowledge } = evidence;
+    let (system, user) = document_study_guide_prompt(task, document_title, plan, topic, knowledge)?;
     fit_guide_completion_plan(
         task,
         &system,
         &user,
-        AuthoringEvidence { images, knowledge },
+        AuthoringEvidence { knowledge },
         WritingBudget::for_knowledge(knowledge).scaled(length_scale),
     )
     .map(|_| ())
@@ -239,10 +237,10 @@ fn validate_document_guide_input(
     source_text: &str,
     evidence: &AuthoringEvidence<'_>,
 ) -> Result<(), CommandError> {
-    if source_text.trim().is_empty() && evidence.images.is_empty() {
+    if source_text.trim().is_empty() && evidence.knowledge.units.is_empty() {
         return Err(CommandError::new(
             "study_guide_topic_has_no_evidence",
-            "This learning topic did not contain text or visual evidence that could support a study-guide section.",
+            "This learning topic has neither text nor extracted knowledge that could support a study-guide section.",
         ));
     }
     if evidence.knowledge.units.is_empty() {
@@ -323,7 +321,6 @@ fn document_study_guide_prompt(
     document_title: &str,
     plan: &DocumentLearningPlan,
     topic: &LearningTopic,
-    images: &[super::SourcePageImage],
     knowledge: &KnowledgeCatalog,
 ) -> Result<(String, String), CommandError> {
     // Fixed instructions live in the system prompt and the document-wide plan
@@ -332,11 +329,9 @@ fn document_study_guide_prompt(
     // follows it.
     let global_context = compact_plan_context(plan)?;
     let system = study_guide_system_prompt();
-    let visual_instruction = if images.is_empty() {
-        "No images are attached. visualExplanations MUST be []."
-    } else {
-        "Page images are attached with this section's evidence. Use visualExplanations only for these images."
-    };
+    // Page renders go only to knowledge extraction; sections are written from
+    // what it extracted.
+    let visual_instruction = "No images are attached. visualExplanations MUST be [].";
     let mut goals = String::new();
     if !topic.learning_objectives.is_empty() {
         goals.push_str(&format!(
@@ -402,10 +397,7 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         task,
         &system,
         &user,
-        AuthoringEvidence {
-            images: &[],
-            knowledge,
-        },
+        AuthoringEvidence { knowledge },
         completion_plan,
         WritingBudget::for_knowledge(knowledge),
         Some(cancellation),
@@ -452,10 +444,7 @@ fn fit_collection_guide_request(
         task,
         system,
         &user,
-        AuthoringEvidence {
-            images: &[],
-            knowledge,
-        },
+        AuthoringEvidence { knowledge },
         WritingBudget::for_knowledge(knowledge),
     )?;
     Ok((user, completion_plan))
@@ -491,7 +480,7 @@ async fn request_study_guide_section_with_retry(
     budget: WritingBudget,
     cancellation: Option<&CancellationSignal>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    let AuthoringEvidence { images, knowledge } = evidence;
+    let AuthoringEvidence { knowledge } = evidence;
     let writing = budget.fit_output(completion_plan.initial_visible_tokens);
     let initial = recovery::GuideRequest {
         system: system.to_string(),
@@ -500,13 +489,13 @@ async fn request_study_guide_section_with_retry(
             completion_plan.instructions(),
             writing.instructions()
         ),
-        schema: protocol::schema(knowledge, !images.is_empty()),
+        schema: protocol::schema(knowledge, false),
         visible_tokens: completion_plan.initial_visible_tokens,
     };
     recovery::run(
         initial,
         knowledge,
-        !images.is_empty(),
+        false,
         completion_plan,
         budget,
         |request| {
@@ -517,7 +506,7 @@ async fn request_study_guide_section_with_retry(
                     user_text: &request.user,
                     schema: &request.schema,
                     max_tokens: task.completion_token_ceiling(request.visible_tokens),
-                    images,
+                    images: &[],
                 },
             )
         },
@@ -540,7 +529,7 @@ async fn request_study_guide_section_with_retry(
                 user_text: &owned.user,
                 schema: &owned.schema,
                 max_tokens: task.completion_token_ceiling(owned.visible_tokens),
-                images,
+                images: &[],
             };
             match cancellation {
                 Some(signal) => request_json_cancellable(runtime, task, request, signal).await,
