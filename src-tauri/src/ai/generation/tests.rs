@@ -212,6 +212,10 @@ fn document_generation_payload_parts_are_content_free_and_owner_stages_are_expli
         stage("src-tauri/src/ai/document_intelligence/podcast_script.rs"),
         "podcast_authoring"
     );
+    assert_eq!(
+        stage("src-tauri/src/ai/document_intelligence/source_notes.rs"),
+        "source_notes_authoring"
+    );
     assert_eq!(stage("unrecognized.rs"), "unclassified");
 }
 

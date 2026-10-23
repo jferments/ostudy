@@ -62,6 +62,19 @@ A document's **…** menu files it: **Add to a subject…** or **Move to another
 
 **Reading range…** limits what the subject's study materials use from a long source, such as pages 1–3 and 7. The row shows the range, for example "pages 1–3 studied". **Whole document** clears it. When the file changes, the row says the range needs review.
 
+### New study set
+
+**New study set** in Library's header starts a study set in one place. Its sheet asks for:
+
+- **Subject**: a new subject (give it a **Name**) or one you already have.
+- **Documents**: **Add a document** as many times as you like. Each is filed in the subject and read as if you had uploaded it there.
+- **What to learn**: optional with documents, where it says how to use them, such as what to focus on or leave out, and also guides their first cards. With no documents, describe a topic and the AI connection used for cards and guides writes study notes on it. The notes become a PDF in the subject's **Documents**, and everything else is made from them like any upload.
+- **Make**: **Flashcards**, **Study guide**, **Lessons** and **Podcast**. A podcast is made from the lessons: once they are written, two hosts talk through the first three.
+
+**Create study set** opens the subject's **Documents**. Reading a document always writes its first cards. Once every document is read, the subject's study materials start as if you had chosen them in **Make study materials**: the study guide, the subject's flashcards, and the lessons, then the podcast. If you leave the page first, they start the next time you open the subject's **Documents** while the app is still running.
+
+### Make study materials
+
 A subject's own study materials are made from its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Its sheet asks:
 
 - **From**: which of the subject's documents to use. Every document is ticked unless you left it out before. An unticked document stays in the subject, but the subject's guide, its lessons and a Tutor chat about the subject skip it. Its row says "left out of study materials", and **Use in study materials** in its **…** menu puts it back. **Leave out of study materials** in the same menu leaves a document out without opening the sheet. Moving a document to another subject puts it back in.
@@ -114,7 +127,7 @@ Other formats record their place in the source as **sections**, even where the f
 
 ## What the provider receives
 
-Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing.
+Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing. A **New study set** made without documents sends what you typed in **What to learn** in one request for its notes; the notes then come back as a document and are read like any other.
 
 Model output cannot write to the library, files or commands directly. Generated content is checked for structure, size, allowed formatting, tags, Fill in the blank syntax, question rules, source references and duplicates before it is saved. A false statement or distractor in a question is never recorded as something the source asserted, and a single-best-answer question must have one supported best choice.
 

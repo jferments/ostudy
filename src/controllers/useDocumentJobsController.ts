@@ -345,20 +345,36 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     if (!selected) return;
     const options = chooseOptions ? await chooseOptions(selected) : {};
     if (!options) return;
+    if (await importStagedDocument(selected, captured, onImported, options)) {
+      showToast(
+        "info",
+        "Document processing started. You can add more documents while this job runs.",
+      );
+    }
+  }
 
+  /**
+   * Imports an already chosen file, runs `onImported` (such as filing it in a
+   * subject) and starts its processing. Returns the document, or null when
+   * it failed, which is reported like any processing failure.
+   */
+  async function importStagedDocument(
+    selected: StagedExternalFile,
+    generationInstructions?: string,
+    onImported?: (documentId: string) => Promise<unknown>,
+    options: ImportDocumentOptions = {},
+  ): Promise<string | null> {
     let documentId: string | null = null;
     try {
       const imported = await importDocument(selected.id, options);
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
       await onImported?.(documentId);
-      await startBackgroundFlashcardGeneration(documentId, captured);
-      showToast(
-        "info",
-        "Document processing started. You can add more documents while this job runs.",
-      );
+      await startBackgroundFlashcardGeneration(documentId, generationInstructions);
+      return documentId;
     } catch (error: unknown) {
       await handleGenerationFailure(error);
+      return null;
     } finally {
       if (documentId) updateIdSet(setBusyDocumentIds, documentId, false);
     }
@@ -534,6 +550,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     generationInstructionsFor,
     refreshDocuments,
     uploadDocument,
+    importStagedDocument,
     retry,
     generateMore,
     generateStudyGuide,

@@ -258,7 +258,7 @@ vi.mock("./screens/home/HomeScreen", () => ({
     onOpenLibrary,
   }: {
     onStartReview: (deckIds: string[]) => void;
-    onOpenSubject: (subjectId: string | null, view: "decks" | "documents") => void;
+    onOpenSubject: (subjectId: string | null, view?: "decks" | "documents") => void;
     onOpenLibrary: () => void;
   }) => (
     <section>
@@ -269,7 +269,7 @@ vi.mock("./screens/home/HomeScreen", () => ({
       <button type="button" onClick={() => onOpenSubject("subject-a", "decks")}>
         Open subject mock
       </button>
-      <button type="button" onClick={() => onOpenSubject(null, "documents")}>
+      <button type="button" onClick={() => onOpenSubject(null)}>
         Open unfiled documents mock
       </button>
       <button type="button" onClick={onOpenLibrary}>

@@ -777,6 +777,23 @@ pub(crate) async fn leased_write_podcast(
     .await
 }
 
+#[tauri::command(rename = "write_source_notes")]
+pub(crate) async fn leased_write_source_notes(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::source_notes::write(
+        &app.state::<crate::database::Database>(),
+        &app.state::<crate::paths::AppPaths>(),
+        &app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "narrate_podcast_turn")]
 pub(crate) async fn leased_narrate_podcast_turn(
     app: AppHandle,
