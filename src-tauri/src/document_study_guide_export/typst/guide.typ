@@ -11,6 +11,16 @@
 #set par(justify: true, leading: 0.6em, spacing: 0.75em)
 #show math.equation: set text(font: ("New Computer Modern Math",))
 
+// The reader's canvas finds chapters, sections and their Practice buttons
+// from these marks; they draw nothing.
+#let anchor(kind, key) = context {
+  let p = here().position()
+  [#metadata((kind: kind, key: key, page: p.page, x: p.x.pt(), y: p.y.pt())) <canvas-anchor>]
+}
+/// The room a section heading keeps for the reader's Practice button.
+#let practice-width = 24mm
+#let practice-height = 6.5mm
+
 // ---------- Cover ----------
 #let has-chapters = data.chapters.len() > 0
 #let contents-entries = if has-chapters {
@@ -100,11 +110,20 @@
 
 #let section-view(s, number, name) = {
   let h = heading(level: 2, outlined: true, bookmarked: true)[#text(font: head, size: 14pt, weight: 700, fill: T.accent, number) #h(1.4mm)#text(font: head, size: 14pt, weight: 700, fill: T.primary, rt(s.title))]
-  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto), column-gutter: 4mm, align: (left + bottom, right + bottom),
-    if name != none [#h #label(name)] else { h },
-    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) }))
-  for b in s.blocks { block-view(b) }
-  for (i, f) in s.figures.enumerate() { figure-view(f, number + "." + str(i + 1)) }
+  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom, right + bottom),
+    [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
+    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
+    box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
+  for (i, b) in s.blocks.enumerate() {
+    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) {
+      wrapped-bullets(b.items, s.figures.first(), number + ".1")
+      figures-view(s.figures.slice(1), number, first: 2)
+    } else {
+      block-view(b)
+      if i == s.figureAfter { figures-view(s.figures, number) }
+    }
+  }
+  if s.blocks.len() == 0 { figures-view(s.figures, number) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }
@@ -115,6 +134,10 @@
 
 #if has-chapters {
   for (ci, chapter) in data.chapters.enumerate() {
+    // Each chapter starts a page, so a section rewritten in one chapter
+    // leaves every other chapter's pages, and the marks on them, in place.
+    pagebreak(weak: true)
+    anchor("chapter", chapter.key)
     block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), above: 6mm, below: 4mm, breakable: false)[
       #heading(level: 1, outlined: true, bookmarked: true)[#plain(chapter.title)] #label("chapter-" + str(ci + 1))
       #grid(columns: (14mm, 1fr), align: (left + horizon, left + horizon),
@@ -136,7 +159,7 @@
 // ---------- Cram sheet ----------
 #if data.keyIdeas.len() + data.terms.len() + data.keyConcepts.len() > 0 [
   #pagebreak()
-  #heading(level: 1, outlined: true, bookmarked: true)[Cram sheet] #label("cram")
+  #heading(level: 1, outlined: true, bookmarked: true)[Cram sheet] #label("cram") #anchor("cram", "cram")
   #text(font: head, size: 22pt, weight: 700, fill: T.primary, "Cram sheet") #h(3mm) #text(font: ui, size: 9pt, fill: T.muted, "The whole guide on one page.")
   #v(1mm) #line(length: 100%, stroke: 1.2pt + T.primary)
   #v(3mm)
@@ -173,7 +196,7 @@
 // ---------- Self-test ----------
 #if data.checks.len() > 0 [
   #pagebreak()
-  #heading(level: 1, outlined: true, bookmarked: true)[Self-test] #label("self-test")
+  #heading(level: 1, outlined: true, bookmarked: true)[Self-test] #label("self-test") #anchor("selfTest", "selfTest")
   #block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), below: 5mm)[
     #text(font: head, size: 22pt, weight: 700, fill: white, "Self-test") #h(3mm) #text(font: ui, size: 9pt, fill: white.transparentize(20%))[#data.checks.len() #if data.checks.len() == 1 [question] else [questions] · answers follow the questions]]
   #set par(justify: false)

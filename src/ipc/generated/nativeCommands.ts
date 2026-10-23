@@ -142,9 +142,8 @@ export interface NativeCommandGatewayMap {
   "get_document_marked_cards": readonly [typeof GatewayModule3.getDocumentMarkedCards];
   "get_document_page_text": readonly [typeof GatewayModule12.getDocumentPageText];
   "get_document_study_guide": readonly [typeof GatewayModule40.getDocumentStudyGuide];
-  "get_document_study_guide_glance_page": readonly [typeof GatewayModule40.getDocumentStudyGuideGlancePage];
+  "get_document_study_guide_canvas": readonly [typeof GatewayModule40.getDocumentStudyGuideCanvas];
   "get_document_study_guide_reading": readonly [typeof GatewayModule39.getStudyGuideReading];
-  "get_document_study_guide_section_page": readonly [typeof GatewayModule40.getDocumentStudyGuideSectionPage];
   "get_document_topic_card_ids": readonly [typeof GatewayModule40.getDocumentTopicCardIds];
   "get_document_topic_card_projection": readonly [typeof GatewayModule40.getDocumentTopicCardProjection];
   "get_embedding_options": readonly [typeof GatewayModule17.getEmbeddingOptions];
@@ -157,7 +156,7 @@ export interface NativeCommandGatewayMap {
   "get_lesson_lecture_script": readonly [typeof GatewayModule24.getLessonLectureScript];
   "get_lesson_slide_designs": readonly [typeof GatewayModule24.getLessonSlideDesigns];
   "get_library_session": readonly [typeof GatewayModule25.getLibrarySession];
-  "get_material_ink": readonly [typeof GatewayModule26.getMaterialInk];
+  "get_material_ink": readonly [typeof GatewayModule26.readMaterialInk];
   "get_note_source_citation": readonly [typeof GatewayModule15.getNoteSourceCitation];
   "get_notebook": readonly [typeof GatewayModule27.getNotebook];
   "get_pending_usb_sync_request": readonly [typeof GatewayModule10.getPendingUsbSyncRequest];
@@ -204,7 +203,6 @@ export interface NativeCommandGatewayMap {
   "list_ai_provider_models": readonly [typeof GatewayModule0.listAiProviderModels];
   "list_ai_provider_profiles": readonly [typeof GatewayModule0.listAiProviderProfiles];
   "list_card_template_summaries": readonly [typeof GatewayModule43.listCardTemplateSummaries];
-  "list_continue_reading_study_guides": readonly [typeof GatewayModule39.listContinueReading];
   "list_deck_card_summaries": readonly [typeof GatewayModule9.listDeckCardSummaries];
   "list_deck_source_citations": readonly [typeof GatewayModule15.listDeckSourceCitations];
   "list_decks": readonly [typeof GatewayModule9.listDecks];
@@ -239,6 +237,7 @@ export interface NativeCommandGatewayMap {
   "narrate_lesson_step": readonly [typeof GatewayModule24.narrateLessonStep];
   "narrate_podcast_turn": readonly [typeof GatewayModule30.narratePodcastTurn];
   "open_document_source": readonly [typeof GatewayModule15.openDocumentSource];
+  "open_document_study_guide_pdf": readonly [typeof GatewayModule40.openDocumentStudyGuidePdf];
   "open_document_study_guide_section": readonly [typeof GatewayModule39.openStudyGuideSection];
   "open_editor_draft": readonly [typeof GatewayModule16.openEditorDraft];
   "prepare_annotated_pdf": readonly [typeof GatewayModule12.prepareAnnotatedPdf];

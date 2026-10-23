@@ -14,6 +14,6 @@ export function ToolbarGroup({ label, children, ...props }: HTMLAttributes<HTMLD
 }
 export const ToolbarAction = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & {
   label: string; pressed?: boolean;
-}>(function ToolbarAction({ label, pressed, type = "button", ...props }, ref) {
-  return <ToolbarButton {...props} ref={ref} type={type} aria-label={label} title={label} aria-pressed={pressed} />;
+}>(function ToolbarAction({ label, pressed, title, type = "button", ...props }, ref) {
+  return <ToolbarButton {...props} ref={ref} type={type} aria-label={label} title={title ?? label} aria-pressed={pressed} />;
 });

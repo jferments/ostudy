@@ -16,6 +16,8 @@ A source opens only while its PDF is in your library. Once the document is delet
 
 ## Tools
 
+The toolbar groups the tools the way drawing and PDF apps do: **Select** and **Lasso**; **Pen**, **Highlighter** and **Eraser**; then what adds something to the page, **Text**, **Sticky note** and one shape button. The shape button draws the shape you used last, and the arrow beside it lists **Line**, **Arrow**, **Curve**, **Box** and **Ellipse**. **Undo** and **Redo** follow, and zoom sits at the right. Hovering over a tool shows its name and key.
+
 | Tool | Key | What it does |
 | --- | --- | --- |
 | Select | V | Tap an annotation to select it, drag it to move it, and drag its handles to reshape it. A box or an ellipse can be picked up anywhere inside it. With a mouse or pen, dragging across empty page draws a rectangle that selects every annotation whose middle it takes; drag any of them (or use the arrow keys) to move them together, press **Delete** to remove them, or tap one to select just that one |
@@ -29,7 +31,7 @@ A source opens only while its PDF is in your library. Once the document is delet
 | Eraser | E | Drag across annotations to remove each one it touches. Choose **Erase part of a stroke** beside it to take away only the part of a pen or highlighter stroke you drag across, leaving the rest as separate strokes (text highlights, shapes and notes are still erased whole); **Erase whole annotations** goes back. A stylus's eraser end, if it has one, erases with any tool, in the chosen way |
 | Clip to notes | X | Drag a rectangle across part of a page, such as a diagram, and choose a notebook (or name a new one, filed in the document's subject). The part is drawn again from the PDF, sharply, and placed as a picture below what is already on the notebook's last page, or on a new page when there is no room. See [Clips](#clips) |
 
-The row under the tools sets the color and size of what you draw next. Beside the color swatches, **Any color** opens the full color picker, and colors you pick there stay beside the swatches. Beside the sizes, you can type any width or text size in points. Lines, arrows, boxes and ellipses can be solid, dashed or dotted. An arrow can have a head at one end or at both. A box or ellipse can be **Filled**: choose its fill color and switch its **Border** off or on. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** and **Collapse to an icon** or **Expand note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
+The strip under the tools shows only what the active tool or selection can change, and stays empty when there is nothing to set. For the drawing tools it sets the color and size of what you draw next. Beside the color swatches, **Any color** opens the full color picker, and colors you pick there stay beside the swatches. Beside the sizes, you can type any width or text size in points. Lines, arrows, boxes and ellipses can be solid, dashed or dotted. An arrow can have a head at one end or at both. A box or ellipse can be **Filled**: choose its fill color and switch its **Border** off or on. With an annotation selected, the same row restyles it and adds **Make a card** and **Delete** (and **Edit text** for a text note, **Open note** and **Collapse to an icon** or **Expand note** for a sticky note). On a phone, **Undo** and **Redo** start that row, and **Color and size** opens the colors and sizes in a sheet.
 
 Hold Shift while dragging a line or arrow to keep it at a multiple of 45 degrees, or while dragging a box or ellipse to make a square or circle.
 
@@ -69,7 +71,7 @@ Every tool works by touch, on any screen size:
 
 | Device | Drawing | Notes |
 | --- | --- | --- |
-| Android phone | A finger draws with every tool; strokes are shaped by speed rather than pressure | The shape tools and zoom commands fold into **Shapes** and **Zoom** menus. Typed notes use the on-screen keyboard and stay in view above it. Zoom in to write by hand comfortably |
+| Android phone | A finger draws with every tool; strokes are shaped by speed rather than pressure | The note tools, shape tools and zoom commands fold into **Notes**, **Shapes** and **Zoom** menus. Typed notes use the on-screen keyboard and stay in view above it. Zoom in to write by hand comfortably |
 | Android tablet with a stylus | The stylus draws with its pressure | Once a stylus touches a page, **Pen only** turns on: the stylus draws, fingers scroll and zoom, and a palm resting on the screen is ignored while the stylus is down. Turn **Pen only** off to draw with a finger again |
 | Desktop with a mouse or trackpad | The mouse draws; strokes are shaped by speed | All keyboard shortcuts are available |
 | Linux with a graphics tablet | The pen draws like a mouse | The Linux webview reports a tablet pen as a mouse, without pressure, so strokes are shaped by speed |

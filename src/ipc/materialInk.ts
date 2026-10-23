@@ -1,14 +1,14 @@
 import type { AnnotationShape } from "./documentAnnotations";
 import { invoke } from "./transport";
 
-/** What marks are drawn on: a lesson's lecture slides or a document study guide's designed pages. */
+/** What marks are drawn on: a lesson's lecture slides or a document study guide's PDF pages. */
 export type InkMaterial =
   | { kind: "lesson"; lessonId: string }
   | { kind: "studyGuide"; documentId: string };
 
 export interface InkMark {
   id: string;
-  /** The slide key, or the guide section's topic id. */
+  /** The slide key, or the guide page's key (a section's topic id on older designed section pages). */
   pageKey: string;
   shape: AnnotationShape;
   revision: number;
@@ -29,10 +29,21 @@ export interface AppliedInkChanges {
   deletedIds: string[];
 }
 
+export interface MaterialInk {
+  /** Earlier marks first. */
+  marks: InkMark[];
+  /** Links on a guide's pages whose document, page, guide, deck or notes page is gone. */
+  unavailableLinkIds: string[];
+}
+
 /** Every mark on the material, earlier marks first. */
 export async function getMaterialInk(material: InkMaterial): Promise<InkMark[]> {
-  const result = await invoke<{ marks: InkMark[] }>("get_material_ink", { input: { material } });
-  return result.marks;
+  return (await readMaterialInk(material)).marks;
+}
+
+/** The material's marks and which of its links lead nowhere now. */
+export async function readMaterialInk(material: InkMaterial): Promise<MaterialInk> {
+  return invoke<MaterialInk>("get_material_ink", { input: { material } });
 }
 
 export async function applyMaterialInkChanges(material: InkMaterial, changes: InkChange[]): Promise<AppliedInkChanges> {

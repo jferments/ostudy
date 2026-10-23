@@ -1,12 +1,14 @@
 //! Ink on study materials: what a learner writes and draws on a lesson's
-//! lecture slides and on a document study guide's designed section pages.
+//! lecture slides and on a document study guide's PDF pages.
 //!
 //! Every mark is one `material_ink` row (release schema 21) on one page of one
 //! material, validated by the same rules as a document annotation
 //! (`AnnotationShape`). A lesson's pages are its slide keys and a guide's are
-//! its sections' topic ids; the designed pages are laid out natively, so marks
-//! are placed in the page's own points. These pages have no text layer and no
-//! links, so text highlights and links are refused.
+//! the keys its canvas gives each PDF page (`chapter:<id>:2`; marks from the
+//! earlier single section pages keep a topic id). Both are laid out natively,
+//! so marks are placed in the page's own points. These pages have no text layer, so
+//! text highlights are refused. A guide's pages may hold links, as a
+//! notebook's do, looked up when the guide opens; slides hold none.
 //!
 //! Writes carry the whole new state of each mark, so a request repeated after
 //! a lost response changes nothing further. Whole-library backups keep the
@@ -36,7 +38,7 @@ pub enum InkMaterial {
     /// A lesson's lecture slides, whichever revision is shown.
     #[serde(rename_all = "camelCase")]
     Lesson { lesson_id: String },
-    /// A document's study guide, as designed section pages.
+    /// A document's study guide, as its PDF pages.
     #[serde(rename_all = "camelCase")]
     StudyGuide { document_id: String },
 }
@@ -95,6 +97,8 @@ pub struct InkMarkDto {
 pub struct MaterialInkDto {
     /// Earlier marks first.
     pub marks: Vec<InkMarkDto>,
+    /// Links whose document, page, guide, deck or notebook page is gone.
+    pub unavailable_link_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -208,7 +212,14 @@ pub(crate) fn read(
             ),
         }
     }
-    Ok(MaterialInkDto { marks })
+    let unavailable_link_ids = crate::notebooks::unavailable_links(
+        connection,
+        marks.iter().map(|mark| (mark.id.as_str(), &mark.shape)),
+    )?;
+    Ok(MaterialInkDto {
+        marks,
+        unavailable_link_ids,
+    })
 }
 
 pub(crate) fn apply_changes(
@@ -237,10 +248,8 @@ pub(crate) fn apply_changes(
             if matches!(shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
                 return Err(invalid("A designed page has no text to highlight."));
             }
-            if shape.is_link() {
-                return Err(invalid(
-                    "Links go in notebooks, not on slides or guide pages.",
-                ));
+            if shape.is_link() && matches!(input.material, InkMaterial::Lesson { .. }) {
+                return Err(invalid("Links go in notebooks or guides, not on slides."));
             }
         }
     }

@@ -28,8 +28,6 @@ use super::{
 use crate::error::CommandError;
 
 const TEMPLATE: &str = include_str!("typst/guide.typ");
-const SECTION_TEMPLATE: &str = include_str!("typst/section.typ");
-const GLANCE_TEMPLATE: &str = include_str!("typst/glance.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
 const BLOCKS: &str = include_str!("typst/blocks.typ");
 const BUNDLED_FONTS: &[&[u8]] = include!(concat!(env!("OUT_DIR"), "/pdf_fonts.rs"));
@@ -69,14 +67,32 @@ impl StudyGuidePdfTheme {
 
 /// An image placed in the guide, already encoded as PNG.
 #[derive(Clone, Debug)]
-pub(super) struct FigureImage(pub(super) Vec<u8>);
+pub(super) struct FigureImage {
+    png: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+/// A figure is at most this wide and this tall on the page, in millimetres,
+/// so a page holds text and no more than about three figures.
+const FIGURE_MAX_WIDTH_MM: f64 = 150.0;
+const FIGURE_MAX_HEIGHT_MM: f64 = 70.0;
+const FIGURE_MIN_WIDTH_MM: f64 = 45.0;
 
 impl FigureImage {
     pub(super) fn from_rgba(rgba: image::RgbaImage) -> Option<Self> {
-        let mut bytes = Vec::new();
-        rgba.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        let (width, height) = rgba.dimensions();
+        let mut png = Vec::new();
+        rgba.write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
             .ok()?;
-        Some(Self(bytes))
+        Some(Self { png, width, height })
+    }
+
+    /// The width it is placed at: as wide as it can be without passing the
+    /// height limit, and never so narrow its labels cannot be read.
+    fn width_mm(&self) -> f64 {
+        let aspect = f64::from(self.width.max(1)) / f64::from(self.height.max(1));
+        (FIGURE_MAX_HEIGHT_MM * aspect).clamp(FIGURE_MIN_WIDTH_MM, FIGURE_MAX_WIDTH_MM)
     }
 }
 
@@ -101,6 +117,63 @@ pub(super) fn render_bytes(
     // exports, so release them rather than holding them for the session.
     typst::comemo::evict(0);
     pdf
+}
+
+/// One laid-out page of the guide for the reader's canvas: its size in points
+/// and the page as a standalone SVG.
+#[derive(Clone, Debug)]
+pub(super) struct CanvasPage {
+    pub(super) width: f64,
+    pub(super) height: f64,
+    pub(super) svg: String,
+}
+
+/// Where a chapter, section, Practice button, cram sheet or self-test landed:
+/// its 1-based page and its top-left corner in points from the page's.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(super) struct CanvasAnchor {
+    pub(super) kind: String,
+    pub(super) key: String,
+    pub(super) page: usize,
+    pub(super) x: f64,
+    pub(super) y: f64,
+}
+
+/// The whole guide laid out exactly as the PDF export lays it out, as one SVG
+/// per page, with where each chapter, section and Practice button landed.
+pub(super) fn canvas(
+    export: &EffectiveGuideExport,
+    theme: StudyGuidePdfTheme,
+) -> Result<(Vec<CanvasPage>, Vec<CanvasAnchor>), CommandError> {
+    use typst::introspection::{Introspector, MetadataElem};
+    let laid_out = compile(export, theme).map(|document| {
+        let options = typst_svg::SvgOptions::default();
+        let pages = document
+            .pages()
+            .iter()
+            .map(|page| CanvasPage {
+                width: page.frame.width().to_pt(),
+                height: page.frame.height().to_pt(),
+                svg: typst_svg::svg(page, &options),
+            })
+            .collect::<Vec<_>>();
+        let label = typst::foundations::Label::new(typst::utils::PicoStr::intern("canvas-anchor"))
+            .expect("static label");
+        let anchors = document
+            .introspector()
+            .query(&typst::foundations::Selector::Label(label))
+            .iter()
+            .filter_map(|content| {
+                let value = &content.to_packed::<MetadataElem>()?.value;
+                serde_json::to_value(value)
+                    .ok()
+                    .and_then(|value| serde_json::from_value::<CanvasAnchor>(value).ok())
+            })
+            .collect::<Vec<_>>();
+        (pages, anchors)
+    });
+    typst::comemo::evict(0);
+    laid_out
 }
 
 fn compile(
@@ -142,99 +215,6 @@ pub(crate) fn compile_template_svgs(template: &str, data: &Value) -> Result<Vec<
     });
     typst::comemo::evict(0);
     pages
-}
-
-/// Lays out one section as the reader's live page: its body and figures in
-/// `theme`, on a single page as tall as they need, as a standalone SVG. The
-/// reader keeps the heading, terms and check questions interactive, so the
-/// page leaves them out.
-pub(super) fn section_page_svg(
-    section: &EffectiveExportSection,
-    number: &str,
-    theme: StudyGuidePdfTheme,
-) -> Result<String, CommandError> {
-    let mut files = HashMap::new();
-    let mut figure_count = 0_usize;
-    let live = EffectiveExportSection {
-        body_lines: live_blocks(&section.body_lines),
-        notes: Vec::new(),
-        ..section.clone()
-    };
-    let data = json!({
-        "theme": theme.key(),
-        "number": number,
-        "section": section_data(&live, &mut files, &mut figure_count),
-    });
-    files.insert(
-        file_id("/data.json"),
-        Bytes::new(serde_json::to_vec(&data).map_err(|error| page_error(error.to_string()))?),
-    );
-    let page = compile_world(SECTION_TEMPLATE, files).and_then(|document| match document.pages() {
-        [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
-        pages => Err(format!("the section came out as {} pages", pages.len())),
-    });
-    typst::comemo::evict(0);
-    page.map_err(page_error)
-}
-
-/// At most this many key ideas and warnings on the At a glance page.
-const MAX_GLANCE_IDEAS: usize = 6;
-const MAX_GLANCE_WARNINGS: usize = 3;
-
-/// The guide's At a glance page for the reader: its overview, objectives, key concepts,
-/// first key ideas and warnings, on one page as tall as they need.
-pub(super) fn glance_page_svg(
-    export: &EffectiveGuideExport,
-    theme: StudyGuidePdfTheme,
-) -> Result<String, CommandError> {
-    let cram = CramSheet::collect(export);
-    let data = json!({
-        "theme": theme.key(),
-        "overview": runs(&export.overview),
-        "objectives": run_list(&export.learning_objectives),
-        "keyConcepts": run_list(&export.key_concepts),
-        "keyIdeas": cram.key_ideas.into_iter().take(MAX_GLANCE_IDEAS).collect::<Vec<_>>(),
-        "warnings": cram.warnings.into_iter().take(MAX_GLANCE_WARNINGS).collect::<Vec<_>>(),
-    });
-    let mut files = HashMap::new();
-    files.insert(
-        file_id("/data.json"),
-        Bytes::new(serde_json::to_vec(&data).map_err(|error| page_error(error.to_string()))?),
-    );
-    let page = compile_world(GLANCE_TEMPLATE, files).and_then(|document| match document.pages() {
-        [page] => Ok(typst_svg::svg(page, &typst_svg::SvgOptions::default())),
-        pages => Err(format!("the page came out as {} pages", pages.len())),
-    });
-    typst::comemo::evict(0);
-    page.map_err(page_error)
-}
-
-/// The blocks the live page sets: everything but the terms and check
-/// questions, with the headings that introduced them.
-pub(super) fn live_blocks(blocks: &[ExportBlock]) -> Vec<ExportBlock> {
-    let reader_owned = |block: &ExportBlock| {
-        matches!(
-            block,
-            ExportBlock::Terms(_) | ExportBlock::RetrievalCheck { .. }
-        )
-    };
-    blocks
-        .iter()
-        .enumerate()
-        .filter(|(index, block)| {
-            !reader_owned(block)
-                && !(matches!(block, ExportBlock::Heading(_))
-                    && blocks.get(index + 1).is_some_and(reader_owned))
-        })
-        .map(|(_, block)| block.clone())
-        .collect()
-}
-
-fn page_error(detail: String) -> CommandError {
-    CommandError::new(
-        "study_guide_page_layout_failed",
-        format!("Could not lay out the designed study-guide page: {detail}"),
-    )
 }
 
 /// The laid-out text of each page, including running headers and repeated
@@ -432,6 +412,7 @@ fn guide_data(
         .iter()
         .map(|chapter| {
             json!({
+                "key": chapter.key,
                 "title": runs(&chapter.title),
                 "intro": runs(&chapter.introduction),
                 "sections": chapter.section_indices,
@@ -465,6 +446,13 @@ fn section_data(
     figure_count: &mut usize,
 ) -> Value {
     let mut lead_used = false;
+    // Figures go under the key points they illustrate, or after the overview.
+    let figure_after = section
+        .body_lines
+        .iter()
+        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
+        .map_or(0, |heading| heading + 1)
+        .min(section.body_lines.len().saturating_sub(1));
     let blocks = section
         .body_lines
         .iter()
@@ -482,19 +470,22 @@ fn section_data(
             // stay bounded.
             let path = format!("/figures/{figure_count}.png");
             *figure_count += 1;
-            files.insert(file_id(&path), Bytes::new(figure.image.0.clone()));
+            files.insert(file_id(&path), Bytes::new(figure.image.png.clone()));
             json!({
                 "path": path,
+                "width": figure.image.width_mm(),
                 "title": runs(&figure.title),
                 "caption": runs(&figure.caption),
             })
         })
         .collect::<Vec<_>>();
     json!({
+        "key": section.key,
         "title": runs(&section.title),
         "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,
         "figures": figures,
+        "figureAfter": figure_after,
         "notes": run_list(&section.notes),
     })
 }

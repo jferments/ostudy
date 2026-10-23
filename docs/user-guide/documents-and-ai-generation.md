@@ -92,7 +92,7 @@ When your AI model can see images, oStudy also reads each figure on its page, be
 
 A document imported before figures existed, or with its images off, shows **Find figures** or **Use images** there. **Stop using images** in the page's **…** menu forgets the figures found, hidden ones included, and **Find figures again** searches the PDF again.
 
-Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. Figures are not yet used by flashcards, study guides or lessons; that comes next.
+Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. A study guide shows the figures that best illustrate each of its sections (see [Study guides](study-guides.md#read-and-write-on-the-guides-pages)); hiding a figure keeps it out of the guide. Flashcards and lessons do not use figures yet.
 
 ## How sources are read
 

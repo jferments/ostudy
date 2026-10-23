@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { applyMaterialInkChanges, getMaterialInk, type InkMark } from "../../ipc/materialInk";
+import { applyMaterialInkChanges, readMaterialInk, type InkMark } from "../../ipc/materialInk";
 import { inkAnnotations, materialInkSource } from "./materialInkSource";
 
-vi.mock("../../ipc/materialInk", () => ({ getMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
+vi.mock("../../ipc/materialInk", () => ({ readMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
 
 const pages = [
   { key: "title", width: 720, height: 405, image: "blob:1" },
@@ -17,7 +17,7 @@ function mark(id: string, pageKey: string): InkMark {
 
 describe("materialInkSource", () => {
   beforeEach(() => {
-    vi.mocked(getMaterialInk).mockReset();
+    vi.mocked(readMaterialInk).mockReset();
     vi.mocked(applyMaterialInkChanges).mockReset();
   });
 
@@ -30,7 +30,7 @@ describe("materialInkSource", () => {
   it("saves a mark under its page's key", async () => {
     const material = { kind: "lesson" as const, lessonId: "l".repeat(32) };
     const source = materialInkSource(material, pages);
-    vi.mocked(getMaterialInk).mockResolvedValue([mark("a", "title")]);
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [mark("a", "title")], unavailableLinkIds: [] });
     expect((await source.load("lesson")).annotations[0]?.pageNumber).toBe(1);
 
     await source.send("lesson", [{ op: "put", id: "b", pageNumber: 2, shape }, { op: "delete", id: "a" }]);
@@ -38,5 +38,13 @@ describe("materialInkSource", () => {
       { op: "put", id: "b", pageKey: "step:loop", shape },
       { op: "delete", id: "a" },
     ]);
+  });
+
+  it("tells the guide which of its links lead nowhere", async () => {
+    const heard = vi.fn();
+    const source = materialInkSource({ kind: "studyGuide", documentId: "d".repeat(32) }, pages, heard);
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [mark("a", "title")], unavailableLinkIds: ["a"] });
+    await source.load("guide");
+    expect(heard).toHaveBeenCalledWith(new Set(["a"]));
   });
 });

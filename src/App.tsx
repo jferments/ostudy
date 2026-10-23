@@ -311,6 +311,11 @@ function App() {
                                   showToast={controller.showToast}
                                   onPracticeCards={controller.practiceCards}
                                   onSetUpAi={() => void controller.openAiSetup()}
+                                  onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
+                                  onOpenNotebook={(notebookId, pageId) => {
+                                    setNotebookOpenRequest({ requestId: Date.now(), notebookId, pageId });
+                                    navigate("notes");
+                                  }}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "documents" ? (

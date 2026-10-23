@@ -445,7 +445,10 @@ pub(crate) fn contents(
     for page in &pages {
         items.extend(page_items(connection, &page.id, i64::MAX)?);
     }
-    let unavailable_link_ids = unavailable_links(connection, &items)?;
+    let unavailable_link_ids = unavailable_links(
+        connection,
+        items.iter().map(|item| (item.id.as_str(), &item.shape)),
+    )?;
     let clip_documents = clips::clip_document_titles(connection, &items)?;
     Ok(NotebookContentsDto {
         notebook,
@@ -922,17 +925,17 @@ fn delete_item(connection: &Connection, notebook_id: &str, id: &str) -> Result<(
 
 /// The links among `items` whose target is gone: a deleted document, a page
 /// past its end, a document without a study guide, a deleted deck, or a
-/// notebook page that was removed.
-fn unavailable_links(
+/// notebook page that was removed. Guide pages hold links too.
+pub(crate) fn unavailable_links<'a>(
     connection: &Connection,
-    items: &[NotebookItemDto],
+    items: impl IntoIterator<Item = (&'a str, &'a AnnotationShape)>,
 ) -> Result<Vec<String>, CommandError> {
     let mut page_counts: HashMap<String, Option<i64>> = HashMap::new();
     let mut unavailable = Vec::new();
-    for item in items {
+    for (id, shape) in items {
         let AnnotationShape::Text(TextNote {
             link: Some(link), ..
-        }) = &item.shape
+        }) = shape
         else {
             continue;
         };
@@ -974,7 +977,7 @@ fn unavailable_links(
                 .map_err(CommandError::database)?,
         };
         if !available {
-            unavailable.push(item.id.clone());
+            unavailable.push(id.to_string());
         }
     }
     Ok(unavailable)
