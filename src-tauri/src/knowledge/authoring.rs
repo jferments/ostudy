@@ -24,7 +24,7 @@ use crate::{
 use super::{
     adapters::{materialize_source_groups, read_seed, SourceSeed},
     contracts::{hash, ContentOrigin, KnowledgeUnit, SourceKind},
-    extraction::{batch_ranges, ensure_units_batch, extraction_contract, retry_units_batch},
+    extraction::{ensure_units_batch, extraction_contract, plan_windows, retry_units_batch},
     repository,
     runtime::check_canceled,
 };
@@ -342,17 +342,21 @@ pub(crate) async fn prepare_document(
             sources.extend(group);
         }
         pending.extend(sources);
-        let ranges = batch_ranges(&pending);
+        let plans = plan_windows(&pending);
         let last_batch = (batch_index + 1) * PREPARATION_BATCH_CHUNKS >= seeds.len();
         let process_count = if last_batch {
-            ranges.len()
+            plans.len()
         } else {
-            ranges.len().saturating_sub(1)
+            plans.len().saturating_sub(1)
         };
-        let process_ranges = &ranges[..process_count];
-        let groups = process_ranges
+        let process_plans = &plans[..process_count];
+        let windows = process_plans
             .iter()
-            .map(|range| &pending[range.clone()])
+            .map(|plan| plan.window(&pending))
+            .collect::<Vec<_>>();
+        let groups = windows
+            .iter()
+            .map(|window| window.sources)
             .collect::<Vec<_>>();
         if !groups.is_empty() {
             set_current_task_phase(
@@ -377,12 +381,13 @@ pub(crate) async fn prepare_document(
             parallelism,
             |index| {
                 let cancellation = &cancellation;
-                let group = groups[index];
+                let window = windows[index];
                 async move {
                     let outcome = if retry_partial {
-                        retry_units_batch(database, paths, runtime, task, group, cancellation).await
+                        retry_units_batch(database, paths, runtime, task, window, cancellation)
+                            .await
                     } else {
-                        ensure_units_batch(database, paths, runtime, task, group, cancellation)
+                        ensure_units_batch(database, paths, runtime, task, window, cancellation)
                             .await
                     };
                     (index, outcome)
@@ -462,8 +467,9 @@ pub(crate) async fn prepare_document(
             },
         )
         .await?;
-        let consumed = process_ranges.last().map_or(0, |range| range.end);
+        let consumed = process_plans.last().map_or(0, |plan| plan.range.end);
         drop(groups);
+        drop(windows);
         if let Some((_, error)) = first_failure {
             return Err(error);
         }

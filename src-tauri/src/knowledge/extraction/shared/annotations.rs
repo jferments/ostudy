@@ -185,6 +185,8 @@ fn request(
                             "details": TypedPayload::schema()
                         }}}
             }}),
+        // Annotations select phrases from admitted statements; no page is needed.
+        images: Vec::new(),
         cancellation: signal.clone(),
         visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
     }

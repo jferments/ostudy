@@ -310,7 +310,6 @@ async fn process_initial_flashcards(
                 document_title: &stored.title,
                 plan: &learning_plan,
                 chunks: &chunks,
-                maximum_images: scale_plan.max_images_per_window,
             },
         ),
     );

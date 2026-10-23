@@ -5,6 +5,13 @@ use serde_json::json;
 use super::*;
 use crate::knowledge::{authoring::tests::fixture, contracts::EvidenceImage};
 
+fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usize>> {
+    plan_windows(sources)
+        .into_iter()
+        .map(|plan| plan.range)
+        .collect()
+}
+
 fn proposal(evidence: &str) -> Value {
     json!({"title":"Triangle","kind":"definition","statement":"A triangle has three sides.",
         "qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":[evidence]})
@@ -149,7 +156,8 @@ fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
     assert!(scope.positions.len() <= 3);
     assert!(!scope.positions.contains(&0));
 
-    let (user, schema) = build_repair_request(&report, &catalog, &sources);
+    let (user, schema, images) = build_repair_request(&report, &catalog, &sources);
+    assert!(images.is_empty());
     assert!(user.contains(&format!("\"id\":\"{alias}\"")));
     assert!(!user.contains("\"id\":\"E0\""));
     let allowed = schema
@@ -423,6 +431,126 @@ fn neighbouring_sources_share_a_window_and_its_page_images() {
     assert_eq!(window_page_images(&sources).len(), 3);
 }
 
+fn on_pages(source: &SourceRecord, segment: &str, text: &str, pages: &[usize]) -> SourceRecord {
+    let mut source = source.clone();
+    source.segment_key = segment.to_string();
+    source.text = text.to_string();
+    source.images = pages
+        .iter()
+        .map(|page| page_render(&source, *page))
+        .collect();
+    source.refresh_identity().unwrap();
+    source
+}
+
+fn page_render(source: &SourceRecord, page: usize) -> EvidenceImage {
+    EvidenceImage::DocumentAsset {
+        document_id: source.owner_id.clone(),
+        asset_id: format!("unit-render:{page:06}"),
+    }
+}
+
+fn shown_pages(plans: &[WindowPlan]) -> Vec<Vec<String>> {
+    plans
+        .iter()
+        .map(|plan| {
+            plan.shown
+                .iter()
+                .map(|image| match image {
+                    EvidenceImage::DocumentAsset { asset_id, .. } => asset_id[12..].to_string(),
+                    EvidenceImage::CardAsset { id } => id.clone(),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_page_a_passage_runs_onto_is_shown_with_the_window_that_reads_the_rest_of_it() {
+    let (_, source, _, _) = fixture();
+    let sources = [
+        on_pages(&source, "a", &"concept ".repeat(400), &[1]),
+        on_pages(&source, "b", &"concept ".repeat(400), &[1, 2]),
+        on_pages(&source, "c", &"concept ".repeat(400), &[2]),
+    ];
+    let plans = plan_windows(&sources);
+    assert_eq!(batch_ranges(&sources), vec![0..2, 2..3]);
+    assert_eq!(shown_pages(&plans), vec![vec!["000001"], vec!["000002"]]);
+}
+
+#[test]
+fn a_page_no_source_starts_on_is_shown_once_with_the_first_source_reaching_it() {
+    let (_, source, _, _) = fixture();
+    let sources = [
+        on_pages(
+            &source,
+            "a",
+            "A figure spread across three pages.",
+            &[1, 2, 3],
+        ),
+        on_pages(&source, "b", "Text that starts on the third page.", &[3]),
+        on_pages(&source, "c", "More text on the third page.", &[3]),
+    ];
+    let plans = plan_windows(&sources);
+    assert_eq!(batch_ranges(&sources), vec![0..1, 1..3]);
+    assert_eq!(
+        shown_pages(&plans),
+        vec![vec!["000001", "000002"], vec!["000003"]]
+    );
+}
+
+#[test]
+fn small_pieces_of_one_page_share_one_window() {
+    let (_, source, _, _) = fixture();
+    let cells = (0..40)
+        .map(|index| on_pages(&source, &format!("cell-{index}"), "12 mmol/L", &[7]))
+        .collect::<Vec<_>>();
+    let plans = plan_windows(&cells);
+    assert_eq!(batch_ranges(&cells), vec![0..40]);
+    assert_eq!(shown_pages(&plans), vec![vec!["000007"]]);
+}
+
+#[test]
+fn a_window_leaves_a_page_whole_for_the_next_window_when_it_fits_there() {
+    let (_, source, _, _) = fixture();
+    let mut sources = vec![on_pages(&source, "p1", &"concept ".repeat(375), &[1])];
+    for index in 0..4 {
+        sources.push(on_pages(
+            &source,
+            &format!("p2-{index}"),
+            &"concept ".repeat(187),
+            &[2],
+        ));
+    }
+    // Greedy packing would end the first window after three of page two's
+    // four pieces and show page two twice.
+    let plans = plan_windows(&sources);
+    assert_eq!(batch_ranges(&sources), vec![0..1, 1..5]);
+    assert_eq!(shown_pages(&plans), vec![vec!["000001"], vec!["000002"]]);
+}
+
+#[test]
+fn a_repair_attaches_only_the_pages_in_its_evidence() {
+    let (_, source, _, _) = fixture();
+    let sources = [
+        on_pages(&source, "a", "Gastrin stimulates acid secretion.", &[1]),
+        on_pages(
+            &source,
+            "b",
+            "Secretin stimulates bicarbonate secretion.",
+            &[2],
+        ),
+    ];
+    let catalog = EvidenceCatalog::build(&sources, true).unwrap();
+    assert_eq!(catalog.images_at(None).len(), 2);
+    let report = decode::AnalysisReport {
+        missing_sources: vec![sources[1].id.clone()],
+        ..decode::AnalysisReport::default()
+    };
+    let (_, _, images) = build_repair_request(&report, &catalog, &sources);
+    assert_eq!(images, vec![page_render(&sources[1], 2)]);
+}
+
 #[test]
 fn picture_only_sources_wait_for_vision_without_failing_their_window() {
     let (_, source, _, _) = fixture();
@@ -447,4 +575,44 @@ fn picture_only_sources_wait_for_vision_without_failing_their_window() {
     );
     let error = defer_picture_only_sources(vec![cover]).unwrap_err();
     assert_eq!(error.code, IMAGES_REQUIRE_VISION);
+}
+
+#[test]
+fn number_repair_names_the_number_and_offers_the_evidence_that_prints_it() {
+    let (_, mut first, _, _) = fixture();
+    first.text = "Gastric emptying slows after a fatty meal.".into();
+    first.refresh_identity().unwrap();
+    let mut second = first.clone();
+    second.segment_key = "1:0:0".into();
+    second.text = "Plasma osmolarity is about 290 mOsm/L.".into();
+    second.refresh_identity().unwrap();
+    let sources = [first, second];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let printing = catalog
+        .entries
+        .iter()
+        .position(|entry| entry.source_id == sources[1].id)
+        .unwrap();
+    let mut draft = proposal("E0");
+    draft["statement"] = json!("Plasma osmolarity is about 290 mOsm/L.");
+    let report = decode::AnalysisReport {
+        rejected: vec![decode::RejectedUnit {
+            slot: 0,
+            proposal: draft,
+            code: "unsupported_number".to_string(),
+        }],
+        ..decode::AnalysisReport::default()
+    };
+
+    assert!(repair_scope(&report, &catalog, &sources)
+        .positions
+        .contains(&printing));
+    let reason = report.repair_prompt(&catalog, &sources)["rejectedProposals"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(reason.contains("The number 290 is not printed"));
+    assert!(reason.contains(&EvidenceCatalog::alias(printing)));
+    let (user, _, _) = build_repair_request(&report, &catalog, &sources);
+    assert!(user.contains(&format!("\"id\":\"{}\"", EvidenceCatalog::alias(printing))));
 }

@@ -21,7 +21,7 @@ pub(crate) mod document_view;
 pub(crate) mod evidence;
 pub(crate) mod extraction;
 pub(crate) mod image_sources;
-mod images;
+pub(crate) mod images;
 mod index;
 pub(crate) mod indexing;
 pub(crate) mod learning_context;

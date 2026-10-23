@@ -23,6 +23,7 @@ fn wire_lesson() -> Value {
                 "check": {
                     "timing": "before",
                     "style": "recall",
+                    "aboutStep": 1,
                     "prompt": "How many sides does a triangle have?",
                     "options": ["Three", "Four"],
                     "correctOption": 0,
@@ -108,24 +109,14 @@ fn decoding_resolves_aliases_and_builds_keys_and_checks_natively() {
 fn a_lesson_asks_a_few_questions_not_one_on_every_step() {
     let knowledge = catalog_fixture();
     let mut wire = wire_lesson();
-    let step = wire["steps"][0].clone();
-    wire["steps"] = json!([step, step, step, step]);
-    let error = decode(wire.clone(), &knowledge).err().unwrap();
-    assert!(
-        error.message.contains("at most 3 questions"),
-        "{}",
-        error.message
-    );
-
-    wire["steps"][1]["check"] = Value::Null;
+    let asked = wire["steps"][0].clone();
+    let quiet = wire["steps"][1].clone();
+    wire["steps"] = json!([asked, quiet, asked, quiet, asked, quiet, asked]);
     let lesson = decode(wire, &knowledge).unwrap();
+    let before = Some(CheckTiming::Before);
     assert_eq!(
-        lesson
-            .steps
-            .iter()
-            .filter(|step| step.check.is_some())
-            .count(),
-        3
+        asked_on(&lesson),
+        [before, None, before, None, before, None, None]
     );
 }
 
@@ -349,4 +340,63 @@ async fn too_many_steps_are_merged_on_repair_without_the_candidate() {
     let sent = sent.borrow();
     assert!(sent[1].user.contains("at most six steps by merging"));
     assert!(!sent[1].user.contains("<invalid-lesson-candidate>"));
+}
+
+fn asked_on(lesson: &LessonContent) -> Vec<Option<CheckTiming>> {
+    lesson
+        .steps
+        .iter()
+        .map(|step| step.check.as_ref().map(|_| step.check_timing))
+        .collect()
+}
+
+#[test]
+fn a_question_on_the_step_right_after_another_is_dropped() {
+    let knowledge = catalog_fixture();
+    let mut wire = wire_lesson();
+    let before = wire["steps"][0].clone();
+    let quiet = wire["steps"][1].clone();
+    wire["steps"] = json!([before, before, before, quiet, before]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    let before = Some(CheckTiming::Before);
+    assert_eq!(asked_on(&lesson), [before, None, before, None, before]);
+}
+
+#[test]
+fn a_question_about_the_step_just_heard_is_asked_after_the_next_one() {
+    let knowledge = catalog_fixture();
+    let quiet = wire_lesson()["steps"][1].clone();
+    let mut after = wire_lesson()["steps"][0].clone();
+    after["check"]["timing"] = json!("after");
+    let about = |step: usize| {
+        let mut step_with = after.clone();
+        step_with["check"]["aboutStep"] = json!(step);
+        step_with
+    };
+    let after = Some(CheckTiming::After);
+
+    // About step 2 after step 2 moves to step 3; a question about a later
+    // step moves only once; one about an earlier step stays.
+    let mut wire = wire_lesson();
+    wire["steps"] = json!([
+        quiet,
+        about(2),
+        quiet,
+        quiet,
+        about(8),
+        quiet,
+        quiet,
+        about(1)
+    ]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(
+        asked_on(&lesson),
+        [None, None, after, None, None, after, None, after]
+    );
+
+    // The last step has no next step to take its question.
+    let mut wire = wire_lesson();
+    wire["steps"] = json!([quiet, about(2)]);
+    let lesson = decode(wire, &knowledge).unwrap();
+    assert_eq!(asked_on(&lesson), [None, after]);
 }
