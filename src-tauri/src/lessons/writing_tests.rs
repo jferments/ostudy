@@ -147,6 +147,7 @@ fn lesson_answer() -> String {
             "check": {
                 "timing": "after",
                 "style": "recall",
+                "aboutStep": 1,
                 "prompt": "What does cardiac output depend on?",
                 "options": ["Heart rate", "Hair colour"],
                 "correctOption": 0,
