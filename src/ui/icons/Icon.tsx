@@ -64,6 +64,7 @@ export const ICON_NAMES = [
   "pan",
   "pause",
   "pen",
+  "pin",
   "play",
   "plus",
   "pointer",
@@ -738,6 +739,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M20 2v4" />
           <path d="M22 4h-4" />
           <circle cx="4" cy="20" r="2" />
+        </>
+      );
+    case "pin": // Lucide: pin
+      return (
+        <>
+          <path d="M12 17v5" />
+          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
         </>
       );
     case "sticky-note": // Lucide: sticky-note

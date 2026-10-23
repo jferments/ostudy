@@ -20,7 +20,7 @@ Every outgoing transfer has a **What to send** section. The sender chooses the c
 - **Flashcards** — decks, Basic/Fill in the blank and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, source-citation snapshots, and managed card/question images.
 - **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device, with your PDF annotations and the figures found in your PDFs.
 - **Study guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state, how far you have read each guide, and what you drew on guide pages.
-- **Notes** — your notebooks with their pages, everything drawn or written on them, and their pictures.
+- **Notes** — your notebooks with their pages, everything drawn or written on them, and their pictures. Notes folders and pins stay on each device: a synced notebook arrives at the top of Notes, unpinned.
 - **Lessons** — your lessons and how far you are through each, teacher's lectures, podcasts, the voice each lesson is read in, your saved voices, narration audio, and what you drew on slides.
 - **AI services** — AI service profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from AI services.

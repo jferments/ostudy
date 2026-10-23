@@ -653,7 +653,7 @@ describe("document annotator", () => {
     const subjectId = "e".repeat(32);
     const summary = (id: string, name: string, subject: string | null, updatedAt: number): notebooksIpc.NotebookSummary => ({
       notebook: { id, subjectId: subject, title: name, paper: "blank", pageSize: "letter", revision: 1, createdAt: 1, updatedAt },
-      pageCount: 1, linkCount: 0, firstPage: null, preview: [],
+      pageCount: 1, linkCount: 0, linkLabels: [], folderId: null, pinnedAt: null, firstPage: null, preview: [],
     });
     vi.mocked(notebooksIpc.listDocumentClips).mockResolvedValue([]);
     vi.mocked(notebooksIpc.listNotebooks).mockResolvedValue([

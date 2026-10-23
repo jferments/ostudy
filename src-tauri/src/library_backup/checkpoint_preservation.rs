@@ -327,6 +327,22 @@ const CONTRACTS: &[Contract] = &[
             description: "documents left out of a subject's study set",
         }],
     },
+    // Notes folders and pins are made in the app; the upgrade only creates
+    // their tables.
+    Contract {
+        version: 23,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "note_folders",
+                description: "Notes folders",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_shelf",
+                description: "notebook folders and pins",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

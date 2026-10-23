@@ -69,7 +69,7 @@ export function ClipToNotesDialog({ region, documentTitle, subjectId, onClose, o
         notebookTitle = created.notebook.title;
         // A second try goes into the notebook just made, not another new one.
         const summary: NotebookSummary = {
-          notebook: created.notebook, pageCount: created.pages.length, linkCount: 0, firstPage: created.pages[0] ?? null, preview: [],
+          notebook: created.notebook, pageCount: created.pages.length, linkCount: 0, linkLabels: [], folderId: null, pinnedAt: null, firstPage: created.pages[0] ?? null, preview: [],
         };
         setNotebooks((current) => [summary, ...(current ?? [])]);
         setChoice(notebookId);

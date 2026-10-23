@@ -4,7 +4,9 @@ A notebook is pages of paper you write and draw on with the same tools as [Annot
 
 ## Find and make notebooks
 
-Open **Notes** in the main navigation. It shows your notebooks grouped under their subjects, each as a small picture of its first page with how many pages and links it has; **No subject** has its own group. Choose a notebook's picture to open it. Its **…** menu has **Rename**, **Move to subject** and **Delete notebook**; deleting removes every page and cannot be undone.
+Open **Notes** in the main navigation. Beside your notebooks is a list of places: **All notes**, **Recent** (the notebooks you changed last), **Pinned**, and your folders, with **New folder** under them; on a phone, a **Show** menu and a **New folder** button take its place. Each notebook is a tile with a small picture of its first page, when you last changed it, how many pages and links it has, and the names of its first few links. Choose a notebook's picture to open it, and use **Sort notes** to list them by when they changed or by name.
+
+A notebook's **…** menu has **Pin** (or **Unpin**), **Rename**, **Move to folder**, **Move to subject** and **Delete notebook**; deleting removes every page and cannot be undone. Folders are your own way to arrange notes and can hold other folders, four deep. An open folder shows the folders inside it as tiles, and its **…** menu has **New folder inside**, **Rename folder** and **Delete folder**. Deleting a folder deletes the folders inside it but keeps their notebooks, which go back to **All notes**. A notebook made while a folder is open goes in that folder. Folders are kept on this device: [device sync](device-sync.md) does not carry them.
 
 **New notebook** asks for a name, the subject, the paper (**Blank**, **Lined**, **Grid** or **Dots**) and the page size: **Letter**, **A4**, or **Wide**, a landscape page twice as wide as Letter with room for mind maps and diagrams.
 
