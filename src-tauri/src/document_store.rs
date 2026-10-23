@@ -621,7 +621,7 @@ pub(crate) fn load_window_images(
             page_number: asset
                 .source_unit_number
                 .unwrap_or_else(|| window.source_locator.first()),
-            bytes,
+            bytes: crate::knowledge::images::upload_copy_of(&asset.sha256, bytes),
             crop_of: None,
         });
     }

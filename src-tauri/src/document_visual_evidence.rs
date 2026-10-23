@@ -45,7 +45,10 @@ pub(crate) fn load_locator_images(
                 "A selected multimodal source asset is not an image.",
             ));
         }
-        let bytes = read_source_image_bytes(paths, asset)?;
+        let bytes = crate::knowledge::images::upload_copy_of(
+            &asset.sha256,
+            read_source_image_bytes(paths, asset)?,
+        );
         images.push(SourcePageImage {
             page_number: asset.source_unit_number.unwrap_or_else(|| locator.first()),
             bytes,

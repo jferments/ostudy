@@ -2,9 +2,11 @@
 //! No external image relationship, arbitrary path, or URL is fetched here.
 
 use std::{
+    collections::VecDeque,
     fs::File,
     io::Read,
     path::{Component, Path},
+    sync::{LazyLock, Mutex},
 };
 
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, ImageFormat, Rgb, RgbImage};
@@ -25,6 +27,15 @@ const MAX_TOTAL_IMAGE_BYTES: usize = 24 * 1024 * 1024;
 const UPLOAD_LONG_EDGE: u32 = 1568;
 const UPLOAD_JPEG_QUALITY: u8 = 85;
 const REENCODE_ABOVE_BYTES: usize = 384 * 1024;
+/// Upload copies remembered by stored-content hash: a page render goes out in
+/// many requests (reading, cards, guide), and is re-encoded once.
+const REMEMBERED_UPLOAD_COPIES: usize = 64;
+
+/// (stored sha256, upload copy), oldest first.
+type UploadCopies = VecDeque<(String, Vec<u8>)>;
+
+static UPLOAD_COPIES: LazyLock<Mutex<UploadCopies>> =
+    LazyLock::new(|| Mutex::new(VecDeque::with_capacity(REMEMBERED_UPLOAD_COPIES)));
 
 struct ManagedImage {
     path: String,
@@ -122,7 +133,7 @@ pub(crate) fn load_images(
                 "An evidence image changed or exceeded its size limit.",
             ));
         }
-        if let Some(expected) = record.sha256 {
+        if let Some(expected) = record.sha256.as_deref() {
             if format!("{:x}", Sha256::digest(&bytes)) != expected {
                 return Err(invalid(
                     "An evidence image failed its source-integrity check.",
@@ -134,7 +145,10 @@ pub(crate) fn load_images(
                 "This evidence image is not a supported PNG, JPEG, GIF, or WebP file.",
             ));
         }
-        let bytes = upload_copy(bytes);
+        let bytes = match record.sha256.as_deref() {
+            Some(sha256) => upload_copy_of(sha256, bytes),
+            None => upload_copy(bytes),
+        };
         total_bytes = total_bytes.saturating_add(bytes.len());
         if total_bytes > MAX_TOTAL_IMAGE_BYTES {
             return Err(invalid(
@@ -148,6 +162,27 @@ pub(crate) fn load_images(
         });
     }
     Ok(images)
+}
+
+/// The provider copy of stored image `bytes`, already checked against their
+/// `sha256`. Every request that sends a managed image goes through here, so a
+/// page is sent the same way whichever step sends it.
+pub(crate) fn upload_copy_of(sha256: &str, bytes: Vec<u8>) -> Vec<u8> {
+    if let Ok(copies) = UPLOAD_COPIES.lock() {
+        if let Some((_, copy)) = copies.iter().find(|(key, _)| key == sha256) {
+            return copy.clone();
+        }
+    }
+    let copy = upload_copy(bytes);
+    if let Ok(mut copies) = UPLOAD_COPIES.lock() {
+        if !copies.iter().any(|(key, _)| key == sha256) {
+            if copies.len() >= REMEMBERED_UPLOAD_COPIES {
+                copies.pop_front();
+            }
+            copies.push_back((sha256.to_string(), copy.clone()));
+        }
+    }
+    copy
 }
 
 /// Re-encodes a large PNG as a JPEG no wider than `UPLOAD_LONG_EDGE`, flattening
@@ -236,6 +271,24 @@ mod tests {
         assert_eq!((sent.width(), sent.height()), (1333, 1568));
         let margin = sent.to_rgb8().get_pixel(10, 10).0;
         assert!(margin.iter().all(|channel| *channel > 240), "{margin:?}");
+    }
+
+    #[test]
+    fn a_stored_image_is_reencoded_once_and_sent_the_same_way_everywhere() {
+        let mut seed = 0x9e37_79b9_u32;
+        let page = image::RgbaImage::from_fn(900, 1200, |_, _| {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            image::Rgba([seed as u8, (seed >> 8) as u8, (seed >> 16) as u8, 255])
+        });
+        let stored = png(&page);
+        let key = format!("{:x}", Sha256::digest(&stored));
+        let first = upload_copy_of(&key, stored.clone());
+        assert_eq!(first, upload_copy(stored.clone()));
+        assert!(first.starts_with(&[0xff, 0xd8, 0xff]));
+        // A remembered copy is returned without decoding the bytes passed again.
+        assert_eq!(upload_copy_of(&key, b"not decoded again".to_vec()), first);
     }
 
     #[test]
