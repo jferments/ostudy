@@ -15,7 +15,7 @@ use crate::{
     pdf_render_backend::{self, GlyphMetrics, PageGlyph, PdfRenderRuntime},
 };
 
-use super::validation::bounded_diagnostic;
+use super::{chunk_repair::page_passage, validation::bounded_diagnostic};
 
 /// A glyph at most this share of its word's body size counts as small.
 const SMALL_GLYPH_RATIO: f64 = 0.85;
@@ -67,6 +67,7 @@ pub(crate) fn restore_printed_notation(
             element.text = apply_notation(&element.text, words).0;
         }
     }
+    let mut rebuilt = 0usize;
     for chunk in &mut semantic.chunks {
         let mut words = BTreeMap::new();
         for page in &chunk.page_numbers {
@@ -74,7 +75,26 @@ pub(crate) fn restore_printed_notation(
                 words.insert(plain.clone(), printed.clone());
             }
         }
-        if !words.is_empty() {
+        if words.is_empty() {
+            continue;
+        }
+        let page_text = semantic
+            .pages
+            .iter()
+            .filter(|page| chunk.page_numbers.contains(&page.page_number))
+            .map(|page| page.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Some(passage) = page_passage(&chunk.text, &page_text) {
+            // The full text is the heading context, then the chunk's text.
+            if let Some(heading) = chunk.full_text.strip_suffix(chunk.text.as_str()) {
+                chunk.full_text = format!("{heading}{passage}");
+            } else {
+                chunk.full_text = apply_notation(&chunk.full_text, &words).0;
+            }
+            chunk.text = passage;
+            rebuilt += 1;
+        } else {
             chunk.text = apply_notation(&chunk.text, &words).0;
             chunk.full_text = apply_notation(&chunk.full_text, &words).0;
         }
@@ -82,7 +102,7 @@ pub(crate) fn restore_printed_notation(
     crate::logging::info(
         "document_notation_restored",
         format!(
-            "document={document_id} pages={} words={restored}",
+            "document={document_id} pages={} words={restored} chunks_rebuilt={rebuilt}",
             by_page.len()
         ),
     );
