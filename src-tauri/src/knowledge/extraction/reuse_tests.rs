@@ -173,7 +173,16 @@ async fn reused_window_never_loads_its_page_images() {
     ));
     let paths = AppPaths::new(directory.join("library")).unwrap();
     let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
-    let reused = ensure_units_batch(&db, &paths, &runtime, &task, &sources, &signal).await;
+    let plans = plan_windows(&sources);
+    let reused = ensure_units_batch(
+        &db,
+        &paths,
+        &runtime,
+        &task,
+        plans[0].window(&sources),
+        &signal,
+    )
+    .await;
     let _ = std::fs::remove_dir_all(&directory);
     assert!(reused.unwrap()[&sources[0].id].is_empty());
 }

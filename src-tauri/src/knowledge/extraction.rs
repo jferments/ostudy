@@ -10,15 +10,13 @@ use super::{
         EXTRACTION_PROMPT_VERSION,
     },
     evidence::EvidenceCatalog,
-    images::load_images,
+    images::load_image_references,
     repository,
     runtime::check_canceled,
 };
 use crate::{
     ai::{
-        document_intelligence::{
-            request_json_cancellable, DocumentTaskContext, JsonTaskRequest, SourcePageImage,
-        },
+        document_intelligence::{request_json_cancellable, DocumentTaskContext, JsonTaskRequest},
         AiRuntimeState,
     },
     database::Database,
@@ -32,7 +30,9 @@ use std::{
     future::Future,
 };
 
-pub(crate) const EXTRACTION_BATCH_SOURCES: usize = 12;
+/// Small pieces of one page (table cells, labels) share its window; text and
+/// complexity budgets, not this count, normally close a window.
+pub(crate) const EXTRACTION_BATCH_SOURCES: usize = 48;
 pub(crate) const EXTRACTION_BATCH_CHARS: usize = 12000;
 pub(crate) const EXTRACTION_BATCH_COMPLEXITY_UNITS: usize = 16_000;
 pub(crate) const EXTRACTION_COMPLETION_TOKENS: usize = 6000;
@@ -88,31 +88,32 @@ pub(crate) async fn ensure_units_batch(
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
-    sources: &[SourceRecord],
+    window: ExtractionWindow<'_>,
     cancellation: &CancellationSignal,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError> {
-    analyze(database, paths, runtime, task, sources, cancellation, false).await
+    analyze(database, paths, runtime, task, window, cancellation, false).await
 }
 pub(crate) async fn retry_units_batch(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
-    sources: &[SourceRecord],
+    window: ExtractionWindow<'_>,
     cancellation: &CancellationSignal,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError> {
-    analyze(database, paths, runtime, task, sources, cancellation, true).await
+    analyze(database, paths, runtime, task, window, cancellation, true).await
 }
 async fn analyze(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
-    sources: &[SourceRecord],
+    window: ExtractionWindow<'_>,
     cancellation: &CancellationSignal,
     retry_partial: bool,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError> {
     check_canceled(cancellation)?;
+    let ExtractionWindow { sources, shown } = window;
     if sources.is_empty()
         || sources.len() > EXTRACTION_BATCH_SOURCES
         || (sources.len() > 1
@@ -121,7 +122,10 @@ async fn analyze(
                 .map(|s| s.text.chars().count())
                 .sum::<usize>()
                 > EXTRACTION_BATCH_CHARS)
-        || (sources.len() > 1 && window_page_images(sources).len() > MAX_WINDOW_PAGE_IMAGES)
+        || (sources.len() > 1 && shown.len() > MAX_WINDOW_PAGE_IMAGES)
+        || shown
+            .iter()
+            .any(|image| !window_page_images(sources).contains(&image))
     {
         return Err(invalid(
             "The semantic extraction window exceeds its source budget.",
@@ -222,18 +226,25 @@ async fn analyze(
     task.ensure_current(database)?;
     // Page images are read and re-encoded only when a request is sent: a
     // window whose saved receipt is reused needs none of them.
-    let with_images =
-        task.include_page_images && pending.iter().any(|source| !source.images.is_empty());
+    // Each page goes out once: the window shows only the pages its planner
+    // gave it, and a repair attaches only the pages in its evidence closure.
+    let attached = window_page_images(&pending)
+        .into_iter()
+        .filter(|image| shown.contains(image))
+        .cloned()
+        .collect::<Vec<_>>();
+    let with_images = task.include_page_images && !attached.is_empty();
     if !with_images {
         pending = defer_picture_only_sources(pending)?;
     }
-    let catalog = EvidenceCatalog::build(&pending, with_images)?;
+    let catalog = if with_images {
+        EvidenceCatalog::build_attaching(&pending, &attached)?
+    } else {
+        EvidenceCatalog::build(&pending, false)?
+    };
     let authorization = hash(
-        &serde_json::to_string(&(
-            authorization,
-            with_images.then(|| window_page_images(&pending)),
-        ))
-        .map_err(CommandError::serialization)?,
+        &serde_json::to_string(&(authorization, with_images.then_some(&attached)))
+            .map_err(CommandError::serialization)?,
     );
     let mut request_task = task.clone();
     request_task.diagnostic_window_key = Some(analysis_store::window_id(&pending, &contract)?);
@@ -254,16 +265,11 @@ async fn analyze(
         },
         cancellation,
         |call| {
-            let pending = &pending;
             async move {
                 let cancellation = &call.cancellation;
                 task.ensure_current(database)?;
                 check_canceled(cancellation)?;
-                let images = if with_images {
-                    load_window_images(database, paths, pending)?
-                } else {
-                    vec![]
-                };
+                let images = load_image_references(database, paths, &call.images)?;
                 // The shared transport now budgets the actual schema-bearing prompt
                 // for knowledge, guide and every other document task consistently.
                 let value = request_json_cancellable(
@@ -305,6 +311,9 @@ async fn analyze(
 pub(super) struct WindowCall {
     user: String,
     schema: Value,
+    /// The page images among this request's evidence; empty for a text-only
+    /// request.
+    images: Vec<EvidenceImage>,
     cancellation: CancellationSignal,
     visible_completion_tokens: usize,
 }
@@ -412,7 +421,7 @@ fn build_repair_request(
     report: &decode::AnalysisReport,
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
-) -> (String, Value) {
+) -> (String, Value, Vec<EvidenceImage>) {
     let scope = repair_scope(report, catalog, sources);
     let evidence = catalog.prompt_selection(&scope.sources, &scope.positions);
     crate::logging::debug_target(
@@ -430,7 +439,7 @@ fn build_repair_request(
         report.repair_prompt(catalog, sources)
     );
     let schema = schema::repair_scoped(&scope.aliases, &scope.sources, report);
-    (user, schema)
+    (user, schema, catalog.images_at(Some(&scope.positions)))
 }
 
 pub(super) struct WindowRunContext<'a> {
@@ -547,6 +556,7 @@ where
         let decoded = call(WindowCall {
             user: initial_prompt.clone(),
             schema: schema::initial(catalog, sources),
+            images: catalog.images_at(None),
             cancellation: cancellation.clone(),
             visible_completion_tokens: initial_visible_completion_tokens,
         })
@@ -607,6 +617,7 @@ where
                 let value = call(WindowCall {
                     user: format!("{initial_prompt}\n{retry_instruction}"),
                     schema: schema::initial(catalog, sources),
+                    images: catalog.images_at(None),
                     cancellation: cancellation.clone(),
                     visible_completion_tokens: retry_visible_tokens,
                 })
@@ -631,10 +642,11 @@ where
         check_canceled(cancellation)?;
         crate::logging::warn_target("ai.knowledge.extraction","knowledge_extraction_repair_started",
             "Repairing only rejected proposals and uncovered sources; admitted siblings remain unchanged.",decode::report_diagnostic(&report));
-        let (user, repair_schema) = build_repair_request(&report, catalog, sources);
+        let (user, repair_schema, images) = build_repair_request(&report, catalog, sources);
         match call(WindowCall {
             user,
             schema: repair_schema,
+            images,
             cancellation: cancellation.clone(),
             visible_completion_tokens: EXTRACTION_COMPLETION_TOKENS,
         })
@@ -684,63 +696,121 @@ fn window_page_images(sources: &[SourceRecord]) -> Vec<&EvidenceImage> {
     images
 }
 
-fn load_window_images(
-    database: &Database,
-    paths: &AppPaths,
-    sources: &[SourceRecord],
-) -> Result<Vec<SourcePageImage>, CommandError> {
-    let mut loaded = Vec::<&EvidenceImage>::new();
-    let mut images = Vec::new();
-    for source in sources {
-        if source.images.iter().all(|image| loaded.contains(&image)) {
-            continue;
-        }
-        for (reference, image) in source
-            .images
-            .iter()
-            .zip(load_images(database, paths, source)?)
-        {
-            if !loaded.contains(&reference) {
-                loaded.push(reference);
-                images.push(image);
-            }
-        }
-    }
-    Ok(images)
+/// One extraction request: its sources and the page images it shows.
+#[derive(Clone, Copy)]
+pub(crate) struct ExtractionWindow<'a> {
+    pub sources: &'a [SourceRecord],
+    pub shown: &'a [EvidenceImage],
 }
 
-pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usize>> {
-    let mut result = Vec::new();
-    let mut start = 0;
-    while start < sources.len() {
+/// A planned window: a range of the planned sources and the pages it shows.
+#[derive(Debug, PartialEq)]
+pub(crate) struct WindowPlan {
+    pub range: std::ops::Range<usize>,
+    pub shown: Vec<EvidenceImage>,
+}
+
+impl WindowPlan {
+    pub(crate) fn window<'a>(&'a self, sources: &'a [SourceRecord]) -> ExtractionWindow<'a> {
+        ExtractionWindow {
+            sources: &sources[self.range.clone()],
+            shown: &self.shown,
+        }
+    }
+}
+
+/// The page images each source shows its window. A page is shown with the
+/// sources that start on it; a passage running onto the next page leaves that
+/// page to the window reading the rest of it. A page no source starts on is
+/// shown once, with the first source that reaches it.
+fn shown_images(sources: &[SourceRecord]) -> Vec<Vec<&EvidenceImage>> {
+    let starts = sources
+        .iter()
+        .filter_map(|source| source.images.first())
+        .collect::<HashSet<_>>();
+    let mut placed = HashSet::new();
+    let mut result = Vec::with_capacity(sources.len());
+    for source in sources {
+        let mut shown = Vec::new();
+        for (index, image) in source.images.iter().enumerate() {
+            if (index == 0 || (!starts.contains(image) && placed.insert(image)))
+                && !shown.contains(&image)
+            {
+                shown.push(image);
+            }
+        }
+        result.push(shown);
+    }
+    result
+}
+
+/// Packs neighbouring sources into extraction windows within the text,
+/// complexity and page-image budgets, sending each page about once.
+pub(crate) fn plan_windows(sources: &[SourceRecord]) -> Vec<WindowPlan> {
+    let shown = shown_images(sources);
+    let fill = |start: usize| {
         let mut end = start + 1;
         let mut chars = sources[start].text.chars().count();
-        let mut images = window_page_images(&sources[start..end]).len();
-        let mut complexity = extraction_complexity_units(&sources[start].text, images);
+        let mut images = shown[start].clone();
+        let mut complexity = extraction_complexity_units(&sources[start].text, images.len());
         while end < sources.len() && end - start < EXTRACTION_BATCH_SOURCES {
             let next = &sources[end];
             let next_chars = next.text.chars().count();
-            let next_images = window_page_images(&sources[start..=end]).len();
-            // An image already attached for an earlier source costs nothing more.
-            let next_complexity =
-                extraction_complexity_units(&next.text, next_images.saturating_sub(images));
+            // An image already shown for an earlier source costs nothing more.
+            let new_images = shown[end]
+                .iter()
+                .filter(|image| !images.contains(image))
+                .collect::<Vec<_>>();
+            let next_complexity = extraction_complexity_units(&next.text, new_images.len());
             let same = next.id == sources[start].id
                 || (next.kind == SourceKind::Document
                     && sources[start].kind == SourceKind::Document
                     && next.owner_id == sources[start].owner_id);
             if !same
-                || next_images > MAX_WINDOW_PAGE_IMAGES
+                || images.len() + new_images.len() > MAX_WINDOW_PAGE_IMAGES
                 || chars.saturating_add(next_chars) > EXTRACTION_BATCH_CHARS
                 || complexity.saturating_add(next_complexity) > EXTRACTION_BATCH_COMPLEXITY_UNITS
             {
                 break;
             }
             chars += next_chars;
-            images = next_images;
+            images.extend(new_images);
             complexity = complexity.saturating_add(next_complexity);
             end += 1;
         }
-        result.push(start..end);
+        end
+    };
+    let mut result = Vec::new();
+    let mut start = 0;
+    while start < sources.len() {
+        let mut end = fill(start);
+        // A window closing partway through a page leaves the page's earlier
+        // pieces to the next window when the whole page fits there, so the
+        // page is shown once instead of twice.
+        if end < sources.len() {
+            let page = &shown[end];
+            let first_on_page = (start..end)
+                .find(|index| shown[*index].iter().any(|image| page.contains(image)))
+                .filter(|index| *index > start);
+            if let Some(back) = first_on_page {
+                let next_end = fill(back);
+                if next_end >= sources.len()
+                    || !shown[next_end].iter().any(|image| page.contains(image))
+                {
+                    end = back;
+                }
+            }
+        }
+        let mut window_shown = Vec::<EvidenceImage>::new();
+        for image in shown[start..end].iter().flatten() {
+            if !window_shown.contains(image) {
+                window_shown.push((*image).clone());
+            }
+        }
+        result.push(WindowPlan {
+            range: start..end,
+            shown: window_shown,
+        });
         start = end;
     }
     result

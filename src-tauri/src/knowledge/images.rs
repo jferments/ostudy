@@ -53,9 +53,18 @@ pub(crate) fn load_images(
     source: &SourceRecord,
 ) -> Result<Vec<SourcePageImage>, CommandError> {
     source.validate()?;
+    load_image_references(database, paths, &source.images)
+}
+
+/// Loads exactly these stored images, in order, as their provider copies.
+pub(crate) fn load_image_references(
+    database: &Database,
+    paths: &AppPaths,
+    references: &[EvidenceImage],
+) -> Result<Vec<SourcePageImage>, CommandError> {
     let mut images = Vec::new();
     let mut total_bytes = 0_usize;
-    for reference in &source.images {
+    for reference in references {
         let record = database.with_connection(|connection| {
             let record = match reference {
                 EvidenceImage::CardAsset { id } => connection

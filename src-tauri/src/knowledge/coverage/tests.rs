@@ -221,3 +221,32 @@ fn oversized_or_malformed_declarations_cannot_certify_missing_regions() {
         assert!(!report.is_complete());
     }
 }
+
+#[test]
+fn a_page_shown_to_the_neighbouring_window_is_not_this_windows_gap() {
+    let (_, mut source, _, _) = fixture();
+    let owner = source.owner_id.clone();
+    let page = |number: usize| EvidenceImage::DocumentAsset {
+        document_id: owner.clone(),
+        asset_id: format!("unit-render:{number:06}"),
+    };
+    source.images = vec![page(1), page(2)];
+    source.refresh_identity().unwrap();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build_attaching(&sources, &[page(1)]).unwrap();
+    let report = decode::initial(
+        json!({"units":[],"noLearningSourceIds":[sources[0].id]}),
+        &catalog,
+        &sources,
+    )
+    .unwrap();
+    assert!(report.is_complete());
+    let coverage = report.coverage.as_ref().unwrap();
+    assert_eq!(coverage.diagnostic()["regions"], 2);
+    coverage
+        .validate(&sources, &report.accepted, &report.no_learning)
+        .unwrap();
+    let saved: decode::AnalysisReport =
+        serde_json::from_value(serde_json::to_value(&report).unwrap()).unwrap();
+    assert_eq!(saved.coverage, report.coverage);
+}
