@@ -48,6 +48,8 @@ export interface MaterialsChoice extends StudyTargetOutputPolicy {
   lessons: boolean;
   /** A podcast about the first lessons, once they are written. */
   podcast?: boolean;
+  /** Lecture audio with the new lessons; the setting decides when not given. */
+  lectureAudio?: boolean;
 }
 
 /** One Make from the sheet: what to make, from which documents, and how to write new cards. */
@@ -125,7 +127,7 @@ export function SubjectStudyActions({
     if (choice.flashcards || choice.studyGuide) {
       void bundle.run({ flashcards: choice.flashcards, studyGuide: choice.studyGuide });
     }
-    if (choice.lessons) course.write({ podcast: choice.podcast ?? false });
+    if (choice.lessons) course.write({ podcast: choice.podcast ?? false, lectureAudio: choice.lectureAudio });
   }
 
   async function make(request: MakeRequest): Promise<void> {

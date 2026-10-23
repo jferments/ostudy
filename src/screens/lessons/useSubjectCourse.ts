@@ -52,14 +52,22 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function startRun(subjectId: string, rewrite: boolean, podcast = false) {
+/** What a new course is followed by. */
+export interface CourseExtras {
+  /** A podcast about the first lessons. */
+  podcast?: boolean;
+  /** Lecture audio for every lesson, whatever the setting says; false makes none. */
+  lectureAudio?: boolean;
+}
+
+function startRun(subjectId: string, rewrite: boolean, { podcast = false, lectureAudio }: CourseExtras = {}) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
   publish(subjectId, { operationId, stopping: false, progress: null, podcast: false, outcome: null });
   watchProgress(subjectId, operationId);
   void writeSubjectCourse(subjectId, operationId, rewrite).then(
     async (lessons) => {
-      void makeLectureAudio(lessons);
+      void makeLectureAudio(lessons, lectureAudio);
       const written = lessons.lessons.filter((lesson) => lesson.written).slice(0, COURSE_PODCAST_LESSONS);
       const run = runs.get(subjectId);
       if (!podcast || written.length === 0 || run?.operationId !== operationId || run.stopping) {
@@ -90,10 +98,11 @@ function startRun(subjectId: string, rewrite: boolean, podcast = false) {
  * lecture plays without waiting for the voice. Audio is optional: the
  * lessons are already saved, and a step that fails is spoken when played.
  */
-export async function makeLectureAudio(course: SubjectLessons): Promise<void> {
+export async function makeLectureAudio(course: SubjectLessons, wanted?: boolean): Promise<void> {
+  if (wanted === false) return;
   try {
     const [settings, speech] = await Promise.all([getSettings(), getSpeechSettings()]);
-    if (settings.lectureAudioWithNewLessons === false || speech.profileId === null) return;
+    if (speech.profileId === null || (wanted === undefined && settings.lectureAudioWithNewLessons === false)) return;
   } catch {
     return;
   }
@@ -176,8 +185,8 @@ export interface SubjectCourse {
   updateError: string | null;
   refresh: () => void;
   update: (lessonId: string) => void;
-  /** Writes the course; with `podcast`, then a podcast about its first lessons. */
-  write: (options?: { podcast?: boolean }) => void;
+  /** Writes the course, then what `extras` asks for. */
+  write: (extras?: CourseExtras) => void;
   /** Writes the whole course again; each lesson keeps its place. */
   rewrite: () => void;
   stop: () => void;
@@ -260,10 +269,10 @@ export function useSubjectCourse(subjectId: string): SubjectCourse {
         )
         .finally(() => setUpdating(null));
     },
-    write: (options) => {
+    write: (extras) => {
       setWriteError(null);
       setPodcastError(null);
-      startRun(subjectId, false, options?.podcast ?? false);
+      startRun(subjectId, false, extras);
     },
     rewrite: () => {
       setWriteError(null);

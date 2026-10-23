@@ -216,4 +216,13 @@ describe("makeLectureAudio", () => {
     await makeLectureAudio(course);
     expect(lessonsIpc.narrateLessonStep).not.toHaveBeenCalled();
   });
+
+  it("follows a study set's own choice over the setting", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: false } as settingsIpc.AppSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    await makeLectureAudio(course, false);
+    expect(lessonsIpc.narrateLessonStep).not.toHaveBeenCalled();
+    await makeLectureAudio(course, true);
+    expect(lessonsIpc.narrateLessonStep).toHaveBeenCalledWith("lesson-1", 3, "a");
+  });
 });
