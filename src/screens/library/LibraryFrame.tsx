@@ -121,6 +121,7 @@ export function LibraryFrame({
               showToast={showToast}
               onStartReview={onStartReview}
               onPracticeSubject={onPracticeSubject}
+              onOpenDocuments={() => onSelectView("documents")}
             />
           ) : null}
           {shown && subject.kind !== "all" ? (

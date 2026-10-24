@@ -64,14 +64,14 @@ A document's **…** menu files it: **Add to a subject…** or **Move to another
 
 ### New study set
 
-**New study set** in Library's header starts a study set in one place. Its sheet asks for:
+A study set is a subject and the materials made for it. The **New study set +** tile at the end of Library's page starts one in one place. Its sheet asks for:
 
-- **Subject**: **New subject** with its name, or **Add to a subject** you already have.
+- **Subject**: the new subject's name. A name alone makes an empty subject.
 - **Documents**: **Choose files** adds a file each time; **From the library** adds documents you already have, moving them into the subject. A new file is read as if you had uploaded it in the subject.
-- **What to make**: optional with documents, where it says how to use them, such as what to cover, what to use for detail or what to skip, and also guides their first cards. With no documents, describe what to learn and the AI connection used for cards and guides writes study notes on it. The notes become a PDF in the subject's **Documents**, and everything else is made from them like any upload.
-- **Make**: **Flashcards**, **Study guide**, **Lessons** (with **Lecture audio**, which starts as **Make lecture audio with new lessons** in **Settings** says and needs a lesson voice) and **Podcast**. A podcast is made from the lessons: once they are written, two hosts talk through the first three.
+- **Prompt**: optional with documents, where it says how to use them, such as what to cover, what to use for detail or what to skip, and also guides their first cards. With no documents, describe what to learn and the AI connection used for cards and guides writes study notes on it. The notes become a PDF in the subject's **Documents**, and everything else is made from them like any upload.
+- **What kinds of study materials do you want to create?**: **Flashcards**, **Study guide**, **Lessons** (with **Lecture audio**, which starts as **Make lecture audio with new lessons** in **Settings** says and needs a lesson voice) and **Podcast**. A podcast is made from the lessons: once they are written, two hosts talk through the first three.
 
-**Make study set** opens the subject's **Documents**. Reading a document always writes its first cards. Once every document is read, the subject's study materials start as if you had chosen them in **Make study materials**: the study guide, the subject's flashcards, and the lessons, then the podcast. If you leave the page first, they start the next time you open the subject's **Documents** while the app is still running.
+**Make study set** opens the subject's **Documents**. To add documents and materials to a subject you already have, choose **Add materials…** in its **…** menu on its tile or beside its name; the same sheet opens without the name and ends with **Add materials**. Reading a document always writes its first cards. Once every document is read, the subject's study materials start as if you had chosen them in **Make study materials**: the study guide, the subject's flashcards, and the lessons, then the podcast. If you leave the page first, they start the next time you open the subject's **Documents** while the app is still running.
 
 ### Make study materials
 
@@ -127,7 +127,7 @@ Other formats record their place in the source as **sections**, even where the f
 
 ## What the provider receives
 
-Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing. A **New study set** made without documents sends what you typed in **What to make** in one request for its notes; the notes then come back as a document and are read like any other.
+Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing. A **New study set** made without documents sends what you typed in **Prompt** in one request for its notes; the notes then come back as a document and are read like any other.
 
 Model output cannot write to the library, files or commands directly. Generated content is checked for structure, size, allowed formatting, tags, Fill in the blank syntax, question rules, source references and duplicates before it is saved. A false statement or distractor in a question is never recorded as something the source asserted, and a single-best-answer question must have one supported best choice.
 

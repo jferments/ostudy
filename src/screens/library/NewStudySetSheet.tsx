@@ -18,14 +18,11 @@ import {
 import { selectExternalImport } from "../../platform/files";
 import { Icon } from "../../ui/icons/Icon";
 import { IconButton } from "../../ui/icons/IconButton";
-import { cn } from "../../ui/internal/cn";
 import { Sheet } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { Checkbox, Textarea } from "../../ui/primitives/FormControls";
 import { FormField } from "../../ui/primitives/FormField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { NativeSelect } from "../../ui/primitives/NativeSelect";
-import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { TextField } from "../../ui/primitives/TextField";
 import { formatDocumentType } from "../documents/DocumentProgress";
 import { queueStudySet } from "../documents/pendingStudySets";
@@ -47,7 +44,7 @@ const sourceKey = (source: Source) => source.kind === "file" ? `file:${source.fi
 
 interface NewStudySetSheetProps {
   subjects: readonly Subject[];
-  /** The subject to add to; a new subject when not given. */
+  /** The subject to add materials to, from its menu; a new subject when not given. */
   subjectId?: string;
   onClose: () => void;
   /** Receives the subject the set was made in, and the library when a subject was created. */
@@ -55,15 +52,15 @@ interface NewStudySetSheetProps {
 }
 
 /**
- * The one place a study set starts: documents, a prompt, or both, and what to
- * make from them. A prompt with documents says how to use them; a prompt
- * alone has the AI write the notes the set is made from. The documents are
- * filed in the subject and read; what was asked for starts once they are.
+ * The one place a study set starts: a subject named for its topic, then
+ * documents, a prompt, or both, and what to make from them. A prompt with
+ * documents says how to use them; a prompt alone has the AI write the notes
+ * the set is made from; a name alone makes an empty subject. The documents
+ * are filed in the subject and read; what was asked for starts once they
+ * are. Opened from a subject's menu, it adds materials to that subject.
  */
 export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose, onCreated }: NewStudySetSheetProps) {
   const jobs = useDocumentJobs();
-  const [mode, setMode] = useState<"new" | "existing">(initialSubject ? "existing" : "new");
-  const [chosenSubject, setChosenSubject] = useState(initialSubject ?? subjects[0]?.id ?? "");
   const [name, setName] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [browsing, setBrowsing] = useState(false);
@@ -94,14 +91,16 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
     };
   }, []);
 
-  const target = madeSubject ?? (mode === "existing" ? chosenSubject : null);
+  const target = madeSubject ?? initialSubject ?? null;
+  const adding = initialSubject !== undefined;
+  const addingTo = adding ? subjects.find((subject) => subject.id === initialSubject)?.name ?? "this subject" : null;
   const trimmedPrompt = prompt.trim();
   const trimmedName = name.trim();
   const promptTooLong = trimmedPrompt.length > SOURCE_NOTES_PROMPT_MAX_CHARS;
   const nothingChosen = !kinds.flashcards && !kinds.studyGuide && !kinds.lessons;
-  const blocked = (sources.length === 0 && trimmedPrompt === "")
-    || (target === null ? trimmedName === "" : target === "")
-    || nothingChosen
+  const hasMaterial = sources.length > 0 || trimmedPrompt !== "";
+  const blocked = (adding ? !hasMaterial : trimmedName === "")
+    || (hasMaterial && nothingChosen)
     || promptTooLong
     || busy !== null
     || !jobs;
@@ -148,6 +147,11 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         setMadeSubject(made.id);
       }
       const inSubject = subjectId;
+      if (!hasMaterial) {
+        // A name alone makes the subject; its materials can come later.
+        onCreated(inSubject, created);
+        return;
+      }
       let chosen = sources;
       if (chosen.length === 0) {
         setBusy("Writing notes on your topic…");
@@ -190,7 +194,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
   const disabled = busy !== null;
   return (
     <Sheet
-      title="New study set"
+      title={addingTo ? `Add to ${addingTo}` : "New study set"}
       width="large"
       onClose={onClose}
       busy={disabled}
@@ -200,31 +204,19 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         <>
           <Button disabled={disabled} onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" loading={disabled} disabled={blocked} data-testid="new-study-set-create">
-            Make study set
+            {adding ? "Add materials" : "Make study set"}
           </Button>
         </>
       }
     >
       <div className="tw:grid tw:gap-6">
-        <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:p-0">
-          <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Subject</legend>
-          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
-            {madeSubject === null && subjects.length > 0 ? (
-              <SegmentedControl
-                label="Subject"
-                value={mode}
-                disabled={disabled}
-                options={[{ value: "new", label: "New subject" }, { value: "existing", label: "Add to a subject" }]}
-                onChange={setMode}
-              />
-            ) : null}
+        {adding ? null : (
+          <FormField label="Subject">
             {madeSubject !== null ? (
               <span className="tw:text-label">{trimmedName}</span>
-            ) : mode === "new" ? (
+            ) : (
               <TextField
-                aria-label="Subject name"
                 data-autofocus="true"
-                className="tw:min-w-56 tw:flex-1"
                 value={name}
                 maxLength={MAX_SUBJECT_NAME_CHARS}
                 placeholder="For example, Cardiac physiology"
@@ -232,19 +224,9 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
                 disabled={disabled}
                 onChange={(event) => setName(event.currentTarget.value)}
               />
-            ) : (
-              <NativeSelect
-                aria-label="Subject to add to"
-                className="tw:min-w-56 tw:flex-1"
-                value={chosenSubject}
-                disabled={disabled}
-                onChange={(event) => setChosenSubject(event.currentTarget.value)}
-              >
-                {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
-              </NativeSelect>
             )}
-          </div>
-        </fieldset>
+          </FormField>
+        )}
 
         <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:border-0 tw:p-0">
           <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Documents</legend>
@@ -307,7 +289,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         </fieldset>
 
         <FormField
-          label="What to make"
+          label="Prompt"
           description={sources.length > 0
             ? "Optional: say how to use the documents, such as what to cover, what to use for detail, or what to skip."
             : "Describe what to learn and the AI writes the notes everything is made from, or add documents."}
@@ -323,29 +305,22 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         </FormField>
 
         <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:border-0 tw:p-0">
-          <legend className="tw:mb-2 tw:p-0 tw:text-label tw:font-medium">Make</legend>
-          <div className="tw:grid tw:grid-cols-4 tw:gap-2.5 tw:compact:grid-cols-2">
+          <legend className="tw:mb-1 tw:p-0 tw:text-label tw:font-medium">What kinds of study materials do you want to create?</legend>
+          <div className="tw:grid tw:gap-0.5">
             {KINDS.map((kind) => {
               const needsLessons = kind.key === "podcast" && !kinds.lessons;
-              const on = kinds[kind.key] && !needsLessons;
               return (
-                <div
-                  key={kind.key}
-                  className={cn(
-                    "tw:grid tw:content-start tw:gap-1 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:px-3 tw:py-1",
-                    on && "tw:border-primary tw:bg-accent",
-                  )}
-                >
-                  <label className="tw:flex tw:min-h-11 tw:cursor-pointer tw:items-center tw:gap-2.5 tw:text-label tw:font-semibold">
+                <div key={kind.key} className="tw:grid">
+                  <label className="tw:flex tw:min-h-11 tw:w-fit tw:cursor-pointer tw:items-center tw:gap-2.5 tw:text-label">
                     <Checkbox
-                      checked={on}
+                      checked={kinds[kind.key] && !needsLessons}
                       disabled={disabled || needsLessons}
                       onCheckedChange={(checked) => setKinds((current) => ({ ...current, [kind.key]: checked }))}
                     />
                     {kind.label}
                   </label>
                   {kind.key === "lessons" ? (
-                    <label className="tw:flex tw:min-h-9 tw:cursor-pointer tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">
+                    <label className="tw:ms-8 tw:flex tw:min-h-11 tw:w-fit tw:cursor-pointer tw:items-center tw:gap-2.5 tw:text-label">
                       <Checkbox
                         checked={kinds.lessons && audio.on}
                         disabled={disabled || !kinds.lessons || !audio.available}
@@ -353,11 +328,6 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
                       />
                       Lecture audio
                     </label>
-                  ) : null}
-                  {kind.key === "podcast" ? (
-                    <span className="tw:pb-2 tw:text-small tw:text-muted-foreground">
-                      {needsLessons ? "Made from the lessons" : "Two hosts talk through the first lessons"}
-                    </span>
                   ) : null}
                 </div>
               );

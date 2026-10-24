@@ -12,6 +12,7 @@ import { Button } from "../../ui/primitives/Button";
 import { buildSubjectTiles, countLabel, type SubjectTile } from "../home/homeModel";
 import { SubjectBadge } from "../home/SubjectBadge";
 import { MAX_SESSION_DECKS } from "../home/TodayStrip";
+import { NewStudySetSheet } from "./NewStudySetSheet";
 import { NameSheet } from "./workbench/WorkbenchSheets";
 
 const NO_PREPARATIONS = new Map();
@@ -51,12 +52,14 @@ interface LibrarySubjectHeaderProps {
   onStartReview: (deckIds: string[]) => void;
   /** One extra session mixing cards from every deck in the subject. */
   onPracticeSubject: (subjectId: string) => void;
+  /** Shows the subject's Documents, where materials added from its menu are read and made. */
+  onOpenDocuments: () => void;
   showToast: ShowToast;
 }
 
 /**
  * The chosen subject's name, what it holds, its Review button and its own
- * actions (rename, reorder, delete); All cards totals every subject.
+ * actions (add materials, rename, reorder, delete); All cards totals every subject.
  */
 export function LibrarySubjectHeader({
   scope,
@@ -64,8 +67,11 @@ export function LibrarySubjectHeader({
   onChooseSubject,
   onStartReview,
   onPracticeSubject,
+  onOpenDocuments,
   showToast,
 }: LibrarySubjectHeaderProps) {
+  const home = useOptionalHomeSummary();
+  const [adding, setAdding] = useState(false);
   const all = [...subjects.subjects, ...(subjects.noSubject ? [subjects.noSubject] : [])];
   const shown = scope.kind === "all" ? all : subjects.current ? [subjects.current] : [];
   const sources = shown.reduce((sum, tile) => sum + tile.summary.sourceCount, 0);
@@ -116,7 +122,23 @@ export function LibrarySubjectHeader({
           name={subjects.current.name}
           subjects={subjects}
           onChooseSubject={onChooseSubject}
+          onAddMaterials={home?.library ? () => setAdding(true) : undefined}
           showToast={showToast}
+        />
+      ) : null}
+      {adding && scope.kind === "subject" && home?.library ? (
+        <NewStudySetSheet
+          subjects={home.library.subjects}
+          subjectId={scope.subjectId}
+          onClose={() => {
+            setAdding(false);
+            home.refresh();
+          }}
+          onCreated={() => {
+            setAdding(false);
+            home.refresh();
+            onOpenDocuments();
+          }}
         />
       ) : null}
     </header>
@@ -129,12 +151,15 @@ export function SubjectActions({
   name,
   subjects,
   onChooseSubject,
+  onAddMaterials,
   showToast,
 }: {
   subjectId: string;
   name: string;
   subjects: LibrarySubjects;
   onChooseSubject: (subject: LibrarySubjectScope) => void;
+  /** Opens New study set on this subject, to add documents and materials to it. */
+  onAddMaterials?: () => void;
   showToast: ShowToast;
 }) {
   const home = useOptionalHomeSummary();
@@ -177,6 +202,7 @@ export function SubjectActions({
       <OverflowMenu
         label={`${name} actions`}
         items={[
+          ...(onAddMaterials ? [{ id: "add", label: "Add materials…", onSelect: onAddMaterials }] : []),
           { id: "rename", label: "Rename…", onSelect: () => setRenaming(true) },
           {
             id: "up",

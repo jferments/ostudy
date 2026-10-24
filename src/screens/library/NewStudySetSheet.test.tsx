@@ -42,7 +42,8 @@ function renderSheet(subjectId?: string) {
       <NewStudySetSheet subjects={[physiology]} subjectId={subjectId} onClose={vi.fn()} onCreated={onCreated} />
     </OverlayProvider>,
   );
-  return { onCreated, create: () => screen.getByRole("button", { name: "Make study set" }) };
+  const label = subjectId === undefined ? "Make study set" : "Add materials";
+  return { onCreated, create: () => screen.getByRole("button", { name: label }) };
 }
 
 describe("NewStudySetSheet", () => {
@@ -62,8 +63,8 @@ describe("NewStudySetSheet", () => {
     vi.mocked(sourceNotesIpc.writeSourceNotes).mockResolvedValue(staged("s".repeat(32), "Krebs cycle.pdf"));
     const { onCreated, create } = renderSheet();
     expect(create().hasAttribute("disabled")).toBe(true);
-    fireEvent.change(screen.getByRole("textbox", { name: "Subject name" }), { target: { value: "Krebs cycle" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "What to make" }), { target: { value: "The Krebs cycle for my exam" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Subject" }), { target: { value: "Krebs cycle" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "The Krebs cycle for my exam" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Podcast" }));
     // Lecture audio starts on, as the setting says, since a voice is set up.
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "Lecture audio" }).getAttribute("aria-checked")).toBe("true"));
@@ -83,10 +84,27 @@ describe("NewStudySetSheet", () => {
     });
   });
 
+  it("makes an empty subject from a name alone", async () => {
+    const { onCreated, create } = renderSheet();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Subject" }), { target: { value: "Krebs cycle" } });
+    fireEvent.click(create());
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created.id, after));
+    expect(sourceNotesIpc.writeSourceNotes).not.toHaveBeenCalled();
+    expect(jobs.importStagedDocument).not.toHaveBeenCalled();
+    expect(takeStudySet(created.id)).toBeNull();
+  });
+
+  it("adds nothing to an existing subject until it has documents or a prompt", () => {
+    const { create } = renderSheet(physiology.id);
+    expect(screen.getByRole("dialog", { name: "Add to Physiology" })).toBeTruthy();
+    expect(create().hasAttribute("disabled")).toBe(true);
+  });
+
   it("adds chosen documents to an existing subject without writing notes", async () => {
     vi.mocked(files.selectExternalImport).mockResolvedValueOnce(staged("a".repeat(32), "Chapter 4.pdf"));
     const { onCreated, create } = renderSheet(physiology.id);
-    expect(screen.queryByRole("textbox", { name: "Subject name" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Subject" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Choose files/u }));
     expect(await screen.findByText("Chapter 4.pdf")).toBeTruthy();
     // A podcast is made from the lessons, so it goes with them.
@@ -120,7 +138,7 @@ describe("NewStudySetSheet", () => {
   it("keeps the sheet open with the reason when the notes cannot be written", async () => {
     vi.mocked(sourceNotesIpc.writeSourceNotes).mockRejectedValue(new Error("Choose an AI model first."));
     const { onCreated, create } = renderSheet(physiology.id);
-    fireEvent.change(screen.getByRole("textbox", { name: "What to make" }), { target: { value: "Renal clearance" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "Renal clearance" } });
     fireEvent.click(create());
     expect(await screen.findByText("Choose an AI model first.")).toBeTruthy();
     expect(onCreated).not.toHaveBeenCalled();
