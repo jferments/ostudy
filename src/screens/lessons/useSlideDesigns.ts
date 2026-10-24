@@ -30,12 +30,33 @@ const ZOOM_STORAGE_KEY = "ostudy.lectureSlideZoom";
 /** How wide the slide shows, as a share of the room it has, smallest first. */
 export const SLIDE_ZOOMS: readonly number[] = [40, 50, 60, 70, 80, 90, 100];
 
+/** Leaves room beside the slide on a wide window, so its notes and check sit close by. */
+const DEFAULT_SLIDE_ZOOM = 80;
+
+/** A lecture choice kept on this device; `fallback` when none is kept or storage fails. */
+export function readLectureFlag(key: "captions" | "autoplay", fallback: boolean): boolean {
+  try {
+    const stored = window.localStorage.getItem(`ostudy.lecture.${key}`);
+    return stored === null ? fallback : stored === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveLectureFlag(key: "captions" | "autoplay", value: boolean): void {
+  try {
+    window.localStorage.setItem(`ostudy.lecture.${key}`, String(value));
+  } catch {
+    // A convenience; the default works without storage.
+  }
+}
+
 export function readSlideZoom(): number {
   try {
     const stored = Number(window.localStorage.getItem(ZOOM_STORAGE_KEY));
-    return SLIDE_ZOOMS.includes(stored) ? stored : 100;
+    return SLIDE_ZOOMS.includes(stored) ? stored : DEFAULT_SLIDE_ZOOM;
   } catch {
-    return 100;
+    return DEFAULT_SLIDE_ZOOM;
   }
 }
 

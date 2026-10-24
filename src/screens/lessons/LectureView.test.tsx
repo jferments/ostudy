@@ -213,6 +213,8 @@ describe("LectureView", () => {
     });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
     window.localStorage.clear();
+    // Most tests read the teacher's words; one checks they start hidden.
+    window.localStorage.setItem("ostudy.lecture.captions", "true");
     vi.mocked(getMaterialInk).mockReset();
     vi.mocked(getMaterialInk).mockResolvedValue([]);
     vi.mocked(answerLessonCheck).mockReset();
@@ -299,14 +301,27 @@ describe("LectureView", () => {
   it("makes the slide smaller and larger and remembers the size", async () => {
     open("multiplier");
     await screen.findByText("Slide 4 of 5");
-    const larger = screen.getByRole("button", { name: "Larger slide" });
-    expect(larger.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Smaller slide" }));
-    fireEvent.click(screen.getByRole("button", { name: "Smaller slide" }));
+    // A little smaller than the column to start.
     expect(screen.getByTestId("lecture-slide").style.width).toBe("80%");
-    expect(window.localStorage.getItem("ostudy.lectureSlideZoom")).toBe("80");
-    fireEvent.click(larger);
-    expect(screen.getByTestId("lecture-slide").style.width).toBe("90%");
+    fireEvent.click(screen.getByRole("button", { name: "Smaller slide" }));
+    expect(screen.getByTestId("lecture-slide").style.width).toBe("70%");
+    expect(window.localStorage.getItem("ostudy.lectureSlideZoom")).toBe("70");
+    const larger = screen.getByRole("button", { name: "Larger slide" });
+    for (let step = 0; step < 3; step += 1) fireEvent.click(larger);
+    expect(screen.getByTestId("lecture-slide").style.width).toBe("");
+    expect(larger.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("hides the spoken words until captions are turned on", async () => {
+    window.localStorage.removeItem("ostudy.lecture.captions");
+    open("multiplier");
+    await screen.findByText("Slide 4 of 5");
+    expect(screen.queryByRole("region", { name: "Speaker notes" })).toBeNull();
+    const captions = screen.getByRole("button", { name: /Closed captions/u });
+    expect(captions.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(captions);
+    expect(screen.getByRole("region", { name: "Speaker notes" })).toBeTruthy();
+    expect(window.localStorage.getItem("ostudy.lecture.captions")).toBe("true");
   });
 
   it("reports each step it shows and finishes the lesson from the last slide", async () => {
@@ -531,6 +546,24 @@ describe("LectureView", () => {
         { slideKey: "sources", talk: "That is the loop.", question: null },
       ],
     };
+
+    it("waits on each slide with autoplay off and plays the next one on Next", async () => {
+      vi.mocked(getLessonLectureScript).mockResolvedValue(script);
+      open("quiet");
+      await screen.findByText("The teacher says");
+      const autoplay = screen.getByRole("button", { name: /Autoplay/ });
+      expect(autoplay.getAttribute("aria-pressed")).toBe("true");
+      fireEvent.click(autoplay);
+      expect(window.localStorage.getItem("ostudy.lecture.autoplay")).toBe("false");
+      fireEvent.click(screen.getByRole("button", { name: /Play lecture/ }));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:step:quiet"));
+      act(() => audio().dispatchEvent(new Event("ended")));
+      // The talk is over, and the lecture stays on its slide.
+      await screen.findByRole("button", { name: /Play lecture/ });
+      expect(slide().getByRole("heading", { name: "A quiet step" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+      await vi.waitFor(() => expect(audio().src).toBe("blob:talk:step:multiplier"));
+    });
 
     it("offers to write it, then shows what the teacher says as the notes", async () => {
       vi.mocked(writeLessonLectureScript).mockResolvedValue(script);
