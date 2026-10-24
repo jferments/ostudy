@@ -16,6 +16,7 @@ export const ICON_NAMES = [
   "brain",
   "calendar",
   "calendar-check",
+  "captions",
   "cards",
   "chat",
   "check",
@@ -213,6 +214,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
           <path d="M6 18a4 4 0 0 1-2-7.464" />
           <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+        </>
+      );
+    case "captions": // Lucide: captions
+      return (
+        <>
+          <rect width="18" height="14" x="3" y="5" rx="2" ry="2" />
+          <path d="M7 15h4M15 15h2M7 11h2M13 11h4" />
         </>
       );
     case "calendar": // Lucide: calendar

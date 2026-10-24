@@ -42,7 +42,16 @@ import { useNarrationPlayer } from "./useNarrationPlayer";
 import { InkEditor } from "../ink/InkEditor";
 import { InkOverlay } from "../ink/InkOverlay";
 import { useMaterialInk } from "../ink/useMaterialInk";
-import { readSlideTheme, readSlideZoom, saveSlideTheme, saveSlideZoom, SLIDE_ZOOMS, useSlideDesigns } from "./useSlideDesigns";
+import {
+  readLectureFlag,
+  readSlideTheme,
+  readSlideZoom,
+  saveLectureFlag,
+  saveSlideTheme,
+  saveSlideZoom,
+  SLIDE_ZOOMS,
+  useSlideDesigns,
+} from "./useSlideDesigns";
 import { useVoiceAvailable } from "./useVoiceAvailable";
 
 const SLIDE_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string }> = [
@@ -151,6 +160,10 @@ export function LectureView({
   const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
   const designs = useSlideDesigns(lessonId, revisionNumber, theme);
   const [zoom, setZoom] = useState(readSlideZoom);
+  // The teacher's words show only when captions are on.
+  const [captions, setCaptions] = useState(() => readLectureFlag("captions", false));
+  // With autoplay off, a playing lecture waits on each slide until Next.
+  const [autoplay, setAutoplay] = useState(() => readLectureFlag("autoplay", true));
   const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
   const ink = useMaterialInk(inkMaterial);
   const [inking, setInking] = useState(false);
@@ -250,9 +263,18 @@ export function LectureView({
       return;
     }
     voice.speak(says(item.key), () =>
-      current.question?.timing === "after" ? setAsking({ slide: current, resumeAt: from + 1 }) : teach(from + 1),
+      current.question?.timing === "after" ? setAsking({ slide: current, resumeAt: from + 1 }) : goOn(from + 1),
     );
   };
+
+  // The lecture moves to the next slide by itself, or with autoplay off
+  // waits on this one until the learner moves on, and ends after the last.
+  const goOn = (next: number) => {
+    if (next >= slides.length) setLecturing(false);
+    else if (autoplay) play(next);
+  };
+
+  const play = (from: number) => (script ? teach(from) : speakFrom(from));
 
   const speakFrom = (from: number) => {
     let next = from;
@@ -263,7 +285,7 @@ export function LectureView({
       return;
     }
     setIndex(next);
-    voice.play(item.stepKey, () => speakFrom(next + 1));
+    voice.play(item.stepKey, () => goOn(next + 1));
   };
 
   const startLecture = () => {
@@ -281,12 +303,13 @@ export function LectureView({
     setLecturing(false);
   };
 
-  const closeQuestion = (goOn: boolean) => {
+  const closeQuestion = (proceed: boolean) => {
     const resumeAt = asking?.resumeAt ?? null;
     const first = asking?.slide.question?.timing === "before";
     setAsking(null);
-    if (goOn && resumeAt !== null) teach(resumeAt, first);
-    else stopLecture();
+    if (!proceed || resumeAt === null) stopLecture();
+    else if (first) teach(resumeAt, true);
+    else goOn(resumeAt);
   };
 
   // The teacher's reply is spoken only during a lecture; the lecture goes on
@@ -336,11 +359,19 @@ export function LectureView({
     }
   };
 
+  // Choosing a slide stops the lecture, except that with autoplay off a
+  // playing lecture goes on from the chosen slide.
   const show = (next: number) => {
-    stopLecture();
     setCheckOpen(false);
-    setIndex(next);
     headingRef.current?.focus();
+    if (lecturing && !autoplay) {
+      voice.stop();
+      setIndex(next);
+      play(next);
+      return;
+    }
+    stopLecture();
+    setIndex(next);
   };
 
   if (inking) {
@@ -394,6 +425,18 @@ export function LectureView({
           <Button className="tw:rounded-full" disabled={saving} onClick={() => void saveDeck()}>
             <Icon name="download" size={16} /> {saving ? "Saving…" : "Save as .pptx"}
           </Button>
+          {voiceAvailable ? (
+            <Button
+              className="tw:rounded-full"
+              aria-pressed={autoplay}
+              onClick={() => {
+                setAutoplay(!autoplay);
+                saveLectureFlag("autoplay", !autoplay);
+              }}
+            >
+              <Icon name={autoplay ? "check" : "play"} size={16} /> Autoplay
+            </Button>
+          ) : null}
           {/* A failed voice leaves the lecture where it stopped. */}
           {lecturing && voice.listening !== "idle" ? (
             <Button className="tw:rounded-full" onClick={stopLecture}>
@@ -535,6 +578,21 @@ export function LectureView({
                 </div>
               ) : null}
               {(talk?.talk ?? slide.notes).trim() ? (
+                <div>
+                  <Button
+                    size="small"
+                    className="tw:rounded-full"
+                    aria-pressed={captions}
+                    onClick={() => {
+                      setCaptions(!captions);
+                      saveLectureFlag("captions", !captions);
+                    }}
+                  >
+                    <Icon name="captions" size={16} /> Closed captions
+                  </Button>
+                </div>
+              ) : null}
+              {captions && (talk?.talk ?? slide.notes).trim() ? (
                 <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
                   <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
                     {talk ? "The teacher says" : "Notes"}

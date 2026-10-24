@@ -174,7 +174,22 @@
     block(text(font: head, size: 25pt * s, weight: 700, fill: T.primary, rt(slide.title)))
     v(5mm * s)
     let vis = slide.visual
-    if vis == none {
+    let fig = slide.at("figure", default: none)
+    if fig != none {
+      // A figure from the source sits beside the points, or under them
+      // when it is wide; its words stay with it.
+      let picture(height) = figure(
+        block(height: height, width: 100%, image(fig.path, fit: "contain", width: 100%, height: 100%)),
+        caption: text(size: 9.5pt * s, fill: T.muted, rt(fig.caption)),
+        numbering: none, gap: 2mm * s)
+      if slide.points.len() == 0 {
+        picture(88mm * s)
+      } else if fig.tall {
+        grid(columns: (1fr, 1fr), column-gutter: 8mm * s, points-view(slide.points, s * 0.95), picture(82mm * s))
+      } else {
+        grid(columns: (1.1fr, 1fr), column-gutter: 8mm * s, points-view(slide.points, s * 0.95), picture(64mm * s))
+      }
+    } else if vis == none {
       points-view(slide.points, s * 1.08)
     } else if vis.kind == "flow" or vis.kind == "table" or vis.kind == "compare" or vis.kind == "myth" {
       if slide.points.len() > 0 { points-view(slide.points, s * 0.92); v(5mm * s) }

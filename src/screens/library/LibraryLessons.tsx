@@ -83,7 +83,7 @@ function SubjectLessons({
 
   if (playing && tile && openLessonId) {
     return (
-      <PageScaffold width="full" aria-label={`${tile.name} lesson`}>
+      <PageScaffold width="full" inset aria-label={`${tile.name} lesson`}>
         <LessonPlayer
           lessonId={openLessonId}
           subjectName={tile.name}
@@ -100,7 +100,7 @@ function SubjectLessons({
   }
   if (listening && tile && openPodcastId) {
     return (
-      <PageScaffold width="workspace" aria-label={`${tile.name} podcast`}>
+      <PageScaffold width="workspace" inset aria-label={`${tile.name} podcast`}>
         <PodcastPlayer podcastId={openPodcastId} subjectName={tile.name} onClose={() => setOpenPodcastId(null)} />
       </PageScaffold>
     );

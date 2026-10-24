@@ -199,8 +199,17 @@ fn compile_world(template: &str, files: HashMap<FileId, Bytes>) -> Result<PagedD
 /// Lays out another compiled-in template that imports the guide themes, with
 /// `data` as its /data.json, and returns each page as a standalone SVG. The
 /// world is the guide's: bundled fonts and nothing from disk or the network.
-pub(crate) fn compile_template_svgs(template: &str, data: &Value) -> Result<Vec<String>, String> {
+/// `extra` holds more files the template reads, such as images, each at its
+/// absolute path.
+pub(crate) fn compile_template_svgs_with(
+    template: &str,
+    data: &Value,
+    extra: Vec<(String, Vec<u8>)>,
+) -> Result<Vec<String>, String> {
     let mut files = HashMap::new();
+    for (path, bytes) in extra {
+        files.insert(file_id(&path), Bytes::new(bytes));
+    }
     files.insert(
         file_id("/data.json"),
         Bytes::new(serde_json::to_vec(data).map_err(|error| error.to_string())?),

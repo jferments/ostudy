@@ -55,29 +55,43 @@
       #v(1mm)
       #text(font: ui, size: 11pt, fill: white.transparentize(20%), "From " + data.source)]]
   #v(26mm)
-  #grid(columns: (1fr, 66mm), gutter: 12mm,
-    [
-      #set par(justify: false)
-      #text(size: T.body-size * 1.2, rt(data.overview))
-      #if data.objectives.len() > 0 [
-        #v(5mm)
-        #eyebrow("You will be able to") #v(1mm)
-        #for (i, o) in data.objectives.enumerate() [
-          #grid(columns: (6mm, 1fr), text(font: ui, weight: 700, fill: T.accent, str(i + 1)), rt(o)) #v(0.6mm)]
-      ]
-    ],
-    block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 5mm)[
-      #eyebrow("Contents") #v(2mm)
-      #set par(justify: false)
-      #for entry in contents-entries.slice(0, calc.min(cover-limit, contents-entries.len())) [#contents-line(entry) #v(0.6mm)]
-      #if contents-entries.len() > cover-limit [
-        #text(font: ui, size: 8pt, fill: T.muted)[and #(contents-entries.len() - cover-limit) more on the next page]]
-      #if data.keyIdeas.len() + data.checks.len() > 0 [
-        #v(2mm)
-        #if data.keyIdeas.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
-        #if data.checks.len() > 0 [#contents-line((label: "self-test", number: "", title: ((t: "Self-test"),)))]
-      ]
-    ])
+  // The overview, objectives and contents, set smaller when a long overview
+  // would otherwise run off the cover onto a page of its own.
+  #let cover-columns(scale) = {
+    grid(columns: (1fr, 66mm), gutter: 12mm,
+      [
+        #set par(justify: false)
+        #text(size: T.body-size * 1.2 * scale, rt(data.overview))
+        #if data.objectives.len() > 0 [
+          #v(5mm)
+          #eyebrow("You will be able to") #v(1mm)
+          #for (i, o) in data.objectives.enumerate() [
+            #set text(size: T.body-size * scale)
+            #grid(columns: (6mm, 1fr), text(font: ui, weight: 700, fill: T.accent, str(i + 1)), rt(o)) #v(0.6mm)]
+        ]
+      ],
+      block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 5mm)[
+        #eyebrow("Contents") #v(2mm)
+        #set par(justify: false)
+        #for entry in contents-entries.slice(0, calc.min(cover-limit, contents-entries.len())) [#contents-line(entry) #v(0.6mm)]
+        #if contents-entries.len() > cover-limit [
+          #text(font: ui, size: 8pt, fill: T.muted)[and #(contents-entries.len() - cover-limit) more on the next page]]
+        #if data.keyIdeas.len() + data.checks.len() > 0 [
+          #v(2mm)
+          #if data.keyIdeas.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
+          #if data.checks.len() > 0 [#contents-line((label: "self-test", number: "", title: ((t: "Self-test"),)))]
+        ]
+      ])
+  }
+  #layout(size => {
+    let room = size.height - 121mm
+    let scale = 1
+    for s in (1, 0.92, 0.85, 0.78, 0.72) {
+      scale = s
+      if measure(block(width: size.width, cover-columns(s))).height <= room { break }
+    }
+    cover-columns(scale)
+  })
   #v(1fr)
   #hairline
   #v(2mm)
@@ -115,7 +129,7 @@
     if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
   for (i, b) in s.blocks.enumerate() {
-    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) {
+    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) and not pairs(s.figures) {
       wrapped-bullets(b.items, s.figures.first(), number + ".1")
       figures-view(s.figures.slice(1), number, first: 2)
     } else {
@@ -134,12 +148,10 @@
 
 #if has-chapters {
   for (ci, chapter) in data.chapters.enumerate() {
-    // Each chapter starts a page, so a section rewritten in one chapter
-    // leaves every other chapter's pages, and the marks on them, in place.
-    pagebreak(weak: true)
-    anchor("chapter", chapter.key)
-    block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), above: 6mm, below: 4mm, breakable: false)[
-      #heading(level: 1, outlined: true, bookmarked: true)[#plain(chapter.title)] #label("chapter-" + str(ci + 1))
+    // Chapters run on from the one before, so a chapter's last page is not
+    // left mostly empty; its band stays with its first section.
+    block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), above: if ci == 0 { 6mm } else { 9mm }, below: 4mm, breakable: false, sticky: true)[
+      #anchor("chapter", chapter.key)#heading(level: 1, outlined: true, bookmarked: true)[#plain(chapter.title)] #label("chapter-" + str(ci + 1))
       #grid(columns: (14mm, 1fr), align: (left + horizon, left + horizon),
         text(font: head, size: 28pt, weight: 700, fill: T.highlight, str(ci + 1)),
         [#eyebrow("Chapter " + str(ci + 1), color: T.band-light) \ #text(font: head, size: 16pt, weight: 700, fill: white, rt(chapter.title))

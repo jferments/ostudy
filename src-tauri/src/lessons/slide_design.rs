@@ -4,12 +4,16 @@
 //! sources) are laid out by Typst in one of the study guide themes and
 //! returned as one SVG per slide. Each step slide shows its slide points and
 //! at most one visual chosen from its blocks: a process becomes a step flow, a
-//! comparison two panels, and so on. Slides are compiled from the saved
+//! comparison two panels, and so on. A step whose source pages hold a figure
+//! that illustrates it shows that figure, cropped from its PDF, in place of
+//! the drawn visual. Slides are compiled from the saved
 //! revision on every read, never stored and never written by a model; the
 //! reader's view of the lesson is the input, so a check's answer never reaches
 //! a slide.
 
-use rusqlite::Connection;
+use std::collections::{HashMap, HashSet};
+
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::State;
@@ -21,8 +25,16 @@ use super::{
 };
 use crate::{
     database::Database,
-    document_study_guide_export::{compile_template_svgs, rich_runs, StudyGuidePdfTheme},
+    document_annotations::page_tiles::pdf_source_path,
+    document_figures::{self, DocumentFigureDto},
+    document_study_guide_export::{
+        compile_template_svgs_with,
+        figures::{choose_for, draw_png, FigurePlace},
+        rich_runs, StudyGuidePdfTheme,
+    },
     error::CommandError,
+    paths::AppPaths,
+    pdf_render_backend::PdfRenderRuntime,
 };
 
 const TEMPLATE: &str = include_str!("typst/slides.typ");
@@ -60,28 +72,57 @@ pub struct SlideDesignDto {
     pub svg: String,
 }
 
+/// Draws one figure from the PDF at a document's stored relative path.
+pub(super) type DrawFigure<'a> =
+    &'a dyn Fn(&str, &DocumentFigureDto) -> Option<(Vec<u8>, u32, u32)>;
+
 #[tauri::command]
-pub fn get_lesson_slide_designs(
+pub async fn get_lesson_slide_designs(
     database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
     input: GetLessonSlideDesignsInput,
 ) -> Result<LessonSlideDesignsDto, CommandError> {
-    database.with_connection(|connection| read_slide_designs(connection, input))
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let draw = |relative: &str, figure: &DocumentFigureDto| {
+            draw_png(&runtime, &paths.resolve_relative(relative), figure)
+        };
+        database.with_connection(|connection| {
+            read_slide_designs_drawing(connection, input, Some(&draw))
+        })
+    })
+    .await
+    .map_err(|error| design_error(error.to_string()))?
 }
 
+/// The slides without figures.
+#[cfg(test)]
 pub(super) fn read_slide_designs(
     connection: &Connection,
     input: GetLessonSlideDesignsInput,
 ) -> Result<LessonSlideDesignsDto, CommandError> {
+    read_slide_designs_drawing(connection, input, None)
+}
+
+pub(super) fn read_slide_designs_drawing(
+    connection: &Connection,
+    input: GetLessonSlideDesignsInput,
+    draw: Option<DrawFigure<'_>>,
+) -> Result<LessonSlideDesignsDto, CommandError> {
     let theme = input.theme;
-    let (lesson_id, revision_number, keys, data) = slide_data(
+    let (lesson_id, revision_number, keys, data, images) = slide_data(
         connection,
         GetLessonInput {
             lesson_id: input.lesson_id,
             revision_number: input.revision_number,
         },
         theme,
+        draw,
     )?;
-    let svgs = compile_template_svgs(TEMPLATE, &data).map_err(design_error)?;
+    let svgs = compile_template_svgs_with(TEMPLATE, &data, images).map_err(design_error)?;
     // The template fits each slide to one page; anything else is a layout bug.
     if svgs.len() != keys.len() {
         return Err(design_error(format!(
@@ -109,15 +150,26 @@ fn design_error(detail: String) -> CommandError {
     )
 }
 
-/// The lesson's slide keys in order and the template's data.
+/// Images the template reads, by absolute path.
+type SlideImages = Vec<(String, Vec<u8>)>;
+/// The template's data with the images it reads.
+type SlideData = (String, i64, Vec<String>, Value, SlideImages);
+
+/// The lesson's slide keys in order, the template's data and the figure
+/// images it places, drawn with `draw` when given.
 pub(super) fn slide_data(
     connection: &Connection,
     input: GetLessonInput,
     theme: StudyGuidePdfTheme,
-) -> Result<(String, i64, Vec<String>, Value), CommandError> {
+    draw: Option<DrawFigure<'_>>,
+) -> Result<SlideData, CommandError> {
     let lesson = read_lesson(connection, input)?;
     let documents = source_documents(connection, &lesson)?;
     let content = &lesson.content;
+    let (figures, images) = match draw {
+        Some(draw) => step_figures(connection, &content.steps, draw)?,
+        None => (vec![Value::Null; content.steps.len()], Vec::new()),
+    };
     let total = content.steps.len() + 1 + usize::from(!documents.is_empty());
     let mut keys = Vec::with_capacity(total);
     let mut slides = Vec::with_capacity(total);
@@ -141,6 +193,7 @@ pub(super) fn slide_data(
             "title": rich_runs(&step.title),
             "points": step.slide_points.iter().map(|item| rich_runs(item)).collect::<Vec<_>>(),
             "visual": visual(step),
+            "figure": figures[index].clone(),
         }));
     }
     if !documents.is_empty() {
@@ -159,7 +212,98 @@ pub(super) fn slide_data(
         "title": content.title,
         "slides": slides,
     });
-    Ok((lesson.lesson.id, lesson.revision_number, keys, data))
+    Ok((lesson.lesson.id, lesson.revision_number, keys, data, images))
+}
+
+/// The figure each step's slide shows, or null, and the images they read.
+/// A step's figure comes from the pages its knowledge was written from, and
+/// is chosen as a guide section's is; each figure shows once a lesson.
+fn step_figures(
+    connection: &Connection,
+    steps: &[LessonStepViewDto],
+    draw: DrawFigure<'_>,
+) -> Result<(Vec<Value>, SlideImages), CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT source.document_id, json_extract(source.record_json, '$.locator.unitNumbers')
+             FROM knowledge_units unit
+             JOIN knowledge_sources source ON source.id = unit.source_id
+             WHERE unit.id = ?1 AND source.document_id IS NOT NULL",
+        )
+        .map_err(CommandError::database)?;
+    // Each step's pages, by document.
+    let mut pages: HashMap<String, Vec<HashSet<i64>>> = HashMap::new();
+    for (index, step) in steps.iter().enumerate() {
+        for unit_id in &step.knowledge_unit_ids {
+            let found: Option<(String, Option<String>)> = statement
+                .query_row([unit_id], |row| Ok((row.get(0)?, row.get(1)?)))
+                .optional()
+                .map_err(CommandError::database)?;
+            let Some((document_id, numbers)) = found else {
+                continue;
+            };
+            let numbers: Vec<i64> = numbers
+                .and_then(|text| serde_json::from_str(&text).ok())
+                .unwrap_or_default();
+            pages
+                .entry(document_id)
+                .or_insert_with(|| vec![HashSet::new(); steps.len()])[index]
+                .extend(numbers);
+        }
+    }
+    let mut chosen: Vec<Value> = vec![Value::Null; steps.len()];
+    let mut images = Vec::new();
+    let mut documents = pages.into_iter().collect::<Vec<_>>();
+    documents.sort_by(|a, b| a.0.cmp(&b.0));
+    for (document_id, step_pages) in documents {
+        let found = document_figures::figures(connection, &document_id)?;
+        if !found.use_images || found.figures.is_empty() {
+            continue;
+        }
+        let Ok(relative) = pdf_source_path(connection, &document_id) else {
+            continue;
+        };
+        let places = steps
+            .iter()
+            .zip(step_pages)
+            .map(|(step, pages)| FigurePlace {
+                pages,
+                text: format!(
+                    "{} {} {}",
+                    step.title,
+                    step.slide_points.join(" "),
+                    step.narration
+                ),
+            })
+            .collect::<Vec<_>>();
+        for (index, picks) in choose_for(&places, &found.figures, 1)
+            .into_iter()
+            .enumerate()
+        {
+            let Some(pick) = picks.first() else { continue };
+            if !chosen[index].is_null() {
+                continue;
+            }
+            let Some(figure) = found
+                .figures
+                .iter()
+                .find(|figure| figure.figure_id == pick.figure_id)
+            else {
+                continue;
+            };
+            let Some((png, width, height)) = draw(&relative, figure) else {
+                continue;
+            };
+            let path = format!("/figures/{}.png", images.len());
+            images.push((path.clone(), png));
+            chosen[index] = json!({
+                "path": path,
+                "caption": rich_runs(&pick.title),
+                "tall": height > width,
+            });
+        }
+    }
+    Ok((chosen, images))
 }
 
 /// The one picture a step's slide shows, chosen from its blocks: a process

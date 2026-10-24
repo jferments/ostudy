@@ -4,8 +4,9 @@
 //!
 //! A page's key names the part of the guide it belongs to and its place in
 //! that part: `front:1` is the cover, `chapter:<id>:2` a chapter's second
-//! page, `cram:1` and `test:1` the cram sheet and self-test. Chapters start a
-//! page, so remaking a section moves only its own chapter's pages.
+//! page, `cram:1` and `test:1` the cram sheet and self-test. Chapters run on
+//! from one another, so a page two chapters share is the later chapter's,
+//! and remaking a section moves the pages after it.
 
 use serde::Serialize;
 
