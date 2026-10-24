@@ -11,9 +11,10 @@ import {
 } from "react";
 
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
+import type { DocumentClip } from "../../../ipc/notebooks";
 import { cn } from "../../../ui/internal/cn";
 import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
-import { AnnotatorPage, StickyNoteEditor, type PageDraft } from "./AnnotatorPage";
+import { AnnotatorPage, StickyNoteEditor, type PageDraft, type PaperPages } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
@@ -33,11 +34,13 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   highlighter: "tw:cursor-crosshair",
   text: "tw:cursor-text",
   sticky: "tw:cursor-copy",
+  curve: "tw:cursor-crosshair",
   line: "tw:cursor-crosshair",
   arrow: "tw:cursor-crosshair",
   rectangle: "tw:cursor-crosshair",
   ellipse: "tw:cursor-crosshair",
   eraser: "tw:cursor-cell",
+  clip: "tw:cursor-crosshair",
 };
 
 interface AnnotatorCanvasProps {
@@ -51,6 +54,13 @@ interface AnnotatorCanvasProps {
   coarse: boolean;
   /** A page to outline, such as the one a card's source opened at. */
   markedPage?: number | null;
+  /** Pages of paper, as a notebook's are, instead of a document's page images. */
+  paperPages?: PaperPages;
+  /** A part of a page the Clip tool took, in points on its page. */
+  onClip?: (pageNumber: number, rect: { x: number; y: number; width: number; height: number }) => void;
+  /** The notebooks each page was clipped into, and how to open one. */
+  clipsByPage?: ReadonlyMap<number, readonly DocumentClip[]>;
+  onOpenClip?: (clip: DocumentClip) => void;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -77,7 +87,8 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  * own page only.
  */
 export function AnnotatorCanvas({
-  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null,
+  documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
+  onClip, clipsByPage, onOpenClip,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -117,11 +128,12 @@ export function AnnotatorCanvas({
   const rects = useRef<Map<number, DOMRect> | null>(null);
 
   const { scale, near, settled } = viewport;
-  const latest = useRef({ controller, scale, viewport });
-  latest.current = { controller, scale, viewport };
+  const latest = useRef({ controller, scale, viewport, onClip });
+  latest.current = { controller, scale, viewport, onClip };
 
   // The highlighter snaps to text, so it reads the text of the pages near the view.
-  const highlighting = controller.tool === "highlighter";
+  // Paper has no text to read.
+  const highlighting = controller.tool === "highlighter" && !paperPages;
   useEffect(() => {
     if (!highlighting) return;
     for (const pageNumber of near) {
@@ -255,6 +267,9 @@ export function AnnotatorCanvas({
         case "lasso":
           setLoop(effect.loop);
           break;
+        case "clip":
+          latest.current.onClip?.(effect.pageNumber, effect.rect);
+          break;
         case "select-group":
           current.selectGroup(effect.pageNumber, effect.ids);
           break;
@@ -360,6 +375,10 @@ export function AnnotatorCanvas({
     if (annotation.shape.kind === "text") current.editText(annotation);
     else current.select(annotation.id, annotation.pageNumber);
   }, []);
+  const changeText = useCallback((annotation: Annotation, text: string) => {
+    if (annotation.shape.kind !== "text" || annotation.shape.text === text) return;
+    latest.current.controller.commit([{ id: annotation.id, before: annotation, after: { ...annotation, shape: { ...annotation.shape, text } } }]);
+  }, []);
 
   // A keyboard opening on a phone shrinks the view; keep the note being typed in sight.
   const typing = useRef(false);
@@ -408,6 +427,7 @@ export function AnnotatorCanvas({
                 scale={scale}
                 near={near.has(pageNumber)}
                 marked={markedPage === pageNumber}
+                paperPages={paperPages}
                 images={images}
                 tiles={tiles}
                 tileScale={settled?.scale ?? 0}
@@ -429,6 +449,9 @@ export function AnnotatorCanvas({
                 onFinishText={controller.finishEditing}
                 onFocusAnnotation={focusAnnotation}
                 onOpenAnnotation={openAnnotation}
+                onChangeText={changeText}
+                clips={clipsByPage?.get(pageNumber)}
+                onOpenClip={onOpenClip}
               />
             );
           })}

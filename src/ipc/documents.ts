@@ -176,9 +176,17 @@ export async function getNoteSourceCitation(noteId: string): Promise<SourceCitat
   return invoke<SourceCitation | null>("get_note_source_citation", { noteId });
 }
 
-export async function importDocument(stagedFileId: string): Promise<ImportedDocument> {
+export interface ImportDocumentOptions {
+  /** Find and use a PDF's figures; a PDF imported without a choice uses them. */
+  useImages?: boolean;
+}
+
+export async function importDocument(
+  stagedFileId: string,
+  options: ImportDocumentOptions = {},
+): Promise<ImportedDocument> {
   return invoke<ImportedDocument>("import_document", {
-    input: { stagedFileId },
+    input: options.useImages === undefined ? { stagedFileId } : { stagedFileId, useImages: options.useImages },
   });
 }
 
@@ -194,12 +202,18 @@ export async function importDocumentAndGenerateFlashcards(
   return retryDocumentFlashcardGeneration(imported.documentId, guidance.generationInstructions);
 }
 
+/** `destinationDeckId` writes a document's first cards into that existing deck instead of a new one. */
 export async function startDocumentFlashcardGeneration(
   documentId: string,
   generationInstructions?: string,
+  destinationDeckId?: string,
 ): Promise<void> {
   await invoke("start_document_flashcard_generation", {
-    input: { documentId, ...generationInstructionsInput(generationInstructions) },
+    input: {
+      documentId,
+      ...generationInstructionsInput(generationInstructions),
+      ...(destinationDeckId ? { destinationDeckId } : {}),
+    },
   });
 }
 

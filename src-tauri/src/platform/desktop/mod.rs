@@ -8,6 +8,8 @@ use std::sync::Arc;
 
 use crate::platform::PlatformRuntime;
 
+pub(super) use external_files::prefer_desktop_file_chooser;
+
 pub(super) fn runtime(application_identifier: &str) -> PlatformRuntime {
     let clock = Arc::new(time::SystemClock);
     PlatformRuntime::from_parts(

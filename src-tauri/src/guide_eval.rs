@@ -23,13 +23,16 @@ use crate::{
     },
     database::Database,
     document_import::import_staged_document,
-    document_initial_generation::ensure_document_derivatives,
+    document_initial_generation::{
+        ensure_document_derivatives, process_and_generate_initial_flashcards,
+    },
     document_learning::load_active_document_learning_plan,
     document_store,
     document_study_guide_commands::generate_document_study_guide_for_document,
     error::CommandError,
     external_file_streaming::stage_local_import,
     external_files::ExternalImportPurpose,
+    knowledge::assessment::policy::instructions::GenerationInstructions,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
     task_cancellation::run_document_task,
@@ -58,6 +61,9 @@ pub struct GuideEvalRequest {
     pub provider: GuideEvalProvider,
     /// Where the provisioned PDFium library lives (`OSTUDY_ROOT_DIR` otherwise).
     pub resource_dir: Option<PathBuf>,
+    /// Run the document's whole first generation (flashcards and study guide
+    /// together, as the Documents page does) instead of the guide alone.
+    pub cards: bool,
 }
 
 /// What a run produced. `guide` is `None` when generation failed; `error` then
@@ -70,6 +76,8 @@ pub struct GuideEvalOutcome {
     pub source: Option<Value>,
     pub learning_plan: Option<Value>,
     pub guide: Option<Value>,
+    /// Saved deck counts when `cards` was requested.
+    pub cards: Option<Value>,
     pub error: Option<GuideEvalError>,
     pub timings_ms: GuideEvalTimings,
 }
@@ -121,6 +129,7 @@ async fn evaluate(
         source: None,
         learning_plan: None,
         guide: None,
+        cards: None,
         error: None,
         timings_ms: GuideEvalTimings::default(),
     };
@@ -142,7 +151,7 @@ async fn evaluate(
 
     let started = std::time::Instant::now();
     let document_id =
-        match import_and_ingest(database, paths, render_runtime, &request.source).await {
+        match import_and_ingest(database, paths, render_runtime.clone(), &request.source).await {
             Ok(document_id) => document_id,
             Err(error) => {
                 outcome.error = Some(fail("ingest", error));
@@ -150,6 +159,7 @@ async fn evaluate(
             }
         };
     outcome.timings_ms.ingest = started.elapsed().as_millis();
+    let render_runtime_for_cards = render_runtime;
     outcome.document_id = Some(document_id.clone());
     match source_snapshot(database, &document_id) {
         Ok(source) => outcome.source = Some(source),
@@ -160,6 +170,34 @@ async fn evaluate(
     }
 
     let started = std::time::Instant::now();
+    if request.cards {
+        let instructions = GenerationInstructions::default();
+        let generated = run_document_task(
+            &document_id,
+            process_and_generate_initial_flashcards(
+                database,
+                paths,
+                runtime,
+                render_runtime_for_cards,
+                &document_id,
+                &instructions,
+                None,
+            ),
+        )
+        .await;
+        outcome.timings_ms.generate = started.elapsed().as_millis();
+        match generated {
+            Ok(result) => {
+                outcome.cards = Some(json!({
+                    "notes": result.created_note_count,
+                    "cards": result.created_card_count,
+                    "skippedDuplicates": result.skipped_duplicate_count,
+                }))
+            }
+            Err(error) => outcome.error = Some(fail("generate", error)),
+        }
+        return outcome;
+    }
     let generated = run_document_task(
         &document_id,
         generate_document_study_guide_for_document(database, paths, runtime, &document_id),
@@ -266,8 +304,9 @@ async fn import_and_ingest(
         ExternalImportPurpose::Document,
         source,
     )?;
-    let imported = import_staged_document(database, paths, &staged.id)?;
+    let imported = import_staged_document(database, paths, &staged.id, None)?;
     ensure_document_derivatives(database, paths, render_runtime, &imported.document_id).await?;
+    // The eval reads text and page renders; it does not wait for figures.
     Ok(imported.document_id)
 }
 

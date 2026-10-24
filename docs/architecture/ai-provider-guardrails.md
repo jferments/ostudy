@@ -110,6 +110,15 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
   automatically after saving a key.
 - Saved credentials are write-only: Set, Replace, Remove. There is no reveal or
   recover-existing-key action.
+- One-click OpenRouter sign-in (`ai/profiles/openrouter_sign_in.rs`) is OAuth
+  with PKCE and a loopback callback on `localhost`. The verifier, the code and
+  the exchanged key stay native; the frontend sees only an attempt identifier
+  and the authorization page's URL, and the key is saved through the ordinary
+  credential path. On Android the browser is another app: the callback page
+  links to the app's own identifier as a scheme (a manifest intent filter that
+  carries no data) to bring oStudy back. It is offered only where the platform
+  reports `browserSignIn` (desktop and Android); elsewhere the learner pastes
+  a key.
 - Credential inputs clear immediately after submission and remain out of global
   React/application state.
 - Capability and probe timestamps are historical evidence labeled “Last

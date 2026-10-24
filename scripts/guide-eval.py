@@ -25,19 +25,33 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUNNER = ROOT / "src-tauri/target/debug/guide-eval"
-RUBRIC_VERSION = 1
-# Weights of the 1-5 rubric criteria in the 0-100 guide score. Cost is reported
+RUBRIC_VERSION = 3
+# Weights of the rubric criteria in the 0-100 guide score. A guide is a
+# condensed summary of the key ideas that sends the reader to the source for
+# the rest, so condensing is scored as well as accuracy. Cost is reported
 # beside the score, never folded into it.
 WEIGHTS = {
-    "accuracy": 0.30,
-    "coverage": 0.25,
-    "sourceSupport": 0.15,
-    "organization": 0.15,
-    "clarity": 0.15,
+    "accuracy": 0.25,
+    "keyIdeas": 0.20,
+    "distillation": 0.15,
+    "concision": 0.10,
+    "sourceSupport": 0.10,
+    "readability": 0.10,
+    "organization": 0.05,
+    "pointers": 0.05,
 }
+# Guide words per source word. A tenth is the aim and a fifth the ceiling:
+# anything from TARGET_RATIO_LOW to TARGET_RATIO_HIGH scores full concision,
+# and the score falls to 0 at ZERO_RATIO.
+TARGET_RATIO_LOW = 0.05
+TARGET_RATIO_HIGH = 0.12
+ZERO_RATIO = 0.25
 MAX_SECTION_SOURCE_CHARS = 14_000
-MAX_GUIDE_SOURCE_CHARS = 48_000
-MAX_GUIDE_TEXT_CHARS = 48_000
+# The whole-guide judge reads the whole source and guide: clipped at 48,000
+# characters, version 2 judged a 55-page chapter's key ideas from its first
+# pages only. These bounds fit a long textbook chapter in the judge's context.
+MAX_GUIDE_SOURCE_CHARS = 640_000
+MAX_GUIDE_TEXT_CHARS = 160_000
 
 SECTION_JUDGE = """You are grading one section of an AI-written study guide against the source pages it was written from. A student will learn from this guide, so errors and invented facts matter most.
 
@@ -46,25 +60,28 @@ Read the SOURCE EXCERPTS, then the GUIDE SECTION. Check every substantive statem
 Score each criterion from 1 to 5 using these anchors:
 - accuracy: 5 no factual errors; 4 one minor imprecision; 3 one major error or several minor ones; 2 several major errors; 1 mostly wrong or misleading.
 - sourceSupport: share of substantive statements traceable to the excerpts. 5 all; 4 nearly all (90% or more); 3 most (70-90%); 2 about half; 1 little. Correct background knowledge that the excerpts do not contain still counts against support.
-- clarity: 5 explains mechanisms and relationships in readable prose a student can learn from, with lists only where they help; 4 clear with small lapses; 3 understandable but terse, list-like or repetitive; 2 hard to follow; 1 confusing.
+- readability: 5 scannable and clear: the main idea is stated plainly, mechanisms are explained briefly, and lists of comparable items are tables or short bullet lists; 4 clear with small lapses; 3 understandable but long paragraphs recite fact after fact, or the same point repeats; 2 a wall of text that is hard to study from; 1 confusing.
 
 List each unsupported or wrong statement. severity is "major" when it is false or would mislead a student, "minor" when it is correct but not in the excerpts, or imprecise.
 
 Reply with JSON only:
-{"claimsChecked": <int>, "unsupportedClaims": [{"claim": "...", "severity": "major"|"minor", "why": "..."}], "accuracy": <1-5>, "sourceSupport": <1-5>, "clarity": <1-5>, "notes": "<one or two sentences>"}"""
+{"claimsChecked": <int>, "unsupportedClaims": [{"claim": "...", "severity": "major"|"minor", "why": "..."}], "accuracy": <1-5>, "sourceSupport": <1-5>, "readability": <1-5>, "notes": "<one or two sentences>"}"""
 
-GUIDE_JUDGE = """You are grading the coverage and organization of an AI-written study guide for one source document. A student should be able to learn what matters in the source from the guide.
+GUIDE_JUDGE = """You are grading an AI-written study guide for one source document. A study guide is a condensed summary of the key ideas: a student should get the shape of the whole source from it quickly and know where to read for detail. It is not a rewrite of the source and should not contain every fact.
 
 Read the SOURCE (ordered excerpts with their headings), then the GUIDE (overview and sections in reading order).
 
-First list the concepts in the source a student must learn ("core") and the ones that help but are secondary ("supporting"), then decide which the guide does not teach. Mentioning a term without explaining it does not count as teaching it. End-of-chapter questions, references and front matter in the source are not concepts.
+First list the key ideas of the source: the ideas a condensed summary about a tenth of the source's length must keep, because a student needs them to understand the rest of the source. Name them in source order, usually five to fifteen for a chapter, each as one short statement. A key idea is an overarching mechanism, principle, relationship or distinction. Supporting facts are not key ideas, even when the source spends a paragraph on them: individual values, examples, named techniques or instruments, anatomical or product details, exhaustive lists, and exceptions belong to the source and the flashcards. End-of-chapter questions, references and front matter in the source are not ideas.
+
+Then give each key idea a status in the guide: "taught" when the guide states and explains it, "thin" when the guide only names it or states it without the explanation a student needs, "missing" when it is absent. A key idea taught in a table, a key point or an explanation counts as taught.
 
 Score each criterion from 1 to 5 using these anchors:
-- coverage: 5 every core concept is taught; 4 one core concept or a few supporting ones are missing; 3 two or three core concepts are missing; 2 many are missing; 1 most of the source is missing.
+- distillation: 5 a condensed summary: key ideas stand out, details are left to the source or gathered in tables; 4 mostly condensed with a few stretches of detail; 3 about half the guide restates details the source already lists; 2 mostly a detailed rewrite of the source; 1 a full rewrite, or so thin it teaches nothing.
 - organization: 5 logical order for learning the topic, sensible section granularity, no duplicated content, an overview that frames the material; 4 good with small lapses; 3 usable but fragmented, duplicated or oddly ordered; 2 hard to navigate; 1 incoherent.
+- pointers: 5 every section tells the student where the details are (source pages, sections, cards); 4 most do; 3 some do; 2 rarely; 1 never.
 
 Reply with JSON only:
-{"coreConcepts": ["..."], "missingConcepts": [{"concept": "...", "importance": "core"|"supporting"}], "duplicatedContent": ["..."], "coverage": <1-5>, "organization": <1-5>, "notes": "<one or two sentences>"}"""
+{"keyIdeas": [{"idea": "...", "status": "taught"|"thin"|"missing"}], "duplicatedContent": ["..."], "detailHeavySections": ["<section title>"], "distillation": <1-5>, "organization": <1-5>, "pointers": <1-5>, "notes": "<one or two sentences>"}"""
 
 
 # ---------------------------------------------------------------- generate --
@@ -231,6 +248,33 @@ def sentences(text: str) -> list[str]:
     return [s.strip().lower() for s in re.split(r"(?<=[.!?])\s+", text) if words(s) >= 6]
 
 
+def concision_score(ratio: float | None) -> float | None:
+    """Full marks across the target band of guide words per source word."""
+    if ratio is None:
+        return None
+    if ratio < TARGET_RATIO_LOW:
+        return 100.0 * ratio / TARGET_RATIO_LOW
+    if ratio <= TARGET_RATIO_HIGH:
+        return 100.0
+    return max(0.0, 100.0 * (1 - (ratio - TARGET_RATIO_HIGH) / (ZERO_RATIO - TARGET_RATIO_HIGH)))
+
+
+def key_ideas(verdict: dict[str, Any] | None) -> list[dict[str, str]]:
+    ideas = (verdict or {}).get("keyIdeas") or []
+    return [{"idea": str(i.get("idea", "")), "status": str(i.get("status", "")).lower()}
+            for i in ideas if isinstance(i, dict)]
+
+
+def key_idea_score(verdict: dict[str, Any] | None) -> float | None:
+    """The share of the judge's key ideas the guide teaches, a thin one
+    counting half: counted, not a 1-5 anchor, so one idea moves it a little."""
+    ideas = key_ideas(verdict)
+    if not ideas:
+        return None
+    credit = {"taught": 1.0, "thin": 0.5}
+    return 100.0 * sum(credit.get(i["status"], 0.0) for i in ideas) / len(ideas)
+
+
 def deterministic_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
     guide = outcome.get("guide") or {}
     chunks = (outcome.get("source") or {}).get("chunks", [])
@@ -246,10 +290,14 @@ def deterministic_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
         for key, value in (section.get("content") or {}).items():
             if isinstance(value, list) and value:
                 categories[key] = categories.get(key, 0) + 1
+    guide_words = words(overview_text(guide)) + sum(words(text) for text in texts)
+    source_words = sum(words(c.get("text", "")) for c in chunks)
     return {
         "published": bool(sections),
         "sectionCount": len(sections),
-        "guideWords": words(overview_text(guide)) + sum(words(text) for text in texts),
+        "guideWords": guide_words,
+        "sourceWords": source_words,
+        "lengthRatio": round(guide_words / source_words, 3) if source_words else None,
         "overviewWords": words(overview_text(guide)),
         "sectionWords": [words(text) for text in texts],
         "sourceUnits": len(source_units),
@@ -291,7 +339,8 @@ def section_outline(content: dict[str, Any]) -> str:
     return "\n".join(part for part in parts if part)
 
 
-def guide_prompt(title: str, guide: dict[str, Any], chunks: list[dict[str, Any]]) -> str:
+def guide_prompt(title: str, guide: dict[str, Any], chunks: list[dict[str, Any]],
+                 guide_words: int = 0, source_words: int = 0) -> str:
     source = "\n\n".join(f"## {c.get('headingContext') or '(no heading)'}\n{c.get('text', '')}" for c in chunks)
     sections = guide.get("sections", [])
     body = "\n\n".join(f"## {s.get('title', '')}\n{section_text(s.get('content', {}))}" for s in sections)
@@ -304,7 +353,9 @@ def guide_prompt(title: str, guide: dict[str, Any], chunks: list[dict[str, Any]]
                              for s in sections)
         heading = ("GUIDE SECTIONS (outline of a long guide: each explanation is shown by its heading "
                    "and opening sentence and teaches more than that sentence):")
-    return (f"{GUIDE_JUDGE}\n\nDOCUMENT: {title}\n\nSOURCE:\n{clip(source, MAX_GUIDE_SOURCE_CHARS)}"
+    sizes = (f"The guide has {guide_words} words; the source has {source_words}."
+             if source_words else "")
+    return (f"{GUIDE_JUDGE}\n\nDOCUMENT: {title}\n\n{sizes}\n\nSOURCE:\n{clip(source, MAX_GUIDE_SOURCE_CHARS)}"
             f"\n\nGUIDE OVERVIEW:\n{overview_text(guide)}\n\n{heading}\n"
             f"{clip(body, MAX_GUIDE_TEXT_CHARS)}\n")
 
@@ -318,6 +369,10 @@ def call_judge(prompt: str, args: argparse.Namespace) -> dict[str, Any]:
         "response_format": {"type": "json_object"},
         "messages": [{"role": "user", "content": prompt}],
     }
+    if "api.anthropic.com" in args.judge_base_url:
+        # Anthropic's OpenAI-compatible endpoint refuses both for current
+        # models; the prompt already asks for one JSON object.
+        del body["temperature"], body["response_format"]
     request = urllib.request.Request(
         args.judge_base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
@@ -396,24 +451,29 @@ def score_document(directory: Path, title: str, args: argparse.Namespace) -> dic
             pending.append(f"section-{index:02d}")
             continue
         section_verdicts.append((metrics["sectionWords"][index], verdict))
-    guide_verdict = judged(judge_dir / "guide", guide_prompt(title, guide, chunks), args)
+    guide_verdict = judged(judge_dir / "guide", guide_prompt(
+        title, guide, chunks, metrics["guideWords"], metrics["sourceWords"]), args)
     if guide_verdict is None:
         pending.append("guide")
     result["pending"] = pending
     criteria: dict[str, float | None] = {}
-    for name in ("accuracy", "sourceSupport", "clarity"):
+    for name in ("accuracy", "sourceSupport", "readability"):
         weighted = [(max(weight, 1), scale(v.get(name))) for weight, v in section_verdicts]
         weighted = [(w, s) for w, s in weighted if s is not None]
         criteria[name] = (sum(w * s for w, s in weighted) / sum(w for w, _ in weighted)) if weighted else None
-    for name in ("coverage", "organization"):
+    for name in ("distillation", "organization", "pointers"):
         criteria[name] = scale(guide_verdict.get(name)) if guide_verdict else None
+    criteria["keyIdeas"] = key_idea_score(guide_verdict)
+    criteria["concision"] = concision_score(metrics["lengthRatio"])
     result["criteria"] = {k: (round(v, 1) if v is not None else None) for k, v in criteria.items()}
     claims = [c for _, v in section_verdicts for c in v.get("unsupportedClaims", [])]
     result["majorUnsupportedClaims"] = sum(c.get("severity") == "major" for c in claims)
     result["minorUnsupportedClaims"] = sum(c.get("severity") == "minor" for c in claims)
     if guide_verdict:
-        missing = guide_verdict.get("missingConcepts", [])
-        result["missingCoreConcepts"] = [m.get("concept") for m in missing if m.get("importance") == "core"]
+        ideas = key_ideas(guide_verdict)
+        result["missingKeyIdeas"] = [i["idea"] for i in ideas if i["status"] == "missing"]
+        result["thinKeyIdeas"] = [i["idea"] for i in ideas if i["status"] == "thin"]
+        result["detailHeavySections"] = guide_verdict.get("detailHeavySections", [])
     complete = not pending and all(v is not None for v in criteria.values())
     result["score"] = round(sum(WEIGHTS[k] * criteria[k] for k in WEIGHTS), 1) if complete else None
     return result
@@ -472,24 +532,32 @@ def render_summary(summary: dict[str, Any]) -> str:
              f"judge {summary['judge']['mode']} `{summary['judge']['model'] or '-'}`, "
              f"rubric v{summary['rubricVersion']}.", "",
              f"**Mean score: {fmt(summary['meanScore'])} / 100**", "",
-             "| Document | Score | Accuracy | Coverage | Support | Organization | Clarity "
-             "| Major errors | Sections | Words | Tokens | Cost |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "| Document | Score | Accuracy | Key ideas | Distillation | Concision | Support "
+             "| Readability | Organization | Pointers | Major errors | Sections | Words | Length ratio "
+             "| Tokens | Cost |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- "
+             "| --- | --- |"]
     for d in summary["documents"]:
         c = d.get("criteria", {})
         m = d.get("metrics", {})
         u = d.get("usage") or {}
         lines.append(" | ".join([
-            f"| {d['document']}", fmt(d.get("score")), fmt(c.get("accuracy")), fmt(c.get("coverage")),
-            fmt(c.get("sourceSupport")), fmt(c.get("organization")), fmt(c.get("clarity")),
+            f"| {d['document']}", fmt(d.get("score")), fmt(c.get("accuracy")), fmt(c.get("keyIdeas")),
+            fmt(c.get("distillation")), fmt(c.get("concision")), fmt(c.get("sourceSupport")),
+            fmt(c.get("readability")), fmt(c.get("organization")), fmt(c.get("pointers")),
             fmt(d.get("majorUnsupportedClaims")), fmt(m.get("sectionCount")), fmt(m.get("guideWords")),
+            fmt(m.get("lengthRatio")),
             fmt(u.get("totalTokens")), fmt(u.get("cost")) + " |"]))
     for d in summary["documents"]:
         if d.get("error"):
             lines += ["", f"- {d['document']} failed at {d['error'].get('stage')}: "
                           f"{d['error'].get('message', '')} ({d['error'].get('code', '')})"]
-        if d.get("missingCoreConcepts"):
-            lines += ["", f"- {d['document']} misses: " + "; ".join(d["missingCoreConcepts"])]
+        if d.get("missingKeyIdeas"):
+            lines += ["", f"- {d['document']} misses: " + "; ".join(d["missingKeyIdeas"])]
+        if d.get("thinKeyIdeas"):
+            lines += ["", f"- {d['document']} thin: " + "; ".join(d["thinKeyIdeas"])]
+        if d.get("detailHeavySections"):
+            lines += ["", f"- {d['document']} detail-heavy sections: " + "; ".join(d["detailHeavySections"])]
     return "\n".join(lines) + "\n"
 
 
@@ -498,21 +566,25 @@ def render_summary(summary: dict[str, Any]) -> str:
 def command_compare(args: argparse.Namespace) -> int:
     before = json.loads((args.before / "score.json").read_text(encoding="utf-8"))
     after = json.loads((args.after / "score.json").read_text(encoding="utf-8"))
+    if before.get("rubricVersion") != after.get("rubricVersion"):
+        print("warning: the runs used different rubric versions; rescore both", file=sys.stderr)
     if before["judge"]["model"] != after["judge"]["model"]:
         print("warning: the runs used different judges; scores are not comparable", file=sys.stderr)
     rows = {d["document"]: [d, None] for d in before["documents"]}
     for d in after["documents"]:
         rows.setdefault(d["document"], [None, None])[1] = d
     lines = [f"| Document | {before['run']['label']} | {after['run']['label']} | Change "
-             "| Major errors | Tokens |", "| --- | --- | --- | --- | --- | --- |"]
+             "| Major errors | Length ratio | Tokens |", "| --- | --- | --- | --- | --- | --- | --- |"]
     for doc_id, (b, a) in rows.items():
         bs, as_ = (b or {}).get("score"), (a or {}).get("score")
         change = f"{as_ - bs:+.1f}" if bs is not None and as_ is not None else "-"
         tokens = [((x or {}).get("usage") or {}).get("totalTokens") for x in (b, a)]
         errors = [(x or {}).get("majorUnsupportedClaims") for x in (b, a)]
+        ratios = [((x or {}).get("metrics") or {}).get("lengthRatio") for x in (b, a)]
         lines.append(f"| {doc_id} | {fmt(bs)} | {fmt(as_)} | {change} | "
-                     f"{fmt(errors[0])} → {fmt(errors[1])} | {fmt(tokens[0])} → {fmt(tokens[1])} |")
-    lines.append(f"| **Mean** | {fmt(before['meanScore'])} | {fmt(after['meanScore'])} | | | |")
+                     f"{fmt(errors[0])} → {fmt(errors[1])} | {fmt(ratios[0])} → {fmt(ratios[1])} | "
+                     f"{fmt(tokens[0])} → {fmt(tokens[1])} |")
+    lines.append(f"| **Mean** | {fmt(before['meanScore'])} | {fmt(after['meanScore'])} | | | | |")
     print("\n".join(lines))
     return 0
 

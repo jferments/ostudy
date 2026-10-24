@@ -6,16 +6,13 @@ import { getErrorMessage } from "../../ipc/common";
 import { deleteSubject, getSubjectLibrary, moveSubject, renameSubject, type SubjectLibrary } from "../../ipc/subjects";
 import type { LibrarySubjectScope } from "../../navigation/appDestinations";
 import { Icon } from "../../ui/icons/Icon";
-import { cn } from "../../ui/internal/cn";
-import { Sheet } from "../../ui/overlays/Dialog";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
-import { ItemTrigger } from "../../ui/primitives/Item";
 import { buildSubjectTiles, countLabel, type SubjectTile } from "../home/homeModel";
-import { NewSubjectSheet } from "../home/NewSubjectSheet";
 import { SubjectBadge } from "../home/SubjectBadge";
 import { MAX_SESSION_DECKS } from "../home/TodayStrip";
+import { NewStudySetSheet } from "./NewStudySetSheet";
 import { NameSheet } from "./workbench/WorkbenchSheets";
 
 const NO_PREPARATIONS = new Map();
@@ -48,162 +45,40 @@ export function useLibrarySubjects(scope: LibrarySubjectScope): LibrarySubjects 
   }, [library, scope, summary]);
 }
 
-interface LibrarySubjectListProps {
-  scope: LibrarySubjectScope;
-  subjects: LibrarySubjects;
-  onChoose: (scope: LibrarySubjectScope) => void;
-  /** Phones and sheets use larger rows. */
-  large?: boolean;
-}
-
-/** Everything, each subject with what is due in it, No subject, and New subject. */
-export function LibrarySubjectList({ scope, subjects, onChoose, large = false }: LibrarySubjectListProps) {
-  const refresh = useOptionalHomeSummary()?.refresh;
-  const [creating, setCreating] = useState(false);
-  return (
-    <nav aria-label="Subjects" data-testid="library-subjects" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-0.5">
-      <SubjectEntry
-        testId="library-subject-all"
-        current={scope.kind === "all"}
-        large={large}
-        leading={
-          <span
-            aria-hidden="true"
-            className="tw:grid tw:size-8 tw:shrink-0 tw:place-items-center tw:rounded-sm tw:bg-(--ostudy-color-canvas-inset) tw:text-muted-foreground"
-          >
-            <Icon name="library" size={16} />
-          </span>
-        }
-        label="Everything"
-        onSelect={() => onChoose({ kind: "all" })}
-      />
-      {subjects.subjects.length > 0 ? (
-        <p className="tw:m-0 tw:mt-3 tw:mb-1 tw:px-2.5 tw:text-label tw:font-semibold tw:text-muted-foreground">Subjects</p>
-      ) : null}
-      {subjects.subjects.map((tile) => (
-        <SubjectEntry
-          key={tile.key}
-          testId="library-subject"
-          subjectId={tile.subjectId ?? undefined}
-          current={scope.kind === "subject" && scope.subjectId === tile.subjectId}
-          large={large}
-          leading={<SubjectBadge subject={tile} size="small" />}
-          label={tile.name}
-          count={tile.dueCount}
-          onSelect={() => tile.subjectId !== null && onChoose({ kind: "subject", subjectId: tile.subjectId })}
-        />
-      ))}
-      {subjects.noSubject ? (
-        <SubjectEntry
-          testId="library-subject-none"
-          current={scope.kind === "none"}
-          large={large}
-          leading={<SubjectBadge subject={subjects.noSubject} size="small" />}
-          label="No subject"
-          count={subjects.noSubject.dueCount}
-          onSelect={() => onChoose({ kind: "none" })}
-        />
-      ) : null}
-      <Button
-        variant="text"
-        data-testid="library-new-subject"
-        className="tw:mt-1 tw:justify-start tw:px-2.5"
-        onClick={() => setCreating(true)}
-      >
-        <Icon name="plus" size={16} /> New subject
-      </Button>
-      {creating ? (
-        <NewSubjectSheet
-          onClose={() => setCreating(false)}
-          onCreated={(library, name) => {
-            setCreating(false);
-            refresh?.();
-            const created = library.subjects.find((subject) => subject.name === name);
-            if (created) onChoose({ kind: "subject", subjectId: created.id });
-          }}
-        />
-      ) : null}
-    </nav>
-  );
-}
-
-function SubjectEntry({
-  testId,
-  subjectId,
-  current,
-  large,
-  leading,
-  label,
-  count = 0,
-  onSelect,
-}: {
-  testId: string;
-  subjectId?: string;
-  current: boolean;
-  large: boolean;
-  leading: React.ReactNode;
-  label: string;
-  count?: number;
-  onSelect: () => void;
-}) {
-  return (
-    <ItemTrigger
-      data-testid={testId}
-      data-subject-id={subjectId}
-      aria-current={current ? "page" : undefined}
-      onClick={onSelect}
-      className={cn(
-        "tw:w-full tw:items-center tw:gap-2.5 tw:rounded-md tw:px-2.5 tw:text-start tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none",
-        large ? "tw:min-h-13 tw:py-2" : "tw:min-h-11 tw:py-1.5",
-        current
-          ? "tw:bg-background tw:font-semibold tw:text-foreground tw:shadow-xs"
-          : "tw:text-foreground tw:hover:bg-foreground/6",
-      )}
-    >
-      {leading}
-      <span className="tw:min-w-0 tw:flex-1 tw:truncate tw:text-body">{label}</span>
-      {count > 0 ? (
-        <span className="tw:shrink-0 tw:text-label tw:text-muted-foreground tw:tabular-nums">
-          <span className="tw:sr-only">, due </span>
-          {count.toLocaleString()}
-        </span>
-      ) : null}
-    </ItemTrigger>
-  );
-}
-
 interface LibrarySubjectHeaderProps {
   scope: LibrarySubjectScope;
   subjects: LibrarySubjects;
-  /** Opens the subject list where the side pane does not fit. */
-  onSwitch?: () => void;
   onChooseSubject: (subject: LibrarySubjectScope) => void;
   onStartReview: (deckIds: string[]) => void;
   /** One extra session mixing cards from every deck in the subject. */
   onPracticeSubject: (subjectId: string) => void;
+  /** Shows the subject's Documents, where materials added from its menu are read and made. */
+  onOpenDocuments: () => void;
   showToast: ShowToast;
 }
 
 /**
  * The chosen subject's name, what it holds, its Review button and its own
- * actions (rename, reorder, delete); Everything totals every subject.
+ * actions (add materials, rename, reorder, delete); All cards totals every subject.
  */
 export function LibrarySubjectHeader({
   scope,
   subjects,
-  onSwitch,
   onChooseSubject,
   onStartReview,
   onPracticeSubject,
+  onOpenDocuments,
   showToast,
 }: LibrarySubjectHeaderProps) {
+  const home = useOptionalHomeSummary();
+  const [adding, setAdding] = useState(false);
   const all = [...subjects.subjects, ...(subjects.noSubject ? [subjects.noSubject] : [])];
   const shown = scope.kind === "all" ? all : subjects.current ? [subjects.current] : [];
   const sources = shown.reduce((sum, tile) => sum + tile.summary.sourceCount, 0);
   const cards = shown.reduce((sum, tile) => sum + tile.summary.cardCount, 0);
   const due = shown.reduce((sum, tile) => sum + tile.dueCount, 0);
   const dueDeckIds = [...new Set(shown.flatMap((tile) => tile.summary.dueDeckIds))];
-  const name = scope.kind === "all" ? "Everything" : scope.kind === "none" ? "No subject" : (subjects.current?.name ?? "");
+  const name = scope.kind === "all" ? "All cards" : scope.kind === "none" ? "No subject" : (subjects.current?.name ?? "");
   const counts = [
     ...(scope.kind === "all" ? [countLabel(subjects.subjects.length, "subject")] : []),
     countLabel(sources, "document"),
@@ -211,25 +86,12 @@ export function LibrarySubjectHeader({
   ].join(" · ");
 
   // Each page under the tabs names itself in its h1; the subject is the page's context.
-  // Where the side pane does not fit, the name is the button that opens the subject list.
   const title = (
     <h2
       data-testid="library-subject-name"
       className="tw:m-0 tw:min-w-0 tw:truncate tw:text-title tw:leading-tight tw:font-semibold tw:tracking-tight tw:compact:text-section"
     >
-      {onSwitch ? (
-        <ItemTrigger
-          data-testid="library-switch-subject"
-          aria-label={`${name}, choose a subject`}
-          onClick={onSwitch}
-          className="tw:max-w-full tw:min-h-11 tw:gap-1.5 tw:text-foreground tw:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50"
-        >
-          <span className="tw:min-w-0 tw:truncate">{name}</span>
-          <Icon name="chevron-down" size={18} className="tw:shrink-0 tw:text-muted-foreground" />
-        </ItemTrigger>
-      ) : (
-        name
-      )}
+      {name}
     </h2>
   );
   return (
@@ -260,25 +122,44 @@ export function LibrarySubjectHeader({
           name={subjects.current.name}
           subjects={subjects}
           onChooseSubject={onChooseSubject}
+          onAddMaterials={home?.library ? () => setAdding(true) : undefined}
           showToast={showToast}
+        />
+      ) : null}
+      {adding && scope.kind === "subject" && home?.library ? (
+        <NewStudySetSheet
+          subjects={home.library.subjects}
+          subjectId={scope.subjectId}
+          onClose={() => {
+            setAdding(false);
+            home.refresh();
+          }}
+          onCreated={() => {
+            setAdding(false);
+            home.refresh();
+            onOpenDocuments();
+          }}
         />
       ) : null}
     </header>
   );
 }
 
-/** Rename, Move up, Move down and Delete for the chosen subject. */
-function SubjectActions({
+/** Rename, Move up, Move down and Delete for a subject. */
+export function SubjectActions({
   subjectId,
   name,
   subjects,
   onChooseSubject,
+  onAddMaterials,
   showToast,
 }: {
   subjectId: string;
   name: string;
   subjects: LibrarySubjects;
   onChooseSubject: (subject: LibrarySubjectScope) => void;
+  /** Opens New study set on this subject, to add documents and materials to it. */
+  onAddMaterials?: () => void;
   showToast: ShowToast;
 }) {
   const home = useOptionalHomeSummary();
@@ -321,6 +202,7 @@ function SubjectActions({
       <OverflowMenu
         label={`${name} actions`}
         items={[
+          ...(onAddMaterials ? [{ id: "add", label: "Add materials…", onSelect: onAddMaterials }] : []),
           { id: "rename", label: "Rename…", onSelect: () => setRenaming(true) },
           {
             id: "up",
@@ -356,35 +238,4 @@ function SubjectActions({
       ) : null}
     </>
   );
-}
-
-/** The subject list in a sheet, for screens too narrow for the side pane. */
-export function LibrarySubjectSheet({
-  scope,
-  subjects,
-  onChoose,
-  onClose,
-}: {
-  scope: LibrarySubjectScope;
-  subjects: LibrarySubjects;
-  onChoose: (scope: LibrarySubjectScope) => void;
-  onClose: () => void;
-}) {
-  return (
-    <Sheet title="Subjects" width="small" onClose={onClose}>
-      <LibrarySubjectList
-        scope={scope}
-        subjects={subjects}
-        large
-        onChoose={(next) => {
-          onClose();
-          onChoose(next);
-        }}
-      />
-    </Sheet>
-  );
-}
-
-export function subjectCountsLabel(tile: SubjectTile): string {
-  return [countLabel(tile.summary.sourceCount, "document"), countLabel(tile.summary.cardCount, "card")].join(" · ");
 }

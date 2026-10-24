@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as documentArtifactProgress from "../../ipc/documentArtifactProgress";
 import * as documentIpc from "../../ipc/documents";
@@ -213,7 +213,11 @@ describe("Document job presentation", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await waitFor(() => expect(screen.getByText("4 / 10 sections")).toBeTruthy());
+    // The running guide is one bar in the row; its section count waits in Generation details.
+    const row = await screen.findByTestId("document-row-progress");
+    expect(within(row).getByText("Making a study guide")).toBeTruthy();
+    expect(within(row).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("40");
+    expect(screen.queryByText("4 / 10 sections completed")).toBeNull();
     expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
 

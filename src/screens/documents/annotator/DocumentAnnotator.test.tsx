@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as annotationCardsIpc from "../../../ipc/annotationCards";
 import * as annotationIpc from "../../../ipc/documentAnnotations";
 import * as externalFilesIpc from "../../../ipc/externalFiles";
+import * as notebooksIpc from "../../../ipc/notebooks";
 import * as studyGuideIpc from "../../../ipc/studyGuides";
 import { layoutWidths, matchesLayoutQuery } from "../../../test/viewport";
 import { LayoutModeProvider } from "../../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../../ui/overlays/OverlayProvider";
+import * as clipping from "../../notes/clipToNotebook";
 import { DocumentAnnotator } from "./DocumentAnnotator";
 
 vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
@@ -19,6 +21,8 @@ vi.mock("../../../ipc/documentAnnotations", async (importOriginal) => ({
   getDocumentPageText: vi.fn(),
   prepareAnnotatedPdf: vi.fn(),
 }));
+vi.mock("../../../ipc/notebooks", () => ({ listDocumentClips: vi.fn(), listNotebooks: vi.fn(), createNotebook: vi.fn() }));
+vi.mock("../../notes/clipToNotebook", () => ({ clipToNotebook: vi.fn() }));
 vi.mock("../../../ipc/externalFiles", () => ({ publishPreparedExport: vi.fn(), releasePreparedExport: vi.fn() }));
 vi.mock("../../../ipc/studyGuides", () => ({ readDocumentSourceAsset: vi.fn() }));
 vi.mock("../../../ipc/annotationCards", () => ({ getDocumentMarkedCards: vi.fn(), linkCardNoteToAnnotation: vi.fn() }));
@@ -167,7 +171,7 @@ describe("document annotator", () => {
     act(() => item.focus());
     expect(item.getAttribute("aria-pressed")).toBe("true");
     const selection = screen.getByRole("toolbar", { name: "Selected annotation" });
-    fireEvent.click(within(selection).getByRole("button", { name: "Large" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Style of the selected annotation" })).getByRole("button", { name: "Large" }));
     await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { fontSize: 20 } }));
 
     fireEvent.click(within(selection).getByRole("button", { name: "Delete" }));
@@ -265,6 +269,106 @@ describe("document annotator", () => {
     expect(savedChanges(1).every((change) => change.op === "delete")).toBe(true);
   });
 
+  it("draws with any color and width, dashed and double-headed arrows, and filled boxes", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.click(screen.getByRole("button", { name: "Arrow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dashed line" }));
+    fireEvent.click(screen.getByRole("button", { name: "Heads at both ends" }));
+    const any = screen.getByLabelText("Any color") as HTMLInputElement;
+    fireEvent.input(any, { target: { value: "#0d9488" } });
+    fireEvent.change(any, { target: { value: "#0d9488" } });
+    any.dispatchEvent(new Event("change"));
+    const width = screen.getByLabelText("Line width in points");
+    fireEvent.change(width, { target: { value: "4.6" } });
+    fireEvent.keyDown(width, { key: "Enter" });
+    drag(canvas, [[100, 100], [200, 150]]);
+
+    fireEvent.keyDown(canvas, { key: "r" });
+    expect(screen.queryByRole("button", { name: "Heads at both ends" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filled" }));
+    fireEvent.click(screen.getByRole("switch"));
+    drag(canvas, [[300, 300], [400, 380]]);
+
+    await waitFor(() => expect(savedChanges()).toHaveLength(2));
+    expect(savedChanges().map((change) => change.op === "put" ? change.shape : null)).toEqual([
+      { kind: "arrow", x1: 100, y1: 100, x2: 200, y2: 150, color: "#0d9488", strokeWidth: 4.5, dash: "dashed", bothEnds: true },
+      { kind: "rectangle", x: 300, y: 300, width: 100, height: 80, color: "#0d9488", strokeWidth: 4.5, dash: "dashed",
+        fill: "#cfeae7", border: false },
+    ]);
+    // The picked color is offered again beside the swatches.
+    expect(screen.getByRole("button", { name: "Recent color #0d9488" })).toBeTruthy();
+
+    // A filled box is picked up anywhere inside, and losing its fill brings its border back.
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.pointerDown(canvas, onPage(350, 340, 1, "mouse"));
+    fireEvent.pointerUp(canvas, onPage(350, 340, 1, "mouse"));
+    fireEvent.click(within(screen.getByRole("group", { name: "Style of the selected annotation" }))
+      .getByRole("button", { name: "No fill" }));
+    await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { kind: "rectangle" } }));
+    const unfilled = savedChanges(1)[0];
+    expect(unfilled?.op === "put" ? unfilled.shape : null).toEqual(
+      { kind: "rectangle", x: 300, y: 300, width: 100, height: 80, color: "#0d9488", strokeWidth: 4.5, dash: "dashed" },
+    );
+  });
+
+  it("draws a curve that starts as an arc and bends by its control points", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "c" });
+    expect(pressed("Curve")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Head at one end" }));
+    drag(canvas, [[100, 300], [300, 300]]);
+    await waitFor(() => expect(savedChanges()).toHaveLength(1));
+    const drawn = savedChanges()[0];
+    expect(drawn?.op === "put" ? drawn.shape : null).toEqual({
+      kind: "arrow", x1: 100, y1: 300, x2: 300, y2: 300, curve: [166.67, 250, 233.33, 250], color: "#dc2626", strokeWidth: 3,
+    });
+
+    // Picked up on the arc, not on the straight line between its ends.
+    fireEvent.keyDown(canvas, { key: "v" });
+    fireEvent.pointerDown(canvas, onPage(200, 262, 1, "mouse"));
+    fireEvent.pointerUp(canvas, onPage(200, 262, 1, "mouse"));
+    expect(screen.getByRole("button", { name: "No arrowheads" })).toBeTruthy();
+    drag(canvas, [[166.67, 250], [150, 200]]);
+    await waitFor(() => expect(savedChanges(1)).toHaveLength(1));
+    expect(savedChanges(1)[0]).toMatchObject({ shape: { curve: [150, 200, 233.33, 250] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "No arrowheads" }));
+    await waitFor(() => expect(savedChanges(2)).toHaveLength(1));
+    expect(savedChanges(2)[0]).toMatchObject({ shape: { kind: "line", curve: [150, 200, 233.33, 250] } });
+  });
+
+  it("groups marks so they select and move together, and ungroups them", async () => {
+    const { canvas } = await openAnnotator();
+    fireEvent.keyDown(canvas, { key: "r" });
+    drag(canvas, [[100, 100], [160, 140]]);
+    drag(canvas, [[200, 100], [260, 140]]);
+    await waitFor(() => expect(savedChanges().length + savedChanges(1).length).toBe(2));
+    const saves = () => vi.mocked(annotationIpc.applyDocumentAnnotationChanges).mock.calls.length;
+    const latest = () => savedChanges(saves() - 1);
+    const before = saves();
+
+    fireEvent.keyDown(canvas, { key: "q" });
+    drag(canvas, [[80, 80], [300, 80], [300, 170], [80, 170], [80, 80]]);
+    fireEvent.click(await screen.findByRole("button", { name: "Group" }));
+    await waitFor(() => expect(saves()).toBe(before + 1));
+    const [first, second] = latest();
+    const group = first?.op === "put" ? first.shape.group : undefined;
+    expect(group).toMatch(/^[0-9a-f]{32}$/u);
+    expect(second?.op === "put" ? second.shape.group : null).toBe(group);
+
+    // Pressing one box with Select drags both.
+    fireEvent.keyDown(canvas, { key: "v" });
+    drag(canvas, [[100, 120], [110, 130], [120, 140]]);
+    await waitFor(() => expect(saves()).toBe(before + 2));
+    expect(latest().map((change) => change.op === "put" ? [change.shape.kind === "rectangle" && change.shape.x, change.shape.group] : null))
+      .toEqual([[120, group], [220, group]]);
+    expect(screen.getByText(/Group of 2/u)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ungroup" }));
+    await waitFor(() => expect(saves()).toBe(before + 3));
+    expect(latest().every((change) => change.op === "put" && change.shape.group === undefined)).toBe(true);
+  });
+
   it("selects marks together with the lasso, then moves and deletes them as one", async () => {
     const { canvas } = await openAnnotator();
     fireEvent.keyDown(canvas, { key: "r" });
@@ -287,7 +391,7 @@ describe("document annotator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected" }));
     await waitFor(() => expect(savedChanges(2)).toHaveLength(2));
     expect(savedChanges(2).every((change) => change.op === "delete")).toBe(true);
-    expect(screen.getByText("Draw a loop around annotations to select them together.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Delete \d+ selected$/ })).toBeNull();
   });
 
   it("erases part of a highlighter stroke, as one step to undo", async () => {
@@ -301,7 +405,6 @@ describe("document annotator", () => {
     expect(pressed("Erase whole annotations")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Erase part of a stroke" }));
     expect(pressed("Erase part of a stroke")).toBe("true");
-    expect(screen.getByText("Drag across pen and highlighter strokes to erase just that part.")).toBeTruthy();
     drag(canvas, [[150, 480], [150, 520]]);
 
     await waitFor(() => expect(savedChanges(1)).toHaveLength(3));
@@ -542,5 +645,63 @@ describe("document annotator", () => {
     expect(screen.getByRole("button", { name: "Color and size: Blue, Medium" })).toBeTruthy();
     drag(canvas, [[300, 300], [360, 340]], "touch");
     await waitFor(() => expect(savedChanges(1)[0]).toMatchObject({ shape: { kind: "rectangle", color: "#2563eb" } }));
+  });
+
+  it("clips part of a page into a notebook, and the page then says which notebook it is in", async () => {
+    const notebookId = "b".repeat(32);
+    const notebookPageId = "c".repeat(32);
+    const subjectId = "e".repeat(32);
+    const summary = (id: string, name: string, subject: string | null, updatedAt: number): notebooksIpc.NotebookSummary => ({
+      notebook: { id, subjectId: subject, title: name, paper: "blank", pageSize: "letter", revision: 1, createdAt: 1, updatedAt },
+      pageCount: 1, linkCount: 0, linkLabels: [], folderId: null, pinnedAt: null, firstPage: null, preview: [],
+    });
+    vi.mocked(notebooksIpc.listDocumentClips).mockResolvedValue([]);
+    vi.mocked(notebooksIpc.listNotebooks).mockResolvedValue([
+      summary("f".repeat(32), "Elsewhere", null, 9),
+      summary(notebookId, "Cardiac cycle map", subjectId, 2),
+    ]);
+    vi.mocked(clipping.clipToNotebook).mockResolvedValue({ notebookId, pageId: notebookPageId, itemId: "d".repeat(32) });
+    const onOpenNotebook = vi.fn();
+    const showToast = vi.fn();
+    render(
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <DocumentAnnotator documentId={documentId} title={title} onClose={vi.fn()} showToast={showToast}
+            subjectId={subjectId} onOpenNotebook={onOpenNotebook} />
+        </OverlayProvider>
+      </LayoutModeProvider>,
+    );
+    const canvas = await screen.findByRole("group", { name: `Pages of ${title}` });
+    await waitFor(() => expect(notebooksIpc.listDocumentClips).toHaveBeenCalledWith(documentId));
+
+    fireEvent.keyDown(canvas, { key: "x" });
+    expect(pressed("Clip to notes")).toBe("true");
+    drag(canvas, [[100, 200], [250, 260], [400, 350]]);
+
+    const dialog = await screen.findByRole("dialog", { name: "Clip to notes" });
+    // The document's subject's notebook comes first and is chosen.
+    const notebook = await within(dialog).findByRole("combobox", { name: "Notebook" });
+    await waitFor(() => expect((notebook as HTMLSelectElement).value).toBe(notebookId));
+    vi.mocked(notebooksIpc.listDocumentClips).mockResolvedValue([
+      { pageNumber: 1, notebookId, notebookTitle: "Cardiac cycle map", notebookPageId },
+    ]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Clip" }));
+
+    await waitFor(() => expect(clipping.clipToNotebook).toHaveBeenCalledWith(notebookId, {
+      documentId, pageNumber: 1, pageWidth: 612, pageHeight: 792, x: 100, y: 200, width: 300, height: 150,
+    }));
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith("success", "Clipped to Cardiac cycle map", expect.objectContaining({ label: "Open notebook" })));
+    expect(screen.queryByRole("dialog", { name: "Clip to notes" })).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: "In your notes: Cardiac cycle map" }));
+    await waitFor(() => expect(onOpenNotebook).toHaveBeenCalledWith(notebookId, notebookPageId));
+  });
+
+  it("offers no Clip tool where there is nowhere to clip to", async () => {
+    const { canvas } = await openAnnotator();
+    expect(screen.queryByRole("button", { name: "Clip to notes" })).toBeNull();
+    fireEvent.keyDown(canvas, { key: "x" });
+    expect(pressed("Pen")).toBe("true");
+    expect(notebooksIpc.listDocumentClips).not.toHaveBeenCalled();
   });
 });

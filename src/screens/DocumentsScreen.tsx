@@ -19,18 +19,23 @@ import { Textarea } from "../ui/primitives/FormControls";
 import { TextField } from "../ui/primitives/TextField";
 import { FormField } from "../ui/primitives/FormField";
 import {
-  GenerationDiagnostics, GenerationProgressPanel, statusLabel, processingPhaseLabel, formatDocumentType,
+  DocumentRowProgress, GenerationDiagnostics, GenerationProgressPanel, generationPercent, statusLabel, processingPhaseLabel, processingStepLabel, formatDocumentType,
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
-import { LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
+import { combinedArtifactProgress, LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { canAnnotateDocument } from "./documents/annotator/canAnnotate";
 import { DocumentAnnotator } from "./documents/annotator/DocumentAnnotator";
+import { DocumentFiguresWorkspace } from "./documents/figures/DocumentFiguresWorkspace";
+import { ImportImagesDialog } from "./documents/figures/ImportImagesDialog";
+import type { ImportDocumentOptions } from "../ipc/documents";
+import type { StagedExternalFile } from "../ipc/externalFiles";
 import { ReadingRangeDialog, rangeLabel } from "./documents/ReadingRangeDialog";
 import { SubjectStudyActions } from "./documents/SubjectStudyActions";
+import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
 import { useDocumentFiling } from "./documents/useDocumentFiling";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { subjectColorIndexes, subjectInitials } from "./home/homeModel";
@@ -46,9 +51,12 @@ interface DocumentsScreenProps {
   /** Opens a subject's own Documents page from Everything's groups; `null` is No subject. */
   onOpenSubject?: (subjectId: string | null) => void;
   showToast: ShowToast;
-  headerSupplement?: ReactNode;
+  /** Opens AI setup; Make actions use it in place of their work while no model is set. */
+  onSetUpAi?: () => void;
   /** Shows one subject's documents, or No subject's (`null`); every document, grouped by subject, when left out. */
   subjectId?: string | null;
+  /** Opens a notebook at one of its pages, such as one a page was clipped into. */
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
 }
 
 type DocumentsScreenJobs = NonNullable<ReturnType<typeof useDocumentJobs>>;
@@ -88,13 +96,32 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   // Phones drop the row's Open button, so Open leads the row's menu there.
   const compact = useLayoutMode().layoutMode === "compact";
   const filing = useDocumentFiling();
+  const modelMissing = useGenerationModelMissing();
+  const setUpAi = modelMissing ? props.onSetUpAi : undefined;
   const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
   const [subjectGuide, setSubjectGuide] = useState<{ id: string; title: string } | null>(null);
-  const [annotating, setAnnotating] = useState<{ id: string; title: string } | null>(null);
+  const [annotating, setAnnotating] = useState<{ id: string; title: string; subjectId: string | null } | null>(null);
+  // The guide a Remake replaces, by document. Its finished record stays the
+  // latest one until the new run has planned its sections, so it is not shown.
+  const [remadeGuideJobIds, setRemadeGuideJobIds] = useState<Record<string, string>>({});
   const closeAnnotator = useCallback(() => setAnnotating(null), []);
+  const [viewingFigures, setViewingFigures] = useState<{ id: string; title: string } | null>(null);
+  const closeFigures = useCallback(() => setViewingFigures(null), []);
+  // A chosen PDF waits here while the learner says whether to use its images.
+  const [importing, setImporting] = useState<{
+    fileName: string;
+    resolve: (options: ImportDocumentOptions | null) => void;
+  } | null>(null);
+  const chooseImportOptions = (selected: StagedExternalFile) => selected.detectedKind === "pdf"
+    ? new Promise<ImportDocumentOptions | null>((resolve) => setImporting({ fileName: selected.displayName, resolve }))
+    : Promise.resolve({});
+  const finishImporting = (options: ImportDocumentOptions | null) => {
+    importing?.resolve(options);
+    setImporting(null);
+  };
   const [detailsDocumentId, setDetailsDocumentId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<DocumentSummary | null>(null);
   const [moving, setMoving] = useState<DocumentSummary | null>(null);
@@ -146,8 +173,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     ? setImageWorkspaceDocumentId(document.id) : void openSource(document);
   const upload = () => {
     const target = props.subjectId;
-    if (typeof target !== "string") return void uploadDocument();
-    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target));
+    if (typeof target !== "string") return void uploadDocument(undefined, undefined, chooseImportOptions);
+    return void uploadDocument(undefined, (documentId) => latestFiling.current.moveDocument(documentId, target), chooseImportOptions);
   };
 
   if (subjectGuide) {
@@ -172,6 +199,19 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         showToast={props.showToast}
         onPracticeCards={props.onPracticeCards}
         onCardsChanged={() => void props.refreshDecks()}
+        subjectId={annotating.subjectId}
+        onOpenNotebook={props.onOpenNotebook}
+      />
+    );
+  }
+
+  if (viewingFigures) {
+    return (
+      <DocumentFiguresWorkspace
+        documentId={viewingFigures.id}
+        title={viewingFigures.title}
+        onClose={closeFigures}
+        showToast={props.showToast}
       />
     );
   }
@@ -187,8 +227,32 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
 
   const detailsDocument = detailsDocumentId ? documents.find((document) => document.id === detailsDocumentId) : undefined;
 
+  /** The guide job to show progress for. A remake hides the finished job it replaces until the new one appears. */
+  function shownGuideJob(document: DocumentSummary) {
+    const latest = artifactProgress.jobs[document.id] ?? null;
+    const remaking = guideGeneratingDocumentIds.has(document.id)
+      && latest !== null && remadeGuideJobIds[document.id] === latest.id;
+    return remaking ? null : latest;
+  }
+
+  /** What a document is making and how far it has got, for Generation details. */
+  function progressPanel(document: DocumentSummary) {
+    const guideJob = shownGuideJob(document);
+    const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
+    const live = generationProgress[document.id] ?? null;
+    const processing = document.lifecycleState === "processing";
+    const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
+    const guideUnsettled = guideJob !== null && guideJob.state !== "succeeded" && guideJob.state !== "canceled";
+    if (authoring || guideGenerating || (!processing && guideUnsettled)) {
+      return <LearningArtifactProgressPanel document={document} progress={live} guideJob={guideJob}
+        guideStarting={guideGenerating} readFailed={artifactProgress.readFailed} />;
+    }
+    return processing ? <GenerationProgressPanel document={document} progress={live} /> : null;
+  }
+
   function renderRow(document: DocumentSummary) {
-    const guideJob = artifactProgress.jobs[document.id] ?? null;
+    const latestGuideJob = artifactProgress.jobs[document.id] ?? null;
+    const guideJob = shownGuideJob(document);
     const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
     const cardBusy = busyDocumentIds.has(document.id);
     const deleting = deletingDocumentIds.has(document.id);
@@ -205,17 +269,33 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const showArtifacts = authoring || guideGenerating || (!processing && guideUnsettled);
     const filedIn = subjectOf(document);
     const ranges = filing.rangesOf(document.id);
-    const range = filedIn !== null ? rangeLabel(document, ranges) : null;
+    const leftOut = filedIn !== null && filing.isLeftOut(document.id);
+    const range = filedIn === null ? null : leftOut ? "left out of study materials" : rangeLabel(document, ranges);
     // A loose document's one filing action sits on the row; elsewhere it is in the menu.
     const addTo = filedIn === null && subjects.length > 0 && !processing;
+    // Work under way shows as one bar in the row; a failed guide or card run keeps its panel below.
+    const artifactBar = showArtifacts ? combinedArtifactProgress(document, live, guideJob, guideGenerating) : null;
+    const rowProgress = artifactBar
+      ?? (processing && !showArtifacts ? { label: processingPhaseLabel(document, canceling, live, clockNow), value: generationPercent(document, live) } : null);
     const items: OverflowMenuItem[] = [];
     if (canAnnotateDocument(document)) items.push({
       id: "annotate", label: "Annotate", disabled: deleting,
-      onSelect: () => setAnnotating({ id: document.id, title: document.title }),
+      onSelect: () => setAnnotating({ id: document.id, title: document.title, subjectId: subjectOf(document) }),
+    });
+    if (canAnnotateDocument(document)) items.push({
+      id: "figures", label: "Figures", disabled: deleting,
+      onSelect: () => setViewingFigures({ id: document.id, title: document.title }),
     });
     if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
       id: "range", label: "Reading range…", disabled: filing.busy,
       onSelect: () => setRanging(document),
+    });
+    if (filedIn !== null && !processing) items.push({
+      id: "left-out", label: leftOut ? "Use in study materials" : "Leave out of study materials", disabled: filing.busy,
+      onSelect: () => {
+        const others = (library?.leftOutDocumentIds ?? []).filter((id) => id !== document.id && (placements.get(id) ?? null) === filedIn);
+        void filing.setLeftOut(filedIn, leftOut ? others : [...others, document.id]);
+      },
     });
     if (subjects.length > 0 && !processing) items.push({
       id: "move", label: filedIn === null ? "Add to a subject…" : "Move to another subject…", disabled: filing.busy,
@@ -227,26 +307,30 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     });
     if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
       id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
-      onSelect: () => setMoreCards({ document, instructions }),
+      onSelect: setUpAi ?? (() => setMoreCards({ document, instructions })),
     });
     if (document.generatedDeckId === null && !processing) items.push({
       id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
-      onSelect: () => void retry(document, instructions),
+      onSelect: setUpAi ?? (() => void retry(document, instructions)),
     });
     if (!guideGenerating && !processing) items.push({
       id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
-      onSelect: () => void generateStudyGuide(document),
+      onSelect: setUpAi ?? (() => {
+        if (guideJob) setRemadeGuideJobIds((ids) => ({ ...ids, [document.id]: guideJob.id }));
+        void generateStudyGuide(document);
+      }),
     });
     if (guideGenerating && !processing) items.push({
       id: "stop-guide", label: cancelingGuide ? "Stopping study guide…" : "Stop study guide", disabled: cancelingGuide,
       onSelect: () => void stopStudyGuide(document),
     });
     if (processing) items.push({
-      id: "stop-generation", label: canceling ? "Stopping…" : "Stop processing", disabled: canceling,
+      id: "stop-generation", label: canceling ? "Stopping…" : "Stop", destructive: true, disabled: canceling,
       onSelect: () => void stopGeneration(document),
     });
-    items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
-    items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
+    if (!processing) items.push({ id: "rename", label: "Rename…", disabled: deleting, onSelect: () => setRenaming(document) });
+    if (rowProgress) items.unshift({ id: "details", label: "Generation details", onSelect: () => setDetailsDocumentId(document.id) });
+    else items.push({ id: "details", label: "Details", onSelect: () => setDetailsDocumentId(document.id) });
     if (!processing) items.push({
       id: "delete", label: deleting ? "Deleting…" : "Delete", destructive: true, disabled: busy,
       onSelect: () => void deleteDocument(document),
@@ -261,20 +345,24 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       >
         <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-4 tw:compact:gap-3">
           <DocumentThumb image={document.sourceFormat === "image_bundle"} />
-          <div className="tw:grid tw:min-w-0 tw:flex-1">
+          <div className={rowProgress ? "tw:grid tw:min-w-0 tw:flex-1 tw:gap-1.5" : "tw:grid tw:min-w-0 tw:flex-1"}>
             <h3 id={`document-${document.id}`} className="tw:m-0 tw:wrap-anywhere tw:text-body tw:font-semibold">{document.title}</h3>
-            <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
-              {[documentMeta(document), range].filter(Boolean).join(" · ")}
-              <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, guideJob)}</span>
-            </span>
+            {rowProgress ? <DocumentRowProgress label={rowProgress.label} value={rowProgress.value} /> : (
+              <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
+                {[documentMeta(document), range].filter(Boolean).join(" · ")}
+                <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, latestGuideJob)}</span>
+              </span>
+            )}
           </div>
-          <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
-            {materialSummary(document, guideJob)}
-          </span>
-          {document.lifecycleState === "ready" ? null : (
-            <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
-          )}
-          {addTo ? (
+          {rowProgress ? null : <>
+            <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
+              {materialSummary(document, latestGuideJob)}
+            </span>
+            {document.lifecycleState === "ready" ? null : (
+              <Badge tone={statusTone(document)} className="tw:shrink-0 tw:compact:hidden">{statusLabel(document)}</Badge>
+            )}
+          </>}
+          {rowProgress ? null : addTo ? (
             <Button size="small" className="tw:shrink-0 tw:compact:hidden" disabled={filing.busy} onClick={() => setMoving(document)}>
               Add to…
             </Button>
@@ -285,15 +373,15 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           )}
           <OverflowMenu
             label={`More actions for ${document.title}`}
-            items={compact || addTo ? [{ id: "open", label: "Open", onSelect: () => openDocument(document), disabled: openDisabled }, ...items] : items}
+            items={compact || addTo || rowProgress ? [{ id: "open", label: "Open", onSelect: () => openDocument(document), disabled: openDisabled }, ...items] : items}
           />
         </div>
         {processing || guideGenerating ? (
           <span className="tw:sr-only" aria-live="polite">
-            {processing ? processingPhaseLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
+            {processing ? processingStepLabel(document, canceling, live) : cancelingGuide ? "Stopping study guide" : "Making study guide"}
           </span>
         ) : null}
-        {showArtifacts ? (
+        {showArtifacts && !artifactBar ? (
           <LearningArtifactProgressPanel
             document={document}
             progress={live}
@@ -301,8 +389,6 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             guideStarting={guideGenerating}
             readFailed={artifactProgress.readFailed}
           />
-        ) : processing ? (
-          <GenerationProgressPanel document={document} progress={live} />
         ) : null}
         {processing && learningPlan ? (
           <CheckedLearningPlanPanel document={document} plan={learningPlan} />
@@ -327,9 +413,16 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 subjectId={subjectId}
                 refreshKey={materialsKey}
                 hasDocuments={filedCount > 0}
+                documents={filedGroups[0]?.documents ?? []}
+                library={library}
+                onSetLeftOut={(documentIds) => filing.setLeftOut(subjectId, documentIds)}
+                onMakeFirstCards={(document, instructions, deckId) => retry(document, instructions, deckId)}
+                isDocumentWorking={(documentId) => busyDocumentIds.has(documentId)
+                  || documents.some((document) => document.id === documentId && document.lifecycleState === "processing")}
                 refreshDecks={props.refreshDecks}
                 onStudy={props.onStudySubject}
                 onOpenGuide={(id, title) => setSubjectGuide({ id, title })}
+                onSetUpAi={setUpAi}
               />
             ) : null}
             <OverflowMenu
@@ -345,7 +438,6 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           </div>
         }
       />
-      {props.headerSupplement}
       {filedCount > 0 ? (
         <div role="search" className="tw:mb-4 tw:flex tw:min-w-0">
           <label className="tw:relative tw:flex tw:w-full tw:max-w-80 tw:items-center tw:compact:max-w-none">
@@ -414,10 +506,18 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
           })}
         </div>
       )}
+      {importing ? (
+        <ImportImagesDialog
+          fileName={importing.fileName}
+          onImport={(useImages) => finishImporting({ useImages })}
+          onCancel={() => finishImporting(null)}
+        />
+      ) : null}
       {detailsDocument ? (
         <DocumentDetails
           document={detailsDocument}
           progress={generationProgress[detailsDocument.id] ?? null}
+          progressPanel={progressPanel(detailsDocument)}
           now={clockNow}
           onClose={() => setDetailsDocumentId(null)}
         />
@@ -504,14 +604,17 @@ function statusTone(document: DocumentSummary): BadgeTone {
   return "warning";
 }
 
-function DocumentDetails({ document, progress, now, onClose }: {
+function DocumentDetails({ document, progress, progressPanel, now, onClose }: {
   document: DocumentSummary;
   progress: DocumentGenerationProgress | null;
+  /** While the document is being processed or made into study material; the dialog is then Generation details. */
+  progressPanel: ReactNode;
   now: number;
   onClose: () => void;
 }) {
   return (
-    <MetadataDialog open title="Details" description={document.title} onClose={onClose}>
+    <MetadataDialog open title={progressPanel ? "Generation details" : "Details"} description={document.title} onClose={onClose}>
+      {progressPanel}
       <MetadataList>
         <MetadataItem label="File" value={document.originalFilename} />
         <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />

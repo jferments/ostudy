@@ -3,7 +3,9 @@ use serde_json::json;
 
 use super::{
     authoring::{add_authored_revision, create_authored_lesson, MAX_LESSONS_PER_SUBJECT},
-    content::{canonical_json, LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS},
+    content::{
+        canonical_json, CheckTiming, LessonBlock, LessonContent, ValidatedLesson, MAX_STEPS,
+    },
     fixture::{loop_of_henle, CORRECT_OPTION},
     list_lessons, read_lesson, save_progress, GetLessonInput, SaveLessonProgressInput,
     SourceStatus,
@@ -202,6 +204,36 @@ fn stored_content_round_trips_and_refuses_a_newer_version() {
         ValidatedLesson::parse(&unknown).err().unwrap().code,
         "lesson_invalid"
     );
+}
+
+#[test]
+fn a_check_is_asked_after_its_step_unless_the_lesson_says_before() {
+    // Content written before checks had a timing stores none: it reads as
+    // after, and is written back the same way.
+    let after = ValidatedLesson::validate(loop_of_henle(&[UNIT])).unwrap();
+    let json = canonical_json(&after.content).unwrap();
+    assert!(!json.contains("checkTiming"));
+    assert_eq!(
+        ValidatedLesson::parse(&json).unwrap().content.steps[1].check_timing,
+        CheckTiming::After
+    );
+
+    let mut content = loop_of_henle(&[UNIT]);
+    content.steps[1].check_timing = CheckTiming::Before;
+    let before = ValidatedLesson::validate(content).unwrap();
+    let json = canonical_json(&before.content).unwrap();
+    assert!(json.contains("\"checkTiming\":\"before\""));
+    assert!(ValidatedLesson::parse(&json).unwrap().content == before.content);
+
+    let database = library();
+    let id = create(&database, before.content).unwrap();
+    let lesson = read(&database, &id, None);
+    let wire = serde_json::to_string(&lesson.content.steps[1].check).unwrap();
+    assert!(wire.contains("\"timing\":\"before\""), "{wire}");
+
+    let mut unchecked = loop_of_henle(&[]);
+    unchecked.steps[0].check_timing = CheckTiming::Before;
+    assert!(rejected(unchecked).contains("Only a step with a check"));
 }
 
 #[test]
@@ -750,6 +782,216 @@ fn a_lecture_without_source_documents_has_no_sources_slide() {
 }
 
 #[test]
+fn designed_slides_are_the_lecture_slides_laid_out_in_each_guide_theme() {
+    use super::lecture::read_lecture;
+    use super::slide_design::{read_slide_designs, GetLessonSlideDesignsInput};
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let lecture = database
+        .with_connection(|connection| {
+            read_lecture(
+                connection,
+                GetLessonInput {
+                    lesson_id: id.clone(),
+                    revision_number: None,
+                },
+            )
+        })
+        .unwrap();
+    for theme in [
+        StudyGuidePdfTheme::Navy,
+        StudyGuidePdfTheme::Sage,
+        StudyGuidePdfTheme::Slate,
+        StudyGuidePdfTheme::Plum,
+    ] {
+        let designs = database
+            .with_connection(|connection| {
+                read_slide_designs(
+                    connection,
+                    GetLessonSlideDesignsInput {
+                        lesson_id: id.clone(),
+                        revision_number: None,
+                        theme,
+                    },
+                )
+            })
+            .unwrap();
+        assert_eq!(designs.revision_number, 1);
+        assert_eq!(designs.theme, theme);
+        let keys: Vec<_> = designs
+            .slides
+            .iter()
+            .map(|slide| slide.key.as_str())
+            .collect();
+        let lecture_keys: Vec<_> = lecture
+            .slides
+            .iter()
+            .map(|slide| slide.key.as_str())
+            .collect();
+        assert_eq!(keys, lecture_keys);
+        for slide in &designs.slides {
+            assert!(slide.svg.starts_with("<svg"), "{}", &slide.svg[..80]);
+            // 16:9 pages.
+            assert!(
+                slide.svg.contains("viewBox=\"0 0 720 405\""),
+                "{}",
+                &slide.svg[..200]
+            );
+        }
+    }
+}
+
+#[test]
+fn a_step_slide_shows_one_visual_from_its_blocks_and_never_a_checks_answer() {
+    use super::slide_design::slide_data;
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    let database = library();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let (_, _, keys, data, _) = database
+        .with_connection(|connection| {
+            slide_data(
+                connection,
+                GetLessonInput {
+                    lesson_id: id,
+                    revision_number: None,
+                },
+                StudyGuidePdfTheme::Sage,
+                None,
+            )
+        })
+        .unwrap();
+    assert_eq!(keys[1], "step:two-limbs");
+    assert_eq!(data["theme"], "sage");
+    // The first step has an explanation and a comparison: the comparison is drawn.
+    assert_eq!(data["slides"][1]["visual"]["kind"], "compare");
+    assert_eq!(data["slides"][1]["visual"]["a"][0]["t"], "Descending limb");
+    let text = data.to_string();
+    assert!(!text.contains(CORRECT_OPTION));
+    assert!(!text.contains("watertight while its pumps"));
+}
+
+#[test]
+fn a_step_slide_shows_a_figure_from_its_source_pages() {
+    use super::slide_design::{read_slide_designs_drawing, GetLessonSlideDesignsInput};
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    let database = library();
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE knowledge_sources SET record_json = '{\"locator\":{\"unitNumbers\":[2]}}'",
+                    [],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_figures(document_id, figure_id, ordinal,
+                         page_number, page_width, page_height, kind, box_left, box_top,
+                         box_width, box_height, hidden, created_at, updated_at)
+                     VALUES (?1, 'p00002-01', 0, 2, 612, 792, 'image', 50, 60, 300, 200, 0, 1, 1)",
+                    params![DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_figure_readings(document_id, figure_id, title,
+                         shows, concepts_json, explained_json, importance,
+                         worth_studying, provider, model, read_at)
+                     VALUES (?1, 'p00002-01', 'The loop of Henle', 'Both limbs of the loop.',
+                             '[\"descending limb\"]', '[]', 5, 1, 'test', 'test', 1)",
+                    params![DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let mut png = Vec::new();
+    image::RgbaImage::from_pixel(30, 20, image::Rgba([40, 80, 160, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let drawn = std::cell::RefCell::new(Vec::new());
+    let draw = |relative: &str, figure: &crate::document_figures::DocumentFigureDto| {
+        drawn
+            .borrow_mut()
+            .push((relative.to_string(), figure.figure_id.clone()));
+        Some((png.clone(), 30, 20))
+    };
+    let designs = database
+        .with_connection(|connection| {
+            read_slide_designs_drawing(
+                connection,
+                GetLessonSlideDesignsInput {
+                    lesson_id: id,
+                    revision_number: None,
+                    theme: StudyGuidePdfTheme::Navy,
+                },
+                Some(&draw),
+            )
+        })
+        .unwrap();
+    // The figure is drawn once, for the first step that uses its page.
+    assert_eq!(drawn.borrow().len(), 1);
+    assert_eq!(drawn.borrow()[0].1, "p00002-01");
+    let with_image = designs
+        .slides
+        .iter()
+        .filter(|slide| slide.svg.contains("<image"))
+        .map(|slide| slide.key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(with_image, vec!["step:two-limbs"]);
+}
+
+#[test]
+fn a_crowded_step_still_fits_its_designed_slide() {
+    use super::content::LessonBlock;
+    use super::slide_design::{read_slide_designs, GetLessonSlideDesignsInput};
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    // Everything at the largest size a lesson allows.
+    let mut content = loop_of_henle(&[UNIT]);
+    let point = "p".repeat(195);
+    content.objectives = (0..6).map(|n| format!("{} {n}", "o".repeat(250))).collect();
+    let step = &mut content.steps[0];
+    step.slide_points = (0..6).map(|n| format!("{point} {n}")).collect();
+    step.blocks = vec![LessonBlock::Process {
+        title: "Many steps".to_string(),
+        steps: (0..32)
+            .map(|n| format!("{}{n}", "s ".repeat(400)))
+            .collect(),
+    }];
+    content.steps[1].slide_points = (0..6).map(|n| format!("{point} {n}")).collect();
+    content.steps[1].blocks.push(LessonBlock::Table {
+        title: "Wide".to_string(),
+        columns: (0..8).map(|n| format!("Column {n}")).collect(),
+        rows: (0..32)
+            .map(|_| (0..8).map(|_| format!("{}c", "c ".repeat(399))).collect())
+            .collect(),
+        caption: Some(format!("{}t", "t ".repeat(240))),
+    });
+    let database = library();
+    let id = create(&database, content).unwrap();
+    let designs = database
+        .with_connection(|connection| {
+            read_slide_designs(
+                connection,
+                GetLessonSlideDesignsInput {
+                    lesson_id: id,
+                    revision_number: None,
+                    theme: StudyGuidePdfTheme::Navy,
+                },
+            )
+        })
+        .unwrap();
+    // One page per slide: crowded slides shrink instead of spilling over.
+    assert_eq!(designs.slides.len(), 5);
+}
+
+#[test]
 fn a_lecture_is_prepared_once_as_a_pptx_export_for_its_operation() {
     use super::pptx::{prepare, PrepareLessonLecturePptxInput};
     use crate::paths::AppPaths;
@@ -841,6 +1083,7 @@ fn a_kept_lecture_script_must_follow_its_revisions_slides() {
         ]
     );
     let question = |slide_key: &str| ClassQuestion {
+        timing: CheckTiming::After,
         prompt: "Which limb pumps salt out?".into(),
         options: (0..2)
             .map(|index| ClassOption {

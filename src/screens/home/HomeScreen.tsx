@@ -15,7 +15,6 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Panel } from "../../ui/primitives/Panel";
 import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
-import { processingPhaseLabel } from "../documents/DocumentProgress";
 import { DeckTransferDialog } from "../flashcards/DeckTransferDialog";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
@@ -27,25 +26,26 @@ import {
   countLabel,
   sortSubjectTiles,
   SUBJECT_SORT_OPTIONS,
-  type DocumentPreparations,
-  type SubjectPreparation,
   type SubjectSort,
   type SubjectTile,
 } from "./homeModel";
 import { NewSubjectSheet } from "./NewSubjectSheet";
+import { NewStudySetSheet } from "../library/NewStudySetSheet";
+import type { SubjectSection } from "../../navigation/appDestinations";
+import { useDocumentPreparations } from "./useDocumentPreparations";
 import { SubjectTileCard } from "./SubjectTileCard";
 import { TodayStrip } from "./TodayStrip";
 
 /** The order chosen on Home lasts until the app closes. */
 let sessionSort: SubjectSort = "most-due";
 
-type HomeSheet = "new-subject" | "choose-subjects" | "check-these" | "import-deck" | null;
+type HomeSheet = "new-subject" | "new-study-set" | "choose-subjects" | "check-these" | "import-deck" | null;
 
 interface HomeScreenProps {
   /** Starts today's scheduled review over these decks. */
   onStartReview: (deckIds: string[]) => void;
-  /** Opens a subject's page in Library; `null` opens No subject's. */
-  onOpenSubject: (subjectId: string | null) => void;
+  /** Opens a subject's page in Library, its Flashcards unless `page` says; `null` opens No subject's. */
+  onOpenSubject: (subjectId: string | null, page?: SubjectSection) => void;
   /** Plays a lesson on its subject's Lessons page. */
   onOpenLesson: (subjectId: string, lessonId: string) => void;
   onOpenLibrary: () => void;
@@ -99,25 +99,7 @@ export function HomeScreen({
     setSortState(next);
   }
 
-  const preparations = useMemo<DocumentPreparations>(() => {
-    const running = new Map<string, SubjectPreparation>();
-    if (!jobs) return running;
-    for (const document of jobs.documents) {
-      if (document.lifecycleState === "processing") {
-        running.set(document.id, {
-          step: processingPhaseLabel(
-            document,
-            jobs.cancelingDocumentIds.has(document.id),
-            jobs.generationProgress[document.id] ?? null,
-          ),
-          documentTitle: document.title,
-        });
-      } else if (jobs.guideGeneratingDocumentIds.has(document.id)) {
-        running.set(document.id, { step: "Writing a study guide", documentTitle: document.title });
-      }
-    }
-    return running;
-  }, [jobs]);
+  const preparations = useDocumentPreparations();
 
   const tiles = useMemo(
     () => (summary && library ? buildSubjectTiles(summary, library, preparations) : null),
@@ -170,7 +152,7 @@ export function HomeScreen({
             hasArchivedDecks={hasArchivedDecks}
             importing={jobs?.isUploading ?? false}
             onCreateSubject={() => setSheet("new-subject")}
-            onImportDocument={() => void jobs?.uploadDocument()}
+            onImportDocument={() => setSheet("new-study-set")}
             onImportDeck={() => setSheet("import-deck")}
             onOpenLibrary={onOpenLibrary}
           />
@@ -263,6 +245,17 @@ export function HomeScreen({
             </div>
           </div>
         )
+      ) : null}
+      {sheet === "new-study-set" && library ? (
+        <NewStudySetSheet
+          subjects={library.subjects}
+          onClose={() => setSheet(null)}
+          onCreated={(subjectId, created) => {
+            if (created) acceptLibrary(created);
+            setSheet(null);
+            onOpenSubject(subjectId, "documents");
+          }}
+        />
       ) : null}
       {sheet === "new-subject" ? (
         <NewSubjectSheet

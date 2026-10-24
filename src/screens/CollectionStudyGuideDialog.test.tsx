@@ -4,11 +4,13 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { requiredTestValue as required } from "../test/factories";
 import * as documents from "../ipc/documents";
 import * as externalFiles from "../ipc/externalFiles";
+import { getSettings, type AppSettings } from "../ipc/settings";
 import * as studyMaterials from "../ipc/studyMaterials";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 
 vi.mock("../ipc/documents", () => ({ openDocumentSource: vi.fn() }));
+vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("../ipc/externalFiles", () => ({
   publishPreparedExport: vi.fn(),
   releasePreparedExport: vi.fn(),
@@ -116,6 +118,19 @@ beforeEach(() => {
   vi.mocked(studyMaterials.discardCollectionStudyGuideOverlay).mockResolvedValue(undefined);
 });
 
+/**
+ * Base UI wires a menu trigger in a passive effect, so an early click can be
+ * dropped; clicking until it reports open never toggles it shut.
+ */
+async function openSectionActions(title: string): Promise<HTMLElement> {
+  const name = new RegExp(`Section actions for ${title}`, "u");
+  const trigger = screen.getByRole("button", { name });
+  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
+    await act(async () => { fireEvent.click(trigger); });
+  }
+  return screen.findByRole("menu", { name });
+}
+
 it("renders collection sections through the shared semantic reader with one overflow menu", async () => {
   render(
     <OverlayProvider>
@@ -137,13 +152,13 @@ it("renders collection sections through the shared semantic reader with one over
   expect(screen.queryByRole("heading", { name: "Coverage notes" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Open source" })).toBeNull();
 
-  fireEvent.click(screen.getByRole("button", { name: /Section actions for Preload/u }));
-  const menu = await screen.findByRole("menu", { name: /Section actions for Preload/u });
+  const menu = await openSectionActions("Preload");
   fireEvent.click(within(menu).getByText("Open source"));
   await waitFor(() => expect(documents.openDocumentSource).toHaveBeenCalledWith(documentId));
 });
 
-it("exports the same collection guide snapshot through the native PDF boundary", async () => {
+it("exports the same collection guide snapshot in the Settings theme through the native PDF boundary", async () => {
+  vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "slate", guidePdfIncludeNotes: false } as AppSettings);
   const showToast = vi.fn();
   render(
     <OverlayProvider>
@@ -156,12 +171,9 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     </OverlayProvider>,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: "Export PDF…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-  fireEvent.click(within(dialog).getByRole("radio", { name: /^Sage/u }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
   await waitFor(() => {
-    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, true, "sage");
+    expect(studyMaterials.prepareCollectionStudyGuidePdf).toHaveBeenCalledWith(collectionId, false, "slate");
     expect(externalFiles.publishPreparedExport).toHaveBeenCalledWith("3".repeat(32));
     expect(showToast).toHaveBeenCalledWith(
       "success",
@@ -169,7 +181,6 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     );
   });
   expect(externalFiles.releasePreparedExport).toHaveBeenCalledWith("3".repeat(32));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull());
 });
 
 
@@ -188,8 +199,8 @@ it("saves source-bound section overrides from the overflow menu with the exact b
     </OverlayProvider>,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: /Section actions for Preload/u }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Edit section" }));
+  await screen.findByRole("button", { name: /Section actions for Preload/u });
+  fireEvent.click(within(await openSectionActions("Preload")).getByRole("menuitem", { name: "Edit section" }));
   const editor = screen.getByRole("textbox", { name: "Edit generated section" });
   fireEvent.change(editor, { target: { value: "Edited preload section." } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -221,12 +232,7 @@ it("keeps section note actions inside the overflow menu", async () => {
   );
   expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Add note" })).toBeNull();
-  const trigger = screen.getByRole("button", { name: /Section actions for Preload/u });
-  // Base UI wires a menu trigger in a passive effect, so an early click can be dropped;
-  // clicking until it reports open never toggles it shut.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
+  await openSectionActions("Preload");
   expect(await screen.findByRole("menuitem", { name: "Add note" })).toBeTruthy();
   expect(screen.getByRole("menuitem", { name: "Edit section" })).toBeTruthy();
 });

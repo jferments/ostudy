@@ -201,6 +201,22 @@ pub struct StagedExternalFileDto {
     pub expires_at: i64,
 }
 
+/// The files staged from one selection of several, and those left out.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagedExternalFilesDto {
+    pub files: Vec<StagedExternalFileDto>,
+    pub skipped: Vec<SkippedExternalFileDto>,
+}
+
+/// A chosen file that could not be staged, and why.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedExternalFileDto {
+    pub display_name: String,
+    pub message: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReleaseExternalImportInput {

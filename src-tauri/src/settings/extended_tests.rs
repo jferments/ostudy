@@ -21,6 +21,9 @@ mod extended_tests {
             daily_new_limit: 20,
             daily_review_limit: 200,
             new_day_start_hour: 4,
+            guide_pdf_theme: "sage".to_string(),
+            guide_pdf_include_notes: true,
+            lecture_audio_with_new_lessons: true,
         }
     }
 
@@ -45,6 +48,9 @@ mod extended_tests {
             daily_new_limit: 12,
             daily_review_limit: 80,
             new_day_start_hour: 23,
+            guide_pdf_theme: "sage".to_string(),
+            guide_pdf_include_notes: true,
+            lecture_audio_with_new_lessons: true,
         };
         validate_settings(&expected).expect("fixture should validate");
         database

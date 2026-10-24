@@ -6,6 +6,7 @@ import {
   cancelSubjectCourseWriting,
   getLesson,
   getLessonLecture,
+  getLessonSlideDesigns,
   prepareLessonLecturePptx,
   getSubjectCourseWritingProgress,
   listSubjectLessons,
@@ -14,7 +15,9 @@ import {
   writeLessonLectureScript,
   answerLectureQuestion,
   narrateLecturePart,
+  askLectureQuestion,
   saveLessonProgress,
+  updateLessonFromSources,
   writeSubjectCourse,
 } from "./lessons";
 
@@ -65,6 +68,13 @@ describe("lesson IPC", () => {
     });
   });
 
+  it("lays out a revision's slides in the chosen theme", async () => {
+    await getLessonSlideDesigns(lessonId, 3, "plum");
+    expect(invoke).toHaveBeenLastCalledWith("get_lesson_slide_designs", {
+      input: { lessonId, revisionNumber: 3, theme: "plum" },
+    });
+  });
+
   it("prepares a lecture deck under one operation", async () => {
     const operationId = "e".repeat(32);
     await prepareLessonLecturePptx(lessonId, 2, operationId);
@@ -88,11 +98,23 @@ describe("lesson IPC", () => {
     });
   });
 
+  it("writes one lesson again from its sources", async () => {
+    const operationId = "d".repeat(32);
+    await updateLessonFromSources(lessonId, operationId);
+    expect(invoke).toHaveBeenLastCalledWith("update_lesson_from_sources", {
+      input: { lessonId, operationId },
+    });
+  });
+
   it("writes a course under one operation that can be stopped", async () => {
     const operationId = "c".repeat(32);
     await writeSubjectCourse(subjectId, operationId);
     expect(invoke).toHaveBeenLastCalledWith("write_subject_course", {
-      input: { subjectId, operationId },
+      input: { subjectId, operationId, rewrite: false },
+    });
+    await writeSubjectCourse(subjectId, operationId, true);
+    expect(invoke).toHaveBeenLastCalledWith("write_subject_course", {
+      input: { subjectId, operationId, rewrite: true },
     });
     await cancelSubjectCourseWriting(operationId);
     expect(invoke).toHaveBeenLastCalledWith("cancel_subject_course_writing", {
@@ -134,6 +156,10 @@ describe("lesson IPC", () => {
     await narrateLecturePart(lessonId, 2, "title");
     expect(invoke).toHaveBeenLastCalledWith("narrate_lecture_part", {
       input: { lessonId, revisionNumber: 2, slideKey: "title", replyTo: null },
+    });
+    await askLectureQuestion(lessonId, 2, "step:two-limbs");
+    expect(invoke).toHaveBeenLastCalledWith("narrate_lecture_part", {
+      input: { lessonId, revisionNumber: 2, slideKey: "step:two-limbs", ask: true },
     });
   });
 });

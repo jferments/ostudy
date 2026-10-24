@@ -20,8 +20,9 @@ TAB_KEY = "\ue004"
 SPACE_KEY = "\ue00d"
 # Home, Library, Tutor and Progress in the side rail, with Search and Settings at
 # its foot; a phone's bottom bar adds Settings and keeps Search in the header.
-MAIN_NAVIGATION_LABELS = ["Home", "Library", "Tutor", "Progress"]
-COMPACT_NAVIGATION_LABELS = [*MAIN_NAVIGATION_LABELS, "Settings"]
+MAIN_NAVIGATION_LABELS = ["Home", "Library", "Notes", "Tutor", "Progress"]
+# A phone's bottom bar names the same destinations; Settings is in its top bar.
+COMPACT_NAVIGATION_LABELS = MAIN_NAVIGATION_LABELS
 # Library's outer page, which hosts Decks, Documents and Study guides below its tabs.
 LIBRARY_ROUTE_SELECTOR = "[data-testid='library']"
 EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
@@ -526,7 +527,8 @@ def assert_navigation_labels(
 
 
 def assert_shell_placement(session_id: str, layout: str) -> None:
-    """A phone has a bottom bar; wider screens carry the navigation in the header's side rail."""
+    """A phone has a bottom bar; wider screens carry the navigation in the header's side rail.
+    Settings is never a navigation item: it sits at the rail's foot or in a phone's top bar."""
     placement = execute(
         session_id,
         """
@@ -551,7 +553,7 @@ def assert_shell_placement(session_id: str, layout: str) -> None:
         "bottom": layout == "compact",
         "search": True,
         "settings": True,
-        "settingsInNavigation": layout == "compact",
+        "settingsInNavigation": False,
     }
     if placement != expected:
         raise AssertionError(f"The {layout} shell placed its navigation or header actions wrongly: {placement!r}")
@@ -842,11 +844,11 @@ def open_study_guides_and_return(
 ) -> None:
     open_study_guides(session_id, deadline, label)
 
-    # Library's Flashcards tab returns to the Workbench without leaving Library.
+    # The subject's Flashcards tab returns to the Workbench without leaving Library.
     workbench = webdriver.find_element(
         session_id,
         "css selector",
-        "main nav[aria-label='Library pages'] button[data-testid='library-view-decks']",
+        "main nav[aria-label='Subject pages'] button[data-testid='library-view-decks']",
         deadline,
     )
     webdriver.click(session_id, workbench)
@@ -878,7 +880,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     documents = webdriver.find_element(
         session_id,
         "css selector",
-        "main nav[aria-label='Library pages'] button[data-testid='library-view-documents']",
+        "main nav[aria-label='Subject pages'] button[data-testid='library-view-documents']",
         deadline,
     )
     webdriver.click(session_id, documents)
@@ -894,10 +896,15 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, home)
-    # Home names itself in a visually hidden h1; the library is still empty
-    # here, so Home shows its welcome.
+    # Home names itself in a visually hidden h1. Opening a subject's tabs made
+    # the smoke subject, so Home lists it rather than showing its welcome.
     webdriver.wait_for_main_heading(session_id, "Home", deadline)
-    webdriver.wait_for_main_heading(session_id, "Your library is empty", deadline)
+    webdriver.find_element(
+        session_id,
+        "xpath",
+        f"//main//*[@data-testid='subject-tile'][.//*[normalize-space(.)={json.dumps(webdriver.SMOKE_SUBJECT_NAME)}]]",
+        deadline,
+    )
     assert_no_horizontal_overflow(session_id, "compact Home")
 
     settings = webdriver.find_element(
@@ -979,19 +986,21 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 
 
 def verify_library_subject_pages(session_id: str, deadline: float, layout: str) -> None:
-    """Library's Overview and Lessons pages under Everything, with the subjects
-    beside the page on wide screens and behind the header's switcher otherwise."""
-    for view, heading in (("overview", "Overview"), ("lessons", "Lessons")):
+    """Library's page of subject tiles, a subject's Lessons and Podcasts tabs,
+    and Notes as its own destination, each without the old subject pane."""
+    webdriver.open_library_home(session_id, deadline)
+    webdriver.wait_for_main_heading(session_id, "Library", deadline)
+    wait_for_overlay_inactive(session_id, deadline, f"{layout} Library assertions")
+    assert_no_horizontal_overflow(session_id, f"{layout} Library")
+    for view in ("lessons", "podcasts"):
         webdriver.open_library_view(session_id, view, deadline)
-        # WebKitGTK reports no element text for these headings, so match the DOM text.
-        webdriver.find_element(
-            session_id,
-            "xpath",
-            "//main//*[@data-testid='library-subject-name'][normalize-space(.)='Everything']",
-            deadline,
-        )
-        wait_for_overlay_inactive(session_id, deadline, f"{layout} Library {heading} assertions")
-        assert_no_horizontal_overflow(session_id, f"{layout} Library {heading}")
+        wait_for_overlay_inactive(session_id, deadline, f"{layout} subject {view} assertions")
+        assert_no_horizontal_overflow(session_id, f"{layout} subject {view}")
+    notes = webdriver.find_element(session_id, "css selector", "button[data-testid='nav-notes']", deadline)
+    webdriver.click(session_id, notes)
+    webdriver.wait_for_main_heading(session_id, "Notes", deadline)
+    wait_for_overlay_inactive(session_id, deadline, f"{layout} Notes assertions")
+    assert_no_horizontal_overflow(session_id, f"{layout} Notes")
     placement = execute(
         session_id,
         """
@@ -1001,9 +1010,8 @@ def verify_library_subject_pages(session_id: str, deadline: float, layout: str) 
         };
         """,
     )
-    wide = layout == "wide"
-    if placement != {"pane": wide, "switcher": not wide}:
-        raise AssertionError(f"{layout} Library subject placement drifted: {placement!r}")
+    if placement != {"pane": False, "switcher": False}:
+        raise AssertionError(f"{layout} Library still shows the old subject list: {placement!r}")
 
 
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
@@ -1063,13 +1071,9 @@ def verify_study_guides_checkpoint_after_restart(
 
     restarted = webdriver.create_session(application)
     webdriver.verify_shell(restarted, webdriver.deadline_after())
-    webdriver.wait_for_element_text(
-        restarted,
-        "css selector",
-        "main h1",
-        "Study Guides",
-        webdriver.deadline_after(),
-    )
+    # The checkpoint keeps the page but no subject, so a subject's Study guides
+    # restarts on Library's page of subjects.
+    webdriver.wait_for_main_heading(restarted, "Library", webdriver.deadline_after())
     webdriver.find_element(
         restarted,
         "css selector",
@@ -1079,7 +1083,7 @@ def verify_study_guides_checkpoint_after_restart(
     webdriver.find_element(
         restarted,
         "css selector",
-        "button[data-testid='library-view-study-guides'][aria-current='page']",
+        "main [data-testid='library-subject-tiles']",
         webdriver.deadline_after(),
     )
     return restarted
@@ -1397,9 +1401,10 @@ def main() -> int:
         verify_medium_workbench_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
-            "Native UI platform smoke passed: fresh-library Home; Home, Library, Tutor, Progress and "
-            "Settings in the phone bottom bar and the labeled medium and wide side rail, with Search and "
-            "Settings at its foot; Library's Workbench, Documents and Study guides pages; Home's Review; "
+            "Native UI platform smoke passed: fresh-library Home; Home, Library, Notes, Tutor and Progress "
+            "in the phone bottom bar (Search and Settings in its top bar) and the labeled medium and wide "
+            "side rail, with Search and Settings at its foot; Library's subject tiles and a subject's "
+            "Workbench, Documents, Study guides, Lessons and Podcasts tabs; Notes; Home's Review; "
             "compact lockup and side-rail mark branding; "
             "fresh-profile IBM Plex interface/card defaults; "
             "the Workbench's tree and card panes; responsive deck header actions; "

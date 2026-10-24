@@ -10,7 +10,8 @@ use std::{collections::HashMap, fs};
 
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::{
     database::Database,
@@ -25,15 +26,21 @@ use crate::{
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
     paths::AppPaths,
+    pdf_render_backend::PdfRenderRuntime,
     study_materials::{load_collection_study_guide, CollectionStudyGuide},
     util::validate_entity_id,
 };
 
+mod canvas;
+pub(crate) mod figures;
 mod guide_typst;
 mod math_layout;
 mod math_source;
 
-pub(crate) use guide_typst::{plain_sans_font, StudyGuidePdfTheme};
+pub(crate) use guide_typst::{
+    compile_template_pdf, compile_template_svgs_with, plain_sans_font, runs as rich_runs,
+    StudyGuidePdfTheme,
+};
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const MAX_EXPORT_SECTIONS: usize = 512;
@@ -57,6 +64,14 @@ pub(crate) struct PrepareCollectionStudyGuidePdfInput {
     pub operation_id: String,
     #[serde(default)]
     pub include_annotations: bool,
+    #[serde(default)]
+    pub theme: StudyGuidePdfTheme,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GetStudyGuideCanvasInput {
+    pub document_id: String,
     #[serde(default)]
     pub theme: StudyGuidePdfTheme,
 }
@@ -97,6 +112,8 @@ struct EffectiveGuideExport {
 
 #[derive(Clone, Debug)]
 struct EffectiveExportChapter {
+    /// The editorial chapter's id, which names its pages on the reader's canvas.
+    key: String,
     title: String,
     introduction: String,
     section_indices: Vec<usize>,
@@ -104,6 +121,8 @@ struct EffectiveExportChapter {
 
 #[derive(Clone, Debug)]
 struct EffectiveExportSection {
+    /// The document guide's topic id or the collection guide's block key.
+    key: String,
     title: String,
     source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
@@ -154,6 +173,7 @@ enum ExportBlock {
 pub(crate) fn prepare_document_study_guide_pdf(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
     input: PrepareStudyGuidePdfInput,
 ) -> Result<PreparedStudyGuidePdfDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
@@ -179,6 +199,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
     let effective = load_effective_export(
         database.inner(),
         paths.inner(),
+        Some(runtime.inner()),
         &input.document_id,
         input.include_annotations,
     )?;
@@ -317,15 +338,117 @@ pub(crate) fn prepare_collection_study_guide_pdf(
     })
 }
 
+/// A document's whole study guide as the reader's canvas: every page the PDF
+/// export lays out, with its contents and Practice buttons. Read-only; the
+/// learner's marks are stored separately under each page's key.
+#[tauri::command]
+pub(crate) async fn get_document_study_guide_canvas(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
+    input: GetStudyGuideCanvasInput,
+) -> Result<canvas::StudyGuideCanvasDto, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let effective =
+            load_effective_export(&database, &paths, Some(&runtime), &input.document_id, false)?;
+        canvas::guide_canvas(&input.document_id, &effective, input.theme)
+    })
+    .await
+    .map_err(|error| {
+        CommandError::new(
+            "study_guide_page_layout_failed",
+            format!("Could not lay out the study guide: {error}"),
+        )
+    })?
+}
+
+/// Opens a document's study guide in the system's PDF reader. The PDF is
+/// written to one file per document in the app's cache directory, replaced
+/// on every open, so the learner never picks a save location and the
+/// library keeps no copy.
+#[tauri::command]
+pub(crate) async fn open_document_study_guide_pdf(
+    app: AppHandle,
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    runtime: State<'_, PdfRenderRuntime>,
+    input: GetStudyGuideCanvasInput,
+) -> Result<(), CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let database = database.inner().clone();
+    let paths = paths.inner().clone();
+    let runtime = runtime.inner().clone();
+    let cache = app.path().app_cache_dir().map_err(|error| {
+        CommandError::new(
+            "study_guide_open_failed",
+            format!("The app's cache folder is unavailable: {error}"),
+        )
+    })?;
+    let destination = tauri::async_runtime::spawn_blocking(move || {
+        let effective =
+            load_effective_export(&database, &paths, Some(&runtime), &input.document_id, true)?;
+        let destination = cache
+            .join("study-guides")
+            .join(&input.document_id)
+            .join(format!(
+                "{}-study-guide.pdf",
+                portable_filename(&effective.document_title)
+            ));
+        if let Some(parent) = destination.parent() {
+            // An earlier open's file may carry an older title.
+            let _ = fs::remove_dir_all(parent);
+            fs::create_dir_all(parent).map_err(CommandError::io)?;
+        }
+        guide_typst::render(&effective, input.theme, &destination)?;
+        Ok::<_, CommandError>(destination)
+    })
+    .await
+    .map_err(|error| {
+        CommandError::new(
+            "study_guide_export_failed",
+            format!("Could not write the study guide PDF: {error}"),
+        )
+    })??;
+    app.opener()
+        .open_path(destination.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|error| {
+            CommandError::new(
+                "study_guide_open_failed",
+                format!("The operating system could not open the study guide PDF: {error}"),
+            )
+        })
+}
+
+/// Section indices in the order the reader numbers them: by chapter when the
+/// guide has an editorial organization, otherwise as generated.
+fn reading_order(export: &EffectiveGuideExport) -> Vec<usize> {
+    if export.chapters.is_empty() {
+        (0..export.sections.len()).collect()
+    } else {
+        export
+            .chapters
+            .iter()
+            .flat_map(|chapter| chapter.section_indices.iter().copied())
+            .collect()
+    }
+}
+
 // Old prepared exports did not record math presentation. Warn conservatively
 // on replay rather than claiming they contain typeset equations.
 fn legacy_math_fallback() -> bool {
     true
 }
 
+/// `runtime` draws the source figures the guide shows; without it the guide
+/// is laid out with its text alone.
 fn load_effective_export(
     database: &Database,
     paths: &AppPaths,
+    runtime: Option<&PdfRenderRuntime>,
     document_id: &str,
     include_annotations: bool,
 ) -> Result<EffectiveGuideExport, CommandError> {
@@ -351,14 +474,17 @@ fn load_effective_export(
                 )
             })
     })?;
+    let source_figures = runtime.and_then(|runtime| {
+        figures::SourceFigures::load(database, paths, runtime, document_id, &guide.sections)
+    });
     compose_effective_export(
         database,
         paths,
         document_id,
-        document_title,
-        source_filename,
+        (document_title, source_filename),
         guide,
         include_annotations,
+        source_figures.as_ref(),
     )
 }
 
@@ -366,10 +492,10 @@ fn compose_effective_export(
     database: &Database,
     paths: &AppPaths,
     document_id: &str,
-    document_title: String,
-    source_filename: String,
+    (document_title, source_filename): (String, String),
     guide: DocumentStudyGuide,
     include_annotations: bool,
+    source_figures: Option<&figures::SourceFigures<'_>>,
 ) -> Result<EffectiveGuideExport, CommandError> {
     let mut guide_notes = Vec::new();
     let mut overlays_by_topic = HashMap::<String, Vec<&StudyGuideOverlay>>::new();
@@ -424,17 +550,22 @@ fn compose_effective_export(
             }
         }
         let figures = if body_override.is_none() {
-            load_export_figures(
+            let attached = load_export_figures(
                 database,
                 paths,
                 document_id,
                 &section.source_locator,
                 &section.content.visual_explanations,
-            )
+            );
+            match source_figures {
+                Some(source) if attached.is_empty() => source.for_section(&section.topic_id),
+                _ => attached,
+            }
         } else {
             Vec::new()
         };
         sections.push(EffectiveExportSection {
+            key: section.topic_id.clone(),
             title,
             source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
@@ -468,6 +599,7 @@ fn compose_effective_export(
                     })
                     .collect::<Result<Vec<_>, CommandError>>()?;
                 Ok(EffectiveExportChapter {
+                    key: chapter.id.clone(),
                     title: chapter.title.clone(),
                     introduction: chapter.introduction.clone(),
                     section_indices,
@@ -584,6 +716,7 @@ fn compose_effective_collection_export(
             Vec::new()
         };
         sections.push(EffectiveExportSection {
+            key: section.block_key.clone(),
             title,
             source_locator: section.source_locator.clone(),
             body_lines: body_override.map_or_else(
@@ -844,6 +977,7 @@ mod tests {
             guide_notes: vec!["Review this before lab.".to_string()],
             chapters: Vec::new(),
             sections: vec![EffectiveExportSection {
+                key: "topic-preload".to_string(),
                 title: "Preload".to_string(),
                 source_locator: Some(
                     SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
@@ -873,6 +1007,7 @@ mod tests {
 
     fn rich_section(title: &str) -> EffectiveExportSection {
         EffectiveExportSection {
+            key: format!("topic-{title}"),
             title: title.to_string(),
             source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
             body_lines: vec![
@@ -1000,6 +1135,40 @@ mod tests {
     }
 
     #[test]
+    fn the_canvas_lays_out_every_page_in_every_theme() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        export.key_concepts = vec!["Preload: stretch before contraction".into()];
+        for theme in [
+            StudyGuidePdfTheme::Navy,
+            StudyGuidePdfTheme::Sage,
+            StudyGuidePdfTheme::Slate,
+            StudyGuidePdfTheme::Plum,
+        ] {
+            let canvas = canvas::guide_canvas("document-1", &export, theme).unwrap();
+            assert!(!canvas.pages.is_empty(), "{theme:?}");
+            for page in &canvas.pages {
+                assert!(page.svg.starts_with("<svg"), "{theme:?}");
+            }
+            assert_eq!(canvas.practice.len(), 2, "{theme:?}");
+        }
+    }
+
+    #[test]
+    fn reading_order_numbers_sections_by_chapter() {
+        let mut export = test_export();
+        export.sections.push(rich_section("Afterload"));
+        assert_eq!(reading_order(&export), vec![0, 1]);
+        export.chapters = vec![EffectiveExportChapter {
+            key: "chapter-loads".into(),
+            title: "Loads".into(),
+            introduction: String::new(),
+            section_indices: vec![1, 0],
+        }];
+        assert_eq!(reading_order(&export), vec![1, 0]);
+    }
+
+    #[test]
     fn source_labels_use_natural_unit_names() {
         let page = SourceLocator::new(SourceUnitKind::Page, vec![3], None).unwrap();
         let slides = SourceLocator::new(SourceUnitKind::Slide, vec![4, 5], None).unwrap();
@@ -1085,6 +1254,7 @@ mod tests {
         let mut export = test_export();
         export.document_title = "Cardiovascular drugs".to_string();
         export.sections.push(EffectiveExportSection {
+            key: "topic-raas".to_string(),
             title: "Renin–angiotensin system".to_string(),
             source_locator: Some(
                 SourceLocator::new(SourceUnitKind::Page, vec![18, 19], None).unwrap(),
@@ -1096,6 +1266,7 @@ mod tests {
             figures: Vec::new(),
         });
         export.chapters = vec![EffectiveExportChapter {
+            key: "chapter-hemodynamics".to_string(),
             title: "Hemodynamic foundations".to_string(),
             introduction: "These sections establish the physiologic relationships needed to understand later cardiovascular therapies.".to_string(),
             section_indices: vec![0, 1],
@@ -1168,6 +1339,137 @@ mod tests {
         let all = pages.join("\n");
         assert!(all.contains("Pressure-volume loop"));
         assert!(all.contains("Trace filling before ejection."));
+    }
+
+    #[test]
+    fn a_narrow_figure_sits_beside_the_key_points_and_a_wide_one_below() {
+        let mut export = test_export();
+        let points = (1..=6)
+            .map(|index| format!("Key point number {index} about ventricular filling."))
+            .collect::<Vec<_>>();
+        let section = &mut export.sections[0];
+        section.body_lines = vec![
+            ExportBlock::Paragraph("Preload reflects ventricular filling.".to_string()),
+            ExportBlock::Heading("Key points".to_string()),
+            ExportBlock::Bullets(points.clone()),
+        ];
+        for (title, width, height) in [("Narrow loop", 3, 4), ("Wide pressure trace", 8, 2)] {
+            section.figures.push(ExportFigure {
+                image: guide_typst::FigureImage::from_rgba(image::RgbaImage::new(width, height))
+                    .unwrap(),
+                title: title.to_string(),
+                caption: String::new(),
+            });
+        }
+        let (bytes, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
+        assert!(String::from_utf8_lossy(&bytes).contains("/Subtype/Image"));
+        let all = pages.join("\n");
+        for point in &points {
+            assert!(all.contains(point.as_str()), "{point}");
+        }
+        assert!(all.contains("Figure 1.1"));
+        assert!(all.contains("Narrow loop"));
+        assert!(all.contains("Figure 1.2"));
+        assert!(all.contains("Wide pressure trace"));
+    }
+
+    /// A guide shaped like a real one. Set `OSTUDY_GUIDE_PREVIEW` to a path to
+    /// keep its PDF and look at the layout.
+    #[test]
+    fn a_long_cover_stays_one_page_and_chapters_run_on() {
+        let figure = |title: &str, width: u32, height: u32| ExportFigure {
+            image: guide_typst::FigureImage::from_rgba(image::RgbaImage::from_pixel(
+                width,
+                height,
+                image::Rgba([120, 150, 200, 255]),
+            ))
+            .unwrap(),
+            title: title.to_string(),
+            caption: "A schematic drawn from the source page, with its labels and arrows."
+                .to_string(),
+        };
+        let mut export = test_export();
+        export.overview = "Renal physiology explains how the kidneys filter plasma, reabsorb and secrete solutes, and balance water, sodium, potassium and acid. ".repeat(6);
+        export.learning_objectives = (1..=6)
+            .map(|i| format!("Objective {i}: interpret clearance, filtered load and excretion in health and disease."))
+            .collect();
+        let bullets = |n: usize| {
+            ExportBlock::Bullets(
+                (1..=n)
+                    .map(|i| format!("Key point {i}: filtered load is GFR times plasma concentration; excretion is urine concentration times flow."))
+                    .collect(),
+            )
+        };
+        let mut sections = Vec::new();
+        for (i, (count, figures)) in [
+            (
+                4,
+                vec![
+                    figure("Nephron segment", 400, 380),
+                    figure("Two stacked panels", 300, 480),
+                ],
+            ),
+            (
+                5,
+                vec![
+                    figure("Weak acid clearance", 420, 340),
+                    figure("Sodium handling", 400, 400),
+                ],
+            ),
+            (3, vec![figure("Wide pressure trace", 900, 300)]),
+            (6, Vec::new()),
+            (
+                4,
+                vec![
+                    figure("Potassium balance", 420, 400),
+                    figure("Cell mechanisms", 500, 420),
+                ],
+            ),
+            (2, Vec::new()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sections.push(EffectiveExportSection {
+                key: format!("topic-{i}"),
+                title: format!("Section {} about tubular handling", i + 1),
+                source_locator: None,
+                body_lines: vec![
+                    ExportBlock::Paragraph("Renal excretion is the net result of filtration, reabsorption and secretion.".to_string()),
+                    ExportBlock::Heading("Key points".to_string()),
+                    bullets(count),
+                    ExportBlock::RetrievalCheck {
+                        prompt: "If filtered load exceeds excretion, what happened?".to_string(),
+                        answer: "Net reabsorption.".to_string(),
+                    },
+                ],
+                notes: Vec::new(),
+                figures,
+            });
+        }
+        export.sections = sections;
+        export.chapters = (0..3)
+            .map(|c| EffectiveExportChapter {
+                key: format!("c{c}"),
+                title: format!("Chapter {} on the kidney", c + 1),
+                introduction: "How the kidney handles what it filters.".to_string(),
+                section_indices: vec![c * 2, c * 2 + 1],
+            })
+            .collect();
+        let (bytes, pages) = rendered_pages(&export, StudyGuidePdfTheme::Sage);
+        if let Ok(path) = std::env::var("OSTUDY_GUIDE_PREVIEW") {
+            std::fs::write(path, bytes).unwrap();
+        }
+        assert!(pages[0].contains("Objective 6"), "{}", pages[0]);
+        assert!(pages[0].contains("Made with oStudy"));
+        assert!(!pages[1].contains("Renal physiology explains"));
+        // The second chapter starts on a page the first one ends on.
+        let page = pages
+            .iter()
+            .skip(1)
+            .find(|page| page.contains("Chapter 2 on the kidney"))
+            .unwrap();
+        assert!(page.contains("Figure 1.2.2"), "{page}");
     }
 
     #[test]

@@ -88,6 +88,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
     instructions: &'a GenerationInstructions,
+    destination_deck_id: Option<&'a str>,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -96,6 +97,7 @@ pub(crate) fn process_and_generate_initial_flashcards<'a>(
         render_runtime,
         document_id,
         instructions,
+        destination_deck_id,
         false,
     ))
 }
@@ -107,6 +109,7 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
     render_runtime: PdfRenderRuntime,
     document_id: &'a str,
     instructions: &'a GenerationInstructions,
+    destination_deck_id: Option<&'a str>,
 ) -> InitialGenerationFuture<'a> {
     Box::pin(process_initial_flashcards(
         database,
@@ -115,10 +118,12 @@ pub(crate) fn process_reserved_initial_flashcards<'a>(
         render_runtime,
         document_id,
         instructions,
+        destination_deck_id,
         true,
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_initial_flashcards(
     database: &Database,
     paths: &AppPaths,
@@ -126,12 +131,18 @@ async fn process_initial_flashcards(
     render_runtime: PdfRenderRuntime,
     document_id: &str,
     instructions: &GenerationInstructions,
+    destination_deck_id: Option<&str>,
     processing_reserved: bool,
 ) -> Result<InitialGenerationResult, CommandError> {
+    // A chosen deck is checked before any work starts, and again at commit.
+    if let Some(deck_id) = destination_deck_id {
+        destination_deck_name(database, deck_id)?;
+    }
     if !processing_reserved {
         document_store::mark_document_processing(database, document_id)?;
     }
-    let stored = ensure_document_derivatives(database, paths, render_runtime, document_id).await?;
+    let (stored, figure_search) =
+        ensure_document_derivatives(database, paths, render_runtime.clone(), document_id).await?;
 
     let source = stored.source_descriptor()?;
     source.validate()?;
@@ -299,7 +310,6 @@ async fn process_initial_flashcards(
                 document_title: &stored.title,
                 plan: &learning_plan,
                 chunks: &chunks,
-                maximum_images: scale_plan.max_images_per_window,
             },
         ),
     );
@@ -400,12 +410,24 @@ async fn process_initial_flashcards(
         }
 
         document_store::mark_job_committing(database, document_id, &job_id, grounded_cards.len())?;
-        let payload = build_generated_import_json(&stored, &grounded_cards)?;
+        let payload = match destination_deck_id {
+            Some(deck_id) => crate::document_more::build_append_payload(
+                &destination_deck_name(database, deck_id)?,
+                &grounded_cards,
+            )?,
+            None => build_generated_import_json(&stored, &grounded_cards)?,
+        };
         let (api_token_count, api_token_usage_complete) = task.usage_summary();
         let result = import_generated_flashcards_bytes_with_commit_context(
             database,
             payload.as_bytes(),
             |connection, import_result, commit_context, now| {
+                if destination_deck_id.is_some_and(|deck_id| deck_id != import_result.deck_id) {
+                    return Err(CommandError::new(
+                        "document_destination_deck_changed",
+                        "The chosen deck changed while its cards were being written. Choose it again and retry.",
+                    ));
+                }
                 link_imported_notes_to_topics(
                     connection,
                     document_id,
@@ -470,14 +492,17 @@ async fn process_initial_flashcards(
                         "The document changed before generated cards could be committed.",
                     ));
                 }
-                // The new deck joins its document's subject, so studying the
-                // subject includes the document's cards.
-                crate::subjects::file_generated_deck_with_document(
-                    connection,
-                    document_id,
-                    None,
-                    now,
-                )?;
+                // A new deck joins its document's subject, so studying the
+                // subject includes the document's cards. A chosen deck stays
+                // where the learner keeps it.
+                if destination_deck_id.is_none() {
+                    crate::subjects::file_generated_deck_with_document(
+                        connection,
+                        document_id,
+                        None,
+                        now,
+                    )?;
+                }
                 let job_changed = connection
                     .execute(
                         "UPDATE document_generation_jobs
@@ -518,7 +543,21 @@ async fn process_initial_flashcards(
         })
     });
 
-    let (cards, guide) = parallel::run(card_future, guide_future).await;
+    // Figures are read beside cards and the guide once their search is done.
+    let figure_task = task.fork_usage();
+    let figure_reading = crate::document_figures::read_after_search(
+        crate::document_figures::ReadAfterSearch {
+            database,
+            paths,
+            render: &render_runtime,
+            runtime,
+            task: &figure_task,
+            document_id,
+        },
+        figure_search,
+    );
+    let ((cards, guide), ()) =
+        tokio::join!(parallel::run(card_future, guide_future), figure_reading);
     match guide {
         Ok(guide) => crate::logging::info_target(
             "documents.generation",
@@ -544,15 +583,20 @@ async fn process_initial_flashcards(
     cards
 }
 
+/// The figure search a rebuild started, which generation does not wait for.
+pub(crate) type FigureSearch = tauri::async_runtime::JoinHandle<()>;
+
 /// Extract, render and chunk the managed source when its derivatives are missing
-/// or were made by an older backend. No provider is contacted.
+/// or were made by an older backend. No provider is contacted. A rebuilt PDF
+/// also starts its figure search, returned so a caller can read its figures.
 pub(crate) async fn ensure_document_derivatives(
     database: &Database,
     paths: &AppPaths,
     render_runtime: PdfRenderRuntime,
     document_id: &str,
-) -> Result<InitialDocumentContext, CommandError> {
+) -> Result<(InitialDocumentContext, Option<FigureSearch>), CommandError> {
     let mut stored = load_context(database, document_id)?;
+    let mut figure_search = None;
     let source_path = paths.resolve_relative(&stored.source_relative_path);
     if !source_path.is_file() {
         return Err(CommandError::new(
@@ -577,6 +621,7 @@ pub(crate) async fn ensure_document_derivatives(
         let database_owned = database.clone();
         let paths_owned = paths.clone();
         let source_owned = source_path.clone();
+        let figure_runtime = render_runtime.clone();
         let id_owned = document_id.to_string();
         let (progress_sender, mut progress_receiver) =
             tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
@@ -629,9 +674,24 @@ pub(crate) async fn ensure_document_derivatives(
             )
         })??;
         document_ingestion::persist_ingested_document(database, document_id, &processed)?;
+        if format == DocumentFormat::Pdf {
+            // Figures are found beside generation, which does not wait for them.
+            let database = database.clone();
+            let document_id = document_id.to_string();
+            let source_path = source_path.clone();
+            figure_search = Some(tauri::async_runtime::spawn(async move {
+                crate::document_figures::find_after_ingestion(
+                    &database,
+                    figure_runtime,
+                    &document_id,
+                    source_path,
+                )
+                .await;
+            }));
+        }
         stored = load_context(database, document_id)?;
     }
-    Ok(stored)
+    Ok((stored, figure_search))
 }
 
 fn load_context(
@@ -675,6 +735,33 @@ fn load_context(
     })
 }
 
+/// The name of the existing deck a document's first cards go into. Cards are
+/// appended by name, so the name must pick out that deck alone.
+pub(crate) fn destination_deck_name(
+    database: &Database,
+    deck_id: &str,
+) -> Result<String, CommandError> {
+    let name: Option<String> = database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT name FROM decks
+                 WHERE id = ?1 AND deleted_at IS NULL AND archived_at IS NULL",
+                [deck_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)
+    })?;
+    let Some(name) = name else {
+        return Err(CommandError::new(
+            "document_destination_deck_missing",
+            "The chosen deck is no longer in the library. Choose another deck.",
+        ));
+    };
+    crate::document_more::ensure_exact_append_destination(database, deck_id, &name)?;
+    Ok(name)
+}
+
 fn build_generated_import_json(
     document: &InitialDocumentContext,
     cards: &[crate::document_card_topics::SourceGroundedGeneratedCard],
@@ -700,6 +787,64 @@ fn build_generated_import_json(
 mod tests {
     use super::*;
     use crate::document_domain::{SourceLocator, SourceUnitKind};
+
+    fn deck(database: &Database, name: &str) -> String {
+        database
+            .with_connection(|connection| {
+                crate::decks::create_deck_in_connection(
+                    connection,
+                    crate::decks::CreateDeckInput {
+                        name: name.to_string(),
+                        description: None,
+                    },
+                )
+            })
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn a_chosen_deck_must_be_an_active_deck_its_name_picks_out() {
+        let database = Database::open_in_memory().unwrap();
+        let renal = deck(&database, "Renal physiology");
+        assert_eq!(
+            destination_deck_name(&database, &renal).unwrap(),
+            "Renal physiology"
+        );
+
+        let missing = destination_deck_name(&database, &"f".repeat(32)).unwrap_err();
+        assert_eq!(missing.code, "document_destination_deck_missing");
+
+        let archived = deck(&database, "Old cards");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "UPDATE decks SET archived_at = 1 WHERE id = ?1",
+                        [archived.as_str()],
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let archived = destination_deck_name(&database, &archived).unwrap_err();
+        assert_eq!(archived.code, "document_destination_deck_missing");
+
+        // Cards are appended by name, so a second active deck with that name
+        // could take them instead.
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO decks(id,name,description,created_at,updated_at,revision)
+                         SELECT ?1,name,description,created_at,updated_at,1 FROM decks WHERE id = ?2",
+                        [&"e".repeat(32), &renal],
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let ambiguous = destination_deck_name(&database, &renal).unwrap_err();
+        assert_eq!(ambiguous.code, "document_generated_deck_name_ambiguous");
+    }
 
     #[test]
     fn generated_import_payload_contains_card_content_but_not_internal_provenance() {

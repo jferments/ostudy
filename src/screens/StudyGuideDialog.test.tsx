@@ -5,7 +5,9 @@ import { requiredTestValue as required } from "../test/factories";
 import { layoutWidths, matchesLayoutQuery, type ViewportLayout } from "../test/viewport";
 import type { ShowToast } from "../components/Toast";
 import { openDocumentSource } from "../ipc/documents";
+import { readMaterialInk } from "../ipc/materialInk";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
+import { getSettings, type AppSettings } from "../ipc/settings";
 import {
   cancelDocumentStudyGuideGeneration,
   discardDocumentStudyGuideOverlay,
@@ -13,9 +15,12 @@ import {
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
   getDocumentTopicCardProjection,
+  getDocumentStudyGuideCanvas,
+  openDocumentStudyGuidePdf,
   prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
+  type StudyGuideCanvas,
   type PreparedStudyGuidePdf,
   type StudyGuideOverlay,
 } from "../ipc/studyGuides";
@@ -44,10 +49,14 @@ vi.mock("../ipc/studyGuides", async () => {
     getDocumentStudyGuide: vi.fn(),
     getDocumentTopicCardIds: vi.fn(),
     getDocumentTopicCardProjection: vi.fn(),
+    getDocumentStudyGuideCanvas: vi.fn(),
+    openDocumentStudyGuidePdf: vi.fn(),
     prepareDocumentStudyGuidePdf: vi.fn(),
     saveDocumentStudyGuideOverlay: vi.fn(),
   };
 });
+
+vi.mock("../ipc/materialInk", () => ({ readMaterialInk: vi.fn(), applyMaterialInkChanges: vi.fn() }));
 
 vi.mock("../ipc/studyGuideReading", () => ({
   getStudyGuideReading: vi.fn(),
@@ -65,6 +74,8 @@ vi.mock("../ipc/externalFiles", async () => {
     releasePreparedExport: vi.fn(),
   };
 });
+
+vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
 
 vi.mock("../ipc/documents", async () => {
   const actual = await vi.importActual<typeof import("../ipc/documents")>(
@@ -369,6 +380,9 @@ function readingStore(initial: Partial<StudyGuideReading> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The reader opens as plain text unless a test opens the canvas.
+  window.localStorage.setItem("ostudy.guidePageStyle", "plain");
+  vi.mocked(getSettings).mockResolvedValue({} as AppSettings);
   onPracticeCards.mockClear();
   mockedCancel.mockResolvedValue(undefined);
   mockedProjection.mockImplementation(async (_documentId, topic) => ({
@@ -697,18 +711,94 @@ describe("StudyGuideDialog", () => {
     expect(within(note).getByRole("button", { name: "Remove note" })).toBeTruthy();
   });
 
-  it("keeps section actions in one menu and guide actions in the top bar menu", async () => {
+  it("hides term meanings to test yourself, shows one at a time, and remembers the choice", async () => {
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+    await openSection("Preload");
+
+    const terms = within(screen.getByRole("complementary", { name: "About this section" })).getByRole("region", { name: "Important terms" });
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(within(terms).queryByText("End-diastolic ventricular stretch.")).toBeNull();
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("true");
+    fireEvent.click(within(terms).getByRole("button", { name: "Show what Preload means" }));
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+
+    fireEvent.click(within(terms).getByRole("switch", { name: "Hide meanings" }));
+    expect(window.localStorage.getItem("ostudy.guideHideTermMeanings")).toBe("false");
+    expect(within(terms).getByText("End-diastolic ventricular stretch.")).toBeTruthy();
+    window.localStorage.removeItem("ostudy.guideHideTermMeanings");
+  });
+
+  it("keeps section actions in one menu and guide actions in the top bar", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    const guideMenu = await openMenu(await screen.findByRole("button", { name: "Study guide actions" }));
-    expect(within(guideMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Export as PDF…", "Add guide note"]);
+    // Opening the guide in a PDF reader sits in the bar; saving a copy and the rest are in its menu.
+    expect(await screen.findByRole("button", { name: "Open in PDF reader" })).toBeTruthy();
+    const guideMenu = await openMenu(screen.getByRole("button", { name: "Study guide actions" }));
+    expect(within(guideMenu).getAllByRole("menuitem").map((item) => item.textContent))
+      .toEqual(["Save a copy as PDF…", "Add guide note", "Remake the study guide"]);
     fireEvent.keyDown(guideMenu, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Study guide actions" })).toBeNull());
 
     await openSection("Preload");
     const sectionMenu = await openMenu(screen.getByRole("button", { name: "Section actions for Preload" }));
     expect(within(sectionMenu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Mark as read", "Add note", "Edit or rewrite this section"]);
+  });
+
+  it("opens in a page theme as the guide's PDF pages on one canvas, with its contents beside them", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "sage");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    const contents = await screen.findByRole("navigation", { name: "Study guide contents" });
+    expect(getDocumentStudyGuideCanvas).toHaveBeenCalledWith(documentId, "sage");
+    expect(readMaterialInk).toHaveBeenCalledWith({ kind: "studyGuide", documentId });
+    expect(within(contents).getAllByRole("button").map((button) => button.textContent?.trim()).filter(Boolean)).toEqual([
+      "Cover and contents", "1. Loads", "1.1Preload", "1.2Afterload", "Cram sheet", "Self-test",
+    ]);
+    expect(document.querySelectorAll("[data-annotator-page]")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Add link" })).toBeTruthy();
+
+    // Each section's Practice button starts Practice on its linked cards.
+    fireEvent.click(await screen.findByRole("button", { name: "Practice flashcards for 1.1 Preload" }));
+    await waitFor(() => expect(onPracticeCards).toHaveBeenCalledWith(linkedCardIds));
+    expect(mockedCardIds).toHaveBeenCalledWith(documentId, [topicId]);
+
+    // A section's own actions sit in its contents row.
+    const menu = await openMenu(within(contents).getByRole("button", { name: "1.2 Afterload actions" }));
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent))
+      .toEqual(["Practice this section's flashcards", "Mark as read", "Edit or rewrite this section"]);
+  });
+
+  it("opens the guide in the system's PDF reader in the chosen theme", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "plum");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    vi.mocked(openDocumentStudyGuidePdf).mockResolvedValue(undefined);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open in PDF reader" }));
+    await waitFor(() => expect(openDocumentStudyGuidePdf).toHaveBeenCalledWith(documentId, "plum"));
+  });
+
+  it("offers the plain text when the pages cannot be laid out", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "navy");
+    vi.mocked(getDocumentStudyGuideCanvas).mockRejectedValue(new Error("no fonts"));
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+
+    expect(await screen.findByText("The study guide's pages could not be laid out: no fonts")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Read as plain text" }));
+    expect(await screen.findByRole("article", { name: "Physiology" })).toBeTruthy();
+    expect(window.localStorage.getItem("ostudy.guidePageStyle")).toBe("plain");
   });
 
   it("reopens on the section last opened and records each section opened", async () => {
@@ -961,20 +1051,13 @@ describe("StudyGuideDialog", () => {
       completedAt: 123,
     });
     const showToast = vi.fn();
+    vi.mocked(getSettings).mockResolvedValue({ guidePdfTheme: "plum", guidePdfIncludeNotes: includeNotes } as AppSettings);
     renderGuide({ showToast });
 
-    await chooseGuideAction("Export as PDF…");
-    const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-    const include = within(dialog).getByRole("checkbox", { name: "Include my notes" });
-    expect(include.getAttribute("aria-checked")).toBe("true");
-    if (!includeNotes) {
-      fireEvent.click(include);
-      await waitFor(() => expect(include.getAttribute("aria-checked")).toBe("false"));
-    }
-    fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
 
     await waitFor(() => {
-      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "navy");
+      expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, includeNotes, "plum");
       expect(mockedPublish).toHaveBeenCalledWith("8".repeat(32));
       expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32));
     });
@@ -982,21 +1065,29 @@ describe("StudyGuideDialog", () => {
       "success",
       "Exported study guide with 1 section.",
     );
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Export as PDF" })).toBeNull();
   });
 
-  it("keeps the export dialog open when preparing the PDF fails", async () => {
+  it("exports in Sage with notes when Settings has no PDF choices yet", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+    mockedPreparePdf.mockResolvedValue(preparedPdf());
+    mockedPublish.mockResolvedValue(null);
+    renderGuide();
+
+    await chooseGuideAction("Save a copy as PDF…");
+
+    await waitFor(() => expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, true, "sage"));
+  });
+
+  it("reports a PDF that could not be prepared and publishes nothing", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     mockedPreparePdf.mockRejectedValue(new Error("The PDF could not be prepared."));
     const showToast = vi.fn();
     renderGuide({ showToast });
 
-    await chooseGuideAction("Export as PDF…");
-    const dialog = await screen.findByRole("dialog", { name: "Export as PDF" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("error", "The PDF could not be prepared."));
-    expect(screen.getByRole("dialog", { name: "Export as PDF" })).toBeTruthy();
     expect(mockedPublish).not.toHaveBeenCalled();
   });
 
@@ -1008,8 +1099,7 @@ describe("StudyGuideDialog", () => {
     mockedPublish.mockResolvedValue({ preparedExportId: "8".repeat(32), displayName: "math.pdf", destinationKind: "file", completedAt: 123 });
     const showToast = vi.fn();
     renderGuide({ showToast });
-    await chooseGuideAction("Export as PDF…");
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Export as PDF" })).getByRole("button", { name: "Export PDF" }));
+    await chooseGuideAction("Save a copy as PDF…");
     const confirmation = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
     expect(mockedPublish).not.toHaveBeenCalled();
     expect(within(confirmation).getByText(/outside the native PDF math subset.*readable LaTeX source/iu)).toBeTruthy();
@@ -1227,6 +1317,28 @@ describe("Study-guide mathematical presentation", () => {
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
   });
 });
+
+/** The two-section guide laid out on four pages: the cover, one chapter, the cram sheet and the self-test. */
+function guideCanvas(): StudyGuideCanvas {
+  const page = (key: string) => ({ key, width: 538.58, height: 700, svg: '<svg viewBox="0 0 538.58 700" xmlns="http://www.w3.org/2000/svg"/>' });
+  return {
+    documentId,
+    guideRevision: 1,
+    theme: "sage",
+    pages: [page("front:1"), page("chapter:loads:1"), page("cram:1"), page("test:1")],
+    contents: [
+      { kind: "chapter", key: "loads", title: "Loads", number: "1", pageIndex: 1, y: 40 },
+      { kind: "section", key: topicId, title: "Preload", number: "1.1", pageIndex: 1, y: 120 },
+      { kind: "section", key: afterloadTopicId, title: "Afterload", number: "1.2", pageIndex: 1, y: 420 },
+      { kind: "cram", key: "cram", title: "Cram sheet", number: "", pageIndex: 2, y: 40 },
+      { kind: "selfTest", key: "selfTest", title: "Self-test", number: "", pageIndex: 3, y: 40 },
+    ],
+    practice: [
+      { topicId, pageIndex: 1, x: 450, y: 118, width: 68, height: 18.4 },
+      { topicId: afterloadTopicId, pageIndex: 1, x: 450, y: 418, width: 68, height: 18.4 },
+    ],
+  };
+}
 
 function setLayout(layout: ViewportLayout): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({

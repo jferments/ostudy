@@ -20,6 +20,14 @@ pub struct SyncSelection {
     pub flashcards: bool,
     pub documents: bool,
     pub study_guides: bool,
+    /// Notebooks with their pages, marks and pictures. Packages made before
+    /// notebooks travelled have no such field and carry none.
+    #[serde(default)]
+    pub notes: bool,
+    /// Lessons with their progress, teacher's lecture scripts, podcasts, voices,
+    /// narration audio and the marks drawn on slides.
+    #[serde(default)]
+    pub lessons: bool,
     pub api_settings: bool,
     pub api_credentials: bool,
 }
@@ -30,6 +38,8 @@ impl Default for SyncSelection {
             flashcards: true,
             documents: true,
             study_guides: true,
+            notes: true,
+            lessons: true,
             api_settings: false,
             api_credentials: false,
         }
@@ -43,6 +53,8 @@ impl SyncSelection {
             flashcards: true,
             documents: false,
             study_guides: false,
+            notes: false,
+            lessons: false,
             api_settings: include_api_settings,
             api_credentials: false,
         }
@@ -61,7 +73,12 @@ impl SyncSelection {
                 "Saved API keys can only be synchronized together with API provider settings.",
             ));
         }
-        if !self.flashcards && !self.documents && !self.api_settings {
+        if !self.flashcards
+            && !self.documents
+            && !self.notes
+            && !self.lessons
+            && !self.api_settings
+        {
             return Err(CommandError::new(
                 "device_sync_scope_empty",
                 "Select at least one synchronization category.",
@@ -72,7 +89,7 @@ impl SyncSelection {
 
     pub(crate) fn includes_table(self, table: &str) -> bool {
         if SUBJECT_TABLES.contains(&table) {
-            return self.flashcards || self.documents;
+            return self.carries_subjects();
         }
         if FLASHCARD_TABLES.contains(&table) {
             return self.flashcards;
@@ -83,6 +100,12 @@ impl SyncSelection {
         if STUDY_GUIDE_TABLES.contains(&table) {
             return self.study_guides;
         }
+        if NOTE_TABLES.contains(&table) {
+            return self.notes;
+        }
+        if LESSON_TABLES.contains(&table) {
+            return self.lessons;
+        }
         if CROSS_DOCUMENT_FLASHCARD_TABLES.contains(&table) {
             return self.documents && self.flashcards;
         }
@@ -91,9 +114,15 @@ impl SyncSelection {
         }
         false
     }
+
+    /// Whether subjects travel: everything but AI settings is filed in one.
+    pub(crate) fn carries_subjects(self) -> bool {
+        self.flashcards || self.documents || self.notes || self.lessons
+    }
 }
 
-/// Subjects hold decks and documents, so they travel with either category.
+/// Subjects hold decks, documents, notebooks and lessons, so they travel with
+/// any of those categories.
 /// Removing them from a Flashcards-only package would leave every filed deck
 /// pointing at a missing subject, and clearing `decks.subject_id` instead would
 /// unfile the receiver's decks: the receiver would see the sender change it.
@@ -158,6 +187,11 @@ pub(crate) const DOCUMENT_TABLES: &[&str] = &[
     "document_learning_plan_topics",
     "document_artifact_jobs",
     "document_artifact_metadata",
+    "document_annotations",
+    "document_figure_scans",
+    "document_figures",
+    "document_figure_passages",
+    "document_figure_readings",
 ];
 
 pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
@@ -167,12 +201,44 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
     "document_study_guide_checkpoints",
     "study_target_guides",
     "study_target_guide_overlays",
+    "document_study_guide_section_reads",
+    "document_study_guide_positions",
+    // `material_ink` rows drawn on guide pages; see `merge::SYNC_TABLES`.
+    "guide_ink",
+];
+
+/// Notebooks. `notebook_pictures` is the part of `assets` that notebook
+/// pictures hold.
+pub(crate) const NOTE_TABLES: &[&str] = &[
+    "notebooks",
+    "notebook_pages",
+    "notebook_items",
+    "notebook_pictures",
+    "notebook_item_assets",
+];
+
+/// Lessons and what is made from them. `lesson_audio` is the part of `assets`
+/// that narration and saved voices hold, and `slide_ink` the `material_ink`
+/// rows drawn on slides.
+pub(crate) const LESSON_TABLES: &[&str] = &[
+    "lessons",
+    "lesson_revisions",
+    "lesson_revision_units",
+    "lesson_progress",
+    "lecture_scripts",
+    "lesson_voices",
+    "podcasts",
+    "lesson_audio",
+    "speech_segments",
+    "speech_voices",
+    "slide_ink",
 ];
 
 pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] = &[
     "document_decks",
     "document_note_topics",
     "study_target_card_origins",
+    "note_annotation_sources",
 ];
 
 /// Native semantic admission for a copied/received question graph. The SQLite
@@ -410,12 +476,11 @@ pub(crate) fn sanitize_snapshot(
     // A sync package is not a complete-library backup. Remove private learning
     // state before deleting selected-domain parents, including serialized source
     // projections which can otherwise carry unselected material as plain text.
-    // Document annotations stay on the device that made them for now. So do
-    // lessons: the knowledge units they are written from are removed below.
-    // Teacher's lecture scripts, lesson narration, its audio and the speech
-    // setting go with them, and links from cards to the marks they were made
-    // from go with the marks.
-    // How far a learner has read each guide stays on the device too.
+    // Lesson narration and lessons themselves travel, but the knowledge units
+    // they are written from do not (removed below), and the speech setting is
+    // this device's choice, like its other settings. So is which of a
+    // subject's documents its study set leaves out, and how Notes is
+    // organized in folders and pins.
     connection
         .execute_batch("PRAGMA secure_delete = ON;")
         .map_err(CommandError::database)?;
@@ -435,22 +500,65 @@ pub(crate) fn sanitize_snapshot(
              DELETE FROM subject_filing_reviews;
              DELETE FROM review_day_rollup_built_decks;
              DELETE FROM review_day_rollups;
-             DELETE FROM document_annotations;
-             DELETE FROM lesson_progress;
-             DELETE FROM lecture_scripts;
-             DELETE FROM lesson_revision_units;
-             DELETE FROM lesson_revisions;
-             DELETE FROM lessons;
-             DELETE FROM note_annotation_sources;
-             CREATE TEMP TABLE sync_narration_assets AS SELECT asset_id FROM speech_segments;
-             DELETE FROM speech_segments;
              DELETE FROM speech_settings;
-             DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
-             DROP TABLE sync_narration_assets;
-             DELETE FROM document_study_guide_section_reads;
-             DELETE FROM document_study_guide_positions;",
+             DELETE FROM document_study_exclusions;
+             DELETE FROM notebook_shelf;
+             DELETE FROM note_folders;",
         )
         .map_err(CommandError::database)?;
+
+    if !(selection.documents && selection.flashcards) {
+        // A card made from a mark names the mark's document.
+        connection
+            .execute_batch("DELETE FROM note_annotation_sources;")
+            .map_err(CommandError::database)?;
+    }
+    if !selection.study_guides {
+        connection
+            .execute_batch(
+                "DELETE FROM document_study_guide_section_reads;
+                 DELETE FROM document_study_guide_positions;
+                 DELETE FROM material_ink WHERE document_id IS NOT NULL;",
+            )
+            .map_err(CommandError::database)?;
+    }
+    if !selection.lessons {
+        connection
+            .execute_batch(
+                "DELETE FROM material_ink WHERE lesson_id IS NOT NULL;
+                 DELETE FROM lesson_progress;
+                 DELETE FROM lecture_scripts;
+                 DELETE FROM podcasts;
+                 DELETE FROM lesson_revision_units;
+                 DELETE FROM lesson_revisions;
+                 DELETE FROM lesson_voices;
+                 DELETE FROM lessons;
+                 CREATE TEMP TABLE sync_narration_assets AS
+                     SELECT asset_id FROM speech_segments
+                     UNION SELECT asset_id FROM speech_voices;
+                 DELETE FROM speech_segments;
+                 DELETE FROM speech_voices;
+                 DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_narration_assets);
+                 DROP TABLE sync_narration_assets;",
+            )
+            .map_err(CommandError::database)?;
+    }
+    if !selection.notes {
+        connection
+            .execute_batch(
+                "CREATE TEMP TABLE sync_notebook_assets AS SELECT asset_id FROM notebook_item_assets;
+                 DELETE FROM notebook_item_assets;
+                 DELETE FROM notebook_items;
+                 DELETE FROM notebook_pages;
+                 DELETE FROM notebooks;
+                 DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_notebook_assets)
+                     AND id NOT IN (SELECT asset_id FROM note_assets)
+                     AND id NOT IN (SELECT asset_id FROM card_template_assets)
+                     AND id NOT IN (SELECT asset_id FROM question_attempt_assets);
+                 DROP TABLE sync_notebook_assets;",
+            )
+            .map_err(CommandError::database)?;
+    }
 
     if !selection.study_guides && selection.documents {
         connection
@@ -513,7 +621,10 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM card_merges;
                  DELETE FROM cards;
                  DELETE FROM notes;
-                 DELETE FROM assets;
+                 DELETE FROM assets
+                     WHERE id NOT IN (SELECT asset_id FROM notebook_item_assets)
+                     AND id NOT IN (SELECT asset_id FROM speech_segments)
+                     AND id NOT IN (SELECT asset_id FROM speech_voices);
                  DELETE FROM card_template_fields;
                  DELETE FROM card_templates;
                  DELETE FROM tags;
@@ -557,6 +668,11 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM document_study_guides;
                  DELETE FROM document_artifact_metadata;
                  DELETE FROM document_artifact_jobs;
+                 DELETE FROM document_figure_readings;
+                 DELETE FROM document_figure_passages;
+                 DELETE FROM document_figures;
+                 DELETE FROM document_figure_scans;
+                 DELETE FROM document_annotations;
                  DELETE FROM document_learning_plan_topics;
                  DELETE FROM document_learning_topics;
                  DELETE FROM document_learning_plans;
@@ -579,7 +695,7 @@ pub(crate) fn sanitize_snapshot(
             )
             .map_err(CommandError::database)?;
     }
-    if !selection.flashcards && !selection.documents {
+    if !selection.carries_subjects() {
         connection
             .execute_batch(
                 "DELETE FROM document_collections;
@@ -643,6 +759,8 @@ mod tests {
             flashcards: true,
             documents: false,
             study_guides: true,
+            notes: false,
+            lessons: false,
             api_settings: false,
             api_credentials: false,
         }
@@ -652,6 +770,8 @@ mod tests {
             flashcards: true,
             documents: false,
             study_guides: false,
+            notes: false,
+            lessons: false,
             api_settings: false,
             api_credentials: true,
         }
@@ -665,6 +785,8 @@ mod tests {
             flashcards: true,
             documents: false,
             study_guides: false,
+            notes: false,
+            lessons: false,
             api_settings: false,
             api_credentials: false,
         };
@@ -698,6 +820,8 @@ mod tests {
             flashcards: false,
             documents: true,
             study_guides: true,
+            notes: false,
+            lessons: false,
             api_settings: false,
             api_credentials: false,
         };
@@ -723,171 +847,347 @@ mod tests {
         assert!(all_learning.includes_table("study_target_card_origins"));
     }
 
-    #[test]
-    fn document_annotations_stay_on_the_device_that_made_them() {
+    /// Rows `count` finds once `seed` ran and the snapshot was sanitized for
+    /// `selection`.
+    fn left_after(
+        selection: SyncSelection,
+        seed: impl Fn(&Connection) -> Result<(), CommandError>,
+        count: &str,
+    ) -> i64 {
         let database = crate::database::Database::open_in_memory().unwrap();
-        let selection = SyncSelection::default();
-        let remaining: i64 = database
+        database
             .with_connection(|connection| {
-                let document = "d".repeat(32);
-                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
-                connection
-                    .execute(
-                        "INSERT INTO document_annotations(
-                             id, document_id, page_number, kind, payload_json,
-                             revision, created_at, updated_at
-                         ) VALUES (?1, ?2, 1, 'text', ?3, 1, 1, 1)",
-                        rusqlite::params![
-                            "a".repeat(32),
-                            document,
-                            r##"{"x":1,"y":1,"width":90,"text":"Margin note","color":"#111111","fontSize":12}"##
-                        ],
-                    )
-                    .map_err(CommandError::database)?;
+                seed(connection)?;
                 sanitize_snapshot(connection, selection)?;
                 connection
-                    .query_row("SELECT COUNT(*) FROM document_annotations", [], |row| {
-                        row.get(0)
-                    })
+                    .query_row(count, [], |row| row.get(0))
                     .map_err(CommandError::database)
             })
-            .unwrap();
-        assert_eq!(remaining, 0);
-        assert!(!selection.includes_table("document_annotations"));
+            .unwrap()
+    }
+
+    fn without(change: impl FnOnce(&mut SyncSelection)) -> SyncSelection {
+        let mut selection = SyncSelection::default();
+        change(&mut selection);
+        selection
+    }
+
+    fn seed_annotation(connection: &Connection) -> Result<(), CommandError> {
+        let document = "d".repeat(32);
+        crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+        connection
+            .execute(
+                "INSERT INTO document_annotations(
+                     id, document_id, page_number, kind, payload_json,
+                     revision, created_at, updated_at
+                 ) VALUES (?1, ?2, 1, 'text', ?3, 1, 1, 1)",
+                rusqlite::params![
+                    "a".repeat(32),
+                    document,
+                    r##"{"x":1,"y":1,"width":90,"text":"Margin note","color":"#111111","fontSize":12}"##
+                ],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
     }
 
     #[test]
-    fn card_mark_links_stay_on_the_device_that_made_them() {
-        let database = crate::database::Database::open_in_memory().unwrap();
-        let selection = SyncSelection::default();
-        let remaining: i64 = database
-            .with_connection(|connection| {
-                let document = "d".repeat(32);
-                crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
-                connection
-                    .execute_batch(&format!(
-                        "INSERT INTO decks(id, name, created_at, updated_at)
-                         VALUES ('{deck}', 'Cardiology', 1, 1);
-                         INSERT INTO notes(id, deck_id, front_doc, back_doc, front_text,
-                             back_text, created_at, updated_at)
-                         VALUES ('{note}', '{deck}', '{{}}', '{{}}', 'Q', 'A', 1, 1);
-                         INSERT INTO note_annotation_sources(note_id, document_id,
-                             annotation_id, page_number, quote, created_at, updated_at)
-                         VALUES ('{note}', '{document}', NULL, 1, 'Marked words', 1, 1);",
-                        deck = "1".repeat(32),
-                        note = "2".repeat(32),
-                    ))
-                    .map_err(CommandError::database)?;
-                sanitize_snapshot(connection, selection)?;
-                connection
-                    .query_row("SELECT COUNT(*) FROM note_annotation_sources", [], |row| {
-                        row.get(0)
-                    })
-                    .map_err(CommandError::database)
-            })
-            .unwrap();
-        assert_eq!(remaining, 0);
-        assert!(!selection.includes_table("note_annotation_sources"));
+    fn document_annotations_travel_with_documents() {
+        let count = "SELECT COUNT(*) FROM document_annotations";
+        assert_eq!(left_after(SyncSelection::default(), seed_annotation, count), 1);
+        let flashcards_only = without(|selection| {
+            selection.documents = false;
+            selection.study_guides = false;
+        });
+        assert_eq!(left_after(flashcards_only, seed_annotation, count), 0);
+        assert!(SyncSelection::default().includes_table("document_annotations"));
+        assert!(!flashcards_only.includes_table("document_annotations"));
+    }
+
+    fn seed_notebook(connection: &Connection) -> Result<(), CommandError> {
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO assets(id, original_filename, mime_type, byte_size,
+                     relative_path, created_at)
+                 VALUES ('{a}', 'sketch.png', 'image/png', 10, 'assets/images/{a}.png', 1);
+                 INSERT INTO notebooks(id, subject_id, title, paper, page_size, revision, created_at, updated_at)
+                 VALUES ('{n}', NULL, 'Cardiac cycle', 'grid', 'letter', 1, 1, 1);
+                 INSERT INTO notebook_pages(id, notebook_id, position, paper, width, height, created_at)
+                 VALUES ('{p}', '{n}', 1, 'grid', 612, 792, 1);
+                 INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
+                 VALUES ('{i}', '{p}', 'line', '{{\"x1\":1,\"y1\":1,\"x2\":9,\"y2\":9,\"color\":\"#111111\",\"strokeWidth\":2}}', 1, 1, 1);
+                 INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
+                 VALUES ('{j}', '{p}', 'image', '{{}}', 1, 1, 1);
+                 INSERT INTO notebook_item_assets(item_id, asset_id) VALUES ('{j}', '{a}');",
+                a = "f".repeat(32),
+                n = "a".repeat(32),
+                p = "b".repeat(32),
+                i = "c".repeat(32),
+                j = "e".repeat(32),
+            ))
+            .map_err(CommandError::database)
     }
 
     #[test]
-    fn lessons_stay_on_the_device_that_made_them() {
-        let database = crate::database::Database::open_in_memory().unwrap();
-        let selection = SyncSelection::default();
-        let remaining: i64 = database
-            .with_connection(|connection| {
-                let subject = "5".repeat(32);
-                let lesson = "a".repeat(32);
-                connection
-                    .execute_batch(&format!(
-                        "INSERT INTO document_collections(id, name, sort_order, created_at,
-                             updated_at, revision)
-                         VALUES ('{subject}', 'Renal', 1000, 1, 1, 1);
-                         INSERT INTO lessons(id, subject_id, sort_order, title, revision,
-                             created_at, updated_at)
-                         VALUES ('{lesson}', '{subject}', 1000, 'Loop of Henle', 1, 1, 1);
-                         INSERT INTO lesson_revisions(lesson_id, revision_number, origin,
-                             content_json, content_hash, provenance_json, created_at)
-                         VALUES ('{lesson}', 1, 'authored', '{{}}', '{hash}', NULL, 1);
-                         INSERT INTO lesson_revision_units(lesson_id, revision_number, unit_id,
-                             unit_content_hash)
-                         VALUES ('{lesson}', 1, '{unit}', '{hash}');
-                         INSERT INTO lesson_progress(lesson_id, revision_number, current_step,
-                             furthest_step, checks_json, revision, started_at, updated_at,
-                             finished_at)
-                         VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);
-                         INSERT INTO lecture_scripts(lesson_id, revision_number, script_json,
-                             provenance_json, created_at)
-                         VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);",
-                        hash = "b".repeat(64),
-                        unit = "c".repeat(32),
-                    ))
-                    .map_err(CommandError::database)?;
-                sanitize_snapshot(connection, selection)?;
-                connection
-                    .query_row(
-                        "SELECT (SELECT COUNT(*) FROM lessons)
-                              + (SELECT COUNT(*) FROM lesson_revisions)
-                              + (SELECT COUNT(*) FROM lesson_revision_units)
-                              + (SELECT COUNT(*) FROM lesson_progress)
-                              + (SELECT COUNT(*) FROM lecture_scripts)",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)
-            })
-            .unwrap();
-        assert_eq!(remaining, 0);
+    fn notebooks_travel_with_notes_even_without_flashcards() {
+        let count = "SELECT (SELECT COUNT(*) FROM notebooks)
+                          + (SELECT COUNT(*) FROM notebook_pages)
+                          + (SELECT COUNT(*) FROM notebook_items)
+                          + (SELECT COUNT(*) FROM notebook_item_assets)
+                          + (SELECT COUNT(*) FROM assets)";
+        assert_eq!(left_after(SyncSelection::default(), seed_notebook, count), 6);
+        let notes_only = SyncSelection {
+            flashcards: false,
+            documents: false,
+            study_guides: false,
+            notes: true,
+            lessons: false,
+            api_settings: false,
+            api_credentials: false,
+        };
+        assert!(notes_only.validate().is_ok());
+        // The picture is kept though card images are not.
+        assert_eq!(left_after(notes_only, seed_notebook, count), 6);
+        let without_notes = without(|selection| selection.notes = false);
+        assert_eq!(left_after(without_notes, seed_notebook, count), 0);
+        for table in NOTE_TABLES {
+            assert!(notes_only.includes_table(table));
+            assert!(!without_notes.includes_table(table));
+        }
+        assert!(notes_only.includes_table("document_collections"));
+    }
+
+    fn seed_figures(connection: &Connection) -> Result<(), CommandError> {
+        let document = "d".repeat(32);
+        crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO document_figure_scans(document_id, use_images, state,
+                     detector, scanned_at, updated_at)
+                 VALUES ('{document}', 1, 'found', 'test', 1, 1);
+                 INSERT INTO document_figures(document_id, figure_id, ordinal,
+                     page_number, page_width, page_height, kind, box_left, box_top,
+                     box_width, box_height, label, caption, hidden, created_at,
+                     updated_at)
+                 VALUES ('{document}', 'p00001-01', 0, 1, 612, 792, 'image',
+                     72, 72, 200, 150, 'Figure 1', 'Figure 1. The heart.', 0, 1, 1);
+                 INSERT INTO document_figure_passages(document_id, figure_id, ordinal,
+                     page_number, kind, excerpt)
+                 VALUES ('{document}', 'p00001-01', 0, 1, 'mention', 'See Figure 1.');
+                 INSERT INTO document_figure_readings(document_id, figure_id, title,
+                     shows, concepts_json, explained_json, importance,
+                     worth_studying, provider, model, read_at)
+                 VALUES ('{document}', 'p00001-01', 'The heart', 'Four chambers.',
+                     '[]', '[1]', 4, 1, 'openrouter', 'test', 1);"
+            ))
+            .map_err(CommandError::database)
+    }
+
+    #[test]
+    fn document_figures_travel_with_documents() {
+        let count = "SELECT (SELECT COUNT(*) FROM document_figure_scans)
+                          + (SELECT COUNT(*) FROM document_figures)
+                          + (SELECT COUNT(*) FROM document_figure_passages)
+                          + (SELECT COUNT(*) FROM document_figure_readings)";
+        assert_eq!(left_after(SyncSelection::default(), seed_figures, count), 4);
+        let flashcards_only = without(|selection| {
+            selection.documents = false;
+            selection.study_guides = false;
+        });
+        assert_eq!(left_after(flashcards_only, seed_figures, count), 0);
         for table in [
-            "lessons",
-            "lesson_revisions",
-            "lesson_revision_units",
-            "lesson_progress",
-            "lecture_scripts",
+            "document_figure_scans",
+            "document_figures",
+            "document_figure_passages",
+            "document_figure_readings",
         ] {
-            assert!(!selection.includes_table(table));
+            assert!(SyncSelection::default().includes_table(table));
+            assert!(!flashcards_only.includes_table(table));
         }
     }
 
+    fn seed_card_mark_link(connection: &Connection) -> Result<(), CommandError> {
+        let document = "d".repeat(32);
+        crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO decks(id, name, created_at, updated_at)
+                 VALUES ('{deck}', 'Cardiology', 1, 1);
+                 INSERT INTO notes(id, deck_id, front_doc, back_doc, front_text,
+                     back_text, created_at, updated_at)
+                 VALUES ('{note}', '{deck}', '{{}}', '{{}}', 'Q', 'A', 1, 1);
+                 INSERT INTO note_annotation_sources(note_id, document_id,
+                     annotation_id, page_number, quote, created_at, updated_at)
+                 VALUES ('{note}', '{document}', NULL, 1, 'Marked words', 1, 1);",
+                deck = "1".repeat(32),
+                note = "2".repeat(32),
+            ))
+            .map_err(CommandError::database)
+    }
+
     #[test]
-    fn lesson_narration_and_its_audio_stay_on_the_device_that_made_them() {
-        let database = crate::database::Database::open_in_memory().unwrap();
-        let selection = SyncSelection::default();
-        let remaining: i64 = database
-            .with_connection(|connection| {
-                let asset = "d".repeat(32);
-                connection
-                    .execute_batch(&format!(
-                        "INSERT INTO assets(id, original_filename, mime_type, byte_size,
-                             relative_path, created_at)
-                         VALUES ('{asset}', 'narration.mp3', 'audio/mpeg', 10,
-                             'assets/images/{asset}.mp3', 1);
-                         INSERT INTO speech_segments(id, text_sha256, engine, model_id, voice,
-                             format, asset_id, characters, created_at)
-                         VALUES ('{segment}', '{hash}', 'openrouter', 'hexgrad/kokoro-82m',
-                             'af_heart', 'mp3', '{asset}', 12, 1);
-                         INSERT INTO speech_settings(id, profile_id, model_id, voice, revision,
-                             updated_at)
-                         VALUES (1, NULL, 'hexgrad/kokoro-82m', 'af_heart', 1, 1);",
-                        segment = "e".repeat(32),
-                        hash = "b".repeat(64),
-                    ))
-                    .map_err(CommandError::database)?;
-                sanitize_snapshot(connection, selection)?;
-                connection
-                    .query_row(
-                        "SELECT (SELECT COUNT(*) FROM speech_segments)
-                              + (SELECT COUNT(*) FROM speech_settings)
-                              + (SELECT COUNT(*) FROM assets)",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)
-            })
-            .unwrap();
-        assert_eq!(remaining, 0);
-        for table in ["speech_segments", "speech_settings"] {
-            assert!(!selection.includes_table(table));
+    fn card_mark_links_travel_with_flashcards_and_documents() {
+        let count = "SELECT COUNT(*) FROM note_annotation_sources";
+        assert_eq!(left_after(SyncSelection::default(), seed_card_mark_link, count), 1);
+        let flashcards_only = without(|selection| {
+            selection.documents = false;
+            selection.study_guides = false;
+        });
+        assert_eq!(left_after(flashcards_only, seed_card_mark_link, count), 0);
+        assert!(SyncSelection::default().includes_table("note_annotation_sources"));
+        assert!(!flashcards_only.includes_table("note_annotation_sources"));
+    }
+
+    fn seed_lesson(connection: &Connection) -> Result<(), CommandError> {
+        let subject = "5".repeat(32);
+        let lesson = "a".repeat(32);
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO document_collections(id, name, sort_order, created_at,
+                     updated_at, revision)
+                 VALUES ('{subject}', 'Renal', 1000, 1, 1, 1);
+                 INSERT INTO lessons(id, subject_id, sort_order, title, revision,
+                     created_at, updated_at)
+                 VALUES ('{lesson}', '{subject}', 1000, 'Loop of Henle', 1, 1, 1);
+                 INSERT INTO lesson_revisions(lesson_id, revision_number, origin,
+                     content_json, content_hash, provenance_json, created_at)
+                 VALUES ('{lesson}', 1, 'authored', '{{}}', '{hash}', NULL, 1);
+                 INSERT INTO lesson_revision_units(lesson_id, revision_number, unit_id,
+                     unit_content_hash)
+                 VALUES ('{lesson}', 1, '{unit}', '{hash}');
+                 INSERT INTO lesson_progress(lesson_id, revision_number, current_step,
+                     furthest_step, checks_json, revision, started_at, updated_at,
+                     finished_at)
+                 VALUES ('{lesson}', 1, 0, 0, '{{}}', 1, 1, 1, NULL);
+                 INSERT INTO lecture_scripts(lesson_id, revision_number, script_json,
+                     provenance_json, created_at)
+                 VALUES ('{lesson}', 1, '{{}}', '{{}}', 1);
+                 INSERT INTO lesson_voices(lesson_id, model_id, voice, created_at)
+                 VALUES ('{lesson}', 'hexgrad/kokoro-82m', 'af_heart', 1);
+                 INSERT INTO podcasts(id, subject_id, title, target_minutes, model_id,
+                     first_voice, second_voice, script_json, provenance_json,
+                     created_at)
+                 VALUES ('{lesson}', '{subject}', 'Renal', 15, 'hexgrad/kokoro-82m',
+                     'af_heart', 'am_michael', '{{}}', '{{}}', 1);
+                 INSERT INTO material_ink(id, lesson_id, document_id, page_key, kind,
+                     payload_json, revision, created_at, updated_at)
+                 VALUES ('{ink}', '{lesson}', NULL, 'slide-1', 'line', '{{}}', 1, 1, 1);",
+                hash = "b".repeat(64),
+                unit = "c".repeat(32),
+                ink = "e".repeat(32),
+            ))
+            .map_err(CommandError::database)
+    }
+
+    #[test]
+    fn lessons_travel_with_lessons() {
+        let count = "SELECT (SELECT COUNT(*) FROM lessons)
+                          + (SELECT COUNT(*) FROM lesson_revisions)
+                          + (SELECT COUNT(*) FROM lesson_revision_units)
+                          + (SELECT COUNT(*) FROM lesson_progress)
+                          + (SELECT COUNT(*) FROM lecture_scripts)
+                          + (SELECT COUNT(*) FROM lesson_voices)
+                          + (SELECT COUNT(*) FROM podcasts)
+                          + (SELECT COUNT(*) FROM material_ink)";
+        assert_eq!(left_after(SyncSelection::default(), seed_lesson, count), 8);
+        let lessons_only = SyncSelection {
+            flashcards: false,
+            documents: false,
+            study_guides: false,
+            notes: false,
+            lessons: true,
+            api_settings: false,
+            api_credentials: false,
+        };
+        assert_eq!(left_after(lessons_only, seed_lesson, count), 8);
+        let without_lessons = without(|selection| selection.lessons = false);
+        assert_eq!(left_after(without_lessons, seed_lesson, count), 0);
+        for table in LESSON_TABLES {
+            assert!(lessons_only.includes_table(table));
+            assert!(!without_lessons.includes_table(table));
+        }
+    }
+
+    fn seed_narration(connection: &Connection) -> Result<(), CommandError> {
+        let asset = "d".repeat(32);
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO assets(id, original_filename, mime_type, byte_size,
+                     relative_path, created_at)
+                 VALUES ('{asset}', 'narration.mp3', 'audio/mpeg', 10,
+                     'assets/images/{asset}.mp3', 1);
+                 INSERT INTO speech_segments(id, text_sha256, engine, model_id, voice,
+                     format, asset_id, characters, created_at)
+                 VALUES ('{segment}', '{hash}', 'openrouter', 'hexgrad/kokoro-82m',
+                     'af_heart', 'mp3', '{asset}', 12, 1);
+                 INSERT INTO speech_settings(id, profile_id, model_id, voice, revision,
+                     updated_at)
+                 VALUES (1, NULL, 'hexgrad/kokoro-82m', 'af_heart', 1, 1);
+                 INSERT INTO assets(id, original_filename, mime_type, byte_size,
+                     relative_path, created_at)
+                 VALUES ('{sample}', 'voice.mp3', 'audio/mpeg', 10,
+                     'assets/images/{sample}.mp3', 1);
+                 INSERT INTO speech_voices(id, model_id, name, state, sample_text,
+                     asset_id, created_at, updated_at)
+                 VALUES ('{voice}', 'fish-audio/drama-3', 'Voice 1', 'saved', 'Hello.',
+                     '{sample}', 1, 1);",
+                segment = "e".repeat(32),
+                hash = "b".repeat(64),
+                sample = "f".repeat(32),
+                voice = "a".repeat(32),
+            ))
+            .map_err(CommandError::database)
+    }
+
+    #[test]
+    fn narration_audio_travels_with_lessons_and_the_speech_setting_never_does() {
+        let count = "SELECT (SELECT COUNT(*) FROM speech_segments)
+                          + (SELECT COUNT(*) FROM speech_voices)
+                          + (SELECT COUNT(*) FROM assets)";
+        let settings = "SELECT COUNT(*) FROM speech_settings";
+        let lessons_only = SyncSelection {
+            flashcards: false,
+            documents: false,
+            study_guides: false,
+            notes: false,
+            lessons: true,
+            api_settings: false,
+            api_credentials: false,
+        };
+        assert_eq!(left_after(SyncSelection::default(), seed_narration, count), 4);
+        assert_eq!(left_after(lessons_only, seed_narration, count), 4);
+        assert_eq!(left_after(SyncSelection::default(), seed_narration, settings), 0);
+        let without_lessons = without(|selection| selection.lessons = false);
+        assert_eq!(left_after(without_lessons, seed_narration, count), 0);
+        assert!(!SyncSelection::default().includes_table("speech_settings"));
+    }
+
+    fn seed_guide_reading(connection: &Connection) -> Result<(), CommandError> {
+        let document = "d".repeat(32);
+        crate::collections::test_support::seed_document(connection, &document, 1, 'a')?;
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO material_ink(id, lesson_id, document_id, page_key, kind,
+                     payload_json, revision, created_at, updated_at)
+                 VALUES ('{ink}', NULL, '{document}', 'overview', 'line', '{{}}', 1, 1, 1);",
+                ink = "e".repeat(32),
+            ))
+            .map_err(CommandError::database)
+    }
+
+    #[test]
+    fn ink_on_guide_pages_travels_with_study_guides() {
+        let count = "SELECT COUNT(*) FROM material_ink";
+        assert_eq!(left_after(SyncSelection::default(), seed_guide_reading, count), 1);
+        let without_guides = without(|selection| selection.study_guides = false);
+        assert_eq!(left_after(without_guides, seed_guide_reading, count), 0);
+        for table in [
+            "document_study_guide_section_reads",
+            "document_study_guide_positions",
+            "guide_ink",
+        ] {
+            assert!(SyncSelection::default().includes_table(table));
+            assert!(!without_guides.includes_table(table));
         }
     }
 }

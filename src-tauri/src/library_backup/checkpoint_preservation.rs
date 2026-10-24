@@ -233,6 +233,116 @@ const CONTRACTS: &[Contract] = &[
             description: "lecture script",
         }],
     },
+    Contract {
+        version: 16,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "speech_voices",
+                description: "saved voice",
+            },
+            Rule::AddedEmpty {
+                table: "lesson_voices",
+                description: "lesson voice",
+            },
+        ],
+    },
+    Contract {
+        version: 17,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "podcasts",
+            description: "podcast",
+        }],
+    },
+    // Notebooks are made in the app; the upgrade only creates their tables.
+    Contract {
+        version: 18,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "notebooks",
+                description: "notebooks",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_pages",
+                description: "notebook pages",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_items",
+                description: "notebook marks",
+            },
+        ],
+    },
+    // Figures are found after import; the upgrade only creates their tables.
+    Contract {
+        version: 19,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "document_figure_scans",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figures",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figure_passages",
+                description: "document figures",
+            },
+            Rule::AddedEmpty {
+                table: "document_figure_readings",
+                description: "document figures",
+            },
+        ],
+    },
+    // Pictures on notebook pages are placed in the app; the upgrade only
+    // creates the table that keeps them.
+    Contract {
+        version: 20,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "notebook_item_assets",
+            description: "notebook pictures",
+        }],
+    },
+    // Ink on slides and guide pages is drawn in the app; the upgrade only
+    // creates its table.
+    Contract {
+        version: 21,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "material_ink",
+            description: "slide and guide page marks",
+        }],
+    },
+    // Which documents a subject's study set leaves out is chosen in the app;
+    // the upgrade only creates its table.
+    Contract {
+        version: 22,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "document_study_exclusions",
+            description: "documents left out of a subject's study set",
+        }],
+    },
+    // Notes folders and pins are made in the app; the upgrade only creates
+    // their tables.
+    Contract {
+        version: 23,
+        setup: "",
+        rules: &[
+            Rule::AddedEmpty {
+                table: "note_folders",
+                description: "Notes folders",
+            },
+            Rule::AddedEmpty {
+                table: "notebook_shelf",
+                description: "notebook folders and pins",
+            },
+        ],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

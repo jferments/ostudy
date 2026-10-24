@@ -110,7 +110,12 @@ WITH guide_rows AS (
         guide.id AS guide_id,
         'document' AS target_kind,
         document.id AS target_id,
-        document.title AS title,
+        -- A guide is listed by its own title once it has one; the
+        -- document's can be a generic fallback such as "Study material".
+        COALESCE(
+            NULLIF(trim(json_extract(guide.overview_json, '$.editorial.title')), ''),
+            document.title
+        ) AS title,
         document.original_filename AS original_filename,
         document.source_format AS source_format,
         document.source_unit_kind AS source_unit_kind,
@@ -404,6 +409,36 @@ mod tests {
                 Ok(())
             })
             .expect("guide fixture should insert");
+    }
+
+    #[test]
+    fn a_guide_is_listed_and_found_by_its_own_title() {
+        let database = Database::open_in_memory().expect("database should open");
+        insert_guide(&database, '1', "Study material", "renal.pdf", 20);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "UPDATE document_study_guides SET overview_json = ?1",
+                        params![r#"{"summary":"Overview","learningObjectives":[],"keyConcepts":[],"editorial":{"title":"Renal Physiology"}}"#],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("editorial title should store");
+        let page = list_study_guides(
+            &database,
+            ListStudyGuidesInput {
+                query: "renal phys".to_string(),
+                sort: StudyGuideLibrarySort::TitleAsc,
+                offset: 0,
+                limit: 40,
+                subject: StudyGuideSubjectFilter::All,
+            },
+        )
+        .expect("page should load");
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.items[0].title, "Renal Physiology");
     }
 
     #[test]

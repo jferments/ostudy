@@ -198,6 +198,10 @@ function emptySummary(subjectId: string): HomeSubjectSummary {
     deckCount: 0,
     sourceCount: 0,
     hasOverviewGuide: false,
+    guideCount: 0,
+    lessonCount: 0,
+    podcastCount: 0,
+    cover: null,
     dueDeckIds: [],
   };
 }

@@ -356,7 +356,7 @@ describe("HomeScreen", () => {
     await screen.findByTestId("home-today");
     const tile = screen.getAllByTestId("subject-tile").find((element) => element.dataset.subjectId === "renal");
     expect(within(tile as HTMLElement).getByText("Preparing")).toBeTruthy();
-    expect(within(tile as HTMLElement).getByText("Extracting document content: Week 4 notes")).toBeTruthy();
+    expect(within(tile as HTMLElement).getByText("Opening your document: Week 4 notes")).toBeTruthy();
   });
 
   it("names a new subject and shows it at once", async () => {
@@ -446,8 +446,11 @@ describe("HomeScreen", () => {
     expect(welcome.querySelector("p")).toBeNull();
     expect(within(welcome).queryByRole("button", { name: "Open Library" })).toBeNull();
     expect(screen.queryByTestId("home-today")).toBeNull();
+    // A document always goes into a subject, so importing one starts a study set.
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a document" }));
-    expect(jobs.current.uploadDocument).toHaveBeenCalledOnce();
+    const studySet = await screen.findByRole("dialog", { name: "New study set" });
+    fireEvent.click(within(studySet).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New study set" })).toBeNull());
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a deck" }));
     const importDialog = await screen.findByRole("dialog", { name: "Import deck" });
     fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
@@ -614,7 +617,7 @@ function lessonSummary(
     subjectId,
     title,
     revision: 1,
-    written: { revisionNumber: 1, origin: "generated", stepCount: 8, checkCount: 2, estimatedMinutes: 12, sources: "current", createdAt: 1 },
+    written: { revisionNumber: 1, origin: "generated", stepCount: 8, checkCount: 2, estimatedMinutes: 12, sources: "current", inStudyPlan: true, createdAt: 1 },
     progress: {
       revisionNumber: 1,
       currentStep: progress.currentStep,

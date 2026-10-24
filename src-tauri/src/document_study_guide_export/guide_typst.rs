@@ -29,6 +29,7 @@ use crate::error::CommandError;
 
 const TEMPLATE: &str = include_str!("typst/guide.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
+const BLOCKS: &str = include_str!("typst/blocks.typ");
 const BUNDLED_FONTS: &[&[u8]] = include!(concat!(env!("OUT_DIR"), "/pdf_fonts.rs"));
 
 /// IBM Plex Sans Regular, the first face `build.rs` bundles: a Unicode sans
@@ -54,7 +55,7 @@ pub(crate) enum StudyGuidePdfTheme {
 }
 
 impl StudyGuidePdfTheme {
-    fn key(self) -> &'static str {
+    pub(crate) fn key(self) -> &'static str {
         match self {
             Self::Navy => "navy",
             Self::Sage => "sage",
@@ -66,14 +67,32 @@ impl StudyGuidePdfTheme {
 
 /// An image placed in the guide, already encoded as PNG.
 #[derive(Clone, Debug)]
-pub(super) struct FigureImage(pub(super) Vec<u8>);
+pub(super) struct FigureImage {
+    png: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+/// A figure is at most this wide and this tall on the page, in millimetres,
+/// so a page holds text and no more than about three figures.
+const FIGURE_MAX_WIDTH_MM: f64 = 150.0;
+const FIGURE_MAX_HEIGHT_MM: f64 = 70.0;
+const FIGURE_MIN_WIDTH_MM: f64 = 45.0;
 
 impl FigureImage {
     pub(super) fn from_rgba(rgba: image::RgbaImage) -> Option<Self> {
-        let mut bytes = Vec::new();
-        rgba.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        let (width, height) = rgba.dimensions();
+        let mut png = Vec::new();
+        rgba.write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
             .ok()?;
-        Some(Self(bytes))
+        Some(Self { png, width, height })
+    }
+
+    /// The width it is placed at: as wide as it can be without passing the
+    /// height limit, and never so narrow its labels cannot be read.
+    fn width_mm(&self) -> f64 {
+        let aspect = f64::from(self.width.max(1)) / f64::from(self.height.max(1));
+        (FIGURE_MAX_HEIGHT_MM * aspect).clamp(FIGURE_MIN_WIDTH_MM, FIGURE_MAX_WIDTH_MM)
     }
 }
 
@@ -100,6 +119,63 @@ pub(super) fn render_bytes(
     pdf
 }
 
+/// One laid-out page of the guide for the reader's canvas: its size in points
+/// and the page as a standalone SVG.
+#[derive(Clone, Debug)]
+pub(super) struct CanvasPage {
+    pub(super) width: f64,
+    pub(super) height: f64,
+    pub(super) svg: String,
+}
+
+/// Where a chapter, section, Practice button, cram sheet or self-test landed:
+/// its 1-based page and its top-left corner in points from the page's.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub(super) struct CanvasAnchor {
+    pub(super) kind: String,
+    pub(super) key: String,
+    pub(super) page: usize,
+    pub(super) x: f64,
+    pub(super) y: f64,
+}
+
+/// The whole guide laid out exactly as the PDF export lays it out, as one SVG
+/// per page, with where each chapter, section and Practice button landed.
+pub(super) fn canvas(
+    export: &EffectiveGuideExport,
+    theme: StudyGuidePdfTheme,
+) -> Result<(Vec<CanvasPage>, Vec<CanvasAnchor>), CommandError> {
+    use typst::introspection::{Introspector, MetadataElem};
+    let laid_out = compile(export, theme).map(|document| {
+        let options = typst_svg::SvgOptions::default();
+        let pages = document
+            .pages()
+            .iter()
+            .map(|page| CanvasPage {
+                width: page.frame.width().to_pt(),
+                height: page.frame.height().to_pt(),
+                svg: typst_svg::svg(page, &options),
+            })
+            .collect::<Vec<_>>();
+        let label = typst::foundations::Label::new(typst::utils::PicoStr::intern("canvas-anchor"))
+            .expect("static label");
+        let anchors = document
+            .introspector()
+            .query(&typst::foundations::Selector::Label(label))
+            .iter()
+            .filter_map(|content| {
+                let value = &content.to_packed::<MetadataElem>()?.value;
+                serde_json::to_value(value)
+                    .ok()
+                    .and_then(|value| serde_json::from_value::<CanvasAnchor>(value).ok())
+            })
+            .collect::<Vec<_>>();
+        (pages, anchors)
+    });
+    typst::comemo::evict(0);
+    laid_out
+}
+
 fn compile(
     export: &EffectiveGuideExport,
     theme: StudyGuidePdfTheme,
@@ -110,14 +186,60 @@ fn compile(
         file_id("/data.json"),
         Bytes::new(serde_json::to_vec(&data).map_err(|error| export_error(error.to_string()))?),
     );
-    let world = GuideWorld {
-        main: Source::new(file_id("/guide.typ"), TEMPLATE.to_string()),
-        themes: Source::new(file_id("/themes.typ"), THEMES.to_string()),
-        files,
-    };
+    compile_world(TEMPLATE, files).map_err(export_error)
+}
+
+fn compile_world(template: &str, files: HashMap<FileId, Bytes>) -> Result<PagedDocument, String> {
+    let world = GuideWorld::new(template, files);
     typst::compile::<PagedDocument>(&world)
         .output
-        .map_err(|diagnostics| export_error(describe(&diagnostics)))
+        .map_err(|diagnostics| describe(&diagnostics))
+}
+
+/// Lays out another compiled-in template that imports the guide themes, with
+/// `data` as its /data.json, and returns each page as a standalone SVG. The
+/// world is the guide's: bundled fonts and nothing from disk or the network.
+/// `extra` holds more files the template reads, such as images, each at its
+/// absolute path.
+pub(crate) fn compile_template_svgs_with(
+    template: &str,
+    data: &Value,
+    extra: Vec<(String, Vec<u8>)>,
+) -> Result<Vec<String>, String> {
+    let mut files = HashMap::new();
+    for (path, bytes) in extra {
+        files.insert(file_id(&path), Bytes::new(bytes));
+    }
+    files.insert(
+        file_id("/data.json"),
+        Bytes::new(serde_json::to_vec(data).map_err(|error| error.to_string())?),
+    );
+    let pages = compile_world(template, files).map(|document| {
+        let options = typst_svg::SvgOptions::default();
+        document
+            .pages()
+            .iter()
+            .map(|page| typst_svg::svg(page, &options))
+            .collect()
+    });
+    typst::comemo::evict(0);
+    pages
+}
+
+/// Lays out another compiled-in template the same way, with `data` as its
+/// /data.json, and returns the PDF bytes.
+pub(crate) fn compile_template_pdf(template: &str, data: &Value) -> Result<Vec<u8>, String> {
+    let mut files = HashMap::new();
+    files.insert(
+        file_id("/data.json"),
+        Bytes::new(serde_json::to_vec(data).map_err(|error| error.to_string())?),
+    );
+    let pdf = compile_world(template, files).and_then(|document| {
+        typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .map_err(|diagnostics| describe(&diagnostics))
+    });
+    typst::comemo::evict(0);
+    pdf
 }
 
 /// The laid-out text of each page, including running headers and repeated
@@ -172,8 +294,22 @@ fn file_id(path: &str) -> FileId {
 
 struct GuideWorld {
     main: Source,
-    themes: Source,
+    /// The modules templates may import: the themes and the shared blocks.
+    modules: [Source; 2],
     files: HashMap<FileId, Bytes>,
+}
+
+impl GuideWorld {
+    fn new(template: &str, files: HashMap<FileId, Bytes>) -> Self {
+        Self {
+            main: Source::new(file_id("/main.typ"), template.to_string()),
+            modules: [
+                Source::new(file_id("/themes.typ"), THEMES.to_string()),
+                Source::new(file_id("/blocks.typ"), BLOCKS.to_string()),
+            ],
+            files,
+        }
+    }
 }
 
 impl World for GuideWorld {
@@ -190,13 +326,11 @@ impl World for GuideWorld {
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
-        if id == self.main.id() {
-            Ok(self.main.clone())
-        } else if id == self.themes.id() {
-            Ok(self.themes.clone())
-        } else {
-            Err(FileError::AccessDenied)
-        }
+        std::iter::once(&self.main)
+            .chain(&self.modules)
+            .find(|source| source.id() == id)
+            .cloned()
+            .ok_or(FileError::AccessDenied)
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
@@ -258,7 +392,7 @@ const SYSTEM_FALLBACK_FONTS: &[&str] = &[
 
 /// Splits text into template runs: plain text, translated math, or LaTeX kept
 /// as visible source when it is outside the bounded subset.
-fn runs(text: &str) -> Value {
+pub(crate) fn runs(text: &str) -> Value {
     let mut result = Vec::new();
     for segment in math_source::segments(text) {
         match segment {
@@ -303,6 +437,7 @@ fn guide_data(
         .iter()
         .map(|chapter| {
             json!({
+                "key": chapter.key,
                 "title": runs(&chapter.title),
                 "intro": runs(&chapter.introduction),
                 "sections": chapter.section_indices,
@@ -336,6 +471,13 @@ fn section_data(
     figure_count: &mut usize,
 ) -> Value {
     let mut lead_used = false;
+    // Figures go under the key points they illustrate, or after the overview.
+    let figure_after = section
+        .body_lines
+        .iter()
+        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
+        .map_or(0, |heading| heading + 1)
+        .min(section.body_lines.len().saturating_sub(1));
     let blocks = section
         .body_lines
         .iter()
@@ -353,19 +495,22 @@ fn section_data(
             // stay bounded.
             let path = format!("/figures/{figure_count}.png");
             *figure_count += 1;
-            files.insert(file_id(&path), Bytes::new(figure.image.0.clone()));
+            files.insert(file_id(&path), Bytes::new(figure.image.png.clone()));
             json!({
                 "path": path,
+                "width": figure.image.width_mm(),
                 "title": runs(&figure.title),
                 "caption": runs(&figure.caption),
             })
         })
         .collect::<Vec<_>>();
     json!({
+        "key": section.key,
         "title": runs(&section.title),
         "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,
         "figures": figures,
+        "figureAfter": figure_after,
         "notes": run_list(&section.notes),
     })
 }
@@ -544,11 +689,7 @@ mod tests {
             file_id("/data.json"),
             Bytes::new(serde_json::to_vec(&data).unwrap()),
         );
-        let world = GuideWorld {
-            main: Source::new(file_id("/guide.typ"), TEMPLATE.to_string()),
-            themes: Source::new(file_id("/themes.typ"), THEMES.to_string()),
-            files,
-        };
+        let world = GuideWorld::new(TEMPLATE, files);
         let compiled = typst::compile::<PagedDocument>(&world);
         let messages = compiled
             .warnings

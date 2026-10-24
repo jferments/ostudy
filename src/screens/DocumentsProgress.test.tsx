@@ -109,15 +109,15 @@ const progress: DocumentGenerationProgress = {
   lastModelActivityAt: Date.now() - 1_000,
 };
 
-/** Processing statistics live in the document's Details, away from the row. */
+/** The row shows one bar; the stage detail and statistics live in Generation details. */
 async function openDetails(): Promise<HTMLElement> {
   const trigger = await screen.findByRole("button", { name: /^More actions for / });
   // Base UI wires the trigger in a passive effect, so an early click can be dropped.
   for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
     await act(async () => { fireEvent.click(trigger); });
   }
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
-  return screen.findByRole("dialog", { name: "Details" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Generation details" }));
+  return screen.findByRole("dialog", { name: "Generation details" });
 }
 
 describe("DocumentsScreen live generation progress", () => {
@@ -159,9 +159,10 @@ describe("DocumentsScreen live generation progress", () => {
       </OverlayProvider>,
     );
 
-    expect((await screen.findAllByText("Generating cards")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
-    expect(screen.queryByText("Generating cards 1/9")).toBeNull();
+    expect(await screen.findByText("Making flashcards")).toBeTruthy();
+    const details = await openDetails();
+    expect(await within(details).findByText("Active windows 2–5 of 9 · pages 9–35.")).toBeTruthy();
+    expect(screen.queryByText("Writing flashcards 1/9")).toBeNull();
     expect(screen.queryByText(/Current window 2\/9/u)).toBeNull();
   });
 
@@ -187,7 +188,8 @@ describe("DocumentsScreen live generation progress", () => {
       </OverlayProvider>,
     );
 
-    expect(await screen.findByText("Window 4 of 10 · sections 13–18.")).toBeTruthy();
+    const details = await openDetails();
+    expect(await within(details).findByText("Window 4 of 10 · sections 13–18.")).toBeTruthy();
   });
 
   it("distinguishes a responsive heartbeat from recent model output", async () => {
@@ -221,13 +223,15 @@ describe("DocumentsScreen live generation progress", () => {
       </OverlayProvider>,
     );
 
-    expect((await screen.findAllByText("Building outline")).length).toBeGreaterThan(0);
-    expect(await screen.findByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
-    // The row carries the stage only; the statistics and the model wait in Details.
+    const row = await screen.findByTestId("document-row-progress");
+    expect(within(row).getByText("Planning the study material")).toBeTruthy();
+    // The row carries the stage only; the window, statistics and model wait in Generation details.
+    expect(screen.queryByText("Window 4 of 10 · pages 13–18.")).toBeNull();
     expect(screen.queryByText("low · 2.0k")).toBeNull();
     expect(screen.queryByText(/Receiving output/u)).toBeNull();
 
     const details = await openDetails();
+    expect(within(details).getByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
     expect(await within(details).findByText("low · 2.0k")).toBeTruthy();
     expect(within(details).getAllByText("1m 30s").length).toBeGreaterThan(0);
     expect(within(details).getByText("7")).toBeTruthy();

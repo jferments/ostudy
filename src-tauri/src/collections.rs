@@ -917,6 +917,8 @@ fn selected_collection_ids(
     Ok(selected)
 }
 
+/// Each document filed in the subjects with its study ranges. A document the
+/// learner left out of its subject's study set is not a member.
 fn load_membership_sources(
     connection: &Connection,
     collection_ids: &BTreeSet<String>,
@@ -932,6 +934,7 @@ fn load_membership_sources(
              FROM documents d
              LEFT JOIN document_study_ranges r ON r.document_id=d.id
              WHERE d.subject_id IN (SELECT value FROM json_each(?1))
+               AND d.id NOT IN (SELECT document_id FROM document_study_exclusions)
              ORDER BY d.subject_id,d.title COLLATE NOCASE,d.id,r.start_unit,r.end_unit,r.id",
         )
         .map_err(CommandError::database)?;

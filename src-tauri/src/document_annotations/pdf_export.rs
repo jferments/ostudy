@@ -16,13 +16,17 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::Cursor;
 
-use oxidize_pdf::graphics::{BlendMode, Color, ExtGState, LineCap, LineJoin};
+use oxidize_pdf::graphics::{
+    BlendMode, Color, ExtGState, Image, LineCap, LineDashPattern, LineJoin,
+};
 use oxidize_pdf::parser::objects::{PdfDictionary, PdfObject};
 use oxidize_pdf::parser::{PdfDocument, PdfReader};
 use oxidize_pdf::text::Font;
 use oxidize_pdf::{Document, Page};
 
-use super::{AnnotationShape, Frame, HighlightStroke, InkStroke, Segment, TextNote};
+use super::{
+    AnnotationShape, Frame, HighlightStroke, ImageMark, InkStroke, LineDash, Segment, TextNote,
+};
 
 /// Matches the annotator: line height as a multiple of the font size, padding in points.
 const TEXT_LINE_HEIGHT: f64 = 1.3;
@@ -244,6 +248,7 @@ fn draw_overlay(
             page: Page::new(frame.width, frame.height),
             height: frame.height,
             font: &text_font,
+            pictures: None,
         };
         for shape in &page.shapes {
             canvas.draw(shape)?;
@@ -258,6 +263,8 @@ struct Canvas<'a> {
     /// The page's height, to turn the annotator's y-down points upward.
     height: f64,
     font: &'a Font,
+    /// Pictures' images by asset id; only notebook pages have pictures.
+    pictures: Option<&'a HashMap<String, Image>>,
 }
 
 impl Canvas<'_> {
@@ -273,7 +280,9 @@ impl Canvas<'_> {
             AnnotationShape::Arrow(segment) => self.line(segment, true),
             AnnotationShape::Rectangle(frame) => self.frame(frame, false),
             AnnotationShape::Ellipse(frame) => self.frame(frame, true),
+            AnnotationShape::Image(picture) => self.picture(picture),
             AnnotationShape::Text(note) if note.sticky == Some(true) => self.sticky(note),
+            AnnotationShape::Text(note) if note.link.is_some() => self.link(note),
             AnnotationShape::Text(note) => self.text(note),
         }
     }
@@ -386,35 +395,63 @@ impl Canvas<'_> {
 
     fn line(&mut self, segment: &Segment, arrow: bool) -> Result<(), ExportError> {
         let color = parse_color(&segment.color);
-        let head = arrow.then(|| arrow_head(segment));
-        let (end_x, end_y) = head.map_or((segment.x2, segment.y2), |head| head.base);
-        let (x1, y1, x2, y2) = (segment.x1, self.y(segment.y1), end_x, self.y(end_y));
-        let head = head.map(|head| {
+        let end_head = arrow.then(|| arrow_head(&toward_end(segment)));
+        let start_head =
+            (arrow && segment.both_ends == Some(true)).then(|| arrow_head(&toward_start(segment)));
+        let (start_x, start_y) = start_head.map_or((segment.x1, segment.y1), |head| head.base);
+        let (end_x, end_y) = end_head.map_or((segment.x2, segment.y2), |head| head.base);
+        let (x1, y1, x2, y2) = (start_x, self.y(start_y), end_x, self.y(end_y));
+        let controls = match segment.curve.as_deref() {
+            Some(&[c1x, c1y, c2x, c2y]) => Some((c1x, self.y(c1y), c2x, self.y(c2y))),
+            _ => None,
+        };
+        let corners = |tip: (f64, f64), head: ArrowHead| {
             [
-                (segment.x2, self.y(segment.y2)),
+                (tip.0, self.y(tip.1)),
                 (head.left.0, self.y(head.left.1)),
                 (head.right.0, self.y(head.right.1)),
             ]
-        });
+        };
+        let heads: Vec<_> = [
+            end_head.map(|head| corners((segment.x2, segment.y2), head)),
+            start_head.map(|head| corners((segment.x1, segment.y1), head)),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         self.begin_mark(None)?;
         let graphics = self.page.graphics();
         graphics
             .set_stroke_color(color)
             .set_fill_color(color)
             .set_line_width(segment.stroke_width)
-            .set_line_cap(LineCap::Round)
-            .move_to(x1, y1)
-            .line_to(x2, y2)
-            .stroke();
-        if let Some([tip, left, right]) = head {
+            .set_line_cap(LineCap::Round);
+        if let Some(pattern) = dash_pattern(segment.dash, segment.stroke_width) {
+            graphics.set_line_dash_pattern(pattern);
+        }
+        graphics.move_to(x1, y1);
+        match controls {
+            Some((c1x, c1y, c2x, c2y)) => {
+                graphics.curve_to(c1x, c1y, c2x, c2y, x2, y2);
+            }
+            _ => {
+                graphics.line_to(x2, y2);
+            }
+        }
+        graphics.stroke();
+        if !heads.is_empty() {
             graphics
+                .set_line_dash_pattern(LineDashPattern::solid())
                 .set_line_width(segment.stroke_width.min(1.0))
-                .set_line_join(LineJoin::Round)
-                .move_to(tip.0, tip.1)
-                .line_to(left.0, left.1)
-                .line_to(right.0, right.1)
-                .close_path()
-                .fill_stroke();
+                .set_line_join(LineJoin::Round);
+            for [tip, left, right] in heads {
+                graphics
+                    .move_to(tip.0, tip.1)
+                    .line_to(left.0, left.1)
+                    .line_to(right.0, right.1)
+                    .close_path()
+                    .fill_stroke();
+            }
         }
         self.end();
         Ok(())
@@ -422,19 +459,32 @@ impl Canvas<'_> {
 
     fn frame(&mut self, frame: &Frame, ellipse: bool) -> Result<(), ExportError> {
         let color = parse_color(&frame.color);
+        let fill = frame.fill.as_deref().map(parse_color);
+        let border = frame.border != Some(false);
         let bottom = self.y(frame.y + frame.height);
         self.begin_mark(None)?;
         let graphics = self.page.graphics();
         graphics
             .set_stroke_color(color)
             .set_line_width(frame.stroke_width)
+            .set_line_cap(LineCap::Round)
             .set_line_join(LineJoin::Round);
+        if let Some(fill) = fill {
+            graphics.set_fill_color(fill);
+        }
+        if let Some(pattern) = dash_pattern(frame.dash, frame.stroke_width) {
+            graphics.set_line_dash_pattern(pattern);
+        }
         if ellipse {
             ellipse_path(graphics, frame.x, bottom, frame.width, frame.height);
         } else {
             graphics.rect(frame.x, bottom, frame.width, frame.height);
         }
-        graphics.stroke();
+        match (fill.is_some(), border) {
+            (true, true) => graphics.fill_stroke(),
+            (true, false) => graphics.fill(),
+            _ => graphics.stroke(),
+        };
         self.end();
         Ok(())
     }
@@ -448,6 +498,77 @@ impl Canvas<'_> {
             note.font_size,
             parse_color(&note.color),
         )
+    }
+
+    /// A picture at its place and size; one whose image is missing is left out.
+    fn picture(&mut self, picture: &ImageMark) -> Result<(), ExportError> {
+        let Some(image) = self
+            .pictures
+            .and_then(|pictures| pictures.get(&picture.asset_id))
+        else {
+            return Ok(());
+        };
+        // The same picture twice on a page names the same image.
+        let name = format!("OstudyPicture{}", picture.asset_id);
+        self.page.add_image(name.clone(), image.clone());
+        let bottom = self.y(picture.y + picture.height);
+        self.page
+            .draw_image(&name, picture.x, bottom, picture.width, picture.height)
+            .map_err(write_failed)
+    }
+
+    /// A link's label, as the notebook shows it: underlined words in the
+    /// link's color, or white words on a button of that color.
+    fn link(&mut self, note: &TextNote) -> Result<(), ExportError> {
+        let color = parse_color(&note.color);
+        let size = note.font_size;
+        let line_height = size * TEXT_LINE_HEIGHT;
+        let lines = wrap(&note.text, note.width - 2.0 * TEXT_PADDING, size);
+        let (x, top) = (note.x + TEXT_PADDING, note.y + TEXT_PADDING);
+        let widest = lines
+            .iter()
+            .map(|line| line.chars().count() as f64 * size * CHARACTER_WIDTH)
+            .fold(0.0, f64::max);
+        let button = note
+            .link
+            .as_ref()
+            .is_some_and(|link| link.button == Some(true));
+        if button {
+            let width = (widest + 1.2 * size).min(note.width);
+            let height = lines.len().max(1) as f64 * line_height + 2.0 * TEXT_PADDING;
+            let bottom = self.y(note.y + height);
+            let graphics = self.page.graphics();
+            graphics
+                .save_state()
+                .set_fill_color(color)
+                .rect(note.x, bottom, width, height)
+                .fill()
+                .restore_state();
+            return self.write_lines(
+                &lines,
+                x + 0.6 * size - TEXT_PADDING,
+                top,
+                size,
+                notebook_pdf::paper_white(),
+            );
+        }
+        self.write_lines(&lines, x, top, size, color)?;
+        let graphics = self.page.graphics();
+        graphics
+            .save_state()
+            .set_stroke_color(color)
+            .set_line_width((size / 14.0).max(0.5));
+        for (index, line) in lines.iter().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+            let width = line.chars().count() as f64 * size * CHARACTER_WIDTH;
+            let under = top + index as f64 * line_height + (line_height - size) / 2.0 + size * 0.95;
+            let y = self.height - under;
+            graphics.move_to(x, y).line_to(x + width, y);
+        }
+        graphics.stroke().restore_state();
+        Ok(())
     }
 
     fn sticky(&mut self, note: &TextNote) -> Result<(), ExportError> {
@@ -623,6 +744,45 @@ fn ellipse_path(
         .close_path();
 }
 
+/// The annotator's dash pattern (`dashArray` in annotationModel.ts): dashes
+/// and dots spaced by the line's width, drawn with round caps.
+fn dash_pattern(dash: Option<LineDash>, width: f64) -> Option<LineDashPattern> {
+    let unit = width.max(1.0);
+    match dash? {
+        LineDash::Dashed => Some(LineDashPattern::new(vec![unit * 3.0, unit * 3.0], 0.0)),
+        LineDash::Dotted => Some(LineDashPattern::new(vec![0.0, unit * 2.0], 0.0)),
+    }
+}
+
+/// The direction an arrow's second head points: from the curve's second
+/// control point (or the first end, for a straight arrow) to the second end.
+fn toward_end(segment: &Segment) -> Segment {
+    let (x1, y1) = match segment.curve.as_deref() {
+        Some(&[_, _, x, y]) if (x, y) != (segment.x2, segment.y2) => (x, y),
+        _ => (segment.x1, segment.y1),
+    };
+    Segment {
+        x1,
+        y1,
+        ..segment.clone()
+    }
+}
+
+/// The direction an arrow's first head points, back toward the first end.
+fn toward_start(segment: &Segment) -> Segment {
+    let (x1, y1) = match segment.curve.as_deref() {
+        Some(&[x, y, _, _]) if (x, y) != (segment.x1, segment.y1) => (x, y),
+        _ => (segment.x2, segment.y2),
+    };
+    Segment {
+        x1,
+        y1,
+        x2: segment.x1,
+        y2: segment.y1,
+        ..segment.clone()
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ArrowHead {
     base: (f64, f64),
@@ -718,6 +878,13 @@ struct StickyNote {
     rect: [f64; 4],
     text: String,
     color: [f64; 3],
+}
+
+/// A link on a page to another page of the same file: where it is, in the
+/// page's own coordinates, and the page object it opens.
+struct PageLink {
+    rect: [f64; 4],
+    target: (u32, u16),
 }
 
 fn sticky_notes(page: &PageAnnotations<'_>, frame: &PageFrame) -> Vec<StickyNote> {
@@ -932,61 +1099,98 @@ impl<'a> Update<'a> {
         dict.insert("Contents".into(), array);
 
         // Sticky notes join the page's annotations.
-        if !notes.is_empty() {
-            let mut annots: Vec<Vec<u8>> = match page.dict.get("Annots") {
-                Some(existing) => match document.resolve(existing).map_err(unreadable)? {
-                    PdfObject::Array(array) => array.0.iter().map(object_bytes).collect(),
-                    _ => Vec::new(),
-                },
-                None => Vec::new(),
-            };
-            let page_ref = format!("{} {} R", page.obj_ref.0, page.obj_ref.1);
-            for note in notes {
-                // An empty appearance: the page already shows the note.
-                let appearance = self.allocate();
-                let (width, height) = (note.rect[2] - note.rect[0], note.rect[3] - note.rect[1]);
-                self.write_stream(
-                    appearance,
-                    vec![
-                        ("Type".into(), b"/XObject".to_vec()),
-                        ("Subtype".into(), b"/Form".to_vec()),
-                        (
-                            "BBox".into(),
-                            format!("[0 0 {} {}]", number(width), number(height)).into_bytes(),
-                        ),
-                    ],
-                    b"",
-                );
-                let id = self.allocate();
-                let body = dictionary_bytes(&[
-                    ("Type".into(), b"/Annot".to_vec()),
-                    ("Subtype".into(), b"/Text".to_vec()),
-                    (
-                        "Rect".into(),
-                        format!("[{}]", note.rect.map(number).join(" ")).into_bytes(),
-                    ),
-                    ("Contents".into(), text_string(&note.text)),
-                    (
-                        "C".into(),
-                        format!("[{}]", note.color.map(number).join(" ")).into_bytes(),
-                    ),
-                    ("Name".into(), b"/Note".to_vec()),
-                    ("F".into(), b"4".to_vec()),
-                    ("P".into(), page_ref.clone().into_bytes()),
-                    ("AP".into(), format!("<</N {appearance} 0 R>>").into_bytes()),
-                ]);
-                self.write_object(id, 0, &body);
-                annots.push(format!("{id} 0 R").into_bytes());
-            }
-            let mut array = b"[".to_vec();
-            array.extend_from_slice(&annots.join(&b' '));
-            array.push(b']');
-            dict.insert("Annots".into(), array);
+        if let Some(annots) = self.add_annotations(document, page, notes, &[])? {
+            dict.insert("Annots".into(), annots);
         }
 
         let entries: Vec<(String, Vec<u8>)> = dict.into_iter().collect();
         self.write_object(page.obj_ref.0, page.obj_ref.1, &dictionary_bytes(&entries));
         Ok(())
+    }
+
+    /// Writes sticky notes and links as annotations of `page`, and returns the
+    /// page's new `/Annots` array with its existing ones first; None when
+    /// there is nothing to add.
+    fn add_annotations<R: std::io::Read + std::io::Seek>(
+        &mut self,
+        document: &PdfDocument<R>,
+        page: &oxidize_pdf::parser::page_tree::ParsedPage,
+        notes: Vec<StickyNote>,
+        links: &[PageLink],
+    ) -> Result<Option<Vec<u8>>, ExportError> {
+        if notes.is_empty() && links.is_empty() {
+            return Ok(None);
+        }
+        let mut annots: Vec<Vec<u8>> = match page.dict.get("Annots") {
+            Some(existing) => match document.resolve(existing).map_err(unreadable)? {
+                PdfObject::Array(array) => array.0.iter().map(object_bytes).collect(),
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+        let page_ref = format!("{} {} R", page.obj_ref.0, page.obj_ref.1);
+        for note in notes {
+            // An empty appearance: the page already shows the note.
+            let appearance = self.allocate();
+            let (width, height) = (note.rect[2] - note.rect[0], note.rect[3] - note.rect[1]);
+            self.write_stream(
+                appearance,
+                vec![
+                    ("Type".into(), b"/XObject".to_vec()),
+                    ("Subtype".into(), b"/Form".to_vec()),
+                    (
+                        "BBox".into(),
+                        format!("[0 0 {} {}]", number(width), number(height)).into_bytes(),
+                    ),
+                ],
+                b"",
+            );
+            let id = self.allocate();
+            let body = dictionary_bytes(&[
+                ("Type".into(), b"/Annot".to_vec()),
+                ("Subtype".into(), b"/Text".to_vec()),
+                (
+                    "Rect".into(),
+                    format!("[{}]", note.rect.map(number).join(" ")).into_bytes(),
+                ),
+                ("Contents".into(), text_string(&note.text)),
+                (
+                    "C".into(),
+                    format!("[{}]", note.color.map(number).join(" ")).into_bytes(),
+                ),
+                ("Name".into(), b"/Note".to_vec()),
+                ("F".into(), b"4".to_vec()),
+                ("P".into(), page_ref.clone().into_bytes()),
+                ("AP".into(), format!("<</N {appearance} 0 R>>").into_bytes()),
+            ]);
+            self.write_object(id, 0, &body);
+            annots.push(format!("{id} 0 R").into_bytes());
+        }
+        for link in links {
+            let id = self.allocate();
+            let (object, generation) = link.target;
+            let body = dictionary_bytes(&[
+                ("Type".into(), b"/Annot".to_vec()),
+                ("Subtype".into(), b"/Link".to_vec()),
+                (
+                    "Rect".into(),
+                    format!("[{}]", link.rect.map(number).join(" ")).into_bytes(),
+                ),
+                ("Border".into(), b"[0 0 0]".to_vec()),
+                ("F".into(), b"4".to_vec()),
+                ("P".into(), page_ref.clone().into_bytes()),
+                (
+                    "Dest".into(),
+                    format!("[{object} {generation} R /Fit]").into_bytes(),
+                ),
+            ]);
+            self.write_object(id, 0, &body);
+            annots.push(format!("{id} 0 R").into_bytes());
+        }
+        let mut array = b"[".to_vec();
+        array.extend_from_slice(&annots.join(&b' '));
+        array.push(b']');
+        Ok(Some(array))
     }
 
     /// Writes the cross-reference section and trailer, in the same form as the
@@ -1216,6 +1420,10 @@ fn number(value: f64) -> String {
     let text = format!("{value:.4}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
+
+#[path = "notebook_pdf.rs"]
+mod notebook_pdf;
+pub use notebook_pdf::{notebook_pdf, NotebookPdfPage, Ruling};
 
 #[cfg(test)]
 #[path = "pdf_export_tests.rs"]

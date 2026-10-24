@@ -4,7 +4,7 @@ Library's **Documents** page keeps a local copy of each source you add and turns
 
 ## Before you begin
 
-Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a provider is set up, Documents shows a warning saying so.
+Use material you are allowed to process and choose a provider appropriate for its privacy. In **Settings → AI**, add a provider and choose a model for **Flashcard and study-guide generation**, then use **Test model** (see [AI providers](ai-providers.md)). That one model makes both cards and study guides. Until a model is chosen for that task, **Make study materials**, **Make a study guide**, **Make more cards…** and **Retry** open the AI setup guide in **Settings → AI** instead.
 
 For a scanned PDF on desktop, install the OCR runtime and trained data described in your platform's installation guide. Android packages an English Tesseract model with the application and needs no separate OCR installation or download. A missing platform capability can make the Documents page unavailable rather than sending the original file elsewhere.
 
@@ -12,19 +12,20 @@ The original file is not uploaded to the model. ostudy keeps a local copy, reads
 
 ## Add a document
 
-On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While they run, the document's row shows a progress bar for each. Either can finish first. Leaving the page does not stop the work.
+On Documents choose **Upload → Document…** and select a supported file; the format is detected automatically. With a subject chosen in Library, the document goes straight into that subject. For a PDF, **Import document** then asks whether to **Use images from this document** (on unless you turn it off): with it on, oStudy finds the document's figures once its pages are read (see [Figures](#figures)); with it off, the document is used as text. Once the document has been read and its topics planned, card writing and study-guide writing start side by side. While anything runs, the document's row shows one progress bar with what is happening beside it, such as **Making flashcards and a study guide**; **Generation details** in its **…** menu shows each part on its own bar with the current stage and live request statistics. Either part can finish first. Leaving the page does not stop the work.
 
 Each document is one row: its format, length and when it was added, its reading range if it has one, what it has made so far (**Study guide**, its cards, or **Nothing made yet**), its status while it is being read or after a failure, **Open**, and a **…** menu. **Open** opens the original file through the operating system. The menu holds everything else:
 
 - **Annotate**, for a PDF whose pages have been drawn ([Annotating PDF pages](pdf-annotation.md)).
+- **Figures**, for the same PDFs: the figures oStudy found in it ([Figures](#figures)).
 - **Reading range…**, for a document in a subject (see [Documents in a subject](#documents-in-a-subject)).
 - **Add to a subject…** or **Move to another subject…**, and **Remove from subject**.
 - **Make more cards…**, once the document has a deck.
 - **Retry**, when card generation failed or the document's deck was deleted.
 - **Make a study guide** or **Remake the study guide**, and **Stop study guide** while one is being written.
-- **Stop processing** while the document is being read or its first cards are being made.
+- **Stop** while the document is being read or its first cards are being made.
 - **Rename…**: give the document your own title. A title you choose stays; generated metadata no longer replaces it.
-- **Details**: the file, size, length, processing time and token use, and during a run the live request statistics, the provider and model serving it, and the requested and effective reasoning.
+- **Details**: the file, size, length, processing time and token use. While the document is being processed or made into study material it is **Generation details**, first in the menu, and adds each part's progress, the current stage, the live request statistics and, under **Provider and request**, the provider and model serving it and the requested and effective reasoning. **Rename…** waits until processing ends.
 - **Delete**.
 
 On a phone, **Open** also moves into the menu.
@@ -55,13 +56,32 @@ Review generated material for factual errors, weak questions, duplicates and mis
 
 ## Documents in a subject
 
-A **subject** is one course: its documents, guides, lessons and decks. Library's subject list picks the subject, and its **Documents** tab lists that subject's documents. **Everything** lists every document under its subject's name, with **Open subject** beside each name and **No subject** last; a document in no subject has **Add to…** on its row. Subjects do not nest, and a document is in one subject at most. **Search documents** above the list narrows it to the documents whose title or file name contains what you type.
+A **subject** is one course: its documents, guides, lessons and decks. Library's page picks the subject, and its **Documents** tab lists that subject's documents. **No subject** lists the documents not filed anywhere, each with **Add to…** on its row. Subjects do not nest, and a document is in one subject at most. **Search documents** above the list narrows it to the documents whose title or file name contains what you type.
 
 A document's **…** menu files it: **Add to a subject…** or **Move to another subject…**, and **Remove from subject**. Moving a document moves its reading range and its generated deck with it; removing it leaves the document and its deck in **No subject** and clears its reading range. A generated deck that you filed in a different subject yourself stays where you put it.
 
 **Reading range…** limits what the subject's study materials use from a long source, such as pages 1–3 and 7. The row shows the range, for example "pages 1–3 studied". **Whole document** clears it. When the file changes, the row says the range needs review.
 
-A subject's own study materials are made from all of its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
+### New study set
+
+A study set is a subject and the materials made for it. The **New study set +** tile at the end of Library's page starts one in one place. Its sheet asks for:
+
+- **Subject**: the new subject's name. A name alone makes an empty subject.
+- **Documents**: **Choose files** adds the files you pick (hold Ctrl or Shift to pick several; on Android, one at a time); a file that cannot be read is named and left out; **From the library** adds documents you already have, moving them into the subject. A new file is read as if you had uploaded it in the subject.
+- **Prompt**: optional with documents, where it says how to use them, such as what to cover, what to use for detail or what to skip, and also guides their first cards. With no documents, describe what to learn and the AI connection used for cards and guides writes study notes on it. The notes become a PDF in the subject's **Documents**, and everything else is made from them like any upload.
+- **What kinds of study materials do you want to create?**: **Flashcards**, **Study guide**, **Lessons** (with **Lecture audio**, which starts as **Make lecture audio with new lessons** in **Settings** says and needs a lesson voice: each lesson's teacher's lecture is written and all of its audio kept, so **Play lecture** plays at once) and **Podcast**. A podcast is made from the lessons: once they are written, two hosts talk through the first three.
+
+**Make study set** opens the subject's **Documents**. To add documents and materials to a subject you already have, choose **Add materials…** in its **…** menu on its tile or beside its name; the same sheet opens without the name and ends with **Add materials**. Reading a document always writes its first cards. Once every document is read, the subject's study materials start as if you had chosen them in **Make study materials**: the study guide, the subject's flashcards, and the lessons, then the podcast. If you leave the page first, they start the next time you open the subject's **Documents** while the app is still running.
+
+### Make study materials
+
+A subject's own study materials are made from its documents together. Nothing is made until you choose **Make study materials** beside **Upload**. Its sheet asks:
+
+- **From**: which of the subject's documents to use. Every document is ticked unless you left it out before. An unticked document stays in the subject, but the subject's guide, its lessons and a Tutor chat about the subject skip it. Its row says "left out of study materials", and **Use in study materials** in its **…** menu puts it back. **Leave out of study materials** in the same menu leaves a document out without opening the sheet. Moving a document to another subject puts it back in.
+- **Make**: **Study guide**, **Flashcards** and **Lessons**. Everything not yet made is ticked to start.
+- **Cards go into** and **Instructions (optional)**: these appear when **Flashcards** will write cards for a ticked document that has none yet. Its new cards go into the chosen deck of the subject, or into a new deck of its own, and the instructions guide what they cover. A document's later **Make more cards…** adds to the same deck.
+
+**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab. A lesson's lecture opens at 80% zoom, with **Smaller slide** and **Larger slide** beside it. **Autoplay** goes on to the next slide when the teacher finishes one; turn it off to stay on each slide until you choose **Next**. What the teacher says is hidden until you turn on **Closed captions**. All three are remembered on the device; a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
 Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
@@ -74,6 +94,18 @@ Earlier versions called a subject's documents a "collection" and kept its flashc
 ostudy reads PDF; Word DOC and DOCX; PowerPoint PPT and PPTX; OpenDocument ODT, ODP and ODS; EPUB; RTF; Excel XLS and XLSX; and CSV. Image sets accept PNG, JPEG and WebP screenshots and photos; they are not stitched into one image.
 
 The format is detected from the file's contents. The older Word, PowerPoint and Excel formats also need their usual file extension, and CSV needs its `.csv` extension because it has no signature of its own. Renaming a file does not make it a supported format. Web pages, audio, and other formats an underlying library might read are not supported.
+
+## Figures
+
+For a PDF imported with its images on, oStudy looks for its figures once the pages are read, beside card and guide writing, without contacting a provider. A figure is a picture or a drawing big enough to study. Logos and other marks that repeat in the same place on several pages, pictures in the header or footer band, ruled tables and boxed paragraphs are left out, and so is a page that is one scanned picture.
+
+**Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
+
+When your AI model can see images, oStudy also reads each figure on its page, beside card and guide writing: a short title, what the figure shows, how the text uses it, and how much it matters (**Essential**, **Key figure**, **Helpful** or **Minor**). It also marks a figure that is not worth studying, such as a decorative photo. **Read figures with AI** in the page's **…** menu reads them for a document imported earlier, and **Read figures again** reads them anew. A model that cannot see images leaves figures with their captions and passages, and the page says so. Searching again keeps what was read of a figure found in the same place.
+
+A document imported before figures existed, or with its images off, shows **Find figures** or **Use images** there. **Stop using images** in the page's **…** menu forgets the figures found, hidden ones included, and **Find figures again** searches the PDF again.
+
+Figures are found on desktop only for now: Android and iOS cannot read a PDF's page objects yet, so their Figures page says so. A study guide shows the figures that best illustrate each of its sections (see [Study guides](study-guides.md#read-and-write-on-the-guides-pages)); hiding a figure keeps it out of the guide. A lesson's lecture slides show, beside a slide's points, the one figure from the slide's own source pages that best fits it, from each document that uses its images; hidden figures never show. Flashcards do not use figures yet.
 
 ## How sources are read
 
@@ -95,7 +127,7 @@ Other formats record their place in the source as **sections**, even where the f
 
 ## What the provider receives
 
-Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing.
+Each request contains a bounded portion of the extracted text, the relevant outline and plan, and selected page images only when the tested model accepts images. Large sources are split into many bounded requests. When an embedding model is set up, processing also indexes the saved knowledge for Tutor search; the embedding service receives the saved text, not a second request to interpret the document. Ordinary navigation sends nothing. A **New study set** made without documents sends what you typed in **Prompt** in one request for its notes; the notes then come back as a document and are read like any other.
 
 Model output cannot write to the library, files or commands directly. Generated content is checked for structure, size, allowed formatting, tags, Fill in the blank syntax, question rules, source references and duplicates before it is saved. A false statement or distractor in a question is never recorded as something the source asserted, and a single-best-answer question must have one supported best choice.
 
@@ -105,7 +137,7 @@ Diagnostics leave out credentials, prompts, responses, reasoning text, source te
 
 Progress shows the steps ostudy can actually observe. Reading a non-PDF can show an indeterminate bar until its length is known. Card progress counts finished batches and study-guide progress counts finished sections; neither bar guesses from elapsed time. **Complete** belongs to each artifact, so one can finish while the other is still running. An indeterminate bar does not mean the task has stalled.
 
-**Stop processing** and **Stop study guide** ask the work to stop at its next safe point. Work already saved is kept, and a stopped remake leaves the previous guide in place. Failures stay visible when you return to Documents.
+**Stop** and **Stop study guide** ask the work to stop at its next safe point. Work already saved is kept, and a stopped remake leaves the previous guide in place. Failures stay visible when you return to Documents.
 
 If one part of a study guide cannot be written, the guide still publishes, and that section is marked **Not written yet** and lists the facts extracted from that part of the source. Remaking the guide tries it again.
 
@@ -115,11 +147,11 @@ On desktop, closing while documents are processing warns that the work will be i
 
 ## Retry, more cards, and remaking
 
-**Retry** reuses saved reading, outlines and finished card batches when they still match the current source, settings and ostudy version, so only the remaining work is redone. Saved knowledge is reused by any model. Some ostudy updates change how documents are read; those documents are read again the next time their first cards are made. In **Details**, **Retries** counts recovery requests during a run, not failed documents or pages.
+**Retry** reuses saved reading, outlines and finished card batches when they still match the current source, settings and ostudy version, so only the remaining work is redone. Saved knowledge is reused by any model. Some ostudy updates change how documents are read; those documents are read again the next time their first cards are made. In **Generation details**, **Retries** counts recovery requests during a run, not failed documents or pages.
 
 **Make more cards…** uses the saved reading and the cards the deck already has; an unchanged source is not read again.
 
-Remake a guide from the document's menu. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
+Remake a guide from the document's menu. Its row shows a new Study Guide bar straight away: **Preparing** while oStudy plans the sections, then how many sections are completed ("3 / 14 sections completed"), **Organizing the guide** while it adds chapters and the introduction, and **Saving guide**. The reader has no Regenerate button or revision number. A complete new guide replaces the old one in one step. Your notes follow the rules in [Study guides](study-guides.md).
 
 ## Analysis details
 
@@ -137,7 +169,7 @@ Deleting only a study guide removes the guide, its section edits, its saved work
 
 A whole-library backup includes documents, their managed files, everything extracted from them, image sets, guides, annotations, generated questions and their evidence. Older backups remain readable. Provider keys are never included.
 
-Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations stay on the device that made them. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
+Device sync has separate **Documents** and **Study Guides** categories; **Study Guides** needs **Documents**, and links between documents and cards travel only when **Flashcards** is selected too. Annotations and figures travel with **Documents**. A sync is not a substitute for a whole-library backup. See [Device sync](device-sync.md).
 
 Malformed, protected, unsupported, oversized or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits and provider cost remain practical limits. Reading a file locally is not a sandbox for hostile files; process only sources you trust.
 

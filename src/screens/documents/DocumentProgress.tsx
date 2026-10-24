@@ -3,6 +3,14 @@ import { progressStyles } from "./presentation";
 import { Progress } from "../../ui/primitives/Progress";
 import { Disclosure } from "../../ui/primitives/FormControls";
 
+/** A document's processing as one bar in its row, with the current stage beside it. */
+export function DocumentRowProgress({ label, value }: { label: string; value: number | null }) {
+  return <span className="tw:flex tw:min-w-0 tw:items-center tw:gap-3" data-testid="document-row-progress">
+    <Progress value={value} max={100} label="Document progress" valueText={label} className="tw:max-w-75 tw:flex-1" />
+    <span className="tw:min-w-0 tw:truncate tw:text-small tw:text-muted-foreground tw:tabular-nums">{label}</span>
+  </span>;
+}
+
 export function GenerationProgressPanel({ document, progress }: {
   document: DocumentSummary; progress: DocumentGenerationProgress | null;
 }) {
@@ -42,7 +50,7 @@ export function GenerationDiagnostics({ progress, now }: {
     {progress && progress.usageUnreportedRequests > 0 ? <p className={progressStyles.detail}>
       Usage incomplete: {progress.usageUnreportedRequests.toLocaleString()} requests did not report token counts. Totals and cache ratios describe reported usage only.
     </p> : null}
-    {progress ? <Disclosure title="Generation details" className="tw:border-0">
+    {progress ? <Disclosure title="Provider and request" className="tw:border-0">
       <div className="tw:grid tw:gap-3 tw:p-3">
         <dl className={progressStyles.stats}>
           <div><dt>Provider</dt><dd>{progress.providerKind ?? "Not selected yet"}</dd></div>
@@ -115,45 +123,57 @@ function formatActivityAge(ageSeconds: number): string {
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
 }
-function generationStage(document: DocumentSummary, progress: DocumentGenerationProgress | null): { title: string; detail: string } {
+export function generationStage(document: DocumentSummary, progress: DocumentGenerationProgress | null): { title: string; detail: string } {
   if (document.sourceUnitCount === 0) return ingestionStage(progress?.phase) ?? {
-    title: "Extracting document content", detail: `Reading the ${formatDocumentType(document.sourceFormat)} source and building semantic chunks.`,
+    title: "Opening your document", detail: `Reading the ${formatDocumentType(document.sourceFormat)} source and building semantic chunks.`,
   };
   if (isPdf(document) && document.renderedPageCount < document.sourceUnitCount) return {
-    title: `Rendering pages ${document.renderedPageCount}/${document.sourceUnitCount}`,
+    title: `Preparing pages · ${document.renderedPageCount} of ${document.sourceUnitCount}`,
     detail: "Preparing local page derivatives for document analysis.",
   };
   if (isPdf(document) && document.extractionMode === "ocr_fallback" && document.ocrPageCount > document.ocrCompletedPageCount) return {
-    title: `Recovering OCR ${document.ocrCompletedPageCount}/${document.ocrPageCount}`,
+    title: `Reading scanned pages · ${document.ocrCompletedPageCount} of ${document.ocrPageCount}`,
     detail: "Recovering text from pages whose native PDF text layer was unreliable.",
   };
   if (progress?.phase === "understanding material") return {
-    title: "Understanding material",
-    detail: `${progress.completedWindows} / ${progress.totalWindows} source chunks prepared${progress.currentPageStart === null ? "" : ` · ${sourceUnitPluralLabel(document.sourceUnitKind)} ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`}. Validated knowledge is saved incrementally.`,
+    title: "Reading your document", detail: readingDetail(document, progress),
+  };
+  if (progress?.phase === "indexing saved material") return {
+    title: "Indexing what it learned",
+    detail: progress.totalWindows > 0 ? `${progress.completedWindows} of ${progress.totalWindows}` : "Making saved knowledge searchable.",
   };
   if (progress?.phase === "organizing knowledge") return {
-    title: "Organizing shared knowledge", detail: "Building the learning outline from saved interpretations, not rereading the raw document.",
+    title: "Putting what it learned in order", detail: "Building the learning outline from saved interpretations, not rereading the raw document.",
   };
   if (document.outlineWindowCount > 0 && document.outlineCompletedWindowCount < document.outlineWindowCount) return {
-    title: "Building outline", detail: activeWindowDetail(progress, document.outlineWindowCount, document.sourceUnitKind) ?? "Analyzing bounded source windows for document structure.",
+    title: "Planning the study material", detail: activeWindowDetail(progress, document.outlineWindowCount, document.sourceUnitKind) ?? "Analyzing bounded source windows for document structure.",
   };
   if (document.generationWindowCount > 0 && document.generationCompletedWindowCount < document.generationWindowCount) return {
-    title: "Generating cards", detail: activeWindowDetail(progress, document.generationWindowCount, document.sourceUnitKind) ?? "Generating study cards from the current bounded source window.",
+    title: "Writing flashcards", detail: activeWindowDetail(progress, document.generationWindowCount, document.sourceUnitKind) ?? "Generating study cards from the current bounded source window.",
   };
   if (progress?.phase === "curating") return {
-    title: "Curating generated cards", detail: "Removing duplicates and low-value candidates before committing the deck.",
+    title: "Checking the flashcards", detail: "Removing duplicates and low-value candidates before committing the deck.",
   };
-  return { title: "Finalizing document generation", detail: "Completing the current bounded task and preparing durable study content." };
+  return { title: "Finishing up", detail: "Completing the current bounded task and preparing durable study content." };
+}
+/** Where reading has reached, in the document's own units rather than internal pieces. */
+export function readingDetail(document: DocumentSummary, progress: DocumentGenerationProgress): string {
+  const total = document.sourceUnitCount;
+  const start = progress.currentPageStart;
+  if (start === null) return `${total.toLocaleString()} ${sourceUnitPluralLabel(document.sourceUnitKind)}`;
+  const end = Math.max(start, progress.currentPageEnd ?? start);
+  if (end === start) return `${sourceUnitSingularHeading(document.sourceUnitKind)} ${start} of ${total}`;
+  return `${sourceUnitHeading(document.sourceUnitKind)} ${start}–${end} of ${total}`;
 }
 function ingestionStage(phase: string | undefined): { title: string; detail: string } | null {
   switch (phase) {
-    case "document_detecting": return { title: "Checking document format", detail: "Validating the managed source before local extraction begins." };
-    case "document_extracting": return { title: "Reading document structure", detail: "Extracting text, tables, slides, sheets, and embedded images locally." };
-    case "document_mapping": return { title: "Mapping document structure", detail: "Converting extracted headings and content into oStudy source blocks." };
-    case "document_saving_assets": return { title: "Saving embedded images", detail: "Retaining bounded source images as immutable local evidence." };
-    case "document_unitizing": return { title: "Building source sections", detail: "Creating deterministic source sections for study generation." };
-    case "document_chunking": return { title: "Building semantic chunks", detail: "Preparing bounded, source-linked chunks for document analysis." };
-    case "document_validating": return { title: "Validating extracted document", detail: "Checking canonical source records before they are committed." };
+    case "document_detecting": return { title: "Checking the file", detail: "Validating the managed source before local extraction begins." };
+    case "document_extracting": return { title: "Opening your document", detail: "Extracting text, tables, slides, sheets, and embedded images locally." };
+    case "document_mapping": return { title: "Finding headings and sections", detail: "Converting extracted headings and content into oStudy source blocks." };
+    case "document_saving_assets": return { title: "Saving the pictures", detail: "Retaining bounded source images as immutable local evidence." };
+    case "document_unitizing": return { title: "Splitting it into sections", detail: "Creating deterministic source sections for study generation." };
+    case "document_chunking": return { title: "Splitting it into passages", detail: "Preparing bounded, source-linked chunks for document analysis." };
+    case "document_validating": return { title: "Double-checking what was read", detail: "Checking canonical source records before they are committed." };
     default: return null;
   }
 }
@@ -166,11 +186,13 @@ export function activeWindowDetail(progress: DocumentGenerationProgress | null, 
   if (end > start) return `Active windows ${start}–${end} of ${totalWindows}${sourceUnits}.`;
   return `Window ${start} of ${totalWindows}${sourceUnits}.`;
 }
-function generationPercent(document: DocumentSummary, progress: DocumentGenerationProgress | null): number | null {
+export function generationPercent(document: DocumentSummary, progress: DocumentGenerationProgress | null): number | null {
   if (isPdf(document) && document.sourceUnitCount > 0 && document.renderedPageCount < document.sourceUnitCount) {
     return Math.round((document.renderedPageCount / document.sourceUnitCount) * 20);
   }
-  // Outline counts do not describe semantic-analysis progress. Show the real chunk count without inventing a percentage.
+  // Reading follows page preparation on the same bar: 20% to 95% as passages are read.
+  const reading = readingFraction(progress);
+  if (reading !== null) return Math.min(95, Math.round(20 + reading * 75));
   if (progress?.phase === "understanding material" || progress?.phase === "organizing knowledge") return null;
   const totalWindows = document.outlineWindowCount + document.generationWindowCount;
   if (totalWindows > 0) {
@@ -188,10 +210,43 @@ export function statusLabel(document: DocumentSummary): string {
     case "failed": return "Needs attention";
   }
 }
-export function processingPhaseLabel(document: DocumentSummary, canceling: boolean, progress: DocumentGenerationProgress | null): string {
+/** The bar's words: the step in plain language, how far it has got and roughly how long is left. */
+export function processingPhaseLabel(
+  document: DocumentSummary, canceling: boolean, progress: DocumentGenerationProgress | null, now: number = Date.now(),
+): string {
+  const title = processingStepLabel(document, canceling, progress);
+  if (canceling || document.generatedDeckId !== null) return title;
+  const reading = readingFraction(progress);
+  if (reading === null || progress === null || readingStageHidden(document)) return title;
+  const left = timeLeft(reading, progress.phaseStartedAt, now);
+  return [title, `${Math.floor(reading * 100)}% read`, left].filter(Boolean).join(" · ");
+}
+/** The step alone, for announcements that should not repeat on every passage read. */
+export function processingStepLabel(document: DocumentSummary, canceling: boolean, progress: DocumentGenerationProgress | null): string {
   if (canceling) return "Stopping";
   if (document.generatedDeckId !== null) return "Generating additional cards";
   return generationStage(document, progress).title;
+}
+/** Share of the document's passages read so far, while the reading step runs. */
+function readingFraction(progress: DocumentGenerationProgress | null): number | null {
+  if (progress?.phase !== "understanding material" || progress.totalWindows <= 0) return null;
+  return Math.min(1, Math.max(0, progress.completedWindows / progress.totalWindows));
+}
+/** Page rendering and OCR show their own step even while a reading report is current. */
+function readingStageHidden(document: DocumentSummary): boolean {
+  return document.sourceUnitCount === 0
+    || (isPdf(document) && document.renderedPageCount < document.sourceUnitCount)
+    || (isPdf(document) && document.extractionMode === "ocr_fallback" && document.ocrPageCount > document.ocrCompletedPageCount);
+}
+/** A rough estimate from the pace so far, once there is enough of it to go on. */
+export function timeLeft(fraction: number, startedAt: number, now: number): string | null {
+  const elapsed = now - startedAt;
+  if (fraction < 0.05 || fraction >= 1 || elapsed < 30_000) return null;
+  const minutes = Math.round((elapsed * (1 - fraction)) / fraction / 60_000);
+  if (minutes < 1) return "less than a minute left";
+  if (minutes < 60) return `about ${minutes} min left`;
+  const hours = Math.floor(minutes / 60);
+  return `about ${hours} hr ${minutes % 60} min left`;
 }
 function isPdf(document: DocumentSummary): boolean { return document.sourceFormat === "pdf"; }
 export function formatDocumentType(sourceFormat: string): string {
@@ -212,6 +267,14 @@ export function formatDocumentType(sourceFormat: string): string {
 export function sourceUnitHeading(sourceUnitKind: string): string {
   const plural = sourceUnitPluralLabel(sourceUnitKind);
   return plural.charAt(0).toUpperCase() + plural.slice(1);
+}
+function sourceUnitSingularHeading(sourceUnitKind: string): string {
+  switch (sourceUnitKind) {
+    case "time_segment": return "Time segment";
+    case "page": case "slide": case "chapter": case "section": case "segment": case "image":
+      return sourceUnitHeading(sourceUnitKind).slice(0, -1);
+    default: return "Source unit";
+  }
 }
 function sourceUnitPluralLabel(sourceUnitKind: string): string {
   switch (sourceUnitKind) {

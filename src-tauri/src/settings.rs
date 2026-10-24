@@ -31,6 +31,8 @@ const FONT_PRESETS: &[&str] = &[
 ];
 const MOTION_PREFERENCES: &[&str] = &["system", "full", "reduced", "none"];
 const MATERIAL_PREFERENCES: &[&str] = &["automatic", "rich", "simple"];
+const GUIDE_PDF_THEMES: &[&str] = &["navy", "sage", "slate", "plum"];
+const DEFAULT_GUIDE_PDF_THEME: &str = "sage";
 const DEFAULT_FONT_PRESET: &str = "plex";
 const LEGACY_SYSTEM_FONT_PRESET: &str = "system";
 const LEGACY_UNTOUCHED_SETTINGS_TIMESTAMP: i64 = 0;
@@ -57,6 +59,24 @@ pub struct AppSettingsDto {
     pub daily_review_limit: i64,
     /// Local hour (0 to 23) at which a new study day starts; see `study_calendar`.
     pub new_day_start_hour: i64,
+    /// How an exported study guide PDF looks, and whether it carries the
+    /// learner's notes. Older callers that omit them keep the defaults.
+    #[serde(default = "default_guide_pdf_theme")]
+    pub guide_pdf_theme: String,
+    #[serde(default = "default_true")]
+    pub guide_pdf_include_notes: bool,
+    /// Whether a new course's lessons have their narration spoken and kept
+    /// as soon as they are written, when a lesson voice is set up.
+    #[serde(default = "default_true")]
+    pub lecture_audio_with_new_lessons: bool,
+}
+
+fn default_guide_pdf_theme() -> String {
+    DEFAULT_GUIDE_PDF_THEME.to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -138,6 +158,13 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
             connection,
             "newDayStartHour",
             i64::from(DEFAULT_NEW_DAY_START_HOUR),
+        )?,
+        guide_pdf_theme: get_setting(connection, "guidePdfTheme", default_guide_pdf_theme())?,
+        guide_pdf_include_notes: get_setting(connection, "guidePdfIncludeNotes", true)?,
+        lecture_audio_with_new_lessons: get_setting(
+            connection,
+            "lectureAudioWithNewLessons",
+            true,
         )?,
     })
 }
@@ -290,6 +317,18 @@ fn save_settings_in_connection(
             "newDayStartHour",
             serde_json::to_string(&settings.new_day_start_hour),
         ),
+        (
+            "guidePdfTheme",
+            serde_json::to_string(&settings.guide_pdf_theme),
+        ),
+        (
+            "guidePdfIncludeNotes",
+            serde_json::to_string(&settings.guide_pdf_include_notes),
+        ),
+        (
+            "lectureAudioWithNewLessons",
+            serde_json::to_string(&settings.lecture_audio_with_new_lessons),
+        ),
     ];
     for (key, serialized) in entries {
         let serialized = serialized.map_err(CommandError::serialization)?;
@@ -360,6 +399,12 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
             format!("Daily card limits must be between 0 and {MAX_DAILY_LIMIT}."),
         ));
     }
+    validate_choice(
+        &settings.guide_pdf_theme,
+        GUIDE_PDF_THEMES,
+        "invalid_guide_pdf_theme",
+        "Select an available study guide PDF theme.",
+    )?;
     validate_new_day_start_hour(settings.new_day_start_hour)?;
     validate_desired_retention(settings.desired_retention)
 }

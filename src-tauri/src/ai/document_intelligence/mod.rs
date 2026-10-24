@@ -9,13 +9,16 @@ mod context;
 mod contracts;
 mod curation;
 mod evidence;
+mod figure_reading;
 mod flashcards;
 mod lecture_script;
 mod lesson;
 mod mark_question;
 mod observed;
 mod outline;
+mod podcast_script;
 mod schemas;
+mod source_notes;
 mod study_guide;
 mod support;
 pub(crate) use support::is_output_failure;
@@ -32,6 +35,9 @@ pub(crate) use context::{
 pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
+pub(crate) use figure_reading::{
+    request_figure_readings, FigurePage, FigureReading, FigureToRead, NearbyText,
+};
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, preflight_window_flashcards, FlashcardGenerationLimits,
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
@@ -41,13 +47,23 @@ pub(crate) use lesson::{LessonAuthoring, LESSON_PROMPT_VERSION};
 pub(crate) use mark_question::{request_mark_question, MarkQuestionSource};
 pub(crate) use observed::{
     generate_collection_study_guide_topic_section, generate_document_study_guide_editorial,
-    generate_lecture_script, generate_lesson, generate_study_guide_topic_section,
-    generate_window_flashcards,
+    generate_lecture_script, generate_lesson, generate_podcast_script,
+    generate_study_guide_topic_section, generate_window_flashcards,
+    plan_document_study_guide_sections,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
+pub(crate) use podcast_script::{
+    PodcastLesson, PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
+};
+#[cfg(test)]
+pub(crate) use source_notes::SourceNotesSection;
+pub(crate) use source_notes::{
+    generate_source_notes, SourceNotes, MAX_PROMPT_CHARS as MAX_SOURCE_PROMPT_CHARS,
+};
 pub(crate) use study_guide::{
-    complete_study_guide_section_coverage, preflight_collection_study_guide_section,
-    preflight_document_study_guide_section, CollectionStudyGuideAuthoring,
+    document_guide_section_chars, preflight_collection_study_guide_section,
+    preflight_document_study_guide_section, validate_section_plan, CollectionStudyGuideAuthoring,
+    GuideTopicBrief, PlannedGuideSection,
 };
 pub(crate) use transport::{
     request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,

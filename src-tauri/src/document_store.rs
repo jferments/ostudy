@@ -5,26 +5,20 @@
 //! job rows are written, and every lifecycle transition checks its affected-row
 //! invariant so stale/canceled state cannot silently look successful.
 
-use std::fs;
-
 use rusqlite::{params, TransactionBehavior};
 
 use crate::{
-    ai::document_intelligence::{DocumentTaskContext, SourcePageImage},
+    ai::document_intelligence::DocumentTaskContext,
     database::Database,
     document_domain::{DocumentSourceDescriptor, SourceLocator},
     document_semantics::{validate_semantic_windows, SemanticChunk, SemanticWindow},
     error::CommandError,
-    paths::AppPaths,
     util::{generate_id, unix_time_millis},
 };
-
-const MAX_RENDER_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct SourceAssetRecord {
     pub asset_id: String,
-    pub source_unit_number: Option<i64>,
     pub media_type: String,
     pub relative_path: String,
     pub byte_size: i64,
@@ -517,8 +511,7 @@ pub(crate) fn load_source_assets(
     database.with_connection(|connection| {
         let mut statement = connection
             .prepare(
-                "SELECT asset_id, source_unit_number, media_type,
-                        relative_path, byte_size, sha256
+                "SELECT asset_id, media_type, relative_path, byte_size, sha256
                  FROM document_source_assets
                  WHERE document_id = ?1
                  ORDER BY COALESCE(source_unit_number, 0), asset_id",
@@ -530,11 +523,10 @@ pub(crate) fn load_source_assets(
             .query_map([document_id], |row| {
                 Ok(SourceAssetRecord {
                     asset_id: row.get(0)?,
-                    source_unit_number: row.get(1)?,
-                    media_type: row.get(2)?,
-                    relative_path: row.get(3)?,
-                    byte_size: row.get(4)?,
-                    sha256: row.get(5)?,
+                    media_type: row.get(1)?,
+                    relative_path: row.get(2)?,
+                    byte_size: row.get(3)?,
+                    sha256: row.get(4)?,
                 })
             })
             .map_err(|error| db_error("document_source_assets_query_failed", document_id, error))?
@@ -576,55 +568,6 @@ pub(crate) fn load_source_renders(
             })?;
         Ok(renders)
     })
-}
-
-pub(crate) fn load_window_images(
-    paths: &AppPaths,
-    assets: &[SourceAssetRecord],
-    window: &SemanticWindow,
-    maximum: usize,
-) -> Result<Vec<SourcePageImage>, CommandError> {
-    if window.source_locator.asset_ids.is_empty() || maximum == 0 {
-        return Ok(Vec::new());
-    }
-    let selected = select_source_assets(&window.source_locator.asset_ids, maximum);
-    let mut images = Vec::with_capacity(selected.len());
-    for asset_id in selected {
-        let asset = assets
-            .iter()
-            .find(|asset| asset.asset_id == asset_id)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "document_source_asset_missing",
-                    "A selected canonical source asset is missing.",
-                )
-            })?;
-        if !asset.media_type.starts_with("image/") {
-            return Err(CommandError::new(
-                "document_source_asset_not_image",
-                "A selected multimodal source asset is not an image.",
-            ));
-        }
-        let bytes =
-            fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
-        if bytes.is_empty()
-            || bytes.len() > MAX_RENDER_BYTES
-            || to_i64(bytes.len()) != asset.byte_size
-            || sha256_hex(&bytes) != asset.sha256
-        {
-            return Err(CommandError::new(
-                "document_source_asset_invalid",
-                "A canonical source asset failed its size or integrity check. Retry generation to rebuild it.",
-            ));
-        }
-        images.push(SourcePageImage {
-            page_number: asset
-                .source_unit_number
-                .unwrap_or_else(|| window.source_locator.first()),
-            bytes,
-        });
-    }
-    Ok(images)
 }
 
 pub(crate) fn select_source_assets(asset_ids: &[String], maximum: usize) -> Vec<String> {
@@ -683,11 +626,6 @@ fn db_error_with_window(
 
 fn to_i64(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]

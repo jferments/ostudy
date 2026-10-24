@@ -9,8 +9,13 @@ pub(super) fn flashcard_schema(maximum_cards: usize) -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["cards"],
+        "required": ["keyIdeas", "cards"],
         "properties": {
+            "keyIdeas": {
+                "type": "array",
+                "maxItems": 24,
+                "items": {"type": "string", "minLength": 1, "maxLength": 200}
+            },
             "cards": {
                 "type": "array",
                 "maxItems": maximum_cards,

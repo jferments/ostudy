@@ -399,6 +399,67 @@ export async function getDocumentTopicCardIds(
   });
 }
 
+/** One page of the whole guide as the reader's canvas, in points, with the key its marks are saved under. */
+export interface StudyGuideCanvasPage {
+  /** `front:1`, `chapter:<id>:2`, `body:3`, `cram:1`, `test:1`: the part of the guide and the page within it. */
+  key: string;
+  width: number;
+  height: number;
+  /** The page as a standalone SVG image. */
+  svg: string;
+}
+
+export type StudyGuideCanvasEntryKind = "chapter" | "section" | "cram" | "selfTest";
+
+/** A chapter, section, cram sheet or self-test, where it starts on the canvas. */
+export interface StudyGuideCanvasEntry {
+  kind: StudyGuideCanvasEntryKind;
+  /** The section's topic id, the chapter's id, or the part's name. */
+  key: string;
+  title: string;
+  /** The number the page prints, such as "2.1"; empty for the cram sheet and self-test. */
+  number: string;
+  /** 0-based. */
+  pageIndex: number;
+  /** Points from the top of that page. */
+  y: number;
+}
+
+/** The room a section heading keeps for its Practice button, in points. */
+export interface StudyGuideCanvasButton {
+  topicId: string;
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A document's whole study guide laid out as the PDF export sets it. */
+export interface StudyGuideCanvas {
+  documentId: string;
+  guideRevision: number;
+  theme: StudyGuidePdfTheme;
+  pages: StudyGuideCanvasPage[];
+  /** In page order. */
+  contents: StudyGuideCanvasEntry[];
+  practice: StudyGuideCanvasButton[];
+}
+
+export async function getDocumentStudyGuideCanvas(
+  documentId: string,
+  theme: StudyGuidePdfTheme,
+): Promise<StudyGuideCanvas> {
+  return invoke<StudyGuideCanvas>("get_document_study_guide_canvas", {
+    input: { documentId, theme },
+  });
+}
+
+/** Opens the guide as a PDF in the system's PDF reader, without asking where to save it. */
+export async function openDocumentStudyGuidePdf(documentId: string, theme: StudyGuidePdfTheme): Promise<void> {
+  await invoke<void>("open_document_study_guide_pdf", { input: { documentId, theme } });
+}
+
 export async function prepareDocumentStudyGuidePdf(
   documentId: string,
   includeAnnotations: boolean,

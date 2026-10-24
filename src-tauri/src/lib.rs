@@ -9,6 +9,9 @@
 mod ai;
 mod analytics;
 mod annotation_cards;
+/// The desktop build's release/development identity; Android takes its
+/// identity from the Gradle build type instead.
+#[cfg(desktop)]
 mod application_profile;
 mod asset_lifecycle;
 mod asset_protocol;
@@ -43,6 +46,7 @@ mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
+mod document_figures;
 mod document_generation;
 mod document_import;
 mod document_ingestion;
@@ -86,9 +90,11 @@ mod library_backup_commands;
 mod library_lock;
 mod library_session;
 mod logging;
+mod material_ink;
 mod media;
 mod media_assets;
 pub mod migration_contract;
+mod notebooks;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;
@@ -103,6 +109,7 @@ mod projections;
 mod schedule_controls;
 mod scheduler;
 mod settings;
+mod source_notes;
 mod startup;
 mod study_activity;
 mod study_calendar;
@@ -150,6 +157,7 @@ static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    platform::prepare_process();
     logging::install_panic_hook();
     let builder = tauri::Builder::default()
         .register_uri_scheme_protocol("ostudy-asset", library_session::asset_response)
@@ -245,6 +253,7 @@ pub fn run() {
             subjects::move_deck_to_subject,
             subjects::move_document_to_subject,
             subjects::set_document_study_ranges,
+            subjects::set_subject_left_out_documents,
             subjects::get_subject_filing_reviews,
             subjects::dismiss_subject_filing_review,
             deletion_commands::delete_deck_with_undo,
@@ -308,6 +317,7 @@ pub fn run() {
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
             library_session::commands::leased_stream_select_and_stage_external_import,
+            library_session::commands::leased_stream_select_and_stage_external_imports,
             library_session::commands::leased_stage_image_collection_file,
             library_session::commands::leased_stage_image_collection_file_chunk,
             external_files::release_staged_external_import,
@@ -329,6 +339,10 @@ pub fn run() {
             ai::profiles::commands::update_ai_provider_profile,
             ai::profiles::commands::delete_ai_provider_profile,
             ai::profiles::commands::set_ai_provider_credential,
+            ai::profiles::commands::start_openrouter_sign_in,
+            ai::profiles::commands::wait_for_openrouter_sign_in,
+            ai::profiles::commands::save_openrouter_sign_in,
+            ai::profiles::commands::cancel_openrouter_sign_in,
             ai::profiles::commands::clear_ai_provider_credential,
             ai::profiles::commands::get_ai_task_defaults,
             ai::profiles::commands::set_ai_task_default,
@@ -401,23 +415,61 @@ pub fn run() {
             library_session::commands::leased_draft_mark_question,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
+            document_figures::get_document_figures,
+            document_figures::set_document_figures_use_images,
+            document_figures::set_document_figure_hidden,
+            library_session::commands::leased_find_document_figures,
+            library_session::commands::leased_read_document_figures,
             library_session::commands::leased_prepare_annotated_pdf,
+            notebooks::list_notebooks,
+            notebooks::create_notebook,
+            notebooks::get_notebook,
+            notebooks::rename_notebook,
+            notebooks::move_notebook_to_subject,
+            notebooks::delete_notebook,
+            notebooks::add_notebook_page,
+            notebooks::delete_notebook_page,
+            notebooks::move_notebook_page,
+            notebooks::apply_notebook_item_changes,
+            notebooks::folders::list_note_folders,
+            notebooks::folders::create_note_folder,
+            notebooks::folders::rename_note_folder,
+            notebooks::folders::delete_note_folder,
+            notebooks::folders::put_notebook_in_folder,
+            notebooks::folders::pin_notebook,
+            library_session::commands::leased_prepare_notebook_pdf,
+            notebooks::clips::list_document_clips,
+            library_session::commands::leased_stage_document_clip,
+            material_ink::get_material_ink,
+            material_ink::apply_material_ink_changes,
             lessons::list_subject_lessons,
             lessons::get_lesson,
             lessons::lecture::get_lesson_lecture,
+            lessons::slide_design::get_lesson_slide_designs,
             lessons::pptx::prepare_lesson_lecture_pptx,
             lessons::save_lesson_progress,
             lessons::checks::answer_lesson_check,
             library_session::commands::leased_write_subject_course,
+            library_session::commands::leased_update_lesson_from_sources,
             lessons::writing::cancel_subject_course_writing,
             lessons::writing::get_subject_course_writing_progress,
             lessons::narration::get_speech_settings,
             lessons::narration::save_speech_settings,
+            lessons::voices::keep_speech_voice,
+            lessons::voices::rename_speech_voice,
+            lessons::voices::remove_speech_voice,
+            library_session::commands::leased_try_speech_voice,
             library_session::commands::leased_narrate_lesson_step,
             lessons::teaching::get_lesson_lecture_script,
             lessons::teaching::answer_lecture_question,
             library_session::commands::leased_write_lesson_lecture_script,
             library_session::commands::leased_narrate_lecture_part,
+            lessons::podcasts::list_subject_podcasts,
+            lessons::podcasts::get_podcast,
+            lessons::podcasts::delete_podcast,
+            library_session::commands::leased_write_podcast,
+            library_session::commands::leased_write_source_notes,
+            library_session::commands::leased_narrate_podcast_turn,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,
@@ -428,7 +480,6 @@ pub fn run() {
             document_study_guide_reading::get_document_study_guide_reading,
             document_study_guide_reading::open_document_study_guide_section,
             document_study_guide_reading::set_document_study_guide_section_read,
-            document_study_guide_reading::list_continue_reading_study_guides,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
@@ -438,6 +489,8 @@ pub fn run() {
             document_study_guide_commands::get_document_topic_card_projection,
             document_study_guide_commands::get_document_topic_card_ids,
             document_study_guide_export::prepare_document_study_guide_pdf,
+            document_study_guide_export::get_document_study_guide_canvas,
+            document_study_guide_export::open_document_study_guide_pdf,
             document_study_guide_export::prepare_collection_study_guide_pdf,
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,

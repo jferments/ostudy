@@ -16,6 +16,7 @@ export const ICON_NAMES = [
   "brain",
   "calendar",
   "calendar-check",
+  "captions",
   "cards",
   "chat",
   "check",
@@ -25,6 +26,7 @@ export const ICON_NAMES = [
   "close",
   "contents",
   "copy",
+  "crop",
   "delete",
   "document",
   "download",
@@ -37,6 +39,7 @@ export const ICON_NAMES = [
   "formula",
   "full-screen",
   "help",
+  "headphones",
   "highlighter",
   "home",
   "image",
@@ -47,6 +50,9 @@ export const ICON_NAMES = [
   "lasso",
   "lightbulb",
   "link",
+  "list",
+  "list-checks",
+  "list-ordered",
   "listen",
   "maximize",
   "media",
@@ -57,12 +63,16 @@ export const ICON_NAMES = [
   "move",
   "overflow",
   "pan",
+  "pause",
   "pen",
+  "pin",
+  "play",
   "plus",
   "pointer",
   "practice",
   "redo",
   "restore",
+  "rewind",
   "save",
   "scan",
   "scissors",
@@ -70,9 +80,11 @@ export const ICON_NAMES = [
   "search",
   "settings",
   "shape-arrow",
+  "shape-curve",
   "shape-ellipse",
   "shape-line",
   "shape-rectangle",
+  "skip-ahead",
   "smartphone",
   "sort",
   "sparkles",
@@ -204,6 +216,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
         </>
       );
+    case "captions": // Lucide: captions
+      return (
+        <>
+          <rect width="18" height="14" x="3" y="5" rx="2" ry="2" />
+          <path d="M7 15h4M15 15h2M7 11h2M13 11h4" />
+        </>
+      );
     case "calendar": // Lucide: calendar
       return (
         <>
@@ -264,6 +283,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M8 5h13" />
           <path d="M8 12h13" />
           <path d="M8 19h13" />
+        </>
+      );
+    case "crop": // Lucide: crop
+      return (
+        <>
+          <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+          <path d="M18 22V8a2 2 0 0 0-2-2H2" />
         </>
       );
     case "copy": // Lucide: copy
@@ -329,6 +355,38 @@ function iconPath(name: IconName): ReactNode {
       return <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />;
     case "folder-open": // Lucide: folder-open
       return <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />;
+    case "list": // Lucide: list
+      return (
+        <>
+          <path d="M3 5h.01" />
+          <path d="M3 12h.01" />
+          <path d="M3 19h.01" />
+          <path d="M8 5h13" />
+          <path d="M8 12h13" />
+          <path d="M8 19h13" />
+        </>
+      );
+    case "list-checks": // Lucide: list-checks
+      return (
+        <>
+          <path d="M13 5h8" />
+          <path d="M13 12h8" />
+          <path d="M13 19h8" />
+          <path d="m3 17 2 2 4-4" />
+          <path d="m3 7 2 2 4-4" />
+        </>
+      );
+    case "list-ordered": // Lucide: list-ordered
+      return (
+        <>
+          <path d="M11 5h10" />
+          <path d="M11 12h10" />
+          <path d="M11 19h10" />
+          <path d="M4 4h1v5" />
+          <path d="M4 9h2" />
+          <path d="M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02" />
+        </>
+      );
     case "formula": // Lucide: square-function
       return (
         <>
@@ -485,6 +543,31 @@ function iconPath(name: IconName): ReactNode {
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
         </>
       );
+    case "headphones": // Lucide: headphones
+      return <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />;
+    case "pause": // Lucide: pause
+      return (
+        <>
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+        </>
+      );
+    case "play": // Lucide: play
+      return <polygon points="6 3 20 12 6 21 6 3" />;
+    case "rewind": // Lucide: rotate-ccw
+      return (
+        <>
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+        </>
+      );
+    case "skip-ahead": // Lucide: rotate-cw
+      return (
+        <>
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+        </>
+      );
     case "listen": // Lucide: volume-2
       return (
         <>
@@ -623,6 +706,14 @@ function iconPath(name: IconName): ReactNode {
           <path d="M19 5L5 19" />
         </>
       );
+    case "shape-curve": // Lucide: spline
+      return (
+        <>
+          <circle cx="19" cy="5" r="2" />
+          <circle cx="5" cy="19" r="2" />
+          <path d="M5 17A12 12 0 0 1 17 5" />
+        </>
+      );
     case "shape-ellipse": // Lucide: circle
       return <circle cx="12" cy="12" r="10" />;
     case "shape-line": // Lucide: slash
@@ -656,6 +747,13 @@ function iconPath(name: IconName): ReactNode {
           <path d="M20 2v4" />
           <path d="M22 4h-4" />
           <circle cx="4" cy="20" r="2" />
+        </>
+      );
+    case "pin": // Lucide: pin
+      return (
+        <>
+          <path d="M12 17v5" />
+          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
         </>
       );
     case "sticky-note": // Lucide: sticky-note

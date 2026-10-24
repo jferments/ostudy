@@ -47,6 +47,8 @@ export interface SubjectLibrary {
   decks: SubjectDeckPlacement[];
   documents: SubjectDocumentPlacement[];
   studyRanges: DocumentStudyRange[];
+  /** Documents left out of their subject's study set: its guide, lessons and Tutor skip them. */
+  leftOutDocumentIds: string[];
   checkTheseCount: number;
 }
 
@@ -107,6 +109,13 @@ export interface SetDocumentStudyRangesInput {
   expectedDocumentFilingRevision: number;
 }
 
+export interface SetSubjectLeftOutDocumentsInput {
+  subjectId: string;
+  /** The subject's documents to leave out; every other document in it is let back in. */
+  documentIds: string[];
+  expectedDocumentFilingRevision: number;
+}
+
 export interface DismissSubjectFilingReviewInput {
   entityKind: SubjectFilingEntityKind;
   entityId: string;
@@ -146,6 +155,12 @@ export async function setDocumentStudyRanges(
   input: SetDocumentStudyRangesInput,
 ): Promise<SubjectLibrary> {
   return invoke<SubjectLibrary>("set_document_study_ranges", { input });
+}
+
+export async function setSubjectLeftOutDocuments(
+  input: SetSubjectLeftOutDocumentsInput,
+): Promise<SubjectLibrary> {
+  return invoke<SubjectLibrary>("set_subject_left_out_documents", { input });
 }
 
 export async function getSubjectFilingReviews(): Promise<SubjectFilingReview[]> {

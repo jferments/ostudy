@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getStudyGuideReading,
-  listContinueReading,
   openStudyGuideSection,
   setStudyGuideSectionRead,
 } from "./studyGuideReading";
@@ -36,14 +35,6 @@ describe("study guide reading IPC", () => {
     expect(invoke).toHaveBeenLastCalledWith(
       "set_document_study_guide_section_read",
       { input: { documentId, guideId, topicId, read: false } },
-    );
-  });
-
-  it("asks for a short Continue reading list by default", async () => {
-    await listContinueReading();
-    expect(invoke).toHaveBeenLastCalledWith(
-      "list_continue_reading_study_guides",
-      { input: { limit: 3 } },
     );
   });
 });

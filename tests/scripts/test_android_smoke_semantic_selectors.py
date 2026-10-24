@@ -44,9 +44,11 @@ class AndroidSmokeSemanticSelectorTests(unittest.TestCase):
         ready = scenario.index('library-workbench\\"] nav[aria-label=\\"Library\\"]')
         self.assertLess(scenario.index("waitUntil("), ready)
         self.assertLess(ready, scenario.index("val snapshot"))
-        for key in ("libraryCurrent", "settingsGear", "importAction", "documentsView", "studyGuidesView"):
+        # Library opens on its subject tiles; All cards there leads to the Workbench.
+        self.assertLess(scenario.index('library-all-cards'), ready)
+        for key in ("libraryCurrent", "settingsGear", "importAction"):
             self.assertIn(f'assertTrue(snapshot.getBoolean("{key}"))', scenario)
-        for key in ("cardList", "irrelevantControls"):
+        for key in ("cardList", "irrelevantControls", "subjectPages"):
             self.assertIn(f'assertFalse(snapshot.getBoolean("{key}"))', scenario)
         self.assertIn('assertEquals(1, snapshot.getInt("createActions"))', scenario)
 

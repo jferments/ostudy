@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ShowToast } from "../../../components/Toast";
 import { getDocumentMarkedCards, type DocumentMarkedCards } from "../../../ipc/annotationCards";
 import type { AnnotatedPage, AnnotationShape } from "../../../ipc/documentAnnotations";
+import { listDocumentClips, type DocumentClip, type DocumentClipRegion } from "../../../ipc/notebooks";
 import { registerPlatformBackHandler } from "../../../platform/backNavigation";
 import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { InlineWorkspace } from "../../../ui/overlays/Dialog";
@@ -17,9 +18,11 @@ import { isCollapsedSticky, isShapeTool, isStickyNote, shapeBounds, type Annotat
 import type { SaveState } from "./annotationSaveQueue";
 import { AnnotatorCanvas } from "./AnnotatorCanvas";
 import { AnnotatorToolbar } from "./AnnotatorToolbar";
+import { ClipToNotesDialog } from "./ClipToNotesDialog";
 import { MarkCardEditor, type CardMark } from "./MarkCardEditor";
 import { useAnnotatedPdfExport } from "./useAnnotatedPdfExport";
 import { ACTUAL_SIZE_SCALE, MAX_SCALE, MIN_SCALE, useAnnotatorViewport } from "./useAnnotatorViewport";
+import { useTextFormat } from "./textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "./useDocumentAnnotator";
 
 interface DocumentAnnotatorProps {
@@ -31,13 +34,23 @@ interface DocumentAnnotatorProps {
   onPracticeCards?: (cardIds: string[]) => Promise<void>;
   /** After cards are made here, so deck counts elsewhere can refresh. */
   onCardsChanged?: () => void;
+  /** The document's subject, where a notebook made for a clip is filed. */
+  subjectId?: string | null;
+  /** Opens a notebook at one of its pages, leaving the annotator; offers Clip to notes. */
+  onOpenNotebook?: (notebookId: string, pageId: string) => void;
+}
+
+/** Clipping parts of the pages into notebooks, and opening the notebooks they went into. */
+export interface AnnotatorClipping {
+  subjectId: string | null;
+  onOpenNotebook: (notebookId: string, pageId: string) => void;
 }
 
 /** How long a page opened from a card's source stays outlined. */
 const CITED_PAGE_MARK_MS = 2500;
 
-const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
-  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", r: "rectangle", o: "ellipse", e: "eraser",
+export const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
+  v: "select", q: "lasso", p: "pen", h: "highlighter", t: "text", s: "sticky", l: "line", a: "arrow", c: "curve", r: "rectangle", o: "ellipse", e: "eraser",
 };
 
 /**
@@ -45,7 +58,9 @@ const SHORTCUTS: Readonly<Record<string, AnnotatorTool>> = {
  * renders made when the document was imported; annotations are saved as the
  * learner works and never change the document itself.
  */
-export function DocumentAnnotator({ documentId, title, onClose, showToast, onPracticeCards, onCardsChanged }: DocumentAnnotatorProps) {
+export function DocumentAnnotator({
+  documentId, title, onClose, showToast, onPracticeCards, onCardsChanged, subjectId = null, onOpenNotebook,
+}: DocumentAnnotatorProps) {
   useLibraryFullPage(true);
   const controller = useDocumentAnnotator(documentId, showToast);
   const { leave, closing } = useAnnotatorLeave(controller);
@@ -69,6 +84,10 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
     onCardsChanged?.();
   }, [onCardsChanged, refreshMarked]);
   const markedCardIds = marked?.cardIds ?? [];
+  const clipping = useMemo<AnnotatorClipping | undefined>(() => onOpenNotebook ? {
+    subjectId,
+    onOpenNotebook: (notebookId, pageId) => void leave(() => onOpenNotebook(notebookId, pageId)),
+  } : undefined, [leave, onOpenNotebook, subjectId]);
 
   // Android Back closes the open note, then the selection, then the annotator.
   const back = useRef<() => void>(() => undefined);
@@ -111,7 +130,7 @@ export function DocumentAnnotator({ documentId, title, onClose, showToast, onPra
       }
     >
       <AnnotatorBody documentId={documentId} title={title} controller={controller} showToast={showToast}
-        suggestedDeckId={marked?.suggestedDeckId ?? null} onCardSaved={cardSaved} />
+        suggestedDeckId={marked?.suggestedDeckId ?? null} onCardSaved={cardSaved} clipping={clipping} />
     </InlineWorkspace>
   );
 }
@@ -160,12 +179,13 @@ interface AnnotatorBodyProps {
   focusPage?: number;
   /** A mark on `focusPage` to open at and select instead. */
   focusAnnotationId?: string;
+  clipping?: AnnotatorClipping;
 }
 
 /** The annotator under its frame: loading and failure states, then the toolbar and pages. */
 export function AnnotatorBody({
   documentId, title, controller, showToast, suggestedDeckId = null, onCardSaved = ignore, focusPage,
-  focusAnnotationId,
+  focusAnnotationId, clipping,
 }: AnnotatorBodyProps) {
   const { load } = controller;
   // A failed save is reported once; the header keeps showing it until a save works.
@@ -189,14 +209,14 @@ export function AnnotatorBody({
   ) : (
     <ReadyAnnotator documentId={documentId} title={title} pages={load.pages} controller={controller}
       suggestedDeckId={suggestedDeckId} onCardSaved={onCardSaved} showToast={showToast} focusPage={focusPage}
-      focusAnnotationId={focusAnnotationId} />
+      focusAnnotationId={focusAnnotationId} clipping={clipping} />
   );
 }
 
 function ignore(): void {}
 
 function ReadyAnnotator({
-  documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast, focusPage, focusAnnotationId,
+  documentId, title, pages, controller, suggestedDeckId, onCardSaved, showToast, focusPage, focusAnnotationId, clipping,
 }: {
   documentId: string;
   title: string;
@@ -207,6 +227,7 @@ function ReadyAnnotator({
   showToast: ShowToast;
   focusPage?: number;
   focusAnnotationId?: string;
+  clipping?: AnnotatorClipping;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -217,6 +238,7 @@ function ReadyAnnotator({
   const focusMark = cited !== null && focusAnnotationId
     ? controller.annotations.get(cited)?.find((annotation) => annotation.id === focusAnnotationId) ?? null
     : null;
+  const textFormat = useTextFormat(controller);
   const { select, setTool, textHeight } = controller;
   // Once the pages have their size, the view goes to the card's mark and selects
   // it, or, without one, to the cited page, which is outlined for a moment.
@@ -248,6 +270,17 @@ function ReadyAnnotator({
   // The mark a card is being made from; its editor sits beside the pages, or over them on a phone.
   const [cardMark, setCardMark] = useState<CardMark | null>(null);
   const [openingCard, setOpeningCard] = useState(false);
+  const clips = useDocumentClips(documentId, clipping !== undefined);
+  // The part of a page the Clip tool took, while its notebook is chosen.
+  const [clipRegion, setClipRegion] = useState<DocumentClipRegion | null>(null);
+  const clip = useCallback((pageNumber: number, rect: { x: number; y: number; width: number; height: number }) => {
+    const page = pages.find((candidate) => candidate.pageNumber === pageNumber);
+    if (!page) return;
+    setClipRegion({ documentId, pageNumber, pageWidth: page.width, pageHeight: page.height, ...rect });
+  }, [documentId, pages]);
+  const openClip = useCallback((found: DocumentClip) => {
+    clipping?.onOpenNotebook(found.notebookId, found.notebookPageId);
+  }, [clipping]);
 
   async function makeCard() {
     const mark = controller.selected;
@@ -281,6 +314,7 @@ function ReadyAnnotator({
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const command = key === "z" ? (event.shiftKey ? controller.redo : controller.undo)
         : key === "y" ? controller.redo
+          : key === "g" && controller.group.length > 0 ? () => controller.setGrouped(!event.shiftKey)
           : key === "=" || key === "+" ? viewport.zoomIn
             : key === "-" ? viewport.zoomOut
               : key === "0" ? viewport.fitToWidth
@@ -313,7 +347,7 @@ function ReadyAnnotator({
       controller.deleteGroup();
       return;
     }
-    const tool = event.shiftKey ? undefined : SHORTCUTS[key];
+    const tool = event.shiftKey ? undefined : key === "x" ? (clipping ? "clip" : undefined) : SHORTCUTS[key];
     if (tool) {
       event.preventDefault();
       chooseTool(tool);
@@ -337,6 +371,7 @@ function ReadyAnnotator({
           onTool={chooseTool}
           style={controller.activeStyle}
           onStyle={controller.chooseStyle}
+          textFormat={textFormat.format}
           selection={selected ? {
             isText: selected.shape.kind === "text",
             isSticky: isStickyNote(selected.shape),
@@ -346,6 +381,7 @@ function ReadyAnnotator({
           onDeleteSelection={controller.deleteSelected}
           onEditSelection={() => { if (selected) controller.editText(selected); }}
           onMakeCard={cardMark || openingCard ? undefined : () => void makeCard()}
+          canClip={clipping !== undefined}
           canUndo={controller.canUndo}
           canRedo={controller.canRedo}
           onUndo={controller.undo}
@@ -355,6 +391,8 @@ function ReadyAnnotator({
           onTogglePenOnly={controller.togglePenOnly}
           groupSize={controller.group.length}
           onDeleteGroup={controller.deleteGroup}
+          isOneGroup={controller.isOneGroup}
+          onGroup={controller.setGrouped}
           eraseMode={controller.eraseMode}
           onEraseMode={controller.setEraseMode}
           zoomPercent={Math.round(viewport.scale / ACTUAL_SIZE_SCALE * 100)}
@@ -375,7 +413,27 @@ function ReadyAnnotator({
           contentRef={contentRef}
           coarse={inputMode === "coarse"}
           markedPage={outlined}
+          onClip={clipping ? clip : undefined}
+          clipsByPage={clips.byPage}
+          onOpenClip={clipping ? openClip : undefined}
         />
+        {textFormat.dialog}
+        {clipRegion && clipping ? (
+          <ClipToNotesDialog
+            region={clipRegion}
+            documentTitle={title}
+            subjectId={clipping.subjectId}
+            onClose={() => setClipRegion(null)}
+            onClipped={(placed, notebookTitle) => {
+              setClipRegion(null);
+              clips.refresh();
+              showToast("success", `Clipped to ${notebookTitle}`, {
+                label: "Open notebook",
+                run: () => clipping.onOpenNotebook(placed.notebookId, placed.pageId),
+              });
+            }}
+          />
+        ) : null}
         {cited !== null ? (
           <p role="status" className="tw:sr-only">
             {openedAtMark ? `Opened at the card's mark on page ${cited}` : `Opened at page ${cited}`}
@@ -402,6 +460,38 @@ function ReadyAnnotator({
       ) : null}
     </div>
   );
+}
+
+const NO_CLIPS: ReadonlyMap<number, readonly DocumentClip[]> = new Map();
+
+/**
+ * The notebooks the document's pages were clipped into, one entry per
+ * notebook on each page; a newer read replaces an older one.
+ */
+function useDocumentClips(documentId: string, enabled: boolean) {
+  const [byPage, setByPage] = useState(NO_CLIPS);
+  const request = useRef(0);
+  const refresh = useCallback(() => {
+    if (!enabled) return;
+    const current = ++request.current;
+    listDocumentClips(documentId)
+      .then((found) => { if (request.current === current) setByPage(clipsByPage(found)); })
+      // Without the list the pages just do not say where they were clipped to.
+      .catch(() => undefined);
+  }, [documentId, enabled]);
+  useEffect(() => { refresh(); }, [refresh]);
+  return { byPage, refresh };
+}
+
+/** Each page's clips, keeping a notebook's first one on the page. */
+export function clipsByPage(clips: readonly DocumentClip[]): ReadonlyMap<number, readonly DocumentClip[]> {
+  const pages = new Map<number, DocumentClip[]>();
+  for (const found of clips) {
+    const onPage = pages.get(found.pageNumber) ?? [];
+    if (!onPage.some((other) => other.notebookId === found.notebookId)) onPage.push(found);
+    pages.set(found.pageNumber, onPage);
+  }
+  return pages;
 }
 
 /** The words a mark holds: a text highlight's or a note's text; strokes and shapes hold none. */

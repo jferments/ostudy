@@ -16,7 +16,7 @@ A backup is not automatically encrypted just because credentials are excluded. I
 
 ## Import a deck or generated cards
 
-Open **Library → Flashcards** and choose **Import deck** beside the Library tabs. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
+Open **Library → Flashcards** and choose **Import deck** beside the Library tabs (on a phone, beside **New deck** under the decks). **Choose a file** accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files, and **Into subject** files the new deck in a subject, starting on the one you have open. If the deck cannot be filed, it is still imported, under No subject. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
 
 A new imported deck starts in **No subject** until you move it with **Move to subject…**. The receiving library owns subject membership and schedules. Generated `.ostudy.json` and `.studydeck` imports open the imported deck when they finish.
 
@@ -92,7 +92,7 @@ Do not rename an arbitrary SQLite file to masquerade as a backup. The package ve
 
 When **Flashcards** is selected, question definitions, their presentations, practice attempts and review links, and question images travel and are checked like the rest of the flashcard data; records whose fields must agree are merged whole rather than field by field. A malformed package is rejected before anything is installed or merged. Editor drafts, question generation evidence and other local records stay on the sending device.
 
-Documents and Study Guides have explicit selectable scopes; Study Guides require Documents. Links between documents and flashcards travel only when both are selected. Ordinary appearance and application settings stay on each device, and so do PDF annotations, lessons and Tutor conversations. Provider settings and saved keys need the sender's explicit choice for each offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
+Documents, Study Guides, Notes and Lessons have explicit selectable scopes; Study Guides require Documents. Links between documents and flashcards travel only when both are selected. Ordinary appearance and application settings stay on each device, and so do Tutor conversations and the knowledge extracted from documents. Provider settings and saved keys need the sender's explicit choice for each offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
 
 ## Safety and factual accuracy
 

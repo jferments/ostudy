@@ -1,6 +1,7 @@
 import { createOperationId } from "./common";
 import type { PreparedExport } from "./externalFiles";
 import type { QuestionKind } from "./questions";
+import type { StudyGuidePdfTheme } from "./studyGuides";
 import { invoke } from "./transport";
 
 /** One teaching block of a lesson step; every field is plain text. */
@@ -52,6 +53,11 @@ export interface WrittenLesson {
   checkCount: number;
   estimatedMinutes: number;
   sources: LessonSourceStatus;
+  /**
+   * False when a lesson written with AI teaches a part no longer in its
+   * document's study plan; a rewritten course keeps it after the others.
+   */
+  inStudyPlan: boolean;
   createdAt: number;
 }
 
@@ -106,9 +112,16 @@ export interface LessonStep {
   knowledgeUnitIds: string[];
 }
 
+/**
+ * When a question is asked: `after` reviews what was just taught; `before`
+ * asks the learner to predict what is about to be taught.
+ */
+export type QuestionTiming = "before" | "after";
+
 export interface LessonCheck {
   prompt: string;
   options: { id: string; text: string }[];
+  timing: QuestionTiming;
 }
 
 export interface LessonCheckResult {
@@ -181,6 +194,32 @@ export async function getLessonLecture(
   });
 }
 
+/** One lecture slide laid out by the native typesetter. */
+export interface SlideDesign {
+  /** The lecture slide's key. */
+  key: string;
+  /** The slide as a standalone 16:9 SVG document. */
+  svg: string;
+}
+
+export interface LessonSlideDesigns {
+  lessonId: string;
+  revisionNumber: number;
+  theme: StudyGuidePdfTheme;
+  slides: SlideDesign[];
+}
+
+/** The lecture's slides as designed pages in one of the study guide themes. */
+export async function getLessonSlideDesigns(
+  lessonId: string,
+  revisionNumber: number,
+  theme: StudyGuidePdfTheme,
+): Promise<LessonSlideDesigns> {
+  return invoke<LessonSlideDesigns>("get_lesson_slide_designs", {
+    input: { lessonId, revisionNumber, theme },
+  });
+}
+
 export interface PreparedLecturePptx {
   preparedExport: PreparedExport;
   /** The revision the deck was written from. */
@@ -233,18 +272,35 @@ export async function answerLessonCheck(
 }
 
 /**
+ * Writes a lesson written with AI again from the part of the subject it
+ * teaches, as its sources are now, and keeps it as the lesson's next
+ * revision. Returns the subject's lessons.
+ */
+export async function updateLessonFromSources(
+  lessonId: string,
+  operationId: string = createOperationId(),
+): Promise<SubjectLessons> {
+  return invoke<SubjectLessons>("update_lesson_from_sources", {
+    input: { lessonId, operationId },
+  });
+}
+
+/**
  * Writes the subject's course with the default document model: one lesson for
  * each top-level topic of its documents' learning plans, saved together when
- * every one is written. A subject that already has lessons, or a document
- * still being processed, is refused. Keep the operation id to stop the run
- * with `cancelSubjectCourseWriting`.
+ * every one is written. A subject that already has lessons is refused unless
+ * `rewrite`: then each lesson becomes the next revision of the lesson teaching
+ * the same part, or a new lesson. A document still being processed is
+ * refused. Keep the operation id to stop the run with
+ * `cancelSubjectCourseWriting`.
  */
 export async function writeSubjectCourse(
   subjectId: string,
   operationId: string = createOperationId(),
+  rewrite = false,
 ): Promise<SubjectLessons> {
   return invoke<SubjectLessons>("write_subject_course", {
-    input: { subjectId, operationId },
+    input: { subjectId, operationId, rewrite },
   });
 }
 
@@ -301,6 +357,7 @@ export async function narrateLessonStep(
 
 /** A question the teacher asks the class; its answer stays native until answered. */
 export interface LectureQuestion {
+  timing: QuestionTiming;
   prompt: string;
   options: { id: string; text: string }[];
 }
@@ -309,7 +366,7 @@ export interface LectureScriptSlide {
   slideKey: string;
   /** What the teacher says over the slide. */
   talk: string;
-  /** Asked after the talk, on a few step slides. */
+  /** Asked before or after the talk, on a few step slides. */
   question: LectureQuestion | null;
 }
 
@@ -374,5 +431,16 @@ export async function narrateLecturePart(
 ): Promise<LessonStepNarration> {
   return invoke<LessonStepNarration>("narrate_lecture_part", {
     input: { lessonId, revisionNumber, slideKey, replyTo },
+  });
+}
+
+/** Speaks a slide's question, for one the teacher asks before the talk. */
+export async function askLectureQuestion(
+  lessonId: string,
+  revisionNumber: number,
+  slideKey: string,
+): Promise<LessonStepNarration> {
+  return invoke<LessonStepNarration>("narrate_lecture_part", {
+    input: { lessonId, revisionNumber, slideKey, ask: true },
   });
 }

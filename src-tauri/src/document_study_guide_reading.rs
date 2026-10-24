@@ -4,7 +4,7 @@
 //! text they read: marks are kept by topic with the section's content hash, so
 //! remaking a guide keeps a mark on an unchanged section and shows a rewritten
 //! one as unread, without rewriting the mark. The position is the section the
-//! learner last opened in each document's guide, kept for Continue reading.
+//! learner last opened in each document's guide, where the guide reopens.
 //!
 //! Reading is not a review: nothing here writes review evidence or changes a
 //! schedule. Every save names the guide it was made in, so a reader still open
@@ -19,8 +19,6 @@ use crate::{
     error::CommandError,
     util::{unix_time_millis, validate_entity_id},
 };
-
-const MAX_CONTINUE_READING: i64 = 20;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -48,12 +46,6 @@ pub(crate) struct SetDocumentStudyGuideSectionReadInput {
     pub read: bool,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ListContinueReadingInput {
-    pub limit: i64,
-}
-
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DocumentStudyGuideReadingDto {
@@ -66,22 +58,6 @@ pub(crate) struct DocumentStudyGuideReadingDto {
     /// The section last opened, while it is still part of this guide.
     pub last_topic_id: Option<String>,
     pub last_opened_at: Option<i64>,
-}
-
-/// A guide the learner opened and has not finished, for Continue reading.
-#[derive(Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ContinueReadingItemDto {
-    pub document_id: String,
-    pub guide_id: String,
-    pub title: String,
-    pub subject_id: Option<String>,
-    pub section_count: i64,
-    pub read_section_count: i64,
-    pub topic_id: String,
-    /// The open section's 0-based place in the guide.
-    pub section_index: i64,
-    pub opened_at: i64,
 }
 
 #[tauri::command]
@@ -114,14 +90,6 @@ pub(crate) fn set_document_study_guide_section_read(
 ) -> Result<DocumentStudyGuideReadingDto, CommandError> {
     let now = unix_time_millis()?;
     database.with_connection(|connection| set_section_read(connection, input, now))
-}
-
-#[tauri::command]
-pub(crate) fn list_continue_reading_study_guides(
-    database: State<'_, Database>,
-    input: ListContinueReadingInput,
-) -> Result<Vec<ContinueReadingItemDto>, CommandError> {
-    database.with_connection(|connection| continue_reading(connection, input.limit))
 }
 
 pub(crate) fn open_section(
@@ -196,66 +164,6 @@ pub(crate) fn set_section_read(
     let saved = reading(&transaction, &input.document_id, &input.guide_id)?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(saved)
-}
-
-pub(crate) fn continue_reading(
-    connection: &Connection,
-    limit: i64,
-) -> Result<Vec<ContinueReadingItemDto>, CommandError> {
-    if !(1..=MAX_CONTINUE_READING).contains(&limit) {
-        return Err(CommandError::new(
-            "invalid_continue_reading_limit",
-            "The Continue reading list size was invalid.",
-        ));
-    }
-    let mut statement = connection
-        .prepare(
-            "WITH reading AS (
-                 SELECT guide.document_id, guide.id AS guide_id, document.title,
-                        document.subject_id, position.topic_id, position.opened_at,
-                        (SELECT COUNT(*) FROM document_study_guide_sections section
-                         WHERE section.guide_id = guide.id) AS section_count,
-                        (SELECT COUNT(*) FROM document_study_guide_sections section
-                         JOIN document_study_guide_section_reads mark
-                           ON mark.document_id = guide.document_id
-                          AND mark.topic_id = section.topic_id
-                          AND mark.content_hash = section.content_hash
-                         WHERE section.guide_id = guide.id) AS read_section_count,
-                        (SELECT COUNT(*) FROM document_study_guide_sections earlier
-                         WHERE earlier.guide_id = guide.id
-                           AND earlier.sort_index < open.sort_index) AS section_index
-                 FROM document_study_guide_positions position
-                 JOIN document_study_guides guide
-                   ON guide.document_id = position.document_id AND guide.state = 'active'
-                 JOIN documents document ON document.id = guide.document_id
-                 JOIN document_study_guide_sections open
-                   ON open.guide_id = guide.id AND open.topic_id = position.topic_id
-             )
-             SELECT document_id, guide_id, title, subject_id, section_count,
-                    read_section_count, topic_id, section_index, opened_at
-             FROM reading
-             WHERE read_section_count < section_count
-             ORDER BY opened_at DESC, document_id
-             LIMIT ?1",
-        )
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([limit], |row| {
-            Ok(ContinueReadingItemDto {
-                document_id: row.get(0)?,
-                guide_id: row.get(1)?,
-                title: row.get(2)?,
-                subject_id: row.get(3)?,
-                section_count: row.get(4)?,
-                read_section_count: row.get(5)?,
-                topic_id: row.get(6)?,
-                section_index: row.get(7)?,
-                opened_at: row.get(8)?,
-            })
-        })
-        .map_err(CommandError::database)?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
 }
 
 /// Clears a document's reading with its guide, inside the deleting transaction.

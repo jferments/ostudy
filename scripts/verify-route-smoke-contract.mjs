@@ -92,7 +92,10 @@ if (sources.destinationMapping !== null) {
 if (sources.libraryViews !== null) {
   compareOrderedRecords(
     "Library view labels",
-    navigation.library.views.map(({ id, label }) => ({ id, label })),
+    // Library's own page has no tab; the other views are a subject's tabs.
+    navigation.library.views
+      .filter((entry) => entry.id !== navigation.library.page)
+      .map(({ id, label }) => ({ id, label })),
     parseLibraryViewLabels(sources.libraryViews),
   );
 }
@@ -247,6 +250,12 @@ function validateNavigationShape(value) {
   reportDuplicates("navigation destination", value.destinations.map((entry) => entry.id));
   reportDuplicates("header action", value.headerActions.map((entry) => entry.id));
   reportDuplicates("Library view", value.library.views.map((entry) => entry.id));
+  if (
+    value.library.page !== undefined &&
+    !value.library.views.some((entry) => entry.id === value.library.page)
+  ) {
+    fail(`navigation.library.page ${JSON.stringify(value.library.page)} is not a Library view.`);
+  }
 }
 
 function validateLabeledIdentifiers(entries, label) {

@@ -21,6 +21,9 @@ mod deck_merge;
 #[path = "release/document_annotations.rs"]
 mod document_annotations;
 
+#[path = "release/document_figures.rs"]
+mod document_figures;
+
 #[path = "release/generation_instructions.rs"]
 mod generation_instructions;
 
@@ -29,8 +32,23 @@ mod lessons;
 
 #[path = "release/lesson_narration.rs"]
 mod lesson_narration;
+#[path = "release/material_ink.rs"]
+mod material_ink;
+
+#[path = "release/document_study_exclusions.rs"]
+mod document_study_exclusions;
+
+#[path = "release/note_folders.rs"]
+mod note_folders;
+
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
+
+#[path = "release/notebook_assets.rs"]
+mod notebook_assets;
+
+#[path = "release/notebooks.rs"]
+mod notebooks;
 
 #[path = "release/object_delta.rs"]
 mod object_delta;
@@ -50,6 +68,10 @@ mod annotated_pdf_exports;
 mod lecture_exports;
 #[path = "release/lecture_scripts.rs"]
 mod lecture_scripts;
+#[path = "release/podcasts.rs"]
+mod podcasts;
+#[path = "release/speech_voices.rs"]
+mod speech_voices;
 #[path = "release/study_guide_reading.rs"]
 mod study_guide_reading;
 
@@ -62,7 +84,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 15;
+pub(crate) const SCHEMA_VERSION: i64 = 23;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -160,6 +182,54 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "lecture_scripts",
         checksum: "61892d73c101e80515f4df96b1f53ba2bbbce3d2e9c8a530c7d0655bbd362e1f",
         sql: include_str!("../../schema/0015_lecture_scripts.sql"),
+    },
+    ReleaseMigration {
+        version: 16,
+        name: "speech_voices",
+        checksum: "2ff607022faa39f8db7876ba62233cd92cd2d138e953c1e1a189c0dff7c5070e",
+        sql: include_str!("../../schema/0016_speech_voices.sql"),
+    },
+    ReleaseMigration {
+        version: 17,
+        name: "podcasts",
+        checksum: "23abf0c9879caf011c3bb542c8f43274beae8d320fc3d6d914b87a907379e4cd",
+        sql: include_str!("../../schema/0017_podcasts.sql"),
+    },
+    ReleaseMigration {
+        version: 18,
+        name: "notebooks",
+        checksum: "cd1eb1fc6917b5a599c5625f04e2034a8c725ca51984ceb5269a116f1f4a3032",
+        sql: include_str!("../../schema/0018_notebooks.sql"),
+    },
+    ReleaseMigration {
+        version: 19,
+        name: "document_figures",
+        checksum: "fa59b76d33f446d932b0a68d72b2f3a53feab456ff0e318c385e0c99b7a9bf75",
+        sql: include_str!("../../schema/0019_document_figures.sql"),
+    },
+    ReleaseMigration {
+        version: 20,
+        name: "notebook_assets",
+        checksum: "b79396a63983ef4d33da7d02202ce2616e52d76cc0613037bee83c0ea2755b02",
+        sql: include_str!("../../schema/0020_notebook_assets.sql"),
+    },
+    ReleaseMigration {
+        version: 21,
+        name: "material_ink",
+        checksum: "338768544f533b4d2960518cad610fdd0ed3f881f5bbf0277ceb74a3a1a21c08",
+        sql: include_str!("../../schema/0021_material_ink.sql"),
+    },
+    ReleaseMigration {
+        version: 22,
+        name: "document_study_exclusions",
+        checksum: "ff47f442f9206e1610795cf14ad8827b1c513e35dc5452274cc6c211f574b480",
+        sql: include_str!("../../schema/0022_document_study_exclusions.sql"),
+    },
+    ReleaseMigration {
+        version: 23,
+        name: "note_folders",
+        checksum: "838c81189b2782597bb1220783fcd72145e810bbd307e48c123a591c841f2333",
+        sql: include_str!("../../schema/0023_note_folders.sql"),
     },
 ];
 
@@ -377,6 +447,14 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     lecture_exports::validate_schema(connection, user_version)?;
     annotated_pdf_exports::validate_schema(connection, user_version)?;
     lecture_scripts::validate_schema(connection, user_version)?;
+    speech_voices::validate_schema(connection, user_version)?;
+    podcasts::validate_schema(connection, user_version)?;
+    notebooks::validate_schema(connection, user_version)?;
+    document_figures::validate_schema(connection, user_version)?;
+    notebook_assets::validate_schema(connection, user_version)?;
+    material_ink::validate_schema(connection, user_version)?;
+    document_study_exclusions::validate_schema(connection, user_version)?;
+    note_folders::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

@@ -75,6 +75,10 @@ pub fn start_document_flashcard_generation(
     input: RetryPdfGenerationInput,
 ) -> Result<(), CommandError> {
     documents::validate_retry_pdf_flashcard_generation(database.inner(), &input.document_id)?;
+    if let Some(deck_id) = input.destination_deck_id.as_deref() {
+        validate_entity_id(deck_id, "deck")?;
+        crate::document_initial_generation::destination_deck_name(database.inner(), deck_id)?;
+    }
     let document_id = input.document_id.clone();
     let reservation = reserve_document_task(&document_id)?;
     if let Err(error) = document_store::mark_document_processing(database.inner(), &document_id) {

@@ -178,6 +178,22 @@ impl EvidenceCatalog {
         sources: &[SourceRecord],
         images_attached: bool,
     ) -> Result<Self, CommandError> {
+        Self::build_with(sources, |_| images_attached)
+    }
+
+    /// A catalog in which only the `attached` page images are visible: a page
+    /// shown to a neighbouring window is not evidence here.
+    pub(crate) fn build_attaching(
+        sources: &[SourceRecord],
+        attached: &[EvidenceImage],
+    ) -> Result<Self, CommandError> {
+        Self::build_with(sources, |image| attached.contains(image))
+    }
+
+    fn build_with(
+        sources: &[SourceRecord],
+        attached: impl Fn(&EvidenceImage) -> bool,
+    ) -> Result<Self, CommandError> {
         let mut entries = Vec::new();
         for source in sources {
             source.validate()?;
@@ -199,19 +215,33 @@ impl EvidenceCatalog {
             }
             // Images are admitted only when these exact bytes were attached.
             // A stored image ID alone never authorizes an image-only claim.
-            if images_attached {
-                for image in &source.images {
-                    entries.push(EvidenceReference::new(
-                        source,
-                        EvidenceSelector::Image {
-                            image: image.clone(),
-                        },
-                        String::new(),
-                    )?);
-                }
+            for image in source.images.iter().filter(|image| attached(image)) {
+                entries.push(EvidenceReference::new(
+                    source,
+                    EvidenceSelector::Image {
+                        image: image.clone(),
+                    },
+                    String::new(),
+                )?);
             }
         }
         Ok(Self { entries })
+    }
+
+    /// The distinct images among the entries at `positions` (all entries when
+    /// `None`): what a request over that evidence has to attach.
+    pub(crate) fn images_at(&self, positions: Option<&BTreeSet<usize>>) -> Vec<EvidenceImage> {
+        let mut images = Vec::new();
+        for (index, entry) in self.entries.iter().enumerate() {
+            if let EvidenceSelector::Image { image } = &entry.selector {
+                if positions.is_none_or(|positions| positions.contains(&index))
+                    && !images.contains(image)
+                {
+                    images.push(image.clone());
+                }
+            }
+        }
+        images
     }
 
     pub(crate) fn alias(index: usize) -> String {
@@ -294,19 +324,19 @@ impl EvidenceCatalog {
         &self,
         aliases: &[String],
     ) -> Result<Vec<EvidenceReference>, CommandError> {
-        if aliases.is_empty() || aliases.len() > MAX_EVIDENCE_PER_UNIT {
-            return Err(invalid(
-                "Select between one and eight supplied evidence IDs.",
-            ));
-        }
+        // A repeated ID or stray spacing says nothing new about the evidence,
+        // so it is tidied here rather than costing another provider request.
         let mut positions = BTreeSet::new();
         for alias in aliases {
             let index = self
-                .index_for_alias(alias)
+                .index_for_alias(alias.trim())
                 .ok_or_else(|| invalid("A knowledge unit selected an unknown evidence ID."))?;
-            if !positions.insert(index) {
-                return Err(invalid("A knowledge unit repeated an evidence ID."));
-            }
+            positions.insert(index);
+        }
+        if positions.is_empty() || positions.len() > MAX_EVIDENCE_PER_UNIT {
+            return Err(invalid(
+                "Select between one and eight supplied evidence IDs.",
+            ));
         }
         // Native source order, not model order, determines the primary source.
         Ok(positions
@@ -380,9 +410,17 @@ mod tests {
         }
         assert!(catalog.resolve(&["E999999".to_string()]).is_err());
         assert!(catalog.resolve(&["E00".to_string()]).is_err());
-        assert!(catalog
-            .resolve(&["E0".to_string(), "E0".to_string()])
-            .is_err());
+        // A repeated or padded alias still names one native span.
+        let tidied = catalog
+            .resolve(&["E1".to_string(), " E0".to_string(), "E1 ".to_string()])
+            .unwrap();
+        assert_eq!(tidied.len(), 2);
+        assert_eq!(
+            tidied[0].id,
+            catalog.resolve(&["E0".to_string()]).unwrap()[0].id
+        );
+        assert!(catalog.resolve(&[" ".to_string()]).is_err());
+        assert!(catalog.resolve(&[]).is_err());
     }
 
     #[test]

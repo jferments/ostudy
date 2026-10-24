@@ -9,6 +9,9 @@
     "decorativeArtwork": true,
     "desiredRetention": 0.9,
     "displayQuestionOnAnswer": false,
+    "guidePdfIncludeNotes": true,
+    "guidePdfTheme": "sage",
+    "lectureAudioWithNewLessons": true,
     "materialPreference": "automatic",
     "motionPreference": "system",
     "newDayStartHour": 4,
@@ -21,6 +24,17 @@
   "commandError": {
     "code": "example_error",
     "message": "Example safe message."
+  },
+  "completedRestore": {
+    "assetCount": 4,
+    "cardCount": 5,
+    "completed": true,
+    "deckCount": 2,
+    "documentCount": 1,
+    "operationId": "22222222222222222222222222222222",
+    "restartRequired": false,
+    "reviewCount": 8,
+    "templateCount": 3
   },
   "deckSummary": {
     "archivedAt": null,
@@ -48,137 +62,146 @@
     "signed": -7,
     "unsigned": 42
   },
+  "homeSummary": {
+    "noSubject": {
+      "cardCount": 25,
+      "cover": null,
+      "deckCount": 1,
+      "dueDeckIds": [
+        "44444444444444444444444444444444"
+      ],
+      "dueNew": 0,
+      "dueReviews": 3,
+      "guideCount": 0,
+      "hasOverviewGuide": false,
+      "lessonCount": 0,
+      "podcastCount": 0,
+      "scheduledNew": 0,
+      "scheduledReviews": 3,
+      "sourceCount": 0,
+      "subjectId": null
+    },
+    "studyDate": "2026-10-05",
+    "subjects": [
+      {
+        "cardCount": 340,
+        "cover": {
+          "documentId": "55555555555555555555555555555555",
+          "height": 200.0,
+          "left": 72.0,
+          "pageHeight": 792.0,
+          "pageNumber": 4,
+          "pageWidth": 612.0,
+          "top": 120.5,
+          "width": 300.0
+        },
+        "deckCount": 1,
+        "dueDeckIds": [
+          "11111111111111111111111111111111"
+        ],
+        "dueNew": 12,
+        "dueReviews": 28,
+        "guideCount": 2,
+        "hasOverviewGuide": true,
+        "lessonCount": 16,
+        "podcastCount": 1,
+        "scheduledNew": 12,
+        "scheduledReviews": 28,
+        "sourceCount": 1,
+        "subjectId": "33333333333333333333333333333333"
+      }
+    ],
+    "today": {
+      "deckIds": [
+        "11111111111111111111111111111111",
+        "44444444444444444444444444444444"
+      ],
+      "dueNew": 12,
+      "dueReviews": 31,
+      "estimateMsPerCard": 9500,
+      "estimateReviewCount": 120,
+      "estimatedMinutes": 7,
+      "newRemaining": 15,
+      "reviewsRemaining": 180,
+      "scheduledNew": 12,
+      "scheduledReviews": 31,
+      "subjectCount": 2
+    }
+  },
   "librarySession": {
     "generation": 7,
     "lastRestore": {
-      "operationId": "22222222222222222222222222222222",
-      "deckCount": 2,
-      "cardCount": 5,
-      "documentCount": 1,
-      "templateCount": 3,
-      "reviewCount": 8,
       "assetCount": 4,
+      "cardCount": 5,
+      "completed": true,
+      "deckCount": 2,
+      "documentCount": 1,
+      "operationId": "22222222222222222222222222222222",
       "restartRequired": false,
-      "completed": true
+      "reviewCount": 8,
+      "templateCount": 3
     },
     "ready": true,
     "recoveryRequired": false,
     "restoring": false
   },
-  "completedRestore": {
-    "operationId": "22222222222222222222222222222222",
-    "deckCount": 2,
-    "cardCount": 5,
-    "documentCount": 1,
-    "templateCount": 3,
-    "reviewCount": 8,
-    "assetCount": 4,
-    "restartRequired": false,
-    "completed": true
-  },
-  "subjectLibrary": {
-    "libraryRevision": 9,
-    "documentFilingRevision": 4,
-    "subjects": [
-      {
-        "id": "33333333333333333333333333333333",
-        "name": "Pharmacology",
-        "sortOrder": 1000,
-        "createdAt": 10,
-        "updatedAt": 20,
-        "revision": 2
-      }
-    ],
-    "decks": [
-      {
-        "deckId": "11111111111111111111111111111111",
-        "subjectId": "33333333333333333333333333333333",
-        "sortOrder": 1000
-      },
-      {
-        "deckId": "44444444444444444444444444444444",
-        "subjectId": null,
-        "sortOrder": 1000
-      }
-    ],
-    "documents": [
-      {
-        "documentId": "55555555555555555555555555555555",
-        "subjectId": "33333333333333333333333333333333"
-      }
-    ],
-    "studyRanges": [
-      {
-        "id": "66666666666666666666666666666666",
-        "documentId": "55555555555555555555555555555555",
-        "unitKind": "page",
-        "startUnit": 10,
-        "endUnit": 40,
-        "sourceSha256": "7777777777777777777777777777777777777777777777777777777777777777",
-        "createdAt": 30
-      }
-    ],
-    "checkTheseCount": 1
-  },
   "subjectFilingReview": {
-    "entityKind": "deck",
-    "entityId": "44444444444444444444444444444444",
-    "reason": "moved_to_collection_subject",
     "detail": {
       "folderSubjectId": null,
       "subjectIds": [
         "33333333333333333333333333333333"
       ]
     },
-    "label": "Pharmacology study bundle"
+    "entityId": "44444444444444444444444444444444",
+    "entityKind": "deck",
+    "label": "Pharmacology study bundle",
+    "reason": "moved_to_collection_subject"
   },
-  "homeSummary": {
-    "studyDate": "2026-10-05",
-    "today": {
-      "dueReviews": 31,
-      "dueNew": 12,
-      "scheduledReviews": 31,
-      "scheduledNew": 12,
-      "reviewsRemaining": 180,
-      "newRemaining": 15,
-      "subjectCount": 2,
-      "deckIds": [
-        "11111111111111111111111111111111",
-        "44444444444444444444444444444444"
-      ],
-      "estimatedMinutes": 7,
-      "estimateMsPerCard": 9500,
-      "estimateReviewCount": 120
-    },
-    "subjects": [
+  "subjectLibrary": {
+    "checkTheseCount": 1,
+    "decks": [
       {
-        "subjectId": "33333333333333333333333333333333",
-        "dueReviews": 28,
-        "dueNew": 12,
-        "scheduledReviews": 28,
-        "scheduledNew": 12,
-        "cardCount": 340,
-        "deckCount": 1,
-        "sourceCount": 1,
-        "hasOverviewGuide": true,
-        "dueDeckIds": [
-          "11111111111111111111111111111111"
-        ]
+        "deckId": "11111111111111111111111111111111",
+        "sortOrder": 1000,
+        "subjectId": "33333333333333333333333333333333"
+      },
+      {
+        "deckId": "44444444444444444444444444444444",
+        "sortOrder": 1000,
+        "subjectId": null
       }
     ],
-    "noSubject": {
-      "subjectId": null,
-      "dueReviews": 3,
-      "dueNew": 0,
-      "scheduledReviews": 3,
-      "scheduledNew": 0,
-      "cardCount": 25,
-      "deckCount": 1,
-      "sourceCount": 0,
-      "hasOverviewGuide": false,
-      "dueDeckIds": [
-        "44444444444444444444444444444444"
-      ]
-    }
+    "documentFilingRevision": 4,
+    "documents": [
+      {
+        "documentId": "55555555555555555555555555555555",
+        "subjectId": "33333333333333333333333333333333"
+      }
+    ],
+    "leftOutDocumentIds": [
+      "55555555555555555555555555555555"
+    ],
+    "libraryRevision": 9,
+    "studyRanges": [
+      {
+        "createdAt": 30,
+        "documentId": "55555555555555555555555555555555",
+        "endUnit": 40,
+        "id": "66666666666666666666666666666666",
+        "sourceSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+        "startUnit": 10,
+        "unitKind": "page"
+      }
+    ],
+    "subjects": [
+      {
+        "createdAt": 10,
+        "id": "33333333333333333333333333333333",
+        "name": "Pharmacology",
+        "revision": 2,
+        "sortOrder": 1000,
+        "updatedAt": 20
+      }
+    ]
   }
 }

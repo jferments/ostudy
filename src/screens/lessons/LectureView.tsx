@@ -1,54 +1,132 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import type { ShowToast } from "../../components/Toast";
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
 import {
   answerLectureQuestion,
+  askLectureQuestion,
   getLessonLecture,
   getLessonLectureScript,
   narrateLecturePart,
   prepareLessonLecturePptx,
   writeLessonLectureScript,
+  type AnsweredCheck,
   type Lecture,
   type LectureAnswer,
   type LectureScript,
   type LectureScriptSlide,
   type LectureSlide,
+  type LessonCheckResult,
+  type LessonStep,
+  type LessonStepNarration,
 } from "../../ipc/lessons";
+import type { StudyGuidePdfTheme } from "../../ipc/studyGuides";
 import { Icon } from "../../ui/icons/Icon";
+import { IconButton } from "../../ui/icons/IconButton";
 import { cn } from "../../ui/internal/cn";
-import { Dialog } from "../../ui/overlays/Dialog";
+import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
+import { Dialog, Sheet } from "../../ui/overlays/Dialog";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
-import { RadioGroup } from "../../ui/primitives/FormControls";
+import { Disclosure, RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { keepLectureAudio } from "./lectureAudio";
+import { LessonBlocks } from "./LessonBlocks";
+import { SlideCards } from "./SlideCards";
+import { StepCheck } from "./StepCheck";
 import { useNarrationPlayer } from "./useNarrationPlayer";
+import { InkEditor } from "../ink/InkEditor";
+import { InkOverlay } from "../ink/InkOverlay";
+import { useMaterialInk } from "../ink/useMaterialInk";
+import {
+  readLectureFlag,
+  readSlideTheme,
+  readSlideZoom,
+  saveLectureFlag,
+  saveSlideTheme,
+  saveSlideZoom,
+  SLIDE_ZOOMS,
+  useSlideDesigns,
+} from "./useSlideDesigns";
+import { useVoiceAvailable } from "./useVoiceAvailable";
+
+const SLIDE_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string }> = [
+  { value: "navy", name: "Navy" },
+  { value: "sage", name: "Sage" },
+  { value: "slate", name: "Slate" },
+  { value: "plum", name: "Plum" },
+];
 
 interface LectureViewProps {
   lessonId: string;
   revisionNumber: number;
   lessonTitle: string;
+  /** The lesson's subject, whose decks a slide's cards go to first. */
+  subjectId: string;
   /** The step the lesson was on, so the lecture opens at its slide. */
   stepKey: string | null;
+  /** The lesson's steps, whose checks are answered beside their slides. */
+  steps: LessonStep[];
+  answered: Record<string, AnsweredCheck>;
+  onAnswered: (result: LessonCheckResult) => void;
+  /** Called with the step whose slide is shown, so the lesson keeps its place. */
+  onStepShown?: (stepKey: string) => void;
+  /** Finishes the lesson from its last slide. */
+  onFinish?: () => void;
+  finishing?: boolean;
+  /** Where the back link goes, such as the subject's lessons. */
+  backLabel: string;
+  /** Where this lesson sits in its course, such as "Lesson 2 of 6". */
+  position?: string;
   onClose: () => void;
+  showToast: ShowToast;
 }
 
-/** A question the teacher is asking; `resumeAt` is the slide the lecture goes on to. */
+/** A slide's designed picture is laid out at 720 by 405 points. */
+const SLIDE_WIDTH = 720;
+const SLIDE_HEIGHT = 405;
+
+/**
+ * A question the teacher is asking; `resumeAt` is the slide the lecture goes
+ * on to, which is the asking slide's own talk when the question comes first.
+ */
 interface Asking {
   slide: LectureScriptSlide;
   resumeAt: number | null;
 }
 
 /**
- * A lesson as slides. Once the teacher's lecture is written, the teacher
- * talks over every slide and now and then stops to ask the class a question,
- * answers it and goes on; until then each step's narration is spoken. Play
- * lecture speaks from the current slide and moves on as each one ends;
- * choosing another slide stops it.
+ * A lesson as its lecture: the slides, laid out natively in one of the study
+ * guide themes (the plain slides show while they are laid out or if that
+ * fails), a filmstrip of them against the page's edge, and under the slide
+ * its notes, the step's own reading, its check and its cards. Once the
+ * teacher's lecture is written, the teacher talks over every slide and now
+ * and then stops to ask the class a question, answers it and goes on; until
+ * then each step's narration is spoken. Play lecture speaks from the current
+ * slide and moves on as each one ends; choosing another slide stops it. On a
+ * phone the check waits behind Check yourself and opens in a sheet.
  */
-export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, onClose }: LectureViewProps) {
+export function LectureView({
+  lessonId,
+  revisionNumber,
+  lessonTitle,
+  subjectId,
+  stepKey,
+  steps,
+  answered: answeredChecks,
+  onAnswered,
+  onStepShown,
+  onFinish,
+  finishing = false,
+  backLabel,
+  position,
+  onClose,
+  showToast,
+}: LectureViewProps) {
   const lane = useRequestLane();
   const scriptLane = useRequestLane();
   const [lecture, setLecture] = useState<Lecture | null>(null);
@@ -65,8 +143,40 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
+  // Each part is asked for once, so the next slide's audio can be fetched
+  // while this one plays and is ready when the lecture moves on.
+  const parts = useRef(new Map<string, Promise<LessonStepNarration>>());
+  const part = (key: string, narrate: () => Promise<LessonStepNarration>) => {
+    const id = `${lessonId}:${revisionNumber}:${key}`;
+    let pending = parts.current.get(id);
+    if (!pending) {
+      pending = narrate();
+      pending.catch(() => parts.current.delete(id));
+      parts.current.set(id, pending);
+    }
+    return pending;
+  };
+  const voiceAvailable = useVoiceAvailable();
+  const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
+  const designs = useSlideDesigns(lessonId, revisionNumber, theme);
+  const [zoom, setZoom] = useState(readSlideZoom);
+  // The teacher's words show only when captions are on.
+  const [captions, setCaptions] = useState(() => readLectureFlag("captions", false));
+  // With autoplay off, a playing lecture waits on each slide until Next.
+  const [autoplay, setAutoplay] = useState(() => readLectureFlag("autoplay", true));
+  const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
+  const ink = useMaterialInk(inkMaterial);
+  const [inking, setInking] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const compact = useLayoutMode().layoutMode === "compact";
   // The step only chooses the slide the lecture opens at.
   const openingStep = useRef(stepKey);
+  const shownStep = lecture?.slides[index]?.stepKey ?? null;
+  const reportStep = useRef(onStepShown);
+  reportStep.current = onStepShown;
+  useEffect(() => {
+    if (shownStep) reportStep.current?.(shownStep);
+  }, [shownStep]);
 
   useEffect(() => {
     void latestResult(lane, () => getLessonLecture(lessonId, revisionNumber)).then(
@@ -97,7 +207,7 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
 
   if (readError || !lecture) {
     return (
-      <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
+      <LectureFrame backLabel={backLabel} onClose={onClose}>
         {readError ? (
           <InlineNotice kind="error">This lecture could not open: {readError}</InlineNotice>
         ) : (
@@ -114,22 +224,57 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
   const taught = (item: LectureSlide | undefined) => script?.slides.find((part) => part.slideKey === item?.key);
   const canLecture = script ? true : slides.some((item) => spoken(item));
   const talk = taught(slide);
+  const image = designs.images.get(slide.key);
+  const step = steps.find((item) => item.key === slide.stepKey);
+  const checked = step ? answeredChecks[step.key] : undefined;
+  const chooseTheme = (next: StudyGuidePdfTheme) => {
+    setTheme(next);
+    saveSlideTheme(next);
+  };
+  const zoomBy = (step: number) => {
+    const next = SLIDE_ZOOMS[SLIDE_ZOOMS.indexOf(zoom) + step];
+    if (next === undefined) return;
+    setZoom(next);
+    saveSlideZoom(next);
+  };
 
-  // The teacher talks over each slide in turn and stops after one that asks
-  // the class a question; answering it goes on from the next slide.
-  const teach = (from: number) => {
+  // The teacher talks over each slide in turn. A question asked after the
+  // talk goes on from the next slide once answered; one asked before it is
+  // spoken first, and the slide's talk follows the answer.
+  const asks = (key: string) => () => part(`${key}:ask`, () => askLectureQuestion(lessonId, revisionNumber, key));
+  const says = (key: string) => () => part(`${key}:talk`, () => narrateLecturePart(lessonId, revisionNumber, key));
+  const teach = (from: number, asked = false) => {
     const item = slides[from];
-    const part = taught(item);
-    if (!item || !part) {
+    const current = taught(item);
+    if (!item || !current) {
       setLecturing(false);
       return;
     }
     setIndex(from);
-    voice.speak(
-      () => narrateLecturePart(lessonId, revisionNumber, item.key),
-      () => (part.question ? setAsking({ slide: part, resumeAt: from + 1 }) : teach(from + 1)),
+    const following = slides[from + 1];
+    const upNext = taught(following);
+    if (following && upNext) {
+      // Audio made with the lesson is already kept; this only waits for any that is not.
+      if (upNext.question?.timing === "before") void asks(following.key)().catch(() => undefined);
+      if (upNext.talk.trim()) void says(following.key)().catch(() => undefined);
+    }
+    if (current.question?.timing === "before" && !asked) {
+      voice.speak(asks(item.key), () => setAsking({ slide: current, resumeAt: from }));
+      return;
+    }
+    voice.speak(says(item.key), () =>
+      current.question?.timing === "after" ? setAsking({ slide: current, resumeAt: from + 1 }) : goOn(from + 1),
     );
   };
+
+  // The lecture moves to the next slide by itself, or with autoplay off
+  // waits on this one until the learner moves on, and ends after the last.
+  const goOn = (next: number) => {
+    if (next >= slides.length) setLecturing(false);
+    else if (autoplay) play(next);
+  };
+
+  const play = (from: number) => (script ? teach(from) : speakFrom(from));
 
   const speakFrom = (from: number) => {
     let next = from;
@@ -140,7 +285,7 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
       return;
     }
     setIndex(next);
-    voice.play(item.stepKey, () => speakFrom(next + 1));
+    voice.play(item.stepKey, () => goOn(next + 1));
   };
 
   const startLecture = () => {
@@ -158,11 +303,13 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
     setLecturing(false);
   };
 
-  const closeQuestion = (goOn: boolean) => {
+  const closeQuestion = (proceed: boolean) => {
     const resumeAt = asking?.resumeAt ?? null;
+    const first = asking?.slide.question?.timing === "before";
     setAsking(null);
-    if (goOn && resumeAt !== null) teach(resumeAt);
-    else stopLecture();
+    if (!proceed || resumeAt === null) stopLecture();
+    else if (first) teach(resumeAt, true);
+    else goOn(resumeAt);
   };
 
   // The teacher's reply is spoken only during a lecture; the lecture goes on
@@ -183,6 +330,8 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
       (value) => {
         setScript(value);
         setWriting(false);
+        // The lecture's audio is made now, so playing it does not wait for the voice.
+        if (voiceAvailable) void keepLectureAudio(lessonId, revisionNumber, value);
       },
       (error: unknown) => {
         setScriptError(`The teacher's lecture was not written: ${getErrorMessage(error)}`);
@@ -210,42 +359,94 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
     }
   };
 
+  // Choosing a slide stops the lecture, except that with autoplay off a
+  // playing lecture goes on from the chosen slide.
   const show = (next: number) => {
+    setCheckOpen(false);
+    headingRef.current?.focus();
+    if (lecturing && !autoplay) {
+      voice.stop();
+      setIndex(next);
+      play(next);
+      return;
+    }
     stopLecture();
     setIndex(next);
-    headingRef.current?.focus();
   };
 
+  if (inking) {
+    const pages = slides.flatMap((item) => {
+      const picture = designs.images.get(item.key);
+      return picture ? [{ key: item.key, width: SLIDE_WIDTH, height: SLIDE_HEIGHT, image: picture }] : [];
+    });
+    return (
+      <InkEditor material={inkMaterial} pages={pages} pageKey={slide.key} title={lecture.title}
+        description="Lecture slides" closeLabel="Back to the lecture" showToast={showToast}
+        onClose={() => {
+          setInking(false);
+          ink.reload();
+        }} />
+    );
+  }
+
   return (
-    <LectureFrame lessonTitle={lessonTitle} onClose={onClose}>
+    <LectureFrame backLabel={backLabel} onClose={onClose}>
       <header className="tw:flex tw:flex-wrap tw:items-end tw:justify-between tw:gap-3">
         <div className="tw:flex tw:min-w-0 tw:flex-col tw:gap-1">
           <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-            {slides.length} slides · {script ? "the notes are the teacher's lecture" : "the notes are the narration"}
+            {[position, `${slides.length} slides`].filter(Boolean).join(" · ")}
           </p>
           <h1 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight tw:break-words">
-            {lecture.title} · lecture
+            {lessonTitle}
           </h1>
         </div>
         <div className="tw:flex tw:flex-wrap tw:gap-2">
+          <OverflowMenu
+            label={`Theme: ${SLIDE_THEMES.find((option) => option.value === theme)?.name ?? "Navy"}`}
+            triggerPresentation="text"
+            className="tw:rounded-full"
+            items={SLIDE_THEMES.map((option) => ({
+              id: option.value,
+              label: option.name,
+              checked: option.value === theme,
+              onSelect: () => chooseTheme(option.value),
+            }))}
+          />
           {script === null ? (
             <Button className="tw:rounded-full" disabled={writing || lecturing} onClick={writeScript}>
               <Icon name="sparkles" size={16} /> {writing ? "Writing the lecture…" : "Write the teacher's lecture"}
             </Button>
           ) : null}
+          {designs.images.size === slides.length ? (
+            <Button className="tw:rounded-full" disabled={lecturing} onClick={() => setInking(true)}>
+              <Icon name="pen" size={16} /> Write on slides
+            </Button>
+          ) : null}
           <Button className="tw:rounded-full" disabled={saving} onClick={() => void saveDeck()}>
             <Icon name="download" size={16} /> {saving ? "Saving…" : "Save as .pptx"}
           </Button>
+          {voiceAvailable ? (
+            <Button
+              className="tw:rounded-full"
+              aria-pressed={autoplay}
+              onClick={() => {
+                setAutoplay(!autoplay);
+                saveLectureFlag("autoplay", !autoplay);
+              }}
+            >
+              <Icon name={autoplay ? "check" : "play"} size={16} /> Autoplay
+            </Button>
+          ) : null}
           {/* A failed voice leaves the lecture where it stopped. */}
           {lecturing && voice.listening !== "idle" ? (
             <Button className="tw:rounded-full" onClick={stopLecture}>
               <Icon name="stop" size={16} /> {voice.listening === "preparing" ? "Preparing…" : "Stop"}
             </Button>
-          ) : (
+          ) : voiceAvailable ? (
             <Button variant="primary" className="tw:rounded-full" disabled={!canLecture} onClick={startLecture}>
               <Icon name="listen" size={16} /> Play lecture
             </Button>
-          )}
+          ) : null}
         </div>
       </header>
       {script === null && !scriptError ? (
@@ -257,26 +458,43 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
       {scriptError ? <InlineNotice kind="error">{scriptError}</InlineNotice> : null}
       {saved ? <InlineNotice kind={saved.kind}>{saved.text}</InlineNotice> : null}
       {voice.error ? <InlineNotice kind="error">The lecture could not be read aloud: {voice.error}</InlineNotice> : null}
-      <div className="tw:grid tw:items-start tw:gap-6 tw:wide:grid-cols-[15rem_minmax(0,1fr)] tw:medium:grid-cols-[13rem_minmax(0,1fr)]">
+      <div className="tw:grid tw:items-start tw:gap-5 tw:wide:grid-cols-[8.5rem_minmax(0,1fr)] tw:medium:grid-cols-[7rem_minmax(0,1fr)]">
         <nav
           aria-label="Slides"
-          className="tw:hidden tw:rounded-lg tw:bg-(--ostudy-color-canvas-inset) tw:p-3 tw:wide:block tw:medium:block"
+          className="tw:sticky tw:top-0 tw:hidden tw:max-h-[calc(100dvh-6rem)] tw:overflow-y-auto tw:wide:block tw:medium:block"
         >
-          <ol className="tw:m-0 tw:flex tw:list-none tw:flex-col tw:gap-0.5 tw:p-0">
+          <ol className="tw:m-0 tw:flex tw:list-none tw:flex-col tw:gap-2 tw:p-0">
             {slides.map((item, position) => (
               <li key={item.key}>
                 <ItemTrigger
                   aria-current={position === index ? "step" : undefined}
+                  aria-label={`Slide ${position + 1}: ${item.title}`}
                   onClick={() => show(position)}
                   className={cn(
-                    "tw:w-full tw:items-center tw:gap-2.5 tw:rounded-md tw:px-2 tw:py-2 tw:text-start tw:text-small tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
-                    position === index && "tw:bg-card tw:font-semibold tw:shadow-sm",
+                    "tw:w-full tw:items-start tw:gap-1.5 tw:rounded-md tw:p-1 tw:text-start tw:outline-none tw:hover:bg-accent/40 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
+                    position === index && "tw:bg-accent",
                   )}
                 >
-                  <span aria-hidden="true" className="tw:w-5 tw:shrink-0 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
+                  <span aria-hidden="true" className="tw:w-4 tw:shrink-0 tw:pt-0.5 tw:text-caption tw:tabular-nums tw:text-muted-foreground">
                     {position + 1}
                   </span>
-                  <span className="tw:min-w-0 tw:flex-1 tw:break-words">{item.title}</span>
+                  {designs.images.has(item.key) ? (
+                    <span className="tw:relative tw:block tw:min-w-0 tw:flex-1">
+                      <img
+                        src={designs.images.get(item.key)}
+                        alt=""
+                        className={cn(
+                          "tw:block tw:aspect-video tw:w-full tw:rounded-sm tw:ring-1 tw:ring-border",
+                          position === index && "tw:ring-2 tw:ring-primary",
+                        )}
+                      />
+                      <InkOverlay marks={ink.marks.get(item.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} />
+                    </span>
+                  ) : (
+                    <span className="tw:grid tw:aspect-video tw:min-w-0 tw:flex-1 tw:place-items-center tw:overflow-hidden tw:rounded-sm tw:bg-card tw:p-1 tw:text-caption tw:ring-1 tw:ring-border tw:break-words">
+                      {item.title}
+                    </span>
+                  )}
                 </ItemTrigger>
               </li>
             ))}
@@ -285,8 +503,18 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
         <article aria-labelledby={titleId} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
           <section
             data-testid="lecture-slide"
-            className="tw:flex tw:aspect-video tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5"
+            style={zoom < 100 ? { width: `${zoom}%` } : undefined}
+            className={cn(
+              "tw:mx-auto tw:flex tw:aspect-video tw:w-full tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
+              image
+                ? "tw:relative tw:overflow-hidden tw:shadow-md tw:ring-1 tw:ring-border"
+                : "tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5",
+            )}
           >
+            {image ? <img src={image} alt="" className="tw:block tw:size-full" /> : null}
+            {image ? <InkOverlay marks={ink.marks.get(slide.key) ?? []} width={SLIDE_WIDTH} height={SLIDE_HEIGHT} /> : null}
+            {/* The designed slide is a picture of this text, which stays for screen readers. */}
+            <div className={image ? "tw:sr-only" : "tw:contents"}>
             <h2
               id={titleId}
               ref={headingRef}
@@ -307,40 +535,130 @@ export function LectureView({ lessonId, revisionNumber, lessonTitle, stepKey, on
                 ))}
               </ul>
             ) : null}
-          </section>
-          {(talk?.talk ?? slide.notes).trim() ? (
-            <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
-              <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
-                {talk ? "The teacher says" : "Speaker notes"}
-              </h3>
-              <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
-            </section>
-          ) : null}
-          {talk?.question && !lecturing ? (
-            <div>
-              <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
-                <Icon name="help" size={16} /> Answer the teacher's question
-              </Button>
             </div>
-          ) : null}
-          <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:py-3">
+          </section>
+          <div className="tw:flex tw:items-center tw:justify-between tw:gap-3">
             <Button className="tw:rounded-full" disabled={index === 0} onClick={() => show(index - 1)}>
               <Icon name="chevron-left" size={16} /> Back
             </Button>
-            <span className="tw:text-small tw:tabular-nums tw:text-muted-foreground">
-              Slide {index + 1} of {slides.length}
+            <span className="tw:flex tw:items-center tw:gap-1">
+              <IconButton icon="zoom-out" label="Smaller slide" disabled={zoom === SLIDE_ZOOMS[0]} onClick={() => zoomBy(-1)} />
+              <span className="tw:text-small tw:tabular-nums tw:text-muted-foreground">
+                Slide {index + 1} of {slides.length}
+              </span>
+              <IconButton icon="zoom-in" label="Larger slide" disabled={zoom === 100} onClick={() => zoomBy(1)} />
             </span>
-            <Button
-              variant="primary"
-              className="tw:rounded-full"
-              disabled={index === slides.length - 1}
-              onClick={() => show(index + 1)}
-            >
-              Next <Icon name="chevron-right" size={16} />
-            </Button>
+            {index === slides.length - 1 && onFinish ? (
+              <Button variant="primary" className="tw:rounded-full" disabled={finishing} onClick={onFinish}>
+                <Icon name="check" size={16} /> Finish lesson
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                className="tw:rounded-full"
+                disabled={index === slides.length - 1}
+                onClick={() => show(index + 1)}
+              >
+                Next <Icon name="chevron-right" size={16} />
+              </Button>
+            )}
+          </div>
+          <div className="tw:grid tw:items-start tw:gap-5 tw:wide:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section aria-label="With this slide" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
+              {step?.check && compact ? (
+                <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+                  <Button variant="primary" className="tw:rounded-full" onClick={() => setCheckOpen(true)}>
+                    <Icon name="help" size={16} /> Check yourself
+                  </Button>
+                  {checked ? (
+                    <span className="tw:text-small tw:text-muted-foreground">
+                      {checked.correct ? "Answered right" : "Answered, not quite"}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {(talk?.talk ?? slide.notes).trim() ? (
+                <div>
+                  <Button
+                    size="small"
+                    className="tw:rounded-full"
+                    aria-pressed={captions}
+                    onClick={() => {
+                      setCaptions(!captions);
+                      saveLectureFlag("captions", !captions);
+                    }}
+                  >
+                    <Icon name="captions" size={16} /> Closed captions
+                  </Button>
+                </div>
+              ) : null}
+              {captions && (talk?.talk ?? slide.notes).trim() ? (
+                <section aria-label="Speaker notes" className="tw:flex tw:flex-col tw:gap-1">
+                  <h3 className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">
+                    {talk ? "The teacher says" : "Notes"}
+                  </h3>
+                  <p className="tw:m-0 tw:whitespace-pre-line tw:break-words">{talk?.talk ?? slide.notes}</p>
+                </section>
+              ) : null}
+              {talk?.question && !lecturing ? (
+                <div>
+                  <Button className="tw:rounded-full" onClick={() => setAsking({ slide: talk, resumeAt: null })}>
+                    <Icon name="help" size={16} /> Answer the teacher's question
+                  </Button>
+                </div>
+              ) : null}
+              {step && step.blocks.length > 0 ? (
+                <Disclosure title="Read this step" className="tw:bg-card">
+                  <div className="tw:p-4">
+                    <LessonBlocks blocks={step.blocks} />
+                  </div>
+                </Disclosure>
+              ) : null}
+            </section>
+            <section aria-label="Practice" className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
+              {step?.check && !compact ? (
+                <StepCheck
+                  key={`${revisionNumber}-${step.key}`}
+                  lessonId={lessonId}
+                  revisionNumber={revisionNumber}
+                  step={step}
+                  answered={answeredChecks[step.key] ?? null}
+                  onAnswered={onAnswered}
+                  layout="grid"
+                />
+              ) : null}
+              {step ? <SlideCards key={step.key} subjectId={subjectId} step={step} showToast={showToast} /> : null}
+            </section>
           </div>
         </article>
       </div>
+      {checkOpen && compact && step?.check ? (
+        <Sheet
+          title="Check yourself"
+          width="small"
+          onClose={() => setCheckOpen(false)}
+          actions={
+            index < slides.length - 1 ? (
+              <Button variant="primary" className="tw:rounded-full" onClick={() => show(index + 1)}>
+                Next slide <Icon name="chevron-right" size={16} />
+              </Button>
+            ) : (
+              <Button className="tw:rounded-full" onClick={() => setCheckOpen(false)}>
+                Done
+              </Button>
+            )
+          }
+        >
+          <StepCheck
+            key={`${revisionNumber}-${step.key}`}
+            lessonId={lessonId}
+            revisionNumber={revisionNumber}
+            step={step}
+            answered={checked ?? null}
+            onAnswered={onAnswered}
+          />
+        </Sheet>
+      ) : null}
       {asking?.slide.question ? (
         <ClassQuestionDialog
           key={asking.slide.slideKey}
@@ -408,7 +726,7 @@ function ClassQuestionDialog({
 
   return (
     <Dialog
-      title="The teacher asks the class"
+      title={question.timing === "before" ? "What do you think?" : "The teacher asks the class"}
       width="small"
       busy={checking}
       onClose={() => onClose(false)}
@@ -461,11 +779,11 @@ function ClassQuestionDialog({
 }
 
 function LectureFrame({
-  lessonTitle,
+  backLabel,
   onClose,
   children,
 }: {
-  lessonTitle: string;
+  backLabel: string;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -473,7 +791,7 @@ function LectureFrame({
     <div data-testid="lecture-view" className="tw:flex tw:flex-col tw:gap-4">
       <nav aria-label="Breadcrumb">
         <Button size="small" variant="text" className="tw:ps-0" onClick={onClose}>
-          <Icon name="chevron-left" size={16} /> {lessonTitle}
+          <Icon name="chevron-left" size={16} /> {backLabel}
         </Button>
       </nav>
       {children}

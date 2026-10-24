@@ -4,121 +4,22 @@
 // this file. Every learner- or model-authored string arrives as JSON data and
 // is placed as text, never evaluated as markup. The only evaluated code is
 // math the exporter translated from its bounded LaTeX subset (`m` runs).
-#import "themes.typ": themes
-
-#let data = json("/data.json")
-#let T = themes.at(data.theme)
-#let paper = T.paper
-#let head = T.head
-#let ui = T.ui
+#import "blocks.typ": *
 
 #set document(title: data.title)
 #set text(font: (T.body, "Libertinus Serif"), size: T.body-size, fill: T.ink, lang: "en", hyphenate: true)
-#set par(justify: true, leading: 0.64em, spacing: 0.85em)
+#set par(justify: true, leading: 0.6em, spacing: 0.75em)
 #show math.equation: set text(font: ("New Computer Modern Math",))
 
-#let eyebrow(body, color: T.accent) = text(font: ui, size: 7pt, weight: 700, tracking: 0.12em, fill: color, upper(body))
-#let hairline = line(length: 100%, stroke: 0.5pt + T.rule)
-
-// Rich text: a list of runs, each plain text (t), translated math (m, with
-// block) or LaTeX kept as source (src) when it is outside the native subset.
-#let rt(runs) = {
-  for run in runs {
-    if "t" in run {
-      run.t
-    } else if "m" in run {
-      math.equation(block: run.block, eval(run.m, mode: "math"))
-    } else if "src" in run {
-      text(font: ("DejaVu Sans Mono",), size: 0.9em, run.src)
-    }
-  }
+// The reader's canvas finds chapters, sections and their Practice buttons
+// from these marks; they draw nothing.
+#let anchor(kind, key) = context {
+  let p = here().position()
+  [#metadata((kind: kind, key: key, page: p.page, x: p.x.pt(), y: p.y.pt())) <canvas-anchor>]
 }
-#let plain(runs) = runs.map(run => run.at("t", default: run.at("src", default: ""))).join()
-
-// ---------- Building blocks ----------
-#let tile(body, fill: T.accent-soft, inset: (x: 5mm, y: 4mm)) = block(width: 100%, fill: fill, radius: 2mm, inset: inset, above: 4mm, below: 4mm, breakable: false, body)
-#let bullets(items) = pad(left: 1mm, grid(columns: (4.5mm, 1fr), row-gutter: 1.6mm,
-  ..items.map(item => (text(font: ui, fill: T.accent, weight: 700, "—"), rt(item))).flatten()))
-#let subheading(body) = block(above: 4mm, below: 2mm, sticky: true, text(font: ui, size: 8.8pt, weight: 700, fill: T.primary, rt(body)))
-
-#let callout-style(label) = if label == "Watch out" {
-  (fill: T.warn-soft, color: T.warn)
-} else if label == "Study tip" or label == "Note" {
-  (fill: T.good-soft, color: T.good)
-} else {
-  (fill: T.accent-soft, color: T.accent)
-}
-
-#let block-view(b) = {
-  let kind = b.kind
-  if kind == "lead" {
-    par(justify: false, text(size: T.body-size * 1.12, rt(b.text)))
-  } else if kind == "paragraph" {
-    block(rt(b.text))
-  } else if kind == "heading" {
-    subheading(b.text)
-  } else if kind == "bullets" {
-    bullets(b.items)
-  } else if kind == "numbered" {
-    if b.items.len() >= 2 and b.items.len() <= 4 {
-      let n = b.items.len()
-      block(above: 2mm, below: 3mm, grid(columns: (1fr, 5mm) * (n - 1) + (1fr,), align: horizon,
-        ..b.items.enumerate().map(((i, st)) => {
-          let card = block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 3mm, breakable: false)[
-            #set par(justify: false)
-            #text(font: head, size: 13pt, weight: 700, fill: T.accent, str(i + 1)) \ #text(size: 0.88em, rt(st))]
-          if i < n - 1 { (card, align(center, text(font: ui, size: 13pt, weight: 700, fill: T.accent, "›"))) } else { (card,) }
-        }).flatten()))
-    } else {
-      pad(left: 1mm, grid(columns: (6mm, 1fr), row-gutter: 1.8mm,
-        ..b.items.enumerate().map(((i, st)) => (text(font: ui, weight: 700, fill: T.accent, str(i + 1)), rt(st))).flatten()))
-    }
-  } else if kind == "terms" {
-    tile(fill: T.accent-soft, inset: 4mm)[
-      #eyebrow("Terms") #v(1mm)
-      #set par(justify: false)
-      #grid(columns: (1fr, 1fr), column-gutter: 6mm, row-gutter: 2.5mm,
-        ..b.terms.map(((term, meaning)) => [#text(font: ui, size: 0.85em, weight: 700, fill: T.primary, rt(term)) \ #text(size: 0.92em, rt(meaning))]))]
-  } else if kind == "callout" {
-    let style = callout-style(b.label)
-    tile(fill: style.fill)[
-      #eyebrow(b.label, color: style.color) #h(2mm) #text(font: ui, size: 10pt, weight: 700, fill: T.primary, rt(b.title)) \
-      #set par(justify: false)
-      #rt(b.body)]
-  } else if kind == "table" {
-    block(above: 3mm, below: 3mm)[
-      #if b.title.len() > 0 [#text(font: ui, size: 8.6pt, weight: 700, fill: T.primary, rt(b.title)) #v(0.5mm)]
-      #set par(justify: false)
-      #table(columns: (1fr,) * calc.max(1, b.columns.len()), stroke: none, inset: (x: 3mm, y: 2.2mm),
-        fill: (x, y) => if y == 0 { T.primary } else if calc.even(y) { T.accent-soft } else { none },
-        table.header(..b.columns.map(c => text(font: ui, size: 8pt, weight: 700, fill: white, rt(c)))),
-        ..b.rows.join().map(c => text(font: ui, size: 8.6pt, rt(c))))
-      #if b.caption.len() > 0 [#text(font: ui, size: 7.4pt, fill: T.muted, rt(b.caption))]]
-  } else if kind == "example" {
-    tile(fill: T.good-soft)[
-      #eyebrow("Worked example", color: T.good) #h(2mm) #text(font: ui, size: 10pt, weight: 700, fill: T.primary, rt(b.title)) \
-      #set par(justify: false)
-      #emph(rt(b.prompt))
-      #v(1mm)
-      #for (i, st) in b.steps.enumerate() [#text(font: ui, size: 8pt, weight: 700, fill: T.good, str(i + 1) + ".") #rt(st) \ ]
-      #v(0.5mm)
-      #text(weight: 700, fill: T.good, rt(b.answer)) #text(size: 0.92em, fill: T.muted, rt(b.takeaway))]
-  } else if kind == "check" {
-    tile(fill: T.highlight-soft, inset: (x: 5mm, y: 3.5mm))[
-      #set par(justify: false)
-      #grid(columns: (1fr, 1fr), gutter: 6mm,
-        [#eyebrow("Check yourself", color: T.highlight-ink) \ #text(weight: 600, rt(b.prompt))],
-        [#eyebrow("Answer", color: T.muted) \ #text(fill: T.muted, rt(b.answer))])]
-  } else if kind == "spacer" {
-    v(2mm)
-  }
-}
-
-#let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false)[
-  #align(center, image(f.path, width: 100%, height: auto, fit: "contain"))
-  #v(1.5mm)
-  #set par(justify: false)
-  #text(font: ui, size: 7.6pt, fill: T.muted)[#text(weight: 700, fill: T.primary, "Figure " + n + "  ") #rt(f.title)#if f.caption.len() > 0 [. #rt(f.caption)]]]
+/// The room a section heading keeps for the reader's Practice button.
+#let practice-width = 24mm
+#let practice-height = 6.5mm
 
 // ---------- Cover ----------
 #let has-chapters = data.chapters.len() > 0
@@ -154,29 +55,43 @@
       #v(1mm)
       #text(font: ui, size: 11pt, fill: white.transparentize(20%), "From " + data.source)]]
   #v(26mm)
-  #grid(columns: (1fr, 66mm), gutter: 12mm,
-    [
-      #set par(justify: false)
-      #text(size: T.body-size * 1.2, rt(data.overview))
-      #if data.objectives.len() > 0 [
-        #v(5mm)
-        #eyebrow("You will be able to") #v(1mm)
-        #for (i, o) in data.objectives.enumerate() [
-          #grid(columns: (6mm, 1fr), text(font: ui, weight: 700, fill: T.accent, str(i + 1)), rt(o)) #v(0.6mm)]
-      ]
-    ],
-    block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 5mm)[
-      #eyebrow("Contents") #v(2mm)
-      #set par(justify: false)
-      #for entry in contents-entries.slice(0, calc.min(cover-limit, contents-entries.len())) [#contents-line(entry) #v(0.6mm)]
-      #if contents-entries.len() > cover-limit [
-        #text(font: ui, size: 8pt, fill: T.muted)[and #(contents-entries.len() - cover-limit) more on the next page]]
-      #if data.keyIdeas.len() + data.checks.len() > 0 [
-        #v(2mm)
-        #if data.keyIdeas.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
-        #if data.checks.len() > 0 [#contents-line((label: "self-test", number: "", title: ((t: "Self-test"),)))]
-      ]
-    ])
+  // The overview, objectives and contents, set smaller when a long overview
+  // would otherwise run off the cover onto a page of its own.
+  #let cover-columns(scale) = {
+    grid(columns: (1fr, 66mm), gutter: 12mm,
+      [
+        #set par(justify: false)
+        #text(size: T.body-size * 1.2 * scale, rt(data.overview))
+        #if data.objectives.len() > 0 [
+          #v(5mm)
+          #eyebrow("You will be able to") #v(1mm)
+          #for (i, o) in data.objectives.enumerate() [
+            #set text(size: T.body-size * scale)
+            #grid(columns: (6mm, 1fr), text(font: ui, weight: 700, fill: T.accent, str(i + 1)), rt(o)) #v(0.6mm)]
+        ]
+      ],
+      block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 5mm)[
+        #eyebrow("Contents") #v(2mm)
+        #set par(justify: false)
+        #for entry in contents-entries.slice(0, calc.min(cover-limit, contents-entries.len())) [#contents-line(entry) #v(0.6mm)]
+        #if contents-entries.len() > cover-limit [
+          #text(font: ui, size: 8pt, fill: T.muted)[and #(contents-entries.len() - cover-limit) more on the next page]]
+        #if data.keyIdeas.len() + data.checks.len() > 0 [
+          #v(2mm)
+          #if data.keyIdeas.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
+          #if data.checks.len() > 0 [#contents-line((label: "self-test", number: "", title: ((t: "Self-test"),)))]
+        ]
+      ])
+  }
+  #layout(size => {
+    let room = size.height - 121mm
+    let scale = 1
+    for s in (1, 0.92, 0.85, 0.78, 0.72) {
+      scale = s
+      if measure(block(width: size.width, cover-columns(s))).height <= room { break }
+    }
+    cover-columns(scale)
+  })
   #v(1fr)
   #hairline
   #v(2mm)
@@ -184,7 +99,7 @@
 ]
 
 // ---------- Running pages ----------
-#set page(paper: "a4", fill: paper, margin: (top: 22mm, bottom: 18mm, x: 20mm),
+#set page(paper: "a4", fill: paper, margin: (top: 18mm, bottom: 15mm, x: 16mm),
   header: context [
     #set text(font: ui, size: 7pt, fill: T.muted)
     #text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source
@@ -209,11 +124,20 @@
 
 #let section-view(s, number, name) = {
   let h = heading(level: 2, outlined: true, bookmarked: true)[#text(font: head, size: 14pt, weight: 700, fill: T.accent, number) #h(1.4mm)#text(font: head, size: 14pt, weight: 700, fill: T.primary, rt(s.title))]
-  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto), column-gutter: 4mm, align: (left + bottom, right + bottom),
-    if name != none [#h #label(name)] else { h },
-    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) }))
-  for b in s.blocks { block-view(b) }
-  for (i, f) in s.figures.enumerate() { figure-view(f, number + "." + str(i + 1)) }
+  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom, right + bottom),
+    [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
+    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
+    box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
+  for (i, b) in s.blocks.enumerate() {
+    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) and not pairs(s.figures) {
+      wrapped-bullets(b.items, s.figures.first(), number + ".1")
+      figures-view(s.figures.slice(1), number, first: 2)
+    } else {
+      block-view(b)
+      if i == s.figureAfter { figures-view(s.figures, number) }
+    }
+  }
+  if s.blocks.len() == 0 { figures-view(s.figures, number) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }
@@ -224,8 +148,10 @@
 
 #if has-chapters {
   for (ci, chapter) in data.chapters.enumerate() {
-    block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), above: 6mm, below: 4mm, breakable: false)[
-      #heading(level: 1, outlined: true, bookmarked: true)[#plain(chapter.title)] #label("chapter-" + str(ci + 1))
+    // Chapters run on from the one before, so a chapter's last page is not
+    // left mostly empty; its band stays with its first section.
+    block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), above: if ci == 0 { 6mm } else { 9mm }, below: 4mm, breakable: false, sticky: true)[
+      #anchor("chapter", chapter.key)#heading(level: 1, outlined: true, bookmarked: true)[#plain(chapter.title)] #label("chapter-" + str(ci + 1))
       #grid(columns: (14mm, 1fr), align: (left + horizon, left + horizon),
         text(font: head, size: 28pt, weight: 700, fill: T.highlight, str(ci + 1)),
         [#eyebrow("Chapter " + str(ci + 1), color: T.band-light) \ #text(font: head, size: 16pt, weight: 700, fill: white, rt(chapter.title))
@@ -245,7 +171,7 @@
 // ---------- Cram sheet ----------
 #if data.keyIdeas.len() + data.terms.len() + data.keyConcepts.len() > 0 [
   #pagebreak()
-  #heading(level: 1, outlined: true, bookmarked: true)[Cram sheet] #label("cram")
+  #heading(level: 1, outlined: true, bookmarked: true)[Cram sheet] #label("cram") #anchor("cram", "cram")
   #text(font: head, size: 22pt, weight: 700, fill: T.primary, "Cram sheet") #h(3mm) #text(font: ui, size: 9pt, fill: T.muted, "The whole guide on one page.")
   #v(1mm) #line(length: 100%, stroke: 1.2pt + T.primary)
   #v(3mm)
@@ -282,7 +208,7 @@
 // ---------- Self-test ----------
 #if data.checks.len() > 0 [
   #pagebreak()
-  #heading(level: 1, outlined: true, bookmarked: true)[Self-test] #label("self-test")
+  #heading(level: 1, outlined: true, bookmarked: true)[Self-test] #label("self-test") #anchor("selfTest", "selfTest")
   #block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 6mm, y: 4.5mm), below: 5mm)[
     #text(font: head, size: 22pt, weight: 700, fill: white, "Self-test") #h(3mm) #text(font: ui, size: 9pt, fill: white.transparentize(20%))[#data.checks.len() #if data.checks.len() == 1 [question] else [questions] · answers follow the questions]]
   #set par(justify: false)

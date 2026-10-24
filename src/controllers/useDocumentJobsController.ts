@@ -14,7 +14,9 @@ import {
   startDocumentFlashcardGeneration,
   type DocumentGenerationProgress,
   type DocumentSummary,
+  type ImportDocumentOptions,
 } from "../ipc/documents";
+import type { StagedExternalFile } from "../ipc/externalFiles";
 import {
   cancelDocumentStudyGuideGeneration,
   generateDocumentStudyGuide,
@@ -212,11 +214,11 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   }
 
   async function startBackgroundFlashcardGeneration(
-    documentId: string, generationInstructions?: string,
+    documentId: string, generationInstructions?: string, destinationDeckId?: string,
   ): Promise<void> {
     const captured = captureInstructions(documentId, generationInstructions);
     try {
-      await startDocumentFlashcardGeneration(documentId, captured);
+      await startDocumentFlashcardGeneration(documentId, captured, destinationDeckId);
     } catch (error) {
       throw error;
     }
@@ -319,6 +321,8 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     generationInstructions?: string,
     /** Runs once the document is saved, before its processing starts, such as to file it in a subject. */
     onImported?: (documentId: string) => Promise<unknown>,
+    /** Asks how to import the chosen file; `null` leaves it unimported. */
+    chooseOptions?: (selected: StagedExternalFile) => Promise<ImportDocumentOptions | null>,
   ): Promise<void> {
     if (selectingFile.current) return;
     selectingFile.current = true;
@@ -339,27 +343,46 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       if (alive.current) setIsUploading(false);
     }
     if (!selected) return;
-
-    let documentId: string | null = null;
-    try {
-      const imported = await importDocument(selected.id);
-      documentId = imported.documentId;
-      updateIdSet(setBusyDocumentIds, documentId, true);
-      await onImported?.(documentId);
-      await startBackgroundFlashcardGeneration(documentId, captured);
+    const options = chooseOptions ? await chooseOptions(selected) : {};
+    if (!options) return;
+    if (await importStagedDocument(selected, captured, onImported, options)) {
       showToast(
         "info",
         "Document processing started. You can add more documents while this job runs.",
       );
+    }
+  }
+
+  /**
+   * Imports an already chosen file, runs `onImported` (such as filing it in a
+   * subject) and starts its processing. Returns the document, or null when
+   * it failed, which is reported like any processing failure.
+   */
+  async function importStagedDocument(
+    selected: StagedExternalFile,
+    generationInstructions?: string,
+    onImported?: (documentId: string) => Promise<unknown>,
+    options: ImportDocumentOptions = {},
+  ): Promise<string | null> {
+    let documentId: string | null = null;
+    try {
+      const imported = await importDocument(selected.id, options);
+      documentId = imported.documentId;
+      updateIdSet(setBusyDocumentIds, documentId, true);
+      await onImported?.(documentId);
+      await startBackgroundFlashcardGeneration(documentId, generationInstructions);
+      return documentId;
     } catch (error: unknown) {
       await handleGenerationFailure(error);
+      return null;
     } finally {
       if (documentId) updateIdSet(setBusyDocumentIds, documentId, false);
     }
   }
 
+  /** Makes a document's first cards; `destinationDeckId` puts them in that deck instead of a new one. */
   async function retry(
-    document: DocumentSummary, generationInstructions = generationInstructionsFor(document),
+    document: DocumentSummary, generationInstructions = generationInstructionsFor(document), destinationDeckId?: string,
   ): Promise<void> {
     if (document.lifecycleState === "processing"
       || busyDocumentIds.has(document.id)
@@ -367,7 +390,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     updateIdSet(setBusyDocumentIds, document.id, true);
     setErrorMessage(null);
     try {
-      await startBackgroundFlashcardGeneration(document.id, generationInstructions);
+      await startBackgroundFlashcardGeneration(document.id, generationInstructions, destinationDeckId);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -527,6 +550,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     generationInstructionsFor,
     refreshDocuments,
     uploadDocument,
+    importStagedDocument,
     retry,
     generateMore,
     generateStudyGuide,

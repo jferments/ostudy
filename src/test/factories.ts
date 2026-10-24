@@ -214,6 +214,7 @@ export function makeSubjectLibrary(overrides: Partial<SubjectLibrary> = {}): Sub
     decks: [],
     documents: [],
     studyRanges: [],
+    leftOutDocumentIds: [],
     checkTheseCount: 0,
     ...overrides,
   };
@@ -232,6 +233,10 @@ export function makeHomeSubjectSummary(
     deckCount: 0,
     sourceCount: 0,
     hasOverviewGuide: false,
+    guideCount: 0,
+    lessonCount: 0,
+    podcastCount: 0,
+    cover: null,
     dueDeckIds: [],
     ...overrides,
   };

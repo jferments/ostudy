@@ -18,12 +18,13 @@ import {
   type AppSection,
   type AppWorkflow,
 } from "./controllers/useAppController";
-import { isLibrarySection, type AppDestination } from "./navigation/appDestinations";
+import { ALL_SUBJECTS, isLibrarySection, type AppDestination, type SubjectSection } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import type { StudyGuideOpenRequest } from "./controllers/useStudyGuidesController";
+import type { NotebookOpenRequest } from "./screens/notes/LibraryNotes";
 import { HomeScreen } from "./screens/home/HomeScreen";
 import { LibraryLessons } from "./screens/library/LibraryLessons";
-import { LibraryOverview } from "./screens/library/LibraryOverview";
+import { LibraryHome } from "./screens/library/LibraryHome";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -32,6 +33,7 @@ import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
 import { RouteTransition } from "./ui/motion/Motion";
 import { Button } from "./ui/primitives/Button";
 import { LoadingState } from "./ui/primitives/EmptyState";
+import { PageScaffold } from "./ui/patterns/WorkspacePatterns";
 import { TourProvider } from "./ui/tutorials/TourProvider";
 import shellStyles from "./AppShell.module.css";
 import { AppFrame, AppContent } from "./ui/layout/AppFrame";
@@ -41,6 +43,7 @@ import { InlineNotice } from "./ui/primitives/InlineNotice";
 const loadLibraryWorkbench = () => import("./screens/library/workbench/LibraryWorkbench");
 const loadDocumentsSection = () => import("./screens/DocumentsSection");
 const loadStudyGuidesRoute = () => import("./screens/StudyGuidesRoute");
+const loadLibraryNotes = () => import("./screens/notes/LibraryNotes");
 const loadPracticeScreen = () => import("./screens/PracticeScreen");
 const loadProgressScreen = () => import("./screens/progress/ProgressScreen");
 const loadTutorScreen = () => import("./screens/tutor/TutorWorkspace");
@@ -54,6 +57,9 @@ const DocumentsSection = lazy(() =>
 );
 const StudyGuidesRoute = lazy(() =>
   loadStudyGuidesRoute().then((module) => ({ default: module.StudyGuidesRoute })),
+);
+const LibraryNotes = lazy(() =>
+  loadLibraryNotes().then((module) => ({ default: module.LibraryNotes })),
 );
 const PracticeScreen = lazy(() =>
   loadPracticeScreen().then((module) => ({ default: module.PracticeScreen })),
@@ -72,6 +78,7 @@ const FEATURE_PRELOADERS = [
   loadLibraryWorkbench,
   loadDocumentsSection,
   loadStudyGuidesRoute,
+  loadLibraryNotes,
   loadPracticeScreen,
   loadProgressScreen,
   loadTutorScreen,
@@ -94,6 +101,7 @@ function App() {
   // The lesson Library's Lessons page is playing.
   const [openLessonState, setOpenLesson] = useState<{ subjectId: string; lessonId: string } | null>(null);
   const [guideOpenRequest, setGuideOpenRequest] = useState<StudyGuideOpenRequest | null>(null);
+  const [notebookOpenRequest, setNotebookOpenRequest] = useState<NotebookOpenRequest | null>(null);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   useEffect(() => {
@@ -120,7 +128,11 @@ function App() {
   }
 
   function selectDestination(destination: AppDestination): void {
-    navigate(DESTINATION_SECTIONS[destination] ?? controller.librarySection);
+    if (destination === "library") {
+      void controller.openLibrary();
+      return;
+    }
+    navigate(DESTINATION_SECTIONS[destination] ?? "home");
   }
 
   function startReview(deckIds: string[]): void {
@@ -137,7 +149,11 @@ function App() {
   const libraryFrame = {
     subject: librarySubject,
     onChooseSubject: controller.chooseLibrarySubject,
-    onSelectView: navigate,
+    onOpenLibrary: () => void controller.openLibrary(),
+    onSelectView: (view: SubjectSection) =>
+      view === "decks" && controller.section !== "decks" && librarySubject.kind !== "all"
+        ? void controller.openSubject(librarySubject.kind === "subject" ? librarySubject.subjectId : null)
+        : navigate(view),
     onStartReview: startReview,
     onPracticeSubject: (subjectId: string) => void controller.practiceSubject(subjectId),
     showToast: controller.showToast,
@@ -149,7 +165,7 @@ function App() {
   const homeScreen = (
     <HomeScreen
       onStartReview={startReview}
-      onOpenSubject={(subjectId) => void controller.openSubject(subjectId)}
+      onOpenSubject={(subjectId, page) => void controller.openSubject(subjectId, page)}
       onOpenLesson={openLesson}
       onOpenLibrary={() => void controller.openLibrary()}
       onPracticeSubject={(subjectId) => void controller.practiceSubject(subjectId)}
@@ -238,28 +254,18 @@ function App() {
                             ) : controller.section === "home" ? (
                               homeScreen
                             ) : controller.section === "overview" ? (
-                              <LibraryFrame view="overview" {...libraryFrame}>
-                                {/* The tabs name the page; its title is for headings navigation. */}
-                                <h1 className="tw:sr-only">Overview</h1>
-                                <LibraryOverview
-                                  subject={librarySubject}
-                                  decks={controller.decks}
-                                  onSelectView={navigate}
-                                  onOpenLesson={openLesson}
-                                  onOpenDeck={(deckId) => void controller.openLibrary({ deckId })}
-                                  onPracticeDeck={(deckId) => void controller.practiceDeck(deckId)}
-                                  onOpenGuide={(documentId, documentTitle) => {
-                                    setGuideOpenRequest({ requestId: Date.now(), documentId, documentTitle });
-                                    navigate("study-guides");
-                                  }}
-                                  onOpenSubject={(subjectId) => controller.chooseLibrarySubject({ kind: "subject", subjectId })}
-                                  onOpenProgress={() => selectDestination("progress")}
-                                />
-                              </LibraryFrame>
+                              <LibraryHome
+                                onOpenSubject={(subjectId, page) => void controller.openSubject(subjectId, page)}
+                                onChooseSubject={controller.chooseLibrarySubject}
+                                onOpenAllCards={() => void controller.openAllCards()}
+                                onStartReview={startReview}
+                                showToast={controller.showToast}
+                              />
                             ) : controller.section === "lessons" ? (
                               <LibraryFrame view="lessons" {...libraryFrame}>
                                 <h1 className="tw:sr-only">Lessons</h1>
                                 <LibraryLessons
+                                  page="lessons"
                                   subject={librarySubject}
                                   openLessonId={
                                     openLessonState !== null &&
@@ -268,6 +274,18 @@ function App() {
                                       ? openLessonState.lessonId
                                       : null
                                   }
+                                  onOpenLesson={openLesson}
+                                  onCloseLesson={() => setOpenLesson(null)}
+                                  showToast={controller.showToast}
+                                />
+                              </LibraryFrame>
+                            ) : controller.section === "podcasts" ? (
+                              <LibraryFrame view="podcasts" {...libraryFrame}>
+                                <h1 className="tw:sr-only">Podcasts</h1>
+                                <LibraryLessons
+                                  page="podcasts"
+                                  subject={librarySubject}
+                                  openLessonId={null}
                                   onOpenLesson={openLesson}
                                   onCloseLesson={() => setOpenLesson(null)}
                                   showToast={controller.showToast}
@@ -301,6 +319,12 @@ function App() {
                                   subject={librarySubject}
                                   showToast={controller.showToast}
                                   onPracticeCards={controller.practiceCards}
+                                  onSetUpAi={() => void controller.openAiSetup()}
+                                  onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
+                                  onOpenNotebook={(notebookId, pageId) => {
+                                    setNotebookOpenRequest({ requestId: Date.now(), notebookId, pageId });
+                                    navigate("notes");
+                                  }}
                                 />
                               </LibraryFrame>
                             ) : controller.section === "documents" ? (
@@ -315,9 +339,30 @@ function App() {
                                     }
                                     subjectId={subjectFilter}
                                     showToast={controller.showToast}
+                                    onSetUpAi={() => void controller.openAiSetup()}
+                                    onOpenNotebook={(notebookId, pageId) => {
+                                      setNotebookOpenRequest({ requestId: Date.now(), notebookId, pageId });
+                                      navigate("notes");
+                                    }}
                                   />
                                 </PerformanceProfiler>
                               </LibraryFrame>
+                            ) : controller.section === "notes" ? (
+                              <PageScaffold width="full" data-testid="notes">
+                                <LibraryNotes
+                                  subject={ALL_SUBJECTS}
+                                  openRequest={notebookOpenRequest}
+                                  onOpenRequestConsumed={(requestId) =>
+                                    setNotebookOpenRequest((current) => (current?.requestId === requestId ? null : current))
+                                  }
+                                  showToast={controller.showToast}
+                                  onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
+                                  onOpenGuide={(documentId, documentTitle) => {
+                                    setGuideOpenRequest({ requestId: Date.now(), documentId, documentTitle });
+                                    navigate("study-guides");
+                                  }}
+                                />
+                              </PageScaffold>
                             ) : controller.section === "review" ? (
                               homeScreen
                             ) : controller.section === "tutor" ? (
@@ -333,6 +378,8 @@ function App() {
                             ) : controller.section === "settings" ? (
                               <SettingsScreen
                                 settings={controller.savedSettings}
+                                aiSetupRequest={controller.aiSetupRequest}
+                                onAiSetupConsumed={controller.consumeAiSetup}
                                 onPreviewSettings={controller.setActiveSettings}
                                 onSavedSettings={controller.saveSettingsLocally}
                                 onDirtyChange={controller.setHasUnsavedSettings}
@@ -356,13 +403,13 @@ function App() {
   );
 }
 
-/** Library opens its last view, so it has no single section here. */
+/** The section each destination opens; Library opens its own page through the controller. */
 const DESTINATION_SECTIONS: Readonly<Record<AppDestination, AppSection | null>> = {
   home: "home",
   library: null,
+  notes: "notes",
   tutor: "tutor",
   progress: "analytics",
-  settings: "settings",
 };
 
 interface ShellHeaderProps {

@@ -85,100 +85,102 @@ export function StudyGuideStructuredContent({
       "tw:flex tw:min-w-0 tw:flex-col tw:break-words tw:font-(family-name:--card-font-family) tw:leading-(--ostudy-font-line-height-reading)",
       page ? "tw:gap-6 tw:text-body-large tw:compact:gap-5 tw:compact:text-body" : "tw:gap-5 tw:text-body",
     )}>
-      {blockKeys.has("minute") ? (
-        <GuideMinuteBox id={id("minute")} page={page} level={level}>
-          {content.overview.trim() ? <StudyMarkdown text={content.overview} /> : null}
-          {content.keyPoints.length > 0 ? (
-            <ul className="tw:m-0 tw:grid tw:list-disc tw:gap-2 tw:pl-5 tw:marker:text-primary">
-              {content.keyPoints.map((point, index) => <li key={`${index}-${point}`} className="tw:pl-1"><StudyMarkdown text={point} /></li>)}
+      <>
+        {blockKeys.has("minute") ? (
+          <GuideMinuteBox id={id("minute")} page={page} level={level}>
+            {content.overview.trim() ? <StudyMarkdown text={content.overview} /> : null}
+            {content.keyPoints.length > 0 ? (
+              <ul className="tw:m-0 tw:grid tw:list-disc tw:gap-2 tw:pl-5 tw:marker:text-primary">
+                {content.keyPoints.map((point, index) => <li key={`${index}-${point}`} className="tw:pl-1"><StudyMarkdown text={point} /></li>)}
+              </ul>
+            ) : null}
+          </GuideMinuteBox>
+        ) : null}
+        {content.explanations.map((explanation, index) => (
+          <section key={`${index}-${explanation.heading}`} aria-labelledby={id(`explanation-${index}`)} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
+            <BlockHeading level={level} id={id(`explanation-${index}`)}><StudyMarkdown text={explanation.heading} inline /></BlockHeading>
+            <div className="tw:[&_p]:my-4"><StudyMarkdown text={explanation.body} /></div>
+          </section>
+        ))}
+        {content.tables.map((table, index) => <GuideTable key={`${index}-${table.title}`} table={table} uiText={uiText} />)}
+        {blockKeys.has("comparisons") ? (
+          <section aria-labelledby={id("comparisons")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
+            <BlockHeading level={level} id={id("comparisons")}>Comparisons</BlockHeading>
+            <ul className={cn("tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0 tw:font-sans", uiText)}>
+              {content.comparisons.map((comparison, index) => (
+                <li key={`${index}-${comparison.subjectA}-${comparison.subjectB}`}
+                  className="tw:grid tw:gap-1 tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-card tw:px-4 tw:py-3">
+                  <strong className="tw:font-semibold tw:text-foreground">
+                    <StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline />
+                  </strong>
+                  <div className="tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={comparison.relationship} /></div>
+                </li>
+              ))}
             </ul>
-          ) : null}
-        </GuideMinuteBox>
-      ) : null}
-      {content.explanations.map((explanation, index) => (
-        <section key={`${index}-${explanation.heading}`} aria-labelledby={id(`explanation-${index}`)} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
-          <BlockHeading level={level} id={id(`explanation-${index}`)}><StudyMarkdown text={explanation.heading} inline /></BlockHeading>
-          <div className="tw:[&_p]:my-4"><StudyMarkdown text={explanation.body} /></div>
-        </section>
-      ))}
-      {content.tables.map((table, index) => <GuideTable key={`${index}-${table.title}`} table={table} uiText={uiText} />)}
-      {blockKeys.has("comparisons") ? (
-        <section aria-labelledby={id("comparisons")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
-          <BlockHeading level={level} id={id("comparisons")}>Comparisons</BlockHeading>
-          <ul className={cn("tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0 tw:font-sans", uiText)}>
-            {content.comparisons.map((comparison, index) => (
-              <li key={`${index}-${comparison.subjectA}-${comparison.subjectB}`}
-                className="tw:grid tw:gap-1 tw:rounded-md tw:border tw:border-solid tw:border-border tw:bg-card tw:px-4 tw:py-3">
-                <strong className="tw:font-semibold tw:text-foreground">
-                  <StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline />
-                </strong>
-                <div className="tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={comparison.relationship} /></div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {blockKeys.has("process") ? (
-        <section aria-labelledby={id("process")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
-          <BlockHeading level={level} id={id("process")}>Process</BlockHeading>
-          <ol className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
-            {content.processSteps.map((step, index) => (
-              <li key={`${index}-${step}`} className="tw:flex tw:min-w-0 tw:gap-3">
-                <span aria-hidden="true" className="tw:mt-0.5 tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-full tw:bg-accent tw:font-sans tw:text-label tw:font-semibold tw:text-accent-foreground">{index + 1}</span>
-                <div className="tw:min-w-0 tw:flex-1"><StudyMarkdown text={step} /></div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-      {content.callouts.map((callout, index) => (
-        <GuideCallout key={`${index}-${callout.kind}-${callout.title}`} kind={callout.kind} title={callout.title} body={callout.body} uiText={uiText} />
-      ))}
-      <StudyGuideSourceFigures
-        documentId={figureSource?.documentId ?? null}
-        locator={figureSource?.locator ?? null}
-        explanations={content.visualExplanations}
-        sectionNumber={sectionNumber}
-      />
-      {content.workedExamples.map((example, index) => (
-        <section key={`${index}-${example.title}`} aria-labelledby={id(`example-${index}`)}
-          className={cn("tw:grid tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:font-sans", page ? "tw:mt-3 tw:px-6 tw:py-5 tw:compact:px-4 tw:compact:py-4" : "tw:p-4", uiText)}>
-          <p className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">Worked example</p>
-          <BlockHeading level={level} id={id(`example-${index}`)} className="tw:-mt-2 tw:text-title-small">
-            <StudyMarkdown text={example.title} inline />
-          </BlockHeading>
-          <div className="tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={example.prompt} /></div>
-          {example.steps.length > 0 ? (
-            <ol className="tw:m-0 tw:grid tw:gap-1 tw:pl-6">
-              {example.steps.map((step, stepIndex) => <li key={`${stepIndex}-${step}`} className="tw:pl-1"><StudyMarkdown text={step} /></li>)}
+          </section>
+        ) : null}
+        {blockKeys.has("process") ? (
+          <section aria-labelledby={id("process")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
+            <BlockHeading level={level} id={id("process")}>Process</BlockHeading>
+            <ol className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0">
+              {content.processSteps.map((step, index) => (
+                <li key={`${index}-${step}`} className="tw:flex tw:min-w-0 tw:gap-3">
+                  <span aria-hidden="true" className="tw:mt-0.5 tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-full tw:bg-accent tw:font-sans tw:text-label tw:font-semibold tw:text-accent-foreground">{index + 1}</span>
+                  <div className="tw:min-w-0 tw:flex-1"><StudyMarkdown text={step} /></div>
+                </li>
+              ))}
             </ol>
-          ) : null}
-          <div className="tw:grid tw:gap-1 tw:rounded-md tw:bg-success-soft tw:px-4 tw:py-3">
-            <strong className="tw:font-semibold">Answer</strong>
-            <StudyMarkdown text={example.answer} />
-          </div>
-          {example.takeaway ? (
-            <div className="tw:grid tw:gap-1 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3 tw:text-(--ostudy-color-text-secondary)">
-              <strong className="tw:font-semibold tw:text-foreground">Takeaway</strong>
-              <StudyMarkdown text={example.takeaway} />
+          </section>
+        ) : null}
+        {content.callouts.map((callout, index) => (
+          <GuideCallout key={`${index}-${callout.kind}-${callout.title}`} kind={callout.kind} title={callout.title} body={callout.body} uiText={uiText} />
+        ))}
+        <StudyGuideSourceFigures
+          documentId={figureSource?.documentId ?? null}
+          locator={figureSource?.locator ?? null}
+          explanations={content.visualExplanations}
+          sectionNumber={sectionNumber}
+        />
+        {content.workedExamples.map((example, index) => (
+          <section key={`${index}-${example.title}`} aria-labelledby={id(`example-${index}`)}
+            className={cn("tw:grid tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-card tw:font-sans", page ? "tw:mt-3 tw:px-6 tw:py-5 tw:compact:px-4 tw:compact:py-4" : "tw:p-4", uiText)}>
+            <p className="tw:m-0 tw:text-caption tw:font-semibold tw:uppercase tw:tracking-wide tw:text-muted-foreground">Worked example</p>
+            <BlockHeading level={level} id={id(`example-${index}`)} className="tw:-mt-2 tw:text-title-small">
+              <StudyMarkdown text={example.title} inline />
+            </BlockHeading>
+            <div className="tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={example.prompt} /></div>
+            {example.steps.length > 0 ? (
+              <ol className="tw:m-0 tw:grid tw:gap-1 tw:pl-6">
+                {example.steps.map((step, stepIndex) => <li key={`${stepIndex}-${step}`} className="tw:pl-1"><StudyMarkdown text={step} /></li>)}
+              </ol>
+            ) : null}
+            <div className="tw:grid tw:gap-1 tw:rounded-md tw:bg-success-soft tw:px-4 tw:py-3">
+              <strong className="tw:font-semibold">Answer</strong>
+              <StudyMarkdown text={example.answer} />
             </div>
-          ) : null}
-        </section>
-      ))}
-      {blockKeys.has("misconceptions") ? (
-        <section aria-labelledby={id("misconceptions")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
-          <BlockHeading level={level} id={id("misconceptions")}>Common misconceptions</BlockHeading>
-          <ul className="tw:m-0 tw:grid tw:list-disc tw:gap-2 tw:pl-6 tw:marker:text-warning">
-            {content.commonMisconceptions.map((value, index) => <li key={`${index}-${value}`} className="tw:pl-1"><StudyMarkdown text={value} /></li>)}
-          </ul>
-        </section>
-      ) : null}
-      {showTerms && content.importantTerms.length > 0 ? (
-        <section aria-labelledby={id("terms")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
-          <BlockHeading level={level} id={id("terms")}>Important terms</BlockHeading>
-          <GuideTermList terms={content.importantTerms} className={uiText} />
-        </section>
-      ) : null}
+            {example.takeaway ? (
+              <div className="tw:grid tw:gap-1 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3 tw:text-(--ostudy-color-text-secondary)">
+                <strong className="tw:font-semibold tw:text-foreground">Takeaway</strong>
+                <StudyMarkdown text={example.takeaway} />
+              </div>
+            ) : null}
+          </section>
+        ))}
+        {blockKeys.has("misconceptions") ? (
+          <section aria-labelledby={id("misconceptions")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
+            <BlockHeading level={level} id={id("misconceptions")}>Common misconceptions</BlockHeading>
+            <ul className="tw:m-0 tw:grid tw:list-disc tw:gap-2 tw:pl-6 tw:marker:text-warning">
+              {content.commonMisconceptions.map((value, index) => <li key={`${index}-${value}`} className="tw:pl-1"><StudyMarkdown text={value} /></li>)}
+            </ul>
+          </section>
+        ) : null}
+        {showTerms && content.importantTerms.length > 0 ? (
+          <section aria-labelledby={id("terms")} className={cn("tw:grid tw:gap-3", page && "tw:mt-3")}>
+            <BlockHeading level={level} id={id("terms")}>Important terms</BlockHeading>
+            <GuideTermList terms={content.importantTerms} className={uiText} />
+          </section>
+        ) : null}
+      </>
       {blockKeys.has("check") ? (
         <CheckYourself checks={content.retrievalChecks} headingId={id("check")} level={level} page={page}
           progress={checkProgress} onProgressChange={onCheckProgressChange} />
@@ -201,13 +203,36 @@ export function GuideMinuteBox({ id, page, level = 2, children }: { id: string; 
 }
 
 /** A compact definition list of terms, for the rail beside a section or below it. */
-export function GuideTermList({ terms, className }: { terms: StudyGuideSectionContent["importantTerms"]; className?: string }) {
+/**
+ * A section's terms and what each means. With `hideMeanings` each meaning waits behind a
+ * Show button, so the learner can say it first; turning it off shows them all again.
+ */
+export function GuideTermList({ terms, className, hideMeanings = false }: {
+  terms: StudyGuideSectionContent["importantTerms"];
+  className?: string;
+  hideMeanings?: boolean;
+}) {
+  const [shown, setShown] = useState<ReadonlySet<number>>(new Set());
+  // Hiding again, or another section's terms, starts every meaning hidden.
+  const [hiddenFor, setHiddenFor] = useState({ terms, hideMeanings });
+  if (hiddenFor.terms !== terms || hiddenFor.hideMeanings !== hideMeanings) {
+    setHiddenFor({ terms, hideMeanings });
+    setShown(new Set());
+  }
   return (
     <dl className={cn("tw:m-0 tw:grid tw:gap-3 tw:font-sans", className)}>
       {terms.map((term, index) => (
         <div key={`${index}-${term.term}`} className="tw:grid tw:min-w-0 tw:gap-0.5">
           <dt className="tw:font-semibold tw:text-foreground"><StudyMarkdown text={term.term} inline /></dt>
-          <dd className="tw:m-0 tw:text-(--ostudy-color-text-secondary)"><StudyMarkdown text={term.explanation} /></dd>
+          <dd className="tw:m-0 tw:text-(--ostudy-color-text-secondary)">
+            {hideMeanings && !shown.has(index) ? (
+              <Button size="small" variant="text" className="tw:-ms-2"
+                aria-label={`Show what ${term.term} means`}
+                onClick={() => setShown((current) => new Set(current).add(index))}>
+                Show
+              </Button>
+            ) : <StudyMarkdown text={term.explanation} />}
+          </dd>
         </div>
       ))}
     </dl>

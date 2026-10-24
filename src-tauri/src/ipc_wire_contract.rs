@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use crate::{
     decks::DeckSummaryDto,
     error::CommandError,
-    home_summary::{HomeSubjectSummaryDto, HomeSummaryDto, HomeTodayDto},
+    home_summary::{HomeSubjectSummaryDto, HomeSummaryDto, HomeTodayDto, SubjectCoverDto},
     library_backup::live::LiveRestoreResult,
     library_session::SessionStatus,
     settings::AppSettingsDto,
@@ -180,6 +180,18 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
         name: "newDayStartHour",
         ty: TypeScriptType::Number,
     },
+    FieldContract {
+        name: "guidePdfTheme",
+        ty: TypeScriptType::Named("\"navy\" | \"sage\" | \"slate\" | \"plum\""),
+    },
+    FieldContract {
+        name: "guidePdfIncludeNotes",
+        ty: TypeScriptType::Boolean,
+    },
+    FieldContract {
+        name: "lectureAudioWithNewLessons",
+        ty: TypeScriptType::Boolean,
+    },
 ];
 
 const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
@@ -296,6 +308,7 @@ const SUBJECT_LIBRARY_FIELDS: &[FieldContract] = &[
         "studyRanges",
         TypeScriptType::Named("NativeDocumentStudyRange[]"),
     ),
+    field("leftOutDocumentIds", TypeScriptType::Named("string[]")),
     field("checkTheseCount", TypeScriptType::Number),
 ];
 
@@ -320,7 +333,22 @@ const HOME_SUBJECT_SUMMARY_FIELDS: &[FieldContract] = &[
     field("deckCount", TypeScriptType::Number),
     field("sourceCount", TypeScriptType::Number),
     field("hasOverviewGuide", TypeScriptType::Boolean),
+    field("guideCount", TypeScriptType::Number),
+    field("lessonCount", TypeScriptType::Number),
+    field("podcastCount", TypeScriptType::Number),
+    field("cover", TypeScriptType::Named("NativeSubjectCover | null")),
     field("dueDeckIds", TypeScriptType::Named("string[]")),
+];
+
+const SUBJECT_COVER_FIELDS: &[FieldContract] = &[
+    field("documentId", TypeScriptType::String),
+    field("pageNumber", TypeScriptType::Number),
+    field("pageWidth", TypeScriptType::Number),
+    field("pageHeight", TypeScriptType::Number),
+    field("left", TypeScriptType::Number),
+    field("top", TypeScriptType::Number),
+    field("width", TypeScriptType::Number),
+    field("height", TypeScriptType::Number),
 ];
 
 const HOME_TODAY_FIELDS: &[FieldContract] = &[
@@ -394,6 +422,10 @@ const OBJECT_CONTRACTS: &[ObjectContract] = &[
     ObjectContract {
         name: "NativeSubjectFilingReview",
         fields: SUBJECT_FILING_REVIEW_FIELDS,
+    },
+    ObjectContract {
+        name: "NativeSubjectCover",
+        fields: SUBJECT_COVER_FIELDS,
     },
     ObjectContract {
         name: "NativeHomeSubjectSummary",
@@ -486,6 +518,9 @@ pub fn representative_fixtures() -> Value {
             daily_new_limit: 20,
             daily_review_limit: 200,
             new_day_start_hour: 4,
+            guide_pdf_theme: "sage".to_string(),
+            guide_pdf_include_notes: true,
+            lecture_audio_with_new_lessons: true,
         },
         "completedRestore": restore.clone(),
         "librarySession": SessionStatus {
@@ -531,6 +566,7 @@ pub fn representative_fixtures() -> Value {
                 source_sha256: "7".repeat(64),
                 created_at: 30,
             }],
+            left_out_document_ids: vec!["55555555555555555555555555555555".to_string()],
             check_these_count: 1,
         },
         "subjectFilingReview": SubjectFilingReviewDto {
@@ -571,6 +607,19 @@ pub fn representative_fixtures() -> Value {
                 deck_count: 1,
                 source_count: 1,
                 has_overview_guide: true,
+                guide_count: 2,
+                lesson_count: 16,
+                podcast_count: 1,
+                cover: Some(SubjectCoverDto {
+                    document_id: "55555555555555555555555555555555".to_string(),
+                    page_number: 4,
+                    page_width: 612.0,
+                    page_height: 792.0,
+                    left: 72.0,
+                    top: 120.5,
+                    width: 300.0,
+                    height: 200.0,
+                }),
                 due_deck_ids: vec!["11111111111111111111111111111111".to_string()],
             }],
             no_subject: HomeSubjectSummaryDto {
@@ -583,6 +632,10 @@ pub fn representative_fixtures() -> Value {
                 deck_count: 1,
                 source_count: 0,
                 has_overview_guide: false,
+                guide_count: 0,
+                lesson_count: 0,
+                podcast_count: 0,
+                cover: None,
                 due_deck_ids: vec!["44444444444444444444444444444444".to_string()],
             },
         },
@@ -641,6 +694,7 @@ mod tests {
             ("/subjectLibrary/studyRanges/0", "NativeDocumentStudyRange"),
             ("/subjectLibrary", "NativeSubjectLibrary"),
             ("/subjectFilingReview", "NativeSubjectFilingReview"),
+            ("/homeSummary/subjects/0/cover", "NativeSubjectCover"),
             ("/homeSummary/subjects/0", "NativeHomeSubjectSummary"),
             ("/homeSummary/today", "NativeHomeToday"),
             ("/homeSummary", "NativeHomeSummary"),

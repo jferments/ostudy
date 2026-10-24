@@ -2,7 +2,9 @@
 
 use serde_json::{json, Value};
 
-use super::content::{CalloutKind, LessonBlock, LessonContent, LessonStep, LESSON_CONTENT_VERSION};
+use super::content::{
+    CalloutKind, CheckTiming, LessonBlock, LessonContent, LessonStep, LESSON_CONTENT_VERSION,
+};
 use crate::cards::questions::{
     ChoiceOption, QuestionBody, QuestionDefinition, QUESTION_SCHEMA_VERSION,
 };
@@ -54,6 +56,7 @@ pub(crate) fn loop_of_henle(units: &[&str]) -> LessonContent {
                     "Ascending limb: salt pumped out, water stays",
                 ]),
                 check: None,
+                check_timing: CheckTiming::After,
                 knowledge_unit_ids: units.iter().map(|unit| unit.to_string()).collect(),
             },
             LessonStep {
@@ -100,6 +103,7 @@ pub(crate) fn loop_of_henle(units: &[&str]) -> LessonContent {
                         )),
                     },
                 }),
+                check_timing: CheckTiming::After,
                 knowledge_unit_ids: Vec::new(),
             },
             LessonStep {
@@ -114,6 +118,7 @@ pub(crate) fn loop_of_henle(units: &[&str]) -> LessonContent {
                     .to_string(),
                 slide_points: items(&["The loop builds the gradient", "The collecting duct uses it, under ADH"]),
                 check: None,
+                check_timing: CheckTiming::After,
                 knowledge_unit_ids: Vec::new(),
             },
         ],

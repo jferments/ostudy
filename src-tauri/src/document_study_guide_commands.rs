@@ -30,7 +30,6 @@ use crate::{
         StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
-    document_visual_evidence::load_locator_images,
     error::CommandError,
     paths::AppPaths,
     task_cancellation::{cancel_document_task, run_document_task},
@@ -183,7 +182,6 @@ pub(crate) async fn generate_document_study_guide_for_document(
         document_title: &stored.title,
         plan: &learning_plan,
         chunks: &chunks,
-        maximum_images: scale_plan.max_images_per_window,
     })
     .await
 }
@@ -199,7 +197,6 @@ pub(crate) struct PreparedStudyGuideInput<'a> {
     pub document_title: &'a str,
     pub plan: &'a DocumentLearningPlan,
     pub chunks: &'a [SemanticChunk],
-    pub maximum_images: usize,
 }
 
 pub(crate) async fn generate_document_study_guide_from_plan(
@@ -214,7 +211,6 @@ pub(crate) async fn generate_document_study_guide_from_plan(
         document_title,
         plan,
         chunks,
-        maximum_images,
     } = input;
     if let Some(guide_id) = recover_published_study_guide_job(database, document_id, &plan.id)? {
         let reuse_key = crate::ai::generation::hash(
@@ -257,15 +253,7 @@ pub(crate) async fn generate_document_study_guide_from_plan(
     // Publish the job before evidence preparation: a local preparation error is
     // an observable failed artifact, not a tile stuck on an invented Pending.
     let result = async {
-        let topic_evidence = build_topic_evidence(
-            database,
-            paths,
-            document_id,
-            task,
-            plan,
-            chunks,
-            maximum_images,
-        )?;
+        let topic_evidence = build_topic_evidence(plan, chunks)?;
         execute_study_guide_generation(StudyGuideGenerationExecution {
             database,
             paths,
@@ -276,6 +264,7 @@ pub(crate) async fn generate_document_study_guide_from_plan(
             plan,
             job_id: &job.id,
             evidence: topic_evidence,
+            length_scale: 1.0,
         })
         .await
     }
@@ -443,19 +432,9 @@ fn load_guide_document(
 }
 
 fn build_topic_evidence(
-    database: &Database,
-    paths: &AppPaths,
-    document_id: &str,
-    task: &document_intelligence::DocumentTaskContext,
     plan: &DocumentLearningPlan,
     chunks: &[SemanticChunk],
-    maximum_images: usize,
 ) -> Result<Vec<StudyGuideTopicEvidence>, CommandError> {
-    let source_assets = if task.include_page_images {
-        document_store::load_source_assets(database, document_id)?
-    } else {
-        Vec::new()
-    };
     plan.topics
         .iter()
         .map(|topic| {
@@ -486,29 +465,9 @@ fn build_topic_evidence(
                 .map(|(_, chunk)| chunk.full_text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n\n");
-            let images = if task.include_page_images {
-                load_locator_images(
-                    paths,
-                    &source_assets,
-                    &topic.source_locator,
-                    maximum_images,
-                )?
-            } else {
-                Vec::new()
-            };
-            if source_text.trim().is_empty()
-                && images.is_empty()
-                && !topic.source_locator.asset_ids.is_empty()
-            {
-                return Err(CommandError::new(
-                    "document_requires_image_input",
-                    "This learning topic is represented by visual source evidence. Choose a verified image-capable document-generation profile and retry.",
-                ));
-            }
             Ok(StudyGuideTopicEvidence {
                 topic_id: topic.id.clone(),
                 source_text,
-                images,
             })
         })
         .collect()

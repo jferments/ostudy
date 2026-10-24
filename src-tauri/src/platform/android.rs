@@ -30,6 +30,14 @@ use crate::{
     },
 };
 
+/// The manifest registers the application identifier as a link scheme with
+/// this host; debug builds carry the development identifier.
+pub(super) const BROWSER_RETURN_URL: &str = if cfg!(debug_assertions) {
+    "io.github.jferments.ostudy.dev://openrouter-signed-in"
+} else {
+    "io.github.jferments.ostudy://openrouter-signed-in"
+};
+
 pub(super) fn runtime(app: AppHandle) -> PlatformRuntime {
     pdf_render_backend::install_android_app(app.clone());
     let clock = Arc::new(AndroidSystemClock);
@@ -114,6 +122,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 system_share: ServiceCapability::available(),
                 local_network: environment_capability(),
                 background_execution: ServiceCapability::available(),
+                browser_sign_in: ServiceCapability::available(),
             },
         }
     }
@@ -160,6 +169,19 @@ impl ExternalFilePort for AndroidExternalFilePort {
                 copied_bytes: result.copied_bytes,
             }))
         })
+    }
+
+    // Android's document picker here takes one file at a time.
+    fn acquire_imports(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+        _maximum_files: usize,
+        targets: crate::platform::ExternalImportTargets,
+    ) -> PlatformFuture<Result<Vec<ExternalAcquireResult>, CommandError>> {
+        let target = targets(0);
+        let one = target.map(|target| self.acquire_import(app, request, target));
+        Box::pin(async move { Ok(one?.await?.into_iter().collect()) })
     }
 
     fn publish_export(

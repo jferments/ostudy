@@ -1,23 +1,37 @@
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 
 /**
- * The five places the main navigation names: Home, Library, Tutor, Progress and
- * Settings. Settings sits at the foot of the side rail on wider screens and in
- * the bottom bar on a phone; Search lives in the header.
+ * The places the main navigation names: Home, Library, Notes, Tutor and
+ * Progress. Settings is not one of them: it sits with Search at the foot of
+ * the side rail on wider screens and in a phone's top bar.
  */
-export type AppDestination = "home" | "library" | "tutor" | "progress" | "settings";
+export type AppDestination = "home" | "library" | "notes" | "tutor" | "progress";
 
 /**
- * Library's pages, in the order its tabs show them. Each one shows what the
- * chosen subject holds (see LibrarySubjectScope). Flashcards, Documents and
- * Study guides keep their section ids so saved checkpoints and launch
+ * A subject's pages, in the order its tabs show them. Flashcards, Documents
+ * and Study guides keep their section ids so saved checkpoints and launch
  * requests still name them.
  */
-export const LIBRARY_SECTIONS = ["overview", "lessons", "study-guides", "documents", "decks"] as const;
+export const SUBJECT_SECTIONS = ["decks", "study-guides", "lessons", "podcasts", "documents"] as const;
+
+export type SubjectSection = (typeof SUBJECT_SECTIONS)[number];
+
+/**
+ * Library's sections: its own page of subject tiles (the `overview` id, which
+ * older checkpoints name), then a subject's pages.
+ */
+export const LIBRARY_SECTIONS = ["overview", "decks", "study-guides", "lessons", "podcasts", "documents"] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
 
-/** Which subject's materials Library shows: all of them, one subject, or No subject. */
+export function isSubjectSection(section: AppSection): section is SubjectSection {
+  return (SUBJECT_SECTIONS as readonly AppSection[]).includes(section);
+}
+
+/**
+ * Which subject Library shows: `all` is Library's page of subjects (and the
+ * Workbench's All cards), or one subject, or No subject.
+ */
 export type LibrarySubjectScope =
   | { kind: "all" }
   | { kind: "subject"; subjectId: string }
@@ -46,7 +60,8 @@ export function isLibrarySection(section: AppSection): section is LibrarySection
 
 /**
  * The destination the navigation highlights. Review lives on Home, so the
- * legacy Review section and an active Practice session highlight Home.
+ * legacy Review section and an active Practice session highlight Home;
+ * Settings highlights its own button instead.
  */
 export function destinationOf(
   section: AppSection,
@@ -59,12 +74,12 @@ export function destinationOf(
       return "home";
     case "review":
       return "home";
+    case "notes":
+      return "notes";
     case "tutor":
       return "tutor";
     case "analytics":
       return "progress";
-    case "settings":
-      return "settings";
     default:
       return null;
   }

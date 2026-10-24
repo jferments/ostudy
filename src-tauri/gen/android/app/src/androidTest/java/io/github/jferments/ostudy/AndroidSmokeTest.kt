@@ -74,7 +74,8 @@ class AndroidSmokeTest {
                       .join('|'),
                     bottomNavigation: navigation?.dataset.slot === 'bottom-navigation',
                     searchAction: Boolean(document.querySelector('header [data-testid="app-search"]')),
-                    settingsGear: Boolean(navigation?.querySelector('[data-testid="app-settings"]')),
+                    settingsGear: Boolean(document.querySelector('header [data-testid="app-settings"]')),
+                    settingsInNavigation: Boolean(navigation?.querySelector('[data-testid="app-settings"]')),
                     createSubject: has('Create a subject'),
                     importDocument: has('Import a document'),
                     importDeck: has('Import a deck'),
@@ -85,11 +86,12 @@ class AndroidSmokeTest {
                 })()
                 """.trimIndent()
             )
-            assertEquals("Home|Library|Tutor|Progress|Settings", homeSnapshot.getString("navigation"))
+            assertEquals("Home|Library|Notes|Tutor|Progress", homeSnapshot.getString("navigation"))
             assertEquals("nav-home", homeSnapshot.getString("current"))
             assertTrue(homeSnapshot.getBoolean("bottomNavigation"))
             assertTrue(homeSnapshot.getBoolean("searchAction"))
             assertTrue(homeSnapshot.getBoolean("settingsGear"))
+            assertFalse(homeSnapshot.getBoolean("settingsInNavigation"))
             assertTrue(homeSnapshot.getBoolean("createSubject"))
             assertTrue(homeSnapshot.getBoolean("importDocument"))
             assertTrue(homeSnapshot.getBoolean("importDeck"))
@@ -97,12 +99,25 @@ class AndroidSmokeTest {
             assertFalse(homeSnapshot.getBoolean("todayStrip"))
             assertEquals(0, homeSnapshot.getInt("subjectTiles"))
 
-            // Library leads to the Workbench, which opens on its tree on a
-            // phone. An empty library offers one way to start a deck there and
-            // no controls that only mean something with decks in it.
+            // Library opens on its subject tiles, and All cards there leads to
+            // the Workbench, which opens on its tree on a phone. An empty
+            // library offers one way to start a deck there and no controls
+            // that only mean something with decks in it.
             evaluateSync(
                 webView,
                 "document.querySelector('main [data-testid=\"home-first-run\"]') && document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Boolean(document.querySelector('main [data-testid=\"library-subject-tiles\"]')) && " +
+                        "Boolean(document.querySelector('main [data-testid=\"library-all-cards\"]'))"
+                }
+            )
+            evaluateSync(
+                webView,
+                "document.querySelector('main [data-testid=\"library-all-cards\"]')?.click(); true"
             )
             waitUntil(
                 webView,
@@ -118,7 +133,7 @@ class AndroidSmokeTest {
                 (() => {
                   const tree = document.querySelector("main [data-testid='library-workbench'] nav[aria-label='Library']");
                   const sections = [...(tree?.querySelectorAll('section[aria-label]') ?? [])];
-                  const pages = document.querySelector("main nav[aria-label='Library pages']");
+                  const pages = document.querySelector("main nav[aria-label='Subject pages']");
                   const buttons = [...document.querySelectorAll('main button')];
                   const label = (button) => (button.getAttribute('aria-label') || button.textContent || '').trim();
                   return {
@@ -127,8 +142,7 @@ class AndroidSmokeTest {
                     settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
                     createActions: buttons.filter((button) => button.textContent?.trim() === 'New deck').length,
                     importAction: buttons.some((button) => label(button) === 'Import deck'),
-                    documentsView: Boolean(pages?.querySelector('[data-testid="library-view-documents"]')),
-                    studyGuidesView: Boolean(pages?.querySelector('[data-testid="library-view-study-guides"]')),
+                    subjectPages: Boolean(pages),
                     cardList: Boolean(document.querySelector("main section[aria-label='Cards']")),
                     irrelevantControls: buttons.some((button) => {
                       const text = label(button);
@@ -144,8 +158,8 @@ class AndroidSmokeTest {
             assertTrue(snapshot.getBoolean("settingsGear"))
             assertEquals(1, snapshot.getInt("createActions"))
             assertTrue(snapshot.getBoolean("importAction"))
-            assertTrue(snapshot.getBoolean("documentsView"))
-            assertTrue(snapshot.getBoolean("studyGuidesView"))
+            // All cards is not a subject, so it has no subject tabs.
+            assertFalse(snapshot.getBoolean("subjectPages"))
             assertFalse(snapshot.getBoolean("cardList"))
             assertFalse(snapshot.getBoolean("irrelevantControls"))
         }
@@ -190,12 +204,13 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Boolean(document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-documents\"]'))"
+                    "Boolean(document.querySelector('main [data-testid=\"library-subject-tile\"] [data-testid=\"library-subject-documents\"]'))"
                 }
             )
+            // A subject's Documents opens from its tile on Library's page.
             evaluateSync(
                 webView,
-                "document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-documents\"]')?.click(); true"
+                "document.querySelector('main [data-testid=\"library-subject-tile\"] [data-testid=\"library-subject-documents\"]')?.click(); true"
             )
             waitUntil(
                 webView,
@@ -271,10 +286,10 @@ class AndroidSmokeTest {
                 webView,
                 "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
             )
-            // Library reopens the page used last. Step to the Flashcards tab from
-            // another Library page, then back from a card list to the tree, and
-            // open the deck. Under Everything a deck row leads with its subject's
-            // badge, so match the deck by any of its spans.
+            // Library opens on its subject tiles; All cards opens the Workbench.
+            // Step back from a card list to the tree and open the deck. Under
+            // All cards a deck row leads with its subject's badge, so match the
+            // deck by any of its spans.
             waitUntil(
                 webView,
                 predicate = { it == "true" },
@@ -282,8 +297,8 @@ class AndroidSmokeTest {
                     "(() => { " +
                         "const deck = Array.from(document.querySelectorAll('main nav[aria-label=\"Library\"] button')).find(button => Array.from(button.querySelectorAll('span')).some(span => span.textContent?.trim() === 'Android Emulator Smoke Deck')); " +
                         "if (deck) return true; " +
-                        "const page = document.querySelector('main nav[aria-label=\"Library pages\"] [data-testid=\"library-view-decks\"]'); " +
-                        "if (page && page.getAttribute('aria-current') !== 'page') { page.click(); return false; } " +
+                        "const allCards = document.querySelector('main [data-testid=\"library-all-cards\"]'); " +
+                        "if (allCards) { allCards.click(); return false; } " +
                         "document.querySelector('main [data-testid=\"library-workbench\"] button[aria-label=\"Library\"]')?.click(); " +
                         "return false; " +
                         "})()"
@@ -376,9 +391,11 @@ class AndroidSmokeTest {
             assertFalse(restored.getBoolean("completed"))
             evaluateSync(webView, "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'End session')?.click(); true")
             waitUntil(webView, predicate = { it == "true" }, expression = {
-                "document.querySelector('main h1')?.textContent?.trim() === 'Study Guides' && " +
+                // The session began on Study guides; a restart keeps no subject,
+                // so ending it returns to Library's page of subjects.
+                "document.querySelector('main h1')?.textContent?.trim() === 'Library' && " +
                     "document.querySelector('[data-testid=\"nav-library\"]')?.getAttribute('aria-current') === 'page' && " +
-                    "document.querySelector('[data-testid=\"library-view-study-guides\"]')?.getAttribute('aria-current') === 'page'"
+                    "Boolean(document.querySelector('main [data-testid=\"library-subject-tiles\"]'))"
             })
         }
     }

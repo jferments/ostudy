@@ -68,6 +68,7 @@ impl CapabilityProvider for MobileCapabilityProvider {
                 system_share: unavailable(),
                 local_network: unavailable(),
                 background_execution: unavailable(),
+                browser_sign_in: unavailable(),
             },
         }
     }
@@ -82,6 +83,21 @@ impl ExternalFilePort for UnavailableExternalFilePort {
         _request: ExternalFileRequest,
         _target: crate::platform::ExternalImportTarget,
     ) -> PlatformFuture<Result<Option<crate::platform::ExternalAcquireResult>, CommandError>> {
+        Box::pin(async {
+            Err(CommandError::new(
+                "external_file_adapter_unavailable",
+                "This mobile build does not include its native file-selection adapter.",
+            ))
+        })
+    }
+
+    fn acquire_imports(
+        &self,
+        _app: AppHandle,
+        _request: ExternalFileRequest,
+        _maximum_files: usize,
+        _targets: crate::platform::ExternalImportTargets,
+    ) -> PlatformFuture<Result<Vec<crate::platform::ExternalAcquireResult>, CommandError>> {
         Box::pin(async {
             Err(CommandError::new(
                 "external_file_adapter_unavailable",

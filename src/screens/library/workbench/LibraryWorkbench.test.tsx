@@ -115,6 +115,7 @@ function renderWorkbench(width = 1400, launch?: WorkbenchLaunch, subject?: Libra
           onSelectView={vi.fn()}
           subject={subject ?? { kind: "all" }}
           onChooseSubject={vi.fn()}
+          onOpenLibrary={vi.fn()}
           onStartReview={vi.fn()}
           onPracticeSubject={vi.fn()}
           showToast={vi.fn()}
@@ -197,14 +198,23 @@ describe("LibraryWorkbench", () => {
     await waitFor(() => expect(lastSearch()).toMatchObject({ deckIds: [lecture.id], statusFilter: "needs_more_practice" }));
   });
 
-  it("puts Library's pages in tabs above the tree, with Import deck beside them", async () => {
-    renderWorkbench();
-    const tabs = screen.getByRole("navigation", { name: "Library pages" });
+  it("puts the subject's pages in tabs above the tree, with Import deck beside them", async () => {
+    renderWorkbench(1400, undefined, { kind: "none" });
+    const tabs = screen.getByRole("navigation", { name: "Subject pages" });
     expect(within(tabs).getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "Import deck" })).toBeTruthy();
     const tree = screen.getByRole("navigation", { name: "Library" });
     expect(within(tree).queryByRole("button", { name: "Documents" })).toBeNull();
     expect(within(tree).queryByRole("button", { name: /^Due today/u })).toBeNull();
+  });
+
+  it("keeps a phone's tab row to the tabs and offers Import deck beside New deck", async () => {
+    renderWorkbench(390, undefined, { kind: "none" });
+    const tabs = await screen.findByRole("navigation", { name: "Subject pages" });
+    expect(within(tabs.parentElement!).queryByRole("button", { name: "Import deck" })).toBeNull();
+    const tree = screen.getByRole("navigation", { name: "Library" });
+    fireEvent.click(within(tree).getByRole("button", { name: "Import deck" }));
+    expect(await screen.findByRole("dialog", { name: "Import deck" })).toBeTruthy();
   });
 
   it("lists only Library's chosen subject's decks and tags, and keeps a tag to that subject", async () => {

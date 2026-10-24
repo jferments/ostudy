@@ -145,6 +145,9 @@ fn lesson_answer() -> String {
             "narration": "Cardiac output depends on how fast the heart beats.",
             "slidePoints": ["Output depends on heart rate"],
             "check": {
+                "timing": "after",
+                "style": "recall",
+                "aboutStep": 1,
                 "prompt": "What does cardiac output depend on?",
                 "options": ["Heart rate", "Hair colour"],
                 "correctOption": 0,
@@ -165,6 +168,23 @@ fn write(
     subject_id: &str,
     operation_id: &str,
 ) -> Result<SubjectLessonsDto, CommandError> {
+    run_course(database, subject_id, operation_id, false)
+}
+
+fn rewrite(
+    database: &Database,
+    subject_id: &str,
+    operation_id: &str,
+) -> Result<SubjectLessonsDto, CommandError> {
+    run_course(database, subject_id, operation_id, true)
+}
+
+fn run_course(
+    database: &Database,
+    subject_id: &str,
+    operation_id: &str,
+    rewrite: bool,
+) -> Result<SubjectLessonsDto, CommandError> {
     let _turn = WRITING
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -174,6 +194,7 @@ fn write(
         WriteSubjectCourseInput {
             subject_id: subject_id.to_string(),
             operation_id: operation_id.to_string(),
+            rewrite,
         },
     ))
 }
@@ -359,7 +380,8 @@ fn one_writer_per_subject_and_stopping_an_unknown_run_says_so() {
 #[test]
 fn a_running_course_reports_lessons_planned_and_written() {
     let subject = "e".repeat(32);
-    let operation = "2".repeat(32);
+    // Not operation('2'), which the course-writing tests run beside this one.
+    let operation = "7".repeat(32);
     let progress = |operation: &str| {
         get_subject_course_writing_progress(GetSubjectCourseWritingProgressInput {
             operation_id: operation.to_string(),
@@ -479,6 +501,8 @@ fn lecture_answer(lecture: &crate::lessons::lecture::LectureDto) -> String {
         "talk": format!("Look at {} with me, because it matters.", slide.title),
         "question": if slide.key == "step:step-1" {
             json!({
+                "timing": "before",
+                "style": "predict",
                 "prompt": "If the heart beats faster, what happens to cardiac output?",
                 "options": [
                     {"text": "It rises", "reply": "Right. Output depends on heart rate, so it rises."},
@@ -549,6 +573,7 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
     let shown = serde_json::to_string(&script).unwrap();
     assert!(!shown.contains("correctOptionId"));
     assert!(!shown.contains("Not quite"));
+    assert!(shown.contains("\"timing\":\"before\""));
     assert_eq!(
         count(
             &database,
@@ -609,11 +634,27 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
                 &lesson_id,
                 1,
                 "step:step-1",
-                Some(&asked.options[1].id),
+                teaching::SpokenPart::Reply(&asked.options[1].id),
             )
         })
         .unwrap();
     assert!(reply.starts_with("Not quite."));
+    // A question asked before the talk is spoken as written.
+    let asking = database
+        .with_connection(|connection| {
+            teaching::spoken_text(
+                connection,
+                &lesson_id,
+                1,
+                "step:step-1",
+                teaching::SpokenPart::Question,
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        asking,
+        "If the heart beats faster, what happens to cardiac output?"
+    );
 
     // Writing again replaces the revision's script; deleting the lesson
     // deletes it.
@@ -636,4 +677,287 @@ fn a_teachers_lecture_is_written_once_kept_and_answered_without_the_provider() {
         })
         .unwrap();
     assert_eq!(count(&database, "SELECT COUNT(*) FROM lecture_scripts"), 0);
+}
+
+#[test]
+fn a_podcast_is_written_from_the_picked_lessons_and_kept_with_its_hosts_voices() {
+    use crate::ai::document_intelligence::PODCAST_SCRIPT_PROMPT_VERSION;
+    use crate::lessons::podcasts::{self, WritePodcastInput};
+
+    use crate::lessons::{authoring::create_authored_lesson, fixture::loop_of_henle};
+
+    // Authored lessons, so no course writer runs beside the other tests'.
+    let (database, subject, _, _, _) = fixture().unwrap();
+    let mut picked = database
+        .with_connection(|connection| {
+            (0..2)
+                .map(|_| {
+                    Ok(create_authored_lesson(connection, &subject, loop_of_henle(&[]), 1)?.id)
+                })
+                .collect::<Result<Vec<_>, CommandError>>()
+        })
+        .unwrap();
+    picked.reverse();
+
+    let answer = json!({
+        "title": "Why the heart speeds up",
+        "chapters": (1..=picked.len()).map(|index| json!({
+            "lessonKey": format!("lesson-{index}"),
+            "turns": [
+                {"host": "Ada", "text": "Cardiac output depends on heart rate."},
+                {"host": "Ben", "text": "So a faster heart pumps more?"},
+            ],
+        })).collect::<Vec<_>>(),
+    })
+    .to_string();
+    let (podcast_url, served, bodies) = spawn_provider(answer);
+    use_profile(&database, &podcast_url, 'b');
+    let podcast = tauri::async_runtime::block_on(podcasts::write(
+        &database,
+        &runtime(),
+        WritePodcastInput {
+            subject_id: subject.clone(),
+            lesson_ids: picked.clone(),
+            target_minutes: 10,
+            voices: None,
+            operation_id: operation('a'),
+        },
+    ))
+    .unwrap();
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    let sent = &bodies.lock().unwrap()[0];
+    assert!(sent.contains("PODCAST writer"));
+    assert!(sent.contains("about 1500 words"));
+    assert_eq!(podcast.title, "Why the heart speeds up");
+    assert_eq!(podcast.target_minutes, 10);
+    // Chapters follow the learner's order, not the course's.
+    assert_eq!(
+        podcast
+            .chapters
+            .iter()
+            .map(|chapter| chapter.lesson_id.clone())
+            .collect::<Vec<_>>(),
+        picked
+    );
+    assert_eq!(podcast.hosts[0].voice, "builtin:calm-older-woman");
+    assert_eq!(podcast.hosts[1].voice, "builtin:relaxed-man");
+    assert_eq!(
+        count(
+            &database,
+            "SELECT COUNT(*) FROM generation_requests WHERE stage = 'podcast_authoring'"
+        ),
+        1
+    );
+    let provenance: Value = serde_json::from_str(
+        &database
+            .with_connection(|connection| {
+                connection
+                    .query_row("SELECT provenance_json FROM podcasts", [], |row| {
+                        row.get::<_, String>(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(provenance["promptVersion"], PODCAST_SCRIPT_PROMPT_VERSION);
+    let listed = database
+        .with_connection(|connection| podcasts::list(connection, &subject))
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, podcast.id);
+}
+
+fn update(
+    database: &Database,
+    lesson_id: &str,
+    operation_id: &str,
+) -> Result<SubjectLessonsDto, CommandError> {
+    let _turn = WRITING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    tauri::async_runtime::block_on(update_lesson(
+        database,
+        &runtime(),
+        UpdateLessonInput {
+            lesson_id: lesson_id.to_string(),
+            operation_id: operation_id.to_string(),
+        },
+    ))
+}
+
+fn execute(database: &Database, sql: &str, lesson_id: &str) {
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(sql, [lesson_id])
+                .map_err(CommandError::database)
+        })
+        .unwrap();
+}
+
+#[test]
+fn a_lesson_whose_source_changed_is_written_again_as_its_next_revision() {
+    let (database, subject, first, second, _) = fixture().unwrap();
+    let (base_url, served, bodies) = spawn_provider(lesson_answer());
+    use_profile(&database, &base_url, 'a');
+    plan(&database, &[&first, &second]);
+    let course = write(&database, &subject, &operation('a')).unwrap();
+    let lesson = &course.lessons[1];
+    // The knowledge the lesson explains changes.
+    execute(
+        &database,
+        "UPDATE knowledge_units SET content_hash = 'e' || substr(content_hash, 2)
+         WHERE id IN (SELECT unit_id FROM lesson_revision_units WHERE lesson_id = ?1)",
+        &lesson.id,
+    );
+    let before = served.load(Ordering::SeqCst);
+    let listed = list_lessons_now(&database, &subject);
+    assert_eq!(
+        listed.lessons[1].written.as_ref().unwrap().sources,
+        crate::lessons::SourceStatus::Changed
+    );
+
+    let updated = update(&database, &lesson.id, &operation('b')).unwrap();
+
+    // One request, for this lesson only, which knows the rest of the course.
+    assert_eq!(served.load(Ordering::SeqCst), before + 1);
+    assert!(bodies
+        .lock()
+        .unwrap()
+        .last()
+        .unwrap()
+        .contains("this lesson"));
+    assert_eq!(updated.lessons.len(), 2);
+    assert_eq!(updated.lessons[1].id, lesson.id);
+    let written = updated.lessons[1].written.as_ref().unwrap();
+    assert_eq!(written.revision_number, 2);
+    assert_eq!(written.origin, "generated");
+    assert_eq!(written.sources, crate::lessons::SourceStatus::Current);
+    // The other lesson and the first revision stay as they were.
+    assert_eq!(
+        updated.lessons[0].written.as_ref().unwrap().revision_number,
+        1
+    );
+    assert_eq!(count(&database, "SELECT COUNT(*) FROM lesson_revisions"), 3);
+    let provenance: Value = serde_json::from_str(
+        &database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT provenance_json FROM lesson_revisions
+                         WHERE lesson_id = ?1 AND revision_number = 2",
+                        [&lesson.id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(provenance["operationId"], operation('b'));
+}
+
+#[test]
+fn a_lesson_is_not_written_again_without_its_part_or_its_provenance() {
+    let (database, subject, first, second, _) = fixture().unwrap();
+    let (base_url, served, _) = spawn_provider(lesson_answer());
+    use_profile(&database, &base_url, 'c');
+    plan(&database, &[&first, &second]);
+    let course = write(&database, &subject, &operation('c')).unwrap();
+    let lesson = course.lessons[0].id.clone();
+    let before = served.load(Ordering::SeqCst);
+
+    // The topic it taught is no longer in the plan.
+    execute(
+        &database,
+        "UPDATE lesson_revisions
+         SET provenance_json = json_set(provenance_json, '$.topicIds[0]', 'gone')
+         WHERE lesson_id = ?1",
+        &lesson,
+    );
+    assert_eq!(
+        update(&database, &lesson, &operation('d'))
+            .err()
+            .unwrap()
+            .code,
+        "lesson_part_gone"
+    );
+    // A lesson written by hand has no sources to write it from.
+    execute(
+        &database,
+        "UPDATE lesson_revisions SET origin = 'authored', provenance_json = NULL
+         WHERE lesson_id = ?1",
+        &lesson,
+    );
+    assert_eq!(
+        update(&database, &lesson, &operation('d'))
+            .err()
+            .unwrap()
+            .code,
+        "lesson_not_generated"
+    );
+    assert_eq!(
+        update(&database, &"9".repeat(32), &operation('d'))
+            .err()
+            .unwrap()
+            .code,
+        "lesson_not_found"
+    );
+    assert_eq!(served.load(Ordering::SeqCst), before);
+    assert_eq!(count(&database, "SELECT COUNT(*) FROM lesson_revisions"), 2);
+}
+
+fn list_lessons_now(database: &Database, subject: &str) -> SubjectLessonsDto {
+    database
+        .with_connection(|connection| list_lessons(connection, subject))
+        .unwrap()
+}
+
+#[test]
+fn a_rewritten_course_revises_lessons_by_part_adds_new_parts_and_keeps_the_rest() {
+    let (database, subject, first, second, _) = fixture().unwrap();
+    let (base_url, served, _) = spawn_provider(lesson_answer());
+    use_profile(&database, &base_url, 'e');
+    plan(&database, &[&first, &second]);
+    let course = write(&database, &subject, &operation('e')).unwrap();
+    let (old_first, kept) = (course.lessons[0].id.clone(), course.lessons[1].id.clone());
+    // The first lesson's part is no longer in the plan.
+    execute(
+        &database,
+        "UPDATE lesson_revisions
+         SET provenance_json = json_set(provenance_json, '$.topicIds[0]', 'gone')
+         WHERE lesson_id = ?1",
+        &old_first,
+    );
+    let before = served.load(Ordering::SeqCst);
+
+    let rewritten = rewrite(&database, &subject, &operation('f')).unwrap();
+
+    assert_eq!(served.load(Ordering::SeqCst), before + 2);
+    let ids = rewritten
+        .lessons
+        .iter()
+        .map(|lesson| lesson.id.clone())
+        .collect::<Vec<_>>();
+    // A new lesson for the first part, the second lesson's next revision,
+    // then the lesson whose part went, unchanged.
+    assert_eq!(ids.len(), 3);
+    assert!(ids[0] != old_first && ids[0] != kept);
+    assert_eq!(ids[1..], [kept.clone(), old_first.clone()]);
+    let revision = |index: usize| {
+        rewritten.lessons[index]
+            .written
+            .as_ref()
+            .unwrap()
+            .revision_number
+    };
+    assert_eq!((revision(0), revision(1), revision(2)), (1, 2, 1));
+    // The kept lesson is marked as no longer in the study plan.
+    let in_plan = rewritten
+        .lessons
+        .iter()
+        .map(|lesson| lesson.written.as_ref().unwrap().in_study_plan)
+        .collect::<Vec<_>>();
+    assert_eq!(in_plan, [true, true, false]);
 }

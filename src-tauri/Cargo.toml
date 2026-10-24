@@ -32,6 +32,7 @@ typst = "=0.15.1"
 typst-assets = { version = "=0.15.1", features = ["fonts"] }
 typst-layout = "=0.15.1"
 typst-pdf = "=0.15.1"
+typst-svg = "=0.15.1"
 oxidize-pdf = { version = "=5.5.0", default-features = false, features = ["compression", "semantic"] }
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
@@ -55,3 +56,10 @@ zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate
 keyring = "=4.1.6"
 sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
 pdfium-render = { version = "=0.9.3", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
+
+# Development builds (`pnpm desktop`) are what the maintainer studies with.
+# Optimizing dependencies (SQLite, JSON, hashing, PDF and image code) makes
+# local document work several times faster there, while oStudy's own crate
+# stays unoptimized for quick rebuilds and full debug information.
+[profile.dev.package."*"]
+opt-level = 2

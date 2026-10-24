@@ -335,9 +335,17 @@ class CatalogueTests(unittest.TestCase):
                 return [re.search(r"data-testid='([^']+)'", xpath).group(1) for xpath in clicks]
 
             destinations, sections = capture.DESTINATIONS_SHELL, capture.SECTIONS_SHELL
+            # Builds before the subject tiles: Library's tabs hold every page.
             self.assertEqual(route(destinations, "wide", "documents"), ["nav-library", "library-view-documents"])
             self.assertEqual(route(destinations, "compact", "study-guides"),
                              ["nav-library", "library-view-study-guides"])
+            # Library opens on its subject tiles: All cards, or the seeded subject's tabs.
+            capture.exists = lambda ctx, xpath: xpath == capture.LIBRARY_TILES
+            self.assertEqual(route(destinations, "wide", "decks"), ["nav-library", "library-all-cards"])
+            self.assertEqual(route(destinations, "wide", "documents"),
+                             ["nav-library", "library-subject-tiles", "library-view-documents"])
+            self.assertEqual(route(destinations, "wide", "overview"), ["nav-library"])
+            capture.exists = lambda ctx, xpath: False
             self.assertEqual(route(destinations, "wide", "analytics"), ["nav-progress"])
             self.assertEqual(route(destinations, "wide", "settings"), ["app-settings"])
             self.assertEqual(route(sections, "wide", "documents"), ["nav-documents"])

@@ -108,9 +108,9 @@ fn collection_completion_plans_reserve_retry_headroom_before_input() {
 }
 
 #[test]
-fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() {
+fn collection_prompt_asks_for_condensed_key_ideas_without_internal_diagnostics() {
     let prompt = collection_study_guide_system_prompt();
-    assert!(prompt.contains("readable teaching outline"));
+    assert!(prompt.contains("condensed summary of the collection's key ideas"));
     assert!(prompt.contains("Never reduce a section to 'Review <topic>'"));
     assert!(prompt.contains("Never") || prompt.contains("never"));
     let user = collection_study_guide_user_prompt(
@@ -146,18 +146,20 @@ fn collection_prompt_requires_readable_narrative_without_internal_diagnostics() 
 }
 
 #[test]
-fn prompt_requires_readable_prose_and_treats_lists_as_optional_study_aids() {
+fn prompt_asks_for_a_condensed_summary_of_key_ideas_with_lists_in_tables() {
     let prompt = study_guide_system_prompt();
     assert!(!prompt.contains("PDF"));
     assert!(prompt.contains("canonical"));
     assert!(prompt.to_ascii_lowercase().contains("study-guide author"));
-    assert!(prompt.contains("coherent teaching prose"));
-    assert!(prompt.contains("keyPoints are optional"));
+    assert!(prompt.contains("condensed summary of the key ideas, not a rewrite"));
+    assert!(prompt.contains("keyPoints: the key ideas"));
+    assert!(prompt.contains("The length guide names how many"));
     assert!(prompt.contains("subjectA, subjectB, and relationship"));
     assert!(prompt.contains("workedExamples"));
     assert!(prompt.contains("retrievalChecks"));
-    assert!(prompt.contains("Each fact appears once in the section"));
-    assert!(prompt.contains("overview: orients the learner in 2 to 4 sentences"));
+    assert!(prompt.contains("Each idea appears once in the section"));
+    assert!(prompt.contains("overview: the big idea in one sentence"));
+    assert!(prompt.contains("put them in one table"));
     assert!(prompt.contains(&format!(
         "Study-guide prompt version: {STUDY_GUIDE_PROMPT_VERSION}"
     )));
@@ -346,4 +348,68 @@ fn repeated_knowledge_targets_are_kept_once() {
     )
     .unwrap();
     assert_eq!(section.knowledge_support.len(), 1);
+}
+
+#[test]
+fn catalog_subjects_keep_source_order_and_the_largest_past_the_limit() {
+    let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+    let template = catalog.units[0].clone();
+    let with_topic = |topic: &str| {
+        let mut unit = template.clone();
+        unit.content.topic = topic.to_string();
+        unit
+    };
+    assert!(catalog_subjects(&catalog).is_empty());
+    catalog.units = [
+        "Swallowing",
+        "swallowing",
+        "Gastric emptying",
+        " ",
+        "Defecation",
+    ]
+    .into_iter()
+    .map(with_topic)
+    .collect();
+    assert_eq!(
+        catalog_subjects(&catalog),
+        ["Swallowing (2)", "Gastric emptying (1)", "Defecation (1)"]
+    );
+    catalog.units = [
+        "Food intake: leptin",
+        "Food intake",
+        "Food intake: ghrelin",
+        "Motility: slow waves",
+    ]
+    .into_iter()
+    .map(with_topic)
+    .collect();
+    assert_eq!(
+        catalog_subjects(&catalog),
+        ["Food intake (3)", "Motility: slow waves (1)"]
+    );
+    catalog.units = (0..MAX_CATALOG_SUBJECTS + 2)
+        .map(|index| with_topic(&format!("S{index}")))
+        .chain([with_topic("S5"), with_topic("S9")])
+        .collect();
+    let subjects = catalog_subjects(&catalog);
+    assert_eq!(subjects.len(), MAX_CATALOG_SUBJECTS);
+    assert_eq!(subjects[0], "S0 (1)");
+    assert!(subjects.contains(&"S5 (2)".to_string()));
+    assert!(subjects.contains(&"S9 (2)".to_string()));
+    assert!(!subjects.contains(&"S25 (1)".to_string()));
+}
+
+#[test]
+fn a_guide_length_scale_shortens_each_section_to_a_floor() {
+    let budget = WritingBudget::from_signals(64, 64_000);
+    assert_eq!(budget.target_chars, 3_000);
+    assert_eq!(budget.scaled(1.0), budget);
+    assert_eq!(budget.scaled(0.0), budget);
+    assert_eq!(budget.scaled(f64::NAN), budget);
+    let half = budget.scaled(0.5);
+    assert_eq!(half.target_chars, 1_500);
+    assert_eq!(half.overview_chars, 300);
+    let tiny = budget.scaled(0.01);
+    assert_eq!(tiny.target_chars, 512);
+    assert_eq!(tiny.overview_chars, 150);
 }

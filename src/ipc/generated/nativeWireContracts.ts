@@ -36,6 +36,9 @@ export interface NativeAppSettings {
   dailyNewLimit: number;
   dailyReviewLimit: number;
   newDayStartHour: number;
+  guidePdfTheme: "navy" | "sage" | "slate" | "plum";
+  guidePdfIncludeNotes: boolean;
+  lectureAudioWithNewLessons: boolean;
 }
 
 export interface NativeCompletedLibraryRestore {
@@ -95,6 +98,7 @@ export interface NativeSubjectLibrary {
   decks: NativeSubjectDeckPlacement[];
   documents: NativeSubjectDocumentPlacement[];
   studyRanges: NativeDocumentStudyRange[];
+  leftOutDocumentIds: string[];
   checkTheseCount: number;
 }
 
@@ -104,6 +108,17 @@ export interface NativeSubjectFilingReview {
   reason: string;
   detail: Record<string, unknown>;
   label: string;
+}
+
+export interface NativeSubjectCover {
+  documentId: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 export interface NativeHomeSubjectSummary {
@@ -116,6 +131,10 @@ export interface NativeHomeSubjectSummary {
   deckCount: number;
   sourceCount: number;
   hasOverviewGuide: boolean;
+  guideCount: number;
+  lessonCount: number;
+  podcastCount: number;
+  cover: NativeSubjectCover | null;
   dueDeckIds: string[];
 }
 

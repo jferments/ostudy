@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
-import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
-  getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuidePdfTheme, type TopicCardProjection,
+  getDocumentTopicCardProjection, openDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import { getStudyGuideReading, openStudyGuideSection, setStudyGuideSectionRead, type StudyGuideReading } from "../ipc/studyGuideReading";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
+import { useOptionalTutor } from "./tutor/TutorContext";
 import { Icon } from "../ui/icons/Icon";
 import { IconButton } from "../ui/icons/IconButton";
 import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
@@ -21,7 +21,8 @@ import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { Button } from "../ui/primitives/Button";
 import { Progress } from "../ui/primitives/Progress";
-import { GuideExportDialog, GuideTextDialog } from "./study-guides/GuideDialogs";
+import { GuideTextDialog } from "./study-guides/GuideDialogs";
+import { exportGuidePdf } from "./study-guides/exportGuidePdf";
 import { type GuideDestination, GuideOutline, guidePageId } from "./study-guides/GuideOutline";
 import { GuideOverviewPage, type GuidePageLink, GuideSectionPage } from "./study-guides/GuideReaderPages";
 import {
@@ -29,8 +30,12 @@ import {
   plainTextRichDocument, sectionBlocks,
 } from "./study-guides/guideModel";
 import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
+import { GuideCanvas, type GuideCanvasLeave, type GuideCanvasLinkActions } from "./study-guides/GuideCanvas";
+import {
+  GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
+} from "./study-guides/guidePageStyle";
 
-interface StudyGuideDialogProps {
+interface StudyGuideDialogProps extends GuideCanvasLinkActions {
   documentId: string; documentTitle: string;
   /** What the library knows about the source file, for its kind badge and length. */
   source?: GuideSourceSummary | null;
@@ -40,11 +45,14 @@ interface StudyGuideDialogProps {
 interface EditingState { topicId: string | null; mode: EditingMode; initialValue: string; }
 
 /**
- * The Chapter reader for one document's study guide: an overview page and one page per section,
- * with the outline beside them on wide screens and in a Contents sheet on narrower ones.
+ * The reader for one document's study guide. In a page theme it is the guide's PDF pages on one
+ * canvas to write on, with the contents beside them ({@link GuideCanvas}); as plain text it is the
+ * Chapter reader, an overview page and one page per section, with the outline beside them on wide
+ * screens and in a Contents sheet on narrower ones.
  */
-export function StudyGuideDialog({ documentId, documentTitle, source = null, showToast, onPracticeCards, onClose }: StudyGuideDialogProps) {
+export function StudyGuideDialog({ documentId, documentTitle, source = null, showToast, onPracticeCards, onClose, ...links }: StudyGuideDialogProps) {
   const confirm = useConfirm();
+  const tutor = useOptionalTutor();
   const { layoutMode } = useLayoutMode();
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,9 +61,13 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const [isCanceling, setIsCanceling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isOpeningPdf, setIsOpeningPdf] = useState(false);
+  const [isRemaking, setIsRemaking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [pageStyle, setPageStyle] = useState<GuidePageStyle>(readGuidePageStyle);
+  /** While the canvas is open: saves its pending marks, then does what is asked. */
+  const canvasLeave = useRef<GuideCanvasLeave | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
   const [topicCards, setTopicCards] = useState<Record<string, TopicCardProjection>>({});
   const [currentTopicId, setCurrentTopicId] = useState<string | null>(null);
@@ -179,31 +191,40 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     try { await cancelDocumentStudyGuideGeneration(documentId); showToast("info", "Stopping study-guide generation…"); }
     catch (error: unknown) { setIsCanceling(false); showToast("error", getErrorMessage(error)); }
   }
-  async function exportPdf(includeAnnotations: boolean, theme: StudyGuidePdfTheme): Promise<void> {
+  async function exportPdf(): Promise<void> {
     if (!guide || isExporting || isGenerating || isSaving) return;
     setIsExporting(true);
-    let preparedExportId: string | null = null;
-    let failed = false;
+    try { await exportGuidePdf({ kind: "document", id: documentId }, confirm, showToast); }
+    finally { setIsExporting(false); }
+  }
+  /** Opens the guide in the system's PDF reader, set in the chosen theme with the learner's notes. */
+  async function openInPdfReader(): Promise<void> {
+    if (!guide || isOpeningPdf) return;
+    setIsOpeningPdf(true);
+    try { await openDocumentStudyGuidePdf(documentId, pageStyle === "plain" ? "navy" : pageStyle); }
+    catch (error: unknown) { showToast("error", getErrorMessage(error)); }
+    finally { setIsOpeningPdf(false); }
+  }
+  /** Writes a new revision of the guide; the current one stays open until it is saved. */
+  async function remake(): Promise<void> {
+    if (!guide || isRemaking || isGenerating) return;
+    setIsRemaking(true);
     try {
-      const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations, theme);
-      preparedExportId = prepared.preparedExport.id;
-      if (prepared.mathSourceFallback && !await confirm({
-        title: "Export math as source notation?",
-        description: "Some equations use notation outside the native PDF math subset and will remain readable LaTeX source. The study guide in oStudy keeps its full typeset math.",
-        confirmLabel: "Export PDF",
-        cancelLabel: "Cancel",
-      })) return;
-      const receipt = await publishPreparedExport(prepared.preparedExport.id);
-      if (receipt) {
-        const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";
-        showToast("success", `Exported study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${annotationSummary}.`);
-      }
-    } catch (error: unknown) { failed = true; showToast("error", getErrorMessage(error)); }
-    finally {
-      if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
-      setIsExporting(false);
-      if (!failed) setExportOpen(false);
-    }
+      const remade = await generateDocumentStudyGuide(documentId);
+      await refresh();
+      showToast("success", `Study guide revision ${remade.revision} made.`);
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
+        showToast("info", "Study guide remake stopped. Saved section progress can be reused.");
+      } else showToast("error", `Study guide remake failed: ${getErrorMessage(error)}`);
+    } finally { setIsRemaking(false); }
+  }
+  /** Leaves the reader, saving the canvas's marks first while it is open. */
+  function close(): void {
+    const leave = canvasLeave.current;
+    if (leave) void leave(onClose);
+    else onClose();
   }
   async function openSource(): Promise<void> {
     try { await openDocumentSource(documentId); } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
@@ -246,7 +267,11 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     try {
       const cardIds = await getDocumentTopicCardIds(documentId, [section.topicId]);
       if (cardIds.length === 0) { showToast("info", "No flashcards are linked to this section yet."); return; }
-      await onPracticeCards(cardIds);
+      const practice = () => onPracticeCards(cardIds);
+      // Practice leaves the guide, so the canvas saves its marks first.
+      const leave = canvasLeave.current;
+      if (leave) await leave(practice);
+      else await practice();
     } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
   }
   function beginGuideNote(): void { setEditing({ topicId: null, mode: "note", initialValue: guideNote?.plainText ?? "" }); }
@@ -259,12 +284,59 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     setEditing({ topicId: section.topicId, mode: "override", initialValue: overlay?.plainText ?? section.contentText });
   }
 
+  function choosePageStyle(style: GuidePageStyle): void {
+    const choose = () => {
+      setPageStyle(style);
+      saveGuidePageStyle(style);
+    };
+    // A new theme lays the pages out again, so the marks are saved first.
+    const leave = canvasLeave.current;
+    if (leave) void leave(choose);
+    else choose();
+  }
+  const pageStyleItems: OverflowMenuItem[] = GUIDE_PAGE_STYLES.map((style) => ({
+    id: `style-${style.value}`, label: style.value === "plain" ? "Plain text" : style.name, checked: style.value === pageStyle,
+    onSelect: () => choosePageStyle(style.value),
+  }));
+  const pageStyleName = pageStyle === "plain" ? "Plain text" : GUIDE_PAGE_STYLES.find((style) => style.value === pageStyle)?.name ?? "Navy";
   const guideMenuItems: OverflowMenuItem[] = guide ? [
-    { id: "export", label: "Export as PDF…", disabled: isExporting || isGenerating || isSaving, onSelect: () => setExportOpen(true) },
+    // A phone's bar has no room for the page menu, so its styles join this one.
+    ...(layoutMode === "compact" ? pageStyleItems.map((item) => ({ ...item, label: item.id === "style-plain" ? "Read as plain text" : `${item.label} pages` })) : []),
+    { id: "export", label: isExporting ? "Saving PDF…" : "Save a copy as PDF…", disabled: isExporting || isGenerating || isSaving,
+      onSelect: () => void exportPdf() },
     { id: "guide-note", label: guideNote ? "Edit guide note" : "Add guide note", disabled: actionsDisabled, onSelect: beginGuideNote },
+    { id: "remake", label: isRemaking ? "Remaking the study guide…" : "Remake the study guide", disabled: isRemaking || isGenerating || busy,
+      onSelect: () => void remake() },
     ...(guideNote ? [{ id: "remove-guide-note", label: "Remove guide note", destructive: true, disabled: actionsDisabled,
       onSelect: () => void discardOverlay(guideNote, "Guide note removed.") }] : []),
   ] : [];
+  /** The canvas scrolled to a section; scrolling on past one counts it read, as Next does. */
+  function scrolledTo(topicId: string): void {
+    if (currentEntry && order && topicId !== currentEntry.section.topicId) {
+      const from = order.entries.indexOf(currentEntry);
+      const to = order.entries.findIndex((entry) => entry.section.topicId === topicId);
+      if (to > from && !readTopicIds.has(currentEntry.section.topicId)) void setSectionRead(currentEntry.section.topicId, true);
+    }
+    setCurrentTopicId(topicId);
+  }
+  /** A section's actions in the canvas's contents. */
+  function sectionMenu(topicId: string): OverflowMenuItem[] {
+    const section = guide?.sections.find((item) => item.topicId === topicId) ?? null;
+    if (!guide || !section) return [];
+    const override = findEditingOverlay(guide.overlays, topicId, "override", guide.id);
+    const read = readTopicIds.has(topicId);
+    const title = order?.entries.find((entry) => entry.section.topicId === topicId)?.title ?? section.title;
+    return [
+      { id: "practice", label: "Practice this section's flashcards", onSelect: () => void studyTopic(section) },
+      ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
+        onSelect: () => tutor.openContext({ title, scope: { kind: "guide", id: documentId },
+          focus: { kind: "guide", documentId, guideId: guide.id, topicId, contentHash: section.contentHash }, mode: "explain" }) }] : []),
+      { id: "read", label: read ? "Mark as unread" : "Mark as read", onSelect: () => void setSectionRead(topicId, !read) },
+      { id: "edit", label: "Edit or rewrite this section", disabled: actionsDisabled, onSelect: () => beginSectionOverride(section) },
+      ...(override ? [{ id: "reset-section", label: "Reset section edit", destructive: true, disabled: actionsDisabled,
+        onSelect: () => void discardOverlay(override, "Section edit reset.") }] : []),
+    ];
+  }
   const readCount = order ? order.entries.filter((entry) => readTopicIds.has(entry.section.topicId)).length : 0;
   const topBarActions = guide ? <>
     {order && order.entries.length > 0 && layoutMode !== "compact" ? (
@@ -287,12 +359,29 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
       className={layoutMode === "compact" ? "tw:size-11" : undefined} disabled={isGenerating || busy || editing !== null}
       target={{ title: guideTitle, scope: { kind: "guide", id: documentId },
         focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null }, mode: "explain" }} />
+    {layoutMode !== "compact" ? (
+      <OverflowMenu label={`Page: ${pageStyleName}`} triggerPresentation="text" items={pageStyleItems} />
+    ) : null}
+    {layoutMode === "compact" ? (
+      <IconButton icon="document" label="Open in PDF reader" tooltip={false} className="tw:size-11"
+        disabled={isOpeningPdf || isGenerating || isSaving} onClick={() => void openInPdfReader()} />
+    ) : (
+      <Button variant="secondary" loading={isOpeningPdf} disabled={isGenerating || isSaving} onClick={() => void openInPdfReader()}>
+        <Icon name="document" size={18} />Open in PDF reader
+      </Button>
+    )}
     <OverflowMenu label="Study guide actions" items={guideMenuItems} className="tw:compact:size-11" />
   </> : null;
 
+  // The canvas lays out again when the guide's text does: a new revision, or a section edit.
+  const contentKey = guide ? [guide.id, ...guide.overlays
+    .filter((overlay) => overlay.overlayKind === "body_override" && overlay.state === "active")
+    .map((overlay) => `${overlay.id}.${overlay.revision}`)].join(":") : "";
+  const onCanvas = guide !== null && order !== null && pageStyle !== "plain";
+
   return <>
     <InlineWorkspace presentation="page" title={guideTitle} description="Study guide"
-      onClose={onClose} closeLabel="Back to Study Guides" actions={topBarActions}
+      onClose={close} closeLabel="Back to Study Guides" actions={topBarActions}
       dismissible={!isGenerating && !isSaving && !isExporting} busy={busy}>
       {isLoading ? (
         <div className="tw:px-page tw:py-10"><LoadingState label="Loading study guide…" /></div>
@@ -319,6 +408,14 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
               </>} />
           )}
         </div>
+      ) : onCanvas ? (
+        <GuideCanvas documentId={documentId} contentKey={contentKey} title={guideTitle} theme={pageStyle} showToast={showToast}
+          readTopicIds={readTopicIds} openAtTopicId={currentTopicId} contentsOpen={contentsOpen} onContentsClose={() => setContentsOpen(false)}
+          sectionMenu={sectionMenu} onPractice={(topicId) => {
+            const section = guide?.sections.find((item) => item.topicId === topicId);
+            if (section) void studyTopic(section);
+          }}
+          onCurrentSection={scrolledTo} leaveRef={canvasLeave} onReadAsText={() => choosePageStyle("plain")} {...links} />
       ) : (
         <div className={layoutMode === "wide"
           ? "tw:mx-auto tw:grid tw:w-full tw:max-w-[80rem] tw:grid-cols-[clamp(10rem,13vw,14rem)_minmax(0,1fr)_clamp(11rem,15vw,15.5rem)] tw:items-start tw:gap-x-[clamp(1.5rem,2.5vw,3rem)] tw:px-page tw:pt-8 tw:pb-[calc(4rem+var(--safe-bottom))]"
@@ -353,7 +450,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         </div>
       )}
     </InlineWorkspace>
-    {contentsOpen && order ? (
+    {contentsOpen && order && !onCanvas ? (
       <Sheet title="Contents" width="small" onClose={() => setContentsOpen(false)}>
         <GuideOutline order={order} currentTopicId={currentEntry?.section.topicId ?? null} readTopicIds={readTopicIds} blocks={blocks} onNavigate={navigate} showLabel={false} />
       </Sheet>
@@ -363,9 +460,6 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
         width={editing.mode === "override" ? "large" : "medium"}
         {...editingCopy(editing, guide, order?.entries ?? [])}
         onSave={(value) => void saveEditing(value)} onClose={() => setEditing(null)} />
-    ) : null}
-    {exportOpen && guide ? (
-      <GuideExportDialog exporting={isExporting} onExport={(includeNotes, theme) => void exportPdf(includeNotes, theme)} onClose={() => setExportOpen(false)} />
     ) : null}
   </>;
 }

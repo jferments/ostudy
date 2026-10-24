@@ -24,7 +24,7 @@ use crate::{
 use super::{
     adapters::{materialize_source_groups, read_seed, SourceSeed},
     contracts::{hash, ContentOrigin, KnowledgeUnit, SourceKind},
-    extraction::{batch_ranges, ensure_units_batch, extraction_contract, retry_units_batch},
+    extraction::{ensure_units_batch, extraction_contract, plan_windows, retry_units_batch},
     repository,
     runtime::check_canceled,
 };
@@ -32,6 +32,12 @@ use super::{
 pub(crate) const AUTHORING_VERSION: i64 = 4;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
+/// Source chunks read per queue. Each queue ends only when its slowest window
+/// (and that window's repair) does, so a small batch left the other provider
+/// slots idle; a few hundred pages now run as one continuous queue.
+const PREPARATION_BATCH_CHUNKS: usize = 4096;
+/// The most source chunks `materialize_source_groups` publishes at once.
+const SOURCE_PUBLICATION_CHUNKS: usize = 32;
 
 mod prompt;
 
@@ -304,16 +310,21 @@ pub(crate) async fn prepare_document(
     let mut remaining = std::collections::HashMap::<String, usize>::new();
     let mut source_parents = std::collections::HashMap::<String, String>::new();
     let parallelism =
-        crate::ai::concurrency::document_request_parallelism(&task.network_scope).clamp(1, 4);
+        crate::ai::concurrency::document_request_parallelism(&task.network_scope).max(1);
     crate::logging::debug_target(
         "ai.knowledge.extraction",
         "knowledge_extraction_execution_plan",
         "Independent source windows share one bounded provider queue and durable knowledge store.",
         json!({"document":document_id,"sourceChunks":seeds.len(),"parallelism":parallelism}),
     );
-    for (batch_index, batch) in seeds.chunks(32).enumerate() {
+    for (batch_index, batch) in seeds.chunks(PREPARATION_BATCH_CHUNKS).enumerate() {
         check_canceled(&cancellation)?;
-        let groups = materialize_source_groups(database, batch)?;
+        // Publication stays in its own bounded transactions; only the provider
+        // queue spans the whole batch.
+        let mut groups = Vec::with_capacity(batch.len());
+        for publication in batch.chunks(SOURCE_PUBLICATION_CHUNKS) {
+            groups.extend(materialize_source_groups(database, publication)?);
+        }
         let mut sources = Vec::new();
         for (seed, group) in batch.iter().zip(groups) {
             if group.is_empty() {
@@ -331,17 +342,21 @@ pub(crate) async fn prepare_document(
             sources.extend(group);
         }
         pending.extend(sources);
-        let ranges = batch_ranges(&pending);
-        let last_batch = (batch_index + 1) * 32 >= seeds.len();
+        let plans = plan_windows(&pending);
+        let last_batch = (batch_index + 1) * PREPARATION_BATCH_CHUNKS >= seeds.len();
         let process_count = if last_batch {
-            ranges.len()
+            plans.len()
         } else {
-            ranges.len().saturating_sub(1)
+            plans.len().saturating_sub(1)
         };
-        let process_ranges = &ranges[..process_count];
-        let groups = process_ranges
+        let process_plans = &plans[..process_count];
+        let windows = process_plans
             .iter()
-            .map(|range| &pending[range.clone()])
+            .map(|plan| plan.window(&pending))
+            .collect::<Vec<_>>();
+        let groups = windows
+            .iter()
+            .map(|window| window.sources)
             .collect::<Vec<_>>();
         if !groups.is_empty() {
             set_current_task_phase(
@@ -354,7 +369,7 @@ pub(crate) async fn prepare_document(
                     .and_then(|group| group.first())
                     .and_then(|source| source.locator.as_ref().map(|l| l.first())),
                 groups
-                    .last()
+                    .first()
                     .and_then(|group| group.last())
                     .and_then(|source| source.locator.as_ref().map(|l| l.last())),
                 None,
@@ -366,12 +381,13 @@ pub(crate) async fn prepare_document(
             parallelism,
             |index| {
                 let cancellation = &cancellation;
-                let group = groups[index];
+                let window = windows[index];
                 async move {
                     let outcome = if retry_partial {
-                        retry_units_batch(database, paths, runtime, task, group, cancellation).await
+                        retry_units_batch(database, paths, runtime, task, window, cancellation)
+                            .await
                     } else {
-                        ensure_units_batch(database, paths, runtime, task, group, cancellation)
+                        ensure_units_batch(database, paths, runtime, task, window, cancellation)
                             .await
                     };
                     (index, outcome)
@@ -420,13 +436,18 @@ pub(crate) async fn prepare_document(
                 });
                 let control = match result {
                     Ok(()) => {
+                        // Name the pages just read; windows finish out of order.
                         set_current_task_phase(
                             "understanding material",
                             None,
                             completed,
                             seeds.len(),
-                            None,
-                            None,
+                            group
+                                .first()
+                                .and_then(|source| source.locator.as_ref().map(|l| l.first())),
+                            group
+                                .last()
+                                .and_then(|source| source.locator.as_ref().map(|l| l.last())),
                             None,
                         );
                         QueueControl::Continue
@@ -446,8 +467,9 @@ pub(crate) async fn prepare_document(
             },
         )
         .await?;
-        let consumed = process_ranges.last().map_or(0, |range| range.end);
+        let consumed = process_plans.last().map_or(0, |plan| plan.range.end);
         drop(groups);
+        drop(windows);
         if let Some((_, error)) = first_failure {
             return Err(error);
         }

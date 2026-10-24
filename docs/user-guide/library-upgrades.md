@@ -19,7 +19,7 @@ There is no automatic synchronization or merging between these libraries. A deck
 
 Keep a portable `.ostudybackup` outside the application directory, and retain the previous qualified application package with its checksums and build information. Close oStudy before replacing the installed package. Install the selected qualified `.deb` through the package manager, then launch the installed application normally. The package owns program and integration files, not the school library. See [Linux installation](../installation/linux.md).
 
-An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 15: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, schema 14 lets a PDF be saved with your annotations drawn in, and schema 15 keeps a lesson's teacher's lecture, the last ten described below. Libraries at schemas 1–14 upgrade forward through the checkpointed path below.
+An application version and a library schema are different identifiers. Installing a new build with the same supported schema does not require a schema migration or create another automatic migration checkpoint. The current library schema is `ostudy-release-v1` schema 23: schema 3 adds deck-merge receipts, schema 4 adds saved generation guidance, schema 5 records what the scheduler predicted at each new review and how long the card was on screen (reviews from before that update keep no such record), schema 6 turns deck folders and document collections into subjects, schema 7 keeps your study days when cards are deleted, schema 8 stores what you draw and type on your documents, schema 9 stores lessons, schema 10 remembers which marks your cards were made from, schema 11 keeps the spoken narration of lessons, schema 12 remembers how far you have read each study guide, schema 13 lets a lesson be saved as a slide deck, schema 14 lets a PDF be saved with your annotations drawn in, schema 15 keeps a lesson's teacher's lecture, schema 16 keeps your saved voices and the voice each lesson is read in, schema 17 keeps your podcasts, schema 18 stores your notebooks, schema 19 keeps the figures found in your PDF documents, schema 20 keeps the pictures placed on notebook pages, schema 21 stores what you write on lecture slides and study guide pages, schema 22 remembers which of a subject's documents its study materials leave out, and schema 23 keeps your Notes folders and pinned notebooks, the last eighteen described below. Libraries at schemas 1–22 upgrade forward through the checkpointed path below.
 
 Builds may still share the application version `0.1.0`. Do not identify a candidate or rollback package by that number alone: retain `BUILD-INFO.txt`, the exact source SHA and package checksum. A historical library without an earlier build receipt has an unknown originating build; the new application does not guess it.
 
@@ -92,13 +92,61 @@ Schema 15 keeps the teacher's lecture written for a lesson: what the teacher say
 
 Older builds cannot open a schema-15 library. Restoring the pre-upgrade checkpoint returns the schema-14 library as it was. Lectures are part of whole-library backups; device sync leaves them out, like the lessons they belong to.
 
+## The saved voices update (schema 16)
+
+Schema 16 keeps the voices you save for reading lessons aloud, each a short sample of the voice with the words it says, and the voice each lesson was first read in, so a lesson keeps its voice when you choose another. A lesson's record goes when the lesson does. The update itself writes nothing: both tables start empty. Drama 3 reads in **Relaxed man**, one of the two voices that come with oStudy, until you choose another. A lesson read aloud before the update takes the voice chosen when it is next read. Drama 3 audio made before the update had no single voice, so it is read again once, in that voice; Kokoro audio is reused.
+
+Older builds cannot open a schema-16 library. Restoring the pre-upgrade checkpoint returns the schema-15 library as it was. Saved voices are part of whole-library backups; device sync leaves them out, like lesson narration.
+
+## The podcasts update (schema 17)
+
+Schema 17 keeps the podcasts you make from a subject's lessons: the conversation the two hosts have, which lessons it covers, and the voice each host speaks in. A podcast keeps playing after its lessons are rewritten or deleted, and goes when its subject does. Its audio is kept the same way as lesson narration. The update itself writes nothing: the table starts empty.
+
+Older builds cannot open a schema-17 library. Restoring the pre-upgrade checkpoint returns the schema-16 library as it was. Podcasts are part of whole-library backups; device sync leaves them out, like the lessons they are made from.
+
+## The notebooks update (schema 18)
+
+Schema 18 stores your notebooks: their pages, and what you draw, type and link on them in Library's Notes page. It adds three empty tables and changes no existing rows. Whole-library backups keep notebooks; device sync leaves them on the device that made them.
+
+Older builds cannot open a schema-18 library. Restoring the pre-upgrade checkpoint returns the schema-17 library as it was, without any notebooks made since.
+
+## The document figures update (schema 19)
+
+Schema 19 keeps the figures oStudy finds in your PDF documents: the page each is on, where it sits on the page, its caption, the passages elsewhere in the document that refer to it, and any you chose to hide. It also keeps what your AI model read in each figure: a title, what it shows, how the text uses it and how important it is. It also remembers whether you chose to use a document's images when you imported it. Figures are drawn again from the document when they are shown, so no extra copies of its pictures are stored. Deleting the document clears its figures. The update itself writes nothing: the tables start empty, and documents imported before it can be searched for figures from their Figures page.
+
+Older builds cannot open a schema-19 library. Restoring the pre-upgrade checkpoint returns the schema-18 library as it was. Figures are part of whole-library backups but stay on the device that found them: device sync does not carry them.
+
+## The notebook images update (schema 20)
+
+Schema 20 records which pictures are placed on notebook pages, so the library keeps each picture while it is on a page and lets it go once it is not. It adds one empty table and changes no existing rows. Whole-library backups keep notebook pictures with their notebooks; device sync leaves both on the device that made them.
+
+Older builds cannot open a schema-20 library. Restoring the pre-upgrade checkpoint returns the schema-19 library as it was, without any pictures placed since.
+
+## The slide and page ink update (schema 21)
+
+Schema 21 stores what you write and draw on a lesson's lecture slides and on a study guide's designed pages. It adds one empty table and changes no existing rows. Your marks go when their lesson or document does. Whole-library backups keep them; device sync leaves them on the device that made them.
+
+Older builds cannot open a schema-21 library. Restoring the pre-upgrade checkpoint returns the schema-20 library as it was, without any marks made since.
+
+## The study materials sources update (schema 22)
+
+Schema 22 remembers which of a subject's documents you left out when you made its study materials. A left-out document stays in the subject, but the subject's study guide, its lessons and a Tutor chat about the subject skip it until you put it back or move it to another subject. It adds one empty table and changes no existing rows. Whole-library backups keep these choices; device sync leaves them on the device that made them.
+
+Older builds cannot open a schema-22 library. Restoring the pre-upgrade checkpoint returns the schema-21 library as it was, with every document in its subject's study materials.
+
+## The Notes folders update (schema 23)
+
+Schema 23 keeps the folders you make in **Notes**, which notebooks are in each folder, and which notebooks you pinned. It adds two empty tables and changes no existing rows: every notebook starts at the top of **Notes**, in the subject it was filed in. Whole-library backups keep the folders; device sync leaves them on the device that made them.
+
+Older builds cannot open a schema-23 library. Restoring the pre-upgrade checkpoint returns the schema-22 library as it was, without folders or pins.
+
 ## What happens when migration is required
 
 Before ordinary library commands become available, oStudy takes exclusive cooperating-process ownership and inspects schema identity, compatibility and recovery state. A supported older library is copied into a private recovery transaction. The SQLite snapshot includes committed WAL data; managed assets, documents, transfers and cache trees are copied and checked too. Saved operating-system credentials are not read or changed.
 
 The complete recovery checkpoint must verify before any migration is attempted. All required migration work happens on a separate candidate. That candidate must reach the expected schema and pass native admission, integrity, relationship and applicable preservation checks before activation. The original active library is not progressively migrated.
 
-The startup screen reports checkpoint creation, private-copy migration, verification and activation, with a bar showing how much of the whole update is done. The bar counts the bytes the update copies and checks against an estimate made from the library's size, so it can pause just short of the end while the activated library is opened and checked. A late-loading window can recover the current progress message and bar. These messages do not grant database access; normal startup readiness remains independent. After successful activation, reconciliation and commit, a dismissible notice says that the library was updated and its recovery checkpoint retained.
+The startup screen reports checkpoint creation, private-copy migration, verification and activation, with a bar showing how much of the whole update is done. The bar counts the bytes the update copies and checks against an estimate made from the library's size, so it can pause just short of the end while the activated library is opened and checked. A late-loading window can recover the current progress message and bar. These messages do not grant database access; normal startup readiness remains independent. After successful activation, reconciliation and commit, a short notification in the corner of the window says that the library was updated and its recovery checkpoint retained. It closes by itself, and its close button dismisses it sooner.
 
 The shared activation journal coordinates the database and its journals with managed files. A failed operation before commit attempts to restore the previous coherent state. If the process is interrupted, the next launch reads the journal before opening the library. A committed operation is not reversed merely because bookkeeping cleanup failed.
 

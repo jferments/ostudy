@@ -100,6 +100,42 @@ fn document_real_missing_sources_and_rejected_proposals_still_need_repair() {
     assert!(rejected.requires_paid_repair(&sources));
 }
 
+#[test]
+fn a_number_no_source_in_the_window_prints_is_not_sent_to_a_paid_repair() {
+    let sources = sources();
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let stating = |statement: &str, evidence: Value| {
+        let mut value = unit(evidence);
+        value["statement"] = json!(statement);
+        value
+    };
+    let unprintable = initial(
+        json!({"units": [
+            unit(json!(["E0", "E1"])),
+            stating("A square's interior angles sum to 360 degrees.", json!(["E1"])),
+        ]}),
+        &catalog,
+        &sources,
+    )
+    .unwrap();
+    assert_eq!(unprintable.rejected.len(), 1);
+    assert_eq!(unprintable.rejected[0].code, "unsupported_number");
+    assert!(!unprintable.requires_paid_repair(&sources));
+
+    // Printed by the window's other source: a repair can cite it.
+    let miscited = initial(
+        json!({"units": [
+            unit(json!(["E0", "E1"])),
+            stating("Interior angles sum to 180 degrees.", json!(["E0"])),
+        ]}),
+        &catalog,
+        &sources,
+    )
+    .unwrap();
+    assert_eq!(miscited.rejected.len(), 1);
+    assert!(miscited.requires_paid_repair(&sources));
+}
+
 #[tokio::test]
 async fn document_complete_cross_source_receipt_uses_one_provider_call_and_reuses_checkpoint() {
     let (database, _, _, _) = fixture();

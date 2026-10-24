@@ -26,7 +26,7 @@ pub(crate) mod editorial;
 use editorial::StudyGuideEditorial;
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 11;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 15;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 4;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
@@ -329,6 +329,7 @@ pub(crate) fn publish_document_study_guide(
 
 /// Editorial organization is committed with the same immutable guide revision
 /// as its sections. It never rewrites the shared learning plan or source topics.
+#[cfg(test)]
 pub(crate) fn publish_document_study_guide_with_editorial(
     database: &Database,
     document_id: &str,
@@ -338,19 +339,48 @@ pub(crate) fn publish_document_study_guide_with_editorial(
     section_drafts: Vec<StudyGuideSectionDraft>,
     editorial: Option<StudyGuideEditorial>,
 ) -> Result<DocumentStudyGuide, CommandError> {
-    validate_entity_id(document_id, "document")?;
     validate_entity_id(plan_id, "learning plan")?;
+    let plan = load_document_learning_plan(database, plan_id)?;
+    publish_document_study_guide_sections(
+        database,
+        document_id,
+        &plan,
+        job_id,
+        overview,
+        section_drafts,
+        editorial,
+    )
+}
+
+/// Publish a guide whose sections may each cover several consecutive learning
+/// topics. `guide_plan` is the learning plan with each section's topics joined
+/// under its first topic, so every section id is a real learning topic, the
+/// sections keep plan order, and together they start at the plan's first topic.
+pub(crate) fn publish_document_study_guide_sections(
+    database: &Database,
+    document_id: &str,
+    guide_plan: &DocumentLearningPlan,
+    job_id: Option<&str>,
+    overview: StudyGuideOverview,
+    section_drafts: Vec<StudyGuideSectionDraft>,
+    editorial: Option<StudyGuideEditorial>,
+) -> Result<DocumentStudyGuide, CommandError> {
+    validate_entity_id(document_id, "document")?;
+    validate_entity_id(&guide_plan.id, "learning plan")?;
+    let plan_id = guide_plan.id.as_str();
     if let Some(job_id) = job_id {
         validate_entity_id(job_id, "artifact job")?;
     }
 
-    let plan = load_document_learning_plan(database, plan_id)?;
-    if plan.document_id != document_id {
+    let stored = load_document_learning_plan(database, plan_id)?;
+    if stored.document_id != document_id || guide_plan.document_id != document_id {
         return Err(CommandError::new(
             "document_learning_plan_mismatch",
             "The selected learning plan does not belong to this document.",
         ));
     }
+    validate_guide_sections(&stored, guide_plan)?;
+    let plan = guide_plan;
     if let Some(organization) = &editorial {
         editorial::validate(
             organization,
@@ -370,7 +400,7 @@ pub(crate) fn publish_document_study_guide_with_editorial(
         .iter()
         .map(|draft| (draft.topic_id.clone(), draft.knowledge_support.clone()))
         .collect::<HashMap<_, _>>();
-    let sections = normalize_complete_sections(&plan, section_drafts)?;
+    let sections = normalize_complete_sections(plan, section_drafts)?;
     if editorial.is_none() {
         normalized_overview.summary =
             guide_display_summary(&normalized_overview.summary, &sections);
@@ -686,10 +716,8 @@ pub(crate) fn load_document_study_guide(
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
     let (mut overview, editorial) = editorial::decode_overview(&header.7, header.4)?;
     if let Some(organization) = &editorial {
-        editorial::validate(
-            organization,
-            plan.topics.iter().map(|topic| topic.id.as_str()),
-        )?;
+        // A section may cover several learning topics under its first one, so
+        // the organization covers the stored sections, each a plan topic.
         editorial::validate(
             organization,
             sections.iter().map(|section| section.topic_id.as_str()),
@@ -985,6 +1013,36 @@ fn overlay_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StudyGuideOverlay> {
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
     })
+}
+
+/// Guide sections are learning topics in plan order, starting with the first.
+/// A section runs to the next section's topic, so these checks make the
+/// sections a partition of the plan.
+fn validate_guide_sections(
+    stored: &DocumentLearningPlan,
+    guide_plan: &DocumentLearningPlan,
+) -> Result<(), CommandError> {
+    let positions = stored
+        .topics
+        .iter()
+        .enumerate()
+        .map(|(index, topic)| (topic.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let indices = guide_plan
+        .topics
+        .iter()
+        .map(|topic| positions.get(topic.id.as_str()).copied())
+        .collect::<Option<Vec<_>>>();
+    let valid = indices.is_some_and(|indices| {
+        indices.first() == Some(&0) && indices.windows(2).all(|pair| pair[0] < pair[1])
+    });
+    if !valid {
+        return Err(CommandError::new(
+            "document_study_guide_invalid",
+            "The study guide's sections do not cover its learning plan in order.",
+        ));
+    }
+    Ok(())
 }
 
 fn normalize_complete_sections(

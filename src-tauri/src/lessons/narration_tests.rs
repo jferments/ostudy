@@ -171,7 +171,7 @@ fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     let unset = settings(&database);
     assert_eq!(unset.profile_id, None);
     assert_eq!(unset.model_id, DRAMA);
-    assert_eq!(unset.voice, "");
+    assert_eq!(unset.voice, "builtin:relaxed-man");
     assert_eq!(unset.revision, 0);
     assert_eq!(unset.models.len(), 2);
 
@@ -223,7 +223,7 @@ fn saving_the_voice_checks_the_model_voice_connection_and_revision() {
     let saved = save(&database, Some(OPENROUTER), DRAMA, "", 0).unwrap();
     assert_eq!(saved.revision, 1);
     assert_eq!(saved.model_id, DRAMA);
-    assert_eq!(settings(&database).voice, "");
+    assert_eq!(settings(&database).voice, "builtin:relaxed-man");
 
     let stale = save(&database, Some(OPENROUTER), KOKORO, "am_adam", 0).unwrap_err();
     assert_eq!(stale.code, "speech_settings_changed");
@@ -290,7 +290,8 @@ fn kept_audio_is_reused_without_asking_the_voice_again() {
     let voice = Voice {
         engine: "openrouter",
         model,
-        voice: "bm_george",
+        voice: "bm_george".to_string(),
+        reference: None,
     };
     let pieces = segments(&narration, model.max_characters);
     let mut kept = Vec::new();
@@ -341,7 +342,8 @@ fn something_other_than_audio_is_not_kept() {
     let voice = Voice {
         engine: "openrouter",
         model: speech::speech_model(KOKORO).unwrap(),
-        voice: "af_heart",
+        voice: "af_heart".to_string(),
+        reference: None,
     };
     let refused = keep_segment(&database, &paths, &voice, "Hello.", b"{\"error\":1}").unwrap_err();
     assert_eq!(refused.code, "speech_audio_invalid");
@@ -365,4 +367,103 @@ fn a_step_cannot_be_narrated_twice_at_once() {
     );
     drop(first);
     assert!(Narrating::begin("lesson:1:step".to_string()).is_ok());
+}
+
+#[test]
+fn each_podcast_host_speaks_in_their_own_kept_voice() {
+    use crate::lessons::podcasts::{
+        self, NarratePodcastTurnInput, PodcastChapter, PodcastScript, PodcastTurn,
+    };
+
+    let database = library();
+    let paths = temporary_paths("podcast");
+    add_openrouter(&database, OPENROUTER, 1);
+    save(&database, Some(OPENROUTER), KOKORO, "af_heart", 0).unwrap();
+    let lesson_id = lesson(&database);
+    let model = speech::speech_model(KOKORO).unwrap();
+    let voices = podcasts::default_voices(model);
+    let turns = [
+        "Water leaves the descending limb.",
+        "And the ascending limb?",
+    ];
+    let script = PodcastScript {
+        schema_version: podcasts::PODCAST_SCRIPT_VERSION,
+        title: "The loop".into(),
+        chapters: vec![PodcastChapter {
+            lesson_id: lesson_id.clone(),
+            revision_number: 1,
+            title: "The loop of Henle".into(),
+            turns: turns
+                .iter()
+                .enumerate()
+                .map(|(host, text)| PodcastTurn {
+                    host,
+                    text: text.to_string(),
+                })
+                .collect(),
+        }],
+    };
+    let id = database
+        .with_connection(|connection| {
+            podcasts::keep(
+                connection,
+                SUBJECT,
+                5,
+                model,
+                &voices,
+                &script,
+                &serde_json::json!({}),
+                NOW,
+            )
+        })
+        .unwrap();
+    let keep_in = |voice: &str, text: &str| {
+        keep_segment(
+            &database,
+            &paths,
+            &Voice {
+                engine: "openrouter",
+                model,
+                voice: voice.to_string(),
+                reference: None,
+            },
+            text,
+            &mp3_bytes(),
+        )
+        .unwrap()
+        .asset_id
+    };
+    let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+    let narrate_turn = |key: &str| {
+        tauri::async_runtime::block_on(podcasts::narrate_turn(
+            &database,
+            &paths,
+            &runtime,
+            NarratePodcastTurnInput {
+                podcast_id: id.clone(),
+                turn_key: key.to_string(),
+            },
+        ))
+    };
+
+    // Ada's turn plays the audio kept in Ada's voice; the host is never asked.
+    let ada = keep_in(&voices[0], turns[0]);
+    let spoken = narrate_turn("0.0").unwrap();
+    assert_eq!(spoken.made, 0);
+    assert_eq!(spoken.segments[0].asset_id, ada);
+
+    // Ben's words kept in Ada's voice are not Ben's: they would be made anew,
+    // and this keyless connection cannot.
+    keep_in(&voices[0], turns[1]);
+    assert!(narrate_turn("0.1").is_err());
+    let ben = keep_in(&voices[1], turns[1]);
+    assert_eq!(narrate_turn("0.1").unwrap().segments[0].asset_id, ben);
+
+    // Choosing another lesson voice does not change the hosts'.
+    save(&database, Some(OPENROUTER), KOKORO, "bm_george", 1).unwrap();
+    assert_eq!(narrate_turn("0.0").unwrap().segments[0].asset_id, ada);
+    assert_eq!(
+        narrate_turn("0.2").unwrap_err().code,
+        "podcast_turn_missing"
+    );
 }

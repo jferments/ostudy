@@ -13,20 +13,24 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            complete_study_guide_section_coverage, generate_document_study_guide_editorial,
-            generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
-            SourcePageImage,
+            generate_document_study_guide_editorial, generate_study_guide_topic_section,
+            plan_document_study_guide_sections, AuthoringEvidence, DocumentTaskContext,
+            PlannedGuideSection,
         },
         AiRuntimeState,
     },
     database::Database,
     document_artifacts::{
-        complete_document_artifact_job, fail_document_artifact_job,
+        complete_document_artifact_job, fail_document_artifact_job, resize_document_artifact_job,
         transition_document_artifact_job, DocumentArtifactJobState,
     },
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
-        publish_document_study_guide_with_editorial, DocumentStudyGuide, GroundedStudyGuideSection,
+        editorial::{
+            capitalize_heading, chapter_id, StudyGuideChapter, StudyGuideEditorial,
+            StudyGuideTopicHeading,
+        },
+        publish_document_study_guide_sections, DocumentStudyGuide, GroundedStudyGuideSection,
         StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
         STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
@@ -44,7 +48,17 @@ mod gaps;
 pub(crate) mod ownership;
 mod partition_checkpoints;
 mod preservation;
+mod sections;
 
+/// Characters per word of English prose, spaces included, to compare a
+/// source's word count with a writing budget in characters.
+const GUIDE_CHARS_PER_SOURCE_WORD: usize = 6;
+/// A guide aims at this many hundredths of its source's words. Jay,
+/// 2026-10-23, chose 0.10 over 0.08, which covered too few key ideas.
+const GUIDE_PERCENT_OF_SOURCE: usize = 10;
+/// Words of a guide outside its sections: the introduction, the learning
+/// objectives and the chapter introductions.
+const GUIDE_FRAME_WORDS: usize = 150;
 // Old topic checkpoints may have replaced partition prose with a short plan
 // summary. Invalidate only derived guide checkpoints, never learner cards or
 // shared source knowledge. Cleanup still waits for successful publication.
@@ -53,7 +67,6 @@ const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v5-lossless-
 pub(crate) struct StudyGuideTopicEvidence {
     pub topic_id: String,
     pub source_text: String,
-    pub images: Vec<SourcePageImage>,
 }
 
 pub(crate) struct StudyGuideGenerationExecution<'a> {
@@ -66,12 +79,17 @@ pub(crate) struct StudyGuideGenerationExecution<'a> {
     pub plan: &'a DocumentLearningPlan,
     pub job_id: &'a str,
     pub evidence: Vec<StudyGuideTopicEvidence>,
+    /// How much of its own budget each section is asked to write, so the
+    /// whole guide comes to about 0.10 of the source; set once its
+    /// sections are planned.
+    pub length_scale: f64,
 }
 
 pub(crate) async fn execute_study_guide_generation(
     execution: StudyGuideGenerationExecution<'_>,
 ) -> Result<DocumentStudyGuide, CommandError> {
     validate_execution(&execution)?;
+    let learning_topic_count = execution.plan.topics.len();
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
@@ -81,6 +99,8 @@ pub(crate) async fn execute_study_guide_generation(
         None,
         false,
     )?;
+    let learning_contract = study_guide_contract_key(execution.task, execution.plan);
+    let section_plan_key = sections::contract_key(&learning_contract);
     let knowledge = async {
         let indices = execution
             .plan
@@ -104,30 +124,20 @@ pub(crate) async fn execute_study_guide_generation(
             retry_partial: false,
         })
         .await?;
-        execution
-            .plan
-            .topics
-            .iter()
-            .map(|topic| {
-                let indices = topic
-                    .evidence_chunk_indices
-                    .iter()
-                    .map(|index| *index as i64)
-                    .collect::<Vec<_>>();
-                authoring::catalog_for_chunks(
-                    execution.database,
-                    execution.document_id,
-                    &indices,
-                    execution.task,
-                    &gaps,
-                )
-            })
-            .collect::<Result<Vec<_>, CommandError>>()
-            .map(|catalogs| ownership::assign(execution.plan, catalogs))
+        let catalogs = topic_catalogs(&execution, execution.plan, &gaps)?;
+        let planned = resolve_sections(&execution, &catalogs, &section_plan_key).await?;
+        let guide = sections::guide_plan(execution.plan, &planned)?;
+        let catalogs = if sections::is_identity(execution.plan, &planned) {
+            catalogs
+        } else {
+            topic_catalogs(&execution, &guide, &gaps)?
+        };
+        Ok::<_, CommandError>((planned, guide, catalogs))
     }
     .await;
-    let catalogs = match knowledge {
-        Ok(catalogs) => catalogs,
+    let source_words = sections::source_words(execution.plan, &execution.evidence);
+    let (planned, guide, catalogs) = match knowledge {
+        Ok(value) => value,
         Err(error) => {
             if error.code == "ai_request_canceled" {
                 let (usage, complete) = execution.task.usage_summary();
@@ -153,6 +163,29 @@ pub(crate) async fn execute_study_guide_generation(
             return Err(error);
         }
     };
+    let evidence = sections::guide_evidence(&guide, &planned, execution.evidence);
+    let execution = StudyGuideGenerationExecution {
+        plan: &guide,
+        evidence,
+        length_scale: length_scale(
+            source_words,
+            catalogs
+                .iter()
+                .map(crate::ai::document_intelligence::document_guide_section_chars)
+                .sum(),
+        ),
+        ..execution
+    };
+    crate::logging::info_target(
+        "ai.document.study_guide",
+        "study_guide_length_planned",
+        "Sized the guide's sections from the source's length; no content is logged.",
+        serde_json::json!({"document":execution.document_id,"sourceWords":source_words,
+            "sections":guide.topics.len(),"lengthScale":execution.length_scale}),
+    );
+    if guide.topics.len() != learning_topic_count {
+        resize_document_artifact_job(execution.database, execution.job_id, guide.topics.len())?;
+    }
     let contract_key = study_guide_contract_key(execution.task, execution.plan);
     let mut resolved = load_checkpoints(
         execution.database,
@@ -291,7 +324,10 @@ pub(crate) async fn execute_study_guide_generation(
                 serde_json::json!({"document":execution.document_id,"code":error.code,
                     "check":(error.code == "study_guide_editorial_invalid").then_some(&error.message)}),
             );
-            Ok((plan_overview(execution.plan), None))
+            Ok((
+                plan_overview(execution.plan),
+                section_headings(execution.document_title, execution.plan, &planned),
+            ))
         }
         other => other.map(|(overview, editorial)| (overview, Some(editorial))),
     };
@@ -336,16 +372,16 @@ pub(crate) async fn execute_study_guide_generation(
         usage,
         false,
     )?;
-    let guide = match publish_document_study_guide_with_editorial(
+    let published = match publish_document_study_guide_sections(
         execution.database,
         execution.document_id,
-        &execution.plan.id,
+        execution.plan,
         Some(execution.job_id),
         overview,
         drafts,
         editorial,
     ) {
-        Ok(guide) => guide,
+        Ok(published) => published,
         Err(error) => {
             let (usage, complete) = execution.task.usage_summary();
             let _ = fail_document_artifact_job(
@@ -371,7 +407,7 @@ pub(crate) async fn execute_study_guide_generation(
             format!(
                 "document={} guide={} job={} code={} detail={}",
                 execution.document_id,
-                guide.id,
+                published.id,
                 execution.job_id,
                 error.code,
                 error.message.chars().take(400).collect::<String>(),
@@ -381,14 +417,152 @@ pub(crate) async fn execute_study_guide_generation(
     cleanup_obsolete_checkpoints_best_effort(
         execution.database,
         execution.document_id,
-        &contract_key,
+        &[&contract_key, &section_plan_key],
     );
-    Ok(guide)
+    Ok(published)
+}
+
+/// A guide is 0.10 of its source. Each section's own budget comes from its
+/// knowledge alone, so their sum can be far more than that for a long
+/// source; every section then gets the same share of its budget, which it
+/// writes as a number of key points. A guide already within that target is
+/// left as is.
+fn length_scale(source_words: usize, section_budget_chars: usize) -> f64 {
+    let target_chars = (source_words.saturating_mul(GUIDE_PERCENT_OF_SOURCE) / 100)
+        .saturating_sub(GUIDE_FRAME_WORDS)
+        .saturating_mul(GUIDE_CHARS_PER_SOURCE_WORD);
+    if section_budget_chars == 0 || target_chars == 0 {
+        return 1.0;
+    }
+    (target_chars as f64 / section_budget_chars as f64).min(1.0)
+}
+
+/// One knowledge catalog per topic of `plan`, each shared unit taught once.
+fn topic_catalogs(
+    execution: &StudyGuideGenerationExecution<'_>,
+    plan: &DocumentLearningPlan,
+    gaps: &authoring::PreparationGaps,
+) -> Result<Vec<KnowledgeCatalog>, CommandError> {
+    plan.topics
+        .iter()
+        .map(|topic| {
+            let indices = topic
+                .evidence_chunk_indices
+                .iter()
+                .map(|index| *index as i64)
+                .collect::<Vec<_>>();
+            authoring::catalog_for_chunks(
+                execution.database,
+                execution.document_id,
+                &indices,
+                execution.task,
+                gaps,
+            )
+        })
+        .collect::<Result<Vec<_>, CommandError>>()
+        .map(|catalogs| ownership::assign(plan, catalogs))
+}
+
+/// The guide's sections: a saved plan, a new one from the model, or, when
+/// planning fails or the plan is short, every learning topic on its own.
+async fn resolve_sections(
+    execution: &StudyGuideGenerationExecution<'_>,
+    catalogs: &[KnowledgeCatalog],
+    contract: &str,
+) -> Result<Vec<PlannedGuideSection>, CommandError> {
+    let plan = execution.plan;
+    if plan.topics.len() < sections::MIN_TOPICS_TO_PLAN {
+        return Ok(sections::identity(plan));
+    }
+    if let Some(saved) = sections::load(execution.database, execution.document_id, contract, plan) {
+        return Ok(saved);
+    }
+    let briefs = sections::briefs(plan, &execution.evidence, catalogs);
+    let cancellation = crate::task_cancellation::current_signal()
+        .unwrap_or_else(crate::task_cancellation::CancellationSignal::new);
+    execution.task.ensure_current(execution.database)?;
+    let result = plan_document_study_guide_sections(
+        execution.runtime,
+        execution.task,
+        execution.document_title,
+        &plan.summary,
+        &briefs,
+        &cancellation,
+    )
+    .await;
+    execution.task.ensure_current(execution.database)?;
+    match result {
+        Ok(planned) => {
+            sections::persist_best_effort(
+                execution.database,
+                execution.document_id,
+                contract,
+                plan,
+                &planned,
+            );
+            Ok(planned)
+        }
+        Err(error) if editorial_falls_back(&error) || planning_falls_back(&error) => {
+            crate::logging::warn_target(
+                "ai.document.study_guide",
+                "study_guide_section_plan_skipped",
+                "Wrote one guide section per learning topic after section planning failed.",
+                serde_json::json!({"document":execution.document_id,"code":error.code}),
+            );
+            Ok(sections::identity(plan))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn planning_falls_back(error: &CommandError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "study_guide_section_plan_invalid" | "ai_document_context_budget"
+    )
 }
 
 fn editorial_falls_back(error: &CommandError) -> bool {
     error.code != "ai_request_canceled"
         && (gaps::recoverable(error) || error.code == "study_guide_editorial_invalid")
+}
+
+/// Without the editorial pass, a guide whose sections join several topics
+/// still needs their planned names: a stored section is otherwise titled
+/// after its first topic. They go under one chapter in reading order.
+fn section_headings(
+    document_title: &str,
+    guide: &DocumentLearningPlan,
+    planned: &[PlannedGuideSection],
+) -> Option<StudyGuideEditorial> {
+    let introduction = guide.summary.trim();
+    let named_by_model = planned.iter().any(|section| !section.key_ideas.is_empty());
+    if !named_by_model || introduction.is_empty() || introduction.chars().count() > 4_000 {
+        return None;
+    }
+    let topics = guide
+        .topics
+        .iter()
+        .map(|topic| StudyGuideTopicHeading {
+            topic_id: topic.id.clone(),
+            title: topic.title.clone(),
+        })
+        .collect::<Vec<_>>();
+    let editorial = StudyGuideEditorial {
+        title: capitalize_heading(document_title.trim()),
+        chapters: vec![StudyGuideChapter {
+            id: chapter_id(&topics),
+            title: capitalize_heading(document_title.trim()),
+            introduction: introduction.to_string(),
+            topics,
+        }],
+    };
+    crate::document_study_guides::editorial::validate(
+        &editorial,
+        guide.topics.iter().map(|topic| topic.id.as_str()),
+    )
+    .ok()
+    .map(|()| editorial)
 }
 
 fn plan_overview(plan: &DocumentLearningPlan) -> StudyGuideOverview {
@@ -581,10 +755,8 @@ async fn author_topic(
             execution.plan,
             topic,
             &evidence.source_text,
-            AuthoringEvidence {
-                images: &evidence.images,
-                knowledge,
-            },
+            AuthoringEvidence { knowledge },
+            execution.length_scale,
         )
     };
     let partitions = match split {
@@ -650,27 +822,10 @@ async fn author_topic(
             execution.plan,
             topic,
             &evidence.source_text,
-            AuthoringEvidence {
-                images: &evidence.images,
-                knowledge,
-            },
+            AuthoringEvidence { knowledge },
+            execution.length_scale,
         )
         .await?;
-        root_task.ensure_current(execution.database)?;
-        let mut coverage_task = child_task.clone();
-        coverage_task.diagnostic_window_key = child_task
-            .diagnostic_window_key
-            .as_deref()
-            .map(|key| hash(&format!("document-guide-coverage-v1|{key}")));
-        let section = complete_study_guide_section_coverage(
-            execution.runtime,
-            &coverage_task,
-            execution.document_title,
-            topic,
-            knowledge,
-            section,
-        )
-        .await;
         root_task.ensure_current(execution.database)?;
         if partitions.len() > 1 {
             persist_checkpoint_best_effort(
@@ -984,14 +1139,14 @@ fn persist_checkpoint_best_effort(
 fn cleanup_obsolete_checkpoints_best_effort(
     database: &Database,
     document_id: &str,
-    active_contract: &str,
+    active_contracts: &[&str; 2],
 ) {
     let _ = database.with_connection(|connection| {
         connection
             .execute(
                 "DELETE FROM document_study_guide_checkpoints
-                 WHERE document_id = ?1 AND contract_key <> ?2",
-                rusqlite::params![document_id, active_contract],
+                 WHERE document_id = ?1 AND contract_key NOT IN (?2, ?3)",
+                rusqlite::params![document_id, active_contracts[0], active_contracts[1]],
             )
             .map_err(CommandError::database)?;
         Ok(())
@@ -1043,12 +1198,21 @@ mod tests {
     }
 
     #[test]
+    fn length_scale_aims_at_a_tenth_of_the_source() {
+        // 0.10 of 50,000 words is 5,000; 4,850 of them, 29,100 characters,
+        // are the sections'.
+        assert_eq!(length_scale(50_000, 291_000), 0.1);
+        assert_eq!(length_scale(50_000, 8_000), 1.0);
+        assert_eq!(length_scale(0, 20_000), 1.0);
+        assert_eq!(length_scale(50_000, 0), 1.0);
+    }
+
+    #[test]
     fn execution_requires_plan_ordered_evidence() {
         let plan = plan();
         let evidence = [StudyGuideTopicEvidence {
             topic_id: "wrong".to_string(),
             source_text: "Evidence".to_string(),
-            images: Vec::new(),
         }];
         assert_ne!(plan.topics[0].id, evidence[0].topic_id);
     }
