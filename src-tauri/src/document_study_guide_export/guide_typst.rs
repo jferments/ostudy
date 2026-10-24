@@ -22,8 +22,8 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    math_layout, math_source, source_label, EffectiveExportSection, EffectiveGuideExport,
-    ExportBlock,
+    chemistry, key_terms, math_layout, math_source, source_label, EffectiveExportSection,
+    EffectiveGuideExport, ExportBlock,
 };
 use crate::error::CommandError;
 
@@ -397,7 +397,14 @@ pub(crate) fn runs(text: &str) -> Value {
     for segment in math_source::segments(text) {
         match segment {
             math_source::MathSegment::Text(value) if !value.is_empty() => {
-                result.push(json!({ "t": value }));
+                for piece in chemistry::pieces(value) {
+                    result.push(match piece {
+                        chemistry::Piece::Text(text) => json!({ "t": text }),
+                        chemistry::Piece::Sub(text) => json!({ "sub": text }),
+                        chemistry::Piece::Sup(text) => json!({ "sup": text }),
+                        chemistry::Piece::Italic(text) => json!({ "i": text }),
+                    });
+                }
             }
             math_source::MathSegment::Text(_) => {}
             math_source::MathSegment::Formula {
@@ -430,7 +437,10 @@ fn guide_data(
     let sections = export
         .sections
         .iter()
-        .map(|section| section_data(section, files, &mut figure_count))
+        .map(|section| {
+            let terms = key_terms::terms_for(export, section);
+            section_data(section, files, &mut figure_count, &terms)
+        })
         .collect::<Vec<_>>();
     let chapters = export
         .chapters
@@ -469,8 +479,10 @@ fn section_data(
     section: &EffectiveExportSection,
     files: &mut HashMap<FileId, Bytes>,
     figure_count: &mut usize,
+    terms: &[String],
 ) -> Value {
     let mut lead_used = false;
+    let mut section_terms = key_terms::SectionTerms::new(terms);
     // Figures go under the key points they illustrate, or after the overview.
     let figure_after = section
         .body_lines
@@ -484,7 +496,7 @@ fn section_data(
         .map(|block| {
             let lead = !lead_used && matches!(block, ExportBlock::Paragraph(_));
             lead_used = true;
-            block_data(block, lead)
+            emphasise(block_data(block, lead), &mut section_terms)
         })
         .collect::<Vec<_>>();
     let figures = section
@@ -513,6 +525,28 @@ fn section_data(
         "figureAfter": figure_after,
         "notes": run_list(&section.notes),
     })
+}
+
+/// Bolds the section's key terms in its running text: the overview,
+/// paragraphs and points, not headings, tables or checks.
+fn emphasise(mut block: Value, terms: &mut key_terms::SectionTerms<'_>) -> Value {
+    match block["kind"].as_str() {
+        Some("lead" | "paragraph") => {
+            block["text"] = terms.embolden(block["text"].take());
+        }
+        Some("bullets") => {
+            if let Value::Array(items) = block["items"].take() {
+                block["items"] = Value::Array(
+                    items
+                        .into_iter()
+                        .map(|item| terms.key_point(item))
+                        .collect(),
+                );
+            }
+        }
+        _ => {}
+    }
+    block
 }
 
 fn block_data(block: &ExportBlock, lead: bool) -> Value {

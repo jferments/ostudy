@@ -32,8 +32,10 @@ use crate::{
 };
 
 mod canvas;
+mod chemistry;
 pub(crate) mod figures;
 mod guide_typst;
+mod key_terms;
 mod math_layout;
 mod math_source;
 
@@ -128,6 +130,9 @@ struct EffectiveExportSection {
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
     figures: Vec<ExportFigure>,
+    /// Terms the section's text may bold: those it defines, its topic's key
+    /// concepts and what its pages' figures were read to show.
+    terms: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -517,6 +522,8 @@ fn compose_effective_export(
     }
 
     let editorial_titles = editorial_topic_titles(guide.editorial.as_ref());
+    let topic_concepts = key_terms::topic_concepts(database, document_id);
+    let figure_concepts = key_terms::figure_concepts(database, document_id);
     let mut sections = Vec::with_capacity(guide.sections.len());
     let mut annotation_count = guide_notes.len();
     for section in &guide.sections {
@@ -574,6 +581,7 @@ fn compose_effective_export(
             ),
             notes,
             figures,
+            terms: key_terms::section_terms(section, &topic_concepts, &figure_concepts),
         });
     }
 
@@ -725,6 +733,7 @@ fn compose_effective_collection_export(
             ),
             notes,
             figures,
+            terms: Vec::new(),
         });
     }
     let export = EffectiveGuideExport {
@@ -987,6 +996,7 @@ mod tests {
                 )],
                 notes: vec!["Compare with afterload.".to_string()],
                 figures: Vec::new(),
+                terms: Vec::new(),
             }],
             annotation_count: 2,
         }
@@ -1056,6 +1066,7 @@ mod tests {
             ],
             notes: Vec::new(),
             figures: Vec::new(),
+            terms: Vec::new(),
         }
     }
 
@@ -1264,6 +1275,7 @@ mod tests {
             )],
             notes: Vec::new(),
             figures: Vec::new(),
+            terms: Vec::new(),
         });
         export.chapters = vec![EffectiveExportChapter {
             key: "chapter-hemodynamics".to_string(),
@@ -1445,6 +1457,7 @@ mod tests {
                 ],
                 notes: Vec::new(),
                 figures,
+                terms: Vec::new(),
             });
         }
         export.sections = sections;
