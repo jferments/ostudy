@@ -24,12 +24,13 @@ use crate::{
     error::CommandError,
     external_files::{
         ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput, PublishReceiptDto,
-        StageExternalImportInput, StagedExternalFileDto,
+        SkippedExternalFileDto, StageExternalImportInput, StagedExternalFileDto,
+        StagedExternalFilesDto,
     },
     paths::AppPaths,
     platform::{
         ExternalAcquireResult, ExternalExportSource, ExternalFileRequest, ExternalImportTarget,
-        ExternalPublishResult, FileFilter, PlatformRuntime,
+        ExternalImportTargets, ExternalPublishResult, FileFilter, PlatformRuntime,
     },
     util::{unix_time_millis, validate_entity_id},
 };
@@ -40,6 +41,8 @@ const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_STUDY_CONTENT_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_BACKUP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+/// The most files one selection of several stages.
+const MAX_IMPORT_FILES: usize = 50;
 
 #[derive(Debug)]
 struct StoredPreparedTransfer {
@@ -131,6 +134,121 @@ pub async fn stream_select_and_stage_external_import(
         let _ = remove_file_if_exists(&partial_path);
     }
     staged.map(Some)
+}
+
+/// Lets the person choose several files at once and stages each one like
+/// `stream_select_and_stage_external_import`, in selection order. A file that
+/// cannot be staged is left out and named in `skipped`; the others are kept.
+/// Each file's staging identity comes from the operation and its place, so
+/// repeating the operation returns what it staged.
+#[tauri::command]
+pub async fn stream_select_and_stage_external_imports(
+    app: AppHandle,
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    runtime: State<'_, PlatformRuntime>,
+    input: StageExternalImportInput,
+) -> Result<StagedExternalFilesDto, CommandError> {
+    validate_entity_id(&input.operation_id, "external file selection")?;
+    let operations = (0..MAX_IMPORT_FILES)
+        .map(|index| file_operation_id(&input.operation_id, index))
+        .collect::<Vec<_>>();
+    let existing = database.with_connection(|connection| {
+        let mut found = Vec::new();
+        for operation in &operations {
+            match load_import_by_operation(connection, paths.inner(), operation)? {
+                Some(staged) => found.push(staged),
+                None => break,
+            }
+        }
+        Ok(found)
+    })?;
+    if !existing.is_empty() {
+        return Ok(StagedExternalFilesDto {
+            files: existing,
+            skipped: Vec::new(),
+        });
+    }
+
+    let partials = operations
+        .iter()
+        .map(|operation| {
+            paths.resolve_relative(&AppPaths::staged_import_partial_relative_path(operation))
+        })
+        .collect::<Vec<_>>();
+    let clear_partials = |partials: &[PathBuf]| {
+        for partial in partials {
+            let _ = remove_file_if_exists(partial);
+        }
+    };
+    let maximum_bytes = maximum_import_bytes(input.purpose);
+    let targets: ExternalImportTargets = {
+        let partials = partials.clone();
+        Box::new(move |index| {
+            let path = partials.get(index).cloned().ok_or_else(|| {
+                CommandError::new(
+                    "external_file_too_many",
+                    format!("Choose at most {MAX_IMPORT_FILES} files at once."),
+                )
+            })?;
+            create_parent(&path)?;
+            remove_file_if_exists(&path)?;
+            Ok(ExternalImportTarget {
+                path,
+                maximum_bytes,
+            })
+        })
+    };
+    let acquired = runtime
+        .external_files()
+        .acquire_imports(
+            app,
+            import_request(input.purpose),
+            MAX_IMPORT_FILES,
+            targets,
+        )
+        .await;
+    let acquired = match acquired {
+        Ok(acquired) => acquired,
+        Err(error) => {
+            clear_partials(&partials);
+            return Err(error);
+        }
+    };
+
+    let mut files = Vec::new();
+    let mut skipped = Vec::new();
+    for ((operation, partial), acquired) in operations.into_iter().zip(&partials).zip(acquired) {
+        let display_name = acquired.display_name.clone();
+        match finalize_acquired_import(
+            database.inner(),
+            paths.inner(),
+            operation,
+            input.purpose,
+            partial.clone(),
+            acquired,
+        ) {
+            Ok(staged) => files.push(staged),
+            Err(error) => {
+                let _ = remove_file_if_exists(partial);
+                skipped.push(SkippedExternalFileDto {
+                    display_name,
+                    message: error.message,
+                });
+            }
+        }
+    }
+    Ok(StagedExternalFilesDto { files, skipped })
+}
+
+/// The staging identity of the file at `index` in a selection of several.
+fn file_operation_id(operation_id: &str, index: usize) -> String {
+    let digest = Sha256::digest(format!("{operation_id}:{index}").as_bytes());
+    digest
+        .iter()
+        .take(16)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[tauri::command]
@@ -885,6 +1003,19 @@ fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn each_file_of_a_selection_has_its_own_staging_identity() {
+        let operation = "0123456789abcdef0123456789abcdef";
+        let first = file_operation_id(operation, 0);
+        assert!(validate_entity_id(&first, "file").is_ok());
+        assert_eq!(first, file_operation_id(operation, 0));
+        let all = (0..MAX_IMPORT_FILES)
+            .map(|index| file_operation_id(operation, index))
+            .collect::<HashSet<_>>();
+        assert_eq!(all.len(), MAX_IMPORT_FILES);
+        assert!(!all.contains(operation));
+    }
 
     #[test]
     fn the_save_dialog_names_the_file_type() {

@@ -333,6 +333,7 @@ export interface NativeCommandGatewayMap {
   "start_selected_practice": readonly [typeof GatewayModule31.startSelectedPractice];
   "stream_publish_prepared_export": readonly [typeof GatewayModule18.publishPreparedExport];
   "stream_select_and_stage_external_import": readonly [typeof GatewayModule18.selectAndStageExternalImport];
+  "stream_select_and_stage_external_imports": readonly [typeof GatewayModule18.selectAndStageExternalImports];
   "submit_practice_question_review": readonly [typeof GatewayModule33.submitPracticeQuestionReview];
   "submit_practice_review": readonly [typeof GatewayModule31.submitPracticeReview];
   "sync_asset_draft": readonly [typeof GatewayModule4.syncAssetDraft];

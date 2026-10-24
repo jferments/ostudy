@@ -317,6 +317,7 @@ pub fn run() {
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
             library_session::commands::leased_stream_select_and_stage_external_import,
+            library_session::commands::leased_stream_select_and_stage_external_imports,
             library_session::commands::leased_stage_image_collection_file,
             library_session::commands::leased_stage_image_collection_file_chunk,
             external_files::release_staged_external_import,

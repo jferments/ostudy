@@ -12,7 +12,7 @@ use crate::{
     error::CommandError,
     platform::{
         ExternalAcquireResult, ExternalExportSource, ExternalFilePort, ExternalFileRequest,
-        ExternalImportTarget, ExternalPublishResult, PlatformFuture,
+        ExternalImportTarget, ExternalImportTargets, ExternalPublishResult, PlatformFuture,
     },
 };
 
@@ -64,6 +64,39 @@ impl ExternalFilePort for DesktopExternalFilePort {
         })
     }
 
+    fn acquire_imports(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+        maximum_files: usize,
+        targets: ExternalImportTargets,
+    ) -> PlatformFuture<Result<Vec<ExternalAcquireResult>, CommandError>> {
+        Box::pin(async move {
+            let selection = select_import_paths(app, request).await?;
+            if selection.len() > maximum_files {
+                return Err(CommandError::new(
+                    "external_file_too_many",
+                    format!("Choose at most {maximum_files} files at once."),
+                ));
+            }
+            let mut acquired = Vec::with_capacity(selection.len());
+            for (index, (source_path, display_name)) in selection.into_iter().enumerate() {
+                let target = targets(index)?;
+                let copied_bytes = tauri::async_runtime::spawn_blocking(move || {
+                    copy_bounded(&source_path, &target.path, target.maximum_bytes)
+                })
+                .await
+                .map_err(|_| copy_interrupted())??;
+                acquired.push(ExternalAcquireResult {
+                    display_name,
+                    reported_media_type: None,
+                    copied_bytes,
+                });
+            }
+            Ok(acquired)
+        })
+    }
+
     fn publish_export(
         &self,
         app: AppHandle,
@@ -109,6 +142,31 @@ async fn select_import_path(
     });
     let selection = receiver.await.map_err(|_| dialog_result_interrupted())?;
     selection.map(source_from_file_path).transpose()
+}
+
+async fn select_import_paths(
+    app: AppHandle,
+    request: ExternalFileRequest,
+) -> Result<Vec<(PathBuf, String)>, CommandError> {
+    let mut dialog = app.dialog().file().set_title(&request.title);
+    for filter in &request.filters {
+        let extensions = filter
+            .extensions
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        dialog = dialog.add_filter(&filter.name, &extensions);
+    }
+    let (sender, receiver) = oneshot::channel();
+    dialog.pick_files(move |selection| {
+        let _ = sender.send(selection);
+    });
+    let selection = receiver.await.map_err(|_| dialog_result_interrupted())?;
+    selection
+        .unwrap_or_default()
+        .into_iter()
+        .map(source_from_file_path)
+        .collect()
 }
 
 async fn select_export_path(

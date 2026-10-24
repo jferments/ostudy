@@ -22,7 +22,7 @@ vi.mock("../../ipc/subjects", () => ({
   createSubject: vi.fn(),
   moveDocumentToSubject: vi.fn(),
 }));
-vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../../platform/files", () => ({ selectExternalImports: vi.fn() }));
 vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn(async () => ({ lectureAudioWithNewLessons: true })) }));
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(async () => ({ profileId: "voice" })) }));
 
@@ -102,11 +102,16 @@ describe("NewStudySetSheet", () => {
   });
 
   it("adds chosen documents to an existing subject without writing notes", async () => {
-    vi.mocked(files.selectExternalImport).mockResolvedValueOnce(staged("a".repeat(32), "Chapter 4.pdf"));
+    vi.mocked(files.selectExternalImports).mockResolvedValueOnce({
+      files: [staged("a".repeat(32), "Chapter 4.pdf"), staged("b".repeat(32), "Chapter 5.pdf")],
+      skipped: [{ displayName: "notes.txt", message: "This kind of file cannot be imported." }],
+    });
     const { onCreated, create } = renderSheet(physiology.id);
     expect(screen.queryByRole("textbox", { name: "Subject" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Choose files/u }));
     expect(await screen.findByText("Chapter 4.pdf")).toBeTruthy();
+    expect(screen.getByText("Chapter 5.pdf")).toBeTruthy();
+    expect(screen.getByText(/notes\.txt was not added: This kind of file cannot be imported\./u)).toBeTruthy();
     // A podcast is made from the lessons, so it goes with them.
     fireEvent.click(screen.getByRole("checkbox", { name: "Lessons" }));
     expect(screen.getByRole("checkbox", { name: "Podcast" }).getAttribute("aria-disabled")).toBe("true");
@@ -116,6 +121,7 @@ describe("NewStudySetSheet", () => {
     expect(subjectsIpc.createSubject).not.toHaveBeenCalled();
     expect(sourceNotesIpc.writeSourceNotes).not.toHaveBeenCalled();
     expect(jobs.importStagedDocument).toHaveBeenCalledWith(expect.objectContaining({ id: "a".repeat(32) }), undefined, expect.any(Function));
+    expect(jobs.importStagedDocument).toHaveBeenCalledWith(expect.objectContaining({ id: "b".repeat(32) }), undefined, expect.any(Function));
     expect(takeStudySet(physiology.id)).toEqual(expect.objectContaining({ lessons: false, podcast: false, lectureAudio: false }));
   });
 

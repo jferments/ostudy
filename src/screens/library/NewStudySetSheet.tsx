@@ -15,7 +15,7 @@ import {
   type Subject,
   type SubjectLibrary,
 } from "../../ipc/subjects";
-import { selectExternalImport } from "../../platform/files";
+import { selectExternalImports } from "../../platform/files";
 import { Icon } from "../../ui/icons/Icon";
 import { IconButton } from "../../ui/icons/IconButton";
 import { Sheet } from "../../ui/overlays/Dialog";
@@ -111,10 +111,14 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
     setChoosing(true);
     setError(null);
     try {
-      const chosen = await selectExternalImport("document");
-      if (chosen) {
-        setSources((current) => current.some((source) => sourceKey(source) === `file:${chosen.id}`)
-          ? current : [...current, { kind: "file", file: chosen }]);
+      const chosen = await selectExternalImports("document");
+      setSources((current) => {
+        const known = new Set(current.map(sourceKey));
+        const added = chosen.files.filter((file) => !known.has(`file:${file.id}`));
+        return [...current, ...added.map((file) => ({ kind: "file" as const, file }))];
+      });
+      if (chosen.skipped.length > 0) {
+        setError(chosen.skipped.map((file) => `${file.displayName} was not added: ${file.message}`).join(" "));
       }
     } catch (caught: unknown) {
       setError(getErrorMessage(caught));

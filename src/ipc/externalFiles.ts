@@ -81,6 +81,31 @@ export async function selectAndStageExternalImport(
   });
 }
 
+/** A chosen file that could not be staged, and why. */
+export interface SkippedExternalFile {
+  displayName: string;
+  message: string;
+}
+
+export interface StagedExternalFiles {
+  files: StagedExternalFile[];
+  skipped: SkippedExternalFile[];
+}
+
+/**
+ * Lets the person choose several files at once and stages each one, in the
+ * order chosen. Empty when they cancel. Where the picker takes one file at a
+ * time, at most one comes back.
+ */
+export async function selectAndStageExternalImports(
+  purpose: ExternalImportPurpose,
+  operationId = createOperationId(),
+): Promise<StagedExternalFiles> {
+  return invoke<StagedExternalFiles>("stream_select_and_stage_external_imports", {
+    input: { operationId, purpose },
+  });
+}
+
 export async function releaseStagedExternalImport(stagedFileId: string): Promise<void> {
   return invoke<void>("release_staged_external_import", { input: { stagedFileId } });
 }
