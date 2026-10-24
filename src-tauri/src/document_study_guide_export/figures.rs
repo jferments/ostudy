@@ -47,7 +47,7 @@ const MAX_CAPTION_CHARS: usize = 220;
 
 /// A figure chosen for one section, ready to draw.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct ChosenFigure {
+pub(crate) struct ChosenFigure {
     pub figure_id: String,
     pub page_number: i64,
     pub title: String,
@@ -150,16 +150,45 @@ pub(super) fn choose(
     sections: &[DocumentStudyGuideSection],
     figures: &[DocumentFigureDto],
 ) -> HashMap<String, Vec<ChosenFigure>> {
+    let places = sections
+        .iter()
+        .map(|section| FigurePlace {
+            pages: section
+                .source_locator
+                .unit_numbers
+                .iter()
+                .copied()
+                .collect(),
+            text: section_text(&section.content),
+        })
+        .collect::<Vec<_>>();
+    sections
+        .iter()
+        .zip(choose_for(&places, figures, MAX_PER_SECTION))
+        .filter(|(_, chosen)| !chosen.is_empty())
+        .map(|(section, chosen)| (section.topic_id.clone(), chosen))
+        .collect()
+}
+
+/// Somewhere a figure can show: the source pages it was written from and
+/// its words.
+pub(crate) struct FigurePlace {
+    pub pages: HashSet<i64>,
+    pub text: String,
+}
+
+/// Up to `per_place` figures for each place, each figure used once, by the
+/// rules above, in the source's order.
+pub(crate) fn choose_for(
+    places: &[FigurePlace],
+    figures: &[DocumentFigureDto],
+    per_place: usize,
+) -> Vec<Vec<ChosenFigure>> {
     let candidates = figures.iter().map(candidate).collect::<Vec<_>>();
     let mut pairs = Vec::new();
-    for (section_index, section) in sections.iter().enumerate() {
-        let pages = section
-            .source_locator
-            .unit_numbers
-            .iter()
-            .copied()
-            .collect::<HashSet<_>>();
-        let words = significant_words(&section_text(&section.content));
+    for (section_index, place) in places.iter().enumerate() {
+        let pages = &place.pages;
+        let words = significant_words(&place.text);
         for (figure_index, (figure, candidate)) in figures.iter().zip(&candidates).enumerate() {
             let Some(candidate) = candidate else {
                 continue;
@@ -210,7 +239,7 @@ pub(super) fn choose(
     pairs.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
 
     let mut used = HashSet::new();
-    let mut per_section = vec![Vec::<usize>::new(); sections.len()];
+    let mut per_section = vec![Vec::<usize>::new(); places.len()];
     for (_, section_index, figure_index) in pairs {
         let chosen = &per_section[section_index];
         let unread = chosen
@@ -218,7 +247,7 @@ pub(super) fn choose(
             .filter(|index| candidates[**index].as_ref().is_some_and(|c| !c.read))
             .count();
         let is_unread = candidates[figure_index].as_ref().is_some_and(|c| !c.read);
-        if chosen.len() == MAX_PER_SECTION
+        if chosen.len() == per_place
             || (is_unread && unread == MAX_UNREAD_PER_SECTION)
             || used.contains(&figure_index)
         {
@@ -228,17 +257,15 @@ pub(super) fn choose(
         per_section[section_index].push(figure_index);
     }
 
-    sections
-        .iter()
-        .zip(per_section)
-        .filter(|(_, chosen)| !chosen.is_empty())
-        .map(|(section, mut chosen)| {
+    per_section
+        .into_iter()
+        .map(|mut chosen| {
             // In the order the source prints them.
             chosen.sort_by_key(|index| {
                 let figure = &figures[*index];
                 (figure.page_number, (figure.bounds.top * 10.0) as i64)
             });
-            let chosen = chosen
+            chosen
                 .into_iter()
                 .filter_map(|index| {
                     let figure = &figures[index];
@@ -250,8 +277,7 @@ pub(super) fn choose(
                         caption: caption(&candidate.shows, figure.page_number),
                     })
                 })
-                .collect();
-            (section.topic_id.clone(), chosen)
+                .collect()
         })
         .collect()
 }
@@ -327,6 +353,20 @@ fn draw(
             })
         })
         .collect()
+}
+
+/// One figure cropped from its PDF page as PNG bytes, with its width and
+/// height in pixels; nothing when it cannot be drawn.
+pub(crate) fn draw_png(
+    runtime: &PdfRenderRuntime,
+    source: &Path,
+    figure: &DocumentFigureDto,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let page = usize::try_from(figure.page_number).ok()?;
+    let tile = crop_tile(figure.page_width, figure.page_height, figure.bounds);
+    let png = pdf_render_backend::render_page_tile(runtime, source, page, tile).ok()?;
+    let (width, height) = image::load_from_memory(&png).ok()?.to_rgba8().dimensions();
+    Some((png, width, height))
 }
 
 /// What the figure shows, cut at a sentence when long, and where it is from.

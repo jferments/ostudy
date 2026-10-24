@@ -32,13 +32,13 @@ use crate::{
 };
 
 mod canvas;
-mod figures;
+pub(crate) mod figures;
 mod guide_typst;
 mod math_layout;
 mod math_source;
 
 pub(crate) use guide_typst::{
-    compile_template_pdf, compile_template_svgs, plain_sans_font, runs as rich_runs,
+    compile_template_pdf, compile_template_svgs_with, plain_sans_font, runs as rich_runs,
     StudyGuidePdfTheme,
 };
 

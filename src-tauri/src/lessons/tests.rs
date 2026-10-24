@@ -850,7 +850,7 @@ fn a_step_slide_shows_one_visual_from_its_blocks_and_never_a_checks_answer() {
 
     let database = library();
     let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
-    let (_, _, keys, data) = database
+    let (_, _, keys, data, _) = database
         .with_connection(|connection| {
             slide_data(
                 connection,
@@ -859,6 +859,7 @@ fn a_step_slide_shows_one_visual_from_its_blocks_and_never_a_checks_answer() {
                     revision_number: None,
                 },
                 StudyGuidePdfTheme::Sage,
+                None,
             )
         })
         .unwrap();
@@ -870,6 +871,79 @@ fn a_step_slide_shows_one_visual_from_its_blocks_and_never_a_checks_answer() {
     let text = data.to_string();
     assert!(!text.contains(CORRECT_OPTION));
     assert!(!text.contains("watertight while its pumps"));
+}
+
+#[test]
+fn a_step_slide_shows_a_figure_from_its_source_pages() {
+    use super::slide_design::{read_slide_designs_drawing, GetLessonSlideDesignsInput};
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    let database = library();
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE knowledge_sources SET record_json = '{\"locator\":{\"unitNumbers\":[2]}}'",
+                    [],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_figures(document_id, figure_id, ordinal,
+                         page_number, page_width, page_height, kind, box_left, box_top,
+                         box_width, box_height, hidden, created_at, updated_at)
+                     VALUES (?1, 'p00002-01', 0, 2, 612, 792, 'image', 50, 60, 300, 200, 0, 1, 1)",
+                    params![DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_figure_readings(document_id, figure_id, title,
+                         shows, concepts_json, explained_json, importance,
+                         worth_studying, provider, model, read_at)
+                     VALUES (?1, 'p00002-01', 'The loop of Henle', 'Both limbs of the loop.',
+                             '[\"descending limb\"]', '[]', 5, 1, 'test', 'test', 1)",
+                    params![DOCUMENT],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
+    let id = create(&database, loop_of_henle(&[UNIT])).unwrap();
+    let mut png = Vec::new();
+    image::RgbaImage::from_pixel(30, 20, image::Rgba([40, 80, 160, 255]))
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let drawn = std::cell::RefCell::new(Vec::new());
+    let draw = |relative: &str, figure: &crate::document_figures::DocumentFigureDto| {
+        drawn
+            .borrow_mut()
+            .push((relative.to_string(), figure.figure_id.clone()));
+        Some((png.clone(), 30, 20))
+    };
+    let designs = database
+        .with_connection(|connection| {
+            read_slide_designs_drawing(
+                connection,
+                GetLessonSlideDesignsInput {
+                    lesson_id: id,
+                    revision_number: None,
+                    theme: StudyGuidePdfTheme::Navy,
+                },
+                Some(&draw),
+            )
+        })
+        .unwrap();
+    // The figure is drawn once, for the first step that uses its page.
+    assert_eq!(drawn.borrow().len(), 1);
+    assert_eq!(drawn.borrow()[0].1, "p00002-01");
+    let with_image = designs
+        .slides
+        .iter()
+        .filter(|slide| slide.svg.contains("<image"))
+        .map(|slide| slide.key.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(with_image, vec!["step:two-limbs"]);
 }
 
 #[test]
