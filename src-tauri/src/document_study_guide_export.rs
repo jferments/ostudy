@@ -1373,6 +1373,105 @@ mod tests {
         assert!(all.contains("Wide pressure trace"));
     }
 
+    /// A guide shaped like a real one. Set `OSTUDY_GUIDE_PREVIEW` to a path to
+    /// keep its PDF and look at the layout.
+    #[test]
+    fn a_long_cover_stays_one_page_and_chapters_run_on() {
+        let figure = |title: &str, width: u32, height: u32| ExportFigure {
+            image: guide_typst::FigureImage::from_rgba(image::RgbaImage::from_pixel(
+                width,
+                height,
+                image::Rgba([120, 150, 200, 255]),
+            ))
+            .unwrap(),
+            title: title.to_string(),
+            caption: "A schematic drawn from the source page, with its labels and arrows."
+                .to_string(),
+        };
+        let mut export = test_export();
+        export.overview = "Renal physiology explains how the kidneys filter plasma, reabsorb and secrete solutes, and balance water, sodium, potassium and acid. ".repeat(6);
+        export.learning_objectives = (1..=6)
+            .map(|i| format!("Objective {i}: interpret clearance, filtered load and excretion in health and disease."))
+            .collect();
+        let bullets = |n: usize| {
+            ExportBlock::Bullets(
+                (1..=n)
+                    .map(|i| format!("Key point {i}: filtered load is GFR times plasma concentration; excretion is urine concentration times flow."))
+                    .collect(),
+            )
+        };
+        let mut sections = Vec::new();
+        for (i, (count, figures)) in [
+            (
+                4,
+                vec![
+                    figure("Nephron segment", 400, 380),
+                    figure("Two stacked panels", 300, 480),
+                ],
+            ),
+            (
+                5,
+                vec![
+                    figure("Weak acid clearance", 420, 340),
+                    figure("Sodium handling", 400, 400),
+                ],
+            ),
+            (3, vec![figure("Wide pressure trace", 900, 300)]),
+            (6, Vec::new()),
+            (
+                4,
+                vec![
+                    figure("Potassium balance", 420, 400),
+                    figure("Cell mechanisms", 500, 420),
+                ],
+            ),
+            (2, Vec::new()),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sections.push(EffectiveExportSection {
+                key: format!("topic-{i}"),
+                title: format!("Section {} about tubular handling", i + 1),
+                source_locator: None,
+                body_lines: vec![
+                    ExportBlock::Paragraph("Renal excretion is the net result of filtration, reabsorption and secretion.".to_string()),
+                    ExportBlock::Heading("Key points".to_string()),
+                    bullets(count),
+                    ExportBlock::RetrievalCheck {
+                        prompt: "If filtered load exceeds excretion, what happened?".to_string(),
+                        answer: "Net reabsorption.".to_string(),
+                    },
+                ],
+                notes: Vec::new(),
+                figures,
+            });
+        }
+        export.sections = sections;
+        export.chapters = (0..3)
+            .map(|c| EffectiveExportChapter {
+                key: format!("c{c}"),
+                title: format!("Chapter {} on the kidney", c + 1),
+                introduction: "How the kidney handles what it filters.".to_string(),
+                section_indices: vec![c * 2, c * 2 + 1],
+            })
+            .collect();
+        let (bytes, pages) = rendered_pages(&export, StudyGuidePdfTheme::Sage);
+        if let Ok(path) = std::env::var("OSTUDY_GUIDE_PREVIEW") {
+            std::fs::write(path, bytes).unwrap();
+        }
+        assert!(pages[0].contains("Objective 6"), "{}", pages[0]);
+        assert!(pages[0].contains("Made with oStudy"));
+        assert!(!pages[1].contains("Renal physiology explains"));
+        // The second chapter starts on a page the first one ends on.
+        let page = pages
+            .iter()
+            .skip(1)
+            .find(|page| page.contains("Chapter 2 on the kidney"))
+            .unwrap();
+        assert!(page.contains("Figure 1.2.2"), "{page}");
+    }
+
     #[test]
     fn rendered_pdf_contains_bookmarks_and_contents_links() {
         let (bytes, _) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);

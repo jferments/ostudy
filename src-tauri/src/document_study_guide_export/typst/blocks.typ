@@ -109,18 +109,36 @@
   }
 }
 
-#let figure-body(f, n, width: auto) = [
-  #align(center, image(f.path, width: if width == auto { f.width * 1mm } else { width }, height: auto, fit: "contain"))
-  #v(1.5mm)
+#let figure-caption(f, n) = [
   #set par(justify: false)
   #text(font: ui, size: 7.6pt, fill: T.muted)[#text(weight: 700, fill: T.primary, "Figure " + n + "  ") #rt(f.title)#if f.caption.len() > 0 [. #rt(f.caption)]]]
 
-#let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false, width: 100%, figure-body(f, n))
+#let figure-body(f, n, width: auto) = [
+  #align(center, image(f.path, width: if width == auto { f.width * 1mm } else { width }, height: auto, fit: "contain"))
+  #v(1.5mm)
+  #figure-caption(f, n)]
 
-// Two narrow figures share a row; anything else stacks. `first` numbers them
-// after a figure already set beside the text.
+// A figure no wider than this sits beside the text that leads up to it, or
+// beside its own caption; a wider one keeps the full width.
+#let float-max-width = 112
+#let floats(f) = f.width <= float-max-width
+
+// A narrow figure on its own takes the left of the row and its caption the
+// rest, rather than leaving empty margins either side of it.
+#let figure-view(f, n) = block(above: 4mm, below: 4mm, breakable: false, width: 100%,
+  if floats(f) {
+    grid(columns: (f.width * 1mm, 1fr), column-gutter: 6mm, align: (left + top, left + bottom),
+      image(f.path, width: f.width * 1mm, height: auto, fit: "contain"), figure-caption(f, n))
+  } else {
+    figure-body(f, n)
+  })
+
+// Two narrow figures share a row, rather than one beside the text and the
+// other alone below it; anything else stacks. `first` numbers them after a
+// figure already set beside the text.
+#let pairs(figures) = figures.len() == 2 and figures.all(f => f.width <= 84)
 #let figures-view(figures, number, first: 1) = {
-  if figures.len() == 2 and figures.all(f => f.width <= 84) {
+  if pairs(figures) {
     block(above: 4mm, below: 4mm, breakable: false, grid(columns: (1fr, 1fr), column-gutter: 6mm,
       ..figures.enumerate().map(((i, f)) => figure-body(f, number + "." + str(first + i)))))
   } else {
@@ -128,18 +146,23 @@
   }
 }
 
-// A figure no wider than this sits beside the text that leads up to it;
-// a wider one keeps the full width below it.
-#let float-max-width = 112
-#let floats(f) = f.width <= float-max-width
+// The narrowest a figure beside the key points is drawn to match their height.
+#let float-min-width = 55mm
 
 // Sets figure `f` at the right of the first bullet points, as many as reach
-// its height, then runs the rest across the full width.
+// its height, then runs the rest across the full width. When all the points
+// are shorter than the figure, the figure is drawn smaller to match them, so
+// no empty column is left under the points.
 #let wrapped-bullets(items, f, n) = layout(size => {
   let gutter = 5mm
+  let height-at(width) = measure(block(width: width, figure-body(f, n, width: width))).height
+  let points-at(width) = measure(block(width: size.width - width - gutter, bullets(items))).height
   let width = calc.min(f.width * 1mm, size.width * 0.42)
+  while width > float-min-width and height-at(width) > points-at(width) + 4mm {
+    width = calc.max(float-min-width, width - 4mm)
+  }
   let side = figure-body(f, n, width: width)
-  let tall = measure(block(width: width, side)).height
+  let tall = height-at(width)
   let column = size.width - width - gutter
   let count = 0
   let used = 0pt
