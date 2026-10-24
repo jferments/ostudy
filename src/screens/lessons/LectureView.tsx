@@ -20,9 +20,11 @@ import {
   type LectureSlide,
   type LessonCheckResult,
   type LessonStep,
+  type LessonStepNarration,
 } from "../../ipc/lessons";
 import type { StudyGuidePdfTheme } from "../../ipc/studyGuides";
 import { Icon } from "../../ui/icons/Icon";
+import { IconButton } from "../../ui/icons/IconButton";
 import { cn } from "../../ui/internal/cn";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { Dialog, Sheet } from "../../ui/overlays/Dialog";
@@ -32,6 +34,7 @@ import { LoadingState } from "../../ui/primitives/EmptyState";
 import { Disclosure, RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ItemTrigger } from "../../ui/primitives/Item";
+import { keepLectureAudio } from "./lectureAudio";
 import { LessonBlocks } from "./LessonBlocks";
 import { SlideCards } from "./SlideCards";
 import { StepCheck } from "./StepCheck";
@@ -39,7 +42,7 @@ import { useNarrationPlayer } from "./useNarrationPlayer";
 import { InkEditor } from "../ink/InkEditor";
 import { InkOverlay } from "../ink/InkOverlay";
 import { useMaterialInk } from "../ink/useMaterialInk";
-import { readSlideTheme, saveSlideTheme, useSlideDesigns } from "./useSlideDesigns";
+import { readSlideTheme, readSlideZoom, saveSlideTheme, saveSlideZoom, SLIDE_ZOOMS, useSlideDesigns } from "./useSlideDesigns";
 import { useVoiceAvailable } from "./useVoiceAvailable";
 
 const SLIDE_THEMES: ReadonlyArray<{ value: StudyGuidePdfTheme; name: string }> = [
@@ -131,9 +134,23 @@ export function LectureView({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
   const voice = useNarrationPlayer(lessonId, revisionNumber);
+  // Each part is asked for once, so the next slide's audio can be fetched
+  // while this one plays and is ready when the lecture moves on.
+  const parts = useRef(new Map<string, Promise<LessonStepNarration>>());
+  const part = (key: string, narrate: () => Promise<LessonStepNarration>) => {
+    const id = `${lessonId}:${revisionNumber}:${key}`;
+    let pending = parts.current.get(id);
+    if (!pending) {
+      pending = narrate();
+      pending.catch(() => parts.current.delete(id));
+      parts.current.set(id, pending);
+    }
+    return pending;
+  };
   const voiceAvailable = useVoiceAvailable();
   const [theme, setTheme] = useState<StudyGuidePdfTheme>(readSlideTheme);
   const designs = useSlideDesigns(lessonId, revisionNumber, theme);
+  const [zoom, setZoom] = useState(readSlideZoom);
   const inkMaterial = useMemo(() => ({ kind: "lesson" as const, lessonId }), [lessonId]);
   const ink = useMaterialInk(inkMaterial);
   const [inking, setInking] = useState(false);
@@ -201,29 +218,39 @@ export function LectureView({
     setTheme(next);
     saveSlideTheme(next);
   };
+  const zoomBy = (step: number) => {
+    const next = SLIDE_ZOOMS[SLIDE_ZOOMS.indexOf(zoom) + step];
+    if (next === undefined) return;
+    setZoom(next);
+    saveSlideZoom(next);
+  };
 
   // The teacher talks over each slide in turn. A question asked after the
   // talk goes on from the next slide once answered; one asked before it is
   // spoken first, and the slide's talk follows the answer.
+  const asks = (key: string) => () => part(`${key}:ask`, () => askLectureQuestion(lessonId, revisionNumber, key));
+  const says = (key: string) => () => part(`${key}:talk`, () => narrateLecturePart(lessonId, revisionNumber, key));
   const teach = (from: number, asked = false) => {
     const item = slides[from];
-    const part = taught(item);
-    if (!item || !part) {
+    const current = taught(item);
+    if (!item || !current) {
       setLecturing(false);
       return;
     }
     setIndex(from);
-    if (part.question?.timing === "before" && !asked) {
-      voice.speak(
-        () => askLectureQuestion(lessonId, revisionNumber, item.key),
-        () => setAsking({ slide: part, resumeAt: from }),
-      );
+    const following = slides[from + 1];
+    const upNext = taught(following);
+    if (following && upNext) {
+      // Audio made with the lesson is already kept; this only waits for any that is not.
+      if (upNext.question?.timing === "before") void asks(following.key)().catch(() => undefined);
+      if (upNext.talk.trim()) void says(following.key)().catch(() => undefined);
+    }
+    if (current.question?.timing === "before" && !asked) {
+      voice.speak(asks(item.key), () => setAsking({ slide: current, resumeAt: from }));
       return;
     }
-    voice.speak(
-      () => narrateLecturePart(lessonId, revisionNumber, item.key),
-      () =>
-        part.question?.timing === "after" ? setAsking({ slide: part, resumeAt: from + 1 }) : teach(from + 1),
+    voice.speak(says(item.key), () =>
+      current.question?.timing === "after" ? setAsking({ slide: current, resumeAt: from + 1 }) : teach(from + 1),
     );
   };
 
@@ -280,6 +307,8 @@ export function LectureView({
       (value) => {
         setScript(value);
         setWriting(false);
+        // The lecture's audio is made now, so playing it does not wait for the voice.
+        if (voiceAvailable) void keepLectureAudio(lessonId, revisionNumber, value);
       },
       (error: unknown) => {
         setScriptError(`The teacher's lecture was not written: ${getErrorMessage(error)}`);
@@ -431,8 +460,9 @@ export function LectureView({
         <article aria-labelledby={titleId} className="tw:flex tw:min-w-0 tw:flex-col tw:gap-4">
           <section
             data-testid="lecture-slide"
+            style={zoom < 100 ? { width: `${zoom}%` } : undefined}
             className={cn(
-              "tw:flex tw:aspect-video tw:w-full tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
+              "tw:mx-auto tw:flex tw:aspect-video tw:w-full tw:flex-col tw:gap-4 tw:overflow-auto tw:rounded-lg",
               image
                 ? "tw:relative tw:overflow-hidden tw:shadow-md tw:ring-1 tw:ring-border"
                 : "tw:border tw:border-solid tw:border-border tw:bg-card tw:p-8 tw:shadow-sm tw:compact:p-5",
@@ -468,8 +498,12 @@ export function LectureView({
             <Button className="tw:rounded-full" disabled={index === 0} onClick={() => show(index - 1)}>
               <Icon name="chevron-left" size={16} /> Back
             </Button>
-            <span className="tw:text-small tw:tabular-nums tw:text-muted-foreground">
-              Slide {index + 1} of {slides.length}
+            <span className="tw:flex tw:items-center tw:gap-1">
+              <IconButton icon="zoom-out" label="Smaller slide" disabled={zoom === SLIDE_ZOOMS[0]} onClick={() => zoomBy(-1)} />
+              <span className="tw:text-small tw:tabular-nums tw:text-muted-foreground">
+                Slide {index + 1} of {slides.length}
+              </span>
+              <IconButton icon="zoom-in" label="Larger slide" disabled={zoom === 100} onClick={() => zoomBy(1)} />
             </span>
             {index === slides.length - 1 && onFinish ? (
               <Button variant="primary" className="tw:rounded-full" disabled={finishing} onClick={onFinish}>

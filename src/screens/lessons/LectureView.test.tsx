@@ -296,6 +296,19 @@ describe("LectureView", () => {
     ).toBe(true);
   });
 
+  it("makes the slide smaller and larger and remembers the size", async () => {
+    open("multiplier");
+    await screen.findByText("Slide 4 of 5");
+    const larger = screen.getByRole("button", { name: "Larger slide" });
+    expect(larger.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Smaller slide" }));
+    fireEvent.click(screen.getByRole("button", { name: "Smaller slide" }));
+    expect(screen.getByTestId("lecture-slide").style.width).toBe("80%");
+    expect(window.localStorage.getItem("ostudy.lectureSlideZoom")).toBe("80");
+    fireEvent.click(larger);
+    expect(screen.getByTestId("lecture-slide").style.width).toBe("90%");
+  });
+
   it("reports each step it shows and finishes the lesson from the last slide", async () => {
     const onStepShown = vi.fn();
     const onFinish = vi.fn();
@@ -629,7 +642,9 @@ describe("LectureView", () => {
       await vi.waitFor(() =>
         expect(audio().src).toBe("blob:ask:step:two-limbs"),
       );
-      expect(narrateLecturePart).not.toHaveBeenCalled();
+      expect(narrateLecturePart).not.toHaveBeenCalledWith("lesson-1", 2, "step:two-limbs");
+      // The next slide's talk is fetched while this one plays.
+      expect(narrateLecturePart).toHaveBeenCalledWith("lesson-1", 2, "step:quiet");
       act(() => audio().dispatchEvent(new Event("ended")));
 
       const dialog = within(
