@@ -15,7 +15,7 @@ import { FormField } from "../../ui/primitives/FormField";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
-import { useSubjectCourse } from "../lessons/useSubjectCourse";
+import { useSubjectCourse, type LectureAudioProgress } from "../lessons/useSubjectCourse";
 import { formatDocumentType } from "./DocumentProgress";
 import { queueStudySet, takeStudySet } from "./pendingStudySets";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
@@ -157,7 +157,7 @@ export function SubjectStudyActions({
         <div className="tw:grid tw:min-w-0 tw:flex-1 tw:gap-2">
           {waiting ? <CardsProgress count={waiting.documentIds.length} /> : null}
           {bundle.busy ? <BundleProgress status={status} /> : null}
-          {course.writing ? <LessonsProgress progress={course.progress} podcast={course.writingPodcast} /> : null}
+          {course.writing ? <LessonsProgress progress={course.progress} podcast={course.writingPodcast} audio={course.audio} /> : null}
         </div>
         {bundle.busy || course.writing ? (
           <Button
@@ -200,6 +200,9 @@ export function SubjectStudyActions({
       ) : null}
       {course.writeError ? (
         <InlineNotice kind="warning" className="tw:basis-full">{`Lessons were not written: ${course.writeError}`}</InlineNotice>
+      ) : null}
+      {course.audioError ? (
+        <InlineNotice kind="warning" className="tw:basis-full">{course.audioError}</InlineNotice>
       ) : null}
       {course.podcastError ? (
         <InlineNotice kind="warning" className="tw:basis-full">{`The podcast was not written: ${course.podcastError}`}</InlineNotice>
@@ -380,8 +383,28 @@ function CardsProgress({ count }: { count: number }) {
   );
 }
 
-function LessonsProgress({ progress, podcast }: { progress: CourseWritingProgress | null; podcast: boolean }) {
+function LessonsProgress({
+  progress,
+  podcast,
+  audio,
+}: {
+  progress: CourseWritingProgress | null;
+  podcast: boolean;
+  audio: LectureAudioProgress | null;
+}) {
   const planned = progress?.planned ?? null;
+  if (audio) {
+    const label = `${audio.done} / ${audio.total}`;
+    return (
+      <div className="tw:grid tw:min-w-0 tw:gap-1.5" role="status" aria-live="polite">
+        <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-small">
+          <span className="tw:truncate">Making lecture audio</span>
+          <span className="tw:shrink-0 tw:text-muted-foreground">{label}</span>
+        </div>
+        <Progress value={audio.done} max={audio.total} label="Lecture audio progress" valueText={label} />
+      </div>
+    );
+  }
   if (podcast) {
     return (
       <div className="tw:grid tw:min-w-0 tw:gap-1.5" role="status" aria-live="polite">

@@ -26,6 +26,27 @@ export function saveSlideTheme(theme: StudyGuidePdfTheme): void {
   }
 }
 
+const ZOOM_STORAGE_KEY = "ostudy.lectureSlideZoom";
+/** How wide the slide shows, as a share of the room it has, smallest first. */
+export const SLIDE_ZOOMS: readonly number[] = [40, 50, 60, 70, 80, 90, 100];
+
+export function readSlideZoom(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(ZOOM_STORAGE_KEY));
+    return SLIDE_ZOOMS.includes(stored) ? stored : 100;
+  } catch {
+    return 100;
+  }
+}
+
+export function saveSlideZoom(zoom: number): void {
+  try {
+    window.localStorage.setItem(ZOOM_STORAGE_KEY, String(zoom));
+  } catch {
+    // The zoom is a convenience; the full-width slide works without storage.
+  }
+}
+
 export interface SlideDesignImages {
   /** Each laid-out slide's image URL by slide key. */
   images: ReadonlyMap<string, string>;

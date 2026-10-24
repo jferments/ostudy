@@ -85,13 +85,23 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
           <div className="tw:flex tw:items-center tw:gap-3">
             <Icon name="sparkles" size={20} className="tw:shrink-0 tw:text-accent-foreground" />
             <span className="tw:min-w-0 tw:flex-1 tw:text-body">
-              {course.stopping ? "Stopping…" : "Writing lessons…"}
+              {course.stopping ? "Stopping…" : course.audio ? "Making lecture audio…" : "Writing lessons…"}
             </span>
             <Button size="small" className="tw:rounded-full" disabled={course.stopping} onClick={course.stop}>
               <Icon name="stop" size={14} /> Stop
             </Button>
           </div>
-          <WritingProgress planned={course.progress?.planned ?? null} written={course.progress?.written ?? 0} />
+          {course.audio ? (
+            <Progress
+              value={course.audio.done}
+              max={course.audio.total}
+              label="Lecture audio progress"
+              valueText={`${course.audio.done} of ${course.audio.total} lessons`}
+              text={`${course.audio.done} of ${course.audio.total} lessons`}
+            />
+          ) : (
+            <WritingProgress planned={course.progress?.planned ?? null} written={course.progress?.written ?? 0} />
+          )}
         </Card>
       ) : null}
       {lessons.length > 0 ? (
