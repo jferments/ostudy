@@ -67,7 +67,7 @@ A document's **…** menu files it: **Add to a subject…** or **Move to another
 A study set is a subject and the materials made for it. The **New study set +** tile at the end of Library's page starts one in one place. Its sheet asks for:
 
 - **Subject**: the new subject's name. A name alone makes an empty subject.
-- **Documents**: **Choose files** adds a file each time; **From the library** adds documents you already have, moving them into the subject. A new file is read as if you had uploaded it in the subject.
+- **Documents**: **Choose files** adds the files you pick (hold Ctrl or Shift to pick several; on Android, one at a time); a file that cannot be read is named and left out; **From the library** adds documents you already have, moving them into the subject. A new file is read as if you had uploaded it in the subject.
 - **Prompt**: optional with documents, where it says how to use them, such as what to cover, what to use for detail or what to skip, and also guides their first cards. With no documents, describe what to learn and the AI connection used for cards and guides writes study notes on it. The notes become a PDF in the subject's **Documents**, and everything else is made from them like any upload.
 - **What kinds of study materials do you want to create?**: **Flashcards**, **Study guide**, **Lessons** (with **Lecture audio**, which starts as **Make lecture audio with new lessons** in **Settings** says and needs a lesson voice: each lesson's teacher's lecture is written and all of its audio kept, so **Play lecture** plays at once) and **Podcast**. A podcast is made from the lessons: once they are written, two hosts talk through the first three.
 

@@ -280,6 +280,10 @@ pub struct ExternalPublishResult {
 
 pub type PlatformFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
+/// Names where the file at each place in a selection of several is copied.
+pub type ExternalImportTargets =
+    Box<dyn Fn(usize) -> Result<ExternalImportTarget, CommandError> + Send + Sync>;
+
 pub trait ExternalFilePort: Send + Sync {
     fn acquire_import(
         &self,
@@ -287,6 +291,18 @@ pub trait ExternalFilePort: Send + Sync {
         request: ExternalFileRequest,
         target: ExternalImportTarget,
     ) -> PlatformFuture<Result<Option<ExternalAcquireResult>, CommandError>>;
+
+    /// Lets the person choose up to `maximum_files` files at once and copies
+    /// each to the target `targets` names for its place, in selection order.
+    /// Empty when the person cancels. A picker that takes one file at a time
+    /// returns at most one.
+    fn acquire_imports(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+        maximum_files: usize,
+        targets: ExternalImportTargets,
+    ) -> PlatformFuture<Result<Vec<ExternalAcquireResult>, CommandError>>;
 
     fn publish_export(
         &self,

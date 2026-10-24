@@ -464,6 +464,24 @@ pub(crate) async fn leased_stream_select_and_stage_external_import(
     .await
 }
 
+#[tauri::command(rename = "stream_select_and_stage_external_imports")]
+pub(crate) async fn leased_stream_select_and_stage_external_imports(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::external_file_streaming::stream_select_and_stage_external_imports(
+        app.clone(),
+        app.state::<crate::database::Database>(),
+        app.state::<crate::paths::AppPaths>(),
+        app.state::<crate::platform::PlatformRuntime>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "stream_publish_prepared_export")]
 pub(crate) async fn leased_stream_publish_prepared_export(
     app: AppHandle,

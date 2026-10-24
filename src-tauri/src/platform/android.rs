@@ -171,6 +171,19 @@ impl ExternalFilePort for AndroidExternalFilePort {
         })
     }
 
+    // Android's document picker here takes one file at a time.
+    fn acquire_imports(
+        &self,
+        app: AppHandle,
+        request: ExternalFileRequest,
+        _maximum_files: usize,
+        targets: crate::platform::ExternalImportTargets,
+    ) -> PlatformFuture<Result<Vec<ExternalAcquireResult>, CommandError>> {
+        let target = targets(0);
+        let one = target.map(|target| self.acquire_import(app, request, target));
+        Box::pin(async move { Ok(one?.await?.into_iter().collect()) })
+    }
+
     fn publish_export(
         &self,
         _app: AppHandle,
