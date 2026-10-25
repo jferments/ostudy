@@ -28,7 +28,6 @@ mod completion;
 mod content;
 mod dedupe;
 mod editorial;
-mod notation;
 mod policy;
 mod recovery;
 mod repair;
@@ -120,7 +119,7 @@ pub(crate) async fn generate_study_guide_topic_section(
     .await?;
     // Models write formulas flat (HCO3-) however they are asked, and asking
     // cost accuracy, so the source's printed spellings are restored here.
-    notation::print_source_notation(source_text, &mut section.content);
+    super::notation::print_source_notation(source_text, &mut section.content);
     // One check a section; the flashcards made from the same knowledge do
     // the rest of the testing.
     section.content.retrieval_checks.truncate(1);
