@@ -9,6 +9,7 @@ import * as guideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
+import { openMenu } from "../test/menus";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/collections", async (importOriginal) => ({
@@ -54,11 +55,7 @@ function renderDocuments() {
 async function openMakeMoreCards(title = "Neurological assessments"): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
-  // Base UI wires the trigger in a passive effect, so an early click can be dropped.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
-  const menu = await screen.findByRole("menu", { name: label });
+  const menu = await openMenu(trigger);
   const action = within(menu).getByRole("menuitem", { name: "Make more cards…" });
   await waitFor(() => expect(action.getAttribute("aria-disabled")).not.toBe("true"));
   await act(async () => { fireEvent.click(action); });
