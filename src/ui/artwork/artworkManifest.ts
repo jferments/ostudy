@@ -2,6 +2,8 @@ import raccoonHead128 from "./images/raccoon-head-128.webp";
 import raccoonHead64 from "./images/raccoon-head-64.webp";
 import raccoonLogo160 from "./images/raccoon-logo-160.webp";
 import raccoonLogo320 from "./images/raccoon-logo-320.webp";
+import raccoonTutor192 from "./images/raccoon-tutor-192.webp";
+import raccoonTutor384 from "./images/raccoon-tutor-384.webp";
 
 export type ArtworkSlot =
   | "brand.logo.sidebar"
@@ -14,6 +16,7 @@ export type ArtworkSlot =
   | "empty.templates"
   | "practice.complete"
   | "tutorial.welcome"
+  | "tutor.welcome"
   | "document.processing";
 
 /** Raster art for a slot: the base file for 1x screens and a srcSet adding the 2x file. */
@@ -52,6 +55,11 @@ export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> =
     slot: "practice.complete", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "Practice complete", category: "completion",
     // The whole mascot at its desk, the same files as Home's first run.
     image: { src: raccoonLogo160, srcSet: `${raccoonLogo160} 1x, ${raccoonLogo320} 2x` },
+  },
+  "tutor.welcome": {
+    slot: "tutor.welcome", aspectRatio: "1 / 1", decorative: true, fallbackLabel: "What are we studying today?", category: "empty",
+    // The mascot teaching at a chalkboard, downscaled (see ARTWORK-LICENSES.md). A new Tutor chat.
+    image: { src: raccoonTutor192, srcSet: `${raccoonTutor192} 1x, ${raccoonTutor384} 2x` },
   },
   "tutorial.welcome": { slot: "tutorial.welcome", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Welcome to ostudy", category: "tutorial" },
   "document.processing": { slot: "document.processing", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Processing document", category: "status" },
