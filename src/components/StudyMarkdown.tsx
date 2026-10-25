@@ -7,12 +7,19 @@ import { isMarkdownFormula, lexStudyMarkdown } from "../math/markdown";
 import styles from "./StudyMarkdown.module.css";
 
 const MAX_RENDER_DEPTH = 32;
+const FIGURE_SCHEME = "figure:";
 
 /** Parse Markdown, never HTML. All generated elements/attributes are owned here.
  * Saved messages use the same renderer as new replies, with no data migration.
  * Image tokens remain alt text: reading a chat must not fetch remote resources.
+ * Only `figure:` images, which name a figure in the learner's own documents,
+ * are handed to `figure` when the caller draws them.
  */
-export function StudyMarkdown({ text, inline = false }: { text: string; inline?: boolean }) {
+export function StudyMarkdown({ text, inline = false, figure }: {
+  text: string;
+  inline?: boolean;
+  figure?: (reference: string, title: string) => ReactNode;
+}) {
   const [linkError, setLinkError] = useState(false);
   const tokens = useMemo(() => lexStudyMarkdown(text, inline), [text, inline]);
 
@@ -41,7 +48,9 @@ export function StudyMarkdown({ text, inline = false }: { text: string; inline?:
       case "code": return <pre><code>{token.text}</code></pre>;
       case "codespan": return <code>{token.text}</code>;
       case "html": return token.text;
-      case "image": return <span>{decodeText(token.text || "Image")}</span>;
+      case "image": return figure && token.href.startsWith(FIGURE_SCHEME)
+        ? figure(token.href.slice(FIGURE_SCHEME.length), decodeText(token.text))
+        : <span>{decodeText(token.text || "Image")}</span>;
       case "checkbox": return <input type="checkbox" checked={token.checked} disabled aria-label="Checklist item" />;
       case "list_item": return <li>{token.task ? <input type="checkbox" checked={token.checked ?? false} disabled aria-label="Checklist item" /> : null}{children(token.tokens)}</li>;
       case "list": {

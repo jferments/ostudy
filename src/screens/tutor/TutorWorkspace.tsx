@@ -18,13 +18,14 @@ import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
 import { RenameConversationDialog, TutorHistory } from "./TutorHistory";
 import { useTutor } from "./TutorContext";
+import { TutorFigure } from "./TutorFigure";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
 import { useArtwork } from "../../ui/artwork/Artwork";
 import { useLiveTurn } from "./useLiveTurn";
 import { useSpeechInput } from "./useSpeechInput";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
-import { styles } from "./presentation";
+import { styles, withoutFigures } from "./presentation";
 
 function SourceDetails({ source }: { source: SourceCitation }) {
   return (
@@ -382,7 +383,17 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
               {turn.assistantText && turn.assistantText !== turn.errorMessage
                 ? turn.mode === "hint"
                   ? <div className={styles.message}>{turn.assistantText}</div>
-                  : <TutorMarkdown text={turn.assistantText} />
+                  : (
+                    // Floated figures stay inside their answer.
+                    <div className="tw:flow-root">
+                      <TutorMarkdown
+                        text={turn.assistantText}
+                        figure={turn.state === "complete"
+                          ? (reference, title) => <TutorFigure turnId={turn.id} reference={reference} title={title} />
+                          : undefined}
+                      />
+                    </div>
+                  )
                 : null}
               {turn.state === "running" ? liveAnswer : null}
               {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
@@ -402,7 +413,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                       <Icon name="help" size={16} /> Quiz me on this
                     </Button>
                   ) : null}
-                  <CopyAnswer text={turn.assistantText} />
+                  <CopyAnswer text={withoutFigures(turn.assistantText)} />
                 </div>
               ) : null}
               {turn.id === lastTurnId

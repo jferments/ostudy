@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
@@ -22,6 +22,7 @@ import { AppearanceProvider } from "../../ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { HomeScreen } from "./HomeScreen";
+import { openMenu } from "../../test/menus";
 
 vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
@@ -165,13 +166,9 @@ function renderHome({
 const DECKS = [makeDeck()];
 
 /** Chooses an order from the Your subjects menu. */
-/** Base UI wires a menu trigger in a passive effect, so an early click can be dropped; click until it opens. */
 async function openSortMenu(): Promise<HTMLElement> {
   const trigger = screen.getByRole("button", { name: "Sort subjects" });
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
-  return screen.findByRole("menu", { name: "Sort subjects" });
+  return openMenu(trigger);
 }
 
 async function sortBy(label: string): Promise<void> {

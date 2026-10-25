@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
+import { openMenu } from "../test/menus";
 
 const documentIpcMocks = vi.hoisted(() => ({
   listDocuments: vi.fn(),
@@ -112,11 +113,8 @@ const progress: DocumentGenerationProgress = {
 /** The row shows one bar; the stage detail and statistics live in Generation details. */
 async function openDetails(): Promise<HTMLElement> {
   const trigger = await screen.findByRole("button", { name: /^More actions for / });
-  // Base UI wires the trigger in a passive effect, so an early click can be dropped.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Generation details" }));
+  const menu = await openMenu(trigger);
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Generation details" }));
   return screen.findByRole("dialog", { name: "Generation details" });
 }
 
